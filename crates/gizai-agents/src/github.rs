@@ -163,8 +163,8 @@ pub const DETAIL_FIELDS: &str =
 pub fn pull_details(gh: &Path, dir: &Path, repo: &str, number: u64) -> Result<PullDetails, String> {
     let n = number.to_string();
     let out = run_gh(gh, dir, &["pr", "view", &n, "--repo", repo, "--json", DETAIL_FIELDS], None)?;
-    let v: serde_json::Value = serde_json::from_str(&out).map_err(|e| format!("gh gave an answer Gizai can't read ({e})"))?;
-    serde_json::from_value(without_nulls(v)).map_err(|e| format!("gh gave an answer Gizai can't read ({e})"))
+    let v: serde_json::Value = serde_json::from_str(&out).map_err(|e| format!("gh gave an answer Hersir can't read ({e})"))?;
+    serde_json::from_value(without_nulls(v)).map_err(|e| format!("gh gave an answer Hersir can't read ({e})"))
 }
 
 /// Merges pull request `number` of `repo` with a merge commit (never squash or rebase), only while `head` is still its
@@ -195,7 +195,7 @@ fn pulls_from(out: &str) -> Result<Vec<PullRequest>, String> {
     if out.trim().is_empty() {
         return Ok(vec![]);
     }
-    serde_json::from_str(out).map_err(|e| format!("gh gave an answer Gizai can't read ({e})"))
+    serde_json::from_str(out).map_err(|e| format!("gh gave an answer Hersir can't read ({e})"))
 }
 
 /// The commits of pull request `number` of `repo` ("owner/name"), as GitHub lists them (at most 100). `dir` is where
@@ -208,7 +208,7 @@ pub fn pull_commits(gh: &Path, dir: &Path, repo: &str, number: u64) -> Result<Ve
     }
     let n = number.to_string();
     let out = run_gh(gh, dir, &["pr", "view", &n, "--repo", repo, "--json", "commits"], None)?;
-    let listed: Commits = serde_json::from_str(&out).map_err(|e| format!("gh gave an answer Gizai can't read ({e})"))?;
+    let listed: Commits = serde_json::from_str(&out).map_err(|e| format!("gh gave an answer Hersir can't read ({e})"))?;
     Ok(listed.commits)
 }
 
@@ -223,7 +223,7 @@ pub fn merge_commit(gh: &Path, dir: &Path, repo: &str, number: u64) -> Result<Op
     }
     let n = number.to_string();
     let out = run_gh(gh, dir, &["pr", "view", &n, "--repo", repo, "--json", "mergeCommit"], None)?;
-    let merged: Merged = serde_json::from_str(&out).map_err(|e| format!("gh gave an answer Gizai can't read ({e})"))?;
+    let merged: Merged = serde_json::from_str(&out).map_err(|e| format!("gh gave an answer Hersir can't read ({e})"))?;
     Ok(merged.merge_commit.map(|c| c.oid).filter(|oid| !oid.is_empty()))
 }
 

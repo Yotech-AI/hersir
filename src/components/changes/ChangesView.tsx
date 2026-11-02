@@ -77,7 +77,7 @@ function withArrows(text: string): React.ReactNode {
 
 /** Nothing to find (merged before Gizai saved its range, no merge commit here, gh not logged in), or a failure. */
 function Failed({ error, retry, taskId }: { error: string; retry: () => void; taskId: string }) {
-  const m = /^Gizai can't find what \S+ changed: (.*)$/s.exec(error);
+  const m = /^Hersir can't find what \S+ changed: (.*)$/s.exec(error);
   if (m) {
     const bitbucket = /Bitbucket/.test(m[1]);
     const text = m[1].charAt(0).toUpperCase() + m[1].slice(1);

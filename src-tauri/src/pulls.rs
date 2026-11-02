@@ -302,7 +302,7 @@ pub async fn open(st: &AppState, task_id: &str) -> Result<PullInfo, String> {
     }
     let via = via(st, &card).await?;
     let task = tasks::get(&st.db, task_id).map_err(|e| e.to_string())?;
-    let _busy = Busy::take(st, task_id).ok_or_else(|| format!("Gizai is already busy with {}'s pull request", card.identifier))?;
+    let _busy = Busy::take(st, task_id).ok_or_else(|| format!("Hersir is already busy with {}'s pull request", card.identifier))?;
     let (title, body) = (format!("{}: {}", task.identifier, task.title), body(&task));
     let over = match &via {
         Via::GitHub(gh) => crate::github::push_over(st, gh),
@@ -352,7 +352,7 @@ fn body(t: &Task) -> String {
     if b.chars().count() > MAX_BODY {
         b = b.chars().take(MAX_BODY).collect::<String>() + "…\n\n";
     }
-    b.push_str(&format!("From Gizai card {}.", t.identifier));
+    b.push_str(&format!("From Hersir card {}.", t.identifier));
     b
 }
 

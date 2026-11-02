@@ -397,7 +397,7 @@ impl Job {
             }
             CloseHandle(snapshot);
             if resumed == 0 {
-                return Err(io::Error::other("Windows didn't let Gizai resume the program it started"));
+                return Err(io::Error::other("Windows didn't let Hersir resume the program it started"));
             }
             Ok(())
         }

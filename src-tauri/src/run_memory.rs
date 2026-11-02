@@ -64,7 +64,7 @@ pub fn save(st: &AppState, gb: u32) -> Result<(), String> {
         settings::set(&st.db, KEY, &gb).map_err(|e| e.to_string())?;
     }
     if let Err(e) = st.run_memory.set_limit(u64::from(gb) * GB) {
-        eprintln!("gizai: the agent runs' slice keeps its memory limit until Gizai starts again: {e}");
+        eprintln!("gizai: the agent runs' slice keeps its memory limit until Hersir starts again: {e}");
     }
     Ok(())
 }
@@ -116,7 +116,7 @@ pub fn ended_on_card(st: &AppState, task_id: &str, agent: &str) {
 /// The run's own note at its end, when Linux ended `count` processes in it at the limit.
 pub fn ended_note(st: &AppState, count: u64) -> String {
     let what = if count == 1 { "a process".to_string() } else { format!("{count} processes") };
-    format!("Linux ended {what} in this run: Gizai's agent runs reached their memory limit of {} GB together. \
+    format!("Linux ended {what} in this run: Hersir's agent runs reached their memory limit of {} GB together. \
              Change it in Settings → Runs → Memory for agent runs.", whole(limit(st)))
 }
 
@@ -147,7 +147,7 @@ pub fn end_leftovers(st: &AppState) -> Vec<Leftover> {
 pub fn end_leftovers_at_start(data_dir: &Path) -> Vec<Leftover> {
     let left = mem::end_leftovers_in(&mem::slice_name(data_dir));
     if !left.is_empty() {
-        eprintln!("gizai: ended {}", mem::leftovers_text(&left, "a previous Gizai"));
+        eprintln!("gizai: ended {}", mem::leftovers_text(&left, "a previous Hersir"));
     }
     left
 }

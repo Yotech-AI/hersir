@@ -439,7 +439,7 @@ fn base_there(base: &Path) -> Result<bool, AgentError> {
         return Ok(false);
     }
     match base_problem(base) {
-        Some(why) => Err(AgentError::Io(std::io::Error::other(format!("{why}, so Gizai left it alone")))),
+        Some(why) => Err(AgentError::Io(std::io::Error::other(format!("{why}, so Hersir left it alone")))),
         None => Ok(true),
     }
 }
@@ -818,7 +818,7 @@ pub fn remove_card_worktree_with(repo: &Path, worktrees_dir: &Path, temp_base: &
     let checked_out = match worktree_of(repo, branch) {
         Ok(None) => false,
         Ok(Some(wt)) if !inside(&wt, worktrees_dir) => {
-            out.kept = Some((wt, "it isn't one of Gizai's worktrees".into()));
+            out.kept = Some((wt, "it isn't one of Hersir's worktrees".into()));
             true
         }
         Ok(Some(wt)) => {

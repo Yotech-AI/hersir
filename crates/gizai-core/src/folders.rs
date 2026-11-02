@@ -213,10 +213,10 @@ pub fn refusal_in(p: &Path, places: &Places, wanted: &str) -> Option<String> {
     for d in &places.data {
         let folded = fold(d);
         if p.starts_with(&folded) {
-            return Some(format!("that's Gizai's data folder ({}), or inside it", places.show(d)));
+            return Some(format!("that's Hersir's data folder ({}), or inside it", places.show(d)));
         }
         if folded.starts_with(p) {
-            return Some(format!("it holds Gizai's data folder ({})", places.show(d)));
+            return Some(format!("it holds Hersir's data folder ({})", places.show(d)));
         }
     }
     let rest = p.strip_prefix(home).ok().filter(|_| has_home)?;
@@ -234,7 +234,7 @@ fn refused(raw: &str, places: &Places) -> std::result::Result<PathBuf, String> {
         return Err("give the folder's path".into());
     }
     if raw.chars().any(char::is_control) || raw.contains(ODD) {
-        return Err(format!("Gizai can't pass a path with {ODD_SAID} to the coding CLIs: rename the folder or pick another"));
+        return Err(format!("Hersir can't pass a path with {ODD_SAID} to the coding CLIs: rename the folder or pick another"));
     }
     let p = normalize(raw, &places.home).ok_or_else(|| FULL_PATH.to_string())?;
     if let Some(why) = refusal(&p, places) {
