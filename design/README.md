@@ -35,7 +35,9 @@ and the drawer edge. Shadows only on things that float: `shadow-pop`, `shadow-dr
 - `accent` (blue) is the one interactive colour: primary buttons, links, focus, selection.
 - `live` (teal) means only "an agent is working on this right now": the pulse dot, the Live badge,
   the working strip on a card, the border of a live run card. Never use teal for anything else.
-- `needs` (magenta) means "a person is needed": Review, holds, the Inbox count.
+- `needs` (gold, Hersir's amber) means "a person is needed": Review, holds, the Inbox count. Every other status
+  colour keeps at least 35° of hue (OKLCH) and a ΔE2000 of 15 from it, in both themes: In progress (`st-progress`) and
+  `warning` are a yellow for that (GA-230).
 - The terminal's own colours (`term-*`) are what programs print, not Gizai's states: `term-cyan` is a sky blue and
   `term-magenta` a violet, at least 35° of hue (OKLCH) from `live` and `needs`, so a program's cyan never reads as an
   agent at work, nor its magenta as "needs you".
@@ -66,8 +68,9 @@ and the drawer edge. Shadows only on things that float: `shadow-pop`, `shadow-dr
 - **Syntax uses four hues and the greys.** Violet `syn-keyword` (and `syn-meta`), blue `syn-function` (and `syn-tag`),
   gold `syn-type` (and `syn-attribute`), orange `syn-string` (and `syn-number`). Names stay `text`, operators and
   punctuation `text-2`, comments `syn-comment`. `syn-invalid` is `danger` with a wavy underline.
-- **No teal or magenta in code**: they mean an agent at work and "needs you". **No green or red in syntax**: they mean
-  added and removed.
+- **No teal in code**: it means an agent at work. **No green or red in syntax**: they mean added and removed. The
+  gold of `syn-type` and `git-modified` and the orange of `syn-string` are near `needs` since it became Hersir's gold
+  (GA-230); they stay, because code colours appear only inside code and never on a state.
 - **Contrast:** every syntax and diff text colour is at least 4.5:1 on `bg` and `raised` in both themes, and on changed
   lines; on a changed word every one but comments (3.4:1 in dark) and `syn-invalid`. Check a new value against all four
   before it goes in.

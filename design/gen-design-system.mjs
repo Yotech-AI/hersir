@@ -600,7 +600,7 @@ for (const name of Object.keys(nodes)) {
   write(`assets/Icons/${name}.svg`, `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="${INK}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">${inner(name)}</svg>\n`);
 }
 for (const [cat, g] of Object.entries(GLYPH)) {
-  const colors = { backlog: "#8a8e98", ready: "#60a5fa", in_progress: "#f0b429", testing: "#a98bfa", review: "#f472b6", deploy: "#f472b6", done: "#4cc38a", hold: "#f2706b", cancelled: "#6c707a" };
+  const colors = { backlog: "#8a8e98", ready: "#60a5fa", in_progress: "#dcd839", testing: "#a98bfa", review: "#f2a53a", deploy: "#f2a53a", done: "#4cc38a", hold: "#f2706b", cancelled: "#6c707a" };
   write(`assets/Icons/status-${cat.replace("_", "-")}.svg`, `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" style="color:${colors[cat]}">${g.replaceAll("currentColor", colors[cat]).replace("var(--bg)", "#0f1013")}</svg>\n`);
 }
 write("assets/Icons/README.md", `Lucide icons (lucide-react 0.577, ISC licence), copied from Lucide's own icon data, plus Gizai's nine status glyphs (\`status-*.svg\`).
