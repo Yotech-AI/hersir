@@ -20,7 +20,7 @@ pub const LIST_TIMEOUT: Duration = Duration::from_secs(120);
 /// How long a sign-in waits for the browser to come back.
 pub const SIGN_IN_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 /// Why List tools is refused (and off in Settings) for a server Claude Code signs in to.
-pub const CLAUDE_CODE_NO_LIST: &str = "Claude Code signs in to this server, so Gizai can't list its tools. An agent that has it on gets all of them.";
+pub const CLAUDE_CODE_NO_LIST: &str = "Claude Code signs in to this server, so Hersir can't list its tools. An agent that has it on gets all of them.";
 
 /// A secret line from the form: its value only when typed in now (None keeps the one in the keychain).
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -285,7 +285,7 @@ pub fn list_tools(st: &AppState, id: &str) -> Result<ServerView, String> {
 
 /// Why Gizai doesn't sign in to the server: Claude Code does. None when Gizai signs in to it.
 fn claude_code_refusal(s: &McpServer) -> Option<String> {
-    s.claude_code_signs_in().then(|| format!("Claude Code signs in to {}: sign Claude Code in, not Gizai.", s.name))
+    s.claude_code_signs_in().then(|| format!("Claude Code signs in to {}: sign Claude Code in, not Hersir.", s.name))
 }
 
 /// Starts a sign-in: finds the server's authorization server, registers Gizai there (or uses the entered client id) and
@@ -831,9 +831,9 @@ pub fn tools_view(st: &AppState, agent_id: Option<&str>, cli_id: &str) -> Result
     let seen = agent_id.and_then(|a| core_mcp::seen_tools(&st.db).ok()?.remove(a)).filter(|s| s.cli_id == cli.id);
     let asked = core_mcp::asked_tools(&st.db).map_err(|e| e.to_string())?.remove(&cli.id);
     let (reported, source) = match (kind, seen, asked) {
-        (gizai_agents::cli::Kind::ClaudeCode, Some(s), _) => (Some(s.tools), format!("Gizai's catalog, with the tools {} reported in this agent's last run ({}).", cli.name, ago(s.at))),
-        (gizai_agents::cli::Kind::ClaudeCode, None, Some(a)) => (Some(a.tools), format!("Gizai's catalog, with the tools {} listed when asked ({}).", cli.name, ago(a.at))),
-        (gizai_agents::cli::Kind::ClaudeCode, None, None) => (None, "Gizai's catalog: after its first run, or Ask Claude Code again, it shows the tools Claude Code itself reports.".into()),
+        (gizai_agents::cli::Kind::ClaudeCode, Some(s), _) => (Some(s.tools), format!("Hersir's catalog, with the tools {} reported in this agent's last run ({}).", cli.name, ago(s.at))),
+        (gizai_agents::cli::Kind::ClaudeCode, None, Some(a)) => (Some(a.tools), format!("Hersir's catalog, with the tools {} listed when asked ({}).", cli.name, ago(a.at))),
+        (gizai_agents::cli::Kind::ClaudeCode, None, None) => (None, "Hersir's catalog: after its first run, or Ask Claude Code again, it shows the tools Claude Code itself reports.".into()),
         (k, _, _) => (None, tool_catalog::source_note(k).unwrap_or_default().to_string()),
     };
     let builtin = BuiltinSection { tools: tool_catalog::merged(kind, reported.as_deref()), source, can_ask: kind == gizai_agents::cli::Kind::ClaudeCode,
@@ -873,7 +873,7 @@ pub fn save_cli_tools(st: &AppState, agent_id: &str, tools: core_mcp::CliTools) 
 pub async fn ask_cli_tools(st: &AppState, cli_id: &str) -> Result<Vec<String>, String> {
     let cli = gizai_core::clis::get(&st.db, cli_id).map_err(|e| e.to_string())?;
     if cli.kind != "claude_code" {
-        return Err(format!("{} can't be asked for its tools: the list is Gizai's catalog", cli.name));
+        return Err(format!("{} can't be asked for its tools: the list is Hersir's catalog", cli.name));
     }
     let spec = crate::clis::spec(st, &cli, None)?;
     let scratch = st.data_dir.join("scratch").join(format!("tools-{}", gizai_core::ids::new_id()));

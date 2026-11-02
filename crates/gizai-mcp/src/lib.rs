@@ -11,7 +11,7 @@ use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt};
 /// client's version: the four methods served here are the same in every version so far.
 pub const DEFAULT_PROTOCOL: &str = "2025-06-18";
 
-const INSTRUCTIONS: &str = "Gizai's tools: clients, projects, tasks, agents, docs, files and the inbox. \
+const INSTRUCTIONS: &str = "Hersir's tools: clients, projects, tasks, agents, docs, files and the inbox. \
 Look items up before changing them; refer to tasks by identifier (KADE-12), projects by key or name.";
 
 #[derive(Debug, Clone)]
