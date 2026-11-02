@@ -379,7 +379,7 @@ the note that is open.
   size, link thickness, and *Animate*, which replays the graph growing in the order the notes were made. *Forces*:
   centre, repel, link force, link distance. The restore button puts them back.
 - **The look:** the app's background and fonts, grey dots, thin low-contrast lines, the accent for what you point at
-  and the open note; group and kind colours come from a calm palette without teal or magenta. The layout is d3-force
+  and the open note; group and kind colours come from a calm palette without teal or gold. The layout is d3-force
   (ISC licence) and settles in a couple of seconds; with reduced motion it is worked out at once and doesn't move.
 
 ## Not yet
