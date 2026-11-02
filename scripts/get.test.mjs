@@ -89,7 +89,7 @@ if (unix) {
 // GitHub's answer for the latest release, as a file: GIZAI_RELEASES_URL takes file:// addresses.
 function release(tag) {
   const file = join(scratch, `release-${tag}.json`);
-  writeFileSync(file, `{\n  "url": "https://api.github.com/repos/Yotech-AI/gizai/releases/1",\n  "tag_name": "${tag}",\n  "name": "${tag}",\n  "draft": false,\n  "prerelease": false\n}\n`);
+  writeFileSync(file, `{\n  "url": "https://api.github.com/repos/Yotech-AI/hersir/releases/1",\n  "tag_name": "${tag}",\n  "name": "${tag}",\n  "draft": false,\n  "prerelease": false\n}\n`);
   return pathToFileURL(file).href;
 }
 
@@ -382,20 +382,20 @@ describe.skipIf(!unix)("scripts/get.sh", { timeout: 60_000 }, () => {
     const latest = getSh(c, [], { PATH: offline(c), GIZAI_REPO: undefined, GIZAI_RELEASES_URL: undefined });
     expect(latest.code).toBe(1);
     expect(latest.out).toContain(
-      "Could not read the latest release from https://api.github.com/repos/Yotech-AI/gizai/releases/latest.",
+      "Could not read the latest release from https://api.github.com/repos/Yotech-AI/hersir/releases/latest.",
     );
     const asked = readFileSync(net(c), "utf8").trim().split("\n");
     expect(asked).toHaveLength(1);
-    expect(asked[0]).toMatch(/^curl .* https:\/\/api\.github\.com\/repos\/Yotech-AI\/gizai\/releases\/latest$/);
+    expect(asked[0]).toMatch(/^curl .* https:\/\/api\.github\.com\/repos\/Yotech-AI\/hersir\/releases\/latest$/);
     expect(existsSync(c.share)).toBe(false);
 
     const d = newCase();
     const source = getSh(d, [], { PATH: offline(d), GIZAI_REPO: undefined, GIZAI_RELEASES_URL: undefined, GIZAI_REF: "v0.2.0" });
     expect(source.code).toBe(1);
-    expect(source.out).toContain("Could not get v0.2.0 from https://github.com/Yotech-AI/gizai.git.");
+    expect(source.out).toContain("Could not get v0.2.0 from https://github.com/Yotech-AI/hersir.git.");
     const fetched = readFileSync(net(d), "utf8").trim().split("\n");
     expect(fetched).toHaveLength(1);
-    expect(fetched[0]).toMatch(/ fetch .* -- https:\/\/github\.com\/Yotech-AI\/gizai\.git v0\.2\.0$/);
+    expect(fetched[0]).toMatch(/ fetch .* -- https:\/\/github\.com\/Yotech-AI\/hersir\.git v0\.2\.0$/);
     expect(runs(d)).toEqual([]);
 
     for (const log of [...asked, ...fetched]) expect(log).not.toContain("gizai.app");
@@ -506,7 +506,7 @@ describe("the one-line installs people see", () => {
       );
     }
     const ps1 = read("scripts/get.ps1");
-    expect(ps1).toContain("$DefaultRepo = 'https://github.com/Yotech-AI/gizai.git'");
+    expect(ps1).toContain("$DefaultRepo = 'https://github.com/Yotech-AI/hersir.git'");
     expect(ps1).toContain('$url = "https://api.github.com/repos/$($Matches[2])/releases/latest"');
     expect(ps1).toContain("$repo = if ($env:GIZAI_REPO) { $env:GIZAI_REPO } else { $DefaultRepo }");
   });
