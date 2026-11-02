@@ -487,7 +487,7 @@ fn list_backups_lists_the_folder_in_settings_or_another_one_and_another_computer
     fs::write(&path, serde_json::to_vec_pretty(&v).unwrap()).unwrap();
     let e = app::list(&st, None).unwrap().into_iter().find(|e| e.name == theirs.name).unwrap();
     assert!(!e.restorable);
-    assert!(e.problem.as_deref().unwrap().contains("A newer Gizai made it"), "{:?}", e.problem);
+    assert!(e.problem.as_deref().unwrap().contains("A newer Hersir made it"), "{:?}", e.problem);
 }
 
 #[test]

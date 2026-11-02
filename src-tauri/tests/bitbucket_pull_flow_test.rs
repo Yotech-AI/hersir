@@ -395,7 +395,7 @@ async fn open_pull_request_pushes_over_ssh_to_bitbucket_and_opens_one_pull_reque
     let sent: Value = serde_json::from_str(&reqs[1].body).unwrap();
     assert_eq!(sent, json!({
         "title": "KADE-1: Export invoices as CSV",
-        "description": "Download all invoices as one CSV file.\n\n## Acceptance criteria\n\n- [ ] One row per invoice\n\nFrom Gizai card KADE-1.",
+        "description": "Download all invoices as one CSV file.\n\n## Acceptance criteria\n\n- [ ] One row per invoice\n\nFrom Hersir card KADE-1.",
         "source": {"branch": {"name": c.branch}},
         "destination": {"branch": {"name": "master"}},
     }));

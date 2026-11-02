@@ -92,7 +92,7 @@ fn the_pull_requests_of_a_branch_are_asked_in_every_state_without_prompts() {
     assert!(prs[0].commits.is_empty() && prs[0].contains("abc"), "its latest commit, without a list of commits");
     std::fs::write(tmp.path().join("list.json"), "not json").unwrap();
     let e = github::pulls_for_branch(&gh, tmp.path(), "acme/shop", "gizai/sh-1-x").unwrap_err();
-    assert!(e.contains("gh gave an answer Gizai can't read"), "{e}");
+    assert!(e.contains("gh gave an answer Hersir can't read"), "{e}");
 }
 
 #[test]
@@ -125,7 +125,7 @@ fn a_repositorys_newest_pull_requests_come_in_one_light_call_for_every_branch() 
     assert!(read(tmp.path().join("gh-env")).lines().all(|l| l == "prompt=1"), "never prompts");
     std::fs::write(tmp.path().join("list.json"), "not json").unwrap();
     let e = github::pulls_of_repo(&gh, tmp.path(), "acme/shop").unwrap_err();
-    assert!(e.contains("gh gave an answer Gizai can't read"), "{e}");
+    assert!(e.contains("gh gave an answer Hersir can't read"), "{e}");
     let e = github::pulls_of_repo(Path::new("/nonexistent/gh"), tmp.path(), "acme/shop").unwrap_err();
     assert!(e.starts_with("GitHub CLI not found at /nonexistent/gh"), "{e}");
 }
@@ -142,7 +142,7 @@ fn one_pull_requests_commits_come_from_gh_pr_view() {
     assert_eq!(github::pull_commits(&gh, tmp.path(), "acme/shop", 9).unwrap(), vec![], "none listed");
     std::fs::write(tmp.path().join("view.json"), "not json").unwrap();
     let e = github::pull_commits(&gh, tmp.path(), "acme/shop", 9).unwrap_err();
-    assert!(e.contains("gh gave an answer Gizai can't read"), "{e}");
+    assert!(e.contains("gh gave an answer Hersir can't read"), "{e}");
     let calls: Vec<String> = read(tmp.path().join("gh-args")).lines().map(String::from).collect();
     assert_eq!(calls, ["pr view 9 --repo acme/shop --json commits"; 3]);
 }

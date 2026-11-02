@@ -403,7 +403,7 @@ echo 'ERROR: Permission to acme/shop.git denied to octocat.' >&2\nexit 1\n", all
     assert!(prompt_of(&run).contains("> Done: I ran the commands you asked me to run."), "{}", prompt_of(&run));
     let wt = PathBuf::from(run.worktree_path.clone().unwrap());
     assert_eq!(git(&bare, &["rev-parse", &format!("refs/heads/{branch}")]), git(&wt, &["rev-parse", "HEAD"]), "on GitHub now");
-    assert_eq!(notes(&st, &id), [format!("Gizai pushed {branch} (2 commits).")]);
+    assert_eq!(notes(&st, &id), [format!("Hersir pushed {branch} (2 commits).")]);
     let t = tasks::get(&st.db, &task).unwrap();
     assert_eq!((t.state_name.as_str(), t.hold.as_deref(), t.run_for_me.len()), ("Testing", None, 0));
 }
@@ -428,8 +428,8 @@ exec bash '{FAKE_CLAUDE}' \"$@\"\n"));
     let (first, nudged) = (&runs[0], &runs[1]);
     let branch = first.branch.clone().unwrap();
     // the first run was pushed before the nudge started, and the nudge's end pushed its own commit
-    assert_eq!(notes(&st, &first.id), [format!("Gizai pushed {branch} (1 commit).")]);
-    assert_eq!(notes(&st, &nudged.id), [format!("Gizai pushed {branch} (1 commit).")]);
+    assert_eq!(notes(&st, &first.id), [format!("Hersir pushed {branch} (1 commit).")]);
+    assert_eq!(notes(&st, &nudged.id), [format!("Hersir pushed {branch} (1 commit).")]);
     assert_eq!(std::fs::read_to_string(&pushes).unwrap().lines().count(), 2, "two pushes");
     assert_eq!(nudged.session_id, first.session_id);
     let wt = PathBuf::from(nudged.worktree_path.clone().unwrap());

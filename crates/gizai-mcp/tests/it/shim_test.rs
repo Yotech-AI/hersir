@@ -55,7 +55,7 @@ fn says_why_when_gizai_is_not_running() {
     assert_eq!(out.status.code(), Some(1));
     let err = String::from_utf8_lossy(&out.stderr);
     assert!(err.starts_with("gizai-mcp:"), "{err}");
-    assert!(err.contains("Gizai"), "{err}");
+    assert!(err.contains("Hersir"), "{err}");
 }
 
 #[test]
@@ -87,11 +87,11 @@ fn exits_when_gizai_closes_the_connection_even_with_stdin_open() {
     let t0 = std::time::Instant::now();
     let status = loop {
         if let Some(s) = child.try_wait().unwrap() { break s; }
-        if t0.elapsed().as_secs() > 5 { child.kill().unwrap(); panic!("the shim kept running after Gizai closed the connection"); }
+        if t0.elapsed().as_secs() > 5 { child.kill().unwrap(); panic!("the shim kept running after Hersir closed the connection"); }
         std::thread::sleep(std::time::Duration::from_millis(20));
     };
     assert_eq!(status.code(), Some(1));
     let mut err = String::new();
     child.stderr.take().unwrap().read_to_string(&mut err).unwrap();
-    assert!(err.contains("Gizai closed the connection"), "{err}");
+    assert!(err.contains("Hersir closed the connection"), "{err}");
 }

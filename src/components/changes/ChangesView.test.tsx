@@ -141,13 +141,13 @@ describe("nothing to show, loading and failures", () => {
     expect(text(view(changes({ files: [], additions: 0, deletions: 0, note: "The merge had no changes." })))).toBe("No changes The merge had no changes.");
   });
   it("can't find what the card changed: says what to do, and opens GitHub settings when it names them", () => {
-    const html = view(null, { error: "Gizai can't find what GA-12 changed: fetch main, or log gh in (Settings → GitHub)" });
+    const html = view(null, { error: "Hersir can't find what GA-12 changed: fetch main, or log gh in (Settings → GitHub)" });
     expect(text(html)).toBe("Gizai can't find what this card changed Fetch main, or log gh in (Settings GitHub). Open GitHub settings");
     expect(html).toContain('aria-label="then"'); // the arrow, drawn as an icon
     expect(html).toContain('href="#/settings/github"');
-    const bb = view(null, { error: "Gizai can't find what GA-12 changed: log in to Bitbucket (Settings → Bitbucket)." });
+    const bb = view(null, { error: "Hersir can't find what GA-12 changed: log in to Bitbucket (Settings → Bitbucket)." });
     expect(text(bb)).toContain("Open Bitbucket settings");
-    const plain = text(view(null, { error: "Gizai can't find what GA-12 changed: it was merged before Gizai saved its range." }));
+    const plain = text(view(null, { error: "Hersir can't find what GA-12 changed: it was merged before Gizai saved its range." }));
     expect(plain).toBe("Gizai can't find what this card changed It was merged before Gizai saved its range. Back to Card");
   });
   it("another failure: the error and Try again", () => {

@@ -211,7 +211,8 @@ describe("AgentToolsField", () => {
       expect(text(html)).toContain(MCP_NOT_ON[kind]);
       expect(MCP_NOT_ON[kind]).toContain(kind === "codex" ? "Codex" : "Gemini");
       expect(MCP_NOT_ON[kind]).toContain("the browser");
-      expect(coreRs).toContain(MCP_NOT_ON[kind]!.split(": ")[0]!);
+      // GA-232: mcp_not_on says Hersir; the form's copy says Hersir once GA-231 changes it, Gizai before: the same words otherwise
+      expect(coreRs).toContain(MCP_NOT_ON[kind]!.split(": ")[0]!.replace("Gizai", "Hersir"));
       // no tool switches and no npm warning while it can't use them
       expect(html).not.toContain('aria-label="Use search"');
       expect(text(html)).not.toContain("This agent may run npm or npx");

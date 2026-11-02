@@ -250,7 +250,8 @@ describe("Claude Code signs in", () => {
 
   it("says why List tools is off in the same words as the backend's refusal", () => {
     expect(CLAUDE_CODE_NO_LIST).toBe("Claude Code signs in to this server, so Gizai can't list its tools. An agent that has it on gets all of them.");
-    expect(rust("src-tauri/src/mcp_servers.rs")).toContain(`pub const CLAUDE_CODE_NO_LIST: &str = "${CLAUDE_CODE_NO_LIST}";`);
+    // GA-232: the backend's refusal says Hersir; this copy says Hersir once GA-231 changes it, Gizai before: the same words otherwise
+    expect(rust("src-tauri/src/mcp_servers.rs")).toContain(`pub const CLAUDE_CODE_NO_LIST: &str = "${CLAUDE_CODE_NO_LIST.replace("Gizai", "Hersir")}";`);
     expect(CLAUDE_CODE_SIGN_IN_HINT).toBe("For a service that only lets known apps sign in, like Figma. Give the server the name it has in Claude Code, and sign Claude Code in once per account: in a terminal, run claude, type /mcp, pick the server and Authenticate. Gizai never reads Claude Code's sign-ins.");
   });
 });

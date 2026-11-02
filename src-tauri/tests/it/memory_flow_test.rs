@@ -132,11 +132,11 @@ async fn team_lead_notes_exist_after_the_first_answer_and_a_fact_saved_in_one_th
     // the switches: off for every agent, or off for the Team Lead, the answers get no notes
     memory::set_enabled(&t.st.db, false).unwrap();
     t.turn(None, "Hello again").await;
-    assert!(!t.last_system().0.contains("Your notes from Gizai's Memory") && !t.last_system().0.contains("invoices in euros"), "off in Settings");
+    assert!(!t.last_system().0.contains("Your notes from Hersir's Memory") && !t.last_system().0.contains("invoices in euros"), "off in Settings");
     memory::set_enabled(&t.st.db, true).unwrap();
     memory::set_agent_uses(&t.st.db, &t.st.you_id, &t.lead, false).unwrap();
     t.turn(None, "Hello once more").await;
-    assert!(!t.last_system().0.contains("Your notes from Gizai's Memory") && !t.last_system().0.contains("invoices in euros"), "off in its agent form");
+    assert!(!t.last_system().0.contains("Your notes from Hersir's Memory") && !t.last_system().0.contains("invoices in euros"), "off in its agent form");
     memory::set_agent_uses(&t.st.db, &t.st.you_id, &t.lead, true).unwrap();
     t.turn(None, "Back on?").await;
     assert!(t.last_system().0.contains("Jeffrey wants invoices in euros"));
@@ -364,7 +364,7 @@ fn today() -> String {
 }
 
 /// The start of an agent's Memory section (the role's instructions have a "## Memory" paragraph of their own).
-const SECTION: &str = "\n## Memory\n\nNotes from Gizai's Memory for this card";
+const SECTION: &str = "\n## Memory\n\nNotes from Hersir's Memory for this card";
 
 /// The Memory section of a backend run on KADE: its own notes first, then KADE's, Acme's and the backend role's; never
 /// Globex's. Returns the section.
@@ -521,7 +521,7 @@ async fn the_team_leads_task_run_gets_its_own_notes_and_the_index_of_every_note(
     let s = gizai_lib::runs::run_once(&r.st, &task, None, None).await.unwrap();
     let run = core_runs::get(&r.st.db, &s.run_id).unwrap();
     let prompt = prompt_of(&run);
-    let at = prompt.find("\n## Memory\n\nYour notes from Gizai's Memory").unwrap_or_else(|| panic!("a Memory section: {prompt}"));
+    let at = prompt.find("\n## Memory\n\nYour notes from Hersir's Memory").unwrap_or_else(|| panic!("a Memory section: {prompt}"));
     let section = &prompt[at..];
     assert!(section.contains("### Team Lead/Notes (version 1)") && section.contains("### Other notes (memory_read gives the text)"), "{section}");
     for path in ["Projects/Kade", "Clients/Acme", "Clients/Globex", "Projects/Globex portal"] {

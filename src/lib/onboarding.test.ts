@@ -77,7 +77,8 @@ describe("what Next on step 2 saves (save_clis takes the whole list, without the
 describe("the texts", () => {
   it("the welcome message is the one finish_onboarding sends (gizai_core::onboarding::WELCOME), and GA-164's word for word", () => {
     const rust = /pub const WELCOME: &str = "([^"]+)";/.exec(read("crates/gizai-core/src/onboarding.rs"))?.[1];
-    expect(WELCOME).toBe(rust);
+    // GA-232: finish_onboarding's WELCOME says Hersir; step 4's copy says Hersir once GA-231 changes it, GizAi before: the same words otherwise
+    expect(rust).toBe(WELCOME.replace("GizAi", "Hersir"));
     expect(WELCOME).toBe("Hi! I just installed GizAi and set up my team. Please welcome me, tell me in a few lines what you and the team can do, and ask whether I'd like help setting up agents, clients, projects, tasks or anything else.");
   });
 

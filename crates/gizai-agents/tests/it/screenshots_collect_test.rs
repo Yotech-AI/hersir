@@ -188,7 +188,7 @@ fn png_jpeg_and_webp_are_kept_by_their_content_with_their_size_and_type() {
                [(Format::Png, 1280, 800), (Format::Jpeg, 390, 844), (Format::Webp, 900, 600)]);
     assert_eq!(shots[0].bytes, png(1280, 800), "the bytes read are the file's");
     assert_eq!((c.kept, c.found, c.left_out.len(), c.over_limit), (3, 3, 0, None));
-    assert_eq!(c.note().as_deref(), Some("Gizai kept 3 screenshots on the card."));
+    assert_eq!(c.note().as_deref(), Some("Hersir kept 3 screenshots on the card."));
 }
 
 #[test]
@@ -208,7 +208,7 @@ fn svg_gif_html_and_a_text_file_named_png_are_left_out_with_why() {
     // what isn't an image isn't counted as a screenshot
     assert_eq!((c.kept, c.found), (1, 1));
     let note = c.note().unwrap();
-    assert!(note.starts_with("Gizai kept 1 of 1 screenshot. Left out: "), "{note}");
+    assert!(note.starts_with("Hersir kept 1 of 1 screenshot. Left out: "), "{note}");
     assert!(note.contains("notes.txt: not a PNG, JPEG or WebP image"), "{note}");
 }
 
@@ -257,7 +257,7 @@ fn links_are_never_followed_and_hard_linked_files_are_left_out() {
     let (shots, c) = wt.collect(&rules(12));
     assert_eq!(kept(&shots), ["01-board.png"]);
     for name in ["02-link.png", "03-dir-link.png", "04-dangling.png"] {
-        assert_eq!(why(&c, name), "a link, which Gizai doesn't follow");
+        assert_eq!(why(&c, name), "a link, which Hersir doesn't follow");
     }
     assert_eq!(why(&c, "05-hard.png"), "a file with more than one hard link");
     assert!(shots.iter().all(|s| s.width == 100), "nothing outside was read");
@@ -329,7 +329,7 @@ fn past_the_per_run_limit_the_first_by_name_are_kept() {
     assert_eq!(why(&c, "04-screen.png"), "over the limit of 3 a run");
     assert_eq!(why(&c, "05-screen.png"), "over the limit of 3 a run");
     assert_eq!((c.kept, c.found, c.over_limit), (3, 5, Some(3)));
-    assert_eq!(c.note().unwrap(), "Gizai kept 3 of 5 screenshots (Settings → Agents and runs → Screenshots allows 3 a run). Left out: \
+    assert_eq!(c.note().unwrap(), "Hersir kept 3 of 5 screenshots (Settings → Agents and runs → Screenshots allows 3 a run). Left out: \
 04-screen.png: over the limit of 3 a run; 05-screen.png: over the limit of 3 a run; notes.txt: not a PNG, JPEG or WebP image.");
 }
 
@@ -439,7 +439,7 @@ fn a_captions_json_that_is_a_link_is_not_followed() {
     std::os::unix::fs::symlink(&outside, wt.folder.join("captions.json")).unwrap();
     let (shots, c) = wt.collect(&rules(12));
     assert_eq!(shots[0].caption, "Board");
-    assert!(why(&c, "captions.json").starts_with("a link, which Gizai doesn't follow"), "{:?}", c.left_out);
+    assert!(why(&c, "captions.json").starts_with("a link, which Hersir doesn't follow"), "{:?}", c.left_out);
 }
 
 #[test]

@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { badgeOf, dayRate, canContinue, commitCount, elapsed, formatCost, formatTokens, lastAgentText, mergeEvents, noteIsGood, resumeCommand, runReason, toolCalls } from "./runs";
 import type { Run, SeqEvent } from "../types";
@@ -124,6 +127,17 @@ describe("noteIsGood", () => {
     expect(noteIsGood("Its worktree has 3 uncommitted changes, which Gizai doesn't push.")).toBe(false);
     expect(noteIsGood("Left out the folder /home/u/notes: it isn't there")).toBe(false);
     expect(noteIsGood("")).toBe(false);
+  });
+
+  it("reads the push note as the backend says it since GA-232, with Hersir, and an older run's with Gizai", () => {
+    const rs = readFileSync(join(fileURLToPath(new URL("../..", import.meta.url)), "src-tauri/src/runs.rs"), "utf8");
+    expect(rs).toContain('vec![format!("Hersir pushed {} ({n} {})", self.branch');
+    expect(noteIsGood("Hersir pushed gizai/kade-1-export-invoices (2 commits).")).toBe(true);
+    expect(noteIsGood("Hersir pushed gizai/kade-1-export-invoices (1 commit).")).toBe(true);
+    expect(noteIsGood("Gizai pushed gizai/kade-1-export-invoices (1 commit).")).toBe(true);
+    expect(noteIsGood("Its worktree has 3 uncommitted changes, which Hersir doesn't push.")).toBe(false);
+    expect(noteIsGood("Couldn't push gizai/kade-1-export-invoices: Hersir never forces a push: merge GitHub's copy into the branch first.")).toBe(false);
+    expect(noteIsGood("Hersir kept 2 screenshots on the card.")).toBe(false);
   });
 });
 

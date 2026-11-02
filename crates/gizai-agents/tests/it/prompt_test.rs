@@ -261,7 +261,7 @@ use gizai_agents::prompt::PUSHED_BY_GIZAI;
 
 #[test]
 fn every_task_prompt_on_every_cli_says_gizai_pushes_the_branch_after_the_run() {
-    for want in ["When the run ends, Gizai itself pushes this branch's commits (not uncommitted changes)", "a refused `git push` of this branch",
+    for want in ["When the run ends, Hersir itself pushes this branch's commits (not uncommitted changes)", "a refused `git push` of this branch",
                  "is no reason for `needs_decision`", "mention it in your summary", "end with the outcome your work deserves"] {
         assert!(PUSHED_BY_GIZAI.contains(want), "{want} missing in {PUSHED_BY_GIZAI}");
     }
@@ -275,7 +275,7 @@ fn every_task_prompt_on_every_cli_says_gizai_pushes_the_branch_after_the_run() {
                     let full = with_rules(&p, &r);
                     let sec = &full[full.find("## How this run works").unwrap()..];
                     assert_eq!(sec.matches(PUSHED_BY_GIZAI).count(), 1, "{kind:?} {mode:?} {which}: {sec}");
-                    assert_eq!(full.matches("Gizai itself pushes").count(), 1, "{kind:?} {mode:?} {which}: once");
+                    assert_eq!(full.matches("Hersir itself pushes").count(), 1, "{kind:?} {mode:?} {which}: once");
                     // a bullet of its own, before the last line about refusals, and the section stays about 12 lines
                     assert!(sec.contains(&format!("\n- {PUSHED_BY_GIZAI}\n")), "{kind:?} {mode:?} {which}: {sec}");
                     assert!(sec.find(PUSHED_BY_GIZAI).unwrap() < sec.find("don't try other spellings").unwrap(), "{kind:?} {mode:?} {which}: {sec}");
@@ -378,7 +378,7 @@ fn how_this_run_works_names_the_short_temp_folder_for_every_cli() {
     for kind in [Kind::ClaudeCode, Kind::Codex, Kind::Gemini, Kind::Other] {
         let s = rules_section(&RunRules { temp_dir: Some(SHORT_TEMP.into()), ..rules(kind, "") });
         assert!(s.contains(&format!("Throwaway files go only in `{SHORT_TEMP}` (TMPDIR, TMP and TEMP point there")), "{kind:?}: {s}");
-        assert!(s.contains("never in `/tmp` or anywhere else, and are never committed. Gizai empties that folder when the run ends."),
+        assert!(s.contains("never in `/tmp` or anywhere else, and are never committed. Hersir empties that folder when the run ends."),
                 "{kind:?}: {s}");
         assert!(!s.contains(".gizai-tmp"), "{kind:?}: {s}");
         // only Claude Code in acceptEdits: a variable such as $TMPDIR is refused in its commands

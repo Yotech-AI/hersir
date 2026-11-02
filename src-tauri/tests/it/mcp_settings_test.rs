@@ -263,7 +263,7 @@ fn names_take_letters_digits_dash_and_underscore_and_gizais_own_and_duplicates_a
     }
     for own in ["gizai", "GIZAI", "chrome-devtools", "Chrome-DevTools"] {
         let e = mcp::save(&t.st, command_server(own, "hints")).expect_err(own);
-        assert!(e.contains("is Gizai's own"), "{own}: {e}");
+        assert!(e.contains("is Hersir's own"), "{own}: {e}");
     }
     for dup in ["Notes", "notes", "NOTES"] {
         let e = mcp::save(&t.st, command_server(dup, "hints")).expect_err(dup);
@@ -508,5 +508,5 @@ fn who_signs_in_is_kept_for_an_address_empty_for_a_command_and_a_server_saved_be
     // Anything else is refused.
     let mut odd = address_server("odd", "https://odd.example.com/mcp");
     odd.server.sign_in_by = "cursor".into();
-    assert_eq!(mcp::save(&t.st, odd).unwrap_err(), "Gizai or Claude Code signs in to odd, not cursor");
+    assert_eq!(mcp::save(&t.st, odd).unwrap_err(), "Hersir or Claude Code signs in to odd, not cursor");
 }

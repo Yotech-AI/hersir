@@ -194,7 +194,7 @@ fn prompt_of(run: &Run) -> String {
 
 /// The Memory section of an agent's run prompt, up to the run's rules.
 fn section_of(prompt: &str) -> String {
-    let at = prompt.find("\n## Memory\n\nNotes from Gizai's Memory for this card").unwrap_or_else(|| panic!("no Memory section: {prompt}"));
+    let at = prompt.find("\n## Memory\n\nNotes from Hersir's Memory for this card").unwrap_or_else(|| panic!("no Memory section: {prompt}"));
     let end = prompt[at..].find("\n## How this run works").expect("the run's rules after it") + at;
     prompt[at..end].to_string()
 }

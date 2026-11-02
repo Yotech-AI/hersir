@@ -407,7 +407,7 @@ describe("docs/RELEASING.md", () => {
 
 // The "Gizai"s the docs keep: file names, and the app's own texts they quote, each still in the app's code (when the
 // app's rebrand changes one, the doc that quotes it shows up here).
-const QUOTES = ['"Gizai"', "From Gizai's catalog", "a tool from outside Gizai", "Gizai keeps the call", "because Gizai quit", "Open Gizai", "Quit Gizai completely"];
+const QUOTES = ['"Gizai"', "From Gizai's catalog", "a tool from outside Gizai", "because Gizai quit", "Open Gizai", "Quit Gizai completely"];
 const FILE_NAMES = /Gizai\.(app|lnk)/g;
 // Records of their day, which keep the name they had.
 const DATED = /^docs\/(research|superpowers)\/|^docs\/(HANDOFF-|MORNING-)|^docs\/(OPEN-ITEMS|v0\.1-notes|v0\.3-notes)\.md$/;

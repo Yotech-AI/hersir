@@ -253,7 +253,7 @@ fn the_claude_code_catalog_has_the_cards_tools_with_slash_commands_and_skills_as
 fn codex_and_gemini_lists_are_the_catalog_labelled_as_such_with_what_they_cant_take_off_and_why() {
     for kind in [Kind::Codex, Kind::Gemini] {
         let note = tool_catalog::source_note(kind).unwrap();
-        assert!(note.starts_with("From Gizai's catalog"), "{kind:?}: {note}");
+        assert!(note.starts_with("From Hersir's catalog"), "{kind:?}: {note}");
     }
     let codex = |id: &str| tool_catalog::find(Kind::Codex, id).unwrap();
     assert_eq!(codex("web_search").how, how::WEB);

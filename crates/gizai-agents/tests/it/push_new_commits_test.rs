@@ -104,7 +104,7 @@ fn a_remote_branch_with_commits_this_repository_never_saw_is_never_forced() {
 
     let e = r.push().unwrap_err();
     assert!(e.contains(&format!("Couldn't push {BRANCH} to {}", r.to())) && e.contains("The branch on GitHub has commits this one doesn't"), "{e}");
-    assert!(e.contains("Gizai never forces a push"), "{e}");
+    assert!(e.contains("Hersir never forces a push"), "{e}");
     assert_eq!(r.remote_tip(), Some(theirs), "their commit stays");
 }
 

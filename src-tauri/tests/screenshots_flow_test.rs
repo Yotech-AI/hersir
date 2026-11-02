@@ -435,7 +435,7 @@ async fn a_run_with_the_browser_and_a_preview_command_gets_its_preview_and_its_s
     preview_gone(&info, port);
     // the run's output says what Gizai kept
     let said = notes(&t.st, &s.run_id);
-    assert!(said.iter().any(|n| n == "Gizai kept 2 screenshots on the card."), "{said:?}");
+    assert!(said.iter().any(|n| n == "Hersir kept 2 screenshots on the card."), "{said:?}");
     // and its .gizai-tmp and its temp folder are empty
     assert_eq!(names_in(&g.wt.join(".gizai-tmp")), Vec::<String>::new());
     assert!(g.wt.join(".gizai-tmp").is_dir());
@@ -617,7 +617,7 @@ async fn a_run_stopped_at_its_time_limit_keeps_its_screenshots_and_its_preview_e
     assert_eq!((sets[0].run_id.as_str(), sets[0].status.as_str()), (s.run_id.as_str(), "timed_out"));
     two_shots(&sets[0]);
     let said = notes(&t.st, &s.run_id);
-    assert!(said.iter().any(|n| n == "Gizai kept 2 screenshots on the card."), "{said:?}");
+    assert!(said.iter().any(|n| n == "Hersir kept 2 screenshots on the card."), "{said:?}");
     let infos = t.infos();
     assert_eq!(infos.len(), 1, "{infos:?}");
     let port: u16 = infos[0].trim_start_matches("preview-").trim_end_matches(".json").parse().unwrap();
@@ -879,7 +879,7 @@ async fn in_the_slice_what_the_preview_left_in_a_group_of_its_own_ends_with_the_
     let said = notes(&t.st, &s.run_id);
     let ended: Vec<&String> = said.iter().filter(|n| n.starts_with("Ended ")).collect();
     assert_eq!(ended, [&format!("Ended 1 process this run left running: sleep (pid {pid}).")], "{said:?}");
-    assert!(said.iter().any(|n| n == "Gizai kept 2 screenshots on the card."), "{said:?}");
+    assert!(said.iter().any(|n| n == "Hersir kept 2 screenshots on the card."), "{said:?}");
     // nothing is left in any of the slice's scopes
     let scopes = std::fs::read_dir(slice.0.dir()).unwrap().flatten().filter(|e| e.path().is_dir());
     let procs: String = scopes.map(|e| std::fs::read_to_string(e.path().join("cgroup.procs")).unwrap_or_default()).collect();

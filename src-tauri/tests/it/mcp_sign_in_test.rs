@@ -53,7 +53,7 @@ impl T {
             let (status, page) = b.join().unwrap();
             if v.is_ok() {
                 assert_eq!(status, 200);
-                assert!(page.contains("Gizai is signed in"), "{page}");
+                assert!(page.contains("Hersir is signed in"), "{page}");
             }
         }
         v
@@ -117,7 +117,7 @@ fn an_address_server_that_asks_for_oauth_shows_needs_sign_in_then_signs_in_and_l
     assert_eq!(v.problem, None);
     let log = t.fake.log();
     assert_eq!(log.registrations.len(), 1, "Gizai registered itself");
-    assert_eq!(log.registrations[0]["client_name"], "Gizai");
+    assert_eq!(log.registrations[0]["client_name"], "Hersir");
     let auth = &log.authorizations[0];
     assert_eq!(auth["resource"], t.fake.mcp_url());
     assert_eq!(auth["code_challenge_method"], "S256");
@@ -395,7 +395,7 @@ fn a_server_without_registration_signs_in_with_the_client_id_you_entered() {
 
 // ---- GA-120: a server Claude Code signs in to (Settings → MCP servers → Who signs in) ----
 
-const NO_LIST: &str = "Claude Code signs in to this server, so Gizai can't list its tools. An agent that has it on gets all of them.";
+const NO_LIST: &str = "Claude Code signs in to this server, so Hersir can't list its tools. An agent that has it on gets all of them.";
 
 impl T {
     /// Saves the server again with Who signs in set to `by` ("" Gizai, "claude_code" Claude Code).
@@ -420,7 +420,7 @@ fn list_tools_and_sign_in_are_refused_for_a_server_claude_code_signs_in_to_witho
     assert_eq!(mcp_servers::CLAUDE_CODE_NO_LIST, NO_LIST);
 
     assert_eq!(mcp_servers::list_tools(&t.st, &t.id).unwrap_err(), NO_LIST);
-    let why = "Claude Code signs in to otus: sign Claude Code in, not Gizai.";
+    let why = "Claude Code signs in to otus: sign Claude Code in, not Hersir.";
     assert_eq!(mcp_servers::begin_sign_in(&t.st, &t.id).unwrap_err(), why);
     let mut opened = false;
     let e = mcp_servers::sign_in(&t.st, &t.id, |_| { opened = true; Ok(()) }, WAIT).unwrap_err();
@@ -521,6 +521,6 @@ fn a_server_marked_needs_sign_in_saved_as_claude_code_loses_the_mark_and_its_pro
 fn a_refused_registration_says_to_let_claude_code_sign_in_or_enter_a_client_id() {
     let t = setup(Config { registration: false, ..Config::otus() });
     let e = t.sign_in().unwrap_err();
-    assert_eq!(e, "This server doesn't let Gizai register itself: set Who signs in to Claude Code (Edit), or enter a client id for Gizai from the service's settings");
+    assert_eq!(e, "This server doesn't let Hersir register itself: set Who signs in to Claude Code (Edit), or enter a client id for Hersir from the service's settings");
     assert_eq!(e, gizai_agents::oauth::NO_REGISTRATION);
 }

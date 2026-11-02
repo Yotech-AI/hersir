@@ -147,7 +147,7 @@ for c in term:SIGTERM int:SIGINT hup:SIGHUP nohup-term:SIGTERM bg-term:SIGTERM; 
 done
 ok "^nohup-hup alive=yes$"; ok "^bg-int alive=yes$"
 ok "^run-started group=[0-9]+$"; ok "^run exit=0 ms=[0-9]+ web=gone web_pid=[0-9]+ said=1$"; ok "^run-group left=0$"
-QUIT_RUN="cancelled/Stopped because Gizai quit."
+QUIT_RUN="cancelled/Stopped because Hersir quit."
 for r in run1:"$RUN1" run2:"$RUN2" run3:"$RUN3"; do
   [ "${r#*:}" = "$QUIT_RUN" ] || { echo "FAIL: ${r%%:*} is not '$QUIT_RUN' (${r#*:})"; fail=1; }
 done

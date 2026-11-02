@@ -170,6 +170,40 @@ fn a_card_in_progress_whose_run_stopped_part_way_is_a_stopped_finding() {
 }
 
 #[test]
+fn a_run_stopped_by_a_quit_reads_the_same_with_hersir_and_with_the_gizai_an_older_version_saved() {
+    // GA-232: runs say "Stopped because Hersir quit." now; the runs an older version's quit or update stopped keep
+    // "Stopped because Gizai quit.". Both are a quit, and the check's reason says Hersir.
+    let b = board_();
+    let errors = ["Stopped because Hersir quit.", "Stopped because Gizai quit.", "Stopped by you"];
+    let stopped = |column: &str, error: &str| {
+        let t = b.card(column);
+        let r = b.run(&b.be, &t);
+        runs::finish(&b.db, &r, "cancelled", None, 0, 0, 0, Some(error)).unwrap();
+        t
+    };
+    let in_progress: Vec<String> = errors.iter().map(|e| stopped("In progress", e)).collect();
+    let to_do: Vec<String> = errors.iter().map(|e| stopped("To do", e)).collect();
+    let all = b.check();
+    let reason = |t: &str| all.iter().find(|f| f.task_id == t).unwrap().reason.clone();
+
+    for t in &in_progress[..2] {
+        assert_eq!(b.of(&all, t), [("stopped".to_string(), "quit".to_string())]);
+        assert_eq!(reason(t), "Its run stopped because Hersir quit");
+    }
+    assert_eq!(b.of(&all, &in_progress[2]), [("stopped".to_string(), "stopped".to_string())]);
+    assert_eq!(reason(&in_progress[2]), "A person stopped its run");
+
+    for t in &to_do {
+        assert_eq!(b.of(&all, t), [("waiting".to_string(), "stopped_run".to_string())]);
+    }
+    for t in &to_do[..2] {
+        assert_eq!(reason(t), "Its last run stopped because Hersir quit: the queue doesn't start it again until Run or Continue");
+    }
+    assert_eq!(reason(&to_do[2]), "A person stopped its last run: the queue doesn't start it again until Run or Continue");
+    assert!(all.iter().all(|f| !f.reason.contains("Gizai")), "{all:?}");
+}
+
+#[test]
 fn a_card_in_a_column_without_agents_or_assigned_to_a_person_there_is_waiting_with_why() {
     let b = board_();
     b.no_agents_on("To do");
