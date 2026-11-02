@@ -373,7 +373,7 @@ fn show_now(app: &AppHandle, n: Notice) {
     use std::sync::atomic::{AtomicUsize, Ordering};
     static WAITING: AtomicUsize = AtomicUsize::new(0);
     let mut note = notify_rust::Notification::new();
-    note.appname("Gizai").summary(&n.title).body(&body_text(&n.body)).icon("gizai")
+    note.appname("Hersir").summary(&n.title).body(&body_text(&n.body)).icon("gizai")
         .hint(notify_rust::Hint::DesktopEntry("gizai".into()))
         .action("default", "Open");
     let handle = match note.show() {
@@ -431,7 +431,7 @@ fn show_now(_app: &AppHandle, n: Notice) {
         let _ = notify_rust::set_application(crate::APP_ID);
     });
     let mut note = notify_rust::Notification::new();
-    note.appname("Gizai").summary(&n.title).body(&n.body);
+    note.appname("Hersir").summary(&n.title).body(&n.body);
     if let Err(e) = note.show() {
         eprintln!("gizai: a desktop notification couldn't be shown: {e}");
     }

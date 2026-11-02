@@ -215,7 +215,7 @@ fn lock_data_dir(dir: &std::path::Path) -> Result<std::fs::File, String> {
         .map_err(|e| format!("can't open the lock in {}: {e}", dir.display()))?;
     // flock(LOCK_EX | LOCK_NB) on Linux and macOS, LockFileEx on Windows; any failure counts as taken, as before
     if f.try_lock().is_err() {
-        return Err(format!("Gizai is already running with the data in {}", dir.display()));
+        return Err(format!("Hersir is already running with the data in {}", dir.display()));
     }
     Ok(f)
 }
@@ -228,7 +228,7 @@ pub fn backup_data_dir(dir: &std::path::Path, label: &str) -> Result<PathBuf, St
     }
     let db = dir.join("gizai.db");
     if !db.exists() {
-        return Err(format!("no Gizai data in {}", dir.display()));
+        return Err(format!("no Hersir data in {}", dir.display()));
     }
     gizai_core::db::snapshot(&db, &dir.join("backups"), label).map_err(|e| e.to_string())
 }
@@ -424,8 +424,8 @@ fn tray(app: &tauri::App) -> tauri::Result<()> {
         eprintln!("gizai: no tray icon: libayatana-appindicator isn't installed (Arch and Omarchy: libayatana-appindicator; Debian and Ubuntu: libayatana-appindicator3-1)");
         return Ok(());
     }
-    let open = MenuItem::with_id(app, "open", "Open Gizai", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit Gizai completely", true, None::<&str>)?;
+    let open = MenuItem::with_id(app, "open", "Open Hersir", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit Hersir completely", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&open, &quit])?;
     // macOS: Gizai's glyph in black, a template the menu bar colours for its light or dark look
     #[cfg(target_os = "macos")]
@@ -433,7 +433,7 @@ fn tray(app: &tauri::App) -> tauri::Result<()> {
     #[cfg(not(target_os = "macos"))]
     let icon = TrayIconBuilder::with_id("gizai").icon(tauri::include_image!("icons/64x64.png"));
     icon
-        .tooltip("Gizai")
+        .tooltip("Hersir")
         .menu(&menu)
         .show_menu_on_left_click(true)
         .on_menu_event(|app, e| match e.id().as_ref() {
@@ -466,7 +466,7 @@ fn mac_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
         if n > 0 {
             app_menu.remove_at(n - 1)?;
         }
-        app_menu.append(&MenuItem::with_id(app, MAC_QUIT, "Quit Gizai", true, Some("CmdOrCtrl+Q"))?)?;
+        app_menu.append(&MenuItem::with_id(app, MAC_QUIT, "Quit Hersir", true, Some("CmdOrCtrl+Q"))?)?;
     }
     Ok(menu)
 }
@@ -771,7 +771,7 @@ pub fn run() {
             terminal::terminal_resize, terminal::terminal_ack, terminal::terminal_rename, terminal::terminal_close,
         ])
         .build(tauri::generate_context!())
-        .expect("error while building Gizai")
+        .expect("error while building Hersir")
         .run(|app, event| {
             // Quitting with unsaved text in the doc page's or the Memory page's editor: the page saves it first, or
             // asks (see `unsaved`). Then, with agents at work (runs or a chat answer): stop them first, then quit (a
