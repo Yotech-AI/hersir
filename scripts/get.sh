@@ -16,7 +16,7 @@
 
 # What this script gets comes from GitHub, so an install never depends on the website: the source from DEFAULT_REPO,
 # the latest release from GitHub's API. The one line for Windows, which it only shows you, is gizai.app's.
-DEFAULT_REPO=https://github.com/Yotech-AI/gizai.git
+DEFAULT_REPO=https://github.com/Yotech-AI/hersir.git
 GET_PS1=https://gizai.app/install.ps1
 
 say() { printf '%s\n' "$*"; }

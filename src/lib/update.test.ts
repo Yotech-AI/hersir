@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { canStop, checkLine, isRunning, notice, stepText } from "./update";
 import type { Release, UpdateJob, UpdateStatus, UpdateStep } from "../types";
 
-const release: Release = { version: "0.1.6", tag: "v0.1.6", url: "https://github.com/Yotech-AI/gizai/releases/tag/v0.1.6", notes: "- Fixes" };
-const status = (more: Partial<UpdateStatus> = {}): UpdateStatus => ({ current: "0.1.5", autoCheck: true, checking: false, repo: "https://github.com/Yotech-AI/gizai.git", ...more });
+const release: Release = { version: "0.1.6", tag: "v0.1.6", url: "https://github.com/Yotech-AI/hersir/releases/tag/v0.1.6", notes: "- Fixes" };
+const status = (more: Partial<UpdateStatus> = {}): UpdateStatus => ({ current: "0.1.5", autoCheck: true, checking: false, repo: "https://github.com/Yotech-AI/hersir.git", ...more });
 const job = (step: UpdateStep, more: Partial<UpdateJob> = {}): UpdateJob =>
   ({ version: "0.1.6", step, startedAt: 1, log: "/data/update/update.log", unchanged: true, ...more });
 const NOW = 1_800_000_000_000;

@@ -31,7 +31,7 @@ fn write_script(path: &Path, script: &str) {
 }
 
 fn github_answer(tag: &str, more: &str) -> String {
-    format!(r#"{{"tag_name": "{tag}", "name": "{tag}", "html_url": "https://github.com/Yotech-AI/gizai/releases/tag/{tag}",
+    format!(r#"{{"tag_name": "{tag}", "name": "{tag}", "html_url": "https://github.com/Yotech-AI/hersir/releases/tag/{tag}",
                 "published_at": "2026-10-07T15:54:54Z", "draft": false, "prerelease": false, "body": "- What changed"{more}}}"#)
 }
 
@@ -68,7 +68,7 @@ fn githubs_latest_release_becomes_a_release() {
     assert_eq!(r.version, "0.1.6");
     assert_eq!(r.tag, "v0.1.6");
     assert_eq!(r.name.as_deref(), Some("v0.1.6"));
-    assert_eq!(r.url.as_deref(), Some("https://github.com/Yotech-AI/gizai/releases/tag/v0.1.6"));
+    assert_eq!(r.url.as_deref(), Some("https://github.com/Yotech-AI/hersir/releases/tag/v0.1.6"));
     assert_eq!(r.published_at.as_deref(), Some("2026-10-07T15:54:54Z"));
     assert_eq!(r.notes.as_deref(), Some("- What changed"));
     // fields GitHub sends that Gizai doesn't need are fine, and missing optional ones too
@@ -114,7 +114,7 @@ fn long_release_notes_are_cut() {
 
 #[test]
 fn the_check_asks_githubs_latest_release_api() {
-    assert_eq!(up::latest_release_url("Yotech-AI", "gizai"), "https://api.github.com/repos/Yotech-AI/gizai/releases/latest");
+    assert_eq!(up::latest_release_url("Yotech-AI", "hersir"), "https://api.github.com/repos/Yotech-AI/hersir/releases/latest");
 }
 
 // ---------- the release check (curl) ----------
@@ -134,7 +134,7 @@ fn the_check_reads_a_fake_release_from_a_file() {
 /// A one-request HTTP server on localhost that answers `status` with `body`, and hands back the request it got.
 fn serve_once(status: &str, body: &str) -> (String, std::thread::JoinHandle<String>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let url = format!("http://127.0.0.1:{}/repos/Yotech-AI/gizai/releases/latest", listener.local_addr().unwrap().port());
+    let url = format!("http://127.0.0.1:{}/repos/Yotech-AI/hersir/releases/latest", listener.local_addr().unwrap().port());
     let (status, body) = (status.to_string(), body.to_string());
     let server = std::thread::spawn(move || {
         let (mut conn, _) = listener.accept().unwrap();
@@ -159,7 +159,7 @@ fn the_check_reads_githubs_answer_over_http_and_sends_nothing_about_you() {
     let r = up::latest_release(&url, "gizai/0.1.5", Duration::from_secs(10)).unwrap().unwrap();
     assert_eq!(r.version, "0.1.6");
     let req = server.join().unwrap();
-    assert!(req.starts_with("GET /repos/Yotech-AI/gizai/releases/latest HTTP/1.1"), "{req}");
+    assert!(req.starts_with("GET /repos/Yotech-AI/hersir/releases/latest HTTP/1.1"), "{req}");
     assert!(req.contains("User-Agent: gizai/0.1.5"), "{req}");
     assert!(req.contains("Accept: application/vnd.github+json"), "{req}");
     assert!(!req.to_ascii_lowercase().contains("authorization"), "no login is sent: {req}");
@@ -205,6 +205,16 @@ fn only_a_gizai_in_prefix_lib_gizai_has_an_install_to_update() {
                 "/home/x/.local/lib64/gizai/gizai", "/home/x/.local/lib/other/gizai", "/usr/bin/gizai", "gizai"] {
         assert_eq!(up::install_prefix(Path::new(not)), None, "{not}");
     }
+}
+
+// GA-233: started from the Dock or Finder, the installed app is Hersir.app's own program, and it finds its install.
+#[cfg(target_os = "macos")]
+#[test]
+fn on_macos_hersir_app_started_from_the_dock_finds_its_install() {
+    let app = Path::new("/Users/x/.local/lib/gizai/Hersir.app/Contents/MacOS/gizai");
+    assert_eq!(up::install_prefix(app), Some(PathBuf::from("/Users/x/.local")));
+    assert_eq!(up::install_prefix(Path::new("/Users/x/.local/lib/gizai/Hersir.app/Contents/MacOS/gizai-mcp")), None);
+    assert_eq!(up::install_prefix(Path::new("/repo/target/release/bundle/macos/Hersir.app/Contents/MacOS/gizai")), None, "a build's app");
 }
 
 #[test]
