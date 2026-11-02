@@ -225,7 +225,7 @@ describe("Settings → Data: Remove anyway (GA-138)", () => {
     await show([w, worktree(120, [])]);
     await press(removeOf(w));
     expect(dialog()).toEqual([{ label: "Remove a worktree with uncommitted changes",
-      text: "GA-122 has 1 uncommitted change. Remove it anyway? Gizai puts the change in git's stash first, so it isn't lost." }]);
+      text: "GA-122 has 1 uncommitted change. Remove it anyway? Hersir puts the change in git's stash first, so it isn't lost." }]);
     expect(button("Keep")).toBeTruthy();
     expect(button("Remove anyway")).toBeTruthy();
     await press(button("Keep"));
@@ -239,7 +239,7 @@ describe("Settings → Data: Remove anyway (GA-138)", () => {
     const w = worktree(121, [file("a.rs", "changed"), file("b.rs", "new"), file("c.rs", "deleted")]);
     await show([w]);
     await press(removeOf(w));
-    expect(dialog()[0]!.text).toBe("GA-121 has 3 uncommitted changes. Remove it anyway? Gizai puts the changes in git's stash first, so they aren't lost.");
+    expect(dialog()[0]!.text).toBe("GA-121 has 3 uncommitted changes. Remove it anyway? Hersir puts the changes in git's stash first, so they aren't lost.");
   });
 
   it("Remove anyway asks the backend to stash and remove, then the row is gone and the message says what happened", async () => {

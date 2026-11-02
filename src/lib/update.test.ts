@@ -71,7 +71,7 @@ describe("Settings → Updates: what the last check found", () => {
   it("says a newer version is out, or installed and waiting for a restart", () => {
     expect(checkLine(status({ checkedAt: NOW, latest: release, available: release }), NOW)).toEqual({ mark: "new", text: "Version 0.1.6 is out (checked just now)." });
     expect(checkLine(status({ checkedAt: NOW, latest: release, available: release, installed: "0.1.6" }), NOW))
-      .toEqual({ mark: "new", text: "Version 0.1.6 is installed. Restart Gizai to use it." });
+      .toEqual({ mark: "new", text: "Version 0.1.6 is installed. Restart Hersir to use it." });
   });
   it("says there is no release yet", () => {
     expect(checkLine(status({ checkedAt: NOW }), NOW)).toEqual({ mark: "skipped", text: "There is no release on GitHub yet (checked just now)." });

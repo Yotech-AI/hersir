@@ -129,8 +129,8 @@ describe("the Tools section's Web, Browser and Built-in tools", () => {
     expect(t).toContain("Other tools the CLI reports FancyNewTool FancyNewTool Risk unknown Reported Claude Code reports it");
     expect(t).not.toContain("Accept self-signed certificates");
     expect(t).not.toContain(WARN);
-    expect(t).toContain("Suggested for the Team Lead (web search), never switched on by Gizai");
-    expect(t).toContain("Suggested for QA, Frontend and Design agents, never switched on by Gizai");
+    expect(t).toContain("Suggested for the Team Lead (web search), never switched on by Hersir");
+    expect(t).toContain("Suggested for QA, Frontend and Design agents, never switched on by Hersir");
     expect(t).toContain("hidden Chrome with a throwaway profile, never on your screen");
     expect(t).toContain("Every click is a tool call, and the cap per run is in Settings → Runs");
     expect(t).toContain("reported in this agent's last run");

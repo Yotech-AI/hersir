@@ -74,9 +74,9 @@ describe("the warning under Runs at once", () => {
   });
 });
 
-describe("the warning by Quit Gizai completely", () => {
-  const base = "Quitting stops all agents (running cards are stopped), heartbeats and notifications until you start Gizai again. Closing the window only hides Gizai.";
-  it("says what quitting stops, and that closing the window only hides Gizai", () => {
+describe("the warning by Quit Hersir completely", () => {
+  const base = "Quitting stops all agents (running cards are stopped), heartbeats and notifications until you start Hersir again. Closing the window only hides Hersir.";
+  it("says what quitting stops, and that closing the window only hides Hersir", () => {
     expect(quitWarning(0, 0)).toBe(base);
   });
   it("says how many runs and chat answers it stops when some are live", () => {
@@ -92,13 +92,13 @@ describe("the hint under Memory for agent runs", () => {
     expect(runsMemoryHint({ computerMemoryGb: 64, runsMemoryEnforced: true })).toBe("All agent runs together. This computer has 64 GB.");
     expect(runsMemoryHint({ computerMemoryGb: 16, runsMemoryEnforced: true })).toBe("All agent runs together. This computer has 16 GB.");
   });
-  it("says that Gizai only waits for free memory where the system doesn't enforce the limit", () => {
+  it("says that Hersir only waits for free memory where the system doesn't enforce the limit", () => {
     expect(runsMemoryHint({ computerMemoryGb: 16, runsMemoryEnforced: false }))
-      .toBe("All agent runs together. This computer has 16 GB. On this system Gizai only waits for free memory before it starts a run.");
+      .toBe("All agent runs together. This computer has 16 GB. On this system Hersir only waits for free memory before it starts a run.");
   });
   it("leaves out the computer's memory when the system doesn't say it (0) or the backend doesn't send it", () => {
     expect(runsMemoryHint({ computerMemoryGb: 0, runsMemoryEnforced: true })).toBe("All agent runs together.");
-    expect(runsMemoryHint({})).toBe("All agent runs together. On this system Gizai only waits for free memory before it starts a run.");
+    expect(runsMemoryHint({})).toBe("All agent runs together. On this system Hersir only waits for free memory before it starts a run.");
   });
 });
 

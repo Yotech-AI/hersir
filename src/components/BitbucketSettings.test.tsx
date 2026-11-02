@@ -108,10 +108,10 @@ describe("the account line", () => {
     const t = text(render({ status: null, email: "" }));
     expect(t).toContain("Account Checking…");
   });
-  it("names the account the token belongs to, with what Gizai does as it", () => {
+  it("names the account the token belongs to, with what Hersir does as it", () => {
     const html = render();
     expect(html).toMatch(/<div class="gh-line ok">.*Logged in as Jeffrey Sevinga \(jefsev\)/);
-    expect(text(html)).toContain("Gizai opens pull requests on Bitbucket as this account.");
+    expect(text(html)).toContain("Hersir opens pull requests on Bitbucket as this account.");
   });
   it("asks for an email and a token in grey when none is saved", () => {
     const html = render({ status: NONE });
@@ -140,7 +140,7 @@ describe("the email and API token", () => {
     expect(tok.placeholder).toBe("Saved in your keychain: type to replace");
     const t = text(render());
     expect(t).toContain("A saved token is never shown again");
-    expect(text(render({ status: NONE }))).toContain("Goes to your keychain, never to Gizai's database");
+    expect(text(render({ status: NONE }))).toContain("Goes to your keychain, never to Hersir's database");
     expect(tree({ status: NONE }).input("s-bb-token").placeholder).toBe("Paste the API token");
   });
   it("keeps Save off, with why in its tooltip, until the email has an @ and the token is there", () => {
@@ -199,7 +199,7 @@ describe("the email and API token", () => {
     button("Remove")[0].onClick();
     expect(got[S.removing]).toEqual([true]);
     const confirm = text(render({ removing: true }));
-    expect(confirm).toContain("Remove your Bitbucket email and API token? Gizai can't open or follow pull requests on Bitbucket until you save them again.");
+    expect(confirm).toContain("Remove your Bitbucket email and API token? Hersir can't open or follow pull requests on Bitbucket until you save them again.");
     expect(confirm).toContain("Cancel Remove");
   });
   it("Remove removes the email and token, asks the status again and says so", async () => {
@@ -255,10 +255,10 @@ describe("Check connection", () => {
     expect(t).toContain("Push acme/shop Needs SSH to Bitbucket");
     expect(t).not.toContain("No project has a Bitbucket link yet.");
   });
-  it("says when Gizai can use Bitbucket, and when no project has a Bitbucket link yet", () => {
+  it("says when Hersir can use Bitbucket, and when no project has a Bitbucket link yet", () => {
     const ok: ConnectionCheck = { ok: true, pushOver: "ssh", checks: [{ name: "API token", result: "ok", text: "Logged in as jefsev" }] };
     const t = text(render({ check: ok }));
-    expect(t).toContain("Gizai can use Bitbucket.");
+    expect(t).toContain("Hersir can use Bitbucket.");
     expect(t).toContain("Projects No project has a Bitbucket link yet.");
   });
   it("shows why the check couldn't run in red", async () => {
@@ -277,8 +277,8 @@ describe("Check connection", () => {
     expect(bb).toBe(gh);
     const ok: ConnectionCheck = { ok: true, pushOver: "ssh", checks: [] };
     const ghOk = renderToStaticMarkup(<ConnectionChecks check={ok} host="GitHub" />);
-    expect(ghOk).toMatch(/^<div class="gh-checks" aria-label="Connection checks"><div class="gh-summary ok">Gizai can use GitHub\.<\/div><div class="gh-check skipped"><svg/);
-    expect(text(ghOk)).toBe("Gizai can use GitHub. Projects No project has a GitHub link yet.");
+    expect(ghOk).toMatch(/^<div class="gh-checks" aria-label="Connection checks"><div class="gh-summary ok">Hersir can use GitHub\.<\/div><div class="gh-check skipped"><svg/);
+    expect(text(ghOk)).toBe("Hersir can use GitHub. Projects No project has a GitHub link yet.");
     expect(renderToStaticMarkup(<ConnectionChecks check={ok} host="Bitbucket" />)).toBe(ghOk.replace(/GitHub/g, "Bitbucket"));
   });
 });

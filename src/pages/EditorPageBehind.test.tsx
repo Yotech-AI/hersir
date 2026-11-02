@@ -545,12 +545,12 @@ describe("a fetch that failed, with Try again", () => {
     expect(mainBar()).toMatchObject({ cls: "ed-bar behind", say: "3 commits behind origin/main, fetched just now. Update will move main 3 commits to 319bf0b and run npm ci." });
   });
 
-  it("never fetched: Gizai can't tell yet whether the folder is behind", async () => {
+  it("never fetched: Hersir can't tell yet whether the folder is behind", async () => {
     failFetch = "Couldn't fetch main from origin: could not resolve host github.com";
     Object.assign(repo, { fetchedAt: null, behind: 0 });
     await open();
     expect(standing()).toBe("main · not fetched yet");
-    expect(mainBar()?.say).toBe("Couldn't fetch main from origin: could not resolve host github.com. Gizai can't tell yet whether kade-portal is behind.");
+    expect(mainBar()?.say).toBe("Couldn't fetch main from origin: could not resolve host github.com. Hersir can't tell yet whether kade-portal is behind.");
   });
 });
 

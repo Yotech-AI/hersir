@@ -161,7 +161,7 @@ describe("a close or a quit", () => {
     await saved({ saved: false, title: "Requirements" });
     expect(h.answers).toEqual(["asking"]);
     expect(dialog()?.props["aria-modal"]).toBe("true");
-    expect(textOf(elements(out).find((e) => e.type === "h2")?.props.children)).toBe("Close Gizai without saving your changes to Requirements?");
+    expect(textOf(elements(out).find((e) => e.type === "h2")?.props.children)).toBe("Close Hersir without saving your changes to Requirements?");
     expect(html()).toContain("Saving them failed or took too long. Stay keeps them in the editor, unsaved.");
     expect(button("Close")).toBeTruthy();
     expect(button("Stay")).toBeTruthy();
