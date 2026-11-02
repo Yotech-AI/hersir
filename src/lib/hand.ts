@@ -85,7 +85,7 @@ export function openInEditorTitle(task: Pick<Task, "identifier" | "byHand" | "st
   if (agent) return `${agent} is working on ${task.identifier}: wait for its run to end, or stop it.`;
   if (task.byHand) return `Open ${task.identifier}'s worktree in the Editor`;
   const moves = task.stateCategory === "backlog" || task.stateCategory === "ready" ? ", and moves it to In progress" : "";
-  return `Work on ${task.identifier} by hand: Gizai makes its worktree, pins the card to you so agents leave it alone${moves}.`;
+  return `Work on ${task.identifier} by hand: Hersir makes its worktree, pins the card to you so agents leave it alone${moves}.`;
 }
 
 /** Whether Open in editor shows on the card: assigned to you, not archived, and in a column where work is done. */

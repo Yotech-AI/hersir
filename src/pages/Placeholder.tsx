@@ -12,7 +12,7 @@ export function Placeholder({ route, info }: { route: Route; info: AppInfo | nul
     <>
       <div className="topbar"><div className="crumbs"><b>{TITLES[route.page]}</b></div></div>
       <div className="placeholder">
-        This screen is being built. {info && <span className="faint">Gizai {info.version} · data in {info.data_dir}</span>}
+        This screen is being built. {info && <span className="faint">Hersir {info.version} · data in {info.data_dir}</span>}
       </div>
     </>
   );

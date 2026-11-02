@@ -66,7 +66,7 @@ export function useEditorApps(): EditorApp[] | null {
 }
 
 /** What Open in says when it found none of them. */
-export const NO_APP = "No other editor found. Gizai looks for VS Code (code), Zed (zed, zeditor, zedit) and PhpStorm (phpstorm, phpstorm.sh).";
+export const NO_APP = "No other editor found. Hersir looks for VS Code (code), Zed (zed, zeditor, zedit) and PhpStorm (phpstorm, phpstorm.sh).";
 
 /** The Open in items for a menu: one per editor found (the folder, or the file at its line), or why there are none. */
 export function openInItems(list: EditorApp[] | null, folder: string, path: string | null, line: number | null, fail: (e: string) => void): MenuItem[] {
