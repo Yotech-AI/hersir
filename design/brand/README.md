@@ -64,7 +64,8 @@ The mark and each logo come in four colours: `-on-dark` (the mark #f2a53a, the n
 
 - The page **Hersir: brand direction** (184:2) holds the brand: the mark, the logo, the app icon and favicon, colour
   (the variables **Hersir colour**, the website's), type, line art and voice.
-- The app's colours stay `design/tokens.json` (the variables **GizAi colour**). The frame **App statuses: before and
-  after (GA-230)** on the same page shows the app's status glyphs, badges and the Inbox count with the old pink and amber
-  and with the gold and yellow, in dark and light, for Jefsev's review.
+- The app's colours stay `design/tokens.json` (the variables **GizAi colour**, which still hold the old pink and amber
+  until Jefsev has seen the change). The frame **Hersir · 8 App statuses: before and after (GA-230)** (236:384) on the
+  same page shows the app's status glyphs, badges and the Inbox count with the old pink and amber and with the gold and
+  yellow, in dark and light, with the numbers and the memory graph's new colours, for Jefsev's review.
 - GizAi's brandbook (page Brandbook, GA-52) stays as it was.
