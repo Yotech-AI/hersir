@@ -184,7 +184,7 @@ pub fn for_turn(st: &AppState, thread_id: &str) -> ForTurn {
         format!("- {} (your {} call)", said.trim_end_matches('.'), a.tool)
     }).collect();
     ForTurn {
-        line: format!("[Gizai: {you} decided on calls of yours that waited for their approval after a tool from outside Gizai:\n{}]", lines.join("\n")),
+        line: format!("[Hersir: {you} decided on calls of yours that waited for their approval after a tool from outside Hersir:\n{}]", lines.join("\n")),
         ids: decided.into_iter().map(|a| a.id).collect(),
     }
 }
@@ -197,14 +197,14 @@ pub fn told(st: &AppState, ids: &[String]) {
 }
 
 /// What a chat says about an approved call Gizai closed under while it ran.
-pub const INTERRUPTED: &str = "Gizai closed while it ran, so it may or may not have happened: check before you ask for it again.";
+pub const INTERRUPTED: &str = "Hersir closed while it ran, so it may or may not have happened: check before you ask for it again.";
 
 /// At start-up: a call approved and still running when Gizai closed counts as failed, so it never runs twice, and its
 /// chat (and the Team Lead's next answer there) says it may or may not have happened. Calls that wait stay waiting.
 pub fn at_start(st: &AppState) {
     let running = match core::running(&st.db) {
         Ok(r) => r,
-        Err(e) => return eprintln!("gizai: looking for approved calls Gizai closed under failed: {e}"),
+        Err(e) => return eprintln!("gizai: looking for approved calls Hersir closed under failed: {e}"),
     };
     for a in running {
         let what = lower_first(&preview::preview(st, &a.actor_id, &a.thread_id, &a.tool, &a.args).line);
