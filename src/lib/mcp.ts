@@ -74,13 +74,13 @@ export function signInLabel(signIn: string): { text: string; badge: string } | n
 }
 
 /** Who signs in to an address server, as the form offers it (`SIGN_IN_BY` in crates/gizai-core/src/mcp_servers.rs). */
-export const SIGN_IN_BY_LABEL: Record<string, string> = { "": "Gizai (it registers itself with the service)", claude_code: "Claude Code, with its own sign-in" };
+export const SIGN_IN_BY_LABEL: Record<string, string> = { "": "Hersir (it registers itself with the service)", claude_code: "Claude Code, with its own sign-in" };
 
 /** The form's hint when Claude Code signs in. */
-export const CLAUDE_CODE_SIGN_IN_HINT = "For a service that only lets known apps sign in, like Figma. Give the server the name it has in Claude Code, and sign Claude Code in once per account: in a terminal, run claude, type /mcp, pick the server and Authenticate. Gizai never reads Claude Code's sign-ins.";
+export const CLAUDE_CODE_SIGN_IN_HINT = "For a service that only lets known apps sign in, like Figma. Give the server the name it has in Claude Code, and sign Claude Code in once per account: in a terminal, run claude, type /mcp, pick the server and Authenticate. Hersir never reads Claude Code's sign-ins.";
 
 /** Why List tools is off for a server Claude Code signs in to (`CLAUDE_CODE_NO_LIST` in src-tauri/src/mcp_servers.rs). */
-export const CLAUDE_CODE_NO_LIST = "Claude Code signs in to this server, so Gizai can't list its tools. An agent that has it on gets all of them.";
+export const CLAUDE_CODE_NO_LIST = "Claude Code signs in to this server, so Hersir can't list its tools. An agent that has it on gets all of them.";
 
 /** A server's command line or address, to show in one line (never a value of its lines). */
 export function serverWhere(s: { transport: string; command: string; args: string[]; url: string }): string {
@@ -131,7 +131,7 @@ export function nameProblem(name: string, taken: string[]): string | null {
   if (n.includes("__") || n.endsWith("_")) {
     return `A name can't have two _ in a row or end with _, not "${n}": its tools are called mcp__<name>__<tool>, and Claude Code reads __ as where the name ends`;
   }
-  if (TAKEN_NAMES.includes(n.toLowerCase())) return `${n} is Gizai's own: give the server another name`;
+  if (TAKEN_NAMES.includes(n.toLowerCase())) return `${n} is Hersir's own: give the server another name`;
   if (taken.some((t) => t.toLowerCase() === n.toLowerCase())) return `There is already an MCP server called ${n}: give this one another name`;
   return null;
 }
