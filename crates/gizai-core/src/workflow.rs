@@ -28,7 +28,7 @@ fn strip_list_marker(s: &str) -> &str {
 pub const MAX_BOUNCES: i64 = 3;
 pub const MAX_FAILS: i64 = 3;
 /// The hold's reason when Gizai's nudge (GA-54) also ended without a result.
-pub const NUDGE_STALLED: &str = "Its run ended without a GIZAI_RESULT line twice: Gizai continued it once, and it ended without one again. \
+pub const NUDGE_STALLED: &str = "Its run ended without a GIZAI_RESULT line twice: Hersir continued it once, and it ended without one again. \
 Its last message is in the Runs tab.";
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]

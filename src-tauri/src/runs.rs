@@ -28,8 +28,9 @@ pub const DEFAULT_MAX_CHAT_MINUTES: u64 = 15;
 pub const DEFAULT_MAX_CHAT_TOOL_CALLS: u32 = 60;
 pub const DEFAULT_MAX_CONCURRENT: u32 = 3;
 const BUFFER: usize = 500;
-/// Why a run or chat answer ended when Gizai quit (logging out and SIGTERM included), and the note a chat shows.
-pub const STOPPED_BY_QUIT: &str = "Stopped because Gizai quit.";
+/// Why a run or chat answer ended when Hersir quit (logging out and SIGTERM included), and the note a chat shows. Runs
+/// saved before the rename (GA-232) say "Stopped because Gizai quit.", which the board check reads the same way.
+pub const STOPPED_BY_QUIT: &str = "Stopped because Hersir quit.";
 
 /// Used when an agent has no allowed commands of its own. New agents start with their role's list, which builds on it
 /// (`gizai_core::seed::role_tools`).
@@ -566,7 +567,7 @@ fn logged_events(st: &AppState, run_id: &str) -> Vec<SeqEvent> {
         Ok(text) => agent_cli::parse_log(&text).into_iter().filter(|e| !matches!(e, RunEvent::Limits { .. })).collect(),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound
             && run.ended_at.unwrap_or(run.created_at) < ids::now_ms() - housekeeping::KEEP_LOGS_MS => {
-            vec![RunEvent::Note { text: format!("Gizai keeps run logs for {} days, so this run's output is gone. Its summary, cost and commits stay.",
+            vec![RunEvent::Note { text: format!("Hersir keeps run logs for {} days, so this run's output is gone. Its summary, cost and commits stay.",
                                                 housekeeping::KEEP_LOG_DAYS) }]
         }
         Err(_) => vec![],
@@ -1033,12 +1034,12 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
                      claim: Option<Starting>, checked: &mut Option<tokio::sync::oneshot::Sender<()>>)
     -> Result<(String, tokio::task::JoinHandle<RunSummary>), StartError> {
     if st.runs.closing.load(Ordering::SeqCst) {
-        return Err(StartError::Wait("Gizai is quitting".into()));
+        return Err(StartError::Wait("Hersir is quitting".into()));
     }
     let _starting = match claim {
         Some(c) => c,
         None => Starting::take(st, task_id, Some(agent_id.as_deref().unwrap_or_default()))
-            .ok_or_else(|| StartError::Wait("This card's run is already starting: Gizai is getting its worktree ready".into()))?,
+            .ok_or_else(|| StartError::Wait("This card's run is already starting: Hersir is getting its worktree ready".into()))?,
     };
     if let Ok(t) = tasks::get(&st.db, task_id) {
         if t.archived_at.is_some() {
@@ -1135,7 +1136,7 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
 
     // Gizai may have begun to quit while the worktree was made ready.
     if is_closing(st) {
-        return Err(StartError::Other("Gizai is quitting".into()));
+        return Err(StartError::Other("Hersir is quitting".into()));
     }
     wait_if_paused()?;
     let session = resume.as_ref().map(|r| r.session.clone()).unwrap_or_else(ids::new_id);
@@ -1560,7 +1561,7 @@ pub(crate) fn record_head(db: &gizai_core::db::Db, run_id: &str, dir: &Path) {
 pub fn commits(st: &AppState, run_id: &str) -> Result<Vec<worktree::Commit>, String> {
     let run = core_runs::get(&st.db, run_id).map_err(|e| e.to_string())?;
     let (Some(base), Some(head)) = (run.base_sha.as_deref(), run.head_sha.as_deref()) else {
-        return Err("Gizai didn't save where this run started and ended".into());
+        return Err("Hersir didn't save where this run started and ended".into());
     };
     if let Some(wt) = run.worktree_path.as_deref().map(Path::new).filter(|p| p.join(".git").exists())
         && let Ok(list) = worktree::commits(wt, base, head)
@@ -1771,13 +1772,13 @@ impl AfterRun {
     /// news) or why it couldn't, and the uncommitted changes left behind. Empty when nothing went and nothing was left.
     fn notes(&self) -> Vec<String> {
         let mut said: Vec<String> = match &self.push {
-            Ok(worktree::Pushed::Commits(n)) => vec![format!("Gizai pushed {} ({n} {})", self.branch, if *n == 1 { "commit" } else { "commits" })],
+            Ok(worktree::Pushed::Commits(n)) => vec![format!("Hersir pushed {} ({n} {})", self.branch, if *n == 1 { "commit" } else { "commits" })],
             Ok(worktree::Pushed::Nothing) => vec![],
             Err(why) => vec![why.trim().to_string()],
         };
         if self.uncommitted > 0 {
             let n = self.uncommitted;
-            said.push(format!("Its worktree has {n} uncommitted {}, which Gizai doesn't push", if n == 1 { "change" } else { "changes" }));
+            said.push(format!("Its worktree has {n} uncommitted {}, which Hersir doesn't push", if n == 1 { "change" } else { "changes" }));
         }
         said.into_iter().map(|s| if s.ends_with('.') { s } else { s + "." }).collect()
     }
@@ -1835,7 +1836,7 @@ pub(crate) fn push_card(st: &AppState, project: &Project, repo: &Path, link: &gi
 /// On a card that is yours by hand already it makes sure the worktree is there and ready. Returns the worktree.
 pub async fn start_by_hand(st: &AppState, task_id: &str) -> Result<worktree::Worktree, String> {
     if is_closing(st) {
-        return Err("Gizai is quitting".into());
+        return Err("Hersir is quitting".into());
     }
     let task = tasks::get(&st.db, task_id).map_err(|e| e.to_string())?;
     let busy = || format!("An agent is working on {}: wait for its run to end", task.identifier);
@@ -1871,7 +1872,7 @@ pub async fn start_by_hand(st: &AppState, task_id: &str) -> Result<worktree::Wor
 /// GA-221: the note on a finished run whose CLI (`cli`) Gizai ended because it hadn't exited once the agent was done.
 fn after_result_note(cli: &str) -> String {
     let minutes = process::AFTER_RESULT.as_secs() / 60;
-    format!("{cli} hadn't exited {minutes} minutes after the agent's final message, so Gizai ended it and kept the result. \
+    format!("{cli} hadn't exited {minutes} minutes after the agent's final message, so Hersir ended it and kept the result. \
              Something the run started was probably still running in the background, such as a server.")
 }
 

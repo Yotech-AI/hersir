@@ -66,9 +66,10 @@ export function runReason(r: Run): string | null {
 }
 
 /** Gizai's notes in a run's output are warnings (a folder or MCP server left out, a push that failed), except what
- * Gizai pushed after the run (GA-56), which is good news. */
+ * Gizai pushed after the run (GA-56), which is good news. The backend says "Hersir pushed" since the rename (GA-232); a
+ * run from before it keeps "Gizai pushed". */
 export function noteIsGood(text: string): boolean {
-  return text.startsWith("Gizai pushed ");
+  return text.startsWith("Hersir pushed ") || text.startsWith("Gizai pushed ");
 }
 
 /** The agent's last words in a run, without the GIZAI_RESULT line. */
