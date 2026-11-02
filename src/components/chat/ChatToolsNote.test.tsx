@@ -1,11 +1,9 @@
 // GA-232: the backend's chat note that the Team Lead's tools didn't connect says Hersir now; the chat still shows it as a
 // failure (red, role alert), as it does an older chat's note with Gizai. Rendered to HTML on the server.
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ChatMessage } from "../../types";
+import chatRs from "../../../src-tauri/src/chat.rs?raw";
 
 vi.mock("../../api", async (orig) => {
   const real = await orig<Record<string, unknown>>();
@@ -24,8 +22,7 @@ describe("the chat's note that the Team Lead's tools didn't connect (GA-232)", (
   const why = "didn't connect (failed), so the Team Lead can't look anything up or change anything in this answer.";
 
   it("is the backend's text, which says Hersir", () => {
-    const rs = readFileSync(join(fileURLToPath(new URL("../../..", import.meta.url)), "src-tauri/src/chat.rs"), "utf8");
-    expect(rs).toContain(`format!("Hersir's tools didn't connect ({s}), so the Team Lead can't look anything up or change anything in this answer.")`);
+    expect(chatRs).toContain(`format!("Hersir's tools didn't connect ({s}), so the Team Lead can't look anything up or change anything in this answer.")`);
   });
 
   it("shows as a failure with Hersir, and with Gizai in a chat from before the rename", () => {

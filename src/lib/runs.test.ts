@@ -1,9 +1,7 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { badgeOf, dayRate, canContinue, commitCount, elapsed, formatCost, formatTokens, lastAgentText, mergeEvents, noteIsGood, resumeCommand, runReason, toolCalls } from "./runs";
 import type { Run, SeqEvent } from "../types";
+import runsRs from "../../src-tauri/src/runs.rs?raw";
 
 const ev = (seq: number, text = `t${seq}`) => ({ seq, event: { kind: "text" as const, text } });
 
@@ -130,8 +128,7 @@ describe("noteIsGood", () => {
   });
 
   it("reads the push note as the backend says it since GA-232, with Hersir, and an older run's with Gizai", () => {
-    const rs = readFileSync(join(fileURLToPath(new URL("../..", import.meta.url)), "src-tauri/src/runs.rs"), "utf8");
-    expect(rs).toContain('vec![format!("Hersir pushed {} ({n} {})", self.branch');
+    expect(runsRs).toContain('vec![format!("Hersir pushed {} ({n} {})", self.branch');
     expect(noteIsGood("Hersir pushed gizai/kade-1-export-invoices (2 commits).")).toBe(true);
     expect(noteIsGood("Hersir pushed gizai/kade-1-export-invoices (1 commit).")).toBe(true);
     expect(noteIsGood("Gizai pushed gizai/kade-1-export-invoices (1 commit).")).toBe(true);
