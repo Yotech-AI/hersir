@@ -61,7 +61,7 @@ export function UpdateNotice() {
       );
       break;
     case "working":
-      body = <a className="update-notice working" href={settings} title="Gizai stays usable meanwhile. Settings shows more."><LoaderCircle className="icon spin" /><span>{n.text}</span></a>;
+      body = <a className="update-notice working" href={settings} title="Hersir stays usable meanwhile. Settings shows more."><LoaderCircle className="icon spin" /><span>{n.text}</span></a>;
       break;
     case "restart":
       body = <RestartButton className="update-notice ready" label={n.text} />;

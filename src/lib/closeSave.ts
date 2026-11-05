@@ -72,4 +72,4 @@ export async function saveBeforeClose(edits: OpenEdit[] = openEdits(), ms = CLOS
 }
 
 /** The question when the text didn't save. */
-export const closeQuestion = (title: string) => `Close Gizai without saving your changes to ${title}?`;
+export const closeQuestion = (title: string) => `Close Hersir without saving your changes to ${title}?`;

@@ -56,7 +56,7 @@ export function PendingActions({ actions, onError }: { actions: PendingAction[];
     <section className="pending-actions" aria-label="Waiting for your OK">
       <div className="pa-head">
         <span className="badge needs">Waiting for your OK</span>
-        <span className="pa-why" title={outside}>This answer used {outsideLabel(outside)}, a tool from outside Gizai, so Gizai didn't run {actions.length === 1 ? "this" : "these"}.</span>
+        <span className="pa-why" title={outside}>This answer used {outsideLabel(outside)}, a tool from outside Hersir, so Hersir didn't run {actions.length === 1 ? "this" : "these"}.</span>
         {waiting.length > 1 && (
           <BusyButton className="btn sm primary" pending={pending} name="all" busyLabel="Approving…" icon={<Check className="icon" />}
             title="Runs each of these, in this order" onClick={() => pending.act("all", () => approvePendingActions(waiting.map((a) => a.id)), fail)}>

@@ -8,9 +8,9 @@ import { McpToolList } from "./McpTools";
 /** Why an agent on another CLI can't have MCP servers or the browser: the same words as `mcp_not_on` in
  * crates/gizai-core/src/mcp_servers.rs. */
 export const MCP_NOT_ON: Record<string, string> = {
-  codex: "Codex takes MCP servers per run, but Gizai hasn't checked yet that a headless codex exec may call their tools: MCP servers and the browser stay off for Codex agents for now.",
-  gemini: "Gemini takes MCP servers only from its settings files, and Gizai never writes in ~/.gemini or the worktree: MCP servers and the browser stay off for Gemini agents.",
-  other: "This CLI runs with its own settings: Gizai can't give it MCP servers or the browser.",
+  codex: "Codex takes MCP servers per run, but Hersir hasn't checked yet that a headless codex exec may call their tools: MCP servers and the browser stay off for Codex agents for now.",
+  gemini: "Gemini takes MCP servers only from its settings files, and Hersir never writes in ~/.gemini or the worktree: MCP servers and the browser stay off for Gemini agents.",
+  other: "This CLI runs with its own settings: Hersir can't give it MCP servers or the browser.",
 };
 export const MCP_NOT_YET = MCP_NOT_ON.other;
 

@@ -41,8 +41,8 @@ describe("the question and the wait", () => {
     expect(CLOSE_SAVE_MS).toBe(2000);
   });
   it("asks with the doc's or the note's title", () => {
-    expect(closeQuestion("Requirements")).toBe("Close Gizai without saving your changes to Requirements?");
-    expect(closeQuestion("Use SQLite")).toBe("Close Gizai without saving your changes to Use SQLite?");
+    expect(closeQuestion("Requirements")).toBe("Close Hersir without saving your changes to Requirements?");
+    expect(closeQuestion("Use SQLite")).toBe("Close Hersir without saving your changes to Use SQLite?");
   });
 });
 

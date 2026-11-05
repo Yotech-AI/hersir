@@ -243,14 +243,14 @@ describe("the Usage page's Subscription tab (GA-62)", () => {
       ["Weekly limit", "Not read yet", "", ""],
     ]);
     expect(codex.match(/<tr class="limit-(\w+)">/g)).toEqual(['<tr class="limit-reached">', '<tr class="limit-unread">']);
-    expect(codex).toContain("Codex writes these limits in its session log (~/.codex-work/sessions). Gizai reads the log of each run on Codex when the run ends.");
+    expect(codex).toContain("Codex writes these limits in its session log (~/.codex-work/sessions). Hersir reads the log of each run on Codex when the run ends.");
   });
 
-  it("says Gizai can't read Gemini's and an Other CLI's limits yet, with no table and no number", () => {
+  it("says Hersir can't read Gemini's and an Other CLI's limits yet, with no table and no number", () => {
     const html = show();
     const gemini = block(html, "Gemini"), other = block(html, "Aider");
-    expect(gemini).toContain("Gizai can&#x27;t read Gemini&#x27;s limits yet.");
-    expect(other).toContain("Gizai can&#x27;t read the limits of Aider yet: it reads Claude Code&#x27;s and Codex&#x27;s.");
+    expect(gemini).toContain("Hersir can&#x27;t read Gemini&#x27;s limits yet.");
+    expect(other).toContain("Hersir can&#x27;t read the limits of Aider yet: it reads Claude Code&#x27;s and Codex&#x27;s.");
     for (const b of [gemini, other]) {
       expect(b).not.toContain("<table");
       expect(b).not.toContain("%");

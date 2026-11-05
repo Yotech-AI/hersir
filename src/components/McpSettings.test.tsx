@@ -149,15 +149,15 @@ describe("the list of servers", () => {
     expect(l).not.toContain("Needs sign-in");
   });
 
-  it("says to sign in in the browser while Gizai waits", () => {
+  it("says to sign in in the browser while Hersir waits", () => {
     const a = row(render({ busy: { "s-acme": "signin" } }), "acme");
-    expect(text(a)).toContain("Sign in in your browser: Gizai waits up to 10 minutes for it.");
+    expect(text(a)).toContain("Sign in in your browser: Hersir waits up to 10 minutes for it.");
     expect(a).toContain('<button class="btn primary sm" disabled="">Waiting…</button>');
   });
 
   it("asks before removing, saying it signs out and its values leave the keychain", () => {
     expect(text(row(render({ removing: "s-otus" }), "otus")))
-      .toContain("Remove otus? Gizai signs out of it, its values leave your keychain, and Backend Agent no longer get it.");
+      .toContain("Remove otus? Hersir signs out of it, its values leave your keychain, and Backend Agent no longer get it.");
   });
 });
 
@@ -179,7 +179,7 @@ describe("a saved secret value is never shown", () => {
     expect(html).toContain('aria-label="Environment line 1 name" placeholder="ACME_TOKEN" value="ACME_TOKEN"/>');
     expect(html).toContain('<input class="input mono" type="password" autoComplete="off" aria-label="Environment line 1 value" placeholder="Saved in your keychain: type to replace" value=""/>');
     expect(html).toContain('<input class="input mono" type="password" autoComplete="off" aria-label="Environment line 2 value" placeholder="Value" value=""/>');
-    expect(text(html)).toContain("Values go to your keychain, never to Gizai's database, and aren't shown again once saved.");
+    expect(text(html)).toContain("Values go to your keychain, never to Hersir's database, and aren't shown again once saved.");
   });
 
   it("Save sends no value for a line left alone, so the saved one stays", async () => {
@@ -240,7 +240,7 @@ describe("Import from Claude Code", () => {
   it("says under the list that claude.ai connectors and plugin servers aren't in Claude Code's files: add those by address", () => {
     const t = text(render({ scan, picks: off }));
     expect(t).toContain("Connectors from your claude.ai account and servers from plugins aren't in these files: add those by address.");
-    expect(t).toContain("Read only: Gizai doesn't change Claude Code's files, doesn't read its sign-ins and starts no server to find these.");
+    expect(t).toContain("Read only: Hersir doesn't change Claude Code's files, doesn't read its sign-ins and starts no server to find these.");
     expect(t.indexOf("add those by address")).toBeGreaterThan(t.indexOf("github-mcp"));
   });
 
@@ -321,19 +321,19 @@ describe("a renamed line", () => {
 // like Figma that only lets known apps register. With Claude Code, the form hides the client id and says how to sign Claude
 // Code in; the list shows "Claude Code signs in", no Sign in or Sign out, and List tools off with why.
 describe("Who signs in", () => {
-  const HINT = "For a service that only lets known apps sign in, like Figma. Give the server the name it has in Claude Code, and sign Claude Code in once per account: in a terminal, run claude, type /mcp, pick the server and Authenticate. Gizai never reads Claude Code's sign-ins.";
-  const NO_LIST = "Claude Code signs in to this server, so Gizai can't list its tools. An agent that has it on gets all of them.";
+  const HINT = "For a service that only lets known apps sign in, like Figma. Give the server the name it has in Claude Code, and sign Claude Code in once per account: in a terminal, run claude, type /mcp, pick the server and Authenticate. Hersir never reads Claude Code's sign-ins.";
+  const NO_LIST = "Claude Code signs in to this server, so Hersir can't list its tools. An agent that has it on gets all of them.";
   const draft = (d: Record<string, unknown> = {}) => ({ id: "", name: "figma", transport: "http", command: "", args: "", env: [], url: "https://mcp.figma.com/mcp",
     headers: [], clientId: "", signInBy: "", source: "", ...d });
   const figma = server({ id: "s-figma", name: "figma", url: "https://mcp.figma.com/mcp", signInBy: "claude_code", signIn: "claude_code", usedBy: ["Design Agent"] });
   const selects = (t: ReactNode) => findAll(t, (p) => p.className === "select") as { value: string; onChange: (e: unknown) => void }[];
 
   for (const transport of ["http", "sse"]) {
-    it(`the form of an address server (${transport}) shows Who signs in, set to Gizai, with the client id`, () => {
+    it(`the form of an address server (${transport}) shows Who signs in, set to Hersir, with the client id`, () => {
       const html = render({ edit: draft({ transport }) });
       const t = text(html);
-      expect(t).toContain("Who signs in Gizai (it registers itself with the service) Claude Code, with its own sign-in");
-      expect(html).toContain('<option value="" selected="">Gizai (it registers itself with the service)</option>');
+      expect(t).toContain("Who signs in Hersir (it registers itself with the service) Claude Code, with its own sign-in");
+      expect(html).toContain('<option value="" selected="">Hersir (it registers itself with the service)</option>');
       expect(html).toContain('<option value="claude_code">Claude Code, with its own sign-in</option>');
       expect(t).toContain("Client id for sign-in");
       expect(t).not.toContain("like Figma");
@@ -346,7 +346,7 @@ describe("Who signs in", () => {
     expect(t).not.toContain("Claude Code, with its own sign-in");
   });
 
-  it("Add MCP server starts with Gizai", () => {
+  it("Add MCP server starts with Hersir", () => {
     const { got, button } = tree({});
     button("Add MCP server")[0].onClick();
     expect(got[EDIT][0]).toMatchObject({ transport: "stdio", signInBy: "" });
@@ -366,10 +366,10 @@ describe("Who signs in", () => {
     const t = text(html);
     expect(t).toContain(HINT);
     expect(t).not.toContain("Client id for sign-in");
-    expect(html).not.toContain("Only when the service doesn't let Gizai register itself");
+    expect(html).not.toContain("Only when the service doesn't let Hersir register itself");
   });
 
-  it("Save sends the choice for an address, and Gizai for a command", async () => {
+  it("Save sends the choice for an address, and Hersir for a command", async () => {
     answers.saveMcpServer = () => figma;
     calls.length = 0;
     const saved = tree({ edit: draft({ signInBy: "claude_code" }) });

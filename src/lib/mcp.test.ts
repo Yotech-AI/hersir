@@ -213,11 +213,15 @@ describe("nameProblem", () => {
     expect(nameProblem("", [])).toBe("A name takes letters, digits, - and _ (at most 64)");
   });
 
-  it("keeps Gizai's own names, in any case, as in TAKEN in crates/gizai-core", () => {
+  it("keeps Hersir's own names, in any case, as in TAKEN in crates/gizai-core", () => {
     expect(TAKEN_NAMES).toEqual(["gizai", "chrome-devtools"]);
     expect(rust("crates/gizai-core/src/mcp_servers.rs")).toContain('pub const TAKEN: [&str; 2] = ["gizai", "chrome-devtools"];');
-    expect(nameProblem("Gizai", [])).toBe("Gizai is Gizai's own: give the server another name");
-    expect(nameProblem("chrome-devtools", [])).toBe("chrome-devtools is Gizai's own: give the server another name");
+    expect(nameProblem("Gizai", [])).toBe("Gizai is Hersir's own: give the server another name");
+    expect(nameProblem("chrome-devtools", [])).toBe("chrome-devtools is Hersir's own: give the server another name");
+    // GA-231: the server name stays gizai, so a server named hersir is no one's own
+    expect(nameProblem("hersir", [])).toBeNull();
+    // the backend's refusal in the same words, with Hersir once GA-232 changes it
+    expect(rust("crates/gizai-core/src/mcp_servers.rs")).toMatch(/"\{name\} is (Hersir|Gizai)'s own: give the server another name"/);
   });
 
   it("asks for another name when one in the list has it, in any case", () => {
@@ -243,14 +247,16 @@ describe("Claude Code signs in", () => {
     expect(actsAsYou({ signIn: "needs_sign_in", name: "acme" })).toBeNull();
   });
 
-  it("offers Gizai first, then Claude Code, with the values the Rust side takes", () => {
-    expect(Object.entries(SIGN_IN_BY_LABEL)).toEqual([["", "Gizai (it registers itself with the service)"], ["claude_code", "Claude Code, with its own sign-in"]]);
+  it("offers Hersir first, then Claude Code, with the values the Rust side takes", () => {
+    expect(Object.entries(SIGN_IN_BY_LABEL)).toEqual([["", "Hersir (it registers itself with the service)"], ["claude_code", "Claude Code, with its own sign-in"]]);
     expect(rust("crates/gizai-core/src/mcp_servers.rs")).toContain('pub const CLAUDE_CODE_SIGNS_IN: &str = "claude_code";');
   });
 
   it("says why List tools is off in the same words as the backend's refusal", () => {
-    expect(CLAUDE_CODE_NO_LIST).toBe("Claude Code signs in to this server, so Gizai can't list its tools. An agent that has it on gets all of them.");
-    expect(rust("src-tauri/src/mcp_servers.rs")).toContain(`pub const CLAUDE_CODE_NO_LIST: &str = "${CLAUDE_CODE_NO_LIST}";`);
-    expect(CLAUDE_CODE_SIGN_IN_HINT).toBe("For a service that only lets known apps sign in, like Figma. Give the server the name it has in Claude Code, and sign Claude Code in once per account: in a terminal, run claude, type /mcp, pick the server and Authenticate. Gizai never reads Claude Code's sign-ins.");
+    expect(CLAUDE_CODE_NO_LIST).toBe("Claude Code signs in to this server, so Hersir can't list its tools. An agent that has it on gets all of them.");
+    // the backend's refusal says Hersir once GA-232 changes it, Gizai before: the same words otherwise
+    const app = /pub const CLAUDE_CODE_NO_LIST: &str = "([^"]+)";/.exec(rust("src-tauri/src/mcp_servers.rs"))?.[1];
+    expect([CLAUDE_CODE_NO_LIST, CLAUDE_CODE_NO_LIST.replace("Hersir", "Gizai")]).toContain(app);
+    expect(CLAUDE_CODE_SIGN_IN_HINT).toBe("For a service that only lets known apps sign in, like Figma. Give the server the name it has in Claude Code, and sign Claude Code in once per account: in a terminal, run claude, type /mcp, pick the server and Authenticate. Hersir never reads Claude Code's sign-ins.");
   });
 });

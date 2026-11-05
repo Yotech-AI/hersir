@@ -77,7 +77,7 @@ describe("Settings → Updates", () => {
     expect(html).toContain("Updates");
     expect(html).toMatch(/<input type="checkbox" checked=""\/>Check for new releases automatically/);
     expect(text(html)).toContain("Check now");
-    expect(text(html)).toContain("Gizai 0.1.5. This is the latest version (checked just now).");
+    expect(text(html)).toContain("Hersir 0.1.5. This is the latest version (checked just now).");
     expect(html).not.toContain("btn primary");
   });
   it("shows the switch off, and Checking… while a check runs", () => {
@@ -117,20 +117,20 @@ describe("Settings → Updates", () => {
     const html = renderToStaticMarkup(<UpdateSettings />);
     const t = text(html);
     expect(html).toContain('role="alert"');
-    expect(t).toContain("The update to 0.1.6 didn't work: ./install.sh --build-only failed (exit code 101). Gizai 0.1.5 is still installed and works as before.");
+    expect(t).toContain("The update to 0.1.6 didn't work: ./install.sh --build-only failed (exit code 101). Hersir 0.1.5 is still installed and works as before.");
     expect(t).toContain("error[E0425]: cannot find value");
     expect(t).toContain("Everything it did is in /home/you/.local/share/gizai/update/update.log");
     expect(t).toContain("Try again");
   });
   it("says so when the install stopped partway", () => {
     current = status({ available: release, job: job("failed", { problem: "./install.sh --skip-build was ended by a signal", unchanged: false }) });
-    expect(text(renderToStaticMarkup(<UpdateSettings />))).toContain("The installer stopped partway, so the installed Gizai may not start");
+    expect(text(renderToStaticMarkup(<UpdateSettings />))).toContain("The installer stopped partway, so the installed Hersir may not start");
   });
-  it("offers Restart Gizai once it is installed, with the backup", () => {
+  it("offers Restart Hersir once it is installed, with the backup", () => {
     current = status({ available: release, installed: "0.1.6", job: job("installed", { unchanged: false, backup: "/home/you/.local/share/gizai/backups/gizai-before-update-x.db" }) });
     const t = text(renderToStaticMarkup(<UpdateSettings />));
-    expect(t).toContain("Version 0.1.6 is installed. Restart Gizai to use it.");
-    expect(t).toContain("Restart Gizai");
+    expect(t).toContain("Version 0.1.6 is installed. Restart Hersir to use it.");
+    expect(t).toContain("Restart Hersir");
     expect(t).toContain("gizai-before-update-x.db");
   });
 });
