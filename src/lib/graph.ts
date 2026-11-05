@@ -4,7 +4,7 @@
 // projects, clients, agents and people that notes name are dots of their own kinds, and tags when they are shown.
 // graphView narrows it to what the settings show: the local graph around a note (depth, incoming, outgoing) and the
 // filters (the search query with path: and tag:, tags, orphans, existing notes only, the kinds). Groups colour a note
-// by the first query it matches, from a calm palette without teal or magenta. Then the settings as kept, with their
+// by the first query it matches, from a calm palette without teal or gold. Then the settings as kept, with their
 // defaults, and the sums the canvas needs: a dot's size, a label's fade, fitting the graph in view, the order it grows
 // in, and which dot an arrow key goes to.
 import type { MemoryNote } from "../types";
@@ -243,18 +243,20 @@ export function matchesQuery(note: Pick<MemoryNote, "path" | "bodyMd">, q: Graph
 
 // ---- Colours ---------------------------------------------------------------------------------------------------------
 
-/** The groups' colours: calm, for a dark canvas first, and never teal or magenta (Gizai keeps those for an agent at
- *  work and "needs you"); the blue accent is for the dot you point at or have open. Each with its light-theme shade. */
+/** The groups' colours: calm, for a dark canvas first, and never teal or gold (Gizai keeps those for an agent at work
+ *  and "needs you"); the blue accent is for the dot you point at or have open. Each with its light-theme shade. Since
+ *  needs became Hersir's gold (GA-230), Sand and Clay are Rose and Plum, Olive greener, Brick redder and Stone grey;
+ *  the keys stay, as kept graph settings name them. */
 export const PALETTE = [
-  { key: "sand", name: "Sand", dark: "#cfb47e", light: "#8a6a2c" },
+  { key: "sand", name: "Rose", dark: "#cf93af", light: "#834163" },
   { key: "sage", name: "Sage", dark: "#9ab585", light: "#4d6e3a" },
   { key: "lavender", name: "Lavender", dark: "#a99cdc", light: "#5c4cae" },
-  { key: "clay", name: "Clay", dark: "#d39679", light: "#9a5034" },
+  { key: "clay", name: "Plum", dark: "#b98cc0", light: "#713e79" },
   { key: "slate", name: "Slate", dark: "#93a8c6", light: "#475c7c" },
-  { key: "olive", name: "Olive", dark: "#bdb26b", light: "#6b6424" },
-  { key: "brick", name: "Brick", dark: "#c98478", light: "#93453a" },
+  { key: "olive", name: "Olive", dark: "#abbb67", light: "#566120" },
+  { key: "brick", name: "Brick", dark: "#ca8281", light: "#88383b" },
   { key: "moss", name: "Moss", dark: "#83a986", light: "#3f6b45" },
-  { key: "stone", name: "Stone", dark: "#b8ad9e", light: "#6b604f" },
+  { key: "stone", name: "Stone", dark: "#b1b1b1", light: "#474747" },
   { key: "iris", name: "Iris", dark: "#8f98d6", light: "#434ea6" },
 ] as const;
 export type PaletteKey = (typeof PALETTE)[number]["key"];

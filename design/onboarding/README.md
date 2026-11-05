@@ -42,7 +42,7 @@ focus. From the top:
 
 | Part | Where | What |
 |---|---|---|
-| Top bar | y 0, 1440 × 52 (`size-topbar`) | Padding 0 20, 1 px `line` under it. Left (300 wide): the GizAi logo, horizontal, 20 px high (79.7 wide), one colour `text-2` (the brandbook: inside the app the logo is never pink). Middle: the step indicator, centred on the window. Right (300 wide): Skip setup. |
+| Top bar | y 0, 1440 × 52 (`size-topbar`) | Padding 0 20, 1 px `line` under it. Left (300 wide): the logo, horizontal, 24 px high (81.16 wide; GA-230, Hersir's longboat H on its 24 px grid), one colour `text-2` (`design/brand/README.md`: inside the app the logo is never gold). Middle: the step indicator, centred on the window. Right (300 wide): Skip setup. |
 | Step body | x 400, y 116, 640 wide | 64 below the top bar. It scrolls between the top bar and the actions when it is taller (many MCP servers, a large text size). |
 | Actions | x 400, y 700, 640 wide | A 1 px `line`, then 16, then Back (left) and Next (right), 30 high. They stay at one place on every step. Place them `calc(band height + 24px)` above the window's bottom: at 900 high the band is 126 (`clamp(size-band-min, 14vh, size-band)`), so 24 above it. |
 | Mountains | the bottom 126 (drawn 128 in Figma) | The app's band (`Band.tsx`, `band-line`, `band-glow`), behind everything; the step body and top bar are see-through, the panels and fields stay solid over it. It goes under 560 px high, with forced colours and when Settings turns it off, as in the app. |

@@ -53,7 +53,7 @@ Background, only when the card needs it:
 - **Writing:** UI text and docs are plain and short, in sentence case, and say what happens.
 - **Design rules:**
   - teal `--live` only for an agent working now;
-  - magenta `--needs` only for "needs you";
+  - gold `--needs` only for "needs you";
   - dark first, blue accent;
   - fonts Atkinson Hyperlegible Next and Mono.
 

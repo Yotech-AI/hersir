@@ -1,61 +1,71 @@
-# GizAi brand (GA-52)
+# Hersir brand (GA-230)
 
-GizAi's mark, logo, favicon and app icon as SVG files, made by `gen-brand.mjs`. The brandbook itself is in Figma: the
-file "Giz-AI", page **Brandbook**
-([open](https://www.figma.com/design/Q2dp2xiv8MMm90Xwj3ToCI/Giz-AI?node-id=5-2)). Its Logo, App icon and Favicon
-components were imported from these files, so the two are the same drawings. The homepage (GA-144) is designed from it;
-the app takes the icon, name and colours over in a card of its own.
+Hersir's mark, logo, favicon and app icon as SVG files, made by `gen-brand.mjs`, and the app's icons made from them by
+`make-icons.mjs`. The drawings are the direction Jefsev approved in Figma (GW-11): the file "Giz-AI", page **Hersir:
+brand direction** ([open](https://www.figma.com/design/Q2dp2xiv8MMm90Xwj3ToCI/Giz-AI?node-id=184-2)). `gen-brand.mjs`
+takes them over number for number (the component Hersir mark 198:258 and its 16 px cut 198:263, the wordmark 187:38,
+the logos 187:39 and 187:50, the app icon's tile 187:178) and draws the files itself rather than keeping Figma's exports,
+so every logo, tile, cut and copy comes from one place. They replace GizAi's G (GA-52); the website (GW-12) made its
+icons from the same frames.
 
-Run `node design/brand/gen-brand.mjs` to write the files again. If the drawings change, import them into the Figma file's
-Components frame again.
+Run `node design/brand/gen-brand.mjs` to write the SVGs again, with the app's two copies (`src-tauri/icons/gizai.svg` and
+`src/assets/gizai-logo.svg`), then `node design/brand/make-icons.mjs` for `src-tauri/icons`. If a drawing changes in
+Figma, change its numbers in `gen-brand.mjs`.
 
 ## The files
 
 | File | What it is |
 |---|---|
-| `logo-horizontal-*.svg` | The mark and the wordmark side by side, 358.58 × 90. |
-| `logo-stacked-*.svg` | The mark over the wordmark, 241.58 × 248.2. |
-| `mark-*.svg` | The mark alone, 54 × 54. |
+| `mark-*.svg` | The mark alone on its 24 px grid, 24 × 24. |
+| `logo-horizontal-*.svg` | The mark (48 high) and the wordmark side by side, 162.32 × 48: Figma's Hersir logo · Horizontal. |
+| `logo-stacked-*.svg` | The mark (88 high) over the wordmark, 113.69 × 133.82: Hersir logo · Stacked. |
 | `favicon.svg` | The SVG favicon: the 32 px drawing, which browsers scale. |
-| `favicon-16.svg`, `-32.svg`, `-48.svg` | The favicon drawn on the pixel grid, for the `.ico` and the PNGs. |
-| `app-icon-1024.svg` | The app icon's master for Linux and Windows: an 896 px tile in the 1024 px canvas. Scale it down for 512, 256 and 128 px. |
-| `app-icon-macos-1024.svg` | macOS: Apple's 824 px rounded square in the 1024 px canvas, with its shadow. |
-| `app-icon-16.svg`, `-32.svg` | The app icon at 16 and 32 px, drawn on the pixel grid (the favicon's drawings). |
+| `favicon-16.svg`, `-32.svg`, `-48.svg` | The favicon drawn on the pixel grid: 16 is the 16 px cut, 32 the mark 1:1 on its grid. Figma has no 48: it is the 32's drawing at 1.5, strokes 3 px, its stems 19 apart instead of 18 so they land on whole pixels. |
+| `app-icon-1024.svg` | The app icon's master for Linux and Windows: Figma's 1024 tile as an 896 px tile in the 1024 canvas, the margin icon themes leave. `src-tauri/icons/gizai.svg` is the same drawing. |
+| `app-icon-macos-1024.svg` | macOS: Apple's 824 px rounded square (continuous corners) in the 1024 canvas, with its shadow. |
+| `app-icon-16.svg`, `-32.svg` | The app icon at 16 and 32 px, drawn on the pixel grid: the favicon's drawings. |
+| `tray-template.svg` | The macOS menu bar's template image, 36 px for 18 pt: the mark in black on transparent, drawn as the 48 px cut is. |
+| `gen-brand.mjs` | Writes every SVG above, `src-tauri/icons/gizai.svg` and `src/assets/gizai-logo.svg`. |
+| `make-icons.mjs` | Writes `src-tauri/icons`: renders with `npx tauri icon`, puts the 16 and 32 px cuts into `32x32.png`, `icon.ico` and `icon.icns` (macOS's from its own master), and makes `tray-template.png`. File names stay. |
 
-Each logo comes in four colours: `-on-dark` (#f472b6), `-on-light` (#c0287a), `-white` and `-black`. The backgrounds are
-transparent; "on dark" and "on light" say where each pink goes.
+The mark and each logo come in four colours: `-on-dark` (the mark #f2a53a, the name #edebe6), `-on-light` (#9e5500 and
+#16191c), `-white` and `-black` (one colour each, for prints, photos and colour). The backgrounds are transparent.
 
 ## What the design decides
 
-- **The mark** is the board's Review glyph, a ring with a dot, drawn as a G: the ring opens at the top right and a bar
-  carries it into the dot. Ring and bar are a third of the radius thick, the dot is 0.34 of the radius (the glyph's own
-  proportion), the top terminal is cut along the radius at 48°. One closed outline, no strokes.
-- **The wordmark** reads GizAi: Geist Bold, letter spacing −2%, outlined, with round dots on the i's like the mark's dot.
-  Never "Gizai", "GIZAI" or "Giz AI".
-- **Colour**: the logo is one colour, the Review and Deploy pink (`--needs`): #f472b6 on dark (7.2:1 on `bg`), #c0287a on
-  light (5.5:1 on white); white and black for one colour.
-- **The pink and "needs you"** share the value and keep apart by place and shape. The brand pink goes on the logo, the
-  app icon and the favicon, and on the website at most one more pink thing per screen; never on buttons, links, focus or
-  behind text (those are the accent blue). Inside the app's window pink means only "needs you" (Review, Deploy, holds, the
-  Inbox count), so the app shows its logo in one colour (`text-2`). The status glyph is a thin, closed 16 px ring beside
-  its word; the mark is a heavy, open G and never stands in a list or on a card.
-- **Clear space**: x on every side, x being half the mark's height. **Smallest**: horizontal 20 px high (80 px wide),
-  stacked 64 px wide, the mark 24 px; under 24 px use the favicon's drawing on its tile.
-- **The icon** is the pink mark at 60% of a dark tile (#1d1f25 to #0e0f12, top to bottom) with a faint inner edge; the
-  corners are Figma's 60% corner smoothing. At 16 px the ring is 2 px thick, the dot 5 px and the opening 2 px.
-- **Type**: Geist (SemiBold and Bold) for headings and the wordmark, Atkinson Hyperlegible Next for body text, Atkinson
-  Hyperlegible Mono for IDs, branches and code. All three ship with the app already. The website's scale (Figma text
-  styles `Web/*`, in px): Display 64/68 Bold −3%, H1 48/54 Bold −2.5%, H2 36/42 Bold −2%, H3 24/30 SemiBold −1%, H4 20/26
-  SemiBold −0.5%, Eyebrow 13/16 Mono +6% capitals, Lead 19/30, Body 16/26, Body strong 16/26 SemiBold, Small 14/22,
-  Caption 12.5/18 Medium, Button 15/20 SemiBold, Code 14/22 Mono.
+- **The mark** is the longboat H (take B, the hull): the H of Hersir drawn as a longship. The stems are its stem and
+  stern posts; the sheer and the keel leave them high (y 8 on the 24 grid) and sag between them (to 11.6 and 15.6) like
+  a hull. Four strokes of one weight, 2 on the 24 grid, round caps. Use it from 24 px up; under 24 px use the 16 px cut,
+  whose hull is filled so it stays an H with a boat in it.
+- **The wordmark** reads Hersir: Schibsted Grotesk Bold, outlined, the r–s pair closed 6 % and the i–r pair 2.5 % so
+  the eye runs through it as one word. Its H is the longboat H at the font's weight. Say it HER-seer.
+- **Colour**: on dark and on light the longboat H is amber, Hersir colour's `brand/amber` (#f2a53a, 9.4:1 on the brand's
+  dark page; #9e5500, 4.9:1 on its light page), and the name is text colour; white or black for one colour.
+- **The gold and "needs you"** share the hue and keep apart by place and shape, as GizAi's pink did. The brand gold goes
+  on the logo, the app icon and the favicon. Inside the app's window gold means only "needs you" (`needs`: Review,
+  Deploy, holds, the Inbox count), so the app shows its logo in one colour (`text-2`), and the accent that buttons,
+  links and focus use stays blue. `needs` is the brand's amber in dark; in light it is #9a5800, a hair yellower than
+  #9e5500 (ΔE2000 2), so that On hold's red (`danger`, #c93530) keeps 35° of hue from it. In progress and `warning`
+  moved to a yellow for the same rule (`design/README.md`). The status glyph is a thin 16 px ring with a dot, beside its
+  word; the mark is an H and never stands in a list or on a card.
+- **Clear space**: half the mark's height on every side. **Smallest**: the horizontal logo 20 px high (the onboarding
+  shows it 24 high, so its mark is on its own grid); the mark 24 px, under that the 16 px cut.
+- **The icon** is the amber mark on an iron tile, the same in both themes: a gradient from #1a2128 at the top to #0b0e11,
+  with a white edge at 8 % inside it, and Figma's corner radius (228 of 1024; on macOS Apple's continuous corners). The
+  mark's 24 grid is 680 of the 1024 tile, 172 in. At 32 px the mark is 1:1 on its grid, at 16 px the 16 px cut.
+- **Small sizes are the cuts**: in `src-tauri/icons`, `32x32.png` and the 16 and 32 px images in `icon.ico` and
+  `icon.icns` are the pixel-grid cuts, filling their square as small icons do; every other size is the master scaled.
+- **The tray**: macOS's menu bar takes `tray-template.png` (black; macOS colours it for its look); Linux and Windows
+  take `64x64.png`, the app icon.
+- **Type**: Schibsted Grotesk for the wordmark and the website's headings; text stays Atkinson Hyperlegible Next, and
+  labels and code Atkinson Hyperlegible Mono. The website's scale is Figma's text styles `Hersir/*` (frame 5 Type).
 
 ## In the Figma file
 
-- Variables: **GizAi colour** (modes Dark and Light): `brand/pink`, the app's tokens from `design/tokens.json` (surfaces,
-  lines, text, accent, status, status glyphs, label colours) and the band's blue, line and glow; **GizAi size**: radii
-  and spacing. Code syntax is the CSS name, such as `var(--needs)`.
-- Components (in the Components frame): Logo (Layout × Colour), App icon, Favicon, Button (Primary and Secondary × five
-  states), Link, Input, Badge (Working, Needs you, Review, Testing, Done, On hold), Card label (frontend, backend, bug, qa)
-  and Mountains (the app's band and the website's hero, line for line from GA-139's `mountains.svg` and
-  `mountains-hero.svg`, brought in a part at a time).
-- `band-hero-line` and `band-hero-glow` are a proposal: the hero at GA-139's Medium strength; the app keeps Subtle.
+- The page **Hersir: brand direction** (184:2) holds the brand: the mark, the logo, the app icon and favicon, colour
+  (the variables **Hersir colour**, the website's), type, line art and voice.
+- The app's colours stay `design/tokens.json` (the variables **GizAi colour**, which still hold the old pink and amber
+  until Jefsev has seen the change). The frame **Hersir · 8 App statuses: before and after (GA-230)** (236:384) on the
+  same page shows the app's status glyphs, badges and the Inbox count with the old pink and amber and with the gold and
+  yellow, in dark and light, with the numbers and the memory graph's new colours, for Jefsev's review.
+- GizAi's brandbook (page Brandbook, GA-52) stays as it was.
