@@ -1,6 +1,6 @@
 [package]
 name = "gizai"
-description = "Gizai: clients, projects, tasks and local AI agents"
+description = "Hersir: clients, projects, tasks and local AI agents"
 edition.workspace = true
 license.workspace = true
 version.workspace = true
