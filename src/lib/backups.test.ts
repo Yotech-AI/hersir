@@ -1,5 +1,5 @@
 // GA-217 QA: Settings → General → Backups in words, from contract BK (GA-216): a snapshot's reason and step, its size and
-// computer ("from another computer" when Gizai couldn't name it: "this machine" or empty), why it can't be restored, the
+// computer ("from another computer" when Hersir couldn't name it: "this machine" or empty), why it can't be restored, the
 // last and next backup, the last error, when Back up now can start one, and Keep as typed (the backend checks the range).
 import { describe, expect, it } from "vitest";
 import { backupWhen, canBackUp, entryProblem, entrySize, EVERY, fromText, keepOf, KEEP_MAX, KEEP_MIN, lastErrorText, lastText, nextText,
@@ -21,8 +21,8 @@ describe("the section's words, as the card has them", () => {
   it("When: Daily, Weekly or Only when I ask, in that order", () => {
     expect(EVERY).toEqual([["daily", "Daily"], ["weekly", "Weekly"], ["manual", "Only when I ask"]]);
   });
-  it("Folder without one: Not set: Gizai makes no backups.", () => {
-    expect(NO_FOLDER).toBe("Not set: Gizai makes no backups.");
+  it("Folder without one: Not set: Hersir makes no backups.", () => {
+    expect(NO_FOLDER).toBe("Not set: Hersir makes no backups.");
   });
   it("Keep is 1 to 100, as the backend checks it", () => {
     expect([KEEP_MIN, KEEP_MAX]).toEqual([1, 100]);
@@ -34,7 +34,7 @@ describe("a snapshot's reason in words", () => {
     expect((["daily", "weekly", "manual", "quit", "before-restore"] as const).map(reasonText))
       .toEqual(["Daily", "Weekly", "By hand", "On quit", "Before a restore"]);
   });
-  it("a reason a newer Gizai added shows as it is, not blank", () => {
+  it("a reason a newer Hersir added shows as it is, not blank", () => {
     expect(reasonText("hourly")).toBe("hourly");
   });
 });
@@ -74,8 +74,8 @@ describe("a snapshot's time, size and computer", () => {
   });
   it("one that can't be restored says why; one that can says nothing", () => {
     expect(entryProblem({ restorable: true, problem: null })).toBeNull();
-    expect(entryProblem({ restorable: false, problem: "A newer Gizai made it (0.15.0): update Gizai to restore it" }))
-      .toBe("A newer Gizai made it (0.15.0): update Gizai to restore it");
+    expect(entryProblem({ restorable: false, problem: "A newer Hersir made it (0.16.0): update Hersir to restore it" }))
+      .toBe("A newer Hersir made it (0.16.0): update Hersir to restore it");
     // without the backend's reason it still says it can't be restored
     expect(entryProblem({ restorable: false, problem: null })).toBe("It can't be restored.");
     expect(entryProblem({ restorable: false, problem: "" })).toBe("It can't be restored.");
@@ -93,7 +93,7 @@ describe("the last and next backup", () => {
     expect(nextText({ ...STATUS, settings: { ...STATUS.settings, every: "manual" }, next: null }, NOW)).toBe("Next: when you ask");
   });
   it("one that is due already comes within the hour (the schedule looks every hour)", () => {
-    expect(nextText({ ...STATUS, last: null, next: NOW }, NOW)).toBe("Next: within the hour");
+    expect(nextText({ ...STATUS, next: NOW }, NOW)).toBe("Next: within the hour");
     expect(nextText({ ...STATUS, next: NOW - 60_000 }, NOW)).toBe("Next: within the hour");
   });
   it("while the folder can't be used the next one waits for it; without a folder there is no next", () => {

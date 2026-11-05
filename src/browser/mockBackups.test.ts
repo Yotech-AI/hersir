@@ -60,12 +60,31 @@ describe("the fixtures (fixtures.rs → fixtures.json)", () => {
     for (const e of l) expect(e.name).toMatch(new RegExp(`^gizai-${e.reason}-\\d{8}-\\d{6}-\\d{3}-[0-9a-f]+$`));
   });
 
-  it("one of them is another computer's (work-laptop), made by a newer Gizai, so it can't be restored and says why", async () => {
+  it("one of them is another computer's (work-laptop), made by a newer Hersir, so it can't be restored and says why", async () => {
     const other = (await list()).filter((e) => !e.thisComputer);
     expect(other).toHaveLength(1);
     expect(other[0]).toMatchObject({ deviceName: "work-laptop", restorable: false });
-    expect(other[0]!.problem).toMatch(/newer Gizai/);
+    expect(other[0]!.problem).toMatch(/newer Hersir/);
     expect((await list()).filter((e) => e.thisComputer).every((e) => e.restorable && e.problem === null)).toBe(true);
+  });
+
+  it("after the rebrand: its version is above the app's own and the 0.15.0 release (0.16.0), in the backend's words", async () => {
+    const other = (await list()).find((e) => !e.thisComputer)!;
+    const parts = (v: string) => v.split(".").map(Number);
+    const above = (a: string, b: string) => { const [x, y] = [parts(a), parts(b)]; const i = x.findIndex((n, j) => n !== y[j]); return i >= 0 && x[i]! > y[i]!; };
+    const app = (fixtures.commands.update_status as { current: string }).current;
+    expect(other.appVersion).toBe("0.16.0");
+    expect(above(other.appVersion, app)).toBe(true);
+    expect(above(other.appVersion, "0.15.0")).toBe(true);
+    // gizai-core's backups.rs says it so for a snapshot a newer Hersir made
+    expect(other.problem).toBe(`A newer Hersir made it (${other.appVersion}): update Hersir to restore it`);
+    // and this computer's are the app's own version
+    expect((await list()).filter((e) => e.thisComputer).map((e) => e.appVersion)).toEqual([app, app]);
+  });
+
+  it("the texts it carries say Hersir; Gizai is left only in the backups folder's kept name", async () => {
+    const texts = JSON.stringify([await status(), await list()]);
+    expect(texts.replace(/Gizai backups/g, "")).not.toMatch(/\bGiz[Aa][Ii]\b/);
   });
 });
 

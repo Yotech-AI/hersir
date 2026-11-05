@@ -75,7 +75,7 @@ vi.mock("../api", async (orig) => {
       h.saves.push(structuredClone(s));
       if (!(Number.isInteger(s.keep) && s.keep >= 1 && s.keep <= 100)) throw `Keep must be 1 to 100 snapshots, not ${s.keep}`;
       const folder = s.folder?.trim() || null;
-      if (folder && folder !== st().settings.folder && folder.startsWith("/readonly")) throw `Gizai can't write in ${folder}: permission denied`;
+      if (folder && folder !== st().settings.folder && folder.startsWith("/readonly")) throw `Hersir can't write in ${folder}: permission denied`;
       const moved = folder !== st().settings.folder;
       Object.assign(st(), { settings: { ...s, folder }, folder: folder && `${folder}/Gizai backups`, folderProblem: null });
       if (moved) Object.assign(st(), { last: null, lastError: null, next: folder && s.every !== "manual" ? NOW : null });
@@ -209,7 +209,7 @@ const LIST: BackupEntry[] = [
   entry({ name: "gizai-manual-20261026-090000-000-ce82a749", reason: "manual", madeAt: at(26, 9), dbBytes: 4_390_912 }),
   entry({ name: "gizai-quit-20261025-180000-000-ce82a749", reason: "quit", madeAt: at(25, 18), dbBytes: 1_000_000, filesBytes: 48_576 }),
   entry({ name: "gizai-daily-20261025-080000-000-0199f3a2", madeAt: at(25, 8), deviceId: "laptop", deviceName: "work-laptop", thisComputer: false,
-    appVersion: "0.15.0", schemaVersion: 41, dbBytes: 4_128_768, restorable: false, problem: "A newer Gizai made it (0.15.0): update Gizai to restore it" }),
+    appVersion: "0.16.0", schemaVersion: 41, dbBytes: 4_128_768, restorable: false, problem: "A newer Hersir made it (0.16.0): update Hersir to restore it" }),
   entry({ name: "gizai-weekly-20261021-080000-000-77aa0011", reason: "weekly", madeAt: at(21, 8), deviceId: "nas", deviceName: "this machine", thisComputer: false }),
   entry({ name: "gizai-before-restore-20261020-120000-000-ce82a749", reason: "before-restore", madeAt: at(20, 12) }),
 ];
@@ -283,9 +283,9 @@ describe("Folder", () => {
     expect(under("Folder")).toBe("");
   });
 
-  it("without one: Not set: Gizai makes no backups., Turn off off, and the list asks for a folder", async () => {
+  it("without one: Not set: Hersir makes no backups., Turn off off, and the list asks for a folder", async () => {
     await show(OFF, []);
-    expect(fieldText("Folder")).toContain("Not set: Gizai makes no backups.");
+    expect(fieldText("Folder")).toContain("Not set: Hersir makes no backups.");
     expect(button("Turn off").disabled).toBe(true);
     expect(fieldText("Backups")).toBe("Choose a folder to see its backups.");
   });
@@ -318,7 +318,7 @@ describe("Folder", () => {
     await show();
     h.picked = "/readonly/disk";
     await click("Browse…");
-    expect(under("Folder")).toBe("error: Gizai can't write in /readonly/disk: permission denied");
+    expect(under("Folder")).toBe("error: Hersir can't write in /readonly/disk: permission denied");
     expect(st().settings.folder).toBe("/home/you/Dropbox");
     expect(fieldText("Folder")).toContain("/home/you/Dropbox/Gizai backups");
     // a good folder after it clears the refusal
@@ -332,7 +332,7 @@ describe("Folder", () => {
     await show();
     await click("Turn off");
     expect(h.saves).toEqual([{ folder: null, every: "daily", onQuit: false, keep: 10 }]);
-    expect(fieldText("Folder")).toContain("Not set: Gizai makes no backups.");
+    expect(fieldText("Folder")).toContain("Not set: Hersir makes no backups.");
     expect(button("Turn off").disabled).toBe(true);
     expect(button("Back up now").disabled).toBe(true);
     expect(fieldText("Last and next")).not.toContain("Next:");
@@ -348,19 +348,19 @@ describe("Folder", () => {
 
   it("a folder problem that comes in backups-changed shows without a reload", async () => {
     await show();
-    Object.assign(st(), { folderProblem: "Gizai can't write in /home/you/Dropbox/Gizai backups" });
+    Object.assign(st(), { folderProblem: "Hersir can't write in /home/you/Dropbox/Gizai backups" });
     send();
     await settle();
-    expect(under("Folder")).toBe("warn: Gizai can't write in /home/you/Dropbox/Gizai backups");
+    expect(under("Folder")).toBe("warn: Hersir can't write in /home/you/Dropbox/Gizai backups");
     expect(h.calls.status).toBe(1);
   });
 });
 
 describe("When", () => {
-  it("Daily, Weekly and Only when I ask, the saved one picked, and Also when I quit Gizai completely with its hint", async () => {
+  it("Daily, Weekly and Only when I ask, the saved one picked, and Also when I quit Hersir completely with its hint", async () => {
     await show();
     expect(radios().map((r) => [r.label, r.input.checked])).toEqual([["Daily", true], ["Weekly", false], ["Only when I ask", false]]);
-    expect(fieldText("When")).toContain("Also when I quit Gizai completely");
+    expect(fieldText("When")).toContain("Also when I quit Hersir completely");
     expect(onQuit().checked).toBe(false);
     expect(under("When")).toBe("hint: Quitting then waits for the backup, usually a few seconds.");
   });
@@ -533,9 +533,9 @@ describe("Back up now", () => {
 
   it("a refusal shows why next to it, and the button is on again", async () => {
     await show();
-    h.nowRefusal = "Gizai can't write in /home/you/Dropbox/Gizai backups";
+    h.nowRefusal = "Hersir can't write in /home/you/Dropbox/Gizai backups";
     await click("Back up now");
-    expect(under("Last and next")).toBe("error: Gizai can't write in /home/you/Dropbox/Gizai backups");
+    expect(under("Last and next")).toBe("error: Hersir can't write in /home/you/Dropbox/Gizai backups");
     expect(button("Back up now").disabled).toBe(false);
   });
 
@@ -586,7 +586,7 @@ describe("the list", () => {
     expect(r[0]).toBe("today 11:00 | Daily | 7.4 MB");
     expect(r[1]).toBe("yesterday 09:00 | By hand | 7.3 MB");
     expect(r[2]).toMatch(/^\w{3} 25 Oct, 18:00 \| On quit \| 1\.0 MB$/);
-    expect(r[3]).toMatch(/^\w{3} 25 Oct, 08:00 \| Daily · from work-laptop \| 7\.1 MB \| A newer Gizai made it \(0\.15\.0\): update Gizai to restore it$/);
+    expect(r[3]).toMatch(/^\w{3} 25 Oct, 08:00 \| Daily · from work-laptop \| 7\.1 MB \| A newer Hersir made it \(0\.16\.0\): update Hersir to restore it$/);
     expect(r[4]).toBe("21 Oct, 08:00 | Weekly · from another computer | 7.4 MB");
     expect(r[5]).toBe("20 Oct, 12:00 | Before a restore | 7.4 MB");
     expect(fieldText("Backups")).not.toContain("Restore");
