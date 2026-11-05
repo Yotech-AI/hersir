@@ -52,7 +52,7 @@ export function ChatArchive({ live }: { live: ChatStatus[] }) {
         <div className="chat-col">
           {error && <div className="error-banner" role="alert">{error}</div>}
           {found && hits.length === 0 && (q
-            ? <div className="empty"><b>No chats match “{q}”.</b><span>The search looks in chat titles and in your messages and the Team Lead's, not in tool calls or Gizai's notes.</span></div>
+            ? <div className="empty"><b>No chats match “{q}”.</b><span>The search looks in chat titles and in your messages and the Team Lead's, not in tool calls or Hersir's notes.</span></div>
             : <div className="empty"><b>No chats yet.</b><span>Start one with New chat. Every chat stays here, also after it has left Recent.</span></div>)}
           {hits.length > 0 && (
             <div className="archive-list" role="list" aria-label={q ? "Chats found" : "All chats"}>

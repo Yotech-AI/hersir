@@ -355,7 +355,7 @@ export function TaskPage({ id, view = "card", run, youId }: { id: string; view?:
             {tab === "activity" && (
               <ul className="activity">
                 {(activity ?? []).slice().reverse().map((a, i) => (
-                  <li key={i}><b>{a.actorName ?? "Gizai"}</b><span className="grow">{describeChange(a)}</span><span className="faint" title={new Date(a.at).toLocaleString("en-GB")}>{relTime(a.at)}</span></li>
+                  <li key={i}><b>{a.actorName ?? "Hersir"}</b><span className="grow">{describeChange(a)}</span><span className="faint" title={new Date(a.at).toLocaleString("en-GB")}>{relTime(a.at)}</span></li>
                 ))}
                 {activity && activity.length === 0 && <li className="faint">Nothing yet.</li>}
               </ul>

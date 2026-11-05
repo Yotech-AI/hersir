@@ -59,7 +59,7 @@ describe("Open in editor on the card's top bar (GA-115)", () => {
     expect(b).toContain('class="btn sm"');
     expect(b).not.toContain("disabled");
     expect(b).toContain("lucide-square-code");
-    expect(b).toContain('title="Work on KADE-41 by hand: Gizai makes its worktree, pins the card to you so agents leave it alone, and moves it to In progress."');
+    expect(b).toContain('title="Work on KADE-41 by hand: Hersir makes its worktree, pins the card to you so agents leave it alone, and moves it to In progress."');
   });
 
   it("not on a card assigned to an agent, another person or nobody, nor without knowing who you are", () => {

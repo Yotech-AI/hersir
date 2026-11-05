@@ -88,7 +88,7 @@ export function OldWorktrees() {
       )}
       {anywayFor ? (
         <div className="ow-confirm" role="alertdialog" aria-label="Remove a worktree with uncommitted changes">
-          <span>{anywayFor.identifier} has {changes(anywayFor.uncommitted)}. Remove it anyway? Gizai puts {anywayFor.uncommitted === 1 ? "the change" : "the changes"} in git's stash first, so {anywayFor.uncommitted === 1 ? "it isn't" : "they aren't"} lost.</span>
+          <span>{anywayFor.identifier} has {changes(anywayFor.uncommitted)}. Remove it anyway? Hersir puts {anywayFor.uncommitted === 1 ? "the change" : "the changes"} in git's stash first, so {anywayFor.uncommitted === 1 ? "it isn't" : "they aren't"} lost.</span>
           <span className="ow-actions"><button className="btn ghost sm" disabled={busy} onClick={() => setAnyway(null)}>Keep</button>
             <button className="btn danger sm" disabled={busy} onClick={() => removeAnyway(anywayFor.taskId)}>{busy ? "Removing…" : "Remove anyway"}</button></span>
         </div>

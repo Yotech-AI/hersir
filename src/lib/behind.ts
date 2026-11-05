@@ -132,7 +132,7 @@ export function mainBar(m: FolderMain | null, o: { name: string; ended: EditorUp
     return { kind: "refused", lead, rest: lead ? `${after} ${why}` : why, tip: why, update: "on" };
   }
   if (m.fetchError) {
-    return { kind: "fetch-failed", text: `${fullStop(m.fetchError)} ${ago ? `The counts are from the last fetch, ${ago}.` : `Gizai can't tell yet whether ${o.name} is behind.`}` };
+    return { kind: "fetch-failed", text: `${fullStop(m.fetchError)} ${ago ? `The counts are from the last fetch, ${ago}.` : `Hersir can't tell yet whether ${o.name} is behind.`}` };
   }
   if (!lead) return null;
   if (m.canUpdate) return { kind: "behind", lead, rest: `${after} Update will ${fullStop(m.updateSays)}`, tip: capital(noStop(m.updateSays)), update: "on" };

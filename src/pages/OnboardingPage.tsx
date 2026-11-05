@@ -20,7 +20,7 @@ import type { Cli, CliStatus, McpScan } from "../types";
 import logo from "../assets/gizai-logo.svg?raw";
 import "../styles/onboarding.css";
 
-const TITLES = ["Welcome to GizAi", "Coding CLIs", "MCP servers", "You're all set"];
+const TITLES = ["Welcome to Hersir", "Coding CLIs", "MCP servers", "You're all set"];
 const LEADS = [
   "Four short steps, then your Team Lead says hello. First, you and your team.",
   "Your agents work through the coding CLIs on this computer, with your own logins.",
@@ -385,7 +385,7 @@ function McpServers({ mcp, failed, picks, onPicks }: {
     <section className="onb-part onb-mcp" aria-labelledby="onb-mcp-head">
       <div className="onb-head"><h2 id="onb-mcp-head">In your Claude Code</h2><span className="right">{tickedLine(tickedServers(scan, picks).length)}</span></div>
       <div className="panel onb-rows onb-servers"><ImportRows scan={scan} existing={existing} picks={picks} onPicks={onPicks} /></div>
-      <p className="onb-caption">Read only: GizAi doesn't change Claude Code's files or read its sign-ins. An import is a copy: later changes in Claude Code don't follow.</p>
+      <p className="onb-caption">Read only: Hersir doesn't change Claude Code's files or read its sign-ins. An import is a copy: later changes in Claude Code don't follow.</p>
       {problems}
     </section>
   );

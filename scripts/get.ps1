@@ -35,7 +35,7 @@ param(
 
   # What this script gets comes from GitHub, so an install never depends on the website: the source from $DefaultRepo,
   # the latest release from GitHub's API. The one lines it only shows you are gizai.app's.
-  $DefaultRepo = 'https://github.com/Yotech-AI/gizai.git'
+  $DefaultRepo = 'https://github.com/Yotech-AI/hersir.git'
   $GetPs1 = 'https://gizai.app/install.ps1'
   $GetSh = 'https://gizai.app/install.sh'
 

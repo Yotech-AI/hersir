@@ -51,7 +51,7 @@ esac
 STUB
 git -C "$R" add -A && git -C "$R" -c user.email=t@t -c user.name=t commit -q -m "release 9.9.9" && git -C "$R" tag v9.9.9
 cat > "$T/latest.json" <<'JSON'
-{"tag_name": "v9.9.9", "name": "v9.9.9", "html_url": "https://github.com/Yotech-AI/gizai/releases/tag/v9.9.9", "published_at": "2026-10-07T12:00:00Z", "draft": false, "prerelease": false, "body": "- A fake release for the update test"}
+{"tag_name": "v9.9.9", "name": "v9.9.9", "html_url": "https://github.com/Yotech-AI/hersir/releases/tag/v9.9.9", "published_at": "2026-10-07T12:00:00Z", "draft": false, "prerelease": false, "body": "- A fake release for the update test"}
 JSON
 
 # One headless Gizai session: Settings, a wait for the release check (20 s after start), then a click on the notice.
