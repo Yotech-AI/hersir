@@ -100,6 +100,6 @@ Each value with its contrast on `term-bg`. `=` follows another token, with its v
 
 Added under "Colour carries meaning, never decoration", after the line on `needs`:
 
-> - The terminal's own colours (`term-*`) are what programs print, not Gizai's states: `term-cyan` is a sky blue and
+> - The terminal's own colours (`term-*`) are what programs print, not Hersir's states: `term-cyan` is a sky blue and
 >   `term-magenta` a violet, at least 35° of hue (OKLCH) from `live` and `needs`, so a program's cyan never reads as an
 >   agent at work, nor its magenta as "needs you".

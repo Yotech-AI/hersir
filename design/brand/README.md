@@ -5,7 +5,7 @@ Hersir's mark, logo, favicon and app icon as SVG files, made by `gen-brand.mjs`,
 brand direction** ([open](https://www.figma.com/design/Q2dp2xiv8MMm90Xwj3ToCI/Giz-AI?node-id=184-2)). `gen-brand.mjs`
 takes them over number for number (the component Hersir mark 198:258 and its 16 px cut 198:263, the wordmark 187:38,
 the logos 187:39 and 187:50, the app icon's tile 187:178) and draws the files itself rather than keeping Figma's exports,
-so every logo, tile, cut and copy comes from one place. They replace GizAi's G (GA-52); the website (GW-12) made its
+so every logo, tile, cut and copy comes from one place. They replace the old G (GA-52); the website (GW-12) made its
 icons from the same frames.
 
 Run `node design/brand/gen-brand.mjs` to write the SVGs again, with the app's two copies (`src-tauri/icons/gizai.svg` and
@@ -41,7 +41,7 @@ The mark and each logo come in four colours: `-on-dark` (the mark #f2a53a, the n
   the eye runs through it as one word. Its H is the longboat H at the font's weight. Say it HER-seer.
 - **Colour**: on dark and on light the longboat H is amber, Hersir colour's `brand/amber` (#f2a53a, 9.4:1 on the brand's
   dark page; #9e5500, 4.9:1 on its light page), and the name is text colour; white or black for one colour.
-- **The gold and "needs you"** share the hue and keep apart by place and shape, as GizAi's pink did. The brand gold goes
+- **The gold and "needs you"** share the hue and keep apart by place and shape, as the old pink did. The brand gold goes
   on the logo, the app icon and the favicon. Inside the app's window gold means only "needs you" (`needs`: Review,
   Deploy, holds, the Inbox count), so the app shows its logo in one colour (`text-2`), and the accent that buttons,
   links and focus use stays blue. `needs` is the brand's amber in dark; in light it is #9a5800, a hair yellower than
@@ -63,9 +63,9 @@ The mark and each logo come in four colours: `-on-dark` (the mark #f2a53a, the n
 ## In the Figma file
 
 - The page **Hersir: brand direction** (184:2) holds the brand: the mark, the logo, the app icon and favicon, colour
-  (the variables **Hersir colour**, the website's), type, line art and voice.
-- The app's colours stay `design/tokens.json` (the variables **GizAi colour**, which still hold the old pink and amber
+  (the variables `Hersir colour`, the website's), type, line art and voice.
+- The app's colours stay `design/tokens.json` (the variables `GizAi colour`, which still hold the old pink and amber
   until Jefsev has seen the change). The frame **Hersir · 8 App statuses: before and after (GA-230)** (236:384) on the
   same page shows the app's status glyphs, badges and the Inbox count with the old pink and amber and with the gold and
   yellow, in dark and light, with the numbers and the memory graph's new colours, for Jefsev's review.
-- GizAi's brandbook (page Brandbook, GA-52) stays as it was.
+- The old brandbook (page Brandbook, GA-52) stays as it was.

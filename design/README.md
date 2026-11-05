@@ -1,7 +1,7 @@
-Gizai is a desktop app for agentic software development: clients, projects, tasks and a team of
+Hersir is a desktop app for agentic software development: clients, projects, tasks and a team of
 local AI coding agents, used all day by one developer. The interface is an operational console:
 dense, dark, calm, and honest about what agents are doing. Paperclip and Linear are the reference;
-Gizai keeps their scanning density and adds its own meaning for colour.
+Hersir keeps their scanning density and adds its own meaning for colour.
 
 ## Content fundamentals
 
@@ -38,7 +38,7 @@ and the drawer edge. Shadows only on things that float: `shadow-pop`, `shadow-dr
 - `needs` (gold, Hersir's amber) means "a person is needed": Review, holds, the Inbox count. Every other status
   colour keeps at least 35° of hue (OKLCH) and a ΔE2000 of 15 from it, in both themes: In progress (`st-progress`) and
   `warning` are a yellow for that (GA-230).
-- The terminal's own colours (`term-*`) are what programs print, not Gizai's states: `term-cyan` is a sky blue and
+- The terminal's own colours (`term-*`) are what programs print, not Hersir's states: `term-cyan` is a sky blue and
   `term-magenta` a violet, at least 35° of hue (OKLCH) from `live` and `needs`, so a program's cyan never reads as an
   agent at work, nor its magenta as "needs you".
 - The mountains along the bottom of the window (`band-*`, GA-139) are the window's own light, not a state: one cool
@@ -105,7 +105,7 @@ chips and small controls, `radius` for buttons, inputs, rows and nav items, `rad
 and panels, `radius-pill` for badges. Never round everything the same.
 
 **Layout.** Three zones: the sidebar (`size-side`), the main column, and on detail pages a
-properties panel (`size-props`) that can be closed. There is no org rail: Gizai has one
+properties panel (`size-props`) that can be closed. There is no org rail: Hersir has one
 organisation. A top bar (`size-topbar`) holds breadcrumbs and page actions; list pages add a view
 toolbar below it (New task on the left; view switch, Filters, Sort, Group on the right). Pages with
 parts (Usage, Settings) show them as tabs, the open one in the address. The Editor adds a file
@@ -134,8 +134,8 @@ Everything respects `prefers-reduced-motion`.
 ## Iconography
 
 Lucide icons (ISC licence), drawn at 16px with a 1.75 stroke in `currentColor`; 14px inside small
-buttons, 20px in empty states. The Icons asset group holds the set Gizai uses. Status glyphs are
-Gizai's own (StatusIcon), drawn on a 16px grid. Map concepts consistently:
+buttons, 20px in empty states. The Icons asset group holds the set Hersir uses. Status glyphs are
+Hersir's own (StatusIcon), drawn on a 16px grid. Map concepts consistently:
 
 | Concept | Icon |
 |---|---|
@@ -157,4 +157,4 @@ Gizai's own (StatusIcon), drawn on a 16px grid. Map concepts consistently:
 | Branch, commit, terminal | `git-branch`, `git-commit-horizontal`, `terminal` |
 | Agent roles | lead `crown`, frontend `monitor`, backend `server`, design `palette`, QA `flask-conical`, DevOps `container`, other `bot` |
 
-No emoji, no illustrations. Gizai has no logo yet: the name is set in plain type.
+No emoji, no illustrations. The logo is the longboat H (`design/brand/`): inside the window it shows in one colour (`text-2`).

@@ -1,6 +1,6 @@
 # Onboarding on first start (GA-168)
 
-What someone sees the first time GizAi opens: four steps (you and your team, coding CLIs, MCP servers, ready), then the
+What someone sees the first time Hersir opens: four steps (you and your team, coding CLIs, MCP servers, ready), then the
 Chat page, where a first message makes the Team Lead welcome them. Today the app opens straight on the board. Designed in
 Figma for Jefsev's review on 14 Oct 2026; GA-162 (the backend) and GA-164 (the screens) build it once it is approved.
 Where this design shows how things look it is the reference; where GA-164 says how they behave, GA-164 is.
@@ -69,7 +69,7 @@ eyebrow ("Step 2 of 4").
 
 ### 1 · You and your team
 
-- Heading **Welcome to GizAi**, then the line under it.
+- Heading **Welcome to Hersir**, then the line under it.
 - Two fields side by side (each 310): **Your name**, filled in with the login name (`display_name()` in
   `src-tauri/src/lib.rs`: `$USER` with a capital, `%USERNAME%` on Windows, for example `Jefsev`), and **Team name**,
   empty with the placeholder `My team`. The cursor waits in Team name (Focus in the frame), since the name is there.
@@ -82,7 +82,7 @@ eyebrow ("Step 2 of 4").
 
 - "Found on this computer" with **Look again** on the right (ghost, small, `refresh-cw`), then a panel with a row per CLI
   found: the tick, its name, its program in t-code on the right. Claude Code, Codex, Gemini, OpenCode, Cursor Agent and
-  Crush are the ones GizAi knows (`KNOWN` in `src-tauri/src/clis.rs`, plus the built-in Claude Code).
+  Crush are the ones Hersir knows (`KNOWN` in `src-tauri/src/clis.rs`, plus the built-in Claude Code).
 - Claude Code's tick is on and can't change ("· Built in"): Settings → Coding CLIs always has it. The others found start
   ticked; Next adds the ticked ones to Settings → Coding CLIs.
 - Under the list, the known CLIs not found, in one line.
@@ -104,7 +104,7 @@ eyebrow ("Step 2 of 4").
 - "In your Claude Code", and on the right how many are ticked and what Next does with them.
 - A panel with Settings → MCP servers → Import from Claude Code's rows (`ImportPanel` in
   `src/components/McpSettings.tsx`), unchanged: the tick, the name (600), `· {account} · {scope} scope[: {folder}] ·
-  {type}` in `text-3`, **Already in the list** (badge outline) for a server whose command or address GizAi has, the
+  {type}` in `text-3`, **Already in the list** (badge outline) for a server whose command or address Hersir has, the
   command or address in t-code, and the environment and header names when it has them. None start ticked, as in Settings
   (the frame shows two the user ticked).
   A name that clashes asks for another name in the row, as in Settings.
@@ -120,13 +120,13 @@ eyebrow ("Step 2 of 4").
   Ready).
 - "The chat opens with this message from you:" and the first message, quoted (2 px `line-2` on its left), so nothing is
   sent in your name unseen.
-- Back, and **Open the Team Lead chat** in Next's place (primary, `messages-square`): GizAi starts a chat with the Team
-  Lead called "Welcome to GizAi", sends the first message as yours and opens it.
+- Back, and **Open the Team Lead chat** in Next's place (primary, `messages-square`): Hersir starts a chat with the Team
+  Lead called "Welcome to Hersir", sends the first message as yours and opens it.
 
 ### Right after: the Chat page (frame *Chat · Right after · Dark*)
 
 The app as it is today, nothing new but the chat's title: the sidebar (Chat current, with "working"), the top bar (Chat /
-Welcome to GizAi; the Team Lead chip "working"), Recent with the one chat (its pulse), your message on the right and the
+Welcome to Hersir; the Team Lead chip "working"), Recent with the one chat (its pulse), your message on the right and the
 Team Lead's answer starting under its name: the text so far, the teal caret, "Writing…". The composer waits with "Queue a
 message for when this answer is done…" and Stop. Teal here is right: an agent is at work. The app's sidebar has no logo
 today (the brandbook leaves bringing the logo into the app to a card of its own), so this frame has none either; the
@@ -217,7 +217,7 @@ Sizes inside them:
 
 Marks: **GA-164** is GA-164's text as GA-168 quotes it, word for word. **Changed**: GA-164 gives a text and this design
 proposes other words (why in the last column). **New**: GA-164 gives no text; this design proposes it. **App**: a text
-Gizai already has, unchanged. **Example**: a value that depends on the computer or what the user typed.
+Hersir already has, unchanged. **Example**: a value that depends on the computer or what the user typed.
 
 ### On every step
 
@@ -239,7 +239,7 @@ Gizai already has, unchanged. **Example**: a value that depends on the computer 
 
 | Where | Text | Mark |
 |---|---|---|
-| Heading | Welcome to GizAi | Changed: GA-164 names the step "You and your team" (kept in the indicator); this is the first screen of GizAi anyone sees. |
+| Heading | Welcome to Hersir | Changed: GA-164 names the step "You and your team" (kept in the indicator); this is the first screen of Hersir anyone sees. |
 | Under the heading | Four short steps, then your Team Lead says hello. First, you and your team. | New |
 | Field label | Your name | New (GA-164: "your name") |
 | Field value | Jefsev | Example: the login name, as GA-164 says |
@@ -296,7 +296,7 @@ Gizai already has, unchanged. **Example**: a value that depends on the computer 
 | Row, badge | Already in the list | App |
 | Row, second line | https://mcp.figma.com/mcp · npx -y @modelcontextprotocol/server-github · npx chrome-devtools-mcp@latest · https://mcp.linear.app/sse · https://mcp.context7.com/mcp | Example |
 | Row, third line | Environment: GITHUB_PERSONAL_ACCESS_TOKEN (values go to your keychain) | App (the format), Example (the name) |
-| Under the list | Read only: GizAi doesn't change Claude Code's files or read its sign-ins. An import is a copy: later changes in Claude Code don't follow. | New here (Settings' note, shorter) |
+| Under the list | Read only: Hersir doesn't change Claude Code's files or read its sign-ins. An import is a copy: later changes in Claude Code don't follow. | New here (Settings' note, shorter) |
 
 **With no MCP servers**
 
@@ -315,7 +315,7 @@ Gizai already has, unchanged. **Example**: a value that depends on the computer 
 | Summary, no servers | None | New |
 | Summary, button | Change | New |
 | Label | The chat opens with this message from you: | New |
-| The message | Hi! I just installed GizAi and set up my team. Please welcome me, tell me in a few lines what you and the team can do, and ask whether I'd like help setting up agents, clients, projects, tasks or anything else. | GA-164 |
+| The message | Hi! I just installed Hersir and set up my team. Please welcome me, tell me in a few lines what you and the team can do, and ask whether I'd like help setting up agents, clients, projects, tasks or anything else. | GA-164 |
 | Next's place | Open the Team Lead chat | GA-164 |
 | Proposal without Claude Code (not drawn) | Open the board | New |
 
@@ -323,16 +323,16 @@ Gizai already has, unchanged. **Example**: a value that depends on the computer 
 
 | Where | Text | Mark |
 |---|---|---|
-| The chat's title (top bar, Recent) | Welcome to GizAi | New: today a chat takes its first message's first 60 characters ("Hi! I just installed GizAi and set up my team. Please…"); the onboarding names it. |
-| Your message | Hi! I just installed GizAi and set up my team. Please welcome me, tell me in a few lines what you and the team can do, and ask whether I'd like help setting up agents, clients, projects, tasks or anything else. | GA-164 |
-| The answer starting | Welcome to GizAi, Jefsev! I'm your Team Lead. I plan the work with you and turn it into cards, and your Backend, Frontend, QA and DevOps agents pick them up, each on a branch of its own. QA tests every card before it comes back to you for review. | Example (the Team Lead writes its own) |
+| The chat's title (top bar, Recent) | Welcome to Hersir | New: today a chat takes its first message's first 60 characters ("Hi! I just installed Hersir and set up my team. Please…"); the onboarding names it. |
+| Your message | Hi! I just installed Hersir and set up my team. Please welcome me, tell me in a few lines what you and the team can do, and ask whether I'd like help setting up agents, clients, projects, tasks or anything else. | GA-164 |
+| The answer starting | Welcome to Hersir, Jefsev! I'm your Team Lead. I plan the work with you and turn it into cards, and your Backend, Frontend, QA and DevOps agents pick them up, each on a branch of its own. QA tests every card before it comes back to you for review. | Example (the Team Lead writes its own) |
 | Everything else | Chat, New chat, Recent, just now, Archive, Team Lead, working, Writing…, Queue a message for when this answer is done…, Enter queues, Shift Enter new line, Runs on, Claude Code, Stop, and the sidebar | App |
 
 ### Step errors
 
 | Where | Text | Mark |
 |---|---|---|
-| Under the step (`Onboarding/Notice`, Error) | The backend's own message, for example: Couldn't save your team: the database is read only. Try again, or quit and start GizAi again. | Example |
+| Under the step (`Onboarding/Notice`, Error) | The backend's own message, for example: Couldn't save your team: the database is read only. Try again, or quit and start Hersir again. | Example |
 
 ## What Figma can't show
 
