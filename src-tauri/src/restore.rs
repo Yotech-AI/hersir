@@ -258,7 +258,7 @@ fn save_today(st: &AppState, chosen: &Path) -> Result<Saved, String> {
             Err(e) => why.push(e),
         }
     }
-    Err(format!("Gizai can't save today's data first: {}. Choose a backups folder in Settings → General → Backups.", why.join("; ")))
+    Err(format!("Hersir can't save today's data first: {}. Choose a backups folder in Settings → General → Backups.", why.join("; ")))
 }
 
 /// Removes the staged restore (`<data>/restore/`, apart from `restore/failed/`); the before-restore snapshot stays in its

@@ -125,7 +125,7 @@ This computer's, kept in its database; a restore keeps them. Saving checks Keep 
 
 ## Restore
 
-A restore (GA-218) brings a snapshot back as this computer's data. It never makes two computers share one device id, this computer's own settings stay this computer's, and GizAi notes which snapshot it came back from, so a sync knows where this computer's data starts. The same rules hold for sync across devices. Nothing in the OS keychain is restored or removed: the restored data asks for the keys this computer doesn't have, as a new install does.
+A restore (GA-218) brings a snapshot back as this computer's data. It never makes two computers share one device id, this computer's own settings stay this computer's, and Hersir notes which snapshot it came back from, so a sync knows where this computer's data starts. The same rules hold for sync across devices. Nothing in the OS keychain is restored or removed: the restored data asks for the keys this computer doesn't have, as a new install does.
 
 `start_restore(folder, name)` runs in the background, one restore at a time, and is refused while a backup or another restore runs. `folder` is read as for listing (the folder itself when it holds `gizai-backups.json`, else its `Gizai backups`). Each step goes out in `restore-changed` with the status (contract BR's `RestoreStatus`). A restore that is ready already gives way to a new one.
 
@@ -134,7 +134,7 @@ A restore (GA-218) brings a snapshot back as this computer's data. It never make
 Each failure stops the restore with its reason, and nothing is staged:
 
 - the manifest is a snapshot's (`format` is `gizai-backup`) and reads as format 1's;
-- its `format_version` is 1 or lower, and its `schema_version` is at most this GizAi's (`db::SCHEMA_VERSION`). A newer one is refused with `Made by a newer Gizai (database version N). Update Gizai first.` (for the format: `backup format N`);
+- its `format_version` is 1 or lower, and its `schema_version` is at most this Hersir's (`db::SCHEMA_VERSION`). A newer one is refused with `Made by a newer Hersir (database version N). Update Hersir first.` (for the format: `backup format N`);
 - the database file is there and decompresses, its SHA-256 and size match `db.sha256` and `db.db_bytes`, it passes `PRAGMA integrity_check`, and its `user_version` is the manifest's `schema_version`;
 - every blob in `files` is in the folder's `files/`, with its size and its SHA-256. A snapshot with `files_missing` is refused too: those blobs aren't there.
 
@@ -142,7 +142,7 @@ The database is decompressed into `<data folder>/restore/gizai.db.part` for the 
 
 ### 2. Today's data is saved
 
-A snapshot of today's data with reason `before-restore`, made as any snapshot is: in the backups folder set in Settings, or, when none is set (or it can't be written now), in the folder restored from. It waits at most 5 minutes for a snapshot that runs already. When neither can be written, the restore stops: `Gizai can't save today's data first: <why>. Choose a backups folder in Settings → General → Backups.`
+A snapshot of today's data with reason `before-restore`, made as any snapshot is: in the backups folder set in Settings, or, when none is set (or it can't be written now), in the folder restored from. It waits at most 5 minutes for a snapshot that runs already. When neither can be written, the restore stops: `Hersir can't save today's data first: <why>. Choose a backups folder in Settings → General → Backups.`
 
 ### 3. Staging
 
@@ -154,7 +154,7 @@ A snapshot of today's data with reason `before-restore`, made as any snapshot is
   failed/                     a restored database that couldn't be opened (see below)
 ```
 
-Once `restore.json` is there, the restore is ready: it waits for a restart, and today's data keeps working until then. The blobs the data folder has already get their modified time set to now, so the housekeeping (which leaves blobs changed in the last day alone) keeps them until the restart. `restart_to_restore()` quits GizAi the usual way (agents at work are stopped first, and it doesn't back up on quit) and starts the same GizAi again: the installed launcher, as after an update, or else the program that runs now. `cancel_restore()` removes what is staged (`restore/`, apart from `restore/failed/`); the before-restore snapshot stays in its folder, and the next start is a normal one.
+Once `restore.json` is there, the restore is ready: it waits for a restart, and today's data keeps working until then. The blobs the data folder has already get their modified time set to now, so the housekeeping (which leaves blobs changed in the last day alone) keeps them until the restart. `restart_to_restore()` quits Hersir the usual way (agents at work are stopped first, and it doesn't back up on quit) and starts the same Hersir again: the installed launcher, as after an update, or else the program that runs now. `cancel_restore()` removes what is staged (`restore/`, apart from `restore/failed/`); the before-restore snapshot stays in its folder, and the next start is a normal one.
 
 ### 4. The swap at the next start
 
@@ -165,7 +165,7 @@ Before the database opens, when `restore/restore.json` says ready, in this order
 3. `restore.json` notes the name today's database gets, then today's database moves to `backups/gizai-before-restore-<stamp>.db`, and the staged one takes its place as `gizai.db`. A start after a swap that was interrupted there carries on from where it was.
 4. The staged blobs move into `files/`; a blob that is there already stays. `restore.json` goes: a restore is applied once.
 5. The database opens as usual: an older schema is upgraded, with its copy in `backups/gizai-before-v<N>-<stamp>.db`.
-6. When the restored database can't be opened (or step 2 fails), it moves to `restore/failed/<snapshot>.db`, today's database comes back, and GizAi starts with it.
+6. When the restored database can't be opened (or step 2 fails), it moves to `restore/failed/<snapshot>.db`, today's database comes back, and Hersir starts with it.
 7. `restore/` goes, apart from `restore/failed/`. The result (`{ ok, at, snapshot, fromComputer, message }`) is kept as this computer's setting `restore_result`, for the window (`restore_status().result`), until `dismiss_restore_result`.
 
 ### The device rule

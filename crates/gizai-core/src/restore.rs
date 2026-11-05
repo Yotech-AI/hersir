@@ -187,10 +187,10 @@ fn read_manifest(dir: &Path, name: &str) -> Result<Manifest> {
     }
     let number = |key: &str| v.get(key).and_then(|x| x.as_i64()).unwrap_or(0);
     if number("format_version") > backups::FORMAT_VERSION {
-        return Err(invalid(format!("Made by a newer Gizai (backup format {}). Update Gizai first.", number("format_version"))));
+        return Err(invalid(format!("Made by a newer Hersir (backup format {}). Update Hersir first.", number("format_version"))));
     }
     if number("schema_version") > db::SCHEMA_VERSION {
-        return Err(invalid(format!("Made by a newer Gizai (database version {}). Update Gizai first.", number("schema_version"))));
+        return Err(invalid(format!("Made by a newer Hersir (database version {}). Update Hersir first.", number("schema_version"))));
     }
     serde_json::from_value(v).map_err(|e| invalid(format!("{} can't be read as a snapshot's manifest: {e}", path.display())))
 }
@@ -457,7 +457,7 @@ pub fn open(data_dir: &Path) -> Result<(Db, Option<RestoreResult>)> {
             };
             let _ = cancel(data_dir);
             let result = RestoreResult { ok: false, at: now, snapshot: String::new(), from_computer: String::new(),
-                message: format!("Gizai couldn't restore the snapshot it had ready ({why}), so it started with today's data.") };
+                message: format!("Hersir couldn't restore the snapshot it had ready ({why}), so it started with today's data.") };
             return opened_with(&path, result);
         }
     };
@@ -471,7 +471,7 @@ pub fn open(data_dir: &Path) -> Result<(Db, Option<RestoreResult>)> {
             let aside = set_aside(&rdir, &rdir.join(STAGED_DB), &m.name);
             let _ = cancel(data_dir);
             let kept = aside.map(|p| format!(" The snapshot's database is in {}.", p.display())).unwrap_or_default();
-            return opened_with(&path, failed(format!("Gizai couldn't restore {}, so it started with today's data: {}.{kept}", m.name, short(&why))));
+            return opened_with(&path, failed(format!("Hersir couldn't restore {}, so it started with today's data: {}.{kept}", m.name, short(&why))));
         }
     };
     // swapped: from now on nothing is staged, so a restore is applied once, whatever happens next
@@ -486,7 +486,7 @@ pub fn open(data_dir: &Path) -> Result<(Db, Option<RestoreResult>)> {
                 at: now,
                 snapshot: m.name.clone(),
                 from_computer: m.device.name.clone(),
-                message: format!("Gizai restored {} from {}. Today's data was saved as {} first. The agents are paused: start them \
+                message: format!("Hersir restored {} from {}. Today's data was saved as {} first. The agents are paused: start them \
                                   again when you're ready.", m.name, computer(&m.device.name), staged.saved_today.name),
             };
             keep_result(&db, &result);
@@ -505,7 +505,7 @@ pub fn open(data_dir: &Path) -> Result<(Db, Option<RestoreResult>)> {
             }
             let _ = cancel(data_dir);
             let kept = aside.map(|p| format!(" The snapshot's database is in {}.", p.display())).unwrap_or_default();
-            opened_with(&path, failed(format!("Gizai couldn't open the restored data of {}, so it started with today's data: {}.{kept}",
+            opened_with(&path, failed(format!("Hersir couldn't open the restored data of {}, so it started with today's data: {}.{kept}",
                                               m.name, short(&e.to_string()))))
         }
     }

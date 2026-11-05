@@ -517,7 +517,7 @@ pub fn start_again_command(st: &AppState) -> Result<std::process::Command, Strin
     let program = match install_prefix(&inner) {
         Ok(_) => installed_program(&inner)?,
         Err(_) => inner.exe.clone().filter(|p| gizai_agents::os::executable(p)).ok_or_else(|| {
-            "Gizai can't tell where it runs from, so it can't start itself again: quit Gizai and start it yourself".to_string()
+            "Hersir can't tell where it runs from, so it can't start itself again: quit Hersir and start it yourself".to_string()
         })?,
     };
     Ok(start_after_quit(&program))

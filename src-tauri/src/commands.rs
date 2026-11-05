@@ -1011,7 +1011,7 @@ pub async fn cancel_restore(st: State<'_, AppState>) -> R<gizai_core::restore::R
 pub async fn restart_to_restore(app: AppHandle, st: State<'_, AppState>) -> R<()> {
     off(&st, |st| {
         let mut cmd = crate::restore::restart_command(st)?;
-        cmd.spawn().map(|_| ()).map_err(|e| format!("Couldn't restart Gizai: {e}"))
+        cmd.spawn().map(|_| ()).map_err(|e| format!("Couldn't restart Hersir: {e}"))
     }).await?;
     // the restart to restore doesn't back up on quit: today's data was saved before it was staged
     st.backups.quit_without_backup();
