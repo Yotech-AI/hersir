@@ -478,11 +478,11 @@ fn a_merged_pull_requests_merge_commit_and_diff_come_from_bitbucket_and_the_logi
     assert!(followed.iter().all(|r| r.authorization == basic(GOOD)));
     // never anywhere else with the login, not even a host that merely starts like the API's
     let e = bitbucket::pull_diff(&login(GOOD), "acme/merged", 6).unwrap_err();
-    assert_eq!(e, "Bitbucket sent Gizai elsewhere for that diff (https://evil.example/steal), and Gizai only takes your login to Bitbucket's API");
+    assert_eq!(e, "Bitbucket sent Hersir elsewhere for that diff (https://evil.example/steal), and Hersir only takes your login to Bitbucket's API");
     let e = bitbucket::pull_diff(&login(GOOD), "acme/merged", 7).unwrap_err();
-    assert!(e.starts_with("Bitbucket sent Gizai elsewhere for that diff (http://127.0.0.1:") && e.contains(".evil.example/"), "{e}");
+    assert!(e.starts_with("Bitbucket sent Hersir elsewhere for that diff (http://127.0.0.1:") && e.contains(".evil.example/"), "{e}");
     let e = bitbucket::pull_diff(&login(GOOD), "acme/merged", 8).unwrap_err();
-    assert_eq!(e, "Bitbucket kept sending Gizai elsewhere for that diff");
+    assert_eq!(e, "Bitbucket kept sending Hersir elsewhere for that diff");
     assert_eq!(requests(|r| r.path == "/2.0/repositories/acme/merged/pullrequests/8/diff").len(), 3, "three tries");
     let e = bitbucket::pull_diff(&login(REFUSED), "acme/merged", 3).unwrap_err();
     assert!(e.contains("log in to Bitbucket again"), "{e}");

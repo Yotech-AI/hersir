@@ -61,12 +61,12 @@ describe("Quit: the same words as the tray (GA-232)", () => {
     expect(quit).toContain('label="Quit Hersir"');
   });
 
-  it("the tray's items are Open Hersir and Quit Hersir completely once GA-232 changes them (Gizai before), the same words", () => {
+  it("the tray's items are Open Hersir and Quit Hersir completely since GA-232, the same words", () => {
     const lib = read("src-tauri/src/lib.rs");
     const open = /MenuItem::with_id\(app, "open", "([^"]+)"/.exec(lib)?.[1];
     const quit = /MenuItem::with_id\(app, "quit", "([^"]+)"/.exec(lib)?.[1];
-    expect(["Open Hersir", "Open Gizai"]).toContain(open);
-    expect(["Quit Hersir completely", "Quit Gizai completely"]).toContain(quit);
+    expect(open).toBe("Open Hersir");
+    expect(quit).toBe("Quit Hersir completely");
   });
 });
 

@@ -237,13 +237,13 @@ pub fn push_problem(said: &str, over: &PushOver) -> Problem {
     }
     if has("[rejected]") || has("non-fast-forward") || has("(fetch first)") {
         return Problem::new("The branch on GitHub has commits this one doesn't",
-                            "Gizai never forces a push: merge GitHub's copy into the branch first.");
+                            "Hersir never forces a push: merge GitHub's copy into the branch first.");
     }
     if ["Could not resolve host", "Failed to connect to", "Couldn't connect to server", "Connection timed out", "Network is unreachable"].iter().any(|s| has(s)) {
         return Problem::new("Can't reach github.com", "Check your internet connection, then try again.");
     }
     if has("src refspec") && has("does not match any") {
-        return Problem::new("The repository has no commits yet", "Gizai tries a push with its latest commit: commit something first.");
+        return Problem::new("The repository has no commits yet", "Hersir tries a push with its latest commit: commit something first.");
     }
     Problem::plain(last_words(said))
 }
@@ -264,17 +264,17 @@ fn bitbucket_push_problem(said: &str) -> Problem {
     }
     if ["could not read Username", "could not read Password", "terminal prompts disabled", "Authentication failed"].iter().any(|s| has(s)) {
         return Problem::new("git tried HTTPS, and has no login for it",
-                            "Check where this repository pushes to (git remote -v): Gizai pushes to Bitbucket over SSH, with your SSH keys.");
+                            "Check where this repository pushes to (git remote -v): Hersir pushes to Bitbucket over SSH, with your SSH keys.");
     }
     if has("[rejected]") || has("non-fast-forward") || has("(fetch first)") {
         return Problem::new("The branch on Bitbucket has commits this one doesn't",
-                            "Gizai never forces a push: merge Bitbucket's copy into the branch first.");
+                            "Hersir never forces a push: merge Bitbucket's copy into the branch first.");
     }
     if ["Could not resolve host", "Failed to connect to", "Couldn't connect to server", "Connection timed out", "Network is unreachable"].iter().any(|s| has(s)) {
         return Problem::new("Can't reach bitbucket.org", "Check your internet connection, then try again.");
     }
     if has("src refspec") && has("does not match any") {
-        return Problem::new("The repository has no commits yet", "Gizai tries a push with its latest commit: commit something first.");
+        return Problem::new("The repository has no commits yet", "Hersir tries a push with its latest commit: commit something first.");
     }
     Problem::plain(last_words(said))
 }
@@ -326,7 +326,7 @@ fn bitbucket_ssh_problem(said: &str) -> Option<Problem> {
 fn ssh_missing(host: Host) -> Problem {
     match host {
         Host::GitHub => Problem::new("ssh isn't installed", format!("Install OpenSSH. {OR_HTTPS}")),
-        Host::Bitbucket => Problem::new("ssh isn't installed", "Install OpenSSH: Gizai pushes to Bitbucket over SSH."),
+        Host::Bitbucket => Problem::new("ssh isn't installed", "Install OpenSSH: Hersir pushes to Bitbucket over SSH."),
     }
 }
 
@@ -429,7 +429,7 @@ fn own_ssh_shell() -> Result<PathBuf, Problem> {
     return Ok(PathBuf::from("sh"));
     #[cfg(windows)]
     crate::os::git_bash(&std::env::var_os("PATH").unwrap_or_default()).ok_or_else(|| {
-        Problem::new("Git for Windows isn't installed", "Install Git for Windows: Gizai runs your GIT_SSH_COMMAND with its Git Bash, as git does.")
+        Problem::new("Git for Windows isn't installed", "Install Git for Windows: Hersir runs your GIT_SSH_COMMAND with its Git Bash, as git does.")
     })
 }
 
@@ -652,7 +652,7 @@ fn login_problem(gh: &Path, said: &str) -> Problem {
     let command = login_command(gh);
     if let Some(var) = ["GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN"].iter().find(|v| said.contains(&format!("{v} environment variable"))) {
         return Problem::new(format!("gh uses the token in {var}, so it can't log in another way"),
-                            format!("Remove {var} from the environment Gizai starts in, or log in with {command} in a terminal."));
+                            format!("Remove {var} from the environment Hersir starts in, or log in with {command} in a terminal."));
     }
     if said.contains("expired") {
         return Problem::new("The code expired before it was entered", "Log in again.");

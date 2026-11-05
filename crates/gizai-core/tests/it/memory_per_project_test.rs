@@ -355,7 +355,7 @@ folder, so set it before cargo test.")).collect();
     let kept: Vec<&str> = kept.lines().collect();
     let out = bullets.len() - kept.len();
     assert!(out > 0 && kept.len() > 10, "{out} left out, {} kept", kept.len());
-    assert_eq!(line, format!("({out} older lines left out; they stay in Gizai's Memory at {path}.)"));
+    assert_eq!(line, format!("({out} older lines left out; they stay in Hersir's Memory at {path}.)"));
     assert_eq!(kept, bullets[out..], "the newest lines, ending with the last one learned");
     assert!(shown.ends_with("Lesson 20 of run 3: the fake CLI scripts need the run's worktree as their folder, so set it before cargo test."));
     assert!(!b.text.contains("Lesson 01 of run 1") && !b.text.contains("Cut here"), "{}", b.text);
@@ -370,7 +370,7 @@ folder, so set it before cargo test.")).collect();
     let notes = section(&b.text, "Agents/Backend Agent/Notes").chars().count();
     let shown = section(&b.text, path);
     assert!(notes + shown.chars().count() <= memory::OWN_CAP, "{notes} + {}", shown.chars().count());
-    assert!(shown.starts_with(&format!("{head}\n\n(")) && shown.contains(&format!(" older lines left out; they stay in Gizai's Memory at {path}.)\n\n- ")), "{shown}");
+    assert!(shown.starts_with(&format!("{head}\n\n(")) && shown.contains(&format!(" older lines left out; they stay in Hersir's Memory at {path}.)\n\n- ")), "{shown}");
     assert!(shown.ends_with(bullets[59].as_str()), "{shown}");
     assert_eq!(section(&b.text, "Projects/Gizai"), shared, "the shared note in full");
 }

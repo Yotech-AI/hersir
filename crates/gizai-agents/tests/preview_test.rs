@@ -219,7 +219,7 @@ async fn gizai_quitting_ends_the_wait() {
     let mut p = start("exec sleep 600", &wt, port(48_800));
     let t0 = Instant::now();
     let err = p.wait_ready(Duration::from_secs(60), || true).await.unwrap_err();
-    assert_eq!(err, "Gizai is quitting");
+    assert_eq!(err, "Hersir is quitting");
     assert!(t0.elapsed() < Duration::from_secs(5));
     p.stop().await;
 }

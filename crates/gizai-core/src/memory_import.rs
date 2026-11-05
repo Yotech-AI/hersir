@@ -485,7 +485,7 @@ with folder \"{folder}\" lists them.", if n == 1 { "" } else { "s" })
     }
     if r.left_out.folders > 0 {
         text.push_str(&format!("\n  - Left out, not read: {} of other paths, with {}. Claude Code keeps a folder per path it works in, and \
-only those of Gizai's places come in: a project's linked folder, a card's worktree, the Team Lead's code copies and its working folder.",
+only those of Hersir's places come in: a project's linked folder, a card's worktree, the Team Lead's code copies and its working folder.",
             count(r.left_out.folders, "folder"), count(r.left_out.notes, "note")));
     }
     // Agents made before this keep their own copy of their instructions, which may still say to keep notes there.
@@ -497,7 +497,7 @@ only those of Gizai's places come in: a project's linked folder, a card's worktr
     if let Some((last, first)) = stale.split_last() {
         let names = if first.is_empty() { last.clone() } else { format!("{} and {last}", first.join(", ")) };
         text.push_str(&format!("\n  - The instructions of {names} still say to keep notes in Claude Code's memory folder (MEMORY.md), \
-which Gizai's runs switch off now: update them with {you}, as the DevOps role now keeps a project's deploy note in Deployments/<KEY>."));
+which Hersir's runs switch off now: update them with {you}, as the DevOps role now keeps a project's deploy note in Deployments/<KEY>."));
     }
     memory::append_in(w, who, &notes, Some("Open threads"), &text, None)?;
     Ok(listed)

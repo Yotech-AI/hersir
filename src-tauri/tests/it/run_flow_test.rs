@@ -191,7 +191,7 @@ fn recorded(st: &gizai_lib::AppState, task: &str) -> ((String, Option<String>), 
     ((r.status, r.error), (t.state_name, t.fail_count))
 }
 
-const QUIT: (&str, Option<&str>) = ("cancelled", Some("Stopped because Gizai quit."));
+const QUIT: (&str, Option<&str>) = ("cancelled", Some("Stopped because Hersir quit."));
 
 #[tokio::test]
 async fn a_run_stopped_by_quitting_says_gizai_quit_and_leaves_no_process() {
@@ -204,7 +204,7 @@ async fn a_run_stopped_by_quitting_says_gizai_quit_and_leaves_no_process() {
     let ((status, error), card) = recorded(&st, &task);
     assert_eq!((status.as_str(), error.as_deref()), QUIT);
     assert_eq!(card, ("In progress".to_string(), 0), "not a failure");
-    assert_eq!(gizai_lib::runs::STOPPED_BY_QUIT, "Stopped because Gizai quit.");
+    assert_eq!(gizai_lib::runs::STOPPED_BY_QUIT, "Stopped because Hersir quit.");
     assert!(group_gone(pid, Duration::from_secs(1)).await, "no agent process left");
 }
 
@@ -235,7 +235,7 @@ async fn a_run_whose_agent_ends_while_gizai_quits_was_stopped_by_the_quit_not_fa
     gizai_lib::runs::mark_closing(&st);
     unsafe { libc::kill(-pid, libc::SIGTERM) };
     let s = tokio::time::timeout(Duration::from_secs(8), done).await.expect("run ended").unwrap();
-    assert_eq!((s.status.as_str(), s.error.as_deref(), s.outcome.as_deref()), ("cancelled", Some("Stopped because Gizai quit."), None));
+    assert_eq!((s.status.as_str(), s.error.as_deref(), s.outcome.as_deref()), ("cancelled", Some("Stopped because Hersir quit."), None));
     let ((status, error), card) = recorded(&st, &task);
     assert_eq!((status.as_str(), error.as_deref()), QUIT);
     assert_eq!(card, ("In progress".to_string(), 0), "not a failure");
@@ -250,7 +250,7 @@ async fn an_agent_ended_while_gizai_keeps_running_is_still_a_failed_run() {
     unsafe { libc::kill(-pid, libc::SIGTERM) };
     let s = tokio::time::timeout(Duration::from_secs(8), done).await.expect("run ended").unwrap();
     assert_eq!(s.status, "failed");
-    assert_ne!(recorded(&st, &task).0.1.as_deref(), Some("Stopped because Gizai quit."));
+    assert_ne!(recorded(&st, &task).0.1.as_deref(), Some("Stopped because Hersir quit."));
 }
 
 #[tokio::test]

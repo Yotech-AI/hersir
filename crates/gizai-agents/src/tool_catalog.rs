@@ -94,10 +94,10 @@ const CLAUDE: [Row; 33] = [
     ("ListMcpResourcesTool", "MCP resources: list", "other", "Lists what its MCP servers offer to read.", "low", how::ALWAYS, NO_ASK),
     ("ReadMcpResourceTool", "MCP resources: read", "other", "Reads something an MCP server offers. Only its servers switched on.", "low", how::ALWAYS, NO_ASK),
     ("CronCreate", "Scheduled prompts", "other", "Schedules a prompt for later in the same session.", "medium", how::OFF, HEADLESS),
-    ("EnterWorktree", "Worktrees", "other", "Moves the session into a git worktree of its own.", "medium", how::OFF, "Gizai gives each card its own worktree already."),
+    ("EnterWorktree", "Worktrees", "other", "Moves the session into a git worktree of its own.", "medium", how::OFF, "Hersir gives each card its own worktree already."),
 ];
 
-const CODEX_NOTE: &str = "From Gizai's catalog: Codex has no command that lists its tools without a model call.";
+const CODEX_NOTE: &str = "From Hersir's catalog: Codex has no command that lists its tools without a model call.";
 
 /// Codex 0.154 (its config keys and stream items): (id, label, group, description, risk, how, note).
 const CODEX: [Row; 7] = [
@@ -115,7 +115,7 @@ const GEMINI_ALWAYS: &str = "Gemini uses it without asking.";
 /// Gemini CLI 0.62 (its bundled tool reference): (id, label, group, description, risk, how, note).
 const GEMINI: [Row; 16] = [
     ("google_web_search", "Web search", "web", "Searches Google. Results are untrusted text, and the search terms leave your computer.", "medium", how::ALWAYS,
-     "On in every Gemini run: Gemini's own read-only policy allows it, and Gizai has no checked per-run switch to turn it off."),
+     "On in every Gemini run: Gemini's own read-only policy allows it, and Hersir has no checked per-run switch to turn it off."),
     ("web_fetch", "Fetch web pages", "web", "Reads web pages (not private addresses). Pages are untrusted, and an address can carry data out.", "high", how::WEB, ""),
     ("read_file", "Read files", "files", "Reads a file.", "low", how::ALWAYS, GEMINI_ALWAYS),
     ("read_many_files", "Read many files", "files", "Reads several files at once.", "low", how::ALWAYS, GEMINI_ALWAYS),
@@ -127,13 +127,13 @@ const GEMINI: [Row; 16] = [
     ("run_shell_command", "Run commands", "commands", "Runs shell commands.", "high", how::ELSEWHERE, "Only the Bash(…) lines under Permissions → Allowed commands."),
     ("write_todos", "To-do list", "planning", "Keeps its own list of steps for the run.", "low", how::ALWAYS, GEMINI_ALWAYS),
     ("ask_user", "Ask you a question", "planning", "Asks you for input.", "low", how::OFF, "Gemini refuses it in a headless run: the agent asks in its result line instead."),
-    ("save_memory", "Memory", "other", "Saves a fact in Gemini's memory file under ~/.gemini.", "medium", how::OFF, "Gizai never lets an agent write in ~/.gemini."),
-    ("activate_skill", "Skills", "other", "Loads a skill from .gemini/skills.", "medium", how::OFF, "Not switched on by Gizai."),
+    ("save_memory", "Memory", "other", "Saves a fact in Gemini's memory file under ~/.gemini.", "medium", how::OFF, "Hersir never lets an agent write in ~/.gemini."),
+    ("activate_skill", "Skills", "other", "Loads a skill from .gemini/skills.", "medium", how::OFF, "Not switched on by Hersir."),
     ("list_mcp_resources", "MCP resources: list", "other", "Lists what its MCP servers offer to read.", "low", how::ALWAYS, GEMINI_ALWAYS),
     ("read_mcp_resource", "MCP resources: read", "other", "Reads something an MCP server offers.", "low", how::ALWAYS, GEMINI_ALWAYS),
 ];
 
-const GEMINI_NOTE: &str = "From Gizai's catalog: Gemini has no command that lists its tools without a model call.";
+const GEMINI_NOTE: &str = "From Hersir's catalog: Gemini has no command that lists its tools without a model call.";
 
 fn rows(kind: Kind) -> &'static [Row] {
     match kind {
@@ -150,7 +150,7 @@ pub fn source_note(kind: Kind) -> Option<&'static str> {
         Kind::ClaudeCode => None,
         Kind::Codex => Some(CODEX_NOTE),
         Kind::Gemini => Some(GEMINI_NOTE),
-        Kind::Other => Some("This CLI runs with its own settings: Gizai has no catalog of its tools and passes it none."),
+        Kind::Other => Some("This CLI runs with its own settings: Hersir has no catalog of its tools and passes it none."),
     }
 }
 
@@ -182,7 +182,7 @@ pub fn merged(kind: Kind, reported: Option<&[String]>) -> Vec<CatalogTool> {
             }
             out.push(CatalogTool {
                 id: t.clone(), label: t.clone(), group: "other".into(), risk: "unknown".into(), how: how::SWITCH.into(), reported: true,
-                description: "Claude Code reports it, and Gizai's catalog doesn't know it yet: check what it does before you switch it on.".into(),
+                description: "Claude Code reports it, and Hersir's catalog doesn't know it yet: check what it does before you switch it on.".into(),
                 note: String::new(),
             });
         }
@@ -228,21 +228,21 @@ pub fn web_support(kind: Kind) -> (Option<&'static str>, Option<&'static str>, O
     match kind {
         Kind::ClaudeCode => (None, None, None),
         Kind::Codex => (None, Some("Codex has no tool that fetches a page: only web search."), Some("Codex has no tool that fetches a page.")),
-        Kind::Gemini => (Some("Gemini's own read-only policy allows its web search in every run, and Gizai has no checked per-run switch to turn it off."),
+        Kind::Gemini => (Some("Gemini's own read-only policy allows its web search in every run, and Hersir has no checked per-run switch to turn it off."),
                          None, Some("Gemini can't limit fetching to some domains: it gets web_fetch for any page.")),
         Kind::Other => (Some(OTHER), Some(OTHER), Some(OTHER)),
     }
 }
 
-const OTHER: &str = "This CLI runs with its own settings: Gizai passes it no tools.";
+const OTHER: &str = "This CLI runs with its own settings: Hersir passes it no tools.";
 
 /// Why a CLI of `kind` can't be given the Slash commands and skills switch; None on Claude Code, the only CLI it is
 /// checked with.
 pub fn slash_support(kind: Kind) -> Option<&'static str> {
     match kind {
         Kind::ClaudeCode => None,
-        Kind::Codex => Some("Gizai has no checked per-run switch for Codex's slash commands and skills: they stay off for Codex agents."),
-        Kind::Gemini => Some("Gizai has no checked per-run switch for Gemini's custom commands and skills (activate_skill), and never \
+        Kind::Codex => Some("Hersir has no checked per-run switch for Codex's slash commands and skills: they stay off for Codex agents."),
+        Kind::Gemini => Some("Hersir has no checked per-run switch for Gemini's custom commands and skills (activate_skill), and never \
                               writes in ~/.gemini: they stay off for Gemini agents."),
         Kind::Other => Some(OTHER),
     }

@@ -74,15 +74,15 @@ pub fn of_card(st: &AppState, task_id: &str) -> Result<CardChanges, String> {
         };
         return Ok(CardChanges::none(&label, NO_BRANCH));
     };
-    let project = project.ok_or_else(|| format!("Gizai can't show what {} changed: it has no project", task.identifier))?;
+    let project = project.ok_or_else(|| format!("Hersir can't show what {} changed: it has no project", task.identifier))?;
     let repo = repo_of(&task, &project)?;
     let main = Main::of(&project, &repo);
-    let unreadable = |e: gizai_agents::AgentError| format!("Gizai couldn't read what {} changed: {}", task.identifier, crate::pulls::plain(e));
+    let unreadable = |e: gizai_agents::AgentError| format!("Hersir couldn't read what {} changed: {}", task.identifier, crate::pulls::plain(e));
 
     // 1. its worktree, as it is on disk
     if let Some(wt) = worktree::worktree_of(&repo, &branch).ok().flatten().filter(|w| w.is_dir()) {
         let tip = git_changes::commit_of(&wt, "HEAD")
-            .ok_or_else(|| format!("Gizai couldn't read what {} changed: its worktree {} has no commit", task.identifier, wt.display()))?;
+            .ok_or_else(|| format!("Hersir couldn't read what {} changed: its worktree {} has no commit", task.identifier, wt.display()))?;
         let base = main.base(&repo, &tip, &branch)?;
         let files = git_changes::of_worktree(&wt, &base).map_err(unreadable)?;
         let note = files.is_empty().then(|| no_changes(&main.label));
@@ -138,9 +138,9 @@ pub fn of_card(st: &AppState, task_id: &str) -> Result<CardChanges, String> {
         }
     }
     let why = match (card.as_ref().map(|c| c.provider.as_str()), number) {
-        (Some("bitbucket"), Some(_)) => format!("Gizai can't find what {} changed: fetch main, or log in to Bitbucket (Settings → Bitbucket)", task.identifier),
-        (Some(_), Some(_)) => format!("Gizai can't find what {} changed: fetch main, or log gh in (Settings → GitHub)", task.identifier),
-        _ => format!("Gizai can't find what {} changed: its branch {branch} isn't in {} any more, and it has no pull request to read it from",
+        (Some("bitbucket"), Some(_)) => format!("Hersir can't find what {} changed: fetch main, or log in to Bitbucket (Settings → Bitbucket)", task.identifier),
+        (Some(_), Some(_)) => format!("Hersir can't find what {} changed: fetch main, or log gh in (Settings → GitHub)", task.identifier),
+        _ => format!("Hersir can't find what {} changed: its branch {branch} isn't in {} any more, and it has no pull request to read it from",
                      task.identifier, repo.display()),
     };
     Err(match asked {
@@ -158,7 +158,7 @@ pub fn file_of_card(st: &AppState, task_id: &str, path: &str, old_path: Option<&
     if from.is_empty() {
         return pull_file(st, &task, path, old_path);
     }
-    let project = project_of(st, &task).ok_or_else(|| format!("Gizai can't show what {} changed: it has no project", task.identifier))?;
+    let project = project_of(st, &task).ok_or_else(|| format!("Hersir can't show what {} changed: it has no project", task.identifier))?;
     let repo = repo_of(&task, &project)?;
     let wt = match to {
         Some(_) => None,
@@ -170,7 +170,7 @@ pub fn file_of_card(st: &AppState, task_id: &str, path: &str, old_path: Option<&
         }
     };
     git_changes::file_diff(&repo, wt.as_deref(), path, old_path, from, to)
-        .map_err(|e| format!("Gizai can't show {path}: {}", crate::pulls::plain(e)))
+        .map_err(|e| format!("Hersir can't show {path}: {}", crate::pulls::plain(e)))
 }
 
 /// What a pull request's diff has of `path`: its part of the diff (none over 1 MB), without the file's texts.
@@ -198,9 +198,9 @@ pub fn of_run(st: &AppState, run_id: &str) -> Result<CardChanges, String> {
         if crate::runs::live(st).iter().any(|r| r.run_id == run_id) {
             return Err(format!("{}'s run is still going: its changes show once it has ended", run.agent_name));
         }
-        return Err("Gizai didn't save where this run started and ended".into());
+        return Err("Hersir didn't save where this run started and ended".into());
     };
-    let project = project_of(st, &task).ok_or_else(|| format!("Gizai can't show this run's changes: {} has no project", task.identifier))?;
+    let project = project_of(st, &task).ok_or_else(|| format!("Hersir can't show this run's changes: {} has no project", task.identifier))?;
     // its commits are in the project's repository, which its worktree shares
     let repo = match repo_of(&task, &project) {
         Ok(repo) => repo,
@@ -211,7 +211,7 @@ pub fn of_run(st: &AppState, run_id: &str) -> Result<CardChanges, String> {
         return Ok(CardChanges::new(ChangeSource::Run, Some(base), Some(head), &label, vec![], Some("This run made no commits.".into())));
     }
     let files = git_changes::between(&repo, &base, &head)
-        .map_err(|e| format!("Gizai can't read this run's changes: {}", crate::pulls::plain(e)))?;
+        .map_err(|e| format!("Hersir can't read this run's changes: {}", crate::pulls::plain(e)))?;
     let note = match worktree::commits(&repo, &base, &head).map(|c| c.len()).unwrap_or(0) {
         0 => "From where this run started to where it ended.".to_string(),
         1 => "The commit this run made.".to_string(),
@@ -272,10 +272,10 @@ fn project_of(st: &AppState, task: &Task) -> Option<Project> {
 /// The project's repository on this disk (its linked folder), or why there is none.
 fn repo_of(task: &Task, project: &Project) -> Result<PathBuf, String> {
     let repo = project.repo_path.as_deref().map(str::trim).filter(|r| !r.is_empty())
-        .ok_or_else(|| format!("Gizai can't show what {} changed: link a git repository to {} first (project page → Edit)", task.identifier, project.name))?;
+        .ok_or_else(|| format!("Hersir can't show what {} changed: link a git repository to {} first (project page → Edit)", task.identifier, project.name))?;
     let repo = PathBuf::from(repo);
     if !crate::git::is_repo(&repo) {
-        return Err(format!("Gizai can't show what {} changed: {} isn't a git repository any more", task.identifier, repo.display()));
+        return Err(format!("Hersir can't show what {} changed: {} isn't a git repository any more", task.identifier, repo.display()));
     }
     Ok(repo)
 }
@@ -307,7 +307,7 @@ impl Main {
     /// Where `tip` (the card's latest commit) meets main: what its changes are measured from.
     fn base(&self, repo: &Path, tip: &str, branch: &str) -> Result<String, String> {
         let main = self.commit.as_deref()
-            .ok_or_else(|| format!("Gizai can't find {} in {}: fetch it (git fetch), then try again", self.label, repo.display()))?;
+            .ok_or_else(|| format!("Hersir can't find {} in {}: fetch it (git fetch), then try again", self.label, repo.display()))?;
         git_changes::merge_base(repo, tip, main).ok_or_else(|| format!("{branch} has no commit in common with {}", self.label))
     }
 }

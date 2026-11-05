@@ -160,7 +160,7 @@ async fn open_pull_request_pushes_the_cards_branch_and_opens_its_pull_request_wi
         format!("pr create --repo acme/shop --head {} --base main --title KADE-1: Export invoices as CSV --body-file -", c.branch),
     ]);
     assert_eq!(std::fs::read_to_string(c.gh.join("gh-stdin")).unwrap(),
-               "Download all invoices as one CSV file.\n\n## Acceptance criteria\n\n- [ ] One row per invoice\n\nFrom Gizai card KADE-1.");
+               "Download all invoices as one CSV file.\n\n## Acceptance criteria\n\n- [ ] One row per invoice\n\nFrom Hersir card KADE-1.");
     let t = task(&c);
     assert_eq!((t.pr_url.as_deref(), t.pr_state.as_deref(), t.state_name.as_str()), (Some(format!("{LINK}/pull/7").as_str()), Some("open"), "Review"));
     let last = gizai_core::tasks::activity(&c.st.db, &c.task).unwrap().pop().unwrap();

@@ -134,7 +134,7 @@ fn begin_registers_gizai_as_a_public_client_with_a_loopback_redirect() {
     let regs = fake.log().registrations;
     assert_eq!(regs.len(), 1, "registered once");
     let r = &regs[0];
-    assert_eq!(r["client_name"], "Gizai");
+    assert_eq!(r["client_name"], "Hersir");
     assert_eq!(r["token_endpoint_auth_method"], "none", "a public client, without a secret");
     assert_eq!(r["redirect_uris"], serde_json::json!([p.redirect_uri.clone()]));
     let grants = r["grant_types"].as_array().unwrap();
@@ -231,10 +231,10 @@ fn finish_refuses_a_wrong_state_and_saves_the_tokens_of_the_right_answer() {
 
     assert_eq!(favicon, 400);
     assert_eq!(wrong.0, 400, "a wrong state is refused: {}", wrong.2);
-    assert!(wrong.2.contains("isn't for the sign-in Gizai is waiting for"), "{}", wrong.2);
+    assert!(wrong.2.contains("isn't for the sign-in Hersir is waiting for"), "{}", wrong.2);
     assert_eq!(exchanged_after_wrong, 0, "no token request for the wrong state's code");
     assert_eq!(right.0, 200);
-    assert!(right.2.contains("Gizai is signed in. You can close this tab."), "{}", right.2);
+    assert!(right.2.contains("Hersir is signed in. You can close this tab."), "{}", right.2);
 
     // The tokens, and they work at the MCP.
     assert!(fake.accepts(&s.access_token));
@@ -581,9 +581,9 @@ fn a_registration_refused_with_401_or_403_says_to_let_claude_code_sign_in_or_ent
             scope: None, service_name: None,
         };
         let e = oauth::begin(&d, None).unwrap_err();
-        let refused = format!("didn't let Gizai register itself (it answered with HTTP status {status})");
+        let refused = format!("didn't let Hersir register itself (it answered with HTTP status {status})");
         assert!(e.contains(&refused), "{status}: {e}");
-        let hint = ": set Who signs in to Claude Code (Edit), or enter a client id for Gizai from the service's settings";
+        let hint = ": set Who signs in to Claude Code (Edit), or enter a client id for Hersir from the service's settings";
         if status == 500 {
             assert!(e.ends_with(&refused) && !e.contains("Who signs in"), "no hint for {status}: {e}");
         } else {
@@ -591,5 +591,5 @@ fn a_registration_refused_with_401_or_403_says_to_let_claude_code_sign_in_or_ent
         }
     }
     assert_eq!(oauth::NO_REGISTRATION,
-               "This server doesn't let Gizai register itself: set Who signs in to Claude Code (Edit), or enter a client id for Gizai from the service's settings");
+               "This server doesn't let Hersir register itself: set Who signs in to Claude Code (Edit), or enter a client id for Hersir from the service's settings");
 }

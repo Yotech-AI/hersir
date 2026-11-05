@@ -109,7 +109,7 @@ async fn editor_folders_are_a_setting_herd_by_default_and_a_refused_one_saves_no
     bad.editor_roots = vec!["Herd".into()];
     assert!(runs::save_settings(&st, &bad).unwrap_err().contains("give the full path"));
     bad.editor_roots = vec![st.data_dir.join("worktrees").display().to_string()];
-    assert!(runs::save_settings(&st, &bad).unwrap_err().contains("Gizai's data folder"));
+    assert!(runs::save_settings(&st, &bad).unwrap_err().contains("Hersir's data folder"));
 
     let herd = tmp.path().join("herd");
     git_repo(&herd.join("kade-portal"));
@@ -159,12 +159,12 @@ async fn the_commands_work_in_a_folder_the_editor_may_open_and_refuse_any_other(
     let why = editor::list(&st, "/etc", "").unwrap_err();
     assert!(why.starts_with("The Editor can't open /etc: it isn't a project's folder"), "{why}");
     let why = editor::read(&st, &st.data_dir.display().to_string(), "gizai.db").unwrap_err();
-    assert!(why.contains("Gizai's data folder"), "{why}");
+    assert!(why.contains("Hersir's data folder"), "{why}");
     assert!(editor::write(&st, "/", "x", "", "").unwrap_err().contains("that's the whole disk"));
     assert!(editor::search(&st, &herd.display().to_string(), "x", false, false, false).unwrap_err().contains("it isn't a project's folder"),
             "the Editor folder itself is no folder to open");
     // Open in: only the three editors, and the path through the gate first
-    assert_eq!(editor::open_in(&st, "sublime", &f, None, None).unwrap_err(), "Gizai can't open a folder in sublime: pick VS Code, Zed or PhpStorm");
+    assert_eq!(editor::open_in(&st, "sublime", &f, None, None).unwrap_err(), "Hersir can't open a folder in sublime: pick VS Code, Zed or PhpStorm");
     assert_eq!(editor::open_in(&st, "zed", &f, Some("../x"), Some(3)).unwrap_err(), "A path can't go up out of the folder (..)");
     assert!(editor::open_in(&st, "vscode", "/etc", None, None).unwrap_err().starts_with("The Editor can't open /etc"));
     let apps = editor::apps(&st);

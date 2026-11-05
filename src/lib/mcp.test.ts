@@ -220,8 +220,8 @@ describe("nameProblem", () => {
     expect(nameProblem("chrome-devtools", [])).toBe("chrome-devtools is Hersir's own: give the server another name");
     // GA-231: the server name stays gizai, so a server named hersir is no one's own
     expect(nameProblem("hersir", [])).toBeNull();
-    // the backend's refusal in the same words, with Hersir once GA-232 changes it
-    expect(rust("crates/gizai-core/src/mcp_servers.rs")).toMatch(/"\{name\} is (Hersir|Gizai)'s own: give the server another name"/);
+    // GA-232: the backend's refusal in the same words, with Hersir
+    expect(rust("crates/gizai-core/src/mcp_servers.rs")).toContain('"{name} is Hersir\'s own: give the server another name"');
   });
 
   it("asks for another name when one in the list has it, in any case", () => {
@@ -254,9 +254,9 @@ describe("Claude Code signs in", () => {
 
   it("says why List tools is off in the same words as the backend's refusal", () => {
     expect(CLAUDE_CODE_NO_LIST).toBe("Claude Code signs in to this server, so Hersir can't list its tools. An agent that has it on gets all of them.");
-    // the backend's refusal says Hersir once GA-232 changes it, Gizai before: the same words otherwise
+    // GA-231 and GA-232: this copy and the backend's refusal both say Hersir, word for word
     const app = /pub const CLAUDE_CODE_NO_LIST: &str = "([^"]+)";/.exec(rust("src-tauri/src/mcp_servers.rs"))?.[1];
-    expect([CLAUDE_CODE_NO_LIST, CLAUDE_CODE_NO_LIST.replace("Hersir", "Gizai")]).toContain(app);
+    expect(app).toBe(CLAUDE_CODE_NO_LIST);
     expect(CLAUDE_CODE_SIGN_IN_HINT).toBe("For a service that only lets known apps sign in, like Figma. Give the server the name it has in Claude Code, and sign Claude Code in once per account: in a terminal, run claude, type /mcp, pick the server and Authenticate. Hersir never reads Claude Code's sign-ins.");
   });
 });

@@ -22,8 +22,14 @@ pub const FREE_SLOT_GRACE_MS: i64 = 2 * 60_000;
 pub const RUNS_FULL_MS: i64 = 60 * 60_000;
 /// Failed checks in a row that pause the check.
 pub const MAX_CHECK_FAILURES: i64 = 3;
-/// Why a cancelled run ended when Gizai quit (the app's `STOPPED_BY_QUIT`).
-const STOPPED_BY_QUIT: &str = "Stopped because Gizai quit.";
+/// Why a cancelled run ended when Hersir quit (the app's `STOPPED_BY_QUIT`), then what runs said before the rename
+/// (GA-232): their rows keep it, such as the runs an update's quit stopped.
+const STOPPED_BY_QUIT: [&str; 2] = ["Stopped because Hersir quit.", "Stopped because Gizai quit."];
+
+/// Whether a cancelled run's error says it stopped because the app quit.
+fn stopped_by_quit(error: Option<&str>) -> bool {
+    error.is_some_and(|e| STOPPED_BY_QUIT.contains(&e))
+}
 
 /// What the check needs to know beyond the database.
 #[derive(Debug, Clone, Default)]
@@ -276,7 +282,7 @@ pub fn check(db: &Db, cx: &Context) -> Result<Vec<Finding>> {
             if card.category == "in_progress" && let Some((r, agent_id)) = &last {
                 let stopped = match (r.status.as_str(), r.outcome.as_deref()) {
                     ("timed_out", _) => Some(("limit", format!("Its run stopped at a limit: {}", r.error.clone().unwrap_or_default()))),
-                    ("cancelled", _) if r.error.as_deref() == Some(STOPPED_BY_QUIT) => Some(("quit", "Its run stopped because Gizai quit".to_string())),
+                    ("cancelled", _) if stopped_by_quit(r.error.as_deref()) => Some(("quit", "Its run stopped because Hersir quit".to_string())),
                     ("cancelled", _) => Some(("stopped", "A person stopped its run".to_string())),
                     ("failed", _) => Some(("failed", format!("Its run failed: {}", r.error.clone().unwrap_or_else(|| "no error saved".into())))),
                     ("succeeded", Some("no_result")) => Some(("no_result", "Its run ended without a result".to_string())),
@@ -303,7 +309,7 @@ pub fn check(db: &Db, cx: &Context) -> Result<Vec<Finding>> {
                 }
             }
             if let Some((r, agent_id)) = &last && r.status == "cancelled" {
-                let reason = if r.error.as_deref() == Some(STOPPED_BY_QUIT) { "Its last run stopped because Gizai quit" } else { "A person stopped its last run" };
+                let reason = if stopped_by_quit(r.error.as_deref()) { "Its last run stopped because Hersir quit" } else { "A person stopped its last run" };
                 out.push(base("waiting", "stopped_run", since, Some((agent_id.clone(), r.agent.clone())),
                               format!("{reason}: the queue doesn't start it again until Run or Continue")));
                 continue;
@@ -386,7 +392,7 @@ pub fn check(db: &Db, cx: &Context) -> Result<Vec<Finding>> {
                     if cx.now - short_since > RUNS_FULL_MS {
                         let detail = why.strip_prefix("Waiting for memory: ").unwrap_or(why);
                         out.push(base("waiting", "memory", *short_since, agent_of(&id),
-                                      format!("Gizai has been waiting for memory for over an hour: {detail}")));
+                                      format!("Hersir has been waiting for memory for over an hour: {detail}")));
                     }
                 } else if let Some((full, waits_since)) = test_runs_full() {
                     if cx.now - waits_since > RUNS_FULL_MS {

@@ -393,7 +393,7 @@ async fn an_answer_the_agent_cant_be_continued_with_goes_to_you_with_the_answer(
     assert_eq!(s.state, "escalated", "{s:?}");
     assert!(s.continued.is_none());
     let reason = s.reason.unwrap();
-    assert!(reason.starts_with("it answered, but Gizai couldn't continue Backend Agent with the answer ("), "{reason}");
+    assert!(reason.starts_with("it answered, but Hersir couldn't continue Backend Agent with the answer ("), "{reason}");
     let card = t.card();
     assert_eq!(card.hold_reason.as_deref(), Some(format!("Team Lead escalated to you: {reason}").as_str()));
     assert!(t.in_inbox() && !card.with_lead);

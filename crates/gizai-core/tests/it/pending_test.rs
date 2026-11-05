@@ -257,7 +257,7 @@ fn running_lists_the_approved_calls_not_finished_in_every_chat() {
     pending::claim(&t.db, &t.you, &a.id).unwrap();
     pending::claim(&t.db, &t.you, &b.id).unwrap();
     assert_eq!(pending::running(&t.db).unwrap().into_iter().map(|r| r.id).collect::<Vec<_>>(), [a.id.clone(), b.id]);
-    pending::finish(&t.db, &a.id, false, "Gizai closed while it ran").unwrap();
+    pending::finish(&t.db, &a.id, false, "Hersir closed while it ran").unwrap();
     assert_eq!(pending::running(&t.db).unwrap().len(), 1);
 }
 
@@ -324,8 +324,8 @@ fn the_hand_over_keeps_your_decisions_and_leaves_gizais_other_notes_out() {
     assert_eq!(msgs.iter().filter(|m| chat::is_decision_note(m)).count(), 2);
     let h = chat::handover(&msgs, 10_000);
     assert!(h.contains("User: Read the release notes in Otus") && h.contains("You: I couldn't save it"), "{h}");
-    assert!(h.contains("(Gizai: Approved: save the note Lessons/Otus. Saved as version 1.)"), "{h}");
-    assert!(h.contains("(Gizai: Discarded: pause Backend Agent.)"), "{h}");
+    assert!(h.contains("(Hersir: Approved: save the note Lessons/Otus. Saved as version 1.)"), "{h}");
+    assert!(h.contains("(Hersir: Discarded: pause Backend Agent.)"), "{h}");
     assert!(!h.contains("Stopped.") && !h.contains("moved to Codex"), "Gizai's other notes stay out: {h}");
     // a note of yours or the Team Lead's with that meta isn't a decision
     say("user", "kind pending", Some(json!({"kind": "pending"})));

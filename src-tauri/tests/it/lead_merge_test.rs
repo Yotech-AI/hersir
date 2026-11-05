@@ -551,7 +551,7 @@ async fn refused_after_an_outside_tool_in_the_same_chat_answer_and_allowed_in_th
     gizai_lib::chat::mark_outside(&t.st, &thread, "mcp__otus__search");
     let e = tools::call_in(&t.st, &t.lead, Some(&thread), "merge_pull_request", json!({"task": "KADE-1"})).await.unwrap_err();
     // GA-102: not run, but kept for you to approve with one click
-    assert_eq!(e, "merge_pull_request wasn't run: this answer used mcp__otus__search, a tool from outside Gizai. Gizai keeps the call \
+    assert_eq!(e, "merge_pull_request wasn't run: this answer used mcp__otus__search, a tool from outside Hersir. Hersir keeps the call \
         for the user to approve with one click. Tell them in a sentence what it does.");
     assert_eq!(gizai_lib::pending::list(&t.st, &thread).unwrap().iter().map(|p| p.action.tool.as_str()).collect::<Vec<_>>(), ["merge_pull_request"]);
     assert!(t.gh_calls().is_empty(), "gh never asked: {:?}", t.gh_calls());

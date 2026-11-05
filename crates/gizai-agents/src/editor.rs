@@ -320,7 +320,7 @@ fn resolve(dir: &Path, path: &str, follow: bool) -> Result<PathBuf, String> {
     if let Some(last) = last {
         out.push(last);
         if fs::symlink_metadata(&out).is_ok_and(|m| !m.file_type().is_symlink()) {
-            let real = out.canonicalize().map_err(|e| format!("Gizai can't read {path}: {e}"))?;
+            let real = out.canonicalize().map_err(|e| format!("Hersir can't read {path}: {e}"))?;
             inside(&root, &real, path)?;
         }
     }
@@ -390,7 +390,7 @@ pub fn list(dir: &Path, sub: &str) -> Result<Vec<DirEntry>, String> {
             (false, false) => format!("{rel} isn't there any more"),
         });
     }
-    let entries = fs::read_dir(&real).map_err(|e| format!("Gizai can't read {}: {e}", if rel.is_empty() { "the folder" } else { &rel }))?;
+    let entries = fs::read_dir(&real).map_err(|e| format!("Hersir can't read {}: {e}", if rel.is_empty() { "the folder" } else { &rel }))?;
     let mut out = vec![];
     for e in entries.flatten() {
         let name = e.file_name().to_string_lossy().to_string();
@@ -519,9 +519,9 @@ pub fn write(f: Folder, path: &str, text: &str, version: &str) -> Result<String,
         return Err(Lock::Ignored.refusal(&rel));
     }
     if let Some(parent) = real.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("Gizai couldn't save {rel}: {e}"))?;
+        fs::create_dir_all(parent).map_err(|e| format!("Hersir couldn't save {rel}: {e}"))?;
     }
-    replace(&real, &encode(text, crlf, bom), permissions).map_err(|e| format!("Gizai couldn't save {rel}: {e}"))?;
+    replace(&real, &encode(text, crlf, bom), permissions).map_err(|e| format!("Hersir couldn't save {rel}: {e}"))?;
     fs::metadata(&real).map(|m| version_of(&m)).map_err(|e| unreadable(&rel, e))
 }
 
@@ -540,7 +540,7 @@ pub fn create(f: Folder, path: &str, dir: bool) -> Result<(), String> {
     });
     made.map_err(|e| match e.kind() {
         std::io::ErrorKind::AlreadyExists => format!("{rel} is there already"),
-        _ => format!("Gizai couldn't make {rel}: {e}"),
+        _ => format!("Hersir couldn't make {rel}: {e}"),
     })
 }
 
@@ -566,7 +566,7 @@ pub fn rename(f: Folder, from: &str, to: &str) -> Result<(), String> {
         }
     }
     to_real.parent().map_or(Ok(()), fs::create_dir_all).and_then(|_| fs::rename(&from_real, &to_real))
-        .map_err(|e| format!("Gizai couldn't rename {from_rel} to {to_rel}: {e}"))
+        .map_err(|e| format!("Hersir couldn't rename {from_rel} to {to_rel}: {e}"))
 }
 
 /// Deletes the file or folder at `path`, a folder with everything in it, a link as the link (never what it leads to).
@@ -585,7 +585,7 @@ pub fn delete(f: Folder, path: &str) -> Result<(), String> {
     } else {
         fs::remove_file(&real)
     };
-    done.map_err(|e| format!("Gizai couldn't delete {rel}: {e}"))
+    done.map_err(|e| format!("Hersir couldn't delete {rel}: {e}"))
 }
 
 /// The entry at `path` that a new file, rename or delete is about: its parts, its path as the screen names it, and
@@ -704,7 +704,7 @@ fn replace(target: &Path, bytes: &[u8], permissions: Option<fs::Permissions>) ->
 fn unreadable(rel: &str, e: std::io::Error) -> String {
     match e.kind() {
         std::io::ErrorKind::NotFound => format!("{rel} isn't there any more"),
-        _ => format!("Gizai can't read {rel}: {e}"),
+        _ => format!("Hersir can't read {rel}: {e}"),
     }
 }
 
@@ -727,7 +727,7 @@ fn git_command(dir: &Path, args: &[&str]) -> Command {
 /// `git_command` with `input` on its stdin, ended after `GIT_LIMIT`: (succeeded, stdout, stderr).
 fn git(dir: &Path, args: &[&str], input: Option<Vec<u8>>) -> Result<(bool, Vec<u8>, String), String> {
     let mut child = git_command(dir, args).stdin(if input.is_some() { Stdio::piped() } else { Stdio::null() })
-        .stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| format!("Gizai can't run git: {e}"))?;
+        .stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| format!("Hersir can't run git: {e}"))?;
     if let (Some(bytes), Some(mut pipe)) = (input, child.stdin.take()) {
         std::thread::spawn(move || {
             let _ = pipe.write_all(&bytes);
@@ -744,7 +744,7 @@ fn git(dir: &Path, args: &[&str], input: Option<Vec<u8>>) -> Result<(bool, Vec<u
                 let _ = child.wait();
                 return Err(format!("git gave no answer within {} s", GIT_LIMIT.as_secs()));
             }
-            Err(e) => return Err(format!("Gizai lost track of git: {e}")),
+            Err(e) => return Err(format!("Hersir lost track of git: {e}")),
         }
     };
     let said = String::from_utf8_lossy(&err.join().unwrap_or_default()).trim().to_string();
@@ -1012,7 +1012,7 @@ fn grep(dir: &Path, query: &str, how: Find, repo: bool, kind: &str, max_hits: us
     }
     args.extend([kind, "-e", query]);
     let mut child = git_command(dir, &args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()
-        .map_err(|e| Grep::Said(format!("Gizai can't run git: {e}")))?;
+        .map_err(|e| Grep::Said(format!("Hersir can't run git: {e}")))?;
     let err = drain(child.stderr.take());
     // a few hits ahead at most: git waits for the rest, and is ended once there are enough
     let (tx, rx) = mpsc::sync_channel(256);
@@ -1174,7 +1174,7 @@ pub fn open_in(id: AppId, program: &Path, dir: &Path, file: Option<&Path>, line:
         use std::os::unix::process::CommandExt;
         cmd.process_group(0);
     }
-    let mut child = cmd.spawn().map_err(|e| format!("Gizai couldn't start {}: {e}", id.name()))?;
+    let mut child = cmd.spawn().map_err(|e| format!("Hersir couldn't start {}: {e}", id.name()))?;
     // reaped when it ends: PhpStorm's own script runs as long as PhpStorm does
     std::thread::spawn(move || {
         let _ = child.wait();
@@ -1187,6 +1187,6 @@ pub fn open_in(id: AppId, program: &Path, dir: &Path, file: Option<&Path>, line:
 /// `.gitignore` is never touched.
 pub fn keep_idea_out(dir: &Path) -> Result<(), String> {
     let common = worktree::git(dir, &["rev-parse", "--path-format=absolute", "--git-common-dir"])
-        .map_err(|e| format!("Gizai couldn't find the git folder of {}: {e}", dir.display()))?;
-    worktree::exclude(Path::new(&common), IDEA_EXCLUDE).map_err(|e| format!("Gizai couldn't keep .idea/ out of git status: {e}"))
+        .map_err(|e| format!("Hersir couldn't find the git folder of {}: {e}", dir.display()))?;
+    worktree::exclude(Path::new(&common), IDEA_EXCLUDE).map_err(|e| format!("Hersir couldn't keep .idea/ out of git status: {e}"))
 }

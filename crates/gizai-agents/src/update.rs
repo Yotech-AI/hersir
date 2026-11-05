@@ -104,7 +104,7 @@ struct GithubRelease {
 /// Reads GitHub's answer for a release. A draft, a pre-release, or a tag that isn't vMAJOR.MINOR.PATCH is no release to
 /// update to.
 pub fn parse_release(json: &str) -> Result<Release, Problem> {
-    let r: GithubRelease = serde_json::from_str(json).map_err(|e| Problem::plain(format!("GitHub gave an answer Gizai can't read ({e})")))?;
+    let r: GithubRelease = serde_json::from_str(json).map_err(|e| Problem::plain(format!("GitHub gave an answer Hersir can't read ({e})")))?;
     if r.draft || r.prerelease {
         let kind = if r.draft { "a draft" } else { "a pre-release" };
         return Err(Problem::plain(format!("The latest release, {}, is {kind}", r.tag_name)));
@@ -140,7 +140,7 @@ pub fn latest_release(url: &str, user_agent: &str, limit: Duration) -> Result<Op
         .args(["--header", "Accept: application/vnd.github+json", "--header", "X-GitHub-Api-Version: 2022-11-28"])
         .args(["--user-agent", user_agent, "--write-out", "\n%{http_code}", "--url", url]);
     let (ok, out, err) = crate::github::run(cmd, None, limit + Duration::from_secs(5)).map_err(|e| match e.kind() {
-        ErrorKind::NotFound => Problem::new("curl isn't installed", "Install curl with your package manager: Gizai asks GitHub for new releases with it."),
+        ErrorKind::NotFound => Problem::new("curl isn't installed", "Install curl with your package manager: Hersir asks GitHub for new releases with it."),
         ErrorKind::TimedOut => connection::no_answer(limit),
         _ => Problem::plain(format!("can't run curl: {e}")),
     })?;
@@ -359,7 +359,7 @@ fn fetch_problem(f: UpdateFailed, repo: &str, tag: &str) -> UpdateFailed {
     } else if ["Could not resolve host", "Failed to connect", "Couldn't connect to server", "Connection timed out", "Network is unreachable"].iter().any(|s| has(s)) {
         "Can't reach GitHub. Check your internet connection, then try again".to_string()
     } else if has("Repository not found") || has("does not appear to be a git repository") {
-        format!("Gizai can't find its repository at {repo}")
+        format!("Hersir can't find its repository at {repo}")
     } else {
         return f;
     };
@@ -406,7 +406,7 @@ pub fn install(dir: &Path, prefix: &Path, path: Option<&OsStr>, log: &Log, stop:
 fn installer(dir: &Path, path: Option<&OsStr>) -> Result<Command, UpdateFailed> {
     let script = dir.join(INSTALLER);
     if !script.is_file() {
-        return Err(UpdateFailed::plain(format!("The release has no {INSTALLER}, so Gizai can't build it")));
+        return Err(UpdateFailed::plain(format!("The release has no {INSTALLER}, so Hersir can't build it")));
     }
     #[cfg(not(windows))]
     let mut cmd = os::command("bash");
@@ -436,7 +436,7 @@ fn run(shown: &str, mut cmd: Command, log: &Log, limit: Duration, stop: &Stop, l
         .env("GIT_TERMINAL_PROMPT", "0").env("NO_COLOR", "1").env("CARGO_TERM_COLOR", "never")
         .env("npm_config_color", "false").env("npm_config_update_notifier", "false").env("npm_config_fund", "false").env("npm_config_audit", "false");
     let (mut child, tree) = os::spawn_tree(&mut cmd, low).map_err(|e| match e.kind() {
-        ErrorKind::NotFound => UpdateFailed::plain(format!("{program} isn't installed (or not on Gizai's PATH)")),
+        ErrorKind::NotFound => UpdateFailed::plain(format!("{program} isn't installed (or not on Hersir's PATH)")),
         _ => UpdateFailed::plain(format!("Couldn't start {shown}: {e}")),
     })?;
     stop.now(Some(tree.clone()));
@@ -509,6 +509,6 @@ fn run(shown: &str, mut cmd: Command, log: &Log, limit: Duration, stop: &Stop, l
             Some(code) => format!("{shown} failed (exit code {code})"),
             None => format!("{shown} was ended by a signal"),
         })),
-        None => Err(failed(format!("Gizai lost track of {shown}"))),
+        None => Err(failed(format!("Hersir lost track of {shown}"))),
     }
 }

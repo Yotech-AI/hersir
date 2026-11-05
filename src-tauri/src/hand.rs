@@ -100,7 +100,7 @@ impl Busy {
         if BUSY.lock().unwrap_or_else(|e| e.into_inner()).insert(task_id.to_string()) {
             Ok(Busy(task_id.to_string()))
         } else {
-            Err(format!("Gizai is still busy with {identifier} for you: wait a moment"))
+            Err(format!("Hersir is still busy with {identifier} for you: wait a moment"))
         }
     }
 

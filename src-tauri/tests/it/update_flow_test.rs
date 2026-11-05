@@ -180,7 +180,7 @@ async fn a_check_finds_a_newer_release_and_offers_it() {
     let r = after.available.clone().expect("9.9.9 is offered");
     assert_eq!((r.version.as_str(), r.tag.as_str(), r.notes.as_deref()), ("9.9.9", "v9.9.9", Some("- What changed")));
     assert_eq!(after.latest, after.available);
-    assert_eq!(after.installed, None, "the installed Gizai is still this version");
+    assert_eq!(after.installed, None, "the installed Hersir is still this version");
     assert!(s.notes.load(Ordering::SeqCst) >= 2, "the UI hears when the check starts and ends");
     assert_eq!(update::status(&s.st), after, "status says the same afterwards");
 }
@@ -340,8 +340,8 @@ async fn an_update_builds_in_the_background_backs_up_installs_and_offers_a_resta
     assert!(s.t.join("data/update/source/target/release/gizai").exists());
     let log = std::fs::read_to_string(&job.log).unwrap();
     assert_eq!(Path::new(&job.log), s.t.join("data/update/update.log"));
-    for line in ["== Updating Gizai", "$ git fetch --depth 1", "== Building 9.9.9", "$ ./install.sh --build-only", "Built gizai 9.9.9",
-                 "== Backing up your data", "== Installing 9.9.9", "$ ./install.sh --skip-build", "== Installed 9.9.9. Restart Gizai to use it."] {
+    for line in ["== Updating Hersir", "$ git fetch --depth 1", "== Building 9.9.9", "$ ./install.sh --build-only", "Built gizai 9.9.9",
+                 "== Backing up your data", "== Installing 9.9.9", "$ ./install.sh --skip-build", "== Installed 9.9.9. Restart Hersir to use it."] {
         assert!(log.contains(line), "the log has {line:?}:\n{log}");
     }
     // the restart: a shell that waits for this Gizai to quit, then starts the installed one with its launcher
@@ -390,7 +390,7 @@ async fn a_failed_build_keeps_the_installed_gizai_and_says_why_and_try_again_wor
     let done = wait_for_update(&s.st);
     let job = done.job.clone().unwrap();
     assert_eq!(job.step, "failed");
-    assert!(job.unchanged, "the installed Gizai is as it was");
+    assert!(job.unchanged, "the installed Hersir is as it was");
     assert_eq!(job.problem.as_deref(), Some("./install.sh --build-only failed (exit code 101)"));
     assert!(job.output.as_deref().unwrap_or("").contains("a fake build failure"), "the end of what the build said: {job:?}");
     assert_eq!(s.installed_says(), format!("gizai {VERSION}"));
@@ -448,7 +448,7 @@ async fn an_installed_program_that_says_another_version_is_a_failure() {
     update::start(&s.st, "9.9.9").unwrap();
     let job = wait_for_update(&s.st).job.unwrap();
     assert_eq!(job.step, "failed");
-    assert_eq!(job.problem.as_deref(), Some("The installer finished, but the installed Gizai says it is version 9.9.8"));
+    assert_eq!(job.problem.as_deref(), Some("The installer finished, but the installed Hersir says it is version 9.9.8"));
     assert!(!job.unchanged, "what is installed is no longer the version that runs");
 }
 
@@ -459,7 +459,7 @@ async fn a_release_whose_source_says_another_version_is_not_built() {
     update::start(&s.st, "9.9.9").unwrap();
     let job = wait_for_update(&s.st).job.unwrap();
     assert_eq!(job.step, "failed");
-    assert_eq!(job.problem.as_deref(), Some("The source of v9.9.9 says it is version 9.9.8, not 9.9.9, so Gizai doesn't install it"));
+    assert_eq!(job.problem.as_deref(), Some("The source of v9.9.9 says it is version 9.9.8, not 9.9.9, so Hersir doesn't install it"));
     assert!(job.unchanged);
     assert!(!s.t.join("marks/build").exists(), "nothing was built");
     assert_eq!(s.installed_says(), format!("gizai {VERSION}"));

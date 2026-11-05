@@ -33,8 +33,8 @@ const MCP_VERSION: &str = "2025-06-18";
 const BODY_LIMIT: u64 = 1 << 20;
 
 /// What a server without dynamic client registration needs from you.
-pub const NO_REGISTRATION: &str = "This server doesn't let Gizai register itself: set Who signs in to Claude Code (Edit), or enter a client id \
-                                   for Gizai from the service's settings";
+pub const NO_REGISTRATION: &str = "This server doesn't let Hersir register itself: set Who signs in to Claude Code (Edit), or enter a client id \
+                                   for Hersir from the service's settings";
 
 /// What a `WWW-Authenticate: Bearer …` header (on an MCP server's 401 or 403) says about signing in.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -227,7 +227,7 @@ pub fn discover(mcp_url: &str, www_authenticate: Option<&str>) -> Result<Discove
     let revocation_endpoint = text(&meta, "revocation_endpoint").filter(|url| checked(url).is_ok());
     if let Some(methods) = meta.get("code_challenge_methods_supported").and_then(Value::as_array)
         && !methods.iter().any(|m| m.as_str() == Some("S256")) {
-        return Err(format!("{} doesn't support PKCE with S256, which Gizai needs to sign in safely", host_of(&issuer)));
+        return Err(format!("{} doesn't support PKCE with S256, which Hersir needs to sign in safely", host_of(&issuer)));
     }
     Ok(Discovery {
         resource, issuer, authorization_endpoint, token_endpoint, registration_endpoint, revocation_endpoint, scope, service_name,
@@ -331,7 +331,7 @@ fn register(d: &Discovery, redirect_uri: &str) -> Result<String, String> {
         return Err(NO_REGISTRATION.to_string());
     };
     let mut body = json!({
-        "client_name": "Gizai",
+        "client_name": "Hersir",
         "redirect_uris": [redirect_uri],
         "grant_types": ["authorization_code", "refresh_token"],
         "response_types": ["code"],
@@ -344,14 +344,14 @@ fn register(d: &Discovery, redirect_uri: &str) -> Result<String, String> {
     let host = host_of(url);
     if !answer.ok() {
         let hint = if matches!(answer.status, 401 | 403) {
-            ": set Who signs in to Claude Code (Edit), or enter a client id for Gizai from the service's settings"
+            ": set Who signs in to Claude Code (Edit), or enter a client id for Hersir from the service's settings"
         } else {
             ""
         };
-        return Err(format!("{host} didn't let Gizai register itself ({}){hint}", refusal(&answer)));
+        return Err(format!("{host} didn't let Hersir register itself ({}){hint}", refusal(&answer)));
     }
     serde_json::from_str::<Value>(&answer.body).ok().and_then(|doc| text(&doc, "client_id"))
-        .ok_or_else(|| format!("{host} registered Gizai but gave no client id"))
+        .ok_or_else(|| format!("{host} registered Hersir but gave no client id"))
 }
 
 /// Waits for ONE answer on the listener: `GET /callback?code=…&state=…` (or `?error=…`) with the right state. Anything
@@ -385,11 +385,11 @@ pub fn finish(p: Pending, timeout: Duration) -> Result<Saved, String> {
     // The answer is in: nothing else may come in on this port.
     drop(p.listener);
     let result = answer
-        .map_err(|why| format!("{} didn't sign Gizai in: {why}", host_of(&p.discovery.authorization_endpoint)))
+        .map_err(|why| format!("{} didn't sign Hersir in: {why}", host_of(&p.discovery.authorization_endpoint)))
         .and_then(|code| exchange(&p.discovery, &p.client_id, &p.redirect_uri, &p.verifier, &code));
     let page_text = match &result {
-        Ok(_) => "Gizai is signed in. You can close this tab.".to_string(),
-        Err(e) => format!("Gizai couldn't sign in. {e}. You can close this tab and try again in Gizai."),
+        Ok(_) => "Hersir is signed in. You can close this tab.".to_string(),
+        Err(e) => format!("Hersir couldn't sign in. {e}. You can close this tab and try again in Hersir."),
     };
     respond(&mut stream, "200 OK", &page(&page_text));
     result
@@ -406,12 +406,12 @@ fn callback(mut stream: TcpStream, state: &str, left: Option<Duration>) -> Optio
     let (method, target) = (words.next().unwrap_or_default(), words.next().unwrap_or_default());
     let (path, query) = target.split_once('?').unwrap_or((target, ""));
     if method != "GET" || path != "/callback" {
-        respond(&mut stream, "400 Bad Request", &page("This address is only for Gizai's sign-in."));
+        respond(&mut stream, "400 Bad Request", &page("This address is only for Hersir's sign-in."));
         return None;
     }
     let q = query_params(query);
     if !q.get("state").is_some_and(|s| same_secret(s, state)) {
-        respond(&mut stream, "400 Bad Request", &page("This answer isn't for the sign-in Gizai is waiting for. Go back to Gizai and try again."));
+        respond(&mut stream, "400 Bad Request", &page("This answer isn't for the sign-in Hersir is waiting for. Go back to Hersir and try again."));
         return None;
     }
     let answer = match (q.get("code").filter(|c| !c.is_empty()), q.get("error")) {
@@ -448,7 +448,7 @@ fn respond(stream: &mut TcpStream, status: &str, body: &str) {
 
 /// A short plain page with one paragraph.
 fn page(text: &str) -> String {
-    format!("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Gizai</title></head>\
+    format!("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Hersir</title></head>\
              <body style=\"background:#15171c;color:#e9eaee;font:18px/1.5 system-ui,sans-serif;padding:3em\"><p>{}</p></body></html>",
             html(text))
 }
@@ -464,7 +464,7 @@ fn exchange(d: &Discovery, client_id: &str, redirect_uri: &str, verifier: &str, 
         ("resource", d.resource.as_str()),
     ];
     let answer = post_form(&d.token_endpoint, &fields)?;
-    let t = tokens(&answer).map_err(|(_, why)| format!("{} didn't sign Gizai in: {why}", host_of(&d.token_endpoint)))?;
+    let t = tokens(&answer).map_err(|(_, why)| format!("{} didn't sign Hersir in: {why}", host_of(&d.token_endpoint)))?;
     Ok(Saved {
         access_token: t.access_token,
         refresh_token: t.refresh_token,
@@ -737,7 +737,7 @@ fn tokens(a: &Answer) -> Result<Tokens, (Option<String>, String)> {
         return Err(if doc.get("error").is_some() { error() } else { (None, "its answer had no access token".to_string()) });
     };
     if let Some(kind) = text(&doc, "token_type").filter(|k| !k.eq_ignore_ascii_case("bearer")) {
-        return Err((None, format!("it gave a {} token, and Gizai only uses Bearer tokens", clean(&kind))));
+        return Err((None, format!("it gave a {} token, and Hersir only uses Bearer tokens", clean(&kind))));
     }
     let expires_in = match doc.get("expires_in") {
         Some(Value::Number(n)) => n.as_f64(),
@@ -764,15 +764,15 @@ fn oauth_error(body: &str) -> Option<(String, String)> {
 fn explain(code: &str, description: Option<&str>) -> String {
     let plain = match code {
         "invalid_grant" => "the sign-in has expired or was withdrawn",
-        "invalid_client" => "the server doesn't know Gizai's client id",
-        "unauthorized_client" => "Gizai isn't allowed to sign in this way",
+        "invalid_client" => "the server doesn't know Hersir's client id",
+        "unauthorized_client" => "Hersir isn't allowed to sign in this way",
         "access_denied" => "the sign-in was declined",
-        "invalid_scope" => "the server doesn't offer the access Gizai asked for",
+        "invalid_scope" => "the server doesn't offer the access Hersir asked for",
         "invalid_target" => "the server doesn't accept this MCP address as the resource",
         "invalid_request" => "the server found the request incomplete or wrong",
         "unsupported_grant_type" | "unsupported_response_type" => "the server doesn't support this way of signing in",
-        "invalid_redirect_uri" => "the server doesn't accept Gizai's return address on 127.0.0.1",
-        "invalid_client_metadata" => "the server refused Gizai's registration details",
+        "invalid_redirect_uri" => "the server doesn't accept Hersir's return address on 127.0.0.1",
+        "invalid_client_metadata" => "the server refused Hersir's registration details",
         "unsupported_token_type" => "the server can't withdraw this kind of token",
         "server_error" => "the server ran into an error",
         "temporarily_unavailable" => "the server is busy or down for now",
@@ -823,7 +823,7 @@ fn agent(a: &Address, redirects: u32) -> ureq::Agent {
         .timeout_global(Some(HTTP_LIMIT))
         .max_redirects(redirects)
         .save_redirect_history(redirects > 0)
-        .user_agent(format!("Gizai/{}", env!("CARGO_PKG_VERSION")));
+        .user_agent(format!("Hersir/{}", env!("CARGO_PKG_VERSION")));
     if is_loopback(&a.host()) {
         config = config.proxy(None);
     }
@@ -953,7 +953,7 @@ fn checked(url: &str) -> Result<Address<'_>, String> {
     if a.is_https() || is_loopback(&a.host()) {
         Ok(a)
     } else {
-        Err(format!("{} isn't secure (http): Gizai only signs in over https", shown(url)))
+        Err(format!("{} isn't secure (http): Hersir only signs in over https", shown(url)))
     }
 }
 

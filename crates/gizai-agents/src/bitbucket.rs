@@ -115,7 +115,7 @@ pub fn pulls_for_branch(login: &Login, repo: &str, branch: &str) -> Result<Vec<P
     if !(200..300).contains(&answer.status) {
         return Err(refused(answer.status, &answer.body, Some(repo)));
     }
-    let doc: Value = serde_json::from_str(&answer.body).map_err(|e| format!("Bitbucket gave an answer Gizai can't read ({e})"))?;
+    let doc: Value = serde_json::from_str(&answer.body).map_err(|e| format!("Bitbucket gave an answer Hersir can't read ({e})"))?;
     let mut pulls: Vec<PullRequest> = doc.get("values").and_then(Value::as_array).map(|v| v.iter().filter_map(pull).collect()).unwrap_or_default();
     for p in pulls.iter_mut().filter(|p| p.state == "MERGED") {
         // without them, the short hash of its latest commit still counts
@@ -153,7 +153,7 @@ pub fn merge_commit(login: &Login, repo: &str, number: u64) -> Result<Option<Str
     if !(200..300).contains(&answer.status) {
         return Err(refused(answer.status, &answer.body, Some(repo)));
     }
-    let doc: Value = serde_json::from_str(&answer.body).map_err(|e| format!("Bitbucket gave an answer Gizai can't read ({e})"))?;
+    let doc: Value = serde_json::from_str(&answer.body).map_err(|e| format!("Bitbucket gave an answer Hersir can't read ({e})"))?;
     Ok(merge_commit_of(&doc).map(|c| c.oid))
 }
 
@@ -172,7 +172,7 @@ pub fn pull_diff(login: &Login, repo: &str, number: u64) -> Result<String, Strin
                 let to = answer.location.unwrap_or_default();
                 let to = if to.starts_with('/') { format!("{origin}{to}") } else { to };
                 if to != origin && !to.starts_with(&format!("{origin}/")) {
-                    return Err(format!("Bitbucket sent Gizai elsewhere for that diff ({}), and Gizai only takes your login to Bitbucket's API",
+                    return Err(format!("Bitbucket sent Hersir elsewhere for that diff ({}), and Hersir only takes your login to Bitbucket's API",
                                        to.split('?').next().unwrap_or_default()));
                 }
                 url = to;
@@ -180,7 +180,7 @@ pub fn pull_diff(login: &Login, repo: &str, number: u64) -> Result<String, Strin
             status => return Err(refused(status, &answer.body, Some(repo))),
         }
     }
-    Err("Bitbucket kept sending Gizai elsewhere for that diff".into())
+    Err("Bitbucket kept sending Hersir elsewhere for that diff".into())
 }
 
 /// The commits of pull request `number` (its first 100).
@@ -189,7 +189,7 @@ fn commits(login: &Login, repo: &str, number: u64) -> Result<Vec<Commit>, String
     if !(200..300).contains(&answer.status) {
         return Err(refused(answer.status, &answer.body, Some(repo)));
     }
-    let doc: Value = serde_json::from_str(&answer.body).map_err(|e| format!("Bitbucket gave an answer Gizai can't read ({e})"))?;
+    let doc: Value = serde_json::from_str(&answer.body).map_err(|e| format!("Bitbucket gave an answer Hersir can't read ({e})"))?;
     Ok(doc.get("values").and_then(Value::as_array).into_iter().flatten()
         .filter_map(|c| Some(Commit { oid: c.get("hash")?.as_str()?.to_string() })).collect())
 }
@@ -224,13 +224,13 @@ fn request(login: &Login, method: &str, path: &str, query: &[(&str, &str)], body
     let base = api();
     let local = is_local(&base);
     if !base.starts_with("https://") && !local {
-        return Err(format!("{base} isn't secure (https): Gizai sends the Bitbucket login only over https"));
+        return Err(format!("{base} isn't secure (https): Hersir sends the Bitbucket login only over https"));
     }
     let mut config = ureq::Agent::config_builder()
         .http_status_as_error(false)
         .timeout_global(Some(LIMIT))
         .max_redirects(0)
-        .user_agent(format!("Gizai/{}", env!("CARGO_PKG_VERSION")));
+        .user_agent(format!("Hersir/{}", env!("CARGO_PKG_VERSION")));
     if local {
         config = config.proxy(None);
     }
@@ -261,13 +261,13 @@ fn request_text(login: &Login, url: &str) -> Result<TextAnswer, String> {
     let base = api();
     let local = is_local(&base);
     if !url.starts_with("https://") && !local {
-        return Err(format!("{base} isn't secure (https): Gizai sends the Bitbucket login only over https"));
+        return Err(format!("{base} isn't secure (https): Hersir sends the Bitbucket login only over https"));
     }
     let mut config = ureq::Agent::config_builder()
         .http_status_as_error(false)
         .timeout_global(Some(LIMIT))
         .max_redirects(0)
-        .user_agent(format!("Gizai/{}", env!("CARGO_PKG_VERSION")));
+        .user_agent(format!("Hersir/{}", env!("CARGO_PKG_VERSION")));
     if local {
         config = config.proxy(None);
     }
@@ -315,7 +315,7 @@ fn refused(status: u16, body: &str, repo: Option<&str>) -> String {
         403 => format!("Bitbucket refused{}: the API token needs the scopes {}, and your account access to the repository{repo}",
                        said.map(|s| format!(" ({s})")).unwrap_or_default(), SCOPES.join(", ")),
         404 => format!("Bitbucket has no repository{repo} that your account can see: check the project's Bitbucket link"),
-        429 => "Bitbucket asks Gizai to slow down (too many requests): try again in a minute".to_string(),
+        429 => "Bitbucket asks Hersir to slow down (too many requests): try again in a minute".to_string(),
         _ => format!("Bitbucket answered {status}{}", said.map(|s| format!(": {s}")).unwrap_or_default()),
     }
 }

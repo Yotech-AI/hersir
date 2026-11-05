@@ -211,10 +211,10 @@ describe("AgentToolsField", () => {
       expect(text(html)).toContain(MCP_NOT_ON[kind]);
       expect(MCP_NOT_ON[kind]).toContain(kind === "codex" ? "Codex" : "Gemini");
       expect(MCP_NOT_ON[kind]).toContain("the browser");
-      // GA-231: the form says Hersir; mcp_not_on says Hersir once GA-232 changes it, Gizai before
+      // GA-231 and GA-232: the form and mcp_not_on both say Hersir, word for word
       expect(MCP_NOT_ON[kind]).toContain("Hersir");
-      const why = MCP_NOT_ON[kind]!.split(": ")[0]!;
-      expect(coreRs.includes(why) || coreRs.includes(why.replace("Hersir", "Gizai"))).toBe(true);
+      expect(MCP_NOT_ON[kind]).not.toMatch(/Gizai/i);
+      expect(coreRs).toContain(MCP_NOT_ON[kind]!.split(": ")[0]!);
       // no tool switches and no npm warning while it can't use them
       expect(html).not.toContain('aria-label="Use search"');
       expect(text(html)).not.toContain("This agent may run npm or npx");

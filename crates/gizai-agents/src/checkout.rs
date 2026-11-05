@@ -21,7 +21,7 @@ use crate::worktree::git;
 const DEPS: [(&str, &str); 2] = [("vendor", "composer.lock"), ("node_modules", "package-lock.json")];
 
 /// The message of the stash entry `update` puts uncommitted changes in, as `git stash list` shows it.
-pub const STASH_MESSAGE: &str = "Gizai: before the update to main";
+pub const STASH_MESSAGE: &str = "Hersir: before the update to main";
 
 /// A dependency folder that is behind main.
 #[derive(Debug, Clone, PartialEq)]

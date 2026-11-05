@@ -364,10 +364,10 @@ export async function teamProbe(getTeam: () => Promise<ProbeTeam>) {
   const roleSel = q<HTMLSelectElement>("#a-role", dialog);
   const hasTool = (t: string) => (q<HTMLTextAreaElement>("#a-tools", dialog)?.value ?? "").split("\n").includes(t);
   const instructions = () => q("[aria-label=Instructions]", dialog)?.textContent ?? "";
-  const isFrontend = () => hasTool("Bash(git push:*)") && !hasTool("Bash(gh pr create:*)") && instructions().includes("You are the Frontend Agent in Gizai's Software team.");
+  const isFrontend = () => hasTool("Bash(git push:*)") && !hasTool("Bash(gh pr create:*)") && instructions().includes("You are the Frontend Agent in Hersir's Software team.");
   const frontendFirst = !!(await waitFor(() => isFrontend() || null, 5000));
   if (roleSel) pickOption(roleSel, "qa");
-  const qaNext = !!(await waitFor(() => (hasTool("Bash(gh pr create:*)") && instructions().includes("You are the QA Agent in Gizai's Software team.")) || null, 5000));
+  const qaNext = !!(await waitFor(() => (hasTool("Bash(gh pr create:*)") && instructions().includes("You are the QA Agent in Hersir's Software team.")) || null, 5000));
   if (roleSel) pickOption(roleSel, "frontend");
   const frontendAgain = !!(await waitFor(() => isFrontend() || null, 5000));
   buttonByText(dialog, "+ Bash(make test:*)")?.click();

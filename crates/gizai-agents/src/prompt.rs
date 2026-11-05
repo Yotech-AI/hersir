@@ -220,7 +220,7 @@ checked, each captioned with the criterion.\n");
 shows them in Review, before the pull request.\n");
     }
     let lines = [
-        format!("The card's branch is served at {}/ (Gizai started the project's preview; its output is in {}). Use only this address: \
+        format!("The card's branch is served at {}/ (Hersir started the project's preview; its output is in {}). Use only this address: \
 never a .test site, a live site or a real account.", url.trim_end_matches('/'), s.log),
         format!("Shoot with the browser's take_screenshot, always with filePath, as {}/<nn>-<what>.png, numbered in the order to look at \
 them{}; each at {} (resize_page or emulate's viewport).", s.folder,
@@ -240,7 +240,7 @@ them{}; each at {} (resize_page or emulate's viewport).", s.folder,
                 s.per_run, s.folder),
         "Don't open your pictures unless you must: each one in your conversation costs tokens on every later turn. Check what a page \
 says with take_snapshot.".to_string(),
-        "Never commit them or attach them to the pull request: Gizai keeps them on the card.".to_string(),
+        "Never commit them or attach them to the pull request: Hersir keeps them on the card.".to_string(),
     ];
     for l in lines {
         p.push_str(&format!("- {l}\n"));
@@ -249,7 +249,7 @@ says with take_snapshot.".to_string(),
 }
 
 fn limits_section(l: RunLimits) -> String {
-    format!("\n\n## Limits of this run\n\nGizai stops this run after {} tool calls or {} minutes, whichever comes first. \
+    format!("\n\n## Limits of this run\n\nHersir stops this run after {} tool calls or {} minutes, whichever comes first. \
 Commit your work on this branch as you go. If the task won't fit, stop before the limit: commit what you have and end with \
 your GIZAI_RESULT line, saying in the summary what is done and what is left.\n", l.tool_calls, l.minutes)
 }
@@ -381,7 +381,7 @@ fn temp_line(temp_dir: Option<&str>, make: Option<&str>, literal_path: bool) -> 
     let make = make.map(|m| format!("{m} ")).unwrap_or_default();
     match temp_dir {
         Some(d) => format!("{make}Throwaway files go only in `{d}` (TMPDIR, TMP and TEMP point there{}), never in `/tmp` or anywhere else, \
-and are never committed. Gizai empties that folder when the run ends.",
+and are never committed. Hersir empties that folder when the run ends.",
                            if literal_path { "; in a command, write this path, not `$TMPDIR`" } else { "" }),
         None => format!("{make}Throwaway files never go in `/tmp` or anywhere else outside the worktree, and are never committed."),
     }
@@ -503,7 +503,7 @@ under what you could not check.".into());
 
 /// Gizai pushes the card's branch itself when a run ends (GA-56), so a CLI that refuses the agent's `git push` no longer
 /// holds a card up: told to every CLI in every mode. Agents keep `git push` in their list.
-pub const PUSHED_BY_GIZAI: &str = "When the run ends, Gizai itself pushes this branch's commits (not uncommitted changes) to the project's \
+pub const PUSHED_BY_GIZAI: &str = "When the run ends, Hersir itself pushes this branch's commits (not uncommitted changes) to the project's \
 remote, when it has one. So a refused `git push` of this branch is no reason for `needs_decision`: mention it in your summary and end \
 with the outcome your work deserves.";
 

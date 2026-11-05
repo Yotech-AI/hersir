@@ -260,7 +260,7 @@ async fn a_cards_worktree_shows_its_commits_and_whats_not_committed_since_origin
                (Some("Shop\n"), Some("Shop\nNow with invoices\n"), vec![DiffHunk { old_start: 1, old_lines: 0, new_start: 2, new_lines: 1 }]));
     // errors are plain sentences, and nothing outside the repository is read
     let e = changes::file_of_card(&c.st, &c.task, "../secret.txt", None, &from, None).unwrap_err();
-    assert!(e.starts_with("Gizai can't show ../secret.txt:"), "{e}");
+    assert!(e.starts_with("Hersir can't show ../secret.txt:"), "{e}");
 }
 
 #[tokio::test]
@@ -401,7 +401,7 @@ async fn with_nothing_left_in_git_the_pull_requests_diff_from_gh_shows_without_t
     git(&c2.local, &["branch", "-q", "-D", &c2.branch]);
     gizai_core::settings::set(&c2.st.db, "gh_bin", &"/nonexistent/gh".to_string()).unwrap();
     let e = changes::of_card(&c2.st, &c2.task).unwrap_err();
-    assert!(e.starts_with("Gizai can't find what KADE-1 changed: fetch main, or log gh in (Settings → GitHub). "), "{e}");
+    assert!(e.starts_with("Hersir can't find what KADE-1 changed: fetch main, or log gh in (Settings → GitHub). "), "{e}");
 }
 
 #[tokio::test]

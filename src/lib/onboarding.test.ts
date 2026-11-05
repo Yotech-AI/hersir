@@ -77,8 +77,8 @@ describe("what Next on step 2 saves (save_clis takes the whole list, without the
 describe("the texts", () => {
   it("the welcome message is the one finish_onboarding sends (gizai_core::onboarding::WELCOME), and GA-164's word for word", () => {
     const rust = /pub const WELCOME: &str = "([^"]+)";/.exec(read("crates/gizai-core/src/onboarding.rs"))?.[1];
-    // GA-231: step 4 quotes it with Hersir; the backend's says Hersir once GA-232 changes it, GizAi before, the same words otherwise
-    expect([WELCOME, WELCOME.replace("Hersir", "GizAi")]).toContain(rust);
+    // GA-231 and GA-232: step 4 quotes it with Hersir, and the backend sends the same words
+    expect(rust).toBe(WELCOME);
     expect(WELCOME).toBe("Hi! I just installed Hersir and set up my team. Please welcome me, tell me in a few lines what you and the team can do, and ask whether I'd like help setting up agents, clients, projects, tasks or anything else.");
   });
 

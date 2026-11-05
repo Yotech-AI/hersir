@@ -122,13 +122,13 @@ pub fn apps(st: &AppState) -> Vec<EditorApp> {
 /// Before PhpStorm opens a card's worktree, `/.idea/` goes into the repository's `info/exclude`, so the project files
 /// it adds never become part of the card.
 pub fn open_in(st: &AppState, app: &str, folder: &str, path: Option<&str>, line: Option<u32>) -> R<()> {
-    let id = AppId::parse(app).ok_or_else(|| format!("Gizai can't open a folder in {app}: pick VS Code, Zed or PhpStorm"))?;
+    let id = AppId::parse(app).ok_or_else(|| format!("Hersir can't open a folder in {app}: pick VS Code, Zed or PhpStorm"))?;
     let f = self::folder(st, folder)?;
     let dir = Path::new(&f.id);
     let file = path.filter(|p| !p.trim().is_empty()).map(|p| inside::joined(dir, p)).transpose()?;
     let search = crate::runs::command_path();
     let program = inside::find_app(id, &search, &Places::without_checkouts(&st.db).home)
-        .ok_or_else(|| format!("Gizai can't find {} on this computer: it looks for {} on PATH", id.name(), id.programs().join(", ")))?;
+        .ok_or_else(|| format!("Hersir can't find {} on this computer: it looks for {} on PATH", id.name(), id.programs().join(", ")))?;
     if id == AppId::PhpStorm && f.kind == Kind::Card {
         inside::keep_idea_out(dir)?;
     }
@@ -182,11 +182,11 @@ fn main_of(st: &AppState, f: &EditorFolder) -> Result<(Main, Option<Project>), S
     let dir = Path::new(&f.id);
     let Some(project_id) = f.project_id.as_deref() else {
         return behind::origin_main(dir).map(|m| (m, None))
-            .ok_or_else(|| format!("{} has no origin remote: Gizai can't tell whether it's behind.", f.name));
+            .ok_or_else(|| format!("{} has no origin remote: Hersir can't tell whether it's behind.", f.name));
     };
     let p = gizai_core::projects::get(&st.db, project_id).map_err(|e| e.to_string())?;
     if p.repo_url.as_deref().is_none_or(|u| u.trim().is_empty()) {
-        return Err(format!("{} has no link to GitHub, Bitbucket or another git URL, so Gizai can't tell whether {} is behind. \
+        return Err(format!("{} has no link to GitHub, Bitbucket or another git URL, so Hersir can't tell whether {} is behind. \
                             Add one on the project's page (Edit).", p.name, f.name));
     }
     let rev = crate::git::start_point(&p, dir, None).map_err(crate::pulls::plain)?;

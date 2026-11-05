@@ -195,7 +195,7 @@ async fn settle(st: &AppState, asked: &str, lead_id: &str) -> Settled {
                 let what = error.strip_prefix("it ").unwrap_or(&error);
                 (format!("its look at the question {what}"), format!("my look at {}'s question {what}", q.agent_name))
             }
-            "cancelled" => ("Gizai quit before it had answered".to_string(), format!("Gizai quit before I had answered {}'s question", q.agent_name)),
+            "cancelled" => ("Hersir quit before it had answered".to_string(), format!("Hersir quit before I had answered {}'s question", q.agent_name)),
             _ => (format!("its look at the question failed ({error})"), format!("my look at {}'s question failed ({error})", q.agent_name)),
         };
         return escalated(run_id, why, format!("Needs {you}: {mine}, so it is yours to decide."));
@@ -209,8 +209,8 @@ async fn settle(st: &AppState, asked: &str, lead_id: &str) -> Settled {
                 Ok(true) => {}
                 Ok(false) => return Settled { state: "dropped".into(), run_id, reason: None, continued: None },
                 Err(e) => {
-                    return escalated(run_id, format!("Gizai couldn't record its answer ({e})"),
-                                     format!("Needs {you}: Gizai couldn't record my answer ({e}). My answer:\n\n{}", quote(&answer)));
+                    return escalated(run_id, format!("Hersir couldn't record its answer ({e})"),
+                                     format!("Needs {you}: Hersir couldn't record my answer ({e}). My answer:\n\n{}", quote(&answer)));
                 }
             }
             // Kept in memory, linked to the card, before the agent goes on.
@@ -241,8 +241,8 @@ async fn settle(st: &AppState, asked: &str, lead_id: &str) -> Settled {
                     }
                     Err((_, e)) => {
                         let e = e.trim_end_matches('.');
-                        let why = format!("it answered, but Gizai couldn't continue {} with the answer ({e})", q.agent_name);
-                        let comment = format!("Needs {you}: I answered, but Gizai couldn't continue {} with it ({e}). My answer:\n\n{}\n\n\
+                        let why = format!("it answered, but Hersir couldn't continue {} with the answer ({e})", q.agent_name);
+                        let comment = format!("Needs {you}: I answered, but Hersir couldn't continue {} with it ({e}). My answer:\n\n{}\n\n\
                                                Clear the hold and press Run: {} starts again and reads this.", q.agent_name, quote(&answer), q.agent_name);
                         return escalated(run_id, why, comment);
                     }

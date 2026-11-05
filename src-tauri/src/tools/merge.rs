@@ -68,7 +68,7 @@ pub(crate) async fn merge_pull_request(cx: &Cx<'_>, a: &super::Args) -> Result<V
     let (gh2, repo, dir, number, head) = (gh.clone(), ready.repo.clone(), ready.repo_path.clone(), pr.number, pr.head_ref_oid.clone());
     let merged = tokio::task::spawn_blocking(move || github::merge_pull(&gh2, &dir, &repo, number, &head)).await.map_err(|e| e.to_string())?;
     if let Err(e) = merged {
-        return Err(format!("GitHub didn't merge pull request #{number} of {}: {e}. Nothing changed in Gizai: tell {you} what GitHub said.",
+        return Err(format!("GitHub didn't merge pull request #{number} of {}: {e}. Nothing changed in Hersir: tell {you} what GitHub said.",
                            ready.task.identifier));
     }
     after_merge(cx, &ready, &pr, &you).await
@@ -121,7 +121,7 @@ fn card_rules(cx: &Cx, t: Task, you: &str) -> Result<Ready, String> {
                            qa.ended_at.map(when).unwrap_or_default()));
     }
     let qa_head = qa.head_sha.clone().filter(|h| !h.trim().is_empty())
-        .ok_or_else(|| format!("Gizai didn't record which commit {}'s QA run on {id} ended at, so it can't tell that QA passed the pull \
+        .ok_or_else(|| format!("Hersir didn't record which commit {}'s QA run on {id} ended at, so it can't tell that QA passed the pull \
                                 request's commit. {id} waits in Review for {you} to merge. Nothing changed.", qa.agent_name))?;
     let card = pulls::card(cx.db(), &t.id).map_err(err)?;
     Ok(Ready { repo: card.repo, branch: card.branch, repo_path: PathBuf::from(card.repo_path), default_branch: card.default_branch,
@@ -213,7 +213,7 @@ async fn after_merge(cx: &Cx<'_>, r: &Ready, pr: &PullDetails, you: &str) -> Res
          - Head commit: `{head}`\n\
          - QA passed exactly this commit: {qa} (run {run}, ended {ended})\n\
          - {count} passed: {list}\n\n\
-         Gizai's pull request check moves the card on and cleans up its worktree. Releases and deploys stay {you}'s.",
+         Hersir's pull request check moves the card on and cleans up its worktree. Releases and deploys stay {you}'s.",
         n = pr.number, url = pr.url, base = pr.base_ref_name, head = pr.head_ref_oid, qa = r.qa.agent_name, run = r.qa.id,
         ended = r.qa.ended_at.map(when).unwrap_or_default(), count = plural(passed.len(), "check"), list = passed.join(", "),
     );
@@ -237,7 +237,7 @@ async fn after_merge(cx: &Cx<'_>, r: &Ready, pr: &PullDetails, you: &str) -> Res
         format!("moved to {}", now.state_name)
     } else {
         let why = checked.err().map(|e| format!(" ({e})")).unwrap_or_default();
-        format!("still in {}: Gizai's pull request check moves it on within two minutes{why}", now.state_name)
+        format!("still in {}: Hersir's pull request check moves it on within two minutes{why}", now.state_name)
     };
     Ok(json!({"ok": true, "done": "merged",
               "pull_request": {"number": pr.number, "url": pr.url, "into": pr.base_ref_name, "head": pr.head_ref_oid},

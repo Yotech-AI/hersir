@@ -201,7 +201,7 @@ fn only_gizais_own_worktrees_are_removed() {
     let mine = tmp.path().join("mine");
     git(&repo, &["worktree", "add", "-q", "-b", "gizai/sh-1-export", mine.to_str().unwrap()]);
     let r = worktree::remove_card_worktree(&repo, &base, "gizai/sh-1-export", true);
-    assert_eq!(r.kept, Some((mine.clone(), "it isn't one of Gizai's worktrees".to_string())), "{r:?}");
+    assert_eq!(r.kept, Some((mine.clone(), "it isn't one of Hersir's worktrees".to_string())), "{r:?}");
     assert!(mine.exists() && has_branch(&repo, "gizai/sh-1-export") && !r.branch_deleted);
     // the main checkout itself on the branch
     let r = worktree::remove_card_worktree(&repo, &base, "main", true);

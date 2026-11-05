@@ -314,8 +314,8 @@ fn a_name_that_is_taken_or_gizais_own_has_a_clash() {
     assert!(taken.contains("already an MCP server called github"), "{taken}");
     assert!(clash(SECOND, "github").is_some());
     assert!(!candidate(&scan, "Claude Code", "github").already, "another address: not already");
-    assert_eq!(clash("Claude Code", "gizai").as_deref(), Some("gizai is Gizai's own: give the server another name"));
-    assert_eq!(clash(SECOND, "chrome-devtools").as_deref(), Some("chrome-devtools is Gizai's own: give the server another name"));
+    assert_eq!(clash("Claude Code", "gizai").as_deref(), Some("gizai is Hersir's own: give the server another name"));
+    assert_eq!(clash(SECOND, "chrome-devtools").as_deref(), Some("chrome-devtools is Hersir's own: give the server another name"));
     for (account, name) in [("Claude Code", "brave"), ("Claude Code", "sentry"), (SECOND, "linear"), (SECOND, "postgres")] {
         assert_eq!(clash(account, name), None, "{name}");
     }
@@ -427,9 +427,9 @@ fn importing_a_clashing_name_without_a_new_name_is_refused() {
     refused(t.key("Claude Code", "github"), "", "there is already an MCP server called github");
     refused(t.key("Claude Code", "github"), "github", "there is already an MCP server called github");
     refused(t.key("Claude Code", "github"), "GITHUB", "there is already an MCP server called GITHUB");
-    refused(t.key("Claude Code", "gizai"), "", "gizai is Gizai's own");
-    refused(t.key(SECOND, "chrome-devtools"), "", "chrome-devtools is Gizai's own");
-    refused(t.key(SECOND, "chrome-devtools"), "Chrome-DevTools", "Gizai's own");
+    refused(t.key("Claude Code", "gizai"), "", "gizai is Hersir's own");
+    refused(t.key(SECOND, "chrome-devtools"), "", "chrome-devtools is Hersir's own");
+    refused(t.key(SECOND, "chrome-devtools"), "Chrome-DevTools", "Hersir's own");
     refused(t.key("Claude Code", "brave"), "brave search", "letters, digits, - and _");
     let names: Vec<String> = mcp::list(&t.st).unwrap().into_iter().map(|v| v.server.name).collect();
     assert_eq!(names, ["github"], "nothing imported");

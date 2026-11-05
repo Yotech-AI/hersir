@@ -499,7 +499,7 @@ fn each_refusal_says_why_and_makes_nothing() {
         ("no file", path(&dir.path().join("missing.gizai-team.json")), "can't read"),
         ("a folder", path(dir.path()), "can't read"),
         ("not JSON", text("{ this isn't json"), "isn't JSON"),
-        ("another format", text(&other_format), "isn't a Gizai team template"),
+        ("another format", text(&other_format), "isn't a Hersir team template"),
         ("a newer format", text(&newer), "This template needs a newer version of the app."),
         ("no columns", with(&|t| t.columns.clear()), "no columns"),
         ("51 agents", with(&|t| t.agents.extend((0..49).map(|i| agent(&format!("Agent {i}"), "backend")))), "51 agents"),
