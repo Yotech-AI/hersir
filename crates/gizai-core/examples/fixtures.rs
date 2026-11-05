@@ -569,9 +569,9 @@ fn main() {
     c.insert("list_old_worktrees".into(), json!([]));
     c.insert("update_status".into(), json!({"current": env!("CARGO_PKG_VERSION"), "autoCheck": true, "checking": false, "checkedAt": now - 2 * HOUR,
         "latest": {"version": env!("CARGO_PKG_VERSION"), "tag": format!("v{}", env!("CARGO_PKG_VERSION")), "name": format!("Gizai {}", env!("CARGO_PKG_VERSION")),
-                   "url": format!("https://github.com/Yotech-AI/gizai/releases/tag/v{}", env!("CARGO_PKG_VERSION")), "publishedAt": null, "notes": null},
+                   "url": format!("https://github.com/Yotech-AI/hersir/releases/tag/v{}", env!("CARGO_PKG_VERSION")), "publishedAt": null, "notes": null},
         "problem": null, "available": null, "installed": null, "installTo": "/home/you/.local", "cannotInstall": null, "job": null,
-        "repo": "https://github.com/Yotech-AI/gizai.git"}));
+        "repo": "https://github.com/Yotech-AI/hersir.git"}));
     // Settings → GitHub and Bitbucket (src-tauri's github::Status and bitbucket::BitbucketStatus): gh logged in, no Bitbucket login.
     c.insert("github_status".into(), json!({"ghPath": "/usr/bin/gh", "ghVersion": "2.62.0", "ghProblem": null, "account": "jefsev",
         "accountProblem": null, "pushOver": "ssh", "login": null, "loginCommand": "gh auth login --hostname github.com --web"}));

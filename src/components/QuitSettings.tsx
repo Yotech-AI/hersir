@@ -27,10 +27,10 @@ export function QuitSettings() {
     setBusy(true); setErr(null);
     exitApp(0).catch((e) => { setErr(String(e)); setBusy(false); });
   };
-  const label = busy ? (working > 0 ? "Stopping agents…" : "Quitting…") : asking ? "Stop them and quit?" : "Quit Gizai completely";
+  const label = busy ? (working > 0 ? "Stopping agents…" : "Quitting…") : asking ? "Stop them and quit?" : "Quit Hersir completely";
   return (
-    <FormSection title="Quit" text="Closing the window only hides Gizai: it keeps running in the tray, and its agents keep working. Open Gizai in the tray, or starting Gizai again, brings the window back.">
-      <Field label="Quit Gizai" wide error={err} warn={quitWarning(runs.length, chats.length)}>
+    <FormSection title="Quit" text="Closing the window only hides Hersir: it keeps running in the tray, and its agents keep working. Open Hersir in the tray, or starting Hersir again, brings the window back.">
+      <Field label="Quit Hersir" wide error={err} warn={quitWarning(runs.length, chats.length)}>
         <div><button className="btn danger" onClick={quit} disabled={busy}><Power className="icon" /><span>{label}</span></button></div>
       </Field>
     </FormSection>

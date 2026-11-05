@@ -27,8 +27,8 @@ export function ScreenshotSettings({ s, setS, problem }: { s: Settings; setS: (s
   );
   return (
     <FormSection id="settings-screenshots" title="Screenshots"
-      text="What Gizai keeps of the screenshots agents take at the end of their runs, and the ports of the projects’ previews. Each project sets its sizes and themes in its form → Preview.">
-      <Field label="Screenshots per run" htmlFor={INPUT.screenshotsPerRun} error={error("screenshotsPerRun")} hint="1 to 30; 12 by default. Gizai keeps the first ones by file name and says in the run what it left out.">
+      text="What Hersir keeps of the screenshots agents take at the end of their runs, and the ports of the projects’ previews. Each project sets its sizes and themes in its form → Preview.">
+      <Field label="Screenshots per run" htmlFor={INPUT.screenshotsPerRun} error={error("screenshotsPerRun")} hint="1 to 30; 12 by default. Hersir keeps the first ones by file name and says in the run what it left out.">
         {input("screenshotsPerRun")}</Field>
       <Field label="Largest screenshot (MB)" htmlFor={INPUT.screenshotMaxMb} error={error("screenshotMaxMb")} hint="1 to 50; 10 by default.">
         {input("screenshotMaxMb")}</Field>

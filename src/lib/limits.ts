@@ -7,7 +7,7 @@ import type { CliLimits, LimitReading, SubscriptionLimit } from "../types";
 export const NEAR_PERCENT = 80;
 
 /** Under the Subscription tab. */
-export const LIMITS_NOTE = "Gizai reads only what the coding CLIs report in your agents' runs and chat turns; it never asks Anthropic or OpenAI. "
+export const LIMITS_NOTE = "Hersir reads only what the coding CLIs report in your agents' runs and chat turns; it never asks Anthropic or OpenAI. "
   + "Each number shows with the time it was read, and not after its window has reset.";
 
 const DAY = 86_400_000;
@@ -87,7 +87,7 @@ export function windowLabel(minutes: number | null | undefined): string {
 
 /** A limit no run has reported yet: what the row says, and why on hover. */
 export function unreadLabel(c: CliLimits, l: SubscriptionLimit): { text: string; title: string } {
-  if (c.kind === "codex") return { text: "Not read yet", title: `Gizai reads it from Codex's session log when a run on ${c.name} ends.` };
+  if (c.kind === "codex") return { text: "Not read yet", title: `Hersir reads it from Codex's session log when a run on ${c.name} ends.` };
   if (l.key === "seven_day_overage_included")
     return { text: "Not reported yet", title: "Claude Code reports the Fable limit only for an account that has one, once a run or chat turn on it has used Claude." };
   return { text: "Not reported yet", title: `Claude Code reports it in the runs and chat turns on ${c.name}, on a Claude subscription (not with an API key).` };
@@ -96,15 +96,15 @@ export function unreadLabel(c: CliLimits, l: SubscriptionLimit): { text: string;
 /** Where a block's numbers come from, under it. */
 export function sourceNote(c: CliLimits): string {
   if (c.kind === "claude_code")
-    return `Claude Code reports these limits in the runs and chat turns on ${c.name} when they change, on a Claude subscription only. Gizai keeps the newest numbers.`;
+    return `Claude Code reports these limits in the runs and chat turns on ${c.name} when they change, on a Claude subscription only. Hersir keeps the newest numbers.`;
   if (c.kind === "codex")
-    return `Codex writes these limits in its session log${c.accountDir ? ` (${c.accountDir}/sessions)` : ""}. Gizai reads the log of each run on ${c.name} when the run ends.`;
+    return `Codex writes these limits in its session log${c.accountDir ? ` (${c.accountDir}/sessions)` : ""}. Hersir reads the log of each run on ${c.name} when the run ends.`;
   return cantRead(c);
 }
 
 /** A block whose limits Gizai can't read (Gemini, Other). */
 export function cantRead(c: CliLimits): string {
-  return c.kind === "gemini" ? "Gizai can't read Gemini's limits yet." : `Gizai can't read the limits of ${c.name} yet: it reads Claude Code's and Codex's.`;
+  return c.kind === "gemini" ? "Hersir can't read Gemini's limits yet." : `Hersir can't read the limits of ${c.name} yet: it reads Claude Code's and Codex's.`;
 }
 
 /** Whether any limit of a block has a reading. */

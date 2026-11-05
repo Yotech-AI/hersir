@@ -75,13 +75,14 @@ function withArrows(text: string): React.ReactNode {
   return parts.length === 1 ? text : parts.map((p, i) => <span key={i}>{i > 0 && <ArrowRight className="icon sm" aria-label="then" style={{ verticalAlign: -2 }} />}{p}</span>);
 }
 
-/** Nothing to find (merged before Gizai saved its range, no merge commit here, gh not logged in), or a failure. */
+/** Nothing to find (merged before Gizai saved its range, no merge commit here, gh not logged in), or a failure. The
+ *  backend's error says Hersir (GA-232), Gizai before it. */
 function Failed({ error, retry, taskId }: { error: string; retry: () => void; taskId: string }) {
-  const m = /^Hersir can't find what \S+ changed: (.*)$/s.exec(error);
+  const m = /^(?:Hersir|Gizai) can't find what \S+ changed: (.*)$/s.exec(error);
   if (m) {
     const bitbucket = /Bitbucket/.test(m[1]);
     const text = m[1].charAt(0).toUpperCase() + m[1].slice(1);
-    return <Empty icon={<CircleAlert className="icon lg" />} title="Gizai can't find what this card changed" text={/\.$/.test(text) ? text : text + "."}
+    return <Empty icon={<CircleAlert className="icon lg" />} title="Hersir can't find what this card changed" text={/\.$/.test(text) ? text : text + "."}
       action={/Settings/.test(m[1]) ? <a className="btn" href={href({ page: "settings", id: "github" })}><Settings className="icon" />Open {bitbucket ? "Bitbucket" : "GitHub"} settings</a>
         : <a className="btn" href={href({ page: "task", id: taskId })}><SquareKanban className="icon" />Back to Card</a>} />;
   }

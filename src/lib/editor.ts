@@ -285,7 +285,7 @@ export function readOnlyStatus(why: string | null): string {
 export function readOnlyBar(why: string | null, size: number | null, ignoredIn: string | null): string | null {
   switch (why) {
     case WHY.over1: return `Read-only: this file is over 1 MB${size ? ` (${sizeLabel(size)})` : ""}. Change it in your own editor.`;
-    case WHY.notUtf8: return "Read-only: this file isn't UTF-8 text, and Gizai keeps files as they are.";
+    case WHY.notUtf8: return "Read-only: this file isn't UTF-8 text, and Hersir keeps files as they are.";
     case WHY.ignored: return ignoredIn ? `Read-only: it's in ${ignoredIn}/, which git ignores.` : "Read-only: it's in a folder git ignores.";
     case WHY.onDisk: return "Read-only: this file is read-only on disk.";
     default: return null;

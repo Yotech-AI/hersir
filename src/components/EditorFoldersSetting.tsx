@@ -114,7 +114,7 @@ export function EditorFoldersSetting({ s, setS }: { s: Settings; setS: Dispatch<
   return (
     <FormSection title="Editor folders" text="Where your projects are. Besides projects' linked folders and card worktrees, the Editor opens every folder directly inside these.">
       <Field label="Folders" wide error={err}
-        hint="Never /, your home folder, Gizai's data folder or folders with keys (~/.ssh, ~/.gnupg, ~/.config, …). Saved as soon as you add, change or remove one.">
+        hint="Never /, your home folder, Hersir's data folder or folders with keys (~/.ssh, ~/.gnupg, ~/.config, …). Saved as soon as you add, change or remove one.">
         <div className="folder-list">
           {rows.length === 0 && <span className="hint">No folders: the Editor opens projects' linked folders and card worktrees only.</span>}
           {rows.map((r, i) => {

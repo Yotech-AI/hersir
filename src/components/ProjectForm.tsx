@@ -175,7 +175,7 @@ export function ProjectDrawer({ id, onClose }: { id?: string; onClose: () => voi
             <label className="check"><input type="checkbox" checked={v.leadMayMerge ?? false} onChange={(e) => set("leadMayMerge", e.target.checked)} />Team Lead may merge</label>
           </Field>
         </FormSection>
-        <FormSection title="New worktrees" text="Each card gets its own git worktree. Before the agent starts in a new one, Gizai copies these paths, installs what is still missing, then runs the setup command.">
+        <FormSection title="New worktrees" text="Each card gets its own git worktree. Before the agent starts in a new one, Hersir copies these paths, installs what is still missing, then runs the setup command.">
           <Field label="Copy from the main checkout" htmlFor="p-copy" wide
             hint="One file or folder per line, relative to the repository. Copied with cp --reflink=auto (instant on btrfs), so agents start with a warm build. A path the main checkout doesn't have is skipped.">
             <textarea id="p-copy" className="textarea mono" rows={4} value={copyText ?? copy.join("\n")} onChange={(e) => setCopy(e.target.value)}
@@ -195,12 +195,12 @@ export function ProjectDrawer({ id, onClose }: { id?: string; onClose: () => voi
               onChange={(e) => set("testRunsAtOnce", typedNumber(e.target.value))} />
           </Field>
         </FormSection>
-        <FormSection id="project-preview" title="Preview" text="While an agent works on a card, Gizai serves the card’s branch with demo data, so the agent can take screenshots of the screens it changed. The card shows them on its Screenshots tab.">
+        <FormSection id="project-preview" title="Preview" text="While an agent works on a card, Hersir serves the card’s branch with demo data, so the agent can take screenshots of the screens it changed. The card shows them on its Screenshots tab.">
           <Field label="Screenshots" htmlFor="p-shots" wide hint="On by default. Off: no agent takes any here, and its cards have no Screenshots tab.">
             <label className="check"><input id="p-shots" type="checkbox" checked={shots.on} onChange={(e) => setShots({ on: e.target.checked })} />Take screenshots of this project’s screens</label>
           </Field>
           <Field label="Preview command" htmlFor="p-preview" wide
-            hint="Empty by default: no preview, so no screenshots. Runs with bash -c in the card’s worktree when a run starts whose agent takes screenshots, on a free port in GIZAI_PREVIEW_PORT (and PORT), with GIZAI_PREVIEW_DIR for a throwaway database. Serve demo data, never your .env database. Gizai ends it with the run.">
+            hint="Empty by default: no preview, so no screenshots. Runs with bash -c in the card’s worktree when a run starts whose agent takes screenshots, on a free port in GIZAI_PREVIEW_PORT (and PORT), with GIZAI_PREVIEW_DIR for a throwaway database. Serve demo data, never your .env database. Hersir ends it with the run.">
             <input id="p-preview" className="input mono" spellCheck={false} autoComplete="off" value={v.previewCommand ?? ""} onChange={(e) => set("previewCommand", e.target.value)}
               placeholder={'npx astro dev --host 127.0.0.1 --port "$GIZAI_PREVIEW_PORT" --ignore-lock'} />
           </Field>
@@ -208,11 +208,11 @@ export function ProjectDrawer({ id, onClose }: { id?: string; onClose: () => voi
             <input id="p-start" className="input" type="number" min={START_SECS.low} max={START_SECS.high} step={1} value={shownNumber(v.previewStartSecs)}
               onChange={(e) => set("previewStartSecs", typedNumber(e.target.value))} />
           </Field>
-          <Field label="Themes" htmlFor="p-themes" hint="Off by default (on for Gizai). On: each changed screen in the first theme, and the card’s main screen in the other one too.">
+          <Field label="Themes" htmlFor="p-themes" hint="Off by default (on for Hersir). On: each changed screen in the first theme, and the card’s main screen in the other one too.">
             <label className="check"><input id="p-themes" type="checkbox" checked={shots.bothThemes} onChange={(e) => setShots({ bothThemes: e.target.checked })} />Both themes, dark and light</label>
           </Field>
           <Field label="Sizes" htmlFor={sizeInput(0, "name")} wide
-            hint="1 to 4 sizes, each 320 to 3840 wide and 320 to 2400 high. Desktop 1280 × 800 and Mobile 390 × 844 by default; Gizai’s own are Window 1440 × 900 and Small 900 × 600.">
+            hint="1 to 4 sizes, each 320 to 3840 wide and 320 to 2400 high. Desktop 1280 × 800 and Mobile 390 × 844 by default; Hersir’s own are Window 1440 × 900 and Small 900 × 600.">
             <div className="shot-sizes" role="group" aria-label="Sizes">
               {shots.sizes.map((size, i) => (
                 <div key={i} className="shot-size">

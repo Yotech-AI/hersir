@@ -5,7 +5,8 @@
 // the Editor already has (@codemirror/lang-yaml), as GA has no other; CONTRIBUTING.md, SECURITY.md, the pull request
 // template and release.yml exist, and their links reach real files and headings; docs/RELEASING.md labels the bump and
 // release pull requests and makes the release with the card's notes; and "Gizai" is left in the docs only in paths,
-// file names and the app's own texts they quote, while the names installs and updates find GizAi by stay as they are.
+// file names and the app's own texts they quote, while the names installs and updates find GizAi by stay as they are
+// (GA-233: but for productName and the window title, which are Hersir).
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, normalize } from "node:path";
@@ -16,6 +17,7 @@ import { describe, expect, it } from "vitest";
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (path) => readFileSync(join(ROOT, path), "utf8");
 const git = (...args) => spawnSync("git", args, { cwd: ROOT, encoding: "utf8", maxBuffer: 64 * 1000 * 1000 });
+// The address the docs and the issue forms link to: GA-234 moves them (and this) to Yotech-AI/hersir.
 const REPO = "https://github.com/Yotech-AI/gizai";
 
 // YAML to a plain value, for the YAML these files use: block and flow mappings and sequences, plain, quoted and block
@@ -442,14 +444,21 @@ describe('one name: GizAi in the docs, and "Gizai" only where it is kept', () =>
     }
   });
 
-  it("the names installs and updates find GizAi by stay: productName, the window title, the identifier, the data folders and the desktop entry", () => {
+  // GA-233: the app's name for the OS is Hersir; the names an installed Gizai is found by stay, so it updates into it.
+  it("the app is called Hersir (productName, the window title, the launcher), while the identifier, the program, the data folders and the desktop entry's file stay", () => {
     const conf = JSON.parse(read("src-tauri/tauri.conf.json"));
-    expect(conf.productName).toBe("Gizai");
+    expect(conf.productName).toBe("Hersir");
+    expect(conf.app.windows[0].title).toBe("Hersir");
     expect(conf.identifier).toBe("ai.gizai.app");
-    expect(conf.app.windows[0].title).toBe("Gizai");
-    expect(read("install.sh")).toContain(`grep -q '"productName": "Gizai"'`);
-    expect(read("install.sh")).toMatch(/^Name=Gizai$/m);
+    expect(conf.mainBinaryName).toBe("gizai");
+    expect(read("install.sh")).toContain(`grep -q '"productName": "Hersir"'`);
+    expect(read("install.ps1")).toContain(`-Pattern '"productName": "Hersir"'`);
+    expect(read("install.sh")).toMatch(/^Name=Hersir$/m);
+    expect(read("install.sh")).toContain('cat > "$APPS/gizai.desktop" <<DESKTOP');
+    expect(read("install.sh")).toMatch(/^Icon=gizai$/m);
+    expect(read("install.sh")).toMatch(/^StartupWMClass=gizai$/m);
     expect(read("src-tauri/src/lib.rs")).toContain('join("Library/Application Support/Gizai")');
     expect(read("src-tauri/src/lib.rs")).toMatch(/\.join\("Gizai"\)/);
+    expect(read("crates/gizai-agents/src/secrets.rs")).toContain('pub const SERVICE: &str = "gizai";');
   });
 });

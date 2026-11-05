@@ -1,6 +1,6 @@
 # Gizai installer for Windows. Builds Gizai from source and installs it for you alone (no administrator rights):
 #   %LOCALAPPDATA%\Programs\Gizai\   gizai.exe, gizai-mcp.exe (the helper chat uses) and gizai-installed.txt
-#   Start menu\Programs\Gizai.lnk     the shortcut that starts Gizai and lets Windows show its notifications
+#   Start menu\Programs\Hersir.lnk    the shortcut that starts Gizai and lets Windows show its notifications
 # Your data lives in %APPDATA%\Gizai and is never touched by install or uninstall (unless -Purge).
 # Gizai runs the coding CLIs installed on Windows itself; it never uses WSL.
 #
@@ -78,7 +78,7 @@ if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
   exit 1
 }
 
-$DefaultRepo = 'https://github.com/Yotech-AI/gizai.git'
+$DefaultRepo = 'https://github.com/Yotech-AI/hersir.git'
 $Repo = if ($env:GIZAI_REPO) { $env:GIZAI_REPO } else { $DefaultRepo }
 $Prefix = if ($env:GIZAI_PREFIX) { $env:GIZAI_PREFIX } else { Join-Path $env:LOCALAPPDATA 'Programs\Gizai' }
 $Prefix = Full $Prefix
@@ -86,11 +86,21 @@ $Data = if ($env:GIZAI_DATA_DIR) { $env:GIZAI_DATA_DIR } else { Join-Path $env:A
 $Data = Full $Data
 $SrcClone = Join-Path $env:LOCALAPPDATA 'gizai-src'
 $StartMenu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
-$Shortcut = Join-Path $StartMenu 'Gizai.lnk'
+$Shortcut = Join-Path $StartMenu 'Hersir.lnk'
+# The shortcut's name before Gizai was called Hersir (GA-233): an install or uninstall removes it.
+$OldShortcut = Join-Path $StartMenu 'Gizai.lnk'
 $Exe = Join-Path $Prefix 'gizai.exe'
 # An installed Gizai knows its install by this file (a build in target\release has none).
 $Marker = Join-Path $Prefix 'gizai-installed.txt'
 $Programs = @('gizai.exe', 'gizai-mcp.exe')
+
+# Removes the Start menu shortcut $Link when it starts this install's Gizai.
+function Remove-OwnShortcut([string]$Link) {
+  if (Test-Path -LiteralPath $Link) {
+    $target = (New-Object -ComObject WScript.Shell).CreateShortcut($Link).TargetPath
+    if ($target -eq $Exe) { Remove-Item -LiteralPath $Link -Force }
+  }
+}
 
 # ---------- uninstall ----------
 if ($Uninstall) {
@@ -105,11 +115,9 @@ if ($Uninstall) {
     exit 1
   }
   Get-ChildItem -LiteralPath $Prefix -Force -Filter '.*.old.*' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
-  # The Start menu shortcut goes only when it starts this install's Gizai.
-  if (Test-Path -LiteralPath $Shortcut) {
-    $target = (New-Object -ComObject WScript.Shell).CreateShortcut($Shortcut).TargetPath
-    if ($target -eq $Exe) { Remove-Item -LiteralPath $Shortcut -Force }
-  }
+  # The Start menu shortcuts go only when they start this install's Gizai: Hersir.lnk, and Gizai.lnk from before GA-233.
+  Remove-OwnShortcut $Shortcut
+  Remove-OwnShortcut $OldShortcut
   if (-not (Get-ChildItem -LiteralPath $Prefix -Force -ErrorAction SilentlyContinue)) {
     Remove-Item -LiteralPath $Prefix -Force -ErrorAction SilentlyContinue
   }
@@ -190,7 +198,7 @@ if (-not $ok -and -not $SkipBuild) {
 
 # ---------- source ----------
 $conf = if ($PSScriptRoot) { Join-Path $PSScriptRoot 'src-tauri\tauri.conf.json' } else { '' }
-if ($conf -and (Test-Path -LiteralPath $conf) -and (Select-String -LiteralPath $conf -Pattern '"productName": "Gizai"' -SimpleMatch -Quiet)) {
+if ($conf -and (Test-Path -LiteralPath $conf) -and (Select-String -LiteralPath $conf -Pattern '"productName": "Hersir"' -SimpleMatch -Quiet)) {
   $Src = $PSScriptRoot
 } else {
   Step 'Getting the source'
@@ -390,6 +398,7 @@ namespace GizaiInstall
     }
 }
 '@
+$madeShortcut = $true
 try {
   if (-not ('GizaiInstall.Shortcut' -as [type])) { Add-Type -TypeDefinition $shortcutCode }
   New-Item -ItemType Directory -Force -Path $StartMenu | Out-Null
@@ -404,11 +413,14 @@ try {
     $link.Save()
     Say "Note: the Start menu shortcut has no app ID ($why), so Windows may not show Gizai's notifications."
   } catch {
+    $madeShortcut = $false
     Say "Could not make the Start menu shortcut ($why). Start Gizai with: $Exe"
   }
 }
+# Gizai.lnk goes once Hersir.lnk is there, when it starts this install's Gizai (an install from before GA-233 made it).
+if ($madeShortcut) { Remove-OwnShortcut $OldShortcut }
 
 Step "Done: $version"
-Say "Start Gizai from the Start menu, or run: & '$Exe'"
+Say "Start Hersir from the Start menu, or run: & '$Exe'"
 Say "Your data: $Data"
 Say 'Update: Gizai offers new releases above Company in its sidebar (or run this installer again). Remove: run it with -Uninstall.'

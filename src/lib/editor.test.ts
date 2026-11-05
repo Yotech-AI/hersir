@@ -562,7 +562,7 @@ describe("the file bar of a read-only file (GA-113)", () => {
     expect(readOnlyBar(WHY.over1, null, null)).toBe("Read-only: this file is over 1 MB. Change it in your own editor.");
   });
   it("says a file that isn't UTF-8 is kept as it is", () => {
-    expect(readOnlyBar(WHY.notUtf8, 10, null)).toBe("Read-only: this file isn't UTF-8 text, and Gizai keeps files as they are.");
+    expect(readOnlyBar(WHY.notUtf8, 10, null)).toBe("Read-only: this file isn't UTF-8 text, and Hersir keeps files as they are.");
   });
   it("names the ignored folder the file is in when the tree knows it", () => {
     expect(readOnlyBar(WHY.ignored, 10, "vendor")).toBe("Read-only: it's in vendor/, which git ignores.");

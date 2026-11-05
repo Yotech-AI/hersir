@@ -8,7 +8,7 @@ const PROGRAM: Record<CliKind, string> = { claude_code: "claude", codex: "codex"
 /** The Program field's example: a name, or a path as this system writes one (npm's codex.cmd on Windows). */
 const programHint = () => (typeof navigator !== "undefined" && /Windows/.test(navigator.userAgent || "")
   ? "codex or C:\\…\\npm\\codex.cmd" : "codex or /usr/local/bin/codex");
-const KEEP_NOTE = " Gizai keeps these lines as plain text: point to a folder, don't paste a key.";
+const KEEP_NOTE = " Hersir keeps these lines as plain text: point to a folder, don't paste a key.";
 const ENV_HINT: Record<CliKind, string> = {
   claude_code: "For a second account: CLAUDE_CONFIG_DIR=~/.claude-2 (the folder that account logged in with)." + KEEP_NOTE,
   codex: "For a second account: CODEX_HOME=~/.codex-2 (the folder that account logged in with)." + KEEP_NOTE,
@@ -81,7 +81,7 @@ export function CliSettings() {
             <span className="hint">{ENV_HINT[edit.kind]}</span></label>
           {edit.kind === "other" && (
             <label className="wide">Arguments<input className="input mono" value={edit.args} onChange={(e) => set("args", e.target.value)} placeholder="run -m {model} {prompt}" />
-              <span className="hint">{"{prompt} is the task's prompt; without it the prompt goes in on stdin. {model} is the agent's model. Gizai reads its output as plain text and looks for the GIZAI_RESULT line at the end."}</span></label>
+              <span className="hint">{"{prompt} is the task's prompt; without it the prompt goes in on stdin. {model} is the agent's model. Hersir reads its output as plain text and looks for the GIZAI_RESULT line at the end."}</span></label>
           )}
           <span className="cl-actions"><button className="btn ghost sm" disabled={busy} onClick={() => setEdit(null)}>Cancel</button>
             <button className="btn primary sm" disabled={busy || !edit.name.trim() || !edit.command.trim()} onClick={saveEdit}>{busy ? "Saving…" : edit.id ? "Save CLI" : "Add CLI"}</button></span>

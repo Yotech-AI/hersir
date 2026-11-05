@@ -77,9 +77,9 @@ describe("what Next on step 2 saves (save_clis takes the whole list, without the
 describe("the texts", () => {
   it("the welcome message is the one finish_onboarding sends (gizai_core::onboarding::WELCOME), and GA-164's word for word", () => {
     const rust = /pub const WELCOME: &str = "([^"]+)";/.exec(read("crates/gizai-core/src/onboarding.rs"))?.[1];
-    // GA-232: finish_onboarding's WELCOME says Hersir; step 4's copy says Hersir once GA-231 changes it, GizAi before: the same words otherwise
-    expect(rust).toBe(WELCOME.replace("GizAi", "Hersir"));
-    expect(WELCOME).toBe("Hi! I just installed GizAi and set up my team. Please welcome me, tell me in a few lines what you and the team can do, and ask whether I'd like help setting up agents, clients, projects, tasks or anything else.");
+    // GA-231 and GA-232: step 4 quotes it with Hersir, and the backend sends the same words
+    expect(rust).toBe(WELCOME);
+    expect(WELCOME).toBe("Hi! I just installed Hersir and set up my team. Please welcome me, tell me in a few lines what you and the team can do, and ask whether I'd like help setting up agents, clients, projects, tasks or anything else.");
   });
 
   it("the known CLIs are src-tauri's KNOWN, in its order", () => {
@@ -109,11 +109,24 @@ describe("the texts", () => {
     const section = readme.slice(from, readme.indexOf("### Right after: the Chat page", from));
     const texts = [...section.matchAll(/^\| ([^|]+) \| ([^|]+) \| (GA-164|New|Changed)[^|]*\|$/gm)]
       .filter(([, where]) => !/not drawn|\(2, 3, 4 likewise\)/.test(where))
-      .map(([, , text]) => text.trim().replace(/\*\*/g, ""))
+      // the design names GizAi; the app says Hersir since GA-231
+      .map(([, , text]) => text.trim().replace(/\*\*/g, "").replace(/\bGiz[Aa]i\b/g, "Hersir"))
       // a row naming several texts, or showing an example's shape, is checked by the page's tests instead
       .filter((t) => !/^(1, 2, 3, 4|Step 1 of 4.*|2 ticked: Next imports them.*|Your name · Team · .*|Not found: .*|Your Claude Code has no MCP servers yet\..*|Claude Code · Built in|Back to step 1: You and your team)$/.test(t));
     expect(texts.length).toBeGreaterThan(25);
     const missing = texts.filter((t) => !page.includes(t));
     expect(missing).toEqual([]);
+    expect(texts).toContain("Welcome to Hersir");
+  });
+
+  it("no onboarding text says Gizai or GizAi (GA-231); the logo's file name and the code's names stay", () => {
+    const page = read("src/pages/OnboardingPage.tsx") + read("src/lib/onboarding.ts");
+    // what a person reads: the strings and the JSX text, without the comments
+    const code = page.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+    expect(code.match(/\bGiz[Aa]i\b/g)).toBeNull();
+    expect(page).toContain('import logo from "../assets/gizai-logo.svg?raw";');
+    const logo = read("src/assets/gizai-logo.svg");
+    expect(logo).toContain('aria-label="Hersir"');
+    expect(logo).toContain("<title>Hersir</title>");
   });
 });

@@ -211,8 +211,10 @@ describe("AgentToolsField", () => {
       expect(text(html)).toContain(MCP_NOT_ON[kind]);
       expect(MCP_NOT_ON[kind]).toContain(kind === "codex" ? "Codex" : "Gemini");
       expect(MCP_NOT_ON[kind]).toContain("the browser");
-      // GA-232: mcp_not_on says Hersir; the form's copy says Hersir once GA-231 changes it, Gizai before: the same words otherwise
-      expect(coreRs).toContain(MCP_NOT_ON[kind]!.split(": ")[0]!.replace("Gizai", "Hersir"));
+      // GA-231 and GA-232: the form and mcp_not_on both say Hersir, word for word
+      expect(MCP_NOT_ON[kind]).toContain("Hersir");
+      expect(MCP_NOT_ON[kind]).not.toMatch(/Gizai/i);
+      expect(coreRs).toContain(MCP_NOT_ON[kind]!.split(": ")[0]!);
       // no tool switches and no npm warning while it can't use them
       expect(html).not.toContain('aria-label="Use search"');
       expect(text(html)).not.toContain("This agent may run npm or npx");
@@ -247,7 +249,7 @@ describe("the switches", () => {
 // needs Gizai's sign-in.
 describe("a server Claude Code signs in to", () => {
   const figma = server({ id: "s-figma", name: "figma", url: "https://mcp.figma.com/mcp", signInBy: "claude_code", signIn: "claude_code" });
-  const NO_LIST = "Claude Code signs in to this server, so Gizai can't list its tools. An agent that has it on gets all of them.";
+  const NO_LIST = "Claude Code signs in to this server, so Hersir can't list its tools. An agent that has it on gets all of them.";
 
   it("says Claude Code signs in and that its tools act as you, with no Needs sign-in warning", () => {
     for (const on of [false, true]) {

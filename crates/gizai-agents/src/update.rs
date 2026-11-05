@@ -21,7 +21,7 @@ use crate::connection::{self, Problem};
 use crate::os::{self, End, Tree};
 
 /// Gizai's own repository: its releases and their source (GIZAI_REPO changes it, as it does for install.sh).
-pub const REPO: &str = "https://github.com/Yotech-AI/gizai.git";
+pub const REPO: &str = "https://github.com/Yotech-AI/hersir.git";
 
 /// How long getting a release's source may take.
 pub const SOURCE_LIMIT: Duration = Duration::from_secs(15 * 60);
@@ -174,8 +174,8 @@ fn curl_problem(said: &str, url: &str, limit: Duration) -> Problem {
 /// The prefix the installer installed the Gizai at `exe` into. None for a Gizai that runs from anywhere else (a build in
 /// a checkout's target/, a test build): an update never installs there. The layouts:
 /// - Linux (install.sh): `<prefix>/lib/gizai/gizai`.
-/// - macOS (install.sh): the same, a link into `<prefix>/lib/gizai/Gizai.app`; started from the Dock or Finder Gizai is
-///   `<prefix>/lib/gizai/Gizai.app/Contents/MacOS/gizai`. `exe` is resolved first (std's `current_exe` doesn't follow
+/// - macOS (install.sh): the same, a link into `<prefix>/lib/gizai/Hersir.app`; started from the Dock or Finder Gizai is
+///   `<prefix>/lib/gizai/Hersir.app/Contents/MacOS/gizai`. `exe` is resolved first (std's `current_exe` doesn't follow
 ///   links on macOS), and both give `<prefix>`.
 /// - Windows (install.ps1): `<prefix>\gizai.exe`, in a folder that holds install.ps1's marker `gizai-installed.txt` (a
 ///   build in target\release has none).
@@ -197,17 +197,17 @@ pub fn install_prefix(exe: &Path) -> Option<PathBuf> {
     }
 }
 
-/// macOS: `exe` with its links resolved, and Gizai.app's own binary (`<dir>/Gizai.app/Contents/MacOS/gizai`) taken as
+/// macOS: `exe` with its links resolved, and Hersir.app's own binary (`<dir>/Hersir.app/Contents/MacOS/gizai`) taken as
 /// the `<dir>/gizai` that install.sh links to it.
 #[cfg(target_os = "macos")]
 fn mac_exe(exe: &Path) -> PathBuf {
     let exe = exe.canonicalize().unwrap_or_else(|_| exe.to_path_buf());
-    let in_app = exe.file_name().is_some_and(|n| n == "gizai") && exe.parent().is_some_and(|d| d.ends_with("Gizai.app/Contents/MacOS"));
+    let in_app = exe.file_name().is_some_and(|n| n == "gizai") && exe.parent().is_some_and(|d| d.ends_with("Hersir.app/Contents/MacOS"));
     let link = exe.ancestors().nth(3).filter(|_| in_app).map(|app| app.with_file_name("gizai"));
     link.unwrap_or(exe)
 }
 
-/// The Gizai binary installed into `prefix`: `<prefix>/lib/gizai/gizai` (on macOS a link into Gizai.app, which
+/// The Gizai binary installed into `prefix`: `<prefix>/lib/gizai/gizai` (on macOS a link into Hersir.app, which
 /// install.sh keeps), on Windows `<prefix>\gizai.exe`.
 pub fn installed_exe(prefix: &Path) -> PathBuf {
     if cfg!(windows) { prefix.join("gizai.exe") } else { prefix.join("lib/gizai/gizai") }

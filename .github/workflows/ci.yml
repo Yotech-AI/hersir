@@ -115,7 +115,7 @@ jobs:
           XDG_DATA_HOME: ${{ runner.temp }}/get-sh
         run: |
           /bin/sh -n scripts/get.sh
-          cat scripts/get.sh | GIZAI_REPO=https://github.com/Yotech-AI/gizai.git GIZAI_REF=production /bin/sh -s -- --check
+          cat scripts/get.sh | GIZAI_REPO=https://github.com/Yotech-AI/hersir.git GIZAI_REF=production /bin/sh -s -- --check
           cat scripts/get.sh | GIZAI_REPO="$GITHUB_WORKSPACE" GIZAI_REF=HEAD /bin/sh -s -- --check
           test "$(git -C "$XDG_DATA_HOME/gizai-src" rev-parse HEAD)" = "$GITHUB_SHA"
 
@@ -132,7 +132,7 @@ jobs:
           $env:LOCALAPPDATA = "$env:RUNNER_TEMP\get-ps1-7"
           $iex = "$env:RUNNER_TEMP\iex-get-ps1-7.ps1"
           Set-Content -LiteralPath $iex -Value '& ([scriptblock]::Create((Get-Content -LiteralPath scripts\get.ps1 -Raw))) -Check; "returned $LASTEXITCODE"'
-          foreach ($from in @('https://github.com/Yotech-AI/gizai.git', 'production'), @($env:GITHUB_WORKSPACE, 'HEAD')) {
+          foreach ($from in @('https://github.com/Yotech-AI/hersir.git', 'production'), @($env:GITHUB_WORKSPACE, 'HEAD')) {
             $env:GIZAI_REPO = $from[0]; $env:GIZAI_REF = $from[1]
             pwsh -NoProfile -File $iex | Tee-Object -Variable out
             if (@($out)[-1] -ne 'returned 0') { "get.ps1 -Check didn't return 0 for $from"; exit 1 }
@@ -155,7 +155,7 @@ jobs:
           $env:LOCALAPPDATA = "$env:RUNNER_TEMP\get-ps1-5"
           $iex = "$env:RUNNER_TEMP\iex-get-ps1-5.ps1"
           Set-Content -LiteralPath $iex -Value '& ([scriptblock]::Create((Get-Content -LiteralPath scripts\get.ps1 -Raw))) -Check; "returned $LASTEXITCODE"'
-          foreach ($from in @('https://github.com/Yotech-AI/gizai.git', 'production'), @($env:GITHUB_WORKSPACE, 'HEAD')) {
+          foreach ($from in @('https://github.com/Yotech-AI/hersir.git', 'production'), @($env:GITHUB_WORKSPACE, 'HEAD')) {
             $env:GIZAI_REPO = $from[0]; $env:GIZAI_REF = $from[1]
             powershell -NoProfile -ExecutionPolicy Bypass -File $iex | Tee-Object -Variable out
             if (@($out)[-1] -ne 'returned 0') { "get.ps1 -Check didn't return 0 for $from"; exit 1 }

@@ -107,7 +107,7 @@ fn scratch(cargo_version: &str) -> Scratch {
     git(&repo, &["add", "-A"]);
     git(&repo, &["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "release 9.9.9"]);
     git(&repo, &["tag", "v9.9.9"]);
-    std::fs::write(t.join("latest.json"), r#"{"tag_name": "v9.9.9", "name": "v9.9.9", "html_url": "https://github.com/Yotech-AI/gizai/releases/tag/v9.9.9",
+    std::fs::write(t.join("latest.json"), r#"{"tag_name": "v9.9.9", "name": "v9.9.9", "html_url": "https://github.com/Yotech-AI/hersir/releases/tag/v9.9.9",
         "published_at": "2026-10-07T12:00:00Z", "draft": false, "prerelease": false, "body": "- What changed"}"#).unwrap();
 
     let prefix = t.join("home/.local");
@@ -144,13 +144,21 @@ fn wait_for_update(st: &AppState) -> UpdateStatus {
 
 #[test]
 fn releases_come_from_githubs_api_for_a_github_repository() {
-    let gh = Source::new("https://github.com/Yotech-AI/gizai.git", None);
-    assert_eq!(gh.releases_url.as_deref(), Some("https://api.github.com/repos/Yotech-AI/gizai/releases/latest"));
+    let gh = Source::new("https://github.com/Yotech-AI/hersir.git", None);
+    assert_eq!(gh.releases_url.as_deref(), Some("https://api.github.com/repos/Yotech-AI/hersir/releases/latest"));
     let ssh = Source::new("git@github.com:someone/fork.git", None);
     assert_eq!(ssh.releases_url.as_deref(), Some("https://api.github.com/repos/someone/fork/releases/latest"));
     assert_eq!(Source::new("/srv/git/gizai", None).releases_url, None, "not on GitHub, and no URL given");
     let given = Source::new("/srv/git/gizai", Some("file:///tmp/latest.json".into()));
     assert_eq!(given.releases_url.as_deref(), Some("file:///tmp/latest.json"), "GIZAI_RELEASES_URL wins");
+}
+
+// GA-233: the repository is Yotech-AI/hersir now. GitHub forwards the old address, but the update asks the new one.
+#[test]
+fn gizais_own_releases_and_source_come_from_yotech_ai_hersir() {
+    let own = Source::new(gizai_agents::update::REPO, None);
+    assert_eq!(own.repo, "https://github.com/Yotech-AI/hersir.git");
+    assert_eq!(own.releases_url.as_deref(), Some("https://api.github.com/repos/Yotech-AI/hersir/releases/latest"));
 }
 
 // ---------- the release check ----------

@@ -589,7 +589,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .setup(move |app| {
             if let (Some(label), Some(w)) = (data_label(&dir), app.get_webview_window("main")) {
-                let _ = w.set_title(&format!("Gizai ({label} data)"));
+                let _ = w.set_title(&format!("Hersir ({label} data)"));
             }
             // Headless test and screenshot runs.
             let test_run = ["GIZAI_SELFTEST", "GIZAI_ROUTE"].iter().any(|v| std::env::var_os(v).is_some());
