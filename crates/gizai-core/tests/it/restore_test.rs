@@ -286,10 +286,10 @@ fn a_snapshot_of_a_newer_format_or_schema_is_refused_and_says_to_update_first() 
     let dir = b::backups_dir(&usb);
     let m = d.snapshot(&usb, Reason::Manual);
     edit_manifest(&dir, &m.name, |v| v["schema_version"] = json!(db::SCHEMA_VERSION + 1));
-    assert_eq!(refused(&d, &usb, &m.name), format!("Made by a newer Gizai (database version {}). Update Gizai first.", db::SCHEMA_VERSION + 1));
+    assert_eq!(refused(&d, &usb, &m.name), format!("Made by a newer Hersir (database version {}). Update Hersir first.", db::SCHEMA_VERSION + 1));
     edit_manifest(&dir, &m.name, |v| { v["schema_version"] = json!(db::SCHEMA_VERSION); v["format_version"] = json!(2); });
     let why = refused(&d, &usb, &m.name);
-    assert!(why.starts_with("Made by a newer Gizai") && why.ends_with("Update Gizai first."), "{why}");
+    assert!(why.starts_with("Made by a newer Hersir") && why.ends_with("Update Hersir first."), "{why}");
     // format 1 and this schema pass
     edit_manifest(&dir, &m.name, |v| v["format_version"] = json!(1));
     restore::check(&d.dir, &dir, &m.name, &mut |_| Ok(())).unwrap();

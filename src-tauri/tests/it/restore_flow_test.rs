@@ -4,6 +4,8 @@
 // another restore runs; cancel, of a ready restore and of one that runs; the start after it (`open_data`), with the
 // result until it is dismissed; and `restart_to_restore`'s command, tested as the update's restart is, while
 // `restart_gizai` still refuses without an update.
+#[path = "../support/data_lock.rs"]
+mod data_lock;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -221,6 +223,7 @@ fn a_restore_checks_saves_todays_data_in_the_settings_folder_stages_and_the_next
     // the restart: Gizai quits and starts again on the same data
     let data = st.data_dir.clone();
     drop(st);
+    data_lock::released_blocking(&data);
     let st = gizai_lib::test_state(tmp.path());
     assert_eq!(st.data_dir, data);
     assert_eq!(files_rows(&st), vec![a.clone()]);
@@ -248,6 +251,7 @@ fn a_restore_checks_saves_todays_data_in_the_settings_folder_stages_and_the_next
     assert_eq!(heard.all().last().map(|s| s.result.is_none()), Some(true));
     // and the start after that is a normal one
     drop(st);
+    data_lock::released_blocking(&data);
     let st = gizai_lib::test_state(tmp.path());
     assert_eq!(restore::status(&st).result, None);
     assert_eq!(files_rows(&st), vec![a]);
@@ -289,7 +293,7 @@ fn when_neither_folder_can_be_written_nothing_is_staged_and_the_reason_says_what
     lock(0o755);
     assert_eq!(done.state, "failed", "{done:?}");
     let why = done.error.clone().unwrap();
-    assert!(why.starts_with("Gizai can't save today's data first: ") && why.ends_with(". Choose a backups folder in Settings → General → Backups."),
+    assert!(why.starts_with("Hersir can't save today's data first: ") && why.ends_with(". Choose a backups folder in Settings → General → Backups."),
             "{why}");
     assert_eq!(done.saved_today, None);
     nothing_staged(&st);
@@ -312,7 +316,7 @@ fn a_snapshot_the_check_refuses_fails_with_its_reason_and_stages_nothing() {
     restore::start(&st, &usb.to_string_lossy(), &snap.name).unwrap();
     let done = ended(&st);
     assert_eq!(done.state, "failed");
-    assert_eq!(done.error, Some(format!("Made by a newer Gizai (database version {}). Update Gizai first.", gizai_core::db::SCHEMA_VERSION + 1)));
+    assert_eq!(done.error, Some(format!("Made by a newer Hersir (database version {}). Update Hersir first.", gizai_core::db::SCHEMA_VERSION + 1)));
     nothing_staged(&st);
     assert!(before_restore(&usb).is_empty(), "today's data isn't saved for a snapshot that can't be restored");
     assert_eq!(states(&heard.all()).last().map(String::as_str), Some("failed"));
@@ -365,7 +369,9 @@ fn cancel_removes_a_ready_restore_keeps_the_before_restore_snapshot_and_the_next
     nothing_staged(&st);
     assert_eq!(before_restore(&usb).len(), 1, "the before-restore snapshot stays");
     assert_eq!(restore::restart_command(&st).unwrap_err(), "No restore is ready: restore a snapshot first");
+    let data = st.data_dir.clone();
     drop(st);
+    data_lock::released_blocking(&data);
     let st = gizai_lib::test_state(tmp.path());
     assert_eq!(restore::status(&st).result, None);
     assert_eq!(files_rows(&st), vec![today]);
@@ -430,7 +436,7 @@ fn restart_to_restore_starts_the_same_gizai_again_without_an_update_and_restart_
     let a = args(&restart);
     assert_eq!(a.last().map(String::as_str), Some(prefix.join("lib/gizai/gizai-launch").to_string_lossy().as_ref()), "{a:?}");
     assert!(a.contains(&std::process::id().to_string()), "it waits for this process: {a:?}");
-    assert_eq!(gizai_lib::update::restart_command(&st).unwrap_err(), "No newer Gizai is installed yet: update first");
+    assert_eq!(gizai_lib::update::restart_command(&st).unwrap_err(), "No newer Hersir is installed yet: update first");
     // not installed (a dev build): the program that runs now
     let me = std::env::current_exe().unwrap();
     st.updates.set_exe(Some(me.clone()));
