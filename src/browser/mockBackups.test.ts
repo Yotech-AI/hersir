@@ -118,6 +118,26 @@ describe("the browser's answers to the section's writes", () => {
     await expect(answer("back_up_now", {})).rejects.toBe("Choose a folder for backups first");
   });
 
+  it("a folder set again backs up in its folder named as the fixtures name it (the backend's FOLDER_NAME, Gizai backups)", async () => {
+    const off = (await save({ folder: null }, (await status()).settings)) as BackupStatus;
+    const out = (await save({ folder: " /media/you/USB " }, off.settings)) as BackupStatus;
+    expect(out.settings.folder).toBe("/media/you/USB");
+    expect(out.folder).toBe("/media/you/USB/Gizai backups");
+    expect([out.folderProblem, out.last]).toEqual([null, null]);
+    // daily without a backup there yet: due now
+    expect(out.next).toBe(Date.now());
+    expect(await list()).toHaveLength(3);
+    expect(changes().at(-1)).toEqual(out);
+  });
+
+  it("the folder's name comes from the fixtures, not from mock.ts", async () => {
+    const f = structuredClone(fixtures);
+    (f.commands.backup_status as BackupStatus).folder = "/home/you/Dropbox/Other name";
+    loadFixtures(f);
+    const out = (await save({ folder: "/media/you/USB" }, (await status()).settings)) as BackupStatus;
+    expect(out.folder).toBe("/media/you/USB/Other name");
+  });
+
   it("Back up now: running with each step a moment, refused while it runs, then a new By hand row on top and the last backup", async () => {
     const before = await list();
     const started = (await answer("back_up_now", {})) as BackupStatus;
