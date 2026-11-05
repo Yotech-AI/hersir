@@ -288,8 +288,7 @@ fn a_snapshot_of_a_newer_format_or_schema_is_refused_and_says_to_update_first() 
     edit_manifest(&dir, &m.name, |v| v["schema_version"] = json!(db::SCHEMA_VERSION + 1));
     assert_eq!(refused(&d, &usb, &m.name), format!("Made by a newer Hersir (database version {}). Update Hersir first.", db::SCHEMA_VERSION + 1));
     edit_manifest(&dir, &m.name, |v| { v["schema_version"] = json!(db::SCHEMA_VERSION); v["format_version"] = json!(2); });
-    let why = refused(&d, &usb, &m.name);
-    assert!(why.starts_with("Made by a newer Hersir") && why.ends_with("Update Hersir first."), "{why}");
+    assert_eq!(refused(&d, &usb, &m.name), "Made by a newer Hersir (backup format 2). Update Hersir first.");
     // format 1 and this schema pass
     edit_manifest(&dir, &m.name, |v| v["format_version"] = json!(1));
     restore::check(&d.dir, &dir, &m.name, &mut |_| Ok(())).unwrap();
@@ -413,7 +412,9 @@ fn a_snapshot_of_this_computer_restores_its_rows_and_blobs_and_todays_database_g
     assert!(result.ok, "{result:?}");
     assert_eq!(result.snapshot, m.name);
     assert!(result.at >= started);
-    assert!(result.message.contains(&m.name) && result.message.contains(&saved.name), "{}", result.message);
+    assert!(result.message.starts_with(&format!("Hersir restored {} from ", m.name)), "{}", result.message);
+    assert!(result.message.ends_with(&format!(" Today's data was saved as {} first. The agents are paused: start them again when you're ready.", saved.name)),
+            "{}", result.message);
     // the snapshot's rows and blobs
     assert_eq!(d.files_rows(), vec![a.clone()]);
     assert_eq!(fs::read(files::blob_path(&d.dir, &a)).unwrap(), b"in the snapshot");
@@ -606,7 +607,7 @@ fn a_restored_database_that_cant_be_opened_goes_to_restore_failed_and_gizai_star
     let result = result.expect("a result");
     assert!(!result.ok);
     assert_eq!(result.snapshot, m.name);
-    assert!(result.message.contains(&format!("couldn't open the restored data of {}, so it started with today's data", m.name)), "{}", result.message);
+    assert!(result.message.starts_with(&format!("Hersir couldn't open the restored data of {}, so it started with today's data: ", m.name)), "{}", result.message);
     // today's data, as it was
     assert_eq!(d.files_rows(), rows);
     assert_eq!(d.devices(), devices);
@@ -637,11 +638,39 @@ fn a_restored_database_that_cant_take_this_computers_settings_leaves_todays_data
     let (d, result) = d.restart();
     let result = result.unwrap();
     assert!(!result.ok);
-    assert!(result.message.contains("so it started with today's data"), "{}", result.message);
+    assert!(result.message.starts_with(&format!("Hersir couldn't restore {}, so it started with today's data: ", m.name)), "{}", result.message);
     assert_eq!(d.files_rows(), vec![today]);
     assert!(restore::dir(&d.dir).join(restore::FAILED).join(format!("{}.db", m.name)).is_file());
     assert!(restore::staged(&d.dir).is_none());
     assert!(backups_named(&d, "gizai-before-restore-").is_empty());
+}
+
+#[test]
+fn a_restore_json_that_doesnt_say_ready_or_cant_be_read_starts_with_todays_data_and_says_why() {
+    let d = data();
+    let usb = chosen(&d, "usb");
+    let m = d.snapshot(&usb, Reason::Manual);
+    let today = d.attach("b.txt", b"only today");
+    let (staged, _) = stage(&d, &usb, &m.name, &usb);
+    replace(&restore::dir(&d.dir).join(restore::STAGED), &serde_json::to_vec(&Staged { state: "staging".into(), ..staged }).unwrap());
+    let (d, result) = d.restart();
+    let result = result.unwrap();
+    assert!(!result.ok);
+    assert_eq!(result.message, "Hersir couldn't restore the snapshot it had ready (its restore.json doesn't say it is ready), so it started with today's data.");
+    assert_eq!(d.files_rows(), vec![today.clone()]);
+    assert_nothing_staged(&d);
+    assert_eq!(restore::result(&d.db), Some(result));
+
+    stage(&d, &usb, &m.name, &usb);
+    replace(&restore::dir(&d.dir).join(restore::STAGED), b"{ not json");
+    let (d, result) = d.restart();
+    let result = result.unwrap();
+    assert!(!result.ok);
+    assert!(result.message.starts_with("Hersir couldn't restore the snapshot it had ready (its restore.json can't be read: "), "{}", result.message);
+    assert!(result.message.ends_with("), so it started with today's data."), "{}", result.message);
+    assert_eq!(d.files_rows(), vec![today]);
+    assert_nothing_staged(&d);
+    assert!(backups_named(&d, "gizai-before-restore-").is_empty(), "today's database stayed where it was");
 }
 
 #[test]

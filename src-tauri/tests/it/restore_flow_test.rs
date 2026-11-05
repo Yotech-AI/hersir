@@ -237,6 +237,7 @@ fn a_restore_checks_saves_todays_data_in_the_settings_folder_stages_and_the_next
     assert!(result.ok, "{result:?}");
     assert_eq!(result.snapshot, snap.name);
     assert_eq!(result.from_computer, snap.device.name);
+    assert!(result.message.starts_with("Hersir restored "), "{}", result.message);
     let json = serde_json::to_value(&result).unwrap();
     let mut keys: Vec<&str> = json.as_object().unwrap().keys().map(String::as_str).collect();
     keys.sort();
@@ -448,16 +449,16 @@ fn restart_to_restore_starts_the_same_gizai_again_without_an_update_and_restart_
     assert!(gizai_lib::update::restart_command(&st).is_err(), "restart_gizai still refuses without an update");
     // where it runs from is unknown: it says so
     st.updates.set_exe(None);
-    assert!(restore::restart_command(&st).unwrap_err().contains("can't start itself again"));
+    assert_eq!(restore::restart_command(&st).unwrap_err(), "Hersir can't tell where it runs from, so it can't start itself again: quit Hersir and start it yourself");
 
-    // the shell itself: it waits until the process is gone (here a child that sleeps a second), then starts the program
+    // the shell itself: it waits until the process is gone (here a child this test stops), then starts the program
     st.updates.set_exe(Some(me));
     let restart = restore::restart_command(&st).unwrap();
     let mut a = args(&restart);
     let marker = t.join("started");
     let program = t.join("fake-gizai");
     write_script(&program, &format!("#!/bin/sh\necho started > '{}'\n", marker.display()));
-    let mut child = Command::new("sleep").arg("1").spawn().unwrap();
+    let mut child = Command::new("sleep").arg("60").spawn().unwrap();
     let pid = std::process::id().to_string();
     let at = a.iter().position(|x| *x == pid).unwrap();
     a[at] = child.id().to_string();
@@ -465,6 +466,7 @@ fn restart_to_restore_starts_the_same_gizai_again_without_an_update_and_restart_
     let mut sh = Command::new("sh").args(&a).spawn().unwrap();
     std::thread::sleep(Duration::from_millis(300));
     assert!(!marker.exists(), "it waits while the process runs");
+    child.kill().unwrap();
     child.wait().unwrap();
     until("the program started after the process quit", || marker.exists().then_some(()));
     sh.wait().unwrap();
