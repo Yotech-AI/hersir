@@ -12,7 +12,7 @@ export const KEEP_MAX = 100;
 export const EVERY: [BackupSettings["every"], string][] = [["daily", "Daily"], ["weekly", "Weekly"], ["manual", "Only when I ask"]];
 
 /** Folder when none is set. */
-export const NO_FOLDER = "Not set: Gizai makes no backups.";
+export const NO_FOLDER = "Not set: Hersir makes no backups.";
 
 /** Why a snapshot was made, in words. */
 export function reasonText(r: BackupReason | string): string {
@@ -49,7 +49,7 @@ export function backupWhen(ms: number, now: number): string {
 /** A snapshot's size: its database and the files it names. */
 export const entrySize = (e: Pick<BackupEntry, "dbBytes" | "filesBytes">) => formatBytes(e.dbBytes + e.filesBytes);
 
-/** "from <computer>" for another computer's snapshot, null for this computer's. A computer Gizai couldn't name (no
+/** "from <computer>" for another computer's snapshot, null for this computer's. A computer Hersir couldn't name (no
  *  $HOSTNAME, so "this machine") is "another computer". */
 export function fromText(e: Pick<BackupEntry, "thisComputer" | "deviceName">): string | null {
   if (e.thisComputer) return null;

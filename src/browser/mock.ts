@@ -11,6 +11,9 @@ export type Fixtures = { about?: string; writtenAt: number; commands: Record<str
 
 let commands: Record<string, unknown> = {};
 
+/** The folder Hersir makes inside a chosen one for backups (gizai-core's `backups::FOLDER_NAME`), as the fixtures name it. */
+let backupsFolderName = "";
+
 const isKeyed = (f: unknown): f is Keyed => !!f && typeof f === "object" && "$by" in f && "$answers" in f;
 
 /** Moves every time (a field whose name ends in "At", `at`, and a backup status's `next`) by `delta`, so "2 h ago" in the fixtures
@@ -28,6 +31,7 @@ function shiftTimes(v: unknown, delta: number): void {
 export function loadFixtures(f: Fixtures) {
   commands = f.commands;
   shiftTimes(commands, Date.now() - f.writtenAt);
+  backupsFolderName = String((commands.backup_status as { folder?: string | null } | undefined)?.folder ?? "").split("/").pop() ?? "";
   console.info(`Hersir in a browser: ${Object.keys(commands).length} commands answer from the fixtures (src/browser/fixtures.json).`);
 }
 
@@ -127,7 +131,7 @@ const WRITES: Record<string, (args: Row) => unknown> = {
     if (!st) return empty("save_backup_settings", "save_backup_settings");
     if (!(Number.isInteger(s.keep) && Number(s.keep) >= 1 && Number(s.keep) <= 100)) return Promise.reject(`Keep must be 1 to 100 snapshots, not ${s.keep}`);
     const folder = typeof s.folder === "string" && s.folder.trim() ? s.folder.trim() : null;
-    Object.assign(st, { settings: { ...s, folder }, folder: folder && `${folder}/Gizai backups`, folderProblem: null });
+    Object.assign(st, { settings: { ...s, folder }, folder: folder && `${folder}/${backupsFolderName}`, folderProblem: null });
     if (!folder) Object.assign(st, { last: null, lastError: null });
     st.next = nextBackup(st);
     return backupsChanged();

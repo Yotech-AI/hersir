@@ -146,7 +146,7 @@ export function BackupSettings() {
               onChange={() => save("when", { every: value })} />{label}</label>
           ))}
         </div>
-        <label className="check"><input type="checkbox" checked={s.settings.onQuit} onChange={(e) => save("when", { onQuit: e.target.checked })} />Also when I quit Gizai completely</label>
+        <label className="check"><input type="checkbox" checked={s.settings.onQuit} onChange={(e) => save("when", { onQuit: e.target.checked })} />Also when I quit Hersir completely</label>
       </Field>
       <Field label="Keep" htmlFor="bk-keep" error={errs.keep} hint="Your newest backups from this computer. Older ones are removed. A backup made before a restore is never removed.">
         <div className="input-group">
