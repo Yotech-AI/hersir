@@ -278,7 +278,7 @@ pub fn name_problem(servers: &[McpServer], name: &str, own_id: &str) -> Option<S
                              mcp__<name>__<tool>, and Claude Code reads __ as where the name ends"));
     }
     if TAKEN.iter().any(|t| t.eq_ignore_ascii_case(name)) {
-        return Some(format!("{name} is Gizai's own: give the server another name"));
+        return Some(format!("{name} is Hersir's own: give the server another name"));
     }
     if servers.iter().any(|s| s.id != own_id && s.name.eq_ignore_ascii_case(name)) {
         return Some(format!("there is already an MCP server called {name}: give this one another name"));
@@ -337,7 +337,7 @@ pub fn clean(servers: &[McpServer], s: McpServer) -> Result<McpServer> {
         out.header_names = names(&s.header_names, valid_header_name, "a header", &name)?;
         out.sign_in_by = s.sign_in_by.trim().to_lowercase();
         if !SIGN_IN_BY.contains(&out.sign_in_by.as_str()) {
-            return Err(Error::Invalid(format!("Gizai or Claude Code signs in to {name}, not {}", out.sign_in_by)));
+            return Err(Error::Invalid(format!("Hersir or Claude Code signs in to {name}, not {}", out.sign_in_by)));
         }
     }
     Ok(out)
@@ -417,11 +417,11 @@ pub fn parse_cli_tools(raw: Option<&str>) -> CliTools {
 pub fn mcp_not_on(kind: &str) -> Option<&'static str> {
     match kind {
         "claude_code" => None,
-        "codex" => Some("Codex takes MCP servers per run, but Gizai hasn't checked yet that a headless codex exec may call their tools: \
+        "codex" => Some("Codex takes MCP servers per run, but Hersir hasn't checked yet that a headless codex exec may call their tools: \
                          MCP servers and the browser stay off for Codex agents for now."),
-        "gemini" => Some("Gemini takes MCP servers only from its settings files, and Gizai never writes in ~/.gemini or the worktree: \
+        "gemini" => Some("Gemini takes MCP servers only from its settings files, and Hersir never writes in ~/.gemini or the worktree: \
                           MCP servers and the browser stay off for Gemini agents."),
-        _ => Some("This CLI runs with its own settings: Gizai can't give it MCP servers or the browser."),
+        _ => Some("This CLI runs with its own settings: Hersir can't give it MCP servers or the browser."),
     }
 }
 
@@ -462,7 +462,7 @@ pub fn set_agent_tools(db: &Db, actor: &str, agent_id: &str, tools: AgentTools) 
     }
     let cli = agent_cli(db, agent_id)?;
     if mcp_not_on(&cli.kind).is_some() && clean.servers_on().next().is_some() {
-        return Err(Error::Invalid(format!("MCP servers and the browser work on Claude Code for now: {} runs on {}, which Gizai hasn't checked them with",
+        return Err(Error::Invalid(format!("MCP servers and the browser work on Claude Code for now: {} runs on {}, which Hersir hasn't checked them with",
                                           agent_name(db, agent_id)?, cli.name)));
     }
     let on: Vec<&str> = clean.servers_on().map(|s| s.server_id.as_str()).collect();

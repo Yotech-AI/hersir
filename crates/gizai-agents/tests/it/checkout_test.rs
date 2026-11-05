@@ -278,7 +278,7 @@ fn with_stash_uncommitted_changes_go_to_gits_stash_first_then_it_fast_forwards_a
     assert_eq!(done.installed, ["composer install", "npm ci"]);
     assert_eq!(calls(&fake), ["composer install --no-interaction --no-progress --no-ansi", "npm ci --no-audit --no-fund"]);
     // one stash entry, holding the lock file's change; the folder is clean and at main's commit
-    assert_eq!(stashes(&r.folder), ["On main: Gizai: before the update to main"]);
+    assert_eq!(stashes(&r.folder), ["On main: Hersir: before the update to main"]);
     assert_eq!(git_out(&r.folder, &["stash", "show", "--name-only", "stash@{0}"]), "package-lock.json");
     assert_eq!(git_out(&r.folder, &["status", "--porcelain"]), "?? notes.txt", "clean, but for the untracked file");
     assert_eq!(git_out(&r.folder, &["rev-parse", "HEAD"]), to);
@@ -312,7 +312,7 @@ fn a_lock_file_changed_by_a_local_install_on_mains_commit_is_stashed_and_gets_it
     assert_eq!((done.stashed, done.installed, done.from == done.to), (vec!["package-lock.json".to_string()], vec!["npm ci".to_string()], true));
     assert_eq!(calls(&fake), ["npm ci --no-audit --no-fund"]);
     assert_eq!((stashes(&r.folder), git_out(&r.folder, &["status", "--porcelain"]), git_out(&r.folder, &["rev-parse", "HEAD"])),
-               (vec!["On main: Gizai: before the update to main".to_string()], String::new(), head));
+               (vec!["On main: Hersir: before the update to main".to_string()], String::new(), head));
     git(&r.folder, &["stash", "pop", "-q"]);
     assert_eq!(read(&r.folder, "package-lock.json"), LOCAL_LOCK);
 }
@@ -363,7 +363,7 @@ fn changes_that_went_after_the_check_are_not_said_to_be_stashed_and_your_own_sta
     let plan = checkout::plan(&r.folder, &r.folder, "main", MAIN, false, true).unwrap();
     let done = checkout::update(&r.folder, &plan, None).unwrap();
     assert_eq!(done.stashed, ["package.json"]);
-    assert_eq!(stashes(&r.folder), ["On main: Gizai: before the update to main", "On main: mine"]);
+    assert_eq!(stashes(&r.folder), ["On main: Hersir: before the update to main", "On main: mine"]);
     assert_eq!(git_out(&r.folder, &["rev-parse", "stash@{1}"]), mine);
     assert_eq!(git_out(&r.folder, &["rev-parse", "HEAD"]), to);
 }
@@ -484,7 +484,7 @@ fn gits_hooks_dont_run_when_it_stashes_switches_and_fast_forwards() {
     let done = checkout::update(&r.folder, &plan, None).unwrap();
     assert_eq!((done.stashed, done.switched_from.as_deref()), (vec!["package.json".to_string()], Some("feature/x")));
     assert!(!ran.exists(), "hooks ran: {:?}", std::fs::read_to_string(&ran));
-    assert_eq!(stashes(&r.folder), ["On feature/x: Gizai: before the update to main"]);
+    assert_eq!(stashes(&r.folder), ["On feature/x: Hersir: before the update to main"]);
     assert_eq!((git_out(&r.folder, &["branch", "--show-current"]), git_out(&r.folder, &["rev-parse", "HEAD"])), ("main".to_string(), to));
     assert_eq!(git_out(&r.folder, &["rev-parse", "feature/x"]), feature, "the feature branch stays as it is");
     // the hooks work: a commit of your own runs them
@@ -507,5 +507,5 @@ fn when_a_later_step_fails_the_stop_says_the_changes_went_to_gits_stash() {
     assert_eq!(stopped.why, "npm ci failed (exit code 1)", "{stopped:?}");
     assert_eq!((stopped.stashed.clone(), stopped.done.clone()),
                (vec!["package-lock.json".to_string()], vec!["put the uncommitted changes in package-lock.json in git's stash".to_string()]));
-    assert_eq!(stashes(&r.folder), ["On main: Gizai: before the update to main"], "the change stays in the stash");
+    assert_eq!(stashes(&r.folder), ["On main: Hersir: before the update to main"], "the change stays in the stash");
 }

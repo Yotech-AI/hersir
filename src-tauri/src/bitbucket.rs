@@ -59,7 +59,7 @@ fn keychain_problem(e: String) -> Problem {
 pub(crate) fn login(st: &AppState) -> Result<Login, String> {
     match bitbucket::saved_login(st.keychain.as_ref()) {
         Ok(Some(login)) => Ok(login),
-        Ok(None) => Err("Log in to Bitbucket first (Settings → Bitbucket): Gizai opens and follows its pull requests with your email and an API token".into()),
+        Ok(None) => Err("Log in to Bitbucket first (Settings → Bitbucket): Hersir opens and follows its pull requests with your email and an API token".into()),
         Err(e) => Err(e),
     }
 }

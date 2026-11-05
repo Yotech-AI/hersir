@@ -188,7 +188,7 @@ fn bash(shown: &str, path: Option<&OsStr>) -> Result<PathBuf, PrepareFailed> {
 /// checkout and of a folder open in the Editor (`checkout::update`).
 pub fn install(dir: &Path, folder: &str, path: Option<&OsStr>) -> Result<(String, String), PrepareFailed> {
     let Some(dep) = DEPS.iter().find(|d| d.folder == folder) else {
-        return Err(PrepareFailed { command: format!("installing {folder}/"), why: "isn't something Gizai installs".into(), output: String::new() });
+        return Err(PrepareFailed { command: format!("installing {folder}/"), why: "isn't something Hersir installs".into(), output: String::new() });
     };
     let (shown, program, args) = install_command(dir, dep);
     let printed = run(&shown, program, args, dir, path, COMMAND_LIMIT, None)?;
@@ -298,7 +298,7 @@ fn run<S: AsRef<OsStr>>(shown: &str, program: impl AsRef<OsStr>, args: &[S], dir
     }
     let (mut child, tree) = os::spawn_tree(&mut cmd, false).map_err(|e| match e.kind() {
         std::io::ErrorKind::NotFound => {
-            fail(format!("couldn't start: {} isn't installed (or not on Gizai's PATH)", program.to_string_lossy()), String::new())
+            fail(format!("couldn't start: {} isn't installed (or not on Hersir's PATH)", program.to_string_lossy()), String::new())
         }
         _ => fail(format!("couldn't start: {e}"), String::new()),
     })?;

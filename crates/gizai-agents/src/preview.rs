@@ -160,7 +160,7 @@ impl Preview {
                 });
             }
             if give_up() {
-                return Err("Gizai is quitting".into());
+                return Err("Hersir is quitting".into());
             }
             if t0.elapsed() >= limit {
                 return Err(format!("It didn't answer on port {port} in {} s", limit.as_secs()));

@@ -1,13 +1,13 @@
-# GizAi's one-line install for Windows, in PowerShell (Windows PowerShell 5.1 or PowerShell 7):
+# Hersir's one-line install for Windows, in PowerShell (Windows PowerShell 5.1 or PowerShell 7):
 #   irm https://gizai.app/install.ps1 | iex
 # The website sends gizai.app/install.ps1 on to this script, scripts/get.ps1 on the production branch, on GitHub.
-# It gets the source of the latest release, the tag Gizai's own update fetches (docs/RELEASING.md), into
+# It gets the source of the latest release, the tag Hersir's own update fetches (docs/RELEASING.md), into
 # %LOCALAPPDATA%\gizai-src, or updates it there. Then it runs that release's install.ps1 with Windows PowerShell:
-# install.ps1 -Check first, then install.ps1, which builds and installs Gizai as it does from a clone. Run it again to
-# update. Nothing goes into Gizai's data folder. The source folder is this script's own: changes in it are replaced.
+# install.ps1 -Check first, then install.ps1, which builds and installs Hersir as it does from a clone. Run it again to
+# update. Nothing goes into Hersir's data folder. The source folder is this script's own: changes in it are replaced.
 #
 # Options go to install.ps1:  & ([scriptblock]::Create((irm <url>))) -Check   (see -Help)
-# Environment: GIZAI_PREFIX goes to install.ps1 too ($env:GIZAI_PREFIX = 'D:\Apps\Gizai' first). GIZAI_REPO is the git
+# Environment: GIZAI_PREFIX goes to install.ps1 too ($env:GIZAI_PREFIX = 'D:\Apps\Hersir' first). GIZAI_REPO is the git
 # repository, GIZAI_RELEASES_URL what it asks for the latest release (by default GitHub's; also http and file URLs),
 # and GIZAI_REF a tag, branch or commit to get instead of the latest release (for tests and CI).
 # Piped into iex, it runs in your own PowerShell session: its StrictMode and preferences stay its own, only its options
@@ -35,7 +35,7 @@ param(
 
   # What this script gets comes from GitHub, so an install never depends on the website: the source from $DefaultRepo,
   # the latest release from GitHub's API. The one lines it only shows you are gizai.app's.
-  $DefaultRepo = 'https://github.com/Yotech-AI/gizai.git'
+  $DefaultRepo = 'https://github.com/Yotech-AI/hersir.git'
   $GetPs1 = 'https://gizai.app/install.ps1'
   $GetSh = 'https://gizai.app/install.sh'
 
@@ -55,14 +55,14 @@ param(
   }
 
   if ($Help) {
-    Say "GizAi's one-line install for Windows, in PowerShell:"
+    Say "Hersir's one-line install for Windows, in PowerShell:"
     Say "  irm $GetPs1 | iex"
     Say 'It gets the source of the latest release into %LOCALAPPDATA%\gizai-src (or updates it there), then runs that'
     Say "release's install.ps1: -Check first, then the install. Run it again to update."
     Say ''
     Say 'Options go to install.ps1:'
     Say '  & ([scriptblock]::Create((irm <url>))) -Check       get the source and show what is missing'
-    Say '  & ([scriptblock]::Create((irm <url>))) -Uninstall   remove GizAi; add -Purge to delete your data and the source'
+    Say '  & ([scriptblock]::Create((irm <url>))) -Uninstall   remove Hersir; add -Purge to delete your data and the source'
     Say '  -BuildOnly and -SkipBuild work as they do for install.ps1 (see install.ps1 -Help).'
     Say 'Environment: GIZAI_PREFIX (default %LOCALAPPDATA%\Programs\Gizai), as for install.ps1; GIZAI_REPO,'
     Say 'GIZAI_RELEASES_URL, and GIZAI_REF (a tag, branch or commit to get instead of the latest release, for tests).'
@@ -77,11 +77,11 @@ param(
 
   try {
     if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
-      Say "This installs GizAi on Windows. On Linux and macOS, run: curl -fsSL $GetSh | sh"
+      Say "This installs Hersir on Windows. On Linux and macOS, run: curl -fsSL $GetSh | sh"
       Finish 1; return
     }
     if (-not (Have 'git')) {
-      Say 'To install GizAi, first install Git for Windows (winget install --id Git.Git -e), then open a new PowerShell window and run this again.'
+      Say 'To install Hersir, first install Git for Windows (winget install --id Git.Git -e), then open a new PowerShell window and run this again.'
       Finish 1; return
     }
 
@@ -100,7 +100,7 @@ param(
           Finish 1; return
         }
       }
-      Step "Finding GizAi's latest release"
+      Step "Finding Hersir's latest release"
       try {
         if ($url -like 'file:*') {
           $release = Get-Content -LiteralPath ([Uri]$url).LocalPath -Raw | ConvertFrom-Json
@@ -144,7 +144,7 @@ param(
       Invoke-Shown 'git' ($git + @('-c', 'init.defaultBranch=main', 'init', '--quiet'))
       if ($LASTEXITCODE -ne 0) { Say "Could not make a git repository in $dir."; Finish 1; return }
     }
-    # As Gizai's own update: a shallow fetch of the tag alone, checked out as it is, and everything else in the folder
+    # As Hersir's own update: a shallow fetch of the tag alone, checked out as it is, and everything else in the folder
     # goes, except the build's target\, so the next build is quicker. No -- before the repository, as get.sh has:
     # Windows PowerShell may drop it.
     $spec = if ($ref) { $ref } else { "+refs/tags/${tag}:refs/tags/${tag}" }
@@ -164,7 +164,7 @@ param(
     if ($SkipBuild) { $flags += '-SkipBuild' }
     if ($Uninstall) { $flags += '-Uninstall' }
     if ($Purge) { $flags += '-Purge' }
-    # With Windows PowerShell, as Gizai's own update runs it, and Bypass, as the release's script isn't signed.
+    # With Windows PowerShell, as Hersir's own update runs it, and Bypass, as the release's script isn't signed.
     $run = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $installer)
     # The release's check first, which says what is missing. Not before -Uninstall: install.ps1 -Check -Uninstall
     # would uninstall. What it finds missing (1) stops the install, except with -SkipBuild: install.ps1 installs what
@@ -182,7 +182,7 @@ param(
     Invoke-Shown 'powershell.exe' ($run + $flags)
     Finish $LASTEXITCODE
   } catch {
-    Say "GizAi could not be installed: $($_.Exception.Message)"
+    Say "Hersir could not be installed: $($_.Exception.Message)"
     Finish 1
   }
 } ($null -ne {}.File)

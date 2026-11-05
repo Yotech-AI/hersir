@@ -26,7 +26,7 @@ fn backing_up_writes_a_snapshot_next_to_the_data() {
     let snap = gizai_lib::backup_data_dir(&data, "manual").unwrap();
     assert!(snap.starts_with(data.join("backups")) && snap.exists(), "{snap:?}");
     let e = gizai_lib::backup_data_dir(&dir.path().join("empty"), "manual").unwrap_err();
-    assert!(e.contains("no Gizai data"), "{e}");
+    assert!(e.contains("no Hersir data"), "{e}");
 }
 
 #[test]

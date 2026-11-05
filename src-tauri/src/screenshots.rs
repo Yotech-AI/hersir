@@ -114,8 +114,8 @@ pub(crate) async fn start(st: &AppState, run_id: &str, role: &str, project: &Pro
     }).await;
     let mut p = match started {
         Ok(Ok(p)) => p,
-        Ok(Err(e)) => return failed(st, run_id, run, format!("Gizai couldn't start it: {e}"), String::new()),
-        Err(e) => return failed(st, run_id, run, format!("Gizai couldn't start it: {e}"), String::new()),
+        Ok(Err(e)) => return failed(st, run_id, run, format!("Hersir couldn't start it: {e}"), String::new()),
+        Err(e) => return failed(st, run_id, run, format!("Hersir couldn't start it: {e}"), String::new()),
     };
     if let Some(entry) = st.runs.previews.lock().unwrap_or_else(|e| e.into_inner()).get_mut(run_id) {
         entry.1 = Some(p.tree());

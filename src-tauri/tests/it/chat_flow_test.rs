@@ -318,11 +318,11 @@ async fn the_system_prompt_names_each_copy_and_stays_the_same_while_the_commit_l
     let head = String::from_utf8(std::process::Command::new("git").args(["rev-parse", "--short=7", "main"]).current_dir(&repo).output().unwrap().stdout).unwrap();
     for (i, text) in [(0, "what changed in KADE?"), (1, "and since then?")] {
         let prompt = calls[i]["prompt"].as_str().unwrap();
-        assert!(prompt.starts_with(&format!("[Gizai: Your copies of the code: KADE {} (", head.trim())), "{prompt}");
+        assert!(prompt.starts_with(&format!("[Hersir: Your copies of the code: KADE {} (", head.trim())), "{prompt}");
         assert!(prompt.ends_with(text), "{prompt}");
     }
     let msgs = chat::messages(&t.st.db, &thread).unwrap();
-    assert!(msgs.iter().all(|m| !m.body_md.as_deref().unwrap_or("").contains("[Gizai:")), "the line isn't saved as a chat message");
+    assert!(msgs.iter().all(|m| !m.body_md.as_deref().unwrap_or("").contains("[Hersir:")), "the line isn't saved as a chat message");
     assert_eq!(msgs.iter().filter(|m| m.role == "user").map(|m| m.body_md.clone().unwrap()).collect::<Vec<_>>(), ["what changed in KADE?", "and since then?"]);
 }
 
@@ -363,7 +363,7 @@ async fn quitting_stops_a_chat_answer_and_says_why() {
     let s = done.await.unwrap();
     assert_eq!(s.status, "cancelled");
     let last = chat::messages(&t.st.db, &thread).unwrap().pop().unwrap();
-    assert_eq!(last.body_md.as_deref(), Some("Stopped because Gizai quit."));
+    assert_eq!(last.body_md.as_deref(), Some("Stopped because Hersir quit."));
     assert!(app_chat::send(&t.st, Some(thread), "more".into(), None).await.is_err(), "no new turns while quitting");
 }
 
@@ -395,10 +395,10 @@ async fn as_gizai_exits_kill_all_ends_a_chat_answer_at_once_and_says_why() {
     let (thread, done, pid) = hanging_answer(&t).await;
     assert_eq!(app_chat::kill_all(&t.st), 1);
     let s = tokio::time::timeout(std::time::Duration::from_secs(3), done).await.expect("ended at once").unwrap();
-    assert_eq!((s.status.as_str(), s.error.as_deref()), ("cancelled", Some("Stopped because Gizai quit.")));
-    assert_eq!(core_runs::get(&t.st.db, &s.run_id).unwrap().error.as_deref(), Some("Stopped because Gizai quit."));
+    assert_eq!((s.status.as_str(), s.error.as_deref()), ("cancelled", Some("Stopped because Hersir quit.")));
+    assert_eq!(core_runs::get(&t.st.db, &s.run_id).unwrap().error.as_deref(), Some("Stopped because Hersir quit."));
     let last = chat::messages(&t.st.db, &thread).unwrap().pop().unwrap();
-    assert_eq!((last.role.as_str(), last.body_md.as_deref()), ("system", Some("Stopped because Gizai quit.")));
+    assert_eq!((last.role.as_str(), last.body_md.as_deref()), ("system", Some("Stopped because Hersir quit.")));
     assert!(app_chat::live(&t.st).is_empty());
     assert!(group_gone(pid).await, "no Claude Code left");
 }
@@ -411,9 +411,9 @@ async fn an_answer_whose_claude_code_ends_while_gizai_quits_was_stopped_by_the_q
     gizai_lib::runs::mark_closing(&t.st);
     unsafe { libc::kill(-pid, libc::SIGTERM) };
     let s = tokio::time::timeout(std::time::Duration::from_secs(8), done).await.expect("answer ended").unwrap();
-    assert_eq!((s.status.as_str(), s.error.as_deref()), ("cancelled", Some("Stopped because Gizai quit.")));
+    assert_eq!((s.status.as_str(), s.error.as_deref()), ("cancelled", Some("Stopped because Hersir quit.")));
     let last = chat::messages(&t.st.db, &thread).unwrap().pop().unwrap();
-    assert_eq!((last.role.as_str(), last.body_md.as_deref()), ("system", Some("Stopped because Gizai quit.")));
+    assert_eq!((last.role.as_str(), last.body_md.as_deref()), ("system", Some("Stopped because Hersir quit.")));
     assert_eq!(core_runs::list_for_agent(&t.st.db, &t.lead, 10).unwrap().len(), 1, "not retried in a new session while quitting");
     assert!(group_gone(pid).await);
 }

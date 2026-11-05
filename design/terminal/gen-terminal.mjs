@@ -124,7 +124,7 @@ const COLORS = [
   ["term-green", "{diff-add}", "{diff-add}", "ANSI 2: success, passed tests, git's added lines and staged files. diff-add's value."],
   ["term-yellow", "#e3bd3c", "#855600", "ANSI 3: warnings, git's commit hashes. The gold of syn-type."],
   ["term-blue", "#85adff", "#1e54c4", "ANSI 4: folders in ls, rustc's arrows and line numbers. The blue of syn-function."],
-  ["term-magenta", "#c58af9", "#8a3cc2", "ANSI 5: images in ls. A violet: at least 35° of hue from needs (magenta, “needs you”)."],
+  ["term-magenta", "#c58af9", "#8a3cc2", "ANSI 5: images in ls. A violet: at least 35° of hue from needs (gold, “needs you”)."],
   ["term-cyan", "#56b8f0", "#0a6c9c", "ANSI 6: symbolic links in ls, git's @@ lines, URLs. A sky blue: at least 35° of hue from live (teal, an agent at work)."],
   ["term-white", "#c4c7ce", "#d0d3da", "ANSI 7: light grey. In dark, text a little dimmer than term-fg; in light, white text on coloured blocks, and lifted to 4.5:1 when it is text on the background."],
   ["term-bright-black", "#7f838d", "#636772", "ANSI 8: grey text, such as hints, a shell's suggestions and dim lines. text-3's value."],
@@ -339,7 +339,7 @@ const GIT_DIFF = [
   "⟦bold|--- a/design/README.md⟧", "⟦bold|+++ b/design/README.md⟧",
   "⟦cyan|@@ -36,6 +36,9 @@⟧ dense, dark, calm, and honest about what agents are doing.",
   "   the working strip on a card, the border of a live run card. Never use teal for anything else.",
-  ' - `needs` (magenta) means "a person is needed": Review, holds, the Inbox count.',
+  ' - `needs` (gold) means "a person is needed": Review, holds, the Inbox count.',
   "⟦green|+- The terminal's own colours (`term-*`) are what programs print, not Gizai's states:⟧",
   "⟦green|+  `term-cyan` and `term-magenta` stay clearly apart from `live` and `needs`.⟧",
   "⟦red|-- `success`, `warning`, `danger` are run and form outcomes.⟧",
@@ -711,7 +711,7 @@ section("colours", "6. The terminal's colours",
   + notes(
     "<b>One surface with the code.</b> <code>term-bg</code> is <code>bg</code>, the code's background, and <code>term-fg</code> is <code>text</code>; the cursor is <code>text</code> as in the code, the selection the accent's blue, stronger than the code's, so a selection in output stands out.",
     "<b>Red and green are the Changes view's.</b> <code>term-red</code> is <code>diff-del</code> and <code>term-green</code> <code>diff-add</code>, so <code>git diff</code> in a terminal reads as a card's Changes. Yellow is the gold of <code>syn-type</code> and blue the blue of <code>syn-function</code>.",
-    "<b>Cyan and magenta keep away from Gizai's two signals.</b> Teal <code>live</code> means an agent at work and magenta <code>needs</code> means “needs you”; a program's cyan and magenta are its own output. So <code>term-cyan</code> is a sky blue and <code>term-magenta</code> a violet: at least 35° of hue (OKLCH) and a ΔE2000 of at least 15 from both, in both themes. The generator refuses values that break this.",
+    "<b>Cyan and magenta keep away from Gizai's two signals.</b> Teal <code>live</code> means an agent at work and gold <code>needs</code> means “needs you”; a program's cyan and magenta are its own output. So <code>term-cyan</code> is a sky blue and <code>term-magenta</code> a violet: at least 35° of hue (OKLCH) and a ΔE2000 of at least 15 from both, in both themes. The generator refuses values that break this.",
     "<b>Contrast.</b> Every colour a program prints as text is at least 4.5:1 on <code>term-bg</code>. Bright colours are the stronger ones on each background: lighter in dark, darker in light. Three are block colours, under 4.5:1 by nature (black in dark; white and bright white in light); xterm.js's <code>minimumContrastRatio: 4.5</code> lifts any text that lands under 4.5:1, so a program's black text on the dark background still reads.",
     "<b>Never colour alone</b> holds in the terminal too: programs print words with their colours (“ok”, “FAILED”, “modified:”), and Gizai adds no colour of its own to their output. Where a program's own pair lands under 4.5:1, such as ls's black on green in light, xterm.js draws the text lighter or darker until it reads.")
   + h3("The tokens")

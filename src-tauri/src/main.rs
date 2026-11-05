@@ -4,7 +4,7 @@
 /// The help, with where your data lives on this system.
 macro_rules! help {
     ($data:literal) => {
-        concat!("Gizai: clients, projects and tasks, worked on by local AI agents.
+        concat!("Hersir: clients, projects and tasks, worked on by local AI agents.
 
 Usage: gizai [--version | --help | --backup [name]]
 

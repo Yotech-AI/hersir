@@ -70,7 +70,7 @@ fn setup() -> T {
 
 /// The refusal a tool in `NOT_AFTER_OUTSIDE` gets after mcp__otus__search, word for word (the card's text).
 fn kept_text(name: &str) -> String {
-    format!("{name} wasn't run: this answer used mcp__otus__search, a tool from outside Gizai. Gizai keeps the call for the user to approve \
+    format!("{name} wasn't run: this answer used mcp__otus__search, a tool from outside Hersir. Hersir keeps the call for the user to approve \
              with one click. Tell them in a sentence what it does.")
 }
 
@@ -296,7 +296,7 @@ async fn a_call_gizai_cant_keep_is_still_not_run_and_the_team_lead_asks_you_in_a
     // an answer in a chat that isn't in the database (gone meanwhile): the call can't be kept for it
     app_chat::mark_outside(&t.st, "no-such-chat", "mcp__otus__search");
     let e = t.call(Some("no-such-chat"), "set_agent_status", json!({"agent": "Backend Agent", "status": "paused"})).await.unwrap_err();
-    assert!(e.starts_with("set_agent_status wasn't run: this answer used mcp__otus__search, a tool from outside Gizai, and Gizai couldn't keep \
+    assert!(e.starts_with("set_agent_status wasn't run: this answer used mcp__otus__search, a tool from outside Hersir, and Hersir couldn't keep \
         the call for the user to approve ("), "{e}");
     assert!(e.ends_with("). Tell the user what you would do and ask them to confirm it in a new message."), "{e}");
     assert_eq!(team::agent(&t.st.db, &t.backend).unwrap().status, "active", "not run");
@@ -371,7 +371,7 @@ async fn every_tool_in_the_list_waits_with_a_readable_preview_and_approve_all_ru
     assert_eq!(v[10]["preview"]["text"], "- Otus says: Fridays.");
     let f11 = fields(&v[11]);
     assert_eq!((field(&f11, "From").2.as_str(), field(&f11, "To").2.as_str()), ("Agents/Backend Agent/Cargo", "Lessons/Cargo"));
-    assert_eq!(field(&fields(&v[12]), "Pull request").2, "none Gizai knows of yet");
+    assert_eq!(field(&fields(&v[12]), "Pull request").2, "none Hersir knows of yet");
     // nothing ran yet
     assert!(gizai_core::runs::list_for_agent(&t.st.db, &t.backend, 10).unwrap().is_empty());
     assert!(!team::all_agents(&t.st.db).unwrap().iter().any(|(_, m)| m.name == "Otus Agent"));
@@ -446,7 +446,7 @@ async fn approve_keeps_attach_files_rule_a_file_nobody_named_in_the_chat_is_refu
     let gone = t.dir.path().join("gone.txt");
     let thread2 = t.marked(&format!("Attach {} to KADE-1", gone.display()));
     let id2 = t.keep(&thread2, "attach_file", json!({"path": gone.display().to_string(), "task": "KADE-1"})).await;
-    assert_eq!(t.view(&thread2, &id2)["preview"]["warning"], format!("Gizai can't read {} now, so approving fails.", gone.display()));
+    assert_eq!(t.view(&thread2, &id2)["preview"]["warning"], format!("Hersir can't read {} now, so approving fails.", gone.display()));
 }
 
 // ---- runs: start and continue ----
@@ -706,7 +706,7 @@ async fn the_team_leads_next_answer_starts_with_what_you_approved_and_discarded_
     let (_, s3) = turn(&st, Some(thread.clone()), "What did I decide?").await;
     assert_eq!(s3.status, "succeeded", "{s3:?}");
     let you = gizai_core::users::list(&st.db).unwrap().into_iter().find(|p| p.id == st.you_id).unwrap().name;
-    let line = format!("[Gizai: {you} decided on calls of yours that waited for their approval after a tool from outside Gizai:\n\
+    let line = format!("[Hersir: {you} decided on calls of yours that waited for their approval after a tool from outside Hersir:\n\
         - Approved: add to the note Team Lead/Notes. Saved as version 2 (your memory_append call)\n\
         - Discarded: pause Backend Agent (your set_agent_status call)]");
     let p = prompts(&st);
@@ -718,8 +718,8 @@ async fn the_team_leads_next_answer_starts_with_what_you_approved_and_discarded_
     let calls: Vec<Value> = std::fs::read_to_string(st.data_dir.join("chat/fake-calls.jsonl")).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect();
     let argv: Vec<String> = calls.last().unwrap()["argv"].as_array().unwrap().iter().map(|a| a.as_str().unwrap().to_string()).collect();
     let sys = &argv[argv.iter().position(|a| a == "--append-system-prompt").unwrap() + 1];
-    assert!(sys.contains(&format!("After a tool from outside Gizai, a call of yours that acts (runs, agents, columns, attach_file, update_checkout, \
-        memory's writes, merge_pull_request) isn't run: Gizai keeps it under your answer for {you} to approve with one click or discard. Say in a \
+    assert!(sys.contains(&format!("After a tool from outside Hersir, a call of yours that acts (runs, agents, columns, attach_file, update_checkout, \
+        memory's writes, merge_pull_request) isn't run: Hersir keeps it under your answer for {you} to approve with one click or discard. Say in a \
         sentence what each such call does; don't make it again. A later message starts with what {you} decided, in square brackets.")), "{sys}");
     // heard: the answer after it doesn't hear it again
     assert!(pending::for_turn(&st, &thread).line.is_empty());
@@ -774,7 +774,7 @@ async fn a_chat_answer_without_an_outside_tool_works_as_before_and_keeps_nothing
 #[test]
 fn the_team_leads_prompt_and_the_docs_say_how_it_works() {
     let docs = include_str!("../../../docs/agent-tools.md");
-    for part in ["**Approve with one click.**", "Gizai keeps the call for the user to approve with one click. Tell them in a sentence what it does.",
+    for part in ["**Approve with one click.**", "Hersir keeps the call for the user to approve with one click. Tell them in a sentence what it does.",
                  "**Approve all**", "a board check never makes one", "after a restart"] {
         assert!(docs.contains(part), "{part:?} in docs/agent-tools.md");
     }
@@ -987,10 +987,10 @@ async fn the_closing_note_is_for_you_only_the_team_leads_next_answer_and_a_hand_
     let (_, s3) = turn(&st, Some(thread.clone()), "FAKE_LOST_SESSION Go on").await;
     assert_eq!(s3.status, "succeeded", "{s3:?}");
     let retry = prompts(&st).pop().unwrap();
-    assert!(retry.contains("could not be resumed") && retry.contains(&format!("(Gizai: {said})")), "{retry}");
+    assert!(retry.contains("could not be resumed") && retry.contains(&format!("(Hersir: {said})")), "{retry}");
     assert!(!retry.contains("Nothing else waits") && !retry.contains("answer above is done"), "{retry}");
     let handover = chat::handover(&chat::messages(&st.db, &thread).unwrap(), chat::HANDOVER_CAP);
-    assert!(handover.contains(&format!("(Gizai: {said})")) && !handover.contains("answer above is done"), "{handover}");
+    assert!(handover.contains(&format!("(Hersir: {said})")) && !handover.contains("answer above is done"), "{handover}");
     assert_eq!(t.done_notes(&thread).len(), 1, "answers give no closing note of their own");
 }
 

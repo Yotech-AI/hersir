@@ -272,13 +272,13 @@ describe("when the onboarding opens (GA-164: on a new install, step 1)", () => {
     const onb = container.firstChild!;
     expect(onb.attrs.get("class")).toBe("onb");
     expect(onb.firstChild!.attrs.get("class")).toBe("band"); // the mountains, as in the app
-    expect(byClass("onb-logo")[0].innerHTML).toContain('aria-label="GizAi"');
+    expect(byClass("onb-logo")[0].innerHTML).toContain('aria-label="Hersir"');
     const steps = byClass("onb-steps")[0];
     expect(steps.childNodes.map((li) => text(li))).toEqual(["1You and your team", "2Coding CLIs", "3MCP servers", "4Ready"]);
     expect(steps.all().filter((n) => n.attrs.get("aria-current") === "step").map((n) => text(n))).toEqual(["1You and your team"]);
     expect(steps.all().some((n) => n.nodeName === "BUTTON")).toBe(false); // nothing done yet
     expect(eyebrow()).toBe("Step 1 of 4");
-    expect(heading()).toBe("Welcome to GizAi");
+    expect(heading()).toBe("Welcome to Hersir");
     expect(text()).toContain("Four short steps, then your Team Lead says hello. First, you and your team.");
     expect(button("Skip setup")!.attrs.get("title")).toBe("Open the board. You can set things up later in Settings.");
     expect(off(button("Back"))).toBe(true);
@@ -303,7 +303,7 @@ describe("step 1 · You and your team: Next needs both names", () => {
     await open();
     await click(button("Next"));
     const team = byId("onb-team")!;
-    expect(heading()).toBe("Welcome to GizAi");
+    expect(heading()).toBe("Welcome to Hersir");
     expect(team.attrs.get("aria-invalid")).toBe("true");
     expect(team.attrs.get("aria-describedby")).toBe("onb-team-error");
     expect(text(byId("onb-team-error")!)).toBe("Type a name for your team to go on.");
@@ -320,7 +320,7 @@ describe("step 1 · You and your team: Next needs both names", () => {
     await open();
     await type(byId("onb-you"), "   ");
     await enter(byId("onb-you")!);
-    expect(heading()).toBe("Welcome to GizAi");
+    expect(heading()).toBe("Welcome to Hersir");
     expect(text(byId("onb-you-error")!)).toBe("Type your name to go on.");
     expect(text(byId("onb-team-error")!)).toBe("Type a name for your team to go on.");
     expect(focused()).toBe(byId("onb-you"));
@@ -342,7 +342,7 @@ describe("step 1 · You and your team: Next needs both names", () => {
     await open();
     await type(byId("onb-you"), "Jef");
     await toClis("YoTech");
-    await click(button("Back"), on("Welcome to GizAi"));
+    await click(button("Back"), on("Welcome to Hersir"));
     expect(byId("onb-you")!.value).toBe("Jef");
     expect(byId("onb-team")!.value).toBe("YoTech");
   });
@@ -518,7 +518,7 @@ describe("step 3 · MCP servers (optional)", () => {
     // the ticks carry Settings' labels; none is ticked
     const boxes = ["Import figma (Claude Code, user scope)", "Import github (Claude Code, user scope)", "Import linear (Claude Code, local scope)"].map((l) => byLabel(l)[0]);
     expect(boxes.map((b) => b?.checked)).toEqual([false, false, false]);
-    expect(text()).toContain("Read only: GizAi doesn't change Claude Code's files or read its sign-ins. An import is a copy: later changes in Claude Code don't follow.");
+    expect(text()).toContain("Read only: Hersir doesn't change Claude Code's files or read its sign-ins. An import is a copy: later changes in Claude Code don't follow.");
   });
 
   it("Next imports the ticked servers under their names and goes on; step 4 lists them", async () => {
@@ -589,7 +589,7 @@ describe("step 4 · Ready", () => {
       ["Change your name", "Change the team's name", "Change the agents' coding CLI", "Change the MCP servers"]);
     expect(text()).toContain("The chat opens with this message from you:");
     expect(text(container.all().find((n) => n.nodeName === "BLOCKQUOTE")!)).toBe(
-      "Hi! I just installed GizAi and set up my team. Please welcome me, tell me in a few lines what you and the team can do, and ask whether I'd like help setting up agents, clients, projects, tasks or anything else.");
+      "Hi! I just installed Hersir and set up my team. Please welcome me, tell me in a few lines what you and the team can do, and ask whether I'd like help setting up agents, clients, projects, tasks or anything else.");
     await click(button("Open the Team Lead chat"), () => done.mock.calls.length > 0);
     // the names trimmed, the chat's thread opened
     expect(calls("finishOnboarding")).toEqual([[{ youName: "Jefsev S", teamName: "YoTech", agentsCli: "claude_code" }]]);
@@ -618,7 +618,7 @@ describe("step 4 · Ready", () => {
   it("Change opens that step again, and its Next comes back to Ready", async () => {
     await open();
     await toReady();
-    await click(byLabel("Change the team's name")[0], on("Welcome to GizAi"));
+    await click(byLabel("Change the team's name")[0], on("Welcome to Hersir"));
     await type(byId("onb-team"), "Giz crew");
     await click(button("Next"), on("You're all set"));
     expect(summary().Team).toBe("Giz crew");
@@ -656,7 +656,7 @@ describe("Skip setup", () => {
     await click(button("Skip setup"), () => alert() !== null);
     expect(alert()).toBe("Couldn't skip the setup: the database is read only.");
     expect(done).not.toHaveBeenCalled();
-    expect(heading()).toBe("Welcome to GizAi");
+    expect(heading()).toBe("Welcome to Hersir");
   });
 });
 
@@ -665,11 +665,11 @@ describe("with the keyboard alone", () => {
     await open();
     await type(byId("onb-team"), "YoTech");
     await toClis();
-    await click(button("Back"), on("Welcome to GizAi"));
+    await click(button("Back"), on("Welcome to Hersir"));
     // Enter on Skip setup: the button's own key; the onboarding's Enter leaves it alone
     const e = await act(async () => fire(button("Skip setup")!, "keydown", { key: "Enter", repeat: false, shiftKey: false, ctrlKey: false, metaKey: false, altKey: false, isComposing: false }));
     await tick();
-    expect(heading()).toBe("Welcome to GizAi");
+    expect(heading()).toBe("Welcome to Hersir");
     expect(e.defaultPrevented).toBe(false);
   });
 

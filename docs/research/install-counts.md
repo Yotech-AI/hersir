@@ -1,4 +1,4 @@
-# Counting GizAi installs without telemetry in the app (research, 2026-10-13)
+# Counting Hersir installs without telemetry in the app (research, 2026-10-13)
 
 Card GA-166. Research only: nothing here is built, and nothing changes in the app, `get.sh`, `get.ps1`, the website or any setting. Jefsev approves before anything is built. Each claim is marked **[V]** when I checked it in the code or a primary source (named next to it), or **[I]** when it is my judgement. Sources are in §8, all read on 2026-10-13.
 
@@ -14,9 +14,9 @@ Card GA-166. Research only: nothing here is built, and nothing changes in the ap
 
 ## 2. The project now
 
-### 2.1 What GizAi is, and how it's built
+### 2.1 What Hersir is, and how it's built
 
-- **For its users:** GizAi is a desktop app where a team of AI agents builds your software through your board, while you review. Each card gets its own git worktree, and everything runs on your own computer (README.md:25). [V]
+- **For its users:** Hersir is a desktop app where a team of AI agents builds your software through your board, while you review. Each card gets its own git worktree, and everything runs on your own computer (README.md:25). [V]
 - **How it's built:** Rust (a Cargo workspace: `crates/gizai-core`, `crates/gizai-agents`, `crates/gizai-mcp` and `src-tauri`, Cargo.toml:3) with Tauri 2, and a React 19 front end in TypeScript, built with Vite 8 (package.json:38, :51, :63). [V] Data lives in one folder on your computer (docs/install.md:143-145). [V]
 - **How it's installed:** from source only, with no downloads or binaries (docs/install.md:5; docs/RELEASING.md:100). [V] The one line, `curl -fsSL https://gizai.app/install.sh | sh` or `irm https://gizai.app/install.ps1 | iex` (docs/install.md:14, :20), gets the latest release's source and runs its `install.sh` or `install.ps1`. "Run it again to update" (docs/install.md:23). [V]
 - **How it's released:** a GitHub Release with a tag `vX.Y.Z` on `production`. `main` changes only by pull requests, and `production` is protected (docs/RELEASING.md:5, :9-12). [V] The latest five releases, v0.7.1 to v0.10.0 (the newest on 13 Oct), have no assets (GitHub's releases API). [V]
@@ -24,17 +24,17 @@ Card GA-166. Research only: nothing here is built, and nothing changes in the ap
 
 ### 2.2 What goes where on the network
 
-What the feature touches is who asks what of whom when GizAi is installed, updated or packaged:
+What the feature touches is who asks what of whom when Hersir is installed, updated or packaged:
 
 | Who | Asks | For | Where (code) |
 |---|---|---|---|
 | The one line (`curl … \| sh`, `irm … \| iex`) | `gizai.app/install.sh` or `/install.ps1` | the script, through a 302 to raw.githubusercontent.com | docs/install.md:14, :20, :25 [V] |
-| `get.sh` / `get.ps1` | `api.github.com/repos/Yotech-AI/gizai/releases/latest` | the latest tag | scripts/get.sh:104-116; scripts/get.ps1:96-117 [V] |
-| `get.sh` / `get.ps1` | `github.com/Yotech-AI/gizai.git` | a shallow fetch of that tag into `~/.local/share/gizai-src` (`%LOCALAPPDATA%\gizai-src`): `git init` the first time, then `git fetch --depth 1` | scripts/get.sh:129-140; scripts/get.ps1:134-151 [V] |
+| `get.sh` / `get.ps1` | `api.github.com/repos/Yotech-AI/hersir/releases/latest` | the latest tag | scripts/get.sh:104-116; scripts/get.ps1:96-117 [V] |
+| `get.sh` / `get.ps1` | `github.com/Yotech-AI/hersir.git` | a shallow fetch of that tag into `~/.local/share/gizai-src` (`%LOCALAPPDATA%\gizai-src`): `git init` the first time, then `git fetch --depth 1` | scripts/get.sh:129-140; scripts/get.ps1:134-151 [V] |
 | The app's release check | `api.github.com/…/releases/latest`, with the user agent `gizai/<version>` | the latest release | crates/gizai-agents/src/update.rs:128-141; src-tauri/src/update.rs:57-66, :268 [V] |
-| The app's update | `github.com/Yotech-AI/gizai.git` | a shallow fetch of the tag into `<data folder>/update/source`, a folder that is kept between updates | crates/gizai-agents/src/update.rs:24, :319-335; src-tauri/src/update.rs:377-391; docs/RELEASING.md:112 [V] |
+| The app's update | `github.com/Yotech-AI/hersir.git` | a shallow fetch of the tag into `<data folder>/update/source`, a folder that is kept between updates | crates/gizai-agents/src/update.rs:24, :319-335; src-tauri/src/update.rs:377-391; docs/RELEASING.md:112 [V] |
 | GA's CI | github.com (`actions/checkout`, and `get.sh`/`get.ps1` checks of `production`) | the repository | ci.yml:37, :118, :135-139, :158-162 [V] |
-| GA-165's AUR package and tap (not built yet) | `github.com/Yotech-AI/gizai/archive/refs/tags/vX.Y.Z.tar.gz` | GitHub's tarball of the tag | GA-165's `docs/research/packaging.md` on its branch (4f8579c), lines 135, 298, 450 [V] |
+| GA-165's AUR package and tap (not built yet) | `github.com/Yotech-AI/hersir/archive/refs/tags/vX.Y.Z.tar.gz` | GitHub's tarball of the tag | GA-165's `docs/research/packaging.md` on its branch (4f8579c), lines 135, 298, 450 [V] |
 
 Nothing in the app asks gizai.app. A search of the code (`rg gizai\.app`, leaving out the docs) finds only the app's identifier `ai.gizai.app` (src-tauri/tauri.conf.json:6), the lines `get.sh` and `get.ps1` *show* (scripts/get.sh:17-20; scripts/get.ps1:36-40), and tests. One of those tests checks that what `get.sh` downloads never comes from gizai.app (scripts/get.test.mjs:372-401). [V] The app's window can't fetch anything from the web either: its content security policy allows only `connect-src ipc: http://ipc.localhost` (src-tauri/tauri.conf.json:18). [V]
 
@@ -43,10 +43,10 @@ Nothing in the app asks gizai.app. A search of the code (`rg gizai\.app`, leavin
 - **DNS:** the zone's nameservers are `carter.ns.cloudflare.com` and `lorna.ns.cloudflare.com`. `gizai.app` resolves to `188.114.96.2` and `188.114.97.2`, Cloudflare addresses, with a TTL of 300 seconds, so the record is proxied. [V: dns.google] `www.gizai.app` points to Cloudflare too (`188.114.96.5`, `188.114.97.5`) and sends visitors on to `gizai.app`: fetching `https://www.gizai.app/install.sh` ended at gizai.app's own 302. [V] So counting only the host `gizai.app`, where every fetch ends, counts none twice. [I]
 - **Served by Cloudflare:** `https://gizai.app/cdn-cgi/trace`, which only Cloudflare answers, gives `h=gizai.app`. [V]
 - **Pages:** `https://gizai-website.pages.dev/` serves the same site, and its `/install.sh` gives the same 302. So a Cloudflare Pages project named `gizai-website` holds the site and applies its `_redirects`. [V] The live site has GW-2's feature pages (`https://gizai.app/features/board/`). [V]
-- **The redirects:** `https://gizai.app/install.sh` answers `302 Found` with `Location: https://raw.githubusercontent.com/Yotech-AI/gizai/production/scripts/get.sh`, and `/install.ps1` the same for `get.ps1`. [V] They come from GW's `public/_redirects`, added in GW-2 (Yotech-AI/gizai-website pull request #2, merged 13 Oct):
+- **The redirects:** `https://gizai.app/install.sh` answers `302 Found` with `Location: https://raw.githubusercontent.com/Yotech-AI/hersir/production/scripts/get.sh`, and `/install.ps1` the same for `get.ps1`. [V] They come from GW's `public/_redirects`, added in GW-2 (Yotech-AI/gizai-website pull request #2, merged 13 Oct):
   ```
-  /install.sh  https://raw.githubusercontent.com/Yotech-AI/gizai/production/scripts/get.sh  302
-  /install.ps1 https://raw.githubusercontent.com/Yotech-AI/gizai/production/scripts/get.ps1 302
+  /install.sh  https://raw.githubusercontent.com/Yotech-AI/hersir/production/scripts/get.sh  302
+  /install.ps1 https://raw.githubusercontent.com/Yotech-AI/hersir/production/scripts/get.ps1 302
   ```
 - **What I couldn't see:** whether the Pages project is connected by Git (production branch `main`, `npm run build`, `dist`) or deployed by upload, and which Cloudflare plan the account is on. GW's README still says "the deploy comes in its own card" (`~/Herd/gizai-website/README.md:27-30`, at ffe5aa6). GW has no Wrangler configuration (none in the checkout, and none in pull requests #2 to #4). [V] Open question 2.
 - **On the page,** the install lines are text with a Copy button, not links (GW-2's `src/data/site.ts`). [V] So crawlers that follow links don't find them, but bots that read text may. [I]
@@ -74,7 +74,7 @@ Nothing in the app asks gizai.app. A search of the code (`rg gizai\.app`, leavin
 
 ### 3.2 Does the updater ask gizai.app? What each count measures
 
-**No.** The release check reads `https://api.github.com/repos/Yotech-AI/gizai/releases/latest` (crates/gizai-agents/src/update.rs:128-130, called at src-tauri/src/update.rs:268), and the update fetches the tag from `https://github.com/Yotech-AI/gizai.git` (update.rs:24, :329) into `<data folder>/update/source` (src-tauri/src/update.rs:377-391). [V] Only `GIZAI_REPO` or `GIZAI_RELEASES_URL` changes these, and nobody sets them to gizai.app (src-tauri/src/update.rs:57-66). [V] GA's own CI never asks gizai.app either: its checks pipe the local `scripts/get.sh` and read `get.ps1` from the file (ci.yml:118, :134). [V]
+**No.** The release check reads `https://api.github.com/repos/Yotech-AI/hersir/releases/latest` (crates/gizai-agents/src/update.rs:128-130, called at src-tauri/src/update.rs:268), and the update fetches the tag from `https://github.com/Yotech-AI/hersir.git` (update.rs:24, :329) into `<data folder>/update/source` (src-tauri/src/update.rs:377-391). [V] Only `GIZAI_REPO` or `GIZAI_RELEASES_URL` changes these, and nobody sets them to gizai.app (src-tauri/src/update.rs:57-66). [V] GA's own CI never asks gizai.app either: its checks pipe the local `scripts/get.sh` and read `get.ps1` from the file (ci.yml:118, :134). [V]
 
 What each event adds to each count:
 
@@ -83,7 +83,7 @@ What each event adds to each count:
 | First install with the one line | 1 request, or 2 or more when a tool is missing, since `get.sh` says "Install what is missing above, then run this again" (scripts/get.sh:157-160; get.ps1:176-179) [V] | probably 1: the first fetch into an empty `gizai-src` is a clone in all but name [I] | – | – | – | – | – |
 | Update by running the one line again | 1 | 0: a fetch into a folder that has the last tag [V doc, I how GitHub tells] | – | – | – | – | – |
 | `--check` or `--uninstall` through the one line | 1 each | 0 after the first | – | – | – | – | – |
-| Update from inside GizAi | **0** [V] | the first update on a computer probably counts, later ones are fetches [I] | – | – | – | – | – |
+| Update from inside Hersir | **0** [V] | the first update on a computer probably counts, later ones are fetches [I] | – | – | – | – | – |
 | Install from a clone (`git clone`, `./install.sh`) | 0 | 1 [V: "full clones"] | likely, from reading the README [I] | – | – | – | – |
 | GA's CI, each run that builds | 0 [V] | several: 3 checkouts and 4 fetches of `production` by the `get.sh`/`get.ps1` checks (ci.yml:37, :118, :135-139, :158-162) [V what runs; I that GitHub counts them] | – | – | – | – | – |
 | Someone opens the URL in a browser | 1, as `browser` | – | – | – | – | – | – |
@@ -92,7 +92,7 @@ What each event adds to each count:
 | `brew install yotech-ai/tap/gizai` (once published) | 0 | 0 (tarball) | – | – | – | 1, unless analytics are off [V] | 1 for the tap's first clone [I] |
 | `brew upgrade` | 0 | 0 | – | – | – | probably 1 [I] | 0: a fetch [I] |
 
-**What no count can tell apart:** a first install from a re-run. The request is the same, and GizAi sends nothing to tell them apart, as the "No telemetry" promise says. With no IP addresses there are no unique visitors either: Cloudflare offers no uniques per path in this dataset. [I] Bounds still help. A week's requests by curl or PowerShell are an upper bound on that week's one-line installs and terminal updates together. Homebrew's and pkgstats' counts are lower bounds for their channels, as people can switch Homebrew's analytics off and must opt in to pkgstats. [I]
+**What no count can tell apart:** a first install from a re-run. The request is the same, and Hersir sends nothing to tell them apart, as the "No telemetry" promise says. With no IP addresses there are no unique visitors either: Cloudflare offers no uniques per path in this dataset. [I] Bounds still help. A week's requests by curl or PowerShell are an upper bound on that week's one-line installs and terminal updates together. Homebrew's and pkgstats' counts are lower bounds for their channels, as people can switch Homebrew's analytics off and must opt in to pkgstats. [I]
 
 On 12 October GA had 62 workflow runs (GitHub's Actions API). [V] So CI alone could add well over a hundred clones a day. [I] A GitHub community answer (2020, not marked as staff) says an Action "will count as one unique cloner, no matter how many times it clones". [secondary] If that holds, **unique cloners** suffer less from CI than clones do. But `get.sh`'s checks in CI fetch without a login, so each runner may count as its own cloner. [I]
 
@@ -122,7 +122,7 @@ GA-165 (on its branch, not merged) proposes the AUR package `gizai` and the tap 
   - `https://formulae.brew.sh/api/analytics/install/30d.json` (13 Sep to 13 Oct, 22,448 formulae) lists tap formulae by their full name, like `anomalyco/tap/opencode` with 40,958 installs. [V]
   - So `yotech-ai/tap/gizai` would appear there, and in `90d.json` and `365d.json`, counted only on Macs that left analytics on. Whether a formula with very few installs is listed I couldn't see, as the file was too big for my fetch. [I]
 - **The tap's GitHub traffic.** `brew install yotech-ai/tap/gizai` taps the repository first, which clones it, so the tap's clones roughly count first installs on Macs. `brew update` fetches, and fetches aren't counted. [I] The workflow saves the tap's traffic with the same token once the tap exists (§5.5, step 7).
-- **No download counts for the tarball.** GitHub counts downloads of release assets only, not of its automatic source archives. GizAi's releases have no assets. [V: releases API; I: the archives, backed by the long-open request isaacs/github#593] See open question 5.
+- **No download counts for the tarball.** GitHub counts downloads of release assets only, not of its automatic source archives. Hersir's releases have no assets. [V: releases API; I: the archives, backed by the long-open request isaacs/github#593] See open question 5.
 
 ### 3.5 One place to read them
 
@@ -176,7 +176,7 @@ If Jefsev wants the other counts named too (open question 8), a second sentence:
 - *Risks:* no history past about 30 days, no weekly file, and the free plan's filters are unchecked. [I]
 - *Size:* none. Good enough until S1 runs.
 
-**Recommendation: A.** It counts exactly what's asked (per day, per script, totals, no IP addresses) at no cost and with no new code in the install path. B gives nothing A doesn't at GizAi's numbers, and it puts code between the one line and GitHub.
+**Recommendation: A.** It counts exactly what's asked (per day, per script, totals, no IP addresses) at no cost and with no new code in the install path. B gives nothing A doesn't at Hersir's numbers, and it puts code between the one line and GitHub.
 
 ### 4.2 Where the numbers live
 
@@ -188,7 +188,7 @@ If Jefsev wants the other counts named too (open question 8), a second sentence:
   - GitHub switches schedules off after 60 quiet days only "in a public repository" [V], so this one stays on.
   - It can hold the website's numbers and the packages' numbers too, which aren't GA's.
 - *Cons:*
-  - One more repository, and one more Gizai project if agents are to build in it.
+  - One more repository, and one more Hersir project if agents are to build in it.
   - It uses Actions minutes, about 30 of the 2,000 a month. [I/V]
 
 **Q. An orphan branch `stats` in GA (public numbers).**
@@ -208,7 +208,7 @@ If Jefsev wants the other counts named too (open question 8), a second sentence:
 ### 4.3 Which token reads GitHub's traffic
 
 - **A fine-grained personal access token (recommended).**
-  - Resource owner `Yotech-AI`, only the repositories `Yotech-AI/gizai` (and the tap later), permission Administration: Read-only.
+  - Resource owner `Yotech-AI`, only the repositories `Yotech-AI/hersir` (and the tap later), permission Administration: Read-only.
   - "Infinite lifetimes are allowed but may be blocked by a maximum lifetime policy set by your organization". If the organisation requires approval, the token is "pending until it is reviewed by an organization administrator". [V: GitHub Docs]
   - I'd give it one year and a calendar reminder. The workflow fails, and mails Jefsev, when it expires. [I]
 - **A GitHub App** with Administration: read, installed on those repositories. Installation tokens work for these endpoints. [V] It doesn't expire and isn't tied to Jefsev's account, but it needs an app, a private key and a token step. Worth it later, if the yearly token gets in the way. [I]
@@ -221,7 +221,7 @@ There is no screen in the app or on the website. The only thing anyone reads is 
 
 ```
 ┌ Yotech-AI/gizai-stats (private) ─────────────────────────────────────────────┐
-│ # GizAi in numbers                                                            │
+│ # Hersir in numbers                                                           │
 │ Written on 2026-11-09 by the Stats workflow ...                               │
 │                                                                               │
 │ ## Week by week                                                               │
@@ -241,9 +241,9 @@ Every file is JSON, keyed by date (`YYYY-MM-DD`, UTC) or month, with sorted keys
 | File | What | Kept by the source | How a run merges it |
 |---|---|---|---|
 | `data/website/install-lines.json` | `{"2026-10-12": {"install.sh": {"curl": 17, "browser": 3, "bot": 2}, "install.ps1": {"powershell": 4}}}` | ≥31 days (Cloudflare) [V] | the three finished days before today are asked again and replaced |
-| `data/github/gizai/views-day.json`, `clones-day.json` | `{"2026-10-12": {"count": 212, "uniques": 41}}` | 14 days [V] | each day keeps the highest numbers it was seen with |
-| `data/github/gizai/views-week.json`, `clones-week.json` | the same, keyed by each week's Monday | 14 days [V] | the highest (a week's numbers shrink again as its first days leave the 14 days) [I] |
-| `data/github/gizai/referrers/<date>.json`, `paths/<date>.json` | GitHub's answer as it is: the top 10 over the 14 days to that date | 14 days [V] | one file a day, never merged |
+| `data/github/hersir/views-day.json`, `clones-day.json` | `{"2026-10-12": {"count": 212, "uniques": 41}}` | 14 days [V] | each day keeps the highest numbers it was seen with |
+| `data/github/hersir/views-week.json`, `clones-week.json` | the same, keyed by each week's Monday | 14 days [V] | the highest (a week's numbers shrink again as its first days leave the 14 days) [I] |
+| `data/github/hersir/referrers/<date>.json`, `paths/<date>.json` | GitHub's answer as it is: the top 10 over the 14 days to that date | 14 days [V] | one file a day, never merged |
 | `data/github/homebrew-tap/…` | the same, for the tap, once it exists | 14 days | the same |
 | `data/packages/aur.json` | `{"2026-11-09": {"votes": 3, "popularity": 2.71}}` | the RPC gives only today's value [I] | one entry a week |
 | `data/packages/pkgstats.json` | `{"202610": {"count": 4, "samples": 31800, "popularity": 0.01}}` | monthly [V] | one entry a month |
@@ -258,8 +258,8 @@ Two files in `Yotech-AI/gizai-stats`: `.github/workflows/stats.yml` and `readme.
 `.github/workflows/stats.yml`:
 
 ```yaml
-# Saves GizAi's numbers once a day, in this repository:
-# - GitHub's traffic for Yotech-AI/gizai (views, clones, referrers and popular paths), which GitHub keeps for 14 days
+# Saves Hersir's numbers once a day, in this repository:
+# - GitHub's traffic for Yotech-AI/hersir (views, clones, referrers and popular paths), which GitHub keeps for 14 days
 #   only, and the same for the Homebrew tap once vars.TAP_REPO names it;
 # - how often gizai.app's two install lines were fetched, from Cloudflare's own analytics: totals per day, per script
 #   and per kind of client. Never an IP address (the query doesn't ask for one) or a user agent.
@@ -284,7 +284,7 @@ defaults:
     shell: bash
 
 env:
-  REPO: Yotech-AI/gizai
+  REPO: Yotech-AI/hersir
   TAP: ${{ vars.TAP_REPO }} # Yotech-AI/homebrew-tap once it exists; empty until then
   AUR_PACKAGE: gizai
   FORMULA: yotech-ai/tap/gizai
@@ -429,15 +429,15 @@ jobs:
           echo '{}' > "$RUNNER_TEMP/none.json"
           have() { if [ -n "$1" ] && [ -f "$1" ]; then echo "$1"; else echo "$RUNNER_TEMP/none.json"; fi; }
           newest() { ls "$1"/*.json 2>/dev/null | tail -n 1 || true; }
-          ref=$(newest data/github/gizai/referrers)
-          paths=$(newest data/github/gizai/paths)
+          ref=$(newest data/github/hersir/referrers)
+          paths=$(newest data/github/hersir/paths)
           jq -nr -f readme.jq \
             --arg today "$(date -u +%F)" \
             --arg monday "$(date -u -d "$(( $(date -u +%u) - 1 )) days ago" +%F)" \
             --arg refday "$(basename "${ref:-none.json}" .json)" \
             --slurpfile lines "$(have data/website/install-lines.json)" \
-            --slurpfile views "$(have data/github/gizai/views-week.json)" \
-            --slurpfile clones "$(have data/github/gizai/clones-week.json)" \
+            --slurpfile views "$(have data/github/hersir/views-week.json)" \
+            --slurpfile clones "$(have data/github/hersir/clones-week.json)" \
             --slurpfile tap "$(have data/github/homebrew-tap/clones-week.json)" \
             --slurpfile referrers "$(have "$ref")" \
             --slurpfile paths "$(have "$paths")" \
@@ -478,7 +478,7 @@ def newest: to_entries | last;
 
 ($monday | [range(1; 9) as $k | plus(-7 * $k)]) as $weeks
 | [
-    "# GizAi in numbers",
+    "# Hersir in numbers",
     "",
     "Written on \($today) by the Stats workflow, from the files in `data/`. Weeks run Monday to Sunday, in UTC.",
     "These count requests, clones, votes and installs, not people: see [What they measure](#what-they-measure).",
@@ -511,7 +511,7 @@ def newest: to_entries | last;
     "",
     "## Most viewed on GitHub",
     "",
-    "The top 10 pages of Yotech-AI/gizai over the same 14 days.",
+    "The top 10 pages of Yotech-AI/hersir over the same 14 days.",
     "",
     "| Page | Views | Visitors |",
     "|---|--:|--:|",
@@ -519,10 +519,10 @@ def newest: to_entries | last;
     "",
     "## What they measure",
     "",
-    "- **install.sh and install.ps1** are requests for gizai.app's two install lines, from Cloudflare's own totals per day; no IP address is kept. One run of the line is one request. People run it to install, to update from a terminal, again after installing a missing tool, and for `--check` and `--uninstall`, so it counts more runs than installs. GizAi's own update never asks gizai.app.",
+    "- **install.sh and install.ps1** are requests for gizai.app's two install lines, from Cloudflare's own totals per day; no IP address is kept. One run of the line is one request. People run it to install, to update from a terminal, again after installing a missing tool, and for `--check` and `--uninstall`, so it counts more runs than installs. Hersir's own update never asks gizai.app.",
     "- **Other fetches** are the two addresses opened in a browser (to read the script), link previews, crawlers and other programs, sorted by their user agent, which can be faked.",
-    "- **GitHub views** are page views on github.com/Yotech-AI/gizai, and *visitors* GitHub's unique count for the week.",
-    "- **GitHub clones** are full clones of Yotech-AI/gizai (GitHub doesn't count fetches): builds from a clone, GizAi's own CI, bots, and probably a computer's first one-line install or first update. *Cloners* are GitHub's unique count.",
+    "- **GitHub views** are page views on github.com/Yotech-AI/hersir, and *visitors* GitHub's unique count for the week.",
+    "- **GitHub clones** are full clones of Yotech-AI/hersir (GitHub doesn't count fetches): builds from a clone, Hersir's own CI, bots, and probably a computer's first one-line install or first update. *Cloners* are GitHub's unique count.",
     "- **Tap clones** are full clones of the Homebrew tap: mostly a Mac's first `brew install yotech-ai/tap/gizai`.",
     "- **AUR votes** come from AUR users who chose to vote; *popularity* adds up the votes, each worth 2% less every day since it was cast.",
     "- **pkgstats** counts the Arch systems that run pkgstats (their owners opted in) and had the package installed that month.",
@@ -555,7 +555,7 @@ What I verified of this draft, and what not:
 A sample `README.md`, with made-up numbers, as `readme.jq` writes it on Monday 9 November 2026:
 
 ```markdown
-# GizAi in numbers
+# Hersir in numbers
 
 Written on 2026-11-09 by the Stats workflow, from the files in `data/`. Weeks run Monday to Sunday, in UTC.
 These count requests, clones, votes and installs, not people: see [What they measure](#what-they-measure).
@@ -600,10 +600,10 @@ The top 10 sites over the 14 days to 2026-11-09, as GitHub gives them (it leaves
 Nothing in this list is done by this card. In order:
 
 1. **GitHub: make the repository** `Yotech-AI/gizai-stats`: private, empty, default branch `main`. Leave the default rules alone: the workflow pushes to `main` itself, so `main` needs no pull-request rule.
-2. **Gizai: add it as a project** (for example key `GS`), so cards S1 and S2 can be built there. Or paste §5.3's two files into the repository yourself, and S1 becomes a check.
+2. **Hersir: add it as a project** (for example key `GS`), so cards S1 and S2 can be built there. Or paste §5.3's two files into the repository yourself, and S1 becomes a check.
 3. **GitHub: make the fine-grained token.** Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token. [V path]
-   - Name: "GizAi stats: traffic". Resource owner: Yotech-AI.
-   - Only select repositories: `Yotech-AI/gizai`. Repository permissions → Administration: Read-only.
+   - Name: "Hersir stats: traffic". Resource owner: Yotech-AI.
+   - Only select repositories: `Yotech-AI/hersir`. Repository permissions → Administration: Read-only.
    - Expiration: one year, with a reminder in your calendar.
    - If the organisation asks for approval, approve it in Yotech-AI → Settings → Personal access tokens → Pending requests. [V: "pending until it is reviewed"; I: the menu's place]
 4. **GitHub: the secret.** In `gizai-stats`, Settings → Secrets and variables → Actions: add `TRAFFIC_TOKEN` with that token.
@@ -636,7 +636,7 @@ Nothing in this list is done by this card. In order:
   - Then one day's install-lines query, compared with the dashboard's count for `/install.sh` on that day.
   - Then a run by hand (`workflow_dispatch`), and a second one the same day: no number may go down, and a run with nothing new commits nothing.
   - Then a run with a wrong `CLOUDFLARE_ZONE_ID`, which must fail and show Cloudflare's error.
-- **Card S2:** the package rows, tested with stand-ins for `AUR_PACKAGE` and `FORMULA` (`yay` and `anomalyco/tap/opencode` exist today), then with GizAi's own packages once published.
+- **Card S2:** the package rows, tested with stand-ins for `AUR_PACKAGE` and `FORMULA` (`yay` and `anomalyco/tap/opencode` exist today), then with Hersir's own packages once published.
 - **Optional, by hand, once:** whether GitHub counts a fetch into an empty folder as a clone.
   - Make a throwaway public repository.
   - In a scratch folder, run `git init` and `git fetch --depth 1 <url> +refs/tags/v1:refs/tags/v1`.
@@ -647,7 +647,7 @@ Nothing in this list is done by this card. In order:
 
 - Any change to the app, `get.sh` or `get.ps1`, or what they send (out of scope).
 - Unique installers: these would need IP addresses or IDs.
-- Counting updates from inside GizAi: that would be telemetry.
+- Counting updates from inside Hersir: that would be telemetry.
 - A web page with the numbers.
 - Cloudflare Web Analytics (a script in the page, which curl never runs).
 - Logpush.
@@ -664,15 +664,15 @@ In order. None needs a screen design, so all start in **To do**. There is no fro
 - **Project:** the stats repository's (step 2 of §5.5), or GA under Option Q (open question 1).
 - **Column:** To do. **Role:** backend (the DevOps Agent can take it).
 - **Builds on:** §5.5 steps 1 to 6 (the repository, the token, the two secrets and the variable).
-- **Builds:** `.github/workflows/stats.yml` and `readme.jq` from §5.3, fixed where the checks of §5.7 show they must be. Every fix goes into the summary. Its pull request goes into the stats repository's `main`. Nothing in `Yotech-AI/gizai` changes.
+- **Builds:** `.github/workflows/stats.yml` and `readme.jq` from §5.3, fixed where the checks of §5.7 show they must be. Every fix goes into the summary. Its pull request goes into the stats repository's `main`. Nothing in `Yotech-AI/hersir` changes.
 - **Acceptance:**
   - [ ] The `settings` query's answer for `httpRequestsAdaptiveGroups` (enabled, `maxDuration`, `notOlderThan`) is in the summary.
-  - [ ] A run by hand commits `data/github/gizai/{views,clones}-{day,week}.json`, `referrers/<date>.json`, `paths/<date>.json`, `data/website/install-lines.json` and `README.md`.
+  - [ ] A run by hand commits `data/github/hersir/{views,clones}-{day,week}.json`, `referrers/<date>.json`, `paths/<date>.json`, `data/website/install-lines.json` and `README.md`.
   - [ ] For one day, `install-lines.json`'s count for `install.sh` matches Cloudflare's dashboard, and the summary gives both.
   - [ ] A second run the same day lowers no number, and a run with nothing new makes no commit.
   - [ ] `install-lines.json` holds only dates, the two script names, the five kinds of client and counts: no IP address, no user agent.
   - [ ] A wrong token or zone ID makes the run fail, with Cloudflare's or GitHub's error in its log.
-  - [ ] No workflow file in `Yotech-AI/gizai` changes, and GA's CI starts no run.
+  - [ ] No workflow file in `Yotech-AI/hersir` changes, and GA's CI starts no run.
 
 ### S2. Stats: the AUR and Homebrew numbers, once the packages are published
 
@@ -683,7 +683,7 @@ In order. None needs a screen design, so all start in **To do**. There is no fro
   - It adds the tap's traffic once §5.5 step 7 is done.
 - **Acceptance:**
   - [ ] With the stand-ins (`yay`, `anomalyco/tap/opencode`), a run by hand fills `aur.json`, `pkgstats.json` and `homebrew.json`, and README.md shows them.
-  - [ ] With `gizai` and `yotech-ai/tap/gizai`, the rows show GizAi's numbers, or "not published yet".
+  - [ ] With `gizai` and `yotech-ai/tap/gizai`, the rows show Hersir's numbers, or "not published yet".
   - [ ] The tap's clones show in the week-by-week table.
   - [ ] A package site that doesn't answer gives a warning in the run, not a failed run.
 
@@ -723,7 +723,7 @@ In order. None needs a screen design, so all start in **To do**. There is no fro
 7. **Who should get the failure mails?** GitHub sends them to whoever last changed the cron line. *Recommendation:* you. If an agent's commit changes it, change it once yourself, or watch the Actions tab.
 8. **The "No telemetry" text: one sentence or two?** *Recommendation:* both of §3.6. The second says plainly that GitHub, the AUR and Homebrew count in their own ways.
 9. **Say on the website itself what it counts** (a line in the footer, say)? *Recommendation:* later, with the website's next design card. The docs and GW's README say it first.
-10. **The Gizai project for the stats repository:** add it (key `GS`?) so agents build S1 and S2, or paste §5.3 yourself? *Recommendation:* add it. It's two cards now and more later.
+10. **The Hersir project for the stats repository:** add it (key `GS`?) so agents build S1 and S2, or paste §5.3 yourself? *Recommendation:* add it. It's two cards now and more later.
 
 ## 8. Sources
 
@@ -737,7 +737,7 @@ All read on 2026-10-13.
 | DNS (Google's resolver): NS, A, www | https://dns.google/resolve?name=gizai.app&type=NS, …&type=A, https://dns.google/resolve?name=www.gizai.app&type=A |
 | www.gizai.app (fetched) | https://www.gizai.app/, https://www.gizai.app/install.sh |
 | GW pull request #2 (`public/_redirects`, the install lines) | `gh pr view 2` / `gh pr diff 2 --repo Yotech-AI/gizai-website` |
-| GA's releases and workflow runs (public API) | https://api.github.com/repos/Yotech-AI/gizai/releases?per_page=5, https://api.github.com/repos/Yotech-AI/gizai/actions/runs?per_page=2&created=2026-10-12 |
+| GA's releases and workflow runs (public API) | https://api.github.com/repos/Yotech-AI/hersir/releases?per_page=5, https://api.github.com/repos/Yotech-AI/hersir/actions/runs?per_page=2&created=2026-10-12 |
 | GitHub Docs, Viewing traffic to a repository | https://docs.github.com/en/repositories/viewing-activity-and-data-for-your-repository/viewing-traffic-to-a-repository |
 | GitHub REST, Repository traffic | https://docs.github.com/en/rest/metrics/traffic (as https://docs.github.com/api/article/body?pathname=/en/rest/metrics/traffic) |
 | GitHub Docs, permissions for fine-grained tokens | https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens |

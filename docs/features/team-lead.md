@@ -4,7 +4,7 @@ The Team Lead is the agent you chat with: it looks after your board for you, and
 
 ## What it can do
 
-The Team Lead manages clients, projects, cards and agents with GizAi's own tools. In a chat it can:
+The Team Lead manages clients, projects, cards and agents with Hersir's own tools. In a chat it can:
 
 - make and change clients, projects, cards and docs, and comment on and move cards;
 - split bigger work into cards that build on each other, so they start in order by themselves ([below](#cards-that-build-on-others));
@@ -37,7 +37,7 @@ On a new install, the first start ends in a welcome chat: the Team Lead welcomes
 
 ## Approve with one click
 
-After an answer used a tool from outside GizAi (an MCP server, the web, the browser), its calls that start or continue runs, change agents or columns, attach a file, update a linked folder, save to memory or merge a pull request aren't run. They wait under that answer instead:
+After an answer used a tool from outside Hersir (an MCP server, the web, the browser), its calls that start or continue runs, change agents or columns, attach a file, update a linked folder, save to memory or merge a pull request aren't run. They wait under that answer instead:
 
 - each with a line about what it does and a preview: a note's new text and what changes, the card and agent, the settings that change, the file and where it goes;
 - each with **Approve** and **Discard**, and **Approve all** when there are several.
@@ -62,7 +62,7 @@ With more than one team, each with its own board ([Several teams](board.md#sever
 
 - `add_column`, `set_column` and `create_agent` take `team`. With more than one team, a call without it is refused with the teams' names: "Name the team: My team or Research team."
 - `get_workflow` takes `team` for one team's columns; without it, each team's columns come under its name. `list_agents` takes `team` for one team's agents, and with more than one team says each agent's team.
-- `create_project` takes `team` (the first team when left out). `update_project` with `team` moves the project and all its cards, as the project form does, with the same refusal while one of its cards has a run live or starting. A board check never moves a project, and neither does an answer after a tool from outside GizAi.
+- `create_project` takes `team` (the first team when left out). `update_project` with `team` moves the project and all its cards, as the project form does, with the same refusal while one of its cards has a run live or starting. A board check never moves a project, and neither does an answer after a tool from outside Hersir.
 - `get_project` and `list_projects` show each project's team.
 
 ## The board check

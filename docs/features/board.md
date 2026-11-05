@@ -39,8 +39,8 @@ Testing has rules of its own: a failed test sends a card back, and a card can sk
 Team → New team adds a team with the seven usual columns and no agents. Each team has its own board: its columns, the agents on them, and the cards of its projects. An agent works only the columns it is on, so only its own team's cards. Labels are shared by all teams.
 
 - **A project's team.** A project's cards are on its team's board. With more than one team, the project form has a Team select, and the project page shows the team. A new project starts in the team the board shows; without a pick, in the first team.
-- **Moving a project** to another team (its form → Team) asks first: "Move Giz AI to Research team? Its 31 cards go to the columns of the same kind, and My team's agents are taken off them." Then all its cards move, archived ones too: each to the new team's first column of the same kind, in board order, else to its first Backlog column. Agents that aren't on the new team come off a card as its assignee, pin or implementer; people stay. The new team's agents pick up the cards in its Auto columns.
-- **Refused while a run is under way:** while one of the project's cards has a run live or starting, the move is refused and nothing changes: "Wait for GA-12's run to end, or stop it, before you move Giz AI to another team."
+- **Moving a project** to another team (its form → Team) asks first: "Move Hersir to Research team? Its 31 cards go to the columns of the same kind, and My team's agents are taken off them." Then all its cards move, archived ones too: each to the new team's first column of the same kind, in board order, else to its first Backlog column. Agents that aren't on the new team come off a card as its assignee, pin or implementer; people stay. The new team's agents pick up the cards in its Auto columns.
+- **Refused while a run is under way:** while one of the project's cards has a run live or starting, the move is refused and nothing changes: "Wait for GA-12's run to end, or stop it, before you move Hersir to another team."
 - **The board's Team select.** With more than one team, the Tasks page's toolbar has a Team select. The board and the list show that team's columns and the cards of its projects; cards without a project go with the first team. The Team page and the sidebar's agents follow the same pick. The Inbox still shows every team's cards that need you.
 
 With one team there is no Team select anywhere, and everything works as before. The Team Lead's tools name the team when there is more than one: [Teams](team-lead.md#teams).
@@ -49,11 +49,11 @@ With one team there is no Team select anywhere, and everything works as before. 
 
 Agents start when you press Run, or when a card lands in an Auto column they are on (or is assigned to them there). An agent works on several cards at once when its Cards at once allows it.
 
-A start that can't work (Claude Code missing or not logged in, a wrong model, no repository) holds the card "blocked" without counting as a failed run. That agent takes no new cards until you start or edit it, or GizAi restarts.
+A start that can't work (Claude Code missing or not logged in, a wrong model, no repository) holds the card "blocked" without counting as a failed run. That agent takes no new cards until you start or edit it, or Hersir restarts.
 
 Settings → Runs sets how many runs go at once, for all agents together. Pause all agents stops the starts from Auto columns; Run still works by hand.
 
-Memory for agent runs, also in Settings → Runs, is how much memory all agent runs may use together: half of the computer's memory until you set it. On Linux the system holds the runs to it, and GizAi stays outside the limit, so a big build can't take GizAi down ([PLATFORMS.md](../PLATFORMS.md#memory-for-agent-runs)). On every system no run starts while the runs use over 80% of it or the computer has under 2 GB free: the card waits with the reason, like Runs at once, and starts by itself once memory frees up.
+Memory for agent runs, also in Settings → Runs, is how much memory all agent runs may use together: half of the computer's memory until you set it. On Linux the system holds the runs to it, and Hersir stays outside the limit, so a big build can't take Hersir down ([PLATFORMS.md](../PLATFORMS.md#memory-for-agent-runs)). On every system no run starts while the runs use over 80% of it or the computer has under 2 GB free: the card waits with the reason, like Runs at once, and starts by itself once memory frees up.
 
 A project can also keep how many of its cards are tested at the same time, so a heavy test suite doesn't run several times at once: [Test runs at once](testing.md#test-runs-at-once).
 
@@ -106,9 +106,9 @@ The Team Lead's `continue_agent_run` takes a `note` the same way. On a run that 
 
 ### One nudge
 
-A run that ends normally without its `GIZAI_RESULT` line is continued once by itself, in the same session, like Continue. GizAi tells the agent that nothing wakes it up later, to check in the foreground now if it was waiting, and to end with its result line. The Runs list shows it as Nudge (trigger `result_nudge`), apart from a Continue.
+A run that ends normally without its `GIZAI_RESULT` line is continued once by itself, in the same session, like Continue. Hersir tells the agent that nothing wakes it up later, to check in the foreground now if it was waiting, and to end with its result line. The Runs list shows it as Nudge (trigger `result_nudge`), apart from a Continue.
 
-- It never happens after Stop, a time or tool-call limit, a failed run or GizAi quitting.
+- It never happens after Stop, a time or tool-call limit, a failed run or Hersir quitting.
 - It happens only when a start is allowed now: agents not paused, the agent active, within its budget and cards at once, and room in Runs at once. Otherwise nothing changes.
 - If the nudged run also ends without a result, the card goes on hold "stalled" and shows in [the Inbox](inbox.md).
 

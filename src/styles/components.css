@@ -497,7 +497,7 @@ button.label-pill[aria-pressed="true"] { border-color: var(--accent); color: var
 .chat-queue .q-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .chat-note.has-actions { margin-bottom: 8px; }
 .chat-note-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 0 auto 22px; }
-/* GA-102: the Team Lead's calls that wait for your OK, under the answer that tried them (magenta: they need you) */
+/* GA-102: the Team Lead's calls that wait for your OK, under the answer that tried them (gold: they need you) */
 .pending-actions { display: flex; flex-direction: column; gap: 8px; max-width: calc(560px * var(--chat-scale, 1)); margin-top: 2px; padding: 10px; border: 1px solid var(--needs); border-radius: var(--radius-l); background: var(--needs-soft); font-size: var(--fs-sm); }
 .chat-col > .pending-actions { margin: 0 0 22px 30px; }
 .pending-actions .pa-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
@@ -586,7 +586,7 @@ button.label-pill[aria-pressed="true"] { border-color: var(--accent); color: var
 /* From design/code-editor/editor.css, which the design page uses. The sidebar's Editor section, the folder picker, the file
    tree, the tabs, the status bar, the bars over them, find in the file, search in the folder and Go to file. The behind bar
    (.ed-bar.behind, .refused, .done, .failed, Update's output) is for F3, and a person's card bar (.ed-bar.hand, .ed-card-*,
-   Commit…, "By hand" on the board) for F4. Teal stays an agent at work (its pulse) and magenta "needs you"; the code itself
+   Commit…, "By hand" on the board) for F4. Teal stays an agent at work (its pulse) and gold "needs you"; the code itself
    is CodeMirror with src/lib/codeTheme.ts. */
 
 /* ---------- sidebar: the Editor section, a FoldSection between Projects and Agents ---------- */

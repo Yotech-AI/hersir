@@ -164,10 +164,10 @@ describe("Open in editor on the card's top bar", () => {
   it("its tooltip: off while an agent works on it, saying who; else what it does", () => {
     expect(openInEditorTitle(card(), "Backend Agent")).toBe("Backend Agent is working on KADE-41: wait for its run to end, or stop it.");
     expect(openInEditorTitle(card({ stateCategory: "ready" }), null))
-      .toBe("Work on KADE-41 by hand: Gizai makes its worktree, pins the card to you so agents leave it alone, and moves it to In progress.");
+      .toBe("Work on KADE-41 by hand: Hersir makes its worktree, pins the card to you so agents leave it alone, and moves it to In progress.");
     expect(openInEditorTitle(card({ stateCategory: "backlog" }), null)).toContain(", and moves it to In progress.");
     expect(openInEditorTitle(card({ stateCategory: "started" }), null))
-      .toBe("Work on KADE-41 by hand: Gizai makes its worktree, pins the card to you so agents leave it alone.");
+      .toBe("Work on KADE-41 by hand: Hersir makes its worktree, pins the card to you so agents leave it alone.");
     expect(openInEditorTitle(card({ byHand: true, stateCategory: "started" }), null)).toBe("Open KADE-41's worktree in the Editor");
   });
 

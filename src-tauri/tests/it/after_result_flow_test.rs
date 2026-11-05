@@ -16,7 +16,7 @@ use gizai_lib::{AppState, runs};
 const FAKE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../crates/gizai-agents/tests/fake-claude.sh");
 
 /// The note on a run Gizai ended after the agent's result, word for word.
-const NOTE: &str = "Claude Code hadn't exited 3 minutes after the agent's final message, so Gizai ended it and kept the result. \
+const NOTE: &str = "Claude Code hadn't exited 3 minutes after the agent's final message, so Hersir ended it and kept the result. \
                     Something the run started was probably still running in the background, such as a server.";
 
 fn git_repo(dir: &Path) -> PathBuf {

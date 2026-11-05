@@ -15,7 +15,7 @@ describe("Folders in the agent form", () => {
     expect(permissions).toContain(">Folders<");
     expect(permissions).toContain("Add folder");
     expect(html).toContain("They limit the file tools, not the commands it may run: an allowed command can still reach any folder.");
-    expect(html).toContain("Never /, your home folder, Gizai&#x27;s data folder or folders with keys (~/.ssh, ~/.gnupg, ~/.config, …).");
+    expect(html).toContain("Never /, your home folder, Hersir&#x27;s data folder or folders with keys (~/.ssh, ~/.gnupg, ~/.config, …).");
     expect(html).toContain(FOLDERS_NOTE.claude_code.replace(/'/g, "&#x27;"));
     expect(html).not.toContain("update_checkout");
   });

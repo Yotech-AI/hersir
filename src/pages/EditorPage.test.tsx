@@ -642,7 +642,7 @@ describe("a folder the Editor can't open (GA-113)", () => {
   it("says why, and offers Remove from the list", async () => {
     await open("/etc");
     const page = textOf(tree);
-    expect(page).toContain("Gizai can't open /etc: The Editor can't open /etc.");
+    expect(page).toContain("Hersir can't open /etc: The Editor can't open /etc.");
     await click("Remove from the list");
     expect(h.calls).toContain(`go ${JSON.stringify({ page: "editor" })}`);
   });

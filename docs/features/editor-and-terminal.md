@@ -1,6 +1,6 @@
 # The Editor and Terminal, built in
 
-Open a project or a card's worktree inside GizAi, see its git status and edit it, with your own shell in a panel under the code or on its own page.
+Open a project or a card's worktree inside Hersir, see its git status and edit it, with your own shell in a panel under the code or on its own page.
 
 ## Open a folder
 
@@ -20,7 +20,7 @@ A small code editor with syntax colours. It has:
 
 - a file tree with git's status, tabs, and Ctrl+S to save;
 - Go to file (Ctrl+P) and search in the folder (Ctrl+Shift+F);
-- changes made outside GizAi, which show within a few seconds;
+- changes made outside Hersir, which show within a few seconds;
 - **Open in**, which opens the folder in VS Code, Zed or PhpStorm when they're installed;
 - a terminal panel under the code ([In the Editor](#in-the-editor)).
 
@@ -37,7 +37,7 @@ The sidebar says "3 behind" on the folder's row.
 
 ## Terminals
 
-Your own shell in any of those folders, as many as you like. Each terminal runs until you close it or quit GizAi, and closing the window keeps them running.
+Your own shell in any of those folders, as many as you like. Each terminal runs until you close it or quit Hersir, and closing the window keeps them running.
 
 ### In the Editor
 
@@ -69,7 +69,7 @@ Each terminal has a row in the sidebar, with what runs in it on the right, or "e
 
 ### Work on a card yourself
 
-A card assigned to you has **Open in editor** in its top bar. GizAi makes the card's worktree, prepared as for an agent, and pins the card to you, so agents leave it alone; from Backlog or To do it moves to In progress.
+A card assigned to you has **Open in editor** in its top bar. Hersir makes the card's worktree, prepared as for an agent, and pins the card to you, so agents leave it alone; from Backlog or To do it moves to In progress.
 
 In the Editor, a bar above the code shows the card, its branch and how far it is, with three buttons:
 
@@ -88,7 +88,7 @@ Every card has three tabs at the top: Card, Changes and Screenshots ([Screenshot
 - In the Runs tab, a run that committed has **Show changes**: only what that run committed.
 - Keys: n and p for the next and previous file, Alt+↓ and Alt+↑ for the next and previous change, [ folds the list, and Esc goes back to Card.
 
-After a merge, the changes stay readable. When a card's pull request is merged, GizAi first fetches main and keeps the card's range in two refs of your repository, `refs/gizai/merged/<ID>/base` and `/head`. So what the card changed can still be read after a merge commit, a squash or a rebase, offline, once its branch is gone; GizAi never pushes these refs.
+After a merge, the changes stay readable. When a card's pull request is merged, Hersir first fetches main and keeps the card's range in two refs of your repository, `refs/gizai/merged/<ID>/base` and `/head`. So what the card changed can still be read after a merge commit, a squash or a rebase, offline, once its branch is gone; Hersir never pushes these refs.
 
 ## Free
 

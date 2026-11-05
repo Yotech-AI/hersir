@@ -516,7 +516,7 @@ a.member:hover { border-color: var(--line-2); }
 .limits-agent:hover { text-decoration: underline; }
 .limits-agent .icon { width: 14px; height: 14px; color: var(--text-3); }
 
-/* ---- Memory (GA-68): the file explorer, the note and its panel. No teal or magenta: those are for agents at work and
+/* ---- Memory (GA-68): the file explorer, the note and its panel. No teal or gold: those are for agents at work and
    "needs you". ---- */
 .split.memory { min-height: 0; }
 .mem-files { display: flex; flex-direction: column; flex: none; width: 260px; min-height: 0; border-right: 1px solid var(--line); background: var(--side); }
@@ -641,7 +641,7 @@ span.mem-tag { cursor: default; }
 
 /* ---- The memory graph (GA-69): the canvas on the app's background, its tools and settings panel over its corners,
    and the local graph beside a note. The dots' colours come from a calm palette in src/lib/graph.ts: no teal or
-   magenta here either. ---- */
+   gold here either. ---- */
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .mem-views button { display: inline-flex; gap: 5px; align-items: center; }
 .graph-wrap { position: relative; flex: 1; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg); }

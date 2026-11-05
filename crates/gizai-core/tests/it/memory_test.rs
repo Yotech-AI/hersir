@@ -638,7 +638,7 @@ fn an_agents_block_has_its_own_notes_first_then_this_projects_this_clients_and_i
     assert_eq!(b.given[0].shown, memory::OWN_CAP as i64, "its own notes (5,000 characters) cut at 3,000");
     assert_eq!(b.given[1].path, "Projects/Shop");
     assert!(b.given[1].shown < b.given[1].chars, "cut: {:?}", b.given[1]);
-    assert!(b.text.contains("the rest stays in Gizai's Memory at Projects/Shop"), "{}", b.text);
+    assert!(b.text.contains("the rest stays in Hersir's Memory at Projects/Shop"), "{}", b.text);
     let more = &b.text[b.text.find("### More notes for this card, not shown in full").expect("an index of the rest")..];
     assert!(more.contains("- Clients/Acme (") && more.contains("- Workflows/Release ("), "{more}");
     assert!(!more.contains("Globex"));
@@ -852,7 +852,7 @@ fn an_agents_notes_with_60_learned_lines_give_its_run_the_text_before_learned_an
     let kept: Vec<&str> = kept.lines().collect();
     let out = bullets.len() - kept.len();
     assert!(out > 0 && kept.len() > 10, "{out} left out, {} kept", kept.len());
-    assert_eq!(line, format!("({out} older lines left out; they stay in Gizai's Memory at Agents/Backend Agent/Notes.)"));
+    assert_eq!(line, format!("({out} older lines left out; they stay in Hersir's Memory at Agents/Backend Agent/Notes.)"));
     assert_eq!(kept, bullets[out..], "the newest lines, ending with the last one learned");
     for old in &bullets[..out] {
         assert!(!b.text.contains(old.as_str()), "an older line is in the run: {old}");
@@ -890,7 +890,7 @@ production, then a vX.Y.Z tag on production.";
     let shown = section(&b.text, "Agents/DevOps Agent/Notes");
     let len = shown.chars().count();
     assert!(len <= memory::OWN_CAP && len > memory::OWN_CAP - 200, "its own notes take at most 3,000: {len}");
-    assert!(shown.contains(" older lines left out; they stay in Gizai's Memory at Agents/DevOps Agent/Notes.)\n\n- "), "{shown}");
+    assert!(shown.contains(" older lines left out; they stay in Hersir's Memory at Agents/DevOps Agent/Notes.)\n\n- "), "{shown}");
     assert!(shown.ends_with(bullets[59].as_str()) && !shown.contains(bullets[0].as_str()), "{shown}");
     assert_eq!(section(&b.text, "Deployments/GA"), deploy, "the deploy note in full");
     let d = deploy.chars().count() as i64;
@@ -910,7 +910,7 @@ production, then a vX.Y.Z tag on production.";
     let size = release.trim().chars().count();
     assert!(rest >= 500 && rest < size, "{rest}");
     assert_eq!((b.given[3].chars as usize, b.given[3].shown as usize), (size, rest), "the last one gets what is left of the 6,000");
-    assert!(b.text.contains(&format!("(Cut here: the note has {size} characters; the rest stays in Gizai's Memory at Workflows/Release.)")),
+    assert!(b.text.contains(&format!("(Cut here: the note has {size} characters; the rest stays in Hersir's Memory at Workflows/Release.)")),
             "{}", b.text);
 }
 
@@ -934,7 +934,7 @@ fn an_agents_own_notes_share_the_3000_when_the_card_has_shared_notes_and_may_use
     let b = memory::prompt_block(&f.db, &f.be(), &ga("backend")).unwrap();
     assert_eq!(given_paths(&b), ["Agents/Backend Agent/Notes", "Agents/Backend Agent/Gotchas", "Projects/Gizai"]);
     assert_eq!((b.given[0].shown as usize, b.given[1].shown as usize), (n, memory::OWN_CAP - n));
-    assert!(b.text.contains(&format!("(Cut here: the note has {g} characters; the rest stays in Gizai's Memory at Agents/Backend Agent/Gotchas.)")),
+    assert!(b.text.contains(&format!("(Cut here: the note has {g} characters; the rest stays in Hersir's Memory at Agents/Backend Agent/Gotchas.)")),
             "{}", b.text);
     assert_eq!(b.given[2].shown, b.given[2].chars);
 
@@ -974,7 +974,7 @@ fn a_notes_that_fits_is_shown_as_it_is_one_character_over_leaves_its_oldest_line
     set_note(&f, &f.be(), path, &over);
     let b = memory::prompt_block(&f.db, &f.be(), &ga("backend")).unwrap();
     let (head, _) = over.split_once("\n\n- ").unwrap();
-    assert_eq!(section(&b.text, path), format!("{head}\n\n(1 older line left out; it stays in Gizai's Memory at {path}.)\n\n{}",
+    assert_eq!(section(&b.text, path), format!("{head}\n\n(1 older line left out; it stays in Hersir's Memory at {path}.)\n\n{}",
                                                bullets[1..].join("\n")));
     assert_eq!((b.given[0].chars, b.given[0].shown), (3_001, (3_001 - bullets[0].chars().count() - 1) as i64));
     assert_eq!(given_paths(&b), [path, "Projects/Gizai"]);
@@ -1027,7 +1027,7 @@ fn a_section_after_the_learned_list_stays_and_a_notes_without_the_list_or_too_lo
     set_note(&f, &f.be(), path, &plain);
     let b = memory::prompt_block(&f.db, &f.be(), &ga("backend")).unwrap();
     let first: String = plain.trim().chars().take(memory::OWN_CAP).collect();
-    assert_eq!(section(&b.text, path), format!("{first}\n\n(Cut here: the note has {size} characters; the rest stays in Gizai's Memory at {path}.)"));
+    assert_eq!(section(&b.text, path), format!("{first}\n\n(Cut here: the note has {size} characters; the rest stays in Hersir's Memory at {path}.)"));
     assert_eq!((b.given[0].chars as usize, b.given[0].shown as usize), (size, memory::OWN_CAP));
     assert_eq!(given_paths(&b), [path, "Projects/Gizai"]);
 
@@ -1037,7 +1037,7 @@ fn a_section_after_the_learned_list_stays_and_a_notes_without_the_list_or_too_lo
     set_note(&f, &f.be(), path, &long);
     let b = memory::prompt_block(&f.db, &f.be(), &ga("backend")).unwrap();
     let first: String = long.trim().chars().take(memory::OWN_CAP).collect();
-    assert_eq!(section(&b.text, path), format!("{first}\n\n(Cut here: the note has {size} characters; the rest stays in Gizai's Memory at {path}.)"));
+    assert_eq!(section(&b.text, path), format!("{first}\n\n(Cut here: the note has {size} characters; the rest stays in Hersir's Memory at {path}.)"));
     assert_eq!((b.given[0].chars as usize, b.given[0].shown as usize), (size, memory::OWN_CAP));
 }
 
@@ -1059,7 +1059,7 @@ their folder, so set it before cargo test or the run waits.")).collect();
     assert_eq!(given_paths(&b), ["Agents/Backend Agent/Notes"]);
     let shown = section(&b.text, "Agents/Backend Agent/Notes");
     assert!(shown.chars().count() <= memory::FULL_CAP);
-    assert!(shown.contains(" older lines left out; they stay in Gizai's Memory at Agents/Backend Agent/Notes.)"), "{shown}");
+    assert!(shown.contains(" older lines left out; they stay in Hersir's Memory at Agents/Backend Agent/Notes.)"), "{shown}");
     assert!(shown.ends_with("(GA-102, Backend Agent): Lesson 20 of run 2: the fake CLI scripts need the run's worktree as their folder, so \
 set it before cargo test or the run waits."), "{shown}");
     assert!(!shown.contains("Lesson 01 of run 0") && shown.contains("Lesson 20 of run 1"), "{shown}");

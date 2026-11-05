@@ -570,23 +570,21 @@ fn main() {
     c.insert("list_old_worktrees".into(), json!([]));
     c.insert("update_status".into(), json!({"current": env!("CARGO_PKG_VERSION"), "autoCheck": true, "checking": false, "checkedAt": now - 2 * HOUR,
         "latest": {"version": env!("CARGO_PKG_VERSION"), "tag": format!("v{}", env!("CARGO_PKG_VERSION")), "name": format!("Gizai {}", env!("CARGO_PKG_VERSION")),
-                   "url": format!("https://github.com/Yotech-AI/gizai/releases/tag/v{}", env!("CARGO_PKG_VERSION")), "publishedAt": null, "notes": null},
+                   "url": format!("https://github.com/Yotech-AI/hersir/releases/tag/v{}", env!("CARGO_PKG_VERSION")), "publishedAt": null, "notes": null},
         "problem": null, "available": null, "installed": null, "installTo": "/home/you/.local", "cannotInstall": null, "job": null,
-        "repo": "https://github.com/Yotech-AI/gizai.git"}));
+        "repo": "https://github.com/Yotech-AI/hersir.git"}));
     // Settings → General → Backups (contract BK, gizai-core's backups types): a folder in Dropbox, daily, Keep 10, and three
     // snapshots there, newest first: this computer's daily one and Back up now's, and another computer's, made by a newer
-    // Gizai, so it can't be restored here.
+    // Hersir, so it can't be restored here.
     let chosen = "/home/you/Dropbox";
     let me = db.device_id().to_string();
     let laptop = "0199f3a2-7c41-7d2e-9b1a-4e5f6a7b8c9d";
-    let newer = {
-        let v: Vec<i64> = env!("CARGO_PKG_VERSION").split('.').map(|p| p.parse().unwrap_or(0)).collect();
-        format!("{}.{}.0", v.first().copied().unwrap_or(0), v.get(1).copied().unwrap_or(0) + 1)
-    };
+    // above the app's own: 0.15.0 after the Hersir release
+    let newer = "0.16.0";
     let snap = |reason: backups::Reason, made_at: i64, device: &str, name: &str, db_bytes: i64, problem: Option<String>| backups::BackupEntry {
         name: backups::snapshot_name(reason, made_at, &backups::device_tag(device)), reason: reason.as_str().into(), made_at,
         device_id: device.into(), device_name: name.into(), this_computer: device == me,
-        app_version: if problem.is_some() { newer.clone() } else { env!("CARGO_PKG_VERSION").into() },
+        app_version: if problem.is_some() { newer.into() } else { env!("CARGO_PKG_VERSION").into() },
         schema_version: db::SCHEMA_VERSION + i64::from(problem.is_some()),
         db_bytes, files_count: 14, files_bytes: 3_276_800, files_missing: 0, restorable: problem.is_none(), problem,
     };
@@ -595,7 +593,7 @@ fn main() {
         snap(backups::Reason::Daily, daily_at, &me, "this machine", 4_456_448, None),
         snap(backups::Reason::Manual, now - DAY - 5 * HOUR, &me, "this machine", 4_390_912, None),
         snap(backups::Reason::Daily, now - 2 * DAY - 2 * HOUR, laptop, "work-laptop", 4_128_768,
-             Some(format!("A newer Gizai made it ({newer}): update Gizai to restore it"))),
+             Some(format!("A newer Hersir made it ({newer}): update Hersir to restore it"))),
     ]));
     let every = backups::Every::Daily;
     c.insert("backup_status".into(), val(backups::BackupStatus {

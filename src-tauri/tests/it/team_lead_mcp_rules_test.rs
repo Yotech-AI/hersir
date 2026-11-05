@@ -110,7 +110,7 @@ impl T {
 /// (GA-101).
 fn refused_after_outside(e: &str, name: &str) -> bool {
     if tools::NOT_AFTER_OUTSIDE.contains(&name) {
-        return e == format!("{name} wasn't run: this answer used mcp__otus__search, a tool from outside Gizai. Gizai keeps the call for \
+        return e == format!("{name} wasn't run: this answer used mcp__otus__search, a tool from outside Hersir. Hersir keeps the call for \
             the user to approve with one click. Tell them in a sentence what it does.");
     }
     e.starts_with(&format!("{name} is refused for the rest of this answer")) && e.contains("mcp__otus__search")
@@ -491,7 +491,7 @@ fn call_took(st: &AppState, thread: &str) -> Duration {
 }
 
 fn refused_unseen(e: &str, name: &str) -> bool {
-    e.contains(&format!("{name} is refused this time: Gizai couldn't see this call in your answer in time"))
+    e.contains(&format!("{name} is refused this time: Hersir couldn't see this call in your answer in time"))
         && e.contains("Nothing changed: call it again")
 }
 
@@ -808,7 +808,7 @@ async fn a_board_check_gets_no_tool_from_outside_gizai_even_with_the_team_leads_
 
 // ---- GA-101: a card the Team Lead puts where an agent would start it waits on hold for your OK ----
 
-const WAITING: &str = "Waiting for your OK: the Team Lead put this card here after using mcp__otus__search, a tool from outside Gizai. \
+const WAITING: &str = "Waiting for your OK: the Team Lead put this card here after using mcp__otus__search, a tool from outside Hersir. \
     Check it, then take it off hold.";
 
 /// Design and Research: Auto work columns the Backend Agent is on (next: Testing). Manual: a work column it is on that
@@ -842,7 +842,7 @@ fn queued(t: &T, task_id: &str) -> bool {
 fn says_on_hold(v: &Value, task: &str) -> bool {
     v["task"]["hold"] == "needs_decision" && v["on_hold"].as_str().is_some_and(|s| {
         s.starts_with(&format!("{task} waits on hold for the user's OK, so no agent starts it")) && s.contains("mcp__otus__search")
-            && s.contains("a tool from outside Gizai") && s.contains("Tell the user")
+            && s.contains("a tool from outside Hersir") && s.contains("Tell the user")
     })
 }
 

@@ -28,7 +28,7 @@ function shiftTimes(v: unknown, delta: number): void {
 export function loadFixtures(f: Fixtures) {
   commands = f.commands;
   shiftTimes(commands, Date.now() - f.writtenAt);
-  console.info(`Gizai in a browser: ${Object.keys(commands).length} commands answer from the fixtures (src/browser/fixtures.json).`);
+  console.info(`Hersir in a browser: ${Object.keys(commands).length} commands answer from the fixtures (src/browser/fixtures.json).`);
 }
 
 /** What each command answers without a fixture, from its type in src/api.ts. */
@@ -46,7 +46,7 @@ function empty(cmd: string, why: string) {
   const v = cmd in EMPTY ? EMPTY[cmd] : null;
   if (!told.has(why)) {
     told.add(why);
-    console.warn(`Gizai in a browser: no fixture for ${why}, so it answers ${JSON.stringify(v)}.`);
+    console.warn(`Hersir in a browser: no fixture for ${why}, so it answers ${JSON.stringify(v)}.`);
   }
   return structuredClone(v);
 }
@@ -118,7 +118,7 @@ const WRITES: Record<string, (args: Row) => unknown> = {
     const view = fixture("agent_mcp", { agentId });
     return view.found ? structuredClone(view.value) : empty("agent_mcp", view.why);
   },
-  open_file: ({ id }) => { console.info(`Gizai in a browser: Open would show file ${id} in the system's image viewer.`); return null; },
+  open_file: ({ id }) => { console.info(`Hersir in a browser: Open would show file ${id} in the system's image viewer.`); return null; },
   // Settings → General → Backups (GA-217): the backend's refusals, the status with what changed, and backups-changed. There
   // is no folder picker in a browser, so Browse… does nothing; Turn off does.
   save_backup_settings: ({ settings }) => {

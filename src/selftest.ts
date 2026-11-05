@@ -364,10 +364,10 @@ export async function teamProbe(getTeam: () => Promise<ProbeTeam>) {
   const roleSel = q<HTMLSelectElement>("#a-role", dialog);
   const hasTool = (t: string) => (q<HTMLTextAreaElement>("#a-tools", dialog)?.value ?? "").split("\n").includes(t);
   const instructions = () => q("[aria-label=Instructions]", dialog)?.textContent ?? "";
-  const isFrontend = () => hasTool("Bash(git push:*)") && !hasTool("Bash(gh pr create:*)") && instructions().includes("You are the Frontend Agent in Gizai's Software team.");
+  const isFrontend = () => hasTool("Bash(git push:*)") && !hasTool("Bash(gh pr create:*)") && instructions().includes("You are the Frontend Agent in Hersir's Software team.");
   const frontendFirst = !!(await waitFor(() => isFrontend() || null, 5000));
   if (roleSel) pickOption(roleSel, "qa");
-  const qaNext = !!(await waitFor(() => (hasTool("Bash(gh pr create:*)") && instructions().includes("You are the QA Agent in Gizai's Software team.")) || null, 5000));
+  const qaNext = !!(await waitFor(() => (hasTool("Bash(gh pr create:*)") && instructions().includes("You are the QA Agent in Hersir's Software team.")) || null, 5000));
   if (roleSel) pickOption(roleSel, "frontend");
   const frontendAgain = !!(await waitFor(() => isFrontend() || null, 5000));
   buttonByText(dialog, "+ Bash(make test:*)")?.click();
@@ -1022,7 +1022,7 @@ export async function usageProbe() {
     && same(subscription.claude2.map((r) => r.slice(0, 3)), [["Session limit", "Limit reached", "3pm (Europe/Amsterdam)"], ["Weekly limit", "35%", subscription.claude2[1]?.[2]], ["Fable limit", "Not reported yet", ""]])
     && asOf(subscription.claude2[0]) && asOf(subscription.claude2[1])
     && same(subscription.codex.map((r) => r.slice(0, 2)), [["5-hour limit", "24%"], ["Weekly limit", "41%"]]) && asOf(subscription.codex[0])
-    && subscription.gemini.includes("Gizai can't read Gemini's limits yet.") && subscription.gemini_tables === 0
+    && subscription.gemini.includes("Hersir can't read Gemini's limits yet.") && subscription.gemini_tables === 0
     && same(subscription.agents, [["Backend Agent (paused)"], ["Team Lead (paused)"], ["Codex Agent (paused)"], []])
     && subscription.chats.includes("The Team Lead's chat runs here.")
     && same(subscription.states, [["limit-ok", "limit-near", "limit-unread"], ["limit-reached", "limit-ok", "limit-unread"], ["limit-ok", "limit-ok"], []])

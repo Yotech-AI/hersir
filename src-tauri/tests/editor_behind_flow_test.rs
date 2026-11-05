@@ -212,7 +212,7 @@ async fn a_folder_that_isnt_a_projects_follows_its_origins_default_branch_and_sa
     // no origin remote; not a git repository: no main to compare with, and nothing to fetch
     let m = editor::fetch(&st, &id(&alone)).unwrap();
     assert_eq!((m.main_label.as_str(), m.can_update, m.fetch_error.as_deref(), m.update_says.as_str()),
-               ("", false, None, "alone has no origin remote: Gizai can't tell whether it's behind."));
+               ("", false, None, "alone has no origin remote: Hersir can't tell whether it's behind."));
     let m = editor::fetch(&st, &id(&herd.join("plain"))).unwrap();
     assert_eq!((m.main_label.as_str(), m.branch, m.can_update, m.update_says.as_str()),
                ("", None, false, "plain isn't a git repository, so there's no main to compare it with."));

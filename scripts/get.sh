@@ -1,14 +1,14 @@
 #!/bin/sh
-# GizAi's one-line install for Linux and macOS:
+# Hersir's one-line install for Linux and macOS:
 #   curl -fsSL https://gizai.app/install.sh | sh
 # The website sends gizai.app/install.sh on to this script, scripts/get.sh on the production branch, on GitHub.
-# It gets the source of the latest release, the tag Gizai's own update fetches (docs/RELEASING.md), into
+# It gets the source of the latest release, the tag Hersir's own update fetches (docs/RELEASING.md), into
 # ${XDG_DATA_HOME:-~/.local/share}/gizai-src, or updates it there. Then it runs that release's install.sh with bash:
-# install.sh --check first, then install.sh, which builds and installs Gizai as it does from a clone. Run it again to
-# update. Nothing goes into Gizai's data folder. The source folder is this script's own: changes in it are replaced.
+# install.sh --check first, then install.sh, which builds and installs Hersir as it does from a clone. Run it again to
+# update. Nothing goes into Hersir's data folder. The source folder is this script's own: changes in it are replaced.
 #
 # Options go to install.sh, after sh -s --:   curl -fsSL <url> | sh -s -- --check   (see usage below)
-# Environment: GIZAI_PREFIX and XDG_DATA_HOME go to install.sh too (curl -fsSL <url> | GIZAI_PREFIX=$HOME/opt/gizai sh).
+# Environment: GIZAI_PREFIX and XDG_DATA_HOME go to install.sh too (curl -fsSL <url> | GIZAI_PREFIX=$HOME/opt/hersir sh).
 # GIZAI_REPO is the git repository, GIZAI_RELEASES_URL what it asks for the latest release (by default GitHub's; also
 # http and file URLs), and GIZAI_REF a tag, branch or commit to get instead of the latest release (for tests and CI).
 # A POSIX sh script, for dash and macOS's sh. It does everything in main, called on its last line, so a download cut
@@ -16,7 +16,7 @@
 
 # What this script gets comes from GitHub, so an install never depends on the website: the source from DEFAULT_REPO,
 # the latest release from GitHub's API. The one line for Windows, which it only shows you, is gizai.app's.
-DEFAULT_REPO=https://github.com/Yotech-AI/gizai.git
+DEFAULT_REPO=https://github.com/Yotech-AI/hersir.git
 GET_PS1=https://gizai.app/install.ps1
 
 say() { printf '%s\n' "$*"; }
@@ -34,14 +34,14 @@ words() {
 
 usage() {
   cat <<'USAGE'
-GizAi's one-line install for Linux and macOS:
+Hersir's one-line install for Linux and macOS:
   curl -fsSL https://gizai.app/install.sh | sh
-It gets the source of GizAi's latest release into ~/.local/share/gizai-src (or updates it there), then runs that
+It gets the source of Hersir's latest release into ~/.local/share/gizai-src (or updates it there), then runs that
 release's install.sh: --check first, then the install. Run it again to update.
 
 Options go to install.sh, after sh -s --:
   curl -fsSL <url> | sh -s -- --check       get the source and show what is missing
-  curl -fsSL <url> | sh -s -- --uninstall   remove GizAi; add --purge to delete your data and the source
+  curl -fsSL <url> | sh -s -- --uninstall   remove Hersir; add --purge to delete your data and the source
   --build-only and --skip-build work as they do for install.sh (see install.sh --help).
 Environment: GIZAI_PREFIX (default ~/.local) and XDG_DATA_HOME, as for install.sh; GIZAI_REPO, GIZAI_RELEASES_URL,
 and GIZAI_REF (a tag, branch or commit to get instead of the latest release, for tests).
@@ -71,7 +71,7 @@ main() {
   os="$(uname -s)"
   case "$os" in
     Linux|Darwin) ;;
-    *) say "This installs GizAi on Linux and macOS. On Windows, run this in PowerShell: irm $GET_PS1 | iex"; return 1 ;;
+    *) say "This installs Hersir on Linux and macOS. On Windows, run this in PowerShell: irm $GET_PS1 | iex"; return 1 ;;
   esac
 
   # What this script needs itself: git and bash, and curl to ask for the latest release. On a Mac, /usr/bin/git only
@@ -85,11 +85,11 @@ main() {
   have bash || missing="$missing bash"
   [ -n "${GIZAI_REF:-}" ] || have curl || missing="$missing curl"
   if [ "$os" = Darwin ] && [ "$missing" = git ]; then
-    say "To install GizAi, first install Apple's Command Line Tools, which bring git: run xcode-select --install, then run this again."
+    say "To install Hersir, first install Apple's Command Line Tools, which bring git: run xcode-select --install, then run this again."
     return 1
   elif [ -n "$missing" ]; then
     # shellcheck disable=SC2086 # one word each
-    say "To install GizAi, first install $(words $missing) with your package manager, then run this again."
+    say "To install Hersir, first install $(words $missing) with your package manager, then run this again."
     return 1
   fi
 
@@ -109,8 +109,8 @@ main() {
           return 1 ;;
       esac
     fi
-    step "Finding GizAi's latest release"
-    # As Gizai's own release check: -q first, so your ~/.curlrc plays no part, and redirects to https only.
+    step "Finding Hersir's latest release"
+    # As Hersir's own release check: -q first, so your ~/.curlrc plays no part, and redirects to https only.
     answer="$(curl -q --fail --silent --show-error --location --proto '=https,http,file' --proto-redir '=https' \
       --max-time 60 --header 'Accept: application/vnd.github+json' --header 'X-GitHub-Api-Version: 2022-11-28' \
       "$url")" || {
@@ -134,7 +134,7 @@ main() {
     rm -rf "$dir/.git"
     src_git -c init.defaultBranch=main init --quiet || { say "Could not make a git repository in $dir."; return 1; }
   fi
-  # As Gizai's own update: a shallow fetch of the tag alone, checked out as it is, and everything else in the folder
+  # As Hersir's own update: a shallow fetch of the tag alone, checked out as it is, and everything else in the folder
   # goes, except the build's target/, so the next build is quicker.
   if [ -n "$ref" ]; then spec="$ref"; else spec="+refs/tags/$tag:refs/tags/$tag"; fi
   src_git fetch --depth 1 --no-tags --force -- "$repo" "$spec" || { say "Could not get $what from $repo."; return 1; }

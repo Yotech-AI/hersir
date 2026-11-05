@@ -71,7 +71,7 @@ fn file_line(data: &Path, dir: &Path, f: &FileRow) -> Value {
         Err(e) => v["error"] = json!(if files::blob_path(data, &f.sha256).is_file() {
             format!("couldn't be copied into your folder: {e}")
         } else {
-            "couldn't be copied into your folder: its stored file is missing from Gizai's data folder".to_string()
+            "couldn't be copied into your folder: its stored file is missing from Hersir's data folder".to_string()
         }),
     }
     v

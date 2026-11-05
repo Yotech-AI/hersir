@@ -148,7 +148,7 @@ describe("Settings' tabs", () => {
 describe("what each tab has", () => {
   const html = render();
   const of = (label: string) => panels(html).find((p) => p.label === label)?.html ?? "";
-  it("General: Quit Gizai completely at the top, Updates, Editor folders (GA-113), Data with the folders and the old worktrees, then Backups (GA-217)", () => {
+  it("General: Quit Hersir completely at the top, Updates, Editor folders (GA-113), Data with the folders and the old worktrees, then Backups (GA-217)", () => {
     expect(sections(of("General"))).toEqual(["Quit", "Updates", "Editor folders", "Data", "Backups"]);
     const t = text(of("General"));
     for (const s of ["Data folder", "/home/you/.local/share/gizai/worktrees", "Run logs", "Worktrees of finished cards", "the old worktrees"]) expect(t).toContain(s);
@@ -323,10 +323,10 @@ describe("Memory for agent runs in Runs (GA-202)", () => {
     // on no other tab
     for (const p of panels(render("agents", MEM)).filter((p) => p.label !== "Agents and runs")) expect(p.html).not.toContain("s-memory");
   });
-  it("says that Gizai only waits for free memory where the system doesn't enforce the limit", () => {
+  it("says that Hersir only waits for free memory where the system doesn't enforce the limit", () => {
     const t = text(runsOf(render("agents", { ...MEM, computerMemoryGb: 16, runsMemoryGb: 8, runsMemoryEnforced: false })));
     expect(runsOf(render("agents", { ...MEM, computerMemoryGb: 16, runsMemoryGb: 8, runsMemoryEnforced: false }))).toMatch(/id="s-memory"[^>]*max="16"[^>]*value="8"/);
-    expect(t).toContain("Memory for agent runs GB All agent runs together. This computer has 16 GB. On this system Gizai only waits for free memory before it starts a run.");
+    expect(t).toContain("Memory for agent runs GB All agent runs together. This computer has 16 GB. On this system Hersir only waits for free memory before it starts a run.");
   });
   it("Save settings saves an edited value with the rest", async () => {
     const first = tree("agents", MEM);

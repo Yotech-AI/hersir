@@ -94,7 +94,7 @@ describe("times", () => {
 describe("what a block says", () => {
   it("says why a limit has no number: Codex reads its log after a run, Claude Code reports it in runs and chat turns, Fable only for some accounts", () => {
     const codex = cli({ cliId: "c-3", name: "Codex work", kind: "codex", accountDir: "~/.codex-work" });
-    expect(unreadLabel(codex, limit(null, "primary"))).toEqual({ text: "Not read yet", title: "Gizai reads it from Codex's session log when a run on Codex work ends." });
+    expect(unreadLabel(codex, limit(null, "primary"))).toEqual({ text: "Not read yet", title: "Hersir reads it from Codex's session log when a run on Codex work ends." });
     expect(unreadLabel(cli({ name: "Claude Code 2" }), limit(null))).toEqual({
       text: "Not reported yet", title: "Claude Code reports it in the runs and chat turns on Claude Code 2, on a Claude subscription (not with an API key).",
     });
@@ -103,17 +103,17 @@ describe("what a block says", () => {
 
   it("says where the numbers come from, with the Codex account's session folder", () => {
     expect(sourceNote(cli({ name: "Claude Code 2" }))).toBe(
-      "Claude Code reports these limits in the runs and chat turns on Claude Code 2 when they change, on a Claude subscription only. Gizai keeps the newest numbers.");
+      "Claude Code reports these limits in the runs and chat turns on Claude Code 2 when they change, on a Claude subscription only. Hersir keeps the newest numbers.");
     expect(sourceNote(cli({ name: "Codex", kind: "codex", accountDir: "~/.codex" }))).toBe(
-      "Codex writes these limits in its session log (~/.codex/sessions). Gizai reads the log of each run on Codex when the run ends.");
+      "Codex writes these limits in its session log (~/.codex/sessions). Hersir reads the log of each run on Codex when the run ends.");
     expect(sourceNote(cli({ name: "Codex", kind: "codex", accountDir: null }))).toBe(
-      "Codex writes these limits in its session log. Gizai reads the log of each run on Codex when the run ends.");
+      "Codex writes these limits in its session log. Hersir reads the log of each run on Codex when the run ends.");
   });
 
-  it("says Gizai can't read Gemini's or an Other CLI's limits yet", () => {
-    expect(cantRead(cli({ name: "Gemini", kind: "gemini", readable: false }))).toBe("Gizai can't read Gemini's limits yet.");
-    expect(cantRead(cli({ name: "Aider", kind: "other", readable: false }))).toBe("Gizai can't read the limits of Aider yet: it reads Claude Code's and Codex's.");
-    expect(sourceNote(cli({ name: "Gemini 2", kind: "gemini", readable: false }))).toBe("Gizai can't read Gemini's limits yet.");
+  it("says Hersir can't read Gemini's or an Other CLI's limits yet", () => {
+    expect(cantRead(cli({ name: "Gemini", kind: "gemini", readable: false }))).toBe("Hersir can't read Gemini's limits yet.");
+    expect(cantRead(cli({ name: "Aider", kind: "other", readable: false }))).toBe("Hersir can't read the limits of Aider yet: it reads Claude Code's and Codex's.");
+    expect(sourceNote(cli({ name: "Gemini 2", kind: "gemini", readable: false }))).toBe("Hersir can't read Gemini's limits yet.");
   });
 
   it("knows whether any limit has a reading", () => {

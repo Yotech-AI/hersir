@@ -89,7 +89,7 @@ if (unix) {
 // GitHub's answer for the latest release, as a file: GIZAI_RELEASES_URL takes file:// addresses.
 function release(tag) {
   const file = join(scratch, `release-${tag}.json`);
-  writeFileSync(file, `{\n  "url": "https://api.github.com/repos/Yotech-AI/gizai/releases/1",\n  "tag_name": "${tag}",\n  "name": "${tag}",\n  "draft": false,\n  "prerelease": false\n}\n`);
+  writeFileSync(file, `{\n  "url": "https://api.github.com/repos/Yotech-AI/hersir/releases/1",\n  "tag_name": "${tag}",\n  "name": "${tag}",\n  "draft": false,\n  "prerelease": false\n}\n`);
   return pathToFileURL(file).href;
 }
 
@@ -231,7 +231,7 @@ describe.skipIf(!unix)("scripts/get.sh", { timeout: 60_000 }, () => {
     expect(git(c.home, "status", "--porcelain", "--untracked-files=no")).toBe("");
   });
 
-  it("writes nothing in Gizai's data folder", () => {
+  it("writes nothing in Hersir's data folder", () => {
     const c = newCase();
     const data = join(c.share, "gizai");
     mkdirSync(join(data, "backups"), { recursive: true });
@@ -330,7 +330,7 @@ describe.skipIf(!unix)("scripts/get.sh", { timeout: 60_000 }, () => {
     const none = getSh(c, [], { PATH: tools(c, ["uname"]) });
     expect(none.code).toBe(1);
     expect(none.out.trim()).toBe(
-      "To install GizAi, first install git, bash and curl with your package manager, then run this again.",
+      "To install Hersir, first install git, bash and curl with your package manager, then run this again.",
     );
     expect(readdirSync(c.home)).toEqual([]);
 
@@ -339,15 +339,15 @@ describe.skipIf(!unix)("scripts/get.sh", { timeout: 60_000 }, () => {
     expect(noGit.code).toBe(1);
     expect(noGit.out.trim()).toBe(
       process.platform === "darwin"
-        ? "To install GizAi, first install Apple's Command Line Tools, which bring git: run xcode-select --install, then run this again."
-        : "To install GizAi, first install git with your package manager, then run this again.",
+        ? "To install Hersir, first install Apple's Command Line Tools, which bring git: run xcode-select --install, then run this again."
+        : "To install Hersir, first install git with your package manager, then run this again.",
     );
     expect(readdirSync(d.home)).toEqual([]);
 
     const e = newCase();
     const noBash = getSh(e, [], { PATH: tools(e, ["uname", "git", "curl"]) });
     expect(noBash.code).toBe(1);
-    expect(noBash.out.trim()).toBe("To install GizAi, first install bash with your package manager, then run this again.");
+    expect(noBash.out.trim()).toBe("To install Hersir, first install bash with your package manager, then run this again.");
     expect(readdirSync(e.home)).toEqual([]);
     expect(runs(e)).toEqual([]);
   });
@@ -364,7 +364,7 @@ describe.skipIf(!unix)("scripts/get.sh", { timeout: 60_000 }, () => {
     const r = getSh(c, [], { PATH: tools(c, ["git", "bash", "curl"], { uname: "#!/bin/sh\necho MINGW64_NT-10.0-26100\n" }) });
     expect(r.code).toBe(1);
     expect(r.out.trim()).toBe(
-      "This installs GizAi on Linux and macOS. On Windows, run this in PowerShell: irm https://gizai.app/install.ps1 | iex",
+      "This installs Hersir on Linux and macOS. On Windows, run this in PowerShell: irm https://gizai.app/install.ps1 | iex",
     );
     expect(readdirSync(c.home)).toEqual([]);
   });
@@ -382,20 +382,20 @@ describe.skipIf(!unix)("scripts/get.sh", { timeout: 60_000 }, () => {
     const latest = getSh(c, [], { PATH: offline(c), GIZAI_REPO: undefined, GIZAI_RELEASES_URL: undefined });
     expect(latest.code).toBe(1);
     expect(latest.out).toContain(
-      "Could not read the latest release from https://api.github.com/repos/Yotech-AI/gizai/releases/latest.",
+      "Could not read the latest release from https://api.github.com/repos/Yotech-AI/hersir/releases/latest.",
     );
     const asked = readFileSync(net(c), "utf8").trim().split("\n");
     expect(asked).toHaveLength(1);
-    expect(asked[0]).toMatch(/^curl .* https:\/\/api\.github\.com\/repos\/Yotech-AI\/gizai\/releases\/latest$/);
+    expect(asked[0]).toMatch(/^curl .* https:\/\/api\.github\.com\/repos\/Yotech-AI\/hersir\/releases\/latest$/);
     expect(existsSync(c.share)).toBe(false);
 
     const d = newCase();
     const source = getSh(d, [], { PATH: offline(d), GIZAI_REPO: undefined, GIZAI_RELEASES_URL: undefined, GIZAI_REF: "v0.2.0" });
     expect(source.code).toBe(1);
-    expect(source.out).toContain("Could not get v0.2.0 from https://github.com/Yotech-AI/gizai.git.");
+    expect(source.out).toContain("Could not get v0.2.0 from https://github.com/Yotech-AI/hersir.git.");
     const fetched = readFileSync(net(d), "utf8").trim().split("\n");
     expect(fetched).toHaveLength(1);
-    expect(fetched[0]).toMatch(/ fetch .* -- https:\/\/github\.com\/Yotech-AI\/gizai\.git v0\.2\.0$/);
+    expect(fetched[0]).toMatch(/ fetch .* -- https:\/\/github\.com\/Yotech-AI\/hersir\.git v0\.2\.0$/);
     expect(runs(d)).toEqual([]);
 
     for (const log of [...asked, ...fetched]) expect(log).not.toContain("gizai.app");
@@ -445,9 +445,9 @@ describe.skipIf(!unix)("scripts/get.sh", { timeout: 60_000 }, () => {
   it("runs this repository's own install.sh --check, and its result shows", () => {
     const c = newCase();
     const r = getSh(c, ["--check"], { GIZAI_REPO: REPO_ROOT, GIZAI_REF: "HEAD", GIZAI_RELEASES_URL: undefined });
-    expect(r.out).toContain("== Checking what Gizai needs");
+    expect(r.out).toContain("== Checking what Hersir needs");
     expect(r.out).toMatch(/Claude Code: (found|not found)/);
-    expect(r.code === 0, r.out).toBe(r.out.includes("Everything Gizai needs to build is here."));
+    expect(r.code === 0, r.out).toBe(r.out.includes("Everything Hersir needs to build is here."));
     expect(git(c.src, "rev-parse", "HEAD")).toBe(git(REPO_ROOT, "rev-parse", "HEAD"));
     expect(readdirSync(c.share)).toEqual(["gizai-src"]);
 
@@ -481,7 +481,7 @@ describe("the one-line installs people see", () => {
     expect(sh[2]).toBe(`#   ${CURL}`);
     expect(sh).toContain("GET_PS1=https://gizai.app/install.ps1");
     expect(sh.filter((line) => line.includes("$GET_PS1")).map((line) => line.trim())).toEqual([
-      '*) say "This installs GizAi on Linux and macOS. On Windows, run this in PowerShell: irm $GET_PS1 | iex"; return 1 ;;',
+      '*) say "This installs Hersir on Linux and macOS. On Windows, run this in PowerShell: irm $GET_PS1 | iex"; return 1 ;;',
     ]);
 
     const ps1 = read("scripts/get.ps1").split(/\r?\n/);
@@ -491,7 +491,7 @@ describe("the one-line installs people see", () => {
     const shown = ps1.filter((line) => /\$GetPs1|\$GetSh/.test(line) && !/^\s*\$Get(Ps1|Sh) = /.test(line));
     expect(shown.map((line) => line.trim())).toEqual([
       'Say "  irm $GetPs1 | iex"',
-      'Say "This installs GizAi on Windows. On Linux and macOS, run: curl -fsSL $GetSh | sh"',
+      'Say "This installs Hersir on Windows. On Linux and macOS, run: curl -fsSL $GetSh | sh"',
     ]);
   });
 
@@ -506,7 +506,7 @@ describe("the one-line installs people see", () => {
       );
     }
     const ps1 = read("scripts/get.ps1");
-    expect(ps1).toContain("$DefaultRepo = 'https://github.com/Yotech-AI/gizai.git'");
+    expect(ps1).toContain("$DefaultRepo = 'https://github.com/Yotech-AI/hersir.git'");
     expect(ps1).toContain('$url = "https://api.github.com/repos/$($Matches[2])/releases/latest"');
     expect(ps1).toContain("$repo = if ($env:GIZAI_REPO) { $env:GIZAI_REPO } else { $DefaultRepo }");
   });

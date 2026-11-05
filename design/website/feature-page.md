@@ -28,7 +28,7 @@ dark and light. Mobile, the other pages and the website's build come later.
 | 3 | Feature paragraphs | A rule; one centred column of two or three paragraphs, each an H2 above its text; under the last one, the feature's doc on GitHub. |
 | 4 | Feature FAQ | A rule; the label FAQ and an H2 on the left; three to six questions on the right. Left out when a feature has no questions worth asking. |
 | 5 | Pager | Previous and next, two cells split by a divider. |
-| 6 | Get GizAi | The install section from the homepage. |
+| 6 | Get Hersir | The install section from the homepage. |
 | 7 | Footer | Shared with the homepage. |
 | 8 | Sky | 360 px of empty page, where the mountains show at the end. |
 
@@ -50,12 +50,12 @@ Every feature page is the same template. A page fills these, and nothing else:
 
 And these follow from the slots: the breadcrumb's last item (Brandbox › Breadcrumb › Current) is the Title; Docs
 (Paragraphs › Docs) is `docs/features/<slug>.md`; previous and next (Previous and next › Previous, Next: Number and
-Name) are the neighbours in the table below; the page's `<title>` is the Title, a dash and GizAi ("The board decides
-who works – GizAi").
+Name) are the neighbours in the table below; the page's `<title>` is the Title, a dash and Hersir ("The board decides
+who works – Hersir").
 
 In Figma, Number, Title and Intro are text properties of Feature brandbox; Paragraphs and FAQ are Figma slots (a
 slot takes any number of instances); Media, Breadcrumb, Previous and Next are exposed nested instances, so their
-properties show on the page instance. For dark and light, set the instance's colour mode (GizAi colour: Dark or Light)
+properties show on the page instance. For dark and light, set the instance's colour mode (`GizAi colour`: Dark or Light)
 and Theme on its Top bar and Footer.
 
 ### The eight pages
@@ -72,7 +72,7 @@ and Theme on its Top bar and Footer.
 | 08 | The Inbox | `/features/inbox` | 07 | 01 | `docs/features/inbox.md` | `10-inbox` |
 
 Previous and next follow the homepage's order and wrap round: 01's previous is 08, 08's next is 01. Docs links to
-`https://github.com/Yotech-AI/gizai/blob/main/<path>`; the `docs/features/` files come with GA-97. Check `07-clis` for
+`https://github.com/Yotech-AI/hersir/blob/main/<path>`; the `docs/features/` files come with GA-97. Check `07-clis` for
 other companies' logos before it goes on the site.
 
 ## Heading levels
@@ -80,7 +80,7 @@ other companies' logos before it goes on the site.
 One H1 per page; every section starts with an H2.
 
 - **H1:** the feature's name (Title), in Web/Display. Nothing else on the page is an H1.
-- **H2:** each paragraph's heading (Web/H2); the FAQ's title (Web/H2); Get GizAi (Web/H2 here, where the homepage
+- **H2:** each paragraph's heading (Web/H2); the FAQ's title (Web/H2); Get Hersir (Web/H2 here, where the homepage
   draws it at Web/H1's 48 px).
 - **H3:** each FAQ question, drawn in Web/H4, as `<h3><button aria-expanded="false" aria-controls="…">…</button></h3>`.
 - **Not headings:** the breadcrumb (a `nav`, aria-label "Breadcrumb"); the number (`aria-hidden`: the H1 says the
@@ -90,13 +90,13 @@ One H1 per page; every section starts with an H2.
 
 ## The parts
 
-All are in `Feature page components` (`85:3`). Their colours are the GizAi colour variables, so they follow the
+All are in `Feature page components` (`85:3`). Their colours are the `GizAi colour` variables, so they follow the
 mode of the frame they sit in.
 
 - **Top bar** (`85:84`; Theme = Dark, Light): the homepage's bar. Its bottom border is the page's rule (the Rule
   component): the 1 px `line` with an 11 px plus where it crosses each guide; the plus hangs 5 px under the bar. The
   guides run up through the bar to the top of the window. On a feature page, Tour, ADA and Features go to the
-  homepage's sections (`/#tour`, `/#ada`, `/#features`); Get GizAi scrolls to the page's own install section. Theme
+  homepage's sections (`/#tour`, `/#ada`, `/#features`); Get Hersir scrolls to the page's own install section. Theme
   sets the logo, the switch's lit half and the colour mode.
 - **Footer** (`85:271`; Theme = Dark, Light): see "The footer" below.
 - **Feature brandbox** (`89:175`): see "The brandbox" below.
@@ -117,7 +117,7 @@ mode of the frame they sit in.
   680 wide, with a 1 px line under the last question.
 - **Pager link** (`87:148`; Direction = Previous, Next; State = Default, Hover) and **Pager** (`87:151`): see
   "Previous and next" below.
-- **Get GizAi** (`87:199`): the homepage's install section: the label Install, Get GizAi (H2), the line on what it
+- **Get Hersir** (`87:199`): the homepage's install section: the label Install, Get Hersir (H2), the line on what it
   costs and runs on, an Install line per system with Copy, and Or build from source.
 - **Leaves the site** (`86:106`): a 12 px arrow, up and to the right, in `text-3`, after a footer link that leaves the
   site.
@@ -133,7 +133,7 @@ The open feature row from the homepage, grown into a page, so the row you clicke
   number, at most 1000 wide; the intro (Web/Lead, `text-2`, 640 wide) 24 px under it.
 - 96 px under the intro, the media: 1280 × 832 from x 80, guide to guide less 40 px a side, with an 11 px plus outside
   each corner, as the tour on the homepage.
-- No buttons: the top bar's Get GizAi and the install section at the end do that job.
+- No buttons: the top bar's Get Hersir and the install section at the end do that job.
 
 The media is the feature's screenshot or GIF from the product tour's captures (GA-148): 2560 × 1664 at scale 2, drawn
 at 1280 × 832, in a dark and a light version that swap with the site theme. Build a GIF as a muted, looping video
@@ -160,7 +160,7 @@ says what it shows (the Shows line). It is solid, so it covers the mountains.
 
 ## The footer (every page)
 
-The logo and one line on what GizAi is, then three columns of links; the page's lines close here.
+The logo and one line on what Hersir is, then three columns of links; the page's lines close here.
 
 - **Line art:** a rule above and below, a 1 px divider between the columns, and a plus wherever two lines cross. The
   guides end on the bottom rule. The footer is see-through: the mountains, fixed along the bottom of the window, stand
@@ -170,7 +170,7 @@ The logo and one line on what GizAi is, then three columns of links; the page's 
 
 | Column | Link | Goes to |
 |---|---|---|
-| GizAi | the logo (32 px), then "A free desktop app where a team of AI coding agents works through your board." | the logo links to `/` |
+| Hersir | the logo (32 px), then "A free desktop app where a team of AI coding agents works through your board." | the logo links to `/` |
 | Features | 01 The board decides who works | `/features/board` |
 | | 02 A Team Lead you talk to | `/features/team-lead` |
 | | 03 Bring your own CLI | `/features/cli` |
@@ -179,12 +179,12 @@ The logo and one line on what GizAi is, then three columns of links; the page's 
 | | 06 Memory | `/features/memory` |
 | | 07 Tools per agent | `/features/tools` |
 | | 08 The Inbox | `/features/inbox` |
-| Get started | Get GizAi | `/#get-gizai`, the install section on the homepage |
-| | Docs ↗ | `https://github.com/Yotech-AI/gizai/tree/main/docs` |
-| | Releases ↗ | `https://github.com/Yotech-AI/gizai/releases` |
-| | View on GitHub ↗ | `https://github.com/Yotech-AI/gizai` |
+| Get started | Get Hersir | `/#get-hersir`, the install section on the homepage |
+| | Docs ↗ | `https://github.com/Yotech-AI/hersir/tree/main/docs` |
+| | Releases ↗ | `https://github.com/Yotech-AI/hersir/releases` |
+| | View on GitHub ↗ | `https://github.com/Yotech-AI/hersir` |
 | YoTech | Made by YoTech ↗ | YoTech's website (the address is Jefsev's to give) |
-| | Apache-2.0 licence ↗ | `https://github.com/Yotech-AI/gizai/blob/main/LICENSE` |
+| | Apache-2.0 licence ↗ | `https://github.com/Yotech-AI/hersir/blob/main/LICENSE` |
 
 The numbers in Features are Web/Code, `text-3`. ↗ (the component Leaves the site) marks a link that leaves the site.
 In Figma each link carries its address as an annotation.
@@ -230,7 +230,7 @@ In Figma each link carries its address as an annotation.
 
 - **Breadcrumb:** Home › Features › The Editor and Terminal, built in
 - **Number:** 05. **Title (H1):** The Editor and Terminal, built in
-- **Intro:** A code editor and your own terminals, inside GizAi. Open a project or a card's worktree, check its git
+- **Intro:** A code editor and your own terminals, inside Hersir. Open a project or a card's worktree, check its git
   status, edit, and run commands in a shell under the code.
 - **Media:** a GIF, dark and light. Shows: "The Editor on a project: git's marks in the file tree, and a shell in the
   panel under the code." In Figma: the still `06-terminals/show-in-editor-after.png`.
@@ -241,21 +241,21 @@ In Figma each link carries its address as an annotation.
     PhpStorm.
   - **Your own shell, as many as you like** (H2): Terminal opens a panel under the code, in the folder's root. Start
     more terminals as tabs, give one its own page, or rename it. A terminal keeps running until you close it or quit
-    GizAi, even when you close the window.
-  - **Work on a card yourself** (H2): A card assigned to you has Open in editor. GizAi prepares the card's worktree as
+    Hersir, even when you close the window.
+  - **Work on a card yourself** (H2): A card assigned to you has Open in editor. Hersir prepares the card's worktree as
     it would for an agent and pins the card to you, so agents leave it alone. A bar above the code lets you commit,
     push and hand the card over to Testing.
 - **Docs:** `docs/features/editor-and-terminal.md`
 - **FAQ title (H2):** Questions about the Editor and Terminal
 - **FAQ:**
-  1. **Is the Editor free?** Yes. The Editor, the terminals and a card's changes are free, like the rest of GizAi.
+  1. **Is the Editor free?** Yes. The Editor, the terminals and a card's changes are free, like the rest of Hersir.
   2. **Can I edit a card while an agent works on it?** Not while it works: the Editor shows the worktree read-only, and
      a new terminal there waits until the run ends. When no agent is working on it, Edit anyway lets you change the
      card's files, and the agent finds your changes on its next run.
   3. **Does it replace my IDE?** It isn't meant to. It's for quick edits and for checking an agent's work. Open in hands
      the folder to VS Code, Zed or PhpStorm when you need more.
   4. **What happens to my terminals when I close the window?** They keep running. A terminal stops when you close it,
-     type exit, or quit GizAi.
+     type exit, or quit Hersir.
 - **Previous:** 04 Tested before you see it. **Next:** 06 Memory.
 
 The copy is written from `docs/features/board.md` and `docs/features/editor-and-terminal.md` (GA-97's branch), in
@@ -275,7 +275,7 @@ closed.
   The paragraphs belong together, so space parts them, not lines.
 - **Pink, as on the homepage:** the number and its 160 px line, the section label FAQ, an open question's 40 px line,
   a hovered previous or next. Never on links, buttons or body text.
-- **One H2 size.** Every section heading on a feature page is Web/H2, Get GizAi included, so the H1 in Web/Display
+- **One H2 size.** Every section heading on a feature page is Web/H2, Get Hersir included, so the H1 in Web/Display
   stands alone.
 - **The full names in the footer**, numbered as on the homepage, so a feature has one name everywhere.
 - **Real stills.** The examples show GA-148's captures, the scenes the GIFs will be made from; the template and the

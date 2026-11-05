@@ -185,8 +185,8 @@ impl Terminals {
         let (cols, rows) = (size(start.cols, 80), size(start.rows, 24));
         let opened = std::panic::catch_unwind(|| native_pty_system().openpty(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 }))
             // portable-pty panics on a Windows without ConPTY
-            .map_err(|_| format!("Gizai couldn't open a terminal{}", if cfg!(windows) { ": it needs Windows 10 version 1809 or newer" } else { "" }))?;
-        let pty = opened.map_err(|e| format!("Gizai couldn't open a terminal: {e}"))?;
+            .map_err(|_| format!("Hersir couldn't open a terminal{}", if cfg!(windows) { ": it needs Windows 10 version 1809 or newer" } else { "" }))?;
+        let pty = opened.map_err(|e| format!("Hersir couldn't open a terminal: {e}"))?;
         let failed = format!("Couldn't start {shell} in {}", start.folder_path);
         let not_started = |e: &dyn std::fmt::Display| format!("{failed}: {e}");
         #[cfg(unix)]
@@ -221,7 +221,7 @@ impl Terminals {
                 Ok(job) => job,
                 Err(e) => {
                     let _ = child.kill();
-                    return Err(not_started(&format!("Windows didn't let Gizai keep track of it ({e})")));
+                    return Err(not_started(&format!("Windows didn't let Hersir keep track of it ({e})")));
                 }
             }
         };
@@ -324,7 +324,7 @@ impl Terminals {
         let to = PtySize { rows, cols, pixel_width: 0, pixel_height: 0 };
         #[cfg(unix)]
         if let Some(master) = lock(&s.pty).as_ref() {
-            master.resize(to).map_err(|e| format!("Gizai couldn't resize the terminal: {e}"))?;
+            master.resize(to).map_err(|e| format!("Hersir couldn't resize the terminal: {e}"))?;
         }
         #[cfg(windows)]
         s.todo(Todo::Resize(to));
@@ -781,7 +781,7 @@ impl Session {
                 let (code, why) = match end {
                     Some(Exit::Code(c)) => (Some(c), format!("{} ended with exit code {c}", self.shell)),
                     Some(Exit::Signal(sig)) => (None, format!("{} was ended by {sig}", self.shell)),
-                    None => (None, format!("Gizai lost track of {}", self.shell)),
+                    None => (None, format!("Hersir lost track of {}", self.shell)),
                 };
                 st.ended = Some(TerminalEnd { code, at: now_ms(), why: Some(why) });
             }

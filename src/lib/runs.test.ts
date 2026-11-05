@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { badgeOf, dayRate, canContinue, commitCount, elapsed, formatCost, formatTokens, lastAgentText, mergeEvents, noteIsGood, resumeCommand, runReason, toolCalls } from "./runs";
 import type { Run, SeqEvent } from "../types";
+import runsRs from "../../src-tauri/src/runs.rs?raw";
 
 const ev = (seq: number, text = `t${seq}`) => ({ seq, event: { kind: "text" as const, text } });
 
@@ -124,6 +125,25 @@ describe("noteIsGood", () => {
     expect(noteIsGood("Its worktree has 3 uncommitted changes, which Gizai doesn't push.")).toBe(false);
     expect(noteIsGood("Left out the folder /home/u/notes: it isn't there")).toBe(false);
     expect(noteIsGood("")).toBe(false);
+  });
+
+  it("reads the push note as the backend says it since GA-232, with Hersir, and an older run's with Gizai", () => {
+    expect(runsRs).toContain('vec![format!("Hersir pushed {} ({n} {})", self.branch');
+    expect(noteIsGood("Hersir pushed gizai/kade-1-export-invoices (2 commits).")).toBe(true);
+    expect(noteIsGood("Hersir pushed gizai/kade-1-export-invoices (1 commit).")).toBe(true);
+    expect(noteIsGood("Gizai pushed gizai/kade-1-export-invoices (1 commit).")).toBe(true);
+    expect(noteIsGood("Its worktree has 3 uncommitted changes, which Hersir doesn't push.")).toBe(false);
+    expect(noteIsGood("Couldn't push gizai/kade-1-export-invoices: Hersir never forces a push: merge GitHub's copy into the branch first.")).toBe(false);
+    expect(noteIsGood("Hersir kept 2 screenshots on the card.")).toBe(false);
+  });
+
+  it("is true for the push note with Hersir too (GA-232's backend), and older runs with Gizai stay good news (GA-231)", () => {
+    expect(noteIsGood("Hersir pushed gizai/kade-1-export-invoices (2 commits).")).toBe(true);
+    expect(noteIsGood("Hersir pushed gizai/kade-1-export-invoices (1 commit).")).toBe(true);
+    expect(noteIsGood("Its worktree has 3 uncommitted changes, which Hersir doesn't push.")).toBe(false);
+    expect(noteIsGood("Hersir never forces a push: Hersir pushed nothing.")).toBe(false);
+    expect(noteIsGood("hersir pushed gizai/kade-1 (1 commit).")).toBe(false);
+    expect(noteIsGood("Someone pushed gizai/kade-1 (1 commit).")).toBe(false);
   });
 });
 

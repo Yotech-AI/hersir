@@ -4,26 +4,26 @@ Each agent runs on the coding CLI you pick, like Claude Code, Codex or Gemini, o
 
 ## Pick a CLI per agent
 
-- **Claude Code, Codex, Gemini**, or any other coding CLI, whose output GizAi reads as text.
+- **Claude Code, Codex, Gemini**, or any other coding CLI, whose output Hersir reads as text.
 - **A second account** of one, with its own environment (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`).
 - **Settings → Coding CLIs** adds them, or finds the ones installed. Each agent picks its CLI under Runs on, in its form.
 
-With only Codex installed, GizAi adds it under Settings → Coding CLIs and runs every agent but the Team Lead on it.
+With only Codex installed, Hersir adds it under Settings → Coding CLIs and runs every agent but the Team Lead on it.
 
 ## On your own machine
 
 - Everything runs on your computer, with your own git repositories and your own logins.
 - Agents run on the coding CLIs you installed, with your own logins and accounts.
-- GizAi needs no account of its own.
-- Your data stays in one folder on your computer, and GizAi sends nothing about you: see [Your data](../install.md#your-data) and [No telemetry](../install.md#no-telemetry).
+- Hersir needs no account of its own.
+- Your data stays in one folder on your computer, and Hersir sends nothing about you: see [Your data](../install.md#your-data) and [No telemetry](../install.md#no-telemetry).
 
-GizAi never sells Claude usage: agents keep running on your own Claude Code login or API key. On Windows, GizAi runs the CLIs installed on Windows itself, never inside WSL ([Install](../install.md#windows)).
+Hersir never sells Claude usage: agents keep running on your own Claude Code login or API key. On Windows, Hersir runs the CLIs installed on Windows itself, never inside WSL ([Install](../install.md#windows)).
 
 ## Your keys stay yours
 
 - MCP sign-ins and values, and your Bitbucket login, stay in your system's keychain.
-- GizAi never stores a GitHub token or password: pushes go over SSH with your keys, or over HTTPS with gh's login.
-- An agent's folders never include `/`, your home folder, GizAi's data or folders with keys ([Folders](tools.md#folders)).
+- Hersir never stores a GitHub token or password: pushes go over SSH with your keys, or over HTTPS with gh's login.
+- An agent's folders never include `/`, your home folder, Hersir's data or folders with keys ([Folders](tools.md#folders)).
 
 ## The Team Lead needs Claude Code
 
@@ -53,13 +53,13 @@ Usage → Subscription, the tab the page opens on, has a block per coding CLI in
 - A Claude Code account shows its session, weekly and Fable limits; a Codex account its plan's two windows (usually 5 hours and a week).
 - Each shows how much is used, when it resets and when the number was read, amber from 80% and red when reached.
 - Each lists the agents on it and the chats that run there, so you see whom to move to another account.
-- Gemini and other CLIs say GizAi can't read their limits yet.
+- Gemini and other CLIs say Hersir can't read their limits yet.
 
-The numbers are the newest the CLI itself reported in a run or chat turn: Claude Code in its stream, Codex in its session log (`$CODEX_HOME/sessions`), and a run that hit a limit. GizAi never reads their logins or asks Anthropic or OpenAI.
+The numbers are the newest the CLI itself reported in a run or chat turn: Claude Code in its stream, Codex in its session log (`$CODEX_HOME/sessions`), and a run that hit a limit. Hersir never reads their logins or asks Anthropic or OpenAI.
 
 ## Read more
 
 - [Install](../install.md): what each system needs, your data, no telemetry and updates.
 - [Tools per agent](tools.md): what each agent may use, per CLI.
-- [docs/PLATFORMS.md](../PLATFORMS.md#reaching-the-coding-clis): how GizAi finds the coding CLIs on Linux, macOS and Windows.
-- [docs/PAID-FEATURES.md](../PAID-FEATURES.md): what GizAi will sell, and why it never sells Claude usage.
+- [docs/PLATFORMS.md](../PLATFORMS.md#reaching-the-coding-clis): how Hersir finds the coding CLIs on Linux, macOS and Windows.
+- [docs/PAID-FEATURES.md](../PAID-FEATURES.md): what Hersir will sell, and why it never sells Claude usage.

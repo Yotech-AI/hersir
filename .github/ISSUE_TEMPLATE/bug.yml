@@ -1,13 +1,13 @@
 name: Bug report
-description: Something in GizAi doesn't work as it should.
+description: Something in Hersir doesn't work as it should.
 labels: [bug]
 body:
   - type: markdown
     attributes:
       value: >-
-        Thanks for telling us. A problem with installing or updating GizAi has a form of its own,
-        **Install or update problem**. Questions go to [Q&A in Discussions](https://github.com/Yotech-AI/gizai/discussions/categories/q-a),
-        and a security problem is reported privately, as the [security policy](https://github.com/Yotech-AI/gizai/security/policy)
+        Thanks for telling us. A problem with installing or updating Hersir has a form of its own,
+        **Install or update problem**. Questions go to [Q&A in Discussions](https://github.com/Yotech-AI/hersir/discussions/categories/q-a),
+        and a security problem is reported privately, as the [security policy](https://github.com/Yotech-AI/hersir/security/policy)
         says, never in an issue.
   - type: textarea
     id: what-happened
@@ -34,7 +34,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: GizAi version
+      label: Hersir version
       description: >-
         Settings → Updates shows it, and so does `gizai --version` in a terminal.
       placeholder: "0.11.0"
@@ -78,7 +78,7 @@ body:
     attributes:
       label: Logs
       description: >-
-        The error lines, the run's output (Show output on its card) or what GizAi printed in a terminal.
+        The error lines, the run's output (Show output on its card) or what Hersir printed in a terminal.
         They show as text, so no backticks are needed.
       render: text
   - type: checkboxes

@@ -343,7 +343,7 @@ pub fn check_export(db: &Db, team_id: &str) -> Result<Vec<Warning>> {
 pub fn save(db: &Db, team_id: &str, path: &Path) -> Result<()> {
     let mut text = serde_json::to_string_pretty(&export(db, team_id)?)?;
     text.push('\n');
-    std::fs::write(path, text).map_err(|e| Error::Invalid(format!("Gizai can't write {}: {e}.", path.display())))
+    std::fs::write(path, text).map_err(|e| Error::Invalid(format!("Hersir can't write {}: {e}.", path.display())))
 }
 
 /// The places in a template that look private, in the file's order: an email address, a local path, a URL with a query
@@ -720,10 +720,10 @@ fn too_big() -> Error {
 
 /// A template file's text: at most 2 MB, in UTF-8.
 fn read_file(path: &Path) -> Result<String> {
-    let cant = |e: std::io::Error| Error::Invalid(format!("Gizai can't read {}: {e}.", path.display()));
+    let cant = |e: std::io::Error| Error::Invalid(format!("Hersir can't read {}: {e}.", path.display()));
     let file = std::fs::File::open(path).map_err(cant)?;
     if file.metadata().map_err(cant)?.is_dir() {
-        return Err(Error::Invalid(format!("Gizai can't read {}: it's a folder.", path.display())));
+        return Err(Error::Invalid(format!("Hersir can't read {}: it's a folder.", path.display())));
     }
     let mut bytes = vec![];
     file.take(MAX_BYTES + 1).read_to_end(&mut bytes).map_err(cant)?;
@@ -738,13 +738,13 @@ fn parse(text: &str) -> Result<TemplateFile> {
     let text = text.strip_prefix('\u{feff}').unwrap_or(text);
     let mut v: Value = serde_json::from_str(text).map_err(|e| Error::Invalid(format!("This file isn't JSON: {e}.")))?;
     if v.get("format").and_then(Value::as_str) != Some(FORMAT) {
-        return Err(Error::Invalid("This file isn't a Gizai team template.".into()));
+        return Err(Error::Invalid("This file isn't a Hersir team template.".into()));
     }
     match v.get("format_version").and_then(Value::as_f64) {
         Some(n) if n > FORMAT_VERSION as f64 => return Err(Error::Invalid(NEWER.into())),
         // 1, also written as 1.0
         Some(n) if n >= 1.0 => v["format_version"] = FORMAT_VERSION.into(),
-        _ => return Err(Error::Invalid("This team template has no format_version: Gizai reads format 1.".into())),
+        _ => return Err(Error::Invalid("This team template has no format_version: Hersir reads format 1.".into())),
     }
     serde_json::from_value(v).map_err(|e| Error::Invalid(format!("This team template can't be read: {e}.")))
 }
@@ -1141,7 +1141,7 @@ fn plan(f: &TemplateFile, builtin: bool, name: Option<&str>, here: &Here) -> Res
         }
         let mut web_fetch = a.web_fetch;
         if web_fetch && domains.is_empty() && a.fetch_domains.iter().any(|d| !d.trim().is_empty()) {
-            notes.push(format!("{name} fetches web pages only from domains Gizai can't use: it fetches none."));
+            notes.push(format!("{name} fetches web pages only from domains Hersir can't use: it fetches none."));
             web_fetch = false;
         }
         let mut builtin_tools = vec![];

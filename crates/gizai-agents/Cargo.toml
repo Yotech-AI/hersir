@@ -1,6 +1,6 @@
 [package]
 name = "gizai-agents"
-description = "Gizai agents: Claude Code argv, stream-json parsing, outcomes, worktrees and processes (no Tauri)"
+description = "Hersir agents: Claude Code argv, stream-json parsing, outcomes, worktrees and processes (no Tauri)"
 edition.workspace = true
 license.workspace = true
 version.workspace = true
