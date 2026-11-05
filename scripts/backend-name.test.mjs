@@ -1,7 +1,7 @@
 // GA-232: the name from the backend. Every text the Rust side shows a person or an agent says Hersir, never Gizai or
 // GizAi: notifications, the tray, messages, errors and dialogs, the prompts, the role templates and the tools'
 // descriptions. What a text keeps is a code name (GIZAI_RESULT, the MCP server gizai, gizai/ branches, .gizai-tmp, the
-// backup and team template formats, the data folders) or a name GA-233 changes (the app bundle and the window title).
+// backup and team template formats, the data folders). GA-233 renamed the app bundle and the window title to Hersir.
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -18,9 +18,7 @@ const KEPT = [
   /Library\/Application Support\/Gizai/, // macOS's data folder (data folders stay)
   /\.join\("Gizai"\)/, // Windows's data folder under APPDATA
   /%APPDATA%\\Gizai/, // gizai --help names the data folders as they are
-  /Gizai\.app\/Contents\/MacOS/, // the macOS app bundle: GA-233
   /"Gizai backups/, // the backups folder's name, and its README's first line that names it
-  /"Gizai \(\{label\} data\)"/, // the window title with a label's data: GA-233
   /"Stopped because Gizai quit\."/, // what runs an older version's quit stopped say: the board check reads it as a quit
 ];
 
@@ -86,6 +84,13 @@ describe("the name in the backend's texts (GA-232)", () => {
     expect(notes).not.toContain('appname("Gizai")');
     expect(notes).toContain('.icon("gizai")');
     expect(notes).toContain('Hint::DesktopEntry("gizai".into())');
+  });
+
+  it("with GA-233 in, the app bundle and the window title say Hersir too, and the gizai program stays", () => {
+    expect(read("src-tauri/src/lib.rs")).toContain('w.set_title(&format!("Hersir ({label} data)"))');
+    expect(read("crates/gizai-agents/src/update.rs")).toContain('d.ends_with("Hersir.app/Contents/MacOS")');
+    expect(read("crates/gizai-agents/src/update.rs")).toContain('pub const REPO: &str = "https://github.com/Yotech-AI/hersir.git";');
+    expect(read("crates/gizai-agents/src/update.rs")).toContain("Hersir asks GitHub for new releases with it.");
   });
 
   it("the code names stay: GIZAI_RESULT, the MCP server gizai, gizai/ branches, .gizai-tmp and the backup and team template formats", () => {
