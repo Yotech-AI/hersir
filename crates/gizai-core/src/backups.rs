@@ -67,9 +67,9 @@ const KEPT_REASONS: [&str; 4] = ["daily", "weekly", "manual", "quit"];
 /// The backups folder's README.txt.
 const README: &str = "Gizai backups
 
-This folder holds snapshots of Gizai's data, made by Gizai on each computer that backs up here: its database and the
-files it stores (attachments and screenshots). Gizai makes them on a schedule, when you press Back up now, and when
-you quit Gizai if you asked it to.
+This folder holds snapshots of Hersir's data, made by Hersir on each computer that backs up here: its database and the
+files it stores (attachments and screenshots). Hersir makes them on a schedule, when you press Back up now, and when
+you quit Hersir if you asked it to.
 
 snapshots/   one snapshot is two files: <name>.json says what it holds, <name>.db.zst is its database (zstd)
 files/       every stored file, once, named by its content (SHA-256), shared by all snapshots
@@ -77,7 +77,7 @@ files/       every stored file, once, named by its content (SHA-256), shared by 
 Several computers can back up to this folder: each adds and removes only its own snapshots. Don't rename or change
 the files here. They are not encrypted: whoever can open this folder can read them.
 
-Restore in Gizai: Settings → General → Backups.
+Restore in Hersir: Settings → General → Backups.
 ";
 
 /// Why a snapshot was made: its name and its manifest say so.
@@ -445,7 +445,7 @@ fn problem(chosen: &Path, write: bool) -> Option<String> {
             let _ = fs::remove_file(&probe);
             None
         }
-        Err(e) => Some(format!("Gizai can't write in {}: {e}", write_in.display())),
+        Err(e) => Some(format!("Hersir can't write in {}: {e}", write_in.display())),
     }
 }
 
@@ -476,9 +476,9 @@ fn check_marker(dir: &Path) -> std::result::Result<(), String> {
     };
     match serde_json::from_slice::<Marker>(&raw) {
         Ok(m) if m.format == FOLDER_FORMAT && m.format_version > FORMAT_VERSION => Err(format!(
-            "A newer Gizai made the backups folder {} (format {}): update Gizai to back up there", dir.display(), m.format_version)),
+            "A newer Hersir made the backups folder {} (format {}): update Hersir to back up there", dir.display(), m.format_version)),
         Ok(m) if m.format == FOLDER_FORMAT => Ok(()),
-        _ => Err(format!("{} doesn't say its folder is a Gizai backups folder", path.display())),
+        _ => Err(format!("{} doesn't say its folder is a Hersir backups folder", path.display())),
     }
 }
 
@@ -567,7 +567,7 @@ pub fn make(data_dir: &Path, device_id: &str, chosen: &Path, reason: Reason, kee
             step: &mut dyn FnMut(Step) -> Result<()>) -> Result<Made> {
     let src = data_dir.join("gizai.db");
     if !src.is_file() {
-        return Err(Error::Invalid(format!("no Gizai data in {}", data_dir.display())));
+        return Err(Error::Invalid(format!("no Hersir data in {}", data_dir.display())));
     }
     if let Some(problem) = folder_problem(chosen) {
         return Err(Error::Invalid(problem));
@@ -1014,8 +1014,8 @@ fn entry(dir: &Path, found: Found, device_id: &str, present: &HashSet<String>) -
     let files_missing = m.files.iter().filter(|f| !present.contains(&f.sha256.to_ascii_lowercase())).count() as i64;
     let problem = if m.format_version > FORMAT_VERSION || m.schema_version > db::SCHEMA_VERSION {
         Some(match m.app_version.as_str() {
-            "" => "A newer Gizai made it: update Gizai to restore it".to_string(),
-            v => format!("A newer Gizai made it ({v}): update Gizai to restore it"),
+            "" => "A newer Hersir made it: update Hersir to restore it".to_string(),
+            v => format!("A newer Hersir made it ({v}): update Hersir to restore it"),
         })
     } else if !whole {
         Some("Its manifest can't be read".to_string())

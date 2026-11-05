@@ -209,7 +209,7 @@ pub async fn before_turn(st: &AppState, thread_id: &str) -> ForTurn {
     parts.extend(notes);
     parts.append(&mut heard.results);
     if !parts.is_empty() {
-        out.line = format!("[Gizai: {}]", parts.join(" "));
+        out.line = format!("[Hersir: {}]", parts.join(" "));
     }
     out
 }

@@ -9,7 +9,7 @@ export const STEPS = ["You and your team", "Coding CLIs", "MCP servers", "Ready"
 
 /** The welcome chat's first message, yours, word for word: finishing sends it (`gizai_core::onboarding::WELCOME`), and
  *  step 4 shows it first, so nothing is sent in your name unseen. */
-export const WELCOME = "Hi! I just installed GizAi and set up my team. Please welcome me, tell me in a few lines what you and the team can do, and ask whether I'd like help setting up agents, clients, projects, tasks or anything else.";
+export const WELCOME = "Hi! I just installed Hersir and set up my team. Please welcome me, tell me in a few lines what you and the team can do, and ask whether I'd like help setting up agents, clients, projects, tasks or anything else.";
 
 /** Where to read how to install Claude Code (the page docs/install.md links). */
 export const CLAUDE_CODE_DOCS = "https://docs.claude.com/en/docs/claude-code";

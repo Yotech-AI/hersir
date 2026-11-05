@@ -45,9 +45,9 @@ describe("Settings → Agents and runs → Screenshots", () => {
   it("has the design's intro, and each field with its default and range, word for word", () => {
     const html = renderToStaticMarkup(<ScreenshotSettings s={SETTINGS} setS={() => {}} />);
     expect(html).toContain('id="settings-screenshots"');
-    expect(text(html)).toMatch(/^Screenshots What Gizai keeps of the screenshots agents take at the end of their runs, and the ports of the projects’ previews\. Each project sets its sizes and themes in its form → Preview\./);
+    expect(text(html)).toMatch(/^Screenshots What Hersir keeps of the screenshots agents take at the end of their runs, and the ports of the projects’ previews\. Each project sets its sizes and themes in its form → Preview\./);
     expect(fields(html)).toEqual([
-      ["Screenshots per run", "hint", "1 to 30; 12 by default. Gizai keeps the first ones by file name and says in the run what it left out."],
+      ["Screenshots per run", "hint", "1 to 30; 12 by default. Hersir keeps the first ones by file name and says in the run what it left out."],
       ["Largest screenshot (MB)", "hint", "1 to 50; 10 by default."],
       ["Keep per card (sets)", "hint", "1 to 20; 3 by default. A newer run’s set removes the oldest beyond these."],
       ["Delete a finished card’s screenshots after (days)", "hint", "0 to 365; 30 by default, counted from Done or Cancelled. 0 keeps them."],

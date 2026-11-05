@@ -14,10 +14,10 @@ With nothing there, it says "Nothing needs you."
 
 ## Why a card is on hold
 
-- **Blocked:** a start that couldn't work ([When agents start](board.md#when-agents-start)), or a push that failed ([GizAi pushes after every run](testing.md#gizai-pushes-after-every-run)).
+- **Blocked:** a start that couldn't work ([When agents start](board.md#when-agents-start)), or a push that failed ([Hersir pushes after every run](testing.md#hersir-pushes-after-every-run)).
 - **Stalled:** a run that ended twice without its result line ([One nudge](board.md#one-nudge)), or three runs that ended without a result, for example ones that failed or hit a limit.
 - **Needs a decision:** an agent asked a question, or QA sent the card back three times. When it can, the Team Lead looks at an agent's question before you and brings you only what it can't answer; otherwise the question comes straight to you ([Agents ask the Team Lead first](team-lead.md#agents-ask-the-team-lead-first)).
-- **Waiting for your OK:** the Team Lead put the card in an Auto column, or changed it there, after it used a tool from outside GizAi ([docs/agent-tools.md](../agent-tools.md#safety-rules)).
+- **Waiting for your OK:** the Team Lead put the card in an Auto column, or changed it there, after it used a tool from outside Hersir ([docs/agent-tools.md](../agent-tools.md#safety-rules)).
 
 Dragging a held card back to To do or In progress takes the hold off.
 
@@ -35,18 +35,18 @@ Older result lines still work. "How this run works" and the role instructions te
 2. Run the commands in a terminal and press **Done, continue**.
 3. The run continues with your note that the commands were run, also saved on the card, so the agent checks that they worked and carries on.
 
-The commands still show when GizAi's push after that run failed.
+The commands still show when Hersir's push after that run failed.
 
 ## Notifications
 
-GizAi sends a desktop notification when:
+Hersir sends a desktop notification when:
 
 - a card goes on hold;
 - a card waits for your review or deploy;
-- the Team Lead asks you something (a Question or Approval chat), or waits for your OK on a call it couldn't make after a tool from outside GizAi;
-- the Team Lead answered while the GizAi window was hidden or in the background.
+- the Team Lead asks you something (a Question or Approval chat), or waits for your OK on a call it couldn't make after a tool from outside Hersir;
+- the Team Lead answered while the Hersir window was hidden or in the background.
 
-Each kind has a switch in Settings → Notifications, all on by default. Clicking a notification while it shows opens the card or the chat, where the desktop's notifications support it (Omarchy's do). Otherwise Open GizAi in the tray brings the window back ([The window and the tray](../settings.md#the-window-and-the-tray)).
+Each kind has a switch in Settings → Notifications, all on by default. Clicking a notification while it shows opens the card or the chat, where the desktop's notifications support it (Omarchy's do). Otherwise Open Hersir in the tray brings the window back ([The window and the tray](../settings.md#the-window-and-the-tray)).
 
 ## Read more
 

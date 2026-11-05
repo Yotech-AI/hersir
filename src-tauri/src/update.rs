@@ -217,10 +217,10 @@ const INSTALLER: &str = r".\install.ps1";
 /// update itself.
 fn install_prefix(inner: &Inner) -> Result<PathBuf, String> {
     let Some(exe) = &inner.exe else {
-        return Err(format!("Gizai can't tell where it runs from, so it can't update itself. Install the new version with {INSTALLER}."));
+        return Err(format!("Hersir can't tell where it runs from, so it can't update itself. Install the new version with {INSTALLER}."));
     };
     up::install_prefix(exe).ok_or_else(|| {
-        format!("This Gizai runs from {}, not from an install, so it doesn't update itself. Update its checkout with git, or install with {INSTALLER}.",
+        format!("This Hersir runs from {}, not from an install, so it doesn't update itself. Update its checkout with git, or install with {INSTALLER}.",
                 exe.display())
     })
 }
@@ -266,7 +266,7 @@ pub async fn check(st: &AppState) -> UpdateStatus {
     let found = tokio::task::spawn_blocking(move || {
         let latest = match url {
             Some(url) => up::latest_release(&url, &format!("gizai/{VERSION}"), CHECK_LIMIT),
-            None => Err(Problem::new("Gizai doesn't know where this repository keeps its releases",
+            None => Err(Problem::new("Hersir doesn't know where this repository keeps its releases",
                                      "Set GIZAI_RELEASES_URL, or GIZAI_REPO to a repository on GitHub.")),
         };
         // a release that is installed already only needs a restart
@@ -324,7 +324,7 @@ pub async fn tick(st: &AppState, now: i64) -> bool {
 pub fn start(st: &AppState, version: &str) -> Result<UpdateStatus, String> {
     let now = status(st);
     let release = now.available.clone().filter(|r| r.version == version)
-        .ok_or_else(|| format!("Gizai knows of no newer release {version}. Check for updates first."))?;
+        .ok_or_else(|| format!("Hersir knows of no newer release {version}. Check for updates first."))?;
     let (prefix, repo, stop) = {
         let mut inner = st.updates.lock();
         if inner.job.as_ref().is_some_and(|j| j.status.running()) {
@@ -380,7 +380,7 @@ fn run(st: &AppState, release: &Release, repo: &str, prefix: &std::path::Path, s
     // a data folder given as a relative path works too: the installer runs in the source folder
     let source = dir.canonicalize().unwrap_or(dir).join("source");
     let version = &release.version;
-    log.say(&format!("== Updating Gizai {VERSION} to {version}: the release {} from {repo}, installed into {}", release.tag, prefix.display()));
+    log.say(&format!("== Updating Hersir {VERSION} to {version}: the release {} from {repo}, installed into {}", release.tag, prefix.display()));
     // Linux and macOS: Gizai's PATH with the login shell's. Windows gives every program the whole PATH already, and its
     // `bash` may be WSL's, which Gizai never uses.
     #[cfg(not(windows))]
@@ -392,7 +392,7 @@ fn run(st: &AppState, release: &Release, repo: &str, prefix: &std::path::Path, s
         match up::source_version(&source) {
             Some(v) if &v == version => {}
             said => {
-                return Err(UpdateFailed::plain(format!("The source of {} says it is version {}, not {version}, so Gizai doesn't install it",
+                return Err(UpdateFailed::plain(format!("The source of {} says it is version {}, not {version}, so Hersir doesn't install it",
                                                        release.tag, said.as_deref().unwrap_or("unknown"))));
             }
         }
@@ -422,11 +422,11 @@ fn run(st: &AppState, release: &Release, repo: &str, prefix: &std::path::Path, s
     match (installed, now) {
         (installed, Some(v)) if &v == version => {
             let note = installed.err().map(|f| format!("{version} is installed, but the installer said: {}", f.what));
-            log.say(&format!("== Installed {version}. Restart Gizai to use it."));
+            log.say(&format!("== Installed {version}. Restart Hersir to use it."));
             Ok(Done { backup, note })
         }
         (Ok(()), said) => Err(Failed {
-            failed: UpdateFailed::plain(format!("The installer finished, but the installed Gizai says it is version {}",
+            failed: UpdateFailed::plain(format!("The installer finished, but the installed Hersir says it is version {}",
                                                 said.as_deref().unwrap_or("unknown"))),
             stopped: false,
             unchanged: said.as_deref() == Some(VERSION),
@@ -502,7 +502,7 @@ pub fn restart_command(st: &AppState) -> Result<std::process::Command, String> {
     let ready = inner.job.as_ref().is_some_and(|j| j.status.step == "installed")
         || inner.installed.as_deref().is_some_and(|v| up::is_newer(v, VERSION));
     if !ready {
-        return Err("No newer Gizai is installed yet: update first".into());
+        return Err("No newer Hersir is installed yet: update first".into());
     }
     Ok(start_after_quit(&installed_program(&inner)?))
 }
@@ -530,14 +530,14 @@ fn installed_program(inner: &Inner) -> Result<PathBuf, String> {
     {
         let lib = install_prefix(inner)?.join("lib/gizai");
         [lib.join("gizai-launch"), lib.join("gizai")].into_iter().find(|p| gizai_agents::os::executable(p))
-            .ok_or_else(|| format!("No Gizai is installed in {}", lib.display()))
+            .ok_or_else(|| format!("No Hersir is installed in {}", lib.display()))
     }
     #[cfg(windows)]
     {
         let prefix = install_prefix(inner)?;
         let exe = prefix.join("gizai.exe");
         if !gizai_agents::os::executable(&exe) {
-            return Err(format!("No Gizai is installed in {}", prefix.display()));
+            return Err(format!("No Hersir is installed in {}", prefix.display()));
         }
         Ok(exe)
     }

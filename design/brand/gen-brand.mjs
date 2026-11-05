@@ -1,99 +1,127 @@
-// GizAi's brand artwork (GA-52): the mark, the logo, the favicon and the app icon as SVG files in design/brand/.
-// The Figma file "Giz-AI" (page Brandbook) holds the same drawings: they were imported from these files.
+// Hersir's brand artwork (GA-230): the longboat H as mark, logo, favicon and app icon, as SVG files in design/brand/,
+// plus the two copies the app ships: src-tauri/icons/gizai.svg (the Linux icon install.sh copies) and
+// src/assets/gizai-logo.svg (the onboarding's logo, in one colour). The drawings are Figma's, file "Giz-AI", page
+// "Hersir: brand direction" (184:2), taken over number for number: the component Hersir mark (198:258) and its 16 px cut
+// (198:263), the wordmark (187:38), the logos (187:39 and 187:50) and the app icon's tile (187:178). Jefsev approved
+// them in GW-11. The icons' PNGs, .ico and .icns come from these files: node design/brand/make-icons.mjs.
 // Run it with: node design/brand/gen-brand.mjs
 import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const DIR = dirname(fileURLToPath(import.meta.url));
-const PINK = { dark: "#f472b6", light: "#c0287a" }; // --needs: the pink of the board's Review and Deploy glyphs
-const INKS = { "on-dark": PINK.dark, "on-light": PINK.light, white: "#ffffff", black: "#000000" };
-const TILE = "#15171b"; // --raised (dark): the icon's tile at small sizes
+const ROOT = join(DIR, "../..");
+const AMBER = { dark: "#f2a53a", light: "#9e5500" }; // Hersir colour, brand/amber: 9.4:1 and 4.9:1 on the brand's own bg
+const TEXT = { dark: "#edebe6", light: "#16191c" }; // Hersir colour, text/text: the name in the two-colour logos
+const INKS = {
+  "on-dark": { mark: AMBER.dark, word: TEXT.dark },
+  "on-light": { mark: AMBER.light, word: TEXT.light },
+  white: { mark: "#ffffff", word: "#ffffff" },
+  black: { mark: "#000000", word: "#000000" },
+};
+const TILE = { top: "#1a2128", bottom: "#0b0e11" }; // the icon's iron tile, top to bottom, with a white edge at 8 %
 const n = (v) => +v.toFixed(2);
 
-// The mark: the Review glyph (a ring with a dot) drawn as a G. The ring opens at the top right, and a bar carries it
-// into the dot in the middle. One closed outline: the outer circle from the top terminal round to the bar, the bar's
-// top edge, the dot, the bar's bottom edge, the inner circle back to the terminal.
-// R: outer radius; t: the ring's thickness; b: the bar's thickness; d: the dot's radius; term: the top terminal (degrees).
-function mark(cx, cy, R, t, b, d, term) {
-  const r = R - t, h = b / 2, rad = (term * Math.PI) / 180;
-  const p = (rr) => `${n(cx + rr * Math.cos(rad))} ${n(cy - rr * Math.sin(rad))}`;
-  const xo = n(cx + Math.sqrt(R * R - h * h)), xd = n(cx + Math.sqrt(d * d - h * h)), xi = n(cx + Math.sqrt(r * r - h * h));
-  return `M${p(R)}A${n(R)} ${n(R)} 0 1 0 ${xo} ${n(cy - h)}L${xd} ${n(cy - h)}A${n(d)} ${n(d)} 0 1 0 ${xd} ${n(cy + h)}`
-    + `L${xi} ${n(cy + h)}A${n(r)} ${n(r)} 0 1 1 ${p(r)}Z`;
-}
-// The master's proportions, on its 54-unit box: R 27, ring and bar 9, dot 9.2, terminal at 48°.
-const markAt = (cx, cy, R) => mark(cx, cy, R, R / 3, R / 3, (R * 9.2) / 27, 48);
-
-// The wordmark "GizAi": Geist Bold at 100px, letter spacing -2%, outlined in Figma; the i's square dots are round here,
-// like the mark's dot. Baseline at y 72.6, cap height 71; the ink runs from x 0 to 241.58.
-const WORD = [
-  "M32.8 74.2C25.93 74.2 20.07 72.63 15.2 69.5C10.33 66.37 6.57 62.03 3.9 56.5C1.3 50.9 0 44.47 0 37.2C0 30.07 1.33 23.7 4 18.1C6.67 12.5 10.5 8.1 15.5 4.9C20.57 1.63 26.63 0 33.7 0C39.83 0 45 1.03 49.2 3.1C53.47 5.1 56.87 7.97 59.4 11.7C61.93 15.43 63.7 19.83 64.7 24.9L49 25.6C48.27 21.67 46.7 18.57 44.3 16.3C41.97 13.97 38.47 12.8 33.8 12.8C29.73 12.8 26.33 13.87 23.6 16C20.93 18.13 18.93 21.03 17.6 24.7C16.33 28.37 15.7 32.53 15.7 37.2C15.7 41.93 16.33 46.13 17.6 49.8C18.93 53.4 20.93 56.23 23.6 58.3C26.33 60.37 29.83 61.4 34.1 61.4C37.23 61.4 39.93 60.77 42.2 59.5C44.53 58.23 46.33 56.5 47.6 54.3C48.93 52.1 49.73 49.6 50 46.8L33.8 46.8L33.8 35.7L64.9 35.7L64.9 72.6L55.5 72.6L54.7 57.4L56.5 58.2C55.83 61.33 54.37 64.1 52.1 66.5C49.83 68.9 47.03 70.8 43.7 72.2C40.43 73.53 36.8 74.2 32.8 74.2Z",
-  "M74.23 72.6L74.23 19L89.23 19L89.23 72.6Z",
-  "M99.35 72.6L99.35 60.8L128.85 30.2L100.55 30.2L100.55 19L146.85 19L146.85 30.8L116.85 61.4L147.65 61.4L147.65 72.6Z",
-  "M153.13 72.6L178.73 1.6L196.73 1.6L222.33 72.6L206.53 72.6L201.33 57.5L174.03 57.5L168.83 72.6ZM178.33 45L197.13 45L187.73 17.6Z",
-  "M226.33 72.6L226.33 19L241.33 19L241.33 72.6Z",
-];
-const DOT = { r: 7.75, y: 5.6, x: [81.73, 233.83] };
-const circle = (cx, cy, r) => `M${n(cx - r)} ${n(cy)}a${n(r)} ${n(r)} 0 1 0 ${n(2 * r)} 0a${n(r)} ${n(r)} 0 1 0 ${n(-2 * r)} 0Z`;
-// Moves (and scales) absolute path data: every number pair is a point.
-function move(d, dx, dy, k = 1) {
+// Moves and scales absolute path data (M, L, C and Z only, so every number pair is a point): x by sx, y by sy.
+function move(d, dx, dy, sx = 1, sy = sx) {
   let i = 0;
-  return d.replace(/-?\d*\.?\d+/g, (s) => String(n(+s * k + (i++ % 2 ? dy : dx))));
+  return d.replace(/-?\d*\.?\d+/g, (s) => String(n(i++ % 2 ? +s * sy + dy : +s * sx + dx)));
 }
-const word = (dx, dy) => WORD.map((d) => move(d, dx, dy)).join("") + DOT.x.map((x) => circle(x + dx, DOT.y + dy, DOT.r)).join("");
 
-// Lockups, in the wordmark's units (cap height 71).
-// Horizontal: the mark is 90 high (about 1.27 cap heights), centred on the capitals' middle, 27 (0.3 of the mark) before the G.
-// Stacked: the mark is 142 high (2 cap heights), centred over the word, 32 above the G.
+// The mark on its 24 px grid: four strokes of 2 with round caps. The stems (x 6 and 18, y 3 to 21) are the longship's
+// stem and stern; the sheer and the keel leave them at y 8 and sag between them, to 11.6 and 15.6, like a hull.
+const MARK = "M6 3L6 21M18 3L18 21M6 8C6.8 10.8 8.2 11.6 12 11.6C15.8 11.6 17.2 10.8 18 8M6 8C6.4 13.6 8.2 15.6 12 15.6C15.8 15.6 17.6 13.6 18 8";
+// The mark, its grid scaled by sx and sy and moved to (dx, dy), its strokes `w` wide.
+const mark = (ink, dx, dy, sx, sy = sx, w = 2 * sx) =>
+  `<path fill="none" stroke="${ink}" stroke-width="${n(w)}" stroke-linecap="round" stroke-linejoin="round" d="${move(MARK, dx, dy, sx, sy)}"/>`;
+// The 16 px cut, on the pixel grid: stems 2 px (x 4 and 12, y 2.5 to 13.5) and the hull filled, so it stays a boat.
+const CUT16 = {
+  stems: "M4 2.5L4 13.5M12 2.5L12 13.5",
+  hull: "M4 5C4.4 9.6 5.6 10.8 8 10.8C10.4 10.8 11.6 9.6 12 5C11.4 6.9 10.4 7.6 8 7.6C5.6 7.6 4.6 6.9 4 5Z",
+};
+const cut16 = (ink) => `<path fill="none" stroke="${ink}" stroke-width="2" stroke-linecap="round" d="${CUT16.stems}"/>\n`
+  + `<path fill="${ink}" stroke="${ink}" stroke-width="0.6" stroke-linejoin="round" d="${CUT16.hull}"/>`;
+
+// The wordmark "Hersir": Schibsted Grotesk Bold, outlined in Figma, the r–s pair closed 6 % and i–r 2.5 %; its H is the
+// longboat H at the font's weight (the crossbar sags into a hull). Its box is 113.69 × 31.82, the baseline at 31.31.
+const WORD = [
+  "M0 31.31L0 3.18L6.03 3.18L6.03 11.4C6.87 14.75 8.32 15.7 12.28 15.7C16.25 15.7 17.7 14.75 18.53 11.4L18.53 3.18L24.57 3.18L24.57 31.31L18.53 31.31L18.53 15.7C18.16 20.38 16.28 21.2 12.28 21.2C8.28 21.2 6.41 20.38 6.03 15.7L6.03 31.31L0 31.31Z",
+  "M38.99 31.82C36.92 31.82 35.06 31.37 33.4 30.47C31.76 29.57 30.46 28.29 29.5 26.64C28.55 24.97 28.07 23.01 28.07 20.74C28.07 18.49 28.54 16.54 29.48 14.88C30.43 13.23 31.72 11.95 33.35 11.05C34.99 10.16 36.85 9.71 38.95 9.71C40.11 9.71 41.28 9.88 42.47 10.23C43.66 10.59 44.76 11.21 45.77 12.11C46.77 12.99 47.58 14.24 48.19 15.84C48.8 17.43 49.11 19.46 49.11 21.93L31.8 21.93L31.8 18.61L43.91 18.61L43.31 19.65C43.2 18.24 42.94 17.11 42.53 16.25C42.11 15.39 41.58 14.77 40.94 14.38C40.3 13.98 39.59 13.79 38.79 13.79C37.77 13.79 36.91 14.08 36.22 14.67C35.53 15.25 35.01 16.07 34.65 17.13C34.32 18.17 34.15 19.38 34.15 20.76C34.15 22.85 34.54 24.49 35.32 25.7C36.11 26.91 37.32 27.52 38.95 27.52C40.01 27.52 40.91 27.25 41.67 26.7C42.43 26.15 43.02 25.32 43.42 24.2L48.7 25.55C48.2 27.01 47.45 28.2 46.45 29.12C45.45 30.05 44.3 30.73 42.99 31.17C41.7 31.6 40.37 31.82 38.99 31.82Z",
+  "M52.61 31.31L52.61 10.21L58.23 10.21L58.23 14.96L58 14.34C58.66 12.77 59.6 11.61 60.81 10.86C62.02 10.09 63.34 9.71 64.78 9.71C65.18 9.71 65.59 9.74 66.01 9.8C66.42 9.87 66.84 9.98 67.26 10.14L66.81 15.1C65.96 14.86 65.15 14.75 64.37 14.75C63.73 14.75 63.06 14.86 62.35 15.08C61.66 15.3 61.02 15.69 60.42 16.25C59.84 16.8 59.35 17.58 58.98 18.59C58.61 19.6 58.43 20.88 58.43 22.44L58.43 31.31L52.61 31.31Z",
+  "M75.97 31.82C74.38 31.82 72.88 31.59 71.48 31.13C70.07 30.66 68.89 29.94 67.92 28.96C66.96 27.99 66.35 26.72 66.09 25.16L71.4 24.1C71.52 25.29 71.93 26.18 72.65 26.8C73.38 27.4 74.41 27.7 75.76 27.7C77.04 27.7 78 27.44 78.63 26.93C79.25 26.41 79.56 25.81 79.56 25.12C79.56 24.51 79.32 23.98 78.82 23.54C78.34 23.09 77.5 22.78 76.3 22.6L74.39 22.29C73.63 22.17 72.83 22.01 71.97 21.82C71.12 21.61 70.32 21.3 69.56 20.9C68.81 20.48 68.19 19.91 67.71 19.18C67.23 18.45 66.99 17.51 66.99 16.37C66.99 14.97 67.36 13.78 68.1 12.79C68.85 11.79 69.9 11.03 71.22 10.51C72.55 9.97 74.07 9.71 75.78 9.71C77.35 9.71 78.79 9.94 80.09 10.41C81.39 10.87 82.48 11.54 83.35 12.44C84.24 13.33 84.81 14.43 85.07 15.74L79.76 16.84C79.67 16.3 79.49 15.8 79.23 15.33C78.98 14.86 78.6 14.49 78.08 14.2C77.56 13.9 76.86 13.75 75.97 13.75C74.97 13.75 74.17 13.95 73.57 14.34C72.98 14.73 72.69 15.26 72.69 15.94C72.69 16.43 72.85 16.84 73.18 17.15C73.52 17.46 73.97 17.71 74.54 17.91C75.13 18.09 75.79 18.25 76.52 18.38L78.7 18.75C79.82 18.93 80.89 19.25 81.89 19.71C82.9 20.15 83.73 20.79 84.37 21.62C85.01 22.45 85.33 23.55 85.33 24.9C85.33 26.4 84.92 27.66 84.1 28.69C83.29 29.72 82.17 30.5 80.76 31.04C79.35 31.56 77.75 31.82 75.97 31.82Z",
+  "M88.89 31.31L88.89 10.21L94.71 10.21L94.71 31.31L88.89 31.31ZM91.8 7.7C90.64 7.7 89.71 7.34 89 6.64C88.3 5.94 87.95 5.01 87.95 3.85C87.95 2.68 88.3 1.74 89 1.05C89.71 0.35 90.64 0 91.8 0C92.97 0 93.9 0.35 94.59 1.05C95.29 1.74 95.64 2.68 95.64 3.85C95.64 5.01 95.29 5.94 94.59 6.64C93.9 7.34 92.97 7.7 91.8 7.7Z",
+  "M99.04 31.31L99.04 10.21L104.66 10.21L104.66 14.96L104.43 14.34C105.09 12.77 106.03 11.61 107.24 10.86C108.45 10.09 109.77 9.71 111.21 9.71C111.61 9.71 112.02 9.74 112.44 9.8C112.85 9.87 113.27 9.98 113.69 10.14L113.24 15.1C112.39 14.86 111.58 14.75 110.8 14.75C110.16 14.75 109.49 14.86 108.78 15.08C108.09 15.3 107.45 15.69 106.85 16.25C106.26 16.8 105.78 17.58 105.41 18.59C105.04 19.6 104.86 20.88 104.86 22.44L104.86 31.31L99.04 31.31Z",
+];
+const word = (ink, dx, dy, k = 1) => `<path fill="${ink}" d="${WORD.map((d) => move(d, dx, dy, k)).join("")}"/>`;
+
+// The lockups, as Figma's components lay them out. Horizontal: the mark 48 (its 24 grid at 2), the wordmark at 90 %
+// 60 to its right, centred on it. Stacked: the mark 88 over the wordmark at 100 %, 102 down.
 const LOGO = {
-  horizontal: { w: 358.58, h: 90, d: markAt(45, 45, 45) + word(117, 7.9) },
-  stacked: { w: 241.58, h: 248.2, d: markAt(120.79, 71, 71) + word(0, 174) },
-  mark: { w: 54, h: 54, d: markAt(27, 27, 27) },
+  horizontal: { w: 162.32, h: 48, body: (i) => `${mark(i.mark, 0, 0, 2)}\n${word(i.word, 60, 9.68, 0.9)}` },
+  stacked: { w: 113.69, h: 133.82, body: (i) => `${mark(i.mark, 12.84, 0, 88 / 24)}\n${word(i.word, 0, 102)}` },
 };
 
-const svg = (w, h, body, title) =>
-  `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="${title}">\n<title>${title}</title>\n${body}\n</svg>\n`;
+const svg = (w, h, body, comment = "") =>
+  `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="Hersir">\n`
+  + `${comment ? `<!-- ${comment} -->\n` : ""}<title>Hersir</title>\n${body}\n</svg>\n`;
 
 const files = {};
-for (const [layout, l] of Object.entries(LOGO)) {
-  for (const [ink, hex] of Object.entries(INKS)) {
-    const name = layout === "mark" ? `mark-${ink}.svg` : `logo-${layout}-${ink}.svg`;
-    files[name] = svg(l.w, l.h, `<path fill="${hex}" d="${l.d}"/>`, "GizAi");
-  }
+for (const [ink, i] of Object.entries(INKS)) {
+  files[`mark-${ink}.svg`] = svg(24, 24, mark(i.mark, 0, 0, 1));
+  for (const [layout, l] of Object.entries(LOGO)) files[`logo-${layout}-${ink}.svg`] = svg(l.w, l.h, l.body(i));
 }
 
-// Small icons, drawn on the pixel grid: a dark tile and the pink mark (the favicon, and the app icon at 16 and 32 px).
+// The tile: the iron gradient, and a white edge at 8 % inside it (1 px on the small tiles).
+const gradient = (id) => `<defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${TILE.top}"/><stop offset="1" stop-color="${TILE.bottom}"/></linearGradient></defs>`;
+const tile = (s, rx, id) => `${gradient(id)}\n<rect width="${s}" height="${s}" rx="${rx}" fill="url(#${id})"/>\n`
+  + `<rect x="0.5" y="0.5" width="${s - 1}" height="${s - 1}" rx="${rx - 0.5}" fill="none" stroke="#ffffff" stroke-opacity="0.08"/>`;
+// The small icons on the pixel grid. 16: the 16 px cut on the whole tile. 32: the mark 1:1 on its 24 grid, 4 in. 48 (no
+// frame in Figma): the 32's drawing at 1.5, strokes 3, its stems 19 apart instead of 18 so they land on whole pixels.
 const SMALL = {
-  16: { rx: 3.5, d: mark(8, 8, 7, 2, 2, 2.6, 50) },
-  32: { rx: 7, d: mark(16, 16, 12, 4, 4, 4.5, 48) },
-  48: { rx: 10.5, d: mark(24, 24, 18, 6, 6, 6.6, 48) },
+  16: { rx: 3.5, body: () => cut16(AMBER.dark) },
+  32: { rx: 7, body: () => mark(AMBER.dark, 4, 4, 1) },
+  48: { rx: 10.5, body: () => mark(AMBER.dark, 5, 6, 19 / 12, 1.5, 3) },
 };
-const small = (s) => svg(s, s, `<rect width="${s}" height="${s}" rx="${SMALL[s].rx}" fill="${TILE}"/>\n<path fill="${PINK.dark}" d="${SMALL[s].d}"/>`, "GizAi");
+const small = (s) => svg(s, s, `${tile(s, SMALL[s].rx, `hs-tile-${s}`)}\n${SMALL[s].body()}`);
 for (const s of [16, 32, 48]) files[`favicon-${s}.svg`] = small(s);
 files["favicon.svg"] = small(32);
 files["app-icon-16.svg"] = small(16);
 files["app-icon-32.svg"] = small(32);
 
-// The app icon's 1024 px master (Linux and Windows): a 896 px tile with smoothed corners (Figma's 60% corner smoothing),
-// a dark gradient, a faint inner edge and the pink mark at 60% of the tile.
-const SQ = {
-  896: "M0 322.56C0 209.65 0 153.2 21.97 110.08C41.3 72.14 72.14 41.3 110.08 21.97C153.2 0 209.65 0 322.56 0L573.44 0C686.35 0 742.8 0 785.92 21.97C823.86 41.3 854.7 72.14 874.03 110.08C896 153.2 896 209.65 896 322.56L896 573.44C896 686.35 896 742.8 874.03 785.92C854.7 823.86 823.86 854.7 785.92 874.03C742.8 896 686.35 896 573.44 896L322.56 896C209.65 896 153.2 896 110.08 874.03C72.14 854.7 41.3 823.86 21.97 785.92C0 742.8 0 686.35 0 573.44Z",
-  824: "M0 296.64C0 192.81 0 140.89 20.21 101.23C37.98 66.34 66.34 37.98 101.23 20.21C140.89 0 192.81 0 296.64 0L527.36 0C631.19 0 683.11 0 722.77 20.21C757.66 37.98 786.02 66.34 803.79 101.23C824 140.89 824 192.81 824 296.64L824 527.36C824 631.19 824 683.11 803.79 722.77C786.02 757.66 757.66 786.02 722.77 803.79C683.11 824 631.19 824 527.36 824L296.64 824C192.81 824 140.89 824 101.23 803.79C66.34 786.02 37.98 757.66 20.21 722.77C0 683.11 0 631.19 0 527.36Z",
-};
-function bigIcon(size, at, id) {
-  const c = at + size / 2, k = (size - 8) / size; // the inner edge: the tile shrunk by 4px on each side
-  const grad = `<defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1d1f25"/><stop offset="1" stop-color="#0e0f12"/></linearGradient></defs>`;
-  return `${grad}\n<path fill="url(#${id})" d="${move(SQ[size], at, at)}"/>\n`
-    + `<path fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="4" d="${move(SQ[size], c - (size * k) / 2, c - (size * k) / 2, k)}"/>\n`
-    + `<path fill="${PINK.dark}" d="${markAt(c, c, (size * 0.6) / 2)}"/>`;
+// The app icon's 1024 px master for Linux and Windows: Figma's 1024 tile (radius 228, the mark's 24 grid 680 wide at
+// 172) scaled to an 896 px tile in the 1024 canvas, as every Linux icon theme leaves a margin.
+function bigIcon() {
+  const k = 896 / 1024, at = 64, edge = 4 * k, rx = 228 * k;
+  return `${gradient("hs-tile")}\n<rect x="${at}" y="${at}" width="896" height="896" rx="${n(rx)}" fill="url(#hs-tile)"/>\n`
+    + `<rect x="${n(at + edge / 2)}" y="${n(at + edge / 2)}" width="${n(896 - edge)}" height="${n(896 - edge)}" rx="${n(rx - edge / 2)}" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="${n(edge)}"/>\n`
+    + mark(AMBER.dark, at + 172 * k, at + 172 * k, (680 * k) / 24);
 }
-files["app-icon-1024.svg"] = svg(1024, 1024, bigIcon(896, 64, "gz-tile"), "GizAi");
-// macOS: Apple's grid, an 824 px rounded square in the 1024 px canvas, with the soft shadow of the macOS template.
-files["app-icon-macos-1024.svg"] = svg(1024, 1024,
-  `<path fill="#000000" fill-opacity="0.3" transform="translate(0 10)" filter="url(#gz-shadow)" d="${move(SQ[824], 100, 100)}"/>\n`
-  + `<defs><filter id="gz-shadow" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="10"/></filter></defs>\n`
-  + bigIcon(824, 100, "gz-tile-mac"), "GizAi");
+files["app-icon-1024.svg"] = svg(1024, 1024, bigIcon());
+
+// macOS: Apple's grid, an 824 px rounded square (continuous corners: Figma's 60 % corner smoothing) in the 1024 px canvas,
+// with the soft shadow of Apple's template; the tile, its edge and the mark as Figma's 1024 tile, scaled to 824.
+const SQ824 = "M0 296.64C0 192.81 0 140.89 20.21 101.23C37.98 66.34 66.34 37.98 101.23 20.21C140.89 0 192.81 0 296.64 0L527.36 0C631.19 0 683.11 0 722.77 20.21C757.66 37.98 786.02 66.34 803.79 101.23C824 140.89 824 192.81 824 296.64L824 527.36C824 631.19 824 683.11 803.79 722.77C786.02 757.66 757.66 786.02 722.77 803.79C683.11 824 631.19 824 527.36 824L296.64 824C192.81 824 140.89 824 101.23 803.79C66.34 786.02 37.98 757.66 20.21 722.77C0 683.11 0 631.19 0 527.36Z";
+function macIcon() {
+  const k = 824 / 1024, at = 100, edge = 4 * k, ki = (824 - edge) / 824, inset = at + edge / 2;
+  return `<defs><filter id="hs-shadow" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="10"/></filter></defs>\n`
+    + `<path fill="#000000" fill-opacity="0.3" transform="translate(0 10)" filter="url(#hs-shadow)" d="${move(SQ824, at, at)}"/>\n`
+    + `${gradient("hs-tile-mac")}\n<path fill="url(#hs-tile-mac)" d="${move(SQ824, at, at)}"/>\n`
+    + `<path fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="${n(edge)}" d="${move(SQ824, inset, inset, ki)}"/>\n`
+    + mark(AMBER.dark, at + 172 * k, at + 172 * k, (680 * k) / 24);
+}
+files["app-icon-macos-1024.svg"] = svg(1024, 1024, macIcon());
+
+// The macOS menu bar's template image (src-tauri/icons/tray-template.png, 36 px for 18 pt): the mark in black on
+// transparent, drawn as the 48 px cut is, strokes 3 and its stems on whole pixels; macOS colours it for its look.
+files["tray-template.svg"] = svg(36, 36, mark("#000000", -1, 0, 19 / 12, 1.5, 3));
 
 for (const [name, body] of Object.entries(files)) writeFileSync(join(DIR, name), body);
-console.log(Object.keys(files).length + " files: " + Object.keys(files).join(", "));
+
+// The app's copies. gizai.svg keeps its name: install.sh copies it into the icon theme as gizai.svg.
+writeFileSync(join(ROOT, "src-tauri/icons/gizai.svg"), svg(1024, 1024, bigIcon(),
+  "Hersir's app icon (GA-230): the longboat H on its iron tile, design/brand/app-icon-1024.svg. Made by design/brand/gen-brand.mjs."));
+// The onboarding's logo: the horizontal logo in one colour, currentColor. Inside the app the gold means "needs you"
+// only, so the logo takes the colour of the text around it (text-2).
+writeFileSync(join(ROOT, "src/assets/gizai-logo.svg"), svg(162.32, 48, LOGO.horizontal.body({ mark: "currentColor", word: "currentColor" }),
+  "Hersir's horizontal logo (design/brand/logo-horizontal-*.svg, GA-230) in one colour, currentColor: inside the app it is text-2, never gold. Made by design/brand/gen-brand.mjs."));
+console.log(`${Object.keys(files).length} files: ${Object.keys(files).join(", ")}; src-tauri/icons/gizai.svg, src/assets/gizai-logo.svg`);

@@ -223,7 +223,7 @@ async fn a_run_gizai_ended_after_its_result_gets_the_leftovers_note_and_its_own(
     let pid = pid_in(&left).await;
     assert!(!alive(pid), "the child the run left ({pid}) still runs");
     assert_eq!(ended_notes(&a.st, &s.run_id), [format!("Ended 1 process this run left running: sleep (pid {pid}).")]);
-    let after = "Claude Code hadn't exited 3 minutes after the agent's final message, so Gizai ended it and kept the result. \
+    let after = "Claude Code hadn't exited 3 minutes after the agent's final message, so Hersir ended it and kept the result. \
                  Something the run started was probably still running in the background, such as a server.";
     assert_eq!(notes(&a.st, &s.run_id).iter().filter(|n| *n == after).count(), 1, "{:?}", notes(&a.st, &s.run_id));
     until("nothing is left in the slice", 5, || procs_in(slice.0.dir()).is_empty()).await;

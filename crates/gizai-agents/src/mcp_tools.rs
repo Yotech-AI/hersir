@@ -125,14 +125,14 @@ fn notes(sent: &[String]) -> Vec<String> {
         _ => "reaches outside services",
     };
     if sent.is_empty() {
-        return vec!["The server sent no hints about this tool, so Gizai assumes the MCP defaults: it may change, delete or overwrite \
+        return vec!["The server sent no hints about this tool, so Hersir assumes the MCP defaults: it may change, delete or overwrite \
                      things, and reach outside services.".to_string()];
     }
     let said: Vec<&str> = sent.iter().map(|k| plain(k)).collect();
     let mut out = vec![format!("The server said whether it {}.", said.join(", "))];
     let missing: Vec<&str> = HINTS.iter().filter(|k| !sent.iter().any(|s| s == *k)).map(|k| plain(k)).collect();
     if !missing.is_empty() {
-        out.push(format!("It didn't say whether it {}: Gizai assumes the MCP defaults for those.", missing.join(", ")));
+        out.push(format!("It didn't say whether it {}: Hersir assumes the MCP defaults for those.", missing.join(", ")));
     }
     out
 }

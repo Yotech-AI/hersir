@@ -136,8 +136,8 @@ function FolderEditor({ folderId, youId }: { folderId: string; youId: string }) 
     const f = list.find((x) => x.id === id);
     if (f) { setFolder(f); setFolderError(null); return; }
     return editorList(id, "").then(
-      () => setFolderError(`Gizai can't open ${id}: it isn't one of the Editor's folders any more.`),
-      (e) => setFolderError(`Gizai can't open ${id}: ${String(e).replace(/^Error:\s*/, "").replace(/\.$/, "")}.`),
+      () => setFolderError(`Hersir can't open ${id}: it isn't one of the Editor's folders any more.`),
+      (e) => setFolderError(`Hersir can't open ${id}: ${String(e).replace(/^Error:\s*/, "").replace(/\.$/, "")}.`),
     );
   }).catch((e) => setFolderError(String(e))), [id]);
   useEffect(() => { void loadFolder(); rememberFolder(id); }, [id, loadFolder]);
@@ -467,7 +467,7 @@ function FolderEditor({ folderId, youId }: { folderId: string; youId: string }) 
   // ---- the tree's actions ----
   const why = (e: unknown) => {
     const said = String(e).replace(/^Error:\s*/, "");
-    if (/\.git\b/.test(said)) return "Gizai never writes in .git.";
+    if (/\.git\b/.test(said)) return "Hersir never writes in .git.";
     if (/\.\.|outside/.test(said)) return `That path leads outside ${folder?.name ?? "the folder"}.`;
     const there = /^(.+) is there already$/.exec(said);
     if (there) return `${nameOf(there[1]!)} is already there.`;
@@ -697,7 +697,7 @@ function FolderEditor({ folderId, youId }: { folderId: string; youId: string }) 
                   : t.status === "error" ? <div className="empty"><b>{t.error}</b><button className="btn sm" onClick={() => close(t.path)}>Close tab</button></div>
                   : t.disk === "gone" ? <div className="empty"><b>{t.path} isn't there any more.</b><button className="btn sm" onClick={() => close(t.path)}>Close tab</button></div>
                   : file?.tooLarge ? <div className="empty"><FileCode className="icon" /><b>Too big to show here{entry ? ` (${sizeLabel(entry.size)})` : ""}.</b>{openInFirst(t.path)}</div>
-                  : file?.binary ? <div className="empty"><FileCode className="icon" /><b>A binary file{entry ? ` (${sizeLabel(entry.size)})` : ""}: Gizai shows text only.</b>{openInFirst(t.path)}</div>
+                  : file?.binary ? <div className="empty"><FileCode className="icon" /><b>A binary file{entry ? ` (${sizeLabel(entry.size)})` : ""}: Hersir shows text only.</b>{openInFirst(t.path)}</div>
                   : null}
               </div>
             )}

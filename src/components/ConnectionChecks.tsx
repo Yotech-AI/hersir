@@ -15,7 +15,7 @@ export function Line({ mark, children }: { mark: Mark; children: ReactNode }) {
 export function ConnectionChecks({ check, host, label = "Connection checks" }: { check: ConnectionCheck; host: string; label?: string }) {
   return (
     <div className="gh-checks" aria-label={label}>
-      <div className={`gh-summary ${check.ok ? "ok" : "failed"}`}>{check.ok ? `Gizai can use ${host}.` : "Something needs fixing: see what to do below."}</div>
+      <div className={`gh-summary ${check.ok ? "ok" : "failed"}`}>{check.ok ? `Hersir can use ${host}.` : "Something needs fixing: see what to do below."}</div>
       {check.checks.map((c, i) => {
         const Icon = MARKS[c.result] ?? CircleMinus;
         return (

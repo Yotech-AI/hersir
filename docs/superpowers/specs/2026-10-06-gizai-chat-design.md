@@ -1,4 +1,4 @@
-# Gizai Chat and the Team Lead: design
+# Hersir Chat and the Team Lead: design
 
 Date: 2026-10-06 (overnight work). Branch: `v0.3-chat` (from `v0.2-ui`).
 Status: Jeffrey asked for this to be researched and built overnight ("a feature you can research and work on this night"), so the usual review gates are replaced by his standing rule: decide, record, keep going. Everything that is only his to decide is listed at the end.
@@ -16,7 +16,7 @@ What I assume (not said):
 
 - One chat agent per organisation. The Team Lead is the agent with Chat turned on.
 - Chats are **threads**, as in Claude Desktop, so old conversations stay readable.
-- The Team Lead is a manager, not a coder. In chat it uses Gizai's tools and may *read* the projects' code (its own copies, §5a), but it doesn't edit files or run commands. Code work goes to the developer agents as tasks.
+- The Team Lead is a manager, not a coder. In chat it uses Hersir's tools and may *read* the projects' code (its own copies, §5a), but it doesn't edit files or run commands. Code work goes to the developer agents as tasks.
 - Changes the Team Lead makes are attributed to it in every activity feed ("Team Lead created KADE-14").
 
 Success looks like:
@@ -28,7 +28,7 @@ Success looks like:
 
 ## 2. Approaches considered
 
-**A. Tools over MCP, served by the app over a local socket, reached through a tiny stdio shim** (chosen). Claude Code starts the shim (`gizai-mcp`) from a per-turn MCP config. The shim pipes bytes to a user-only unix socket where the running Gizai serves MCP. This is the research recommendation (RESEARCH.md §F, notes/F-agents-runs.md §4):
+**A. Tools over MCP, served by the app over a local socket, reached through a tiny stdio shim** (chosen). Claude Code starts the shim (`gizai-mcp`) from a per-turn MCP config. The shim pipes bytes to a user-only unix socket where the running Hersir serves MCP. This is the research recommendation (RESEARCH.md §F, notes/F-agents-runs.md §4):
 
 - The app stays the only writer of the database.
 - Every write goes through the same core functions and the same "rows changed" events as the UI, so screens refresh by themselves.
@@ -78,7 +78,7 @@ New and changed units:
 | inbox | `crates/gizai-core/src/tasks.rs` | `needs_you(db, you)`, the same rule as the UI's `needsYou`. |
 | team | `crates/gizai-core/src/team.rs` | `chat_enabled` on agents (at most one), `chat_agent(db)`, roles `design` and `devops` with templates. |
 | socket server | `src-tauri/src/mcp.rs` | Binds the socket and checks each connection's token. Serves `tools.rs` with the token's agent as the actor. |
-| tools | `src-tauri/src/tools/` | The Gizai tool catalog, about 34 tools (§6). Each one resolves names (KADE-12, "Kade portal", "Backend Agent"), calls gizai-core, notifies the UI and wakes on-assign agents. |
+| tools | `src-tauri/src/tools/` | The Hersir tool catalog, about 34 tools (§6). Each one resolves names (KADE-12, "Kade portal", "Backend Agent"), calls gizai-core, notifies the UI and wakes on-assign agents. |
 | chat turns | `src-tauri/src/chat.rs` | Starts a turn (token, MCP config, argv), follows the stream, saves messages and tool cards, records the run, stops on request. |
 | UI | `src/pages/ChatPage.tsx`, `src/components/chat/*`, `src/components/OrgChart.tsx`, `src/lib/chat.ts`, `src/lib/org.ts` | Chat page, setup state, org chart; pure helpers with tests. |
 
@@ -118,7 +118,7 @@ The tables `chat_threads`, `chat_messages`, `api_tokens` and `runs.chat_thread_i
    --session-id <new uuid> | --resume <thread session>
    --restricted --tools Read,Glob,Grep --permission-mode manual --permission-prompts none
    --mcp-config <file> --strict-mcp-config --allowedTools mcp__gizai
-   --append-system-prompt <Gizai chat prompt + the agent's instructions>
+   --append-system-prompt <Hersir chat prompt + the agent's instructions>
    [--model m] [--max-budget-usd n] [--add-dir <data dir>/code/<KEY> for each copy (§5a)]
    ```
 
@@ -126,7 +126,7 @@ The tables `chat_threads`, `chat_messages`, `api_tokens` and `runs.chat_thread_i
    - **`--restricted`** (Claude Code 2.1.289) ignores user, project and local settings files. Jeffrey's plugins and hooks (superpowers, a SessionStart hook) therefore don't load in the chat. It also removes command-running tools and confines file tools to the working directories.
    - **`--tools`** leaves only read tools.
    - **`--permission-prompts none`** refuses anything that would ask.
-   - **`--allowedTools mcp__gizai`** lets every Gizai tool run without asking.
+   - **`--allowedTools mcp__gizai`** lets every Hersir tool run without asking.
    - **Working directory:** `data_dir/lead/` (its own folder; created on first use).
 5. **Streaming:**
    - text deltas go to the UI as `chat-event {threadId, kind: "delta", text}` (not saved);
@@ -142,7 +142,7 @@ The tables `chat_threads`, `chat_messages`, `api_tokens` and `runs.chat_thread_i
 7. **Resume fails** (the session file is gone; Claude Code exits before its `init` line): run the turn once more with a new session. The prompt then includes the last 20 messages of the thread as context, so the conversation carries on.
 8. **Stop:** the Stop button sends SIGINT to the turn's process group, with the same escalation as task runs.
 
-   **Quitting Gizai:** live turns stop like runs.
+   **Quitting Hersir:** live turns stop like runs.
 
    **Start-up:** turns left running are marked interrupted by the existing recovery. Their claude process group is ended only when /proc shows it still leads its group and works in the lead folder.
 
@@ -231,7 +231,7 @@ Updates merge: `update_project` and `update_client` read the current row and cha
 ## 8. Errors and safety
 
 - **The socket:**
-  - path `$XDG_RUNTIME_DIR/gizai/<12 hex of sha256(data dir)>.sock` (directory 0700, socket 0600), so a test instance with another data folder never touches Jeffrey's running Gizai;
+  - path `$XDG_RUNTIME_DIR/gizai/<12 hex of sha256(data dir)>.sock` (directory 0700, socket 0600), so a test instance with another data folder never touches Jeffrey's running Hersir;
   - fallback without XDG_RUNTIME_DIR: `data_dir/mcp.sock`;
   - a stale socket file is removed before binding.
 - **Tokens:**
@@ -251,7 +251,7 @@ Updates merge: `update_project` and `update_client` read the current row and cha
 - Delete and archive tools.
 - Approval cards for risky actions.
 - Attachments typed into the composer (drag a file into the chat). Done in GA-41: + → Add files, or a drop on the Chat page; the files are kept with the message, and the turn names each with the path of the Team Lead's copy.
-- Task agents getting the Gizai MCP tools (their runs could later use the same socket with task-scoped tokens).
+- Task agents getting the Hersir MCP tools (their runs could later use the same socket with task-scoped tokens).
 - Codex, Gemini and other adapters.
 - Rich charts in chat.
 - Packaging the shim as a Tauri sidecar (`externalBin`). For now `scripts/run.sh` builds it next to the app binary.

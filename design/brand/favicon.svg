@@ -1,5 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" role="img" aria-label="GizAi">
-<title>GizAi</title>
-<rect width="32" height="32" rx="7" fill="#15171b"/>
-<path fill="#f472b6" d="M24.03 7.08A12 12 0 1 0 27.83 14L20.03 14A4.5 4.5 0 1 0 20.03 18L23.75 18A8 8 0 1 1 21.35 10.05Z"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" role="img" aria-label="Hersir">
+<title>Hersir</title>
+<defs><linearGradient id="hs-tile-32" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1a2128"/><stop offset="1" stop-color="#0b0e11"/></linearGradient></defs>
+<rect width="32" height="32" rx="7" fill="url(#hs-tile-32)"/>
+<rect x="0.5" y="0.5" width="31" height="31" rx="6.5" fill="none" stroke="#ffffff" stroke-opacity="0.08"/>
+<path fill="none" stroke="#f2a53a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M10 7L10 25M22 7L22 25M10 12C10.8 14.8 12.2 15.6 16 15.6C19.8 15.6 21.2 14.8 22 12M10 12C10.4 17.6 12.2 19.6 16 19.6C19.8 19.6 21.6 17.6 22 12"/>
 </svg>

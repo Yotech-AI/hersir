@@ -25,7 +25,7 @@ const NOTIFY: [keyof NotificationSwitches, string][] = [
   ["hold", "A card goes on hold"],
   ["waiting", "A card waits for your review or deploy"],
   ["leadAsks", "The Team Lead asks you something (a Question or Approval chat)"],
-  ["leadAnswered", "The Team Lead answers in a chat while the Gizai window is hidden or in the background"],
+  ["leadAnswered", "The Team Lead answers in a chat while the Hersir window is hidden or in the background"],
 ];
 
 /** Settings' tabs (GA-42), in the address as #/settings/<tab>; General opens first. */
@@ -82,7 +82,7 @@ export function SettingsPage({ tab }: { tab?: string } = {}) {
           <QuitSettings />
           <UpdateSettings />
           <EditorFoldersSetting s={s} setS={setS} />
-          <FormSection title="Data" text="Everything Gizai stores lives in this folder on this computer.">
+          <FormSection title="Data" text="Everything Hersir stores lives in this folder on this computer.">
             <Field label="Data folder" wide><span className="mono">{s.dataDir}</span></Field>
             <Field label="Worktrees" wide><span className="mono">{s.dataDir}/worktrees</span></Field>
             <Field label="Run logs" wide><span className="mono">{s.dataDir}/runs</span></Field>
@@ -94,7 +94,7 @@ export function SettingsPage({ tab }: { tab?: string } = {}) {
           <AppearanceSettings />
         </div>
         <div {...panel("notifications")}>
-          <FormSection title="Notifications" text="A desktop notification when something needs you, also while the Gizai window is hidden. Click one to open its card or chat.">
+          <FormSection title="Notifications" text="A desktop notification when something needs you, also while the Hersir window is hidden. Click one to open its card or chat.">
             <Field label="Notify me when" wide hint="Saved as soon as you switch one.">
               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 8 }}>
                 {NOTIFY.map(([key, text]) => (
@@ -112,7 +112,7 @@ export function SettingsPage({ tab }: { tab?: string } = {}) {
                 <button className="btn" onClick={detect} disabled={detecting}>{detecting ? "Looking…" : "Detect"}</button></div></Field>
             <Field label="More CLIs" wide hint="Saved as soon as you add, change or remove one."><CliSettings /></Field>
           </FormSection>
-          <FormSection title="Runs" text="Each run is a process of the agent's coding CLI in its own git worktree. Gizai stops a run at the first limit it reaches, and tells the agent these limits so it can commit its work in time.">
+          <FormSection title="Runs" text="Each run is a process of the agent's coding CLI in its own git worktree. Hersir stops a run at the first limit it reaches, and tells the agent these limits so it can commit its work in time.">
             <Field label="Runs at once" htmlFor="s-max" hint="All agents together, 1 to 20; each agent also has its own cards at once"
               warn={runsAtOnceWarning(s.maxConcurrentRuns, agents)}><input id="s-max" className="input" type="number" min={1} max={20} value={s.maxConcurrentRuns} onChange={(e) => setS({ ...s, maxConcurrentRuns: Number(e.target.value) })} /></Field>
             <Field label="Memory for agent runs" htmlFor="s-memory" hint={runsMemoryHint(s)}>

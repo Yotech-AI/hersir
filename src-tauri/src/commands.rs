@@ -958,7 +958,7 @@ pub async fn stop_update(st: State<'_, AppState>) -> R<crate::update::UpdateStat
 pub async fn restart_gizai(app: AppHandle, st: State<'_, AppState>) -> R<()> {
     off(&st, |st| {
         let mut cmd = crate::update::restart_command(st)?;
-        cmd.spawn().map(|_| ()).map_err(|e| format!("Couldn't restart Gizai: {e}"))
+        cmd.spawn().map(|_| ()).map_err(|e| format!("Couldn't restart Hersir: {e}"))
     }).await?;
     // the restart after an update doesn't back up on quit
     st.backups.quit_without_backup();

@@ -314,8 +314,8 @@ fn a_name_that_is_taken_or_gizais_own_has_a_clash() {
     assert!(taken.contains("already an MCP server called github"), "{taken}");
     assert!(clash(SECOND, "github").is_some());
     assert!(!candidate(&scan, "Claude Code", "github").already, "another address: not already");
-    assert_eq!(clash("Claude Code", "gizai").as_deref(), Some("gizai is Gizai's own: give the server another name"));
-    assert_eq!(clash(SECOND, "chrome-devtools").as_deref(), Some("chrome-devtools is Gizai's own: give the server another name"));
+    assert_eq!(clash("Claude Code", "gizai").as_deref(), Some("gizai is Hersir's own: give the server another name"));
+    assert_eq!(clash(SECOND, "chrome-devtools").as_deref(), Some("chrome-devtools is Hersir's own: give the server another name"));
     for (account, name) in [("Claude Code", "brave"), ("Claude Code", "sentry"), (SECOND, "linear"), (SECOND, "postgres")] {
         assert_eq!(clash(account, name), None, "{name}");
     }
@@ -427,9 +427,9 @@ fn importing_a_clashing_name_without_a_new_name_is_refused() {
     refused(t.key("Claude Code", "github"), "", "there is already an MCP server called github");
     refused(t.key("Claude Code", "github"), "github", "there is already an MCP server called github");
     refused(t.key("Claude Code", "github"), "GITHUB", "there is already an MCP server called GITHUB");
-    refused(t.key("Claude Code", "gizai"), "", "gizai is Gizai's own");
-    refused(t.key(SECOND, "chrome-devtools"), "", "chrome-devtools is Gizai's own");
-    refused(t.key(SECOND, "chrome-devtools"), "Chrome-DevTools", "Gizai's own");
+    refused(t.key("Claude Code", "gizai"), "", "gizai is Hersir's own");
+    refused(t.key(SECOND, "chrome-devtools"), "", "chrome-devtools is Hersir's own");
+    refused(t.key(SECOND, "chrome-devtools"), "Chrome-DevTools", "Hersir's own");
     refused(t.key("Claude Code", "brave"), "brave search", "letters, digits, - and _");
     let names: Vec<String> = mcp::list(&t.st).unwrap().into_iter().map(|v| v.server.name).collect();
     assert_eq!(names, ["github"], "nothing imported");
@@ -573,7 +573,7 @@ fn the_import_panel_says_what_isnt_in_claude_codes_files() {
         std::fs::read_to_string(format!("{}/../src/components/{f}", env!("CARGO_MANIFEST_DIR"))).unwrap()
     }).join("\n");
     for must in ["Connectors from your claude.ai account and servers from plugins aren't in these files",
-                 "Gizai doesn't change Claude Code's files, doesn't read its sign-ins and starts no server",
+                 "Hersir doesn't change Claude Code's files, doesn't read its sign-ins and starts no server",
                  "Already in the list", "An import is a copy"] {
         assert!(ui.contains(must), "neither McpSettings.tsx nor McpImport.tsx has: {must}");
     }

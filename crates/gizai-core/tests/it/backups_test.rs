@@ -189,7 +189,7 @@ fn back_up_makes_a_gizai_backups_folder_in_the_chosen_folder_with_the_layout_of_
     assert_eq!(tree(&usb).len(), want.len(), "nothing else in the chosen folder");
     assert_eq!(fs::read_to_string(dir.join("gizai-backups.json")).unwrap().trim(), r#"{"format":"gizai-backups","format_version":1}"#);
     let readme = fs::read_to_string(dir.join("README.txt")).unwrap();
-    assert!(readme.contains("Restore in Gizai: Settings → General → Backups."), "{readme}");
+    assert!(readme.contains("Restore in Hersir: Settings → General → Backups."), "{readme}");
     assert_eq!(fs::read(dir.join("files").join(&a[..2]).join(&a)).unwrap(), b"the plan", "a blob is the file as it is");
     assert!(temp_copies(&d).is_empty(), "the temporary copy is gone: {:?}", temp_copies(&d));
 }
@@ -222,9 +222,9 @@ fn a_backups_folder_a_newer_gizai_made_takes_no_snapshot_and_says_why() {
     fs::create_dir_all(usb.join("Gizai backups")).unwrap();
     fs::write(usb.join("Gizai backups/gizai-backups.json"), r#"{"format":"gizai-backups","format_version":2}"#).unwrap();
     let why = b::folder_problem(&usb).expect("a problem");
-    assert!(why.contains("newer Gizai"), "{why}");
+    assert!(why.contains("newer Hersir"), "{why}");
     let err = b::make(&d.dir, d.db.device_id(), &usb, Reason::Manual, 10, &mut |_| Ok(())).unwrap_err().to_string();
-    assert!(err.contains("newer Gizai"), "{err}");
+    assert!(err.contains("newer Hersir"), "{err}");
     assert!(!usb.join("Gizai backups/snapshots").exists());
 }
 
@@ -666,7 +666,7 @@ fn list_shows_every_computers_snapshots_newest_first_and_whether_each_can_be_res
     for e in &list[..2] {
         assert!(!e.restorable, "{}", e.name);
         let why = e.problem.as_deref().unwrap();
-        assert!(why.contains("A newer Gizai made it"), "{why}");
+        assert!(why.contains("A newer Hersir made it"), "{why}");
     }
     assert_eq!(list[0].schema_version, 99);
     fs::remove_file(dir.join("snapshots").join(format!("{}.db.zst", mine.name))).unwrap();
@@ -702,7 +702,7 @@ fn list_reads_a_manifest_a_newer_gizai_wrote_in_another_shape_as_not_restorable(
     assert_eq!(list.len(), 2);
     let e = list.iter().find(|e| e.name == name).unwrap();
     assert!(!e.this_computer && !e.restorable);
-    assert_eq!(e.problem.as_deref(), Some("A newer Gizai made it (2.0.0): update Gizai to restore it"));
+    assert_eq!(e.problem.as_deref(), Some("A newer Hersir made it (2.0.0): update Hersir to restore it"));
     assert_eq!(e.device_name, "laptop");
 }
 

@@ -74,7 +74,7 @@ export function AgentCliToolsFields({ agentId, cliId, allowedTools, value, onCha
   return (
     <>
       <Field label="Web" wide error={err} warn={warning}
-        hint={<>What it finds on the web is data for the agent, never instructions: its prompt says so. Suggested for the Team Lead (web search), never switched on by Gizai.
+        hint={<>What it finds on the web is data for the agent, never instructions: its prompt says so. Suggested for the Team Lead (web search), never switched on by Hersir.
           {lead && " For the Team Lead, its chat answers get these too; after one uses them, it asks you before it starts runs or changes agents."}</>}>
         <ul className="mcp-agent" aria-label="Web">
           <li className={`ma-server${value.webSearch && !web.search ? " on" : ""}`}>
@@ -103,7 +103,7 @@ export function AgentCliToolsFields({ agentId, cliId, allowedTools, value, onCha
         </ul>
       </Field>
       <Field id="agent-browser" label="Browser" wide warn={view.browser.disabled ?? null}
-        hint="Chrome DevTools: a hidden Chrome with a throwaway profile, never on your screen and never your own browser, profile or logins. Every click is a tool call, and the cap per run is in Settings → Runs. Suggested for QA, Frontend and Design agents, never switched on by Gizai.">
+        hint="Chrome DevTools: a hidden Chrome with a throwaway profile, never on your screen and never your own browser, profile or logins. Every click is a tool call, and the cap per run is in Settings → Runs. Suggested for QA, Frontend and Design agents, never switched on by Hersir.">
         <ul className="mcp-agent" aria-label="Browser">
           <li className={`ma-server${bOn ? " on" : ""}`}>
             <div className="ma-head">

@@ -61,7 +61,7 @@ function ImportPanel({ scan, existing, busy, onImport, onCancel }: {
         <ImportRows scan={scan} existing={existing} picks={picks} onPicks={setPicks} />
       )}
       {scan.problems.map((p) => <span key={p} className="warn">{p}</span>)}
-      <span className="hint">Read only: Gizai doesn't change Claude Code's files, doesn't read its sign-ins and starts no server to find these. An import is a copy: later changes in Claude Code don't follow.
+      <span className="hint">Read only: Hersir doesn't change Claude Code's files, doesn't read its sign-ins and starts no server to find these. An import is a copy: later changes in Claude Code don't follow.
         Connectors from your claude.ai account and servers from plugins aren't in these files: add those by address.</span>
       <span className="cl-actions"><button className="btn ghost sm" disabled={busy} onClick={onCancel}>Cancel</button>
         <button className="btn primary sm" disabled={busy || blocked}
@@ -161,7 +161,7 @@ export function McpSettings() {
                     {claude && <span className="faint">{CLAUDE_CODE_NO_LIST}</span>}
                     {s.missing.length > 0 && <span className="warn">No value saved for {s.missing.join(", ")}: Edit to enter it.</span>}
                     {s.problem && <span className="warn">{s.problem}</span>}
-                    {doing === "signin" && <span className="hint" role="status">Sign in in your browser: Gizai waits up to 10 minutes for it.</span>}
+                    {doing === "signin" && <span className="hint" role="status">Sign in in your browser: Hersir waits up to 10 minutes for it.</span>}
                     {doing === "list" && <span className="hint" role="status">Listing its tools (a server started with npx may first download its package)…</span>}
                   </span>
                   <span className="cl-actions">
@@ -177,7 +177,7 @@ export function McpSettings() {
                 </div>
                 {removing === s.id && (
                   <div className="ms-confirm" role="alert">
-                    <span>Remove {s.name}? {s.signIn === "signed_in" ? "Gizai signs out of it, " : ""}its values leave your keychain{s.usedBy.length > 0 ? `, and ${s.usedBy.join(", ")} no longer get it` : ""}.</span>
+                    <span>Remove {s.name}? {s.signIn === "signed_in" ? "Hersir signs out of it, " : ""}its values leave your keychain{s.usedBy.length > 0 ? `, and ${s.usedBy.join(", ")} no longer get it` : ""}.</span>
                     <span className="cl-actions"><button className="btn ghost sm" onClick={() => setRemoving(null)}>Cancel</button>
                       <button className="btn sm" disabled={!!doing} onClick={() => remove(s)}>{doing === "remove" ? "Removing…" : `Remove ${s.name}`}</button></span>
                   </div>
@@ -211,23 +211,23 @@ export function McpSettings() {
           {edit.transport === "stdio" ? (
             <>
               <label className="wide">Arguments<textarea className="textarea mono" rows={3} value={edit.args} onChange={(e) => set("args", e.target.value)} placeholder={"-y\n@acme/mcp-server"} />
-                <span className="hint">One per line. Gizai starts exactly this: it installs nothing itself.</span></label>
+                <span className="hint">One per line. Hersir starts exactly this: it installs nothing itself.</span></label>
               <div className="wide field-like"><span>Environment</span>
                 <SecretLines what="Environment line" lines={edit.env} onChange={(l) => set("env", l)} namePlaceholder="ACME_TOKEN" />
-                <span className="hint">Values go to your keychain, never to Gizai's database, and aren't shown again once saved.</span></div>
+                <span className="hint">Values go to your keychain, never to Hersir's database, and aren't shown again once saved.</span></div>
             </>
           ) : (
             <>
               <div className="wide field-like"><span>Headers</span>
                 <SecretLines what="Header" lines={edit.headers} onChange={(l) => set("headers", l)} namePlaceholder="X-Api-Key" />
-                <span className="hint">Values go to your keychain, never to Gizai's database, and aren't shown again once saved. A server that asks you to sign in doesn't need an Authorization header: Sign in does that.</span></div>
+                <span className="hint">Values go to your keychain, never to Hersir's database, and aren't shown again once saved. A server that asks you to sign in doesn't need an Authorization header: Sign in does that.</span></div>
               <label className="wide">Who signs in<select className="select" value={edit.signInBy} onChange={(e) => set("signInBy", e.target.value)}>
                 {Object.entries(SIGN_IN_BY_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
                 {edit.signInBy === "claude_code" && <span className="hint">{CLAUDE_CODE_SIGN_IN_HINT}</span>}</label>
               {edit.signInBy !== "claude_code" && (
-                <label className="wide">Client id for sign-in<input className="input mono" value={edit.clientId} onChange={(e) => set("clientId", e.target.value)} placeholder="Only when the service doesn't let Gizai register itself" />
-                  <span className="hint">Empty: Gizai registers itself with the service when you sign in.</span></label>
+                <label className="wide">Client id for sign-in<input className="input mono" value={edit.clientId} onChange={(e) => set("clientId", e.target.value)} placeholder="Only when the service doesn't let Hersir register itself" />
+                  <span className="hint">Empty: Hersir registers itself with the service when you sign in.</span></label>
               )}
             </>
           )}

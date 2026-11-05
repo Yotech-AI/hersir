@@ -27,7 +27,7 @@ fn fail(msg: &str) -> ExitCode {
 
 fn main() -> ExitCode {
     let (Some(socket), Some(token)) = (std::env::var_os("GIZAI_SOCKET"), std::env::var("GIZAI_TOKEN").ok()) else {
-        return fail("GIZAI_SOCKET and GIZAI_TOKEN must be set (Gizai sets them for each chat turn)");
+        return fail("GIZAI_SOCKET and GIZAI_TOKEN must be set (Hersir sets them for each chat turn)");
     };
     run(&socket, &token)
 }
@@ -36,10 +36,10 @@ fn main() -> ExitCode {
 fn run(socket: &OsStr, token: &str) -> ExitCode {
     let mut stream = match UnixStream::connect(socket) {
         Ok(s) => s,
-        Err(e) => return fail(&format!("can't reach Gizai at {} ({e}); is Gizai running?", std::path::Path::new(socket).display())),
+        Err(e) => return fail(&format!("can't reach Hersir at {} ({e}); is Hersir running?", std::path::Path::new(socket).display())),
     };
     if let Err(e) = stream.write_all(gizai_mcp::hello_line(token).as_bytes()) {
-        return fail(&format!("can't talk to Gizai: {e}"));
+        return fail(&format!("can't talk to Hersir: {e}"));
     }
     let mut to_gizai = match stream.try_clone() {
         Ok(s) => s,
@@ -127,7 +127,7 @@ async fn over_pipe(socket: &OsStr, token: &str) -> ExitCode {
             Err(e) if e.raw_os_error() == Some(ERROR_PIPE_BUSY as i32) && Instant::now() < deadline => {
                 tokio::time::sleep(Duration::from_millis(50)).await
             }
-            Err(e) => return fail(&format!("can't reach Gizai at {} ({e}); is Gizai running?", std::path::Path::new(socket).display())),
+            Err(e) => return fail(&format!("can't reach Hersir at {} ({e}); is Hersir running?", std::path::Path::new(socket).display())),
         }
     };
     // Another program could have made a pipe by this name before Gizai started: the token goes only to our own user.
@@ -138,11 +138,11 @@ async fn over_pipe(socket: &OsStr, token: &str) -> ExitCode {
         _ => false,
     };
     if !ours {
-        return fail(&format!("{} is not served by your Gizai (another user's program holds it)", std::path::Path::new(socket).display()));
+        return fail(&format!("{} is not served by your Hersir (another user's program holds it)", std::path::Path::new(socket).display()));
     }
     let (mut from_gizai, mut to_gizai) = tokio::io::split(pipe);
     if let Err(e) = to_gizai.write_all(gizai_mcp::hello_line(token).as_bytes()).await {
-        return fail(&format!("can't talk to Gizai: {e}"));
+        return fail(&format!("can't talk to Hersir: {e}"));
     }
 
     // Stdin → pipe. Stdin is read on a thread of its own (that read can't be cancelled; the thread ends with the shim)
@@ -224,7 +224,7 @@ fn closed(tail: &[u8]) -> ExitCode {
     let reason = serde_json::from_str::<serde_json::Value>(&last).ok()
         .and_then(|v| v.get("error").and_then(|e| e.as_str()).map(str::to_string));
     fail(&match reason {
-        Some(r) => format!("Gizai closed the connection: {r}"),
-        None => "Gizai closed the connection".to_string(),
+        Some(r) => format!("Hersir closed the connection: {r}"),
+        None => "Hersir closed the connection".to_string(),
     })
 }

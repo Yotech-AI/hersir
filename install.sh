@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Gizai installer for Linux and macOS. Builds Gizai from source and installs it for you alone (no sudo):
-#   ~/.local/lib/gizai/     gizai, gizai-mcp (the helper chat uses) and gizai-launch; on macOS also Gizai.app
+# Hersir installer for Linux and macOS. Builds Hersir from source and installs it for you alone (no sudo):
+#   ~/.local/lib/gizai/     gizai, gizai-mcp (the helper chat uses) and gizai-launch; on macOS also Hersir.app
 #   ~/.local/bin/gizai      the command
-#   Linux: a desktop entry and an icon, so Gizai shows up in your app launcher
-#   macOS: a link to Gizai.app in ~/Applications, so Gizai starts from Finder and the Dock
+#   Linux: a desktop entry and an icon, so Hersir shows up in your app launcher
+#   macOS: a link to Hersir.app in ~/Applications, so Hersir starts from Finder and the Dock
 # Your data lives in ~/.local/share/gizai (macOS: ~/Library/Application Support/Gizai) and is never touched by install
 # or uninstall (unless --purge). On Windows, use install.ps1 (see the README).
 #
@@ -12,15 +12,15 @@
 #   curl -fsSL <raw url of this file> | bash
 #                                clone (or update) the source into ~/.local/share/gizai-src, then the same
 #   ./install.sh --check         only report what is missing
-#   ./install.sh --build-only    check and build, install nothing (Gizai's own Update runs this, then --skip-build)
+#   ./install.sh --build-only    check and build, install nothing (Hersir's own Update runs this, then --skip-build)
 #   ./install.sh --skip-build    install the binaries already built in target/release
-#   ./install.sh --uninstall     remove Gizai (add --purge to delete your data too)
+#   ./install.sh --uninstall     remove Hersir (add --purge to delete your data too)
 # Environment: GIZAI_REPO (the git URL to clone), GIZAI_BRANCH (default production: the released code; main is
 # development), GIZAI_PREFIX (default ~/.local), GIZAI_DATA_DIR (macOS: the data folder, if not the usual one).
 # It runs with macOS's own bash 3.2 and BSD tools too: no newer bash features or GNU-only options.
 set -euo pipefail
 
-DEFAULT_REPO="https://github.com/Yotech-AI/gizai.git"
+DEFAULT_REPO="https://github.com/Yotech-AI/hersir.git"
 REPO="${GIZAI_REPO:-$DEFAULT_REPO}"
 PREFIX="${GIZAI_PREFIX:-$HOME/.local}"
 SHARE="${XDG_DATA_HOME:-$HOME/.local/share}"
@@ -32,9 +32,12 @@ DATA="$SHARE/gizai"
 SRC_CLONE="$SHARE/gizai-src"
 OS="$(uname -s)"
 if [ "$OS" = Darwin ]; then
-  # macOS keeps an app's data in ~/Library/Application Support, and apps in ~/Applications.
+  # macOS keeps an app's data in ~/Library/Application Support, and apps in ~/Applications. The app was Gizai.app
+  # before it was called Hersir (GA-233): an install or uninstall removes that one too, with the link to it it made.
   DATA="${GIZAI_DATA_DIR:-$HOME/Library/Application Support/Gizai}"
-  APP_LINK="$HOME/Applications/Gizai.app"
+  APP_LINK="$HOME/Applications/Hersir.app"
+  OLD_APP_LINK="$HOME/Applications/Gizai.app"
+  LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 fi
 
 CHECK=0 BUILD_ONLY=0 SKIP_BUILD=0 UNINSTALL=0 PURGE=0
@@ -57,19 +60,22 @@ fi
 say() { printf '%s\n' "$*"; }
 step() { printf '\n== %s\n' "$*"; }
 have() { command -v "$1" >/dev/null 2>&1; }
+# Removes the link $1 when it is this install's: a link to $2.
+remove_own_link() { if [ -L "$1" ] && [ "$(readlink "$1")" = "$2" ]; then rm -f "$1"; fi; }
 
 case "$OS" in
   Linux|Darwin) ;;
-  MINGW*|MSYS*|CYGWIN*) say "On Windows, install Gizai with install.ps1 in PowerShell (see the README)."; exit 1 ;;
-  *) say "Gizai installs on Linux and macOS with this script, and on Windows with install.ps1."; exit 1 ;;
+  MINGW*|MSYS*|CYGWIN*) say "On Windows, install Hersir with install.ps1 in PowerShell (see the README)."; exit 1 ;;
+  *) say "Hersir installs on Linux and macOS with this script, and on Windows with install.ps1."; exit 1 ;;
 esac
 
 # ---------- uninstall (macOS) ----------
 if [ "$UNINSTALL" = 1 ] && [ "$OS" = Darwin ]; then
-  step "Removing Gizai"
+  step "Removing Hersir"
   rm -f "$BIN/gizai"
-  # the link in ~/Applications only when it is this install's
-  if [ -L "$APP_LINK" ] && [ "$(readlink "$APP_LINK")" = "$LIB/Gizai.app" ]; then rm -f "$APP_LINK"; fi
+  # the links in ~/Applications only when they are this install's: to Hersir.app, or to Gizai.app (before GA-233)
+  remove_own_link "$APP_LINK" "$LIB/Hersir.app"
+  remove_own_link "$OLD_APP_LINK" "$LIB/Gizai.app"
   rm -rf "$LIB"
   say "Removed the app and the command."
   if [ "$PURGE" = 1 ]; then
@@ -83,7 +89,7 @@ fi
 
 # ---------- uninstall ----------
 if [ "$UNINSTALL" = 1 ]; then
-  step "Removing Gizai"
+  step "Removing Hersir"
   rm -f "$BIN/gizai" "$APPS/gizai.desktop" "$ICONS/scalable/apps/gizai.svg"
   for size in 32 64 128 256 512; do rm -f "$ICONS/${size}x${size}/apps/gizai.png"; done
   rm -rf "$LIB"
@@ -101,7 +107,7 @@ if [ "$UNINSTALL" = 1 ]; then
 fi
 
 # ---------- check ----------
-step "Checking what Gizai needs"
+step "Checking what Hersir needs"
 missing_cmds=() missing_libs=() notes=()
 node_from="your package manager, mise or nvm"
 if [ "$OS" = Darwin ]; then
@@ -158,16 +164,16 @@ for n in ${notes[@]+"${notes[@]}"}; do ok=0; say "$n"; done
 if have claude; then
   say "Claude Code: found ($(command -v claude)). Make sure you are logged in: run 'claude' once."
 else
-  say "Claude Code: not found. Gizai's agents and chat run it; install it from https://docs.claude.com/en/docs/claude-code and log in."
+  say "Claude Code: not found. Hersir's agents and chat run it; install it from https://docs.claude.com/en/docs/claude-code and log in."
 fi
-# The tray icon loads libayatana-appindicator (or the older libappindicator) when Gizai starts; Gizai works without it.
+# The tray icon loads libayatana-appindicator (or the older libappindicator) when Hersir starts; Hersir works without it.
 if have ldconfig && ! ldconfig -p 2>/dev/null | grep -qE 'lib(ayatana-)?appindicator3\.so\.1'; then
-  say "Tray icon: libayatana-appindicator is missing, so Gizai will have no tray icon (Arch and Omarchy: sudo pacman -S libayatana-appindicator; Debian and Ubuntu: sudo apt install libayatana-appindicator3-1)."
+  say "Tray icon: libayatana-appindicator is missing, so Hersir will have no tray icon (Arch and Omarchy: sudo pacman -S libayatana-appindicator; Debian and Ubuntu: sudo apt install libayatana-appindicator3-1)."
 fi
 if [ "$OS" = Darwin ] && [ "$(uname -m)" != arm64 ]; then
-  say "Note: Gizai is made for Macs with Apple silicon, and this shell runs as $(uname -m) (an Intel Mac, or Rosetta). The build may work, but isn't tested."
+  say "Note: Hersir is made for Macs with Apple silicon, and this shell runs as $(uname -m) (an Intel Mac, or Rosetta). The build may work, but isn't tested."
 fi
-[ "$ok" = 1 ] && say "Everything Gizai needs to build is here."
+[ "$ok" = 1 ] && say "Everything Hersir needs to build is here."
 if [ "$CHECK" = 1 ]; then exit $((1 - ok)); fi
 if [ "$ok" = 0 ] && [ "$SKIP_BUILD" = 0 ]; then
   say ""
@@ -177,12 +183,12 @@ fi
 
 # ---------- source ----------
 here="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || true)"
-if [ -n "$here" ] && [ -f "$here/src-tauri/tauri.conf.json" ] && grep -q '"productName": "Gizai"' "$here/src-tauri/tauri.conf.json"; then
+if [ -n "$here" ] && [ -f "$here/src-tauri/tauri.conf.json" ] && grep -q '"productName": "Hersir"' "$here/src-tauri/tauri.conf.json"; then
   SRC="$here"
 else
   step "Getting the source"
   if [ -z "$REPO" ]; then
-    say "Set GIZAI_REPO to the git URL of Gizai, or run this script from a checkout."
+    say "Set GIZAI_REPO to the git URL of Hersir, or run this script from a checkout."
     exit 1
   fi
   if [ -d "$SRC_CLONE/.git" ]; then
@@ -202,7 +208,7 @@ if [ "$SKIP_BUILD" = 0 ]; then
     export TAURI_TELEMETRY_DISABLED=1 npm_config_update_notifier=false npm_config_fund=false npm_config_audit=false
     npm ci
     if [ "$OS" = Darwin ]; then
-      # macOS: Gizai.app too (target/release/bundle/macos), so Gizai starts from the Dock and Finder. Nothing is signed.
+      # macOS: Hersir.app too (target/release/bundle/macos), so Hersir starts from the Dock and Finder. Nothing is signed.
       npm run tauri build -- --bundles app
     else
       npm run tauri build -- --no-bundle
@@ -216,7 +222,7 @@ for b in gizai gizai-mcp; do
     exit 1
   fi
 done
-APP_BUILT="$SRC/target/release/bundle/macos/Gizai.app"
+APP_BUILT="$SRC/target/release/bundle/macos/Hersir.app"
 if [ "$OS" = Darwin ] && [ ! -x "$APP_BUILT/Contents/MacOS/gizai" ]; then
   say "$APP_BUILT is missing: build first (run without --skip-build)."
   exit 1
@@ -228,7 +234,7 @@ if [ "$BUILD_ONLY" = 1 ]; then
 fi
 
 # ---------- back up ----------
-# Before replacing a Gizai you use, snapshot its data (the new build opens it, and may upgrade it, on its next start).
+# Before replacing a Hersir you use, snapshot its data (the new build opens it, and may upgrade it, on its next start).
 if [ -f "$DATA/gizai.db" ]; then
   step "Backing up your data"
   if snap="$(GIZAI_DATA_DIR="$DATA" "$SRC/target/release/gizai" --backup before-install 2>&1)"; then
@@ -241,63 +247,70 @@ if [ -f "$DATA/gizai.db" ]; then
 fi
 
 # ---------- install (macOS) ----------
-# Gizai.app holds both programs (Gizai looks for gizai-mcp next to itself). lib/gizai/gizai and gizai-mcp link into it,
-# and gizai-launch, behind the gizai command, starts the app's own program, so macOS shows it as Gizai.
+# Hersir.app holds both programs (Hersir looks for gizai-mcp next to itself). lib/gizai/gizai and gizai-mcp link into it,
+# and gizai-launch, behind the gizai command, starts the app's own program, so macOS shows it as Hersir.
 if [ "$OS" = Darwin ]; then
   step "Installing"
   mkdir -p "$LIB" "$BIN"
-  # The new Gizai.app is put together under a temporary name of this installer's own first, then replaces the old one
-  # with renames: a copy that fails (a full disk) leaves the installed Gizai as it was.
-  new_app="$LIB/.Gizai.app.new.$$" old_app="$LIB/.Gizai.app.old.$$" new_launch="$LIB/.gizai-launch.new.$$"
+  # The new Hersir.app is put together under a temporary name of this installer's own first, then replaces the old one
+  # with renames: a copy that fails (a full disk) leaves the installed Hersir as it was.
+  new_app="$LIB/.Hersir.app.new.$$" old_app="$LIB/.Hersir.app.old.$$" new_launch="$LIB/.gizai-launch.new.$$"
   trap 'rm -rf "$new_app" "$new_launch"' EXIT
   if ! ditto "$APP_BUILT" "$new_app" || ! install -m 755 "$SRC/target/release/gizai-mcp" "$new_app/Contents/MacOS/gizai-mcp"; then
-    say "Could not copy Gizai into $LIB, so nothing was installed."
+    say "Could not copy Hersir into $LIB, so nothing was installed."
     exit 1
   fi
   # Sign the app ad hoc again, so its signature covers gizai-mcp too (Apple silicon runs only signed programs, and a file
-  # added after the build leaves a stale seal). An ad hoc signature names no one: Gizai stays unsigned in that sense.
+  # added after the build leaves a stale seal). An ad hoc signature names no one: Hersir stays unsigned in that sense.
   codesign --force --deep --sign - "$new_app" >/dev/null 2>&1 || true
   cat > "$new_launch" <<LAUNCH
 #!/bin/sh
-# Starts Gizai: the program inside Gizai.app, so macOS shows it as the app. Not a link to it: macOS tells a program the
-# path of the link it was started from, and Gizai looks for gizai-mcp next to that. Gizai reads your login shell's PATH
+# Starts Hersir: the program inside Hersir.app, so macOS shows it as the app. Not a link to it: macOS tells a program the
+# path of the link it was started from, and Hersir looks for gizai-mcp next to that. Hersir reads your login shell's PATH
 # itself, so its agents find claude, git, npm and cargo also when it starts from the Dock.
-exec "$LIB/Gizai.app/Contents/MacOS/gizai" "\$@"
+exec "$LIB/Hersir.app/Contents/MacOS/gizai" "\$@"
 LAUNCH
   chmod 755 "$new_launch"
-  if [ -e "$LIB/Gizai.app" ]; then mv "$LIB/Gizai.app" "$old_app"; fi
-  if ! mv "$new_app" "$LIB/Gizai.app"; then
-    if [ -e "$old_app" ]; then mv "$old_app" "$LIB/Gizai.app"; fi
-    say "Could not put the new Gizai.app into $LIB, so nothing was installed."
+  if [ -e "$LIB/Hersir.app" ]; then mv "$LIB/Hersir.app" "$old_app"; fi
+  if ! mv "$new_app" "$LIB/Hersir.app"; then
+    if [ -e "$old_app" ]; then mv "$old_app" "$LIB/Hersir.app"; fi
+    say "Could not put the new Hersir.app into $LIB, so nothing was installed."
     exit 1
   fi
   rm -rf "$old_app"
   mv -f "$new_launch" "$LIB/gizai-launch"
-  ln -sfn Gizai.app/Contents/MacOS/gizai "$LIB/gizai"
-  ln -sfn Gizai.app/Contents/MacOS/gizai-mcp "$LIB/gizai-mcp"
+  ln -sfn Hersir.app/Contents/MacOS/gizai "$LIB/gizai"
+  ln -sfn Hersir.app/Contents/MacOS/gizai-mcp "$LIB/gizai-mcp"
   ln -sfn "$LIB/gizai-launch" "$BIN/gizai"
-  # LaunchServices learns the new app now, so its notifications come from Gizai (not Finder) from the first start.
-  /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$LIB/Gizai.app" >/dev/null 2>&1 || true
-  # ~/Applications/Gizai.app for the usual install only: an install into another prefix (a test's) leaves yours alone.
+  # LaunchServices learns the new app now, so its notifications come from Hersir (not Finder) from the first start.
+  "$LSREGISTER" -f "$LIB/Hersir.app" >/dev/null 2>&1 || true
+  # ~/Applications/Hersir.app for the usual install only: an install into another prefix (a test's) leaves yours alone.
   if [ "$PREFIX" = "$HOME/.local" ]; then
     if [ -L "$APP_LINK" ] || [ ! -e "$APP_LINK" ]; then
       mkdir -p "$HOME/Applications"
-      ln -sfn "$LIB/Gizai.app" "$APP_LINK"
+      ln -sfn "$LIB/Hersir.app" "$APP_LINK"
     else
-      say "Note: $APP_LINK is there already and isn't a link, so it was left as it is. Gizai.app is in $LIB."
+      say "Note: $APP_LINK is there already and isn't a link, so it was left as it is. Hersir.app is in $LIB."
     fi
+  fi
+  # Gizai.app, the app before it was called Hersir (GA-233), goes now that nothing here links to it, and so does this
+  # install's link to it in ~/Applications. LaunchServices forgets it first, as it has Hersir.app's id.
+  remove_own_link "$OLD_APP_LINK" "$LIB/Gizai.app"
+  if [ -e "$LIB/Gizai.app" ]; then
+    "$LSREGISTER" -u "$LIB/Gizai.app" >/dev/null 2>&1 || true
+    rm -rf "$LIB/Gizai.app" || say "Note: could not remove the old $LIB/Gizai.app (Hersir.app replaces it). Remove it yourself."
   fi
 
   version="$("$LIB/gizai" --version 2>/dev/null || echo "gizai")"
   step "Done: $version"
-  if [ -L "$APP_LINK" ] && [ "$(readlink "$APP_LINK")" = "$LIB/Gizai.app" ]; then
-    say "Start Gizai from Applications in your home folder (Finder: Go > Home), and keep it in the Dock. Or run: gizai"
+  if [ -L "$APP_LINK" ] && [ "$(readlink "$APP_LINK")" = "$LIB/Hersir.app" ]; then
+    say "Start Hersir from Applications in your home folder (Finder: Go > Home), and keep it in the Dock. Or run: gizai"
   else
-    say "Start Gizai by opening $LIB/Gizai.app, or run: gizai"
+    say "Start Hersir by opening $LIB/Hersir.app, or run: gizai"
   fi
   case ":$PATH:" in *":$BIN:"*) ;; *) say "Note: $BIN is not on your PATH; add it to use the gizai command." ;; esac
   say "Your data: $DATA"
-  say "Update: Gizai offers new releases above Company in its sidebar (or run this installer again). Remove: run it with --uninstall."
+  say "Update: Hersir offers new releases above Company in its sidebar (or run this installer again). Remove: run it with --uninstall."
   exit 0
 fi
 
@@ -305,17 +318,17 @@ fi
 step "Installing"
 mkdir -p "$LIB" "$BIN" "$APPS" "$ICONS/scalable/apps"
 # Each program goes in under a temporary name of this installer's own first, then replaces the old one in one step (a
-# rename): a copy that fails (a full disk) leaves the installed Gizai as it was.
+# rename): a copy that fails (a full disk) leaves the installed Hersir as it was.
 new_gizai="$LIB/.gizai.new.$$" new_mcp="$LIB/.gizai-mcp.new.$$" new_launch="$LIB/.gizai-launch.new.$$"
 trap 'rm -f "$new_gizai" "$new_mcp" "$new_launch"' EXIT
 if ! install -m 755 "$SRC/target/release/gizai" "$new_gizai" || ! install -m 755 "$SRC/target/release/gizai-mcp" "$new_mcp"; then
-  say "Could not copy Gizai into $LIB, so nothing was installed."
+  say "Could not copy Hersir into $LIB, so nothing was installed."
   exit 1
 fi
 cat > "$new_launch" <<LAUNCH
 #!/bin/sh
-# Starts Gizai with your login shell's PATH, so its agents find claude, git, npm and cargo even when
-# Gizai is started from the app launcher. On machines without an NVIDIA GPU, WebKitGTK needs Mesa's EGL.
+# Starts Hersir with your login shell's PATH, so its agents find claude, git, npm and cargo even when
+# Hersir is started from the app launcher. On machines without an NVIDIA GPU, WebKitGTK needs Mesa's EGL.
 if ! lspci 2>/dev/null | grep -qi nvidia && [ -f /usr/share/glvnd/egl_vendor.d/50_mesa.json ]; then
   export __EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json
 fi
@@ -339,7 +352,7 @@ install -m 644 "$SRC/src-tauri/icons/gizai.svg" "$ICONS/scalable/apps/gizai.svg"
 cat > "$APPS/gizai.desktop" <<DESKTOP
 [Desktop Entry]
 Type=Application
-Name=Gizai
+Name=Hersir
 Comment=Clients, projects and tasks, worked on by local AI agents
 Exec=$LIB/gizai-launch
 Icon=gizai
@@ -354,7 +367,7 @@ have update-desktop-database && update-desktop-database "$APPS" >/dev/null 2>&1 
 
 version="$("$LIB/gizai" --version 2>/dev/null || echo "gizai")"
 step "Done: $version"
-say "Start Gizai from your app launcher, or run: gizai"
+say "Start Hersir from your app launcher, or run: gizai"
 case ":$PATH:" in *":$BIN:"*) ;; *) say "Note: $BIN is not on your PATH; add it to use the gizai command." ;; esac
 say "Your data: $DATA"
-say "Update: Gizai offers new releases above Company in its sidebar (or run this installer again). Remove: run it with --uninstall."
+say "Update: Hersir offers new releases above Company in its sidebar (or run this installer again). Remove: run it with --uninstall."

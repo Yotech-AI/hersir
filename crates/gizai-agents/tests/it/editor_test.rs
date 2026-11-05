@@ -967,7 +967,7 @@ fn open_in_starts_the_editor_in_the_folder_with_the_file_at_its_line_and_doesnt_
     assert_eq!(lines, [d.clone(), path.to_string_lossy().to_string(), d.clone(), "-g".into(), format!("{d}/src/main.rs:7")]);
     let missing = tmp.path().join("bin/nothing");
     let why = err(editor::open_in(AppId::Zed, &missing, &dir, None, None, &path));
-    assert!(why.starts_with("Gizai couldn't start Zed"), "{why}");
+    assert!(why.starts_with("Hersir couldn't start Zed"), "{why}");
 }
 
 #[test]

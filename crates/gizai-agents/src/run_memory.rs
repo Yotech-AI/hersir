@@ -753,7 +753,7 @@ impl RunsMemory {
             match &set_up {
                 Ok(slice) => eprintln!("gizai: agent runs start in {} ({}), with a memory limit of {:.1} GB together",
                                        slice.name(), slice.dir().display(), limit as f64 / GB as f64),
-                Err(why) => eprintln!("gizai: agent runs start without a memory limit: {why}. Gizai only waits for free memory \
+                Err(why) => eprintln!("gizai: agent runs start without a memory limit: {why}. Hersir only waits for free memory \
                                        before it starts a run (Settings → Runs → Memory for agent runs)."),
             }
             self.enforced.store(set_up.is_ok(), Ordering::SeqCst);

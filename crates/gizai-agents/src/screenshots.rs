@@ -244,12 +244,12 @@ impl Collected {
         }
         let word = |n: usize| if n == 1 { "screenshot" } else { "screenshots" };
         let mut s = if self.left_out.is_empty() {
-            format!("Gizai kept {} {} on the card.", self.kept, word(self.kept))
+            format!("Hersir kept {} {} on the card.", self.kept, word(self.kept))
         } else if self.found == 0 {
-            "Gizai kept no screenshots.".to_string()
+            "Hersir kept no screenshots.".to_string()
         } else {
             let limit = self.over_limit.map(|n| format!(" (Settings → Agents and runs → Screenshots allows {n} a run)")).unwrap_or_default();
-            format!("Gizai kept {} of {} {}{limit}.", self.kept, self.found, word(self.found))
+            format!("Hersir kept {} of {} {}{limit}.", self.kept, self.found, word(self.found))
         };
         if !self.left_out.is_empty() {
             s.push_str(&format!(" Left out: {}.", self.left_out.join("; ")));
@@ -269,7 +269,7 @@ pub fn collect(worktree: &Path, rules: &Rules, mut keep: impl FnMut(Shot) -> Res
         match std::fs::symlink_metadata(path) {
             Ok(m) if m.is_dir() => {}
             Ok(_) => {
-                out.left_out.push(format!("{name}: not a folder (a link or a file), so Gizai looked no further"));
+                out.left_out.push(format!("{name}: not a folder (a link or a file), so Hersir looked no further"));
                 return out;
             }
             Err(_) => return out,
@@ -353,7 +353,7 @@ fn read_once(path: &Path, max: u64, too_big: impl Fn() -> String) -> Result<Vec<
 fn real_file(meta: &std::fs::Metadata) -> Result<(), String> {
     let t = meta.file_type();
     if t.is_symlink() {
-        return Err("a link, which Gizai doesn't follow".into());
+        return Err("a link, which Hersir doesn't follow".into());
     }
     if t.is_dir() {
         return Err("a folder: only the screenshots folder's own files count".into());

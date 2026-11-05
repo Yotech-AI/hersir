@@ -4,8 +4,10 @@
 // "Syntax for GitHub's form schema" and "Common validation errors when creating issue forms"), read with the YAML parser
 // the Editor already has (@codemirror/lang-yaml), as GA has no other; CONTRIBUTING.md, SECURITY.md, the pull request
 // template and release.yml exist, and their links reach real files and headings; docs/RELEASING.md labels the bump and
-// release pull requests and makes the release with the card's notes; and "Gizai" is left in the docs only in paths,
-// file names and the app's own texts they quote, while the names installs and updates find GizAi by stay as they are.
+// release pull requests and makes the release with the card's notes; and the docs say Hersir (GA-234), with "Gizai"
+// left only in the names the code keeps, while the names installs and updates find GizAi by stay as they are (GA-233:
+// but for productName and the window title, which are Hersir). GA-234 also checks the installers' messages,
+// Cargo.toml's descriptions and browser.html's title.
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, normalize } from "node:path";
@@ -16,7 +18,8 @@ import { describe, expect, it } from "vitest";
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (path) => readFileSync(join(ROOT, path), "utf8");
 const git = (...args) => spawnSync("git", args, { cwd: ROOT, encoding: "utf8", maxBuffer: 64 * 1000 * 1000 });
-const REPO = "https://github.com/Yotech-AI/gizai";
+// The address the docs and the issue forms link to: Yotech-AI/hersir since GA-234 (GitHub forwards Yotech-AI/gizai).
+const REPO = "https://github.com/Yotech-AI/hersir";
 
 // YAML to a plain value, for the YAML these files use: block and flow mappings and sequences, plain, quoted and block
 // scalars. A plain yes, no, on, off, true or false is a boolean, as GitHub reads it.
@@ -226,7 +229,7 @@ describe("the issue forms in .github/ISSUE_TEMPLATE", () => {
     expect([f.name, f.labels]).toEqual(["Install or update problem", ["bug"]]);
     expect(required(f)).toEqual(["system", "system-version", "how", "check"]);
     expect(field(f, "how").attributes.options).toHaveLength(4);
-    expect(field(f, "how").attributes.options.join("\n")).toMatch(/one-line install[\s\S]*install\.sh[\s\S]*install\.ps1[\s\S]*update from inside GizAi/);
+    expect(field(f, "how").attributes.options.join("\n")).toMatch(/one-line install[\s\S]*install\.sh[\s\S]*install\.ps1[\s\S]*update from inside Hersir/);
     expect(field(f, "check").attributes.description).toMatch(/`\.\/install\.sh --check`[\s\S]*`\.\\install\.ps1 -Check`/);
     expect(field(f, "output").attributes.description).toMatch(/update\/update\.log/);
     expect(field(f, "tools").attributes.description).toMatch(/`rustc --version` and `node --version`/);
@@ -275,7 +278,7 @@ describe("the README's first screen (the research's section 3.3)", () => {
   it("What it is, Made for work with several clients and The team come before Features, and Install after", () => {
     const headings = lines.filter((l) => l.startsWith("## ")).slice(0, 5);
     expect(headings).toEqual(["## What it is", "## Made for work with several clients", "## The team", "## Features", "## Install"]);
-    expect(section("What it is")).toMatch(/^\nGizAi is an Agentic Development Application \(ADA\)\. You write the cards;/);
+    expect(section("What it is")).toMatch(/^\nHersir is an Agentic Development Application \(ADA\)\. You write the cards;/);
     expect(section("Made for work with several clients").match(/^- \*\*[^*]+\*\*/gm)).toEqual([
       "- **Clients, projects and cards in one app.**", "- **Memory kept apart per client.**", "- **Several accounts per CLI.**",
     ]);
@@ -291,9 +294,9 @@ describe("the README's first screen (the research's section 3.3)", () => {
     expect(features[2]).toMatch(/^- \*\*Bring your own CLI\.\*\* .*like Claude Code, Codex CLI or Gemini CLI,/);
   });
 
-  it("its last line says GizAi is independent of Anthropic, OpenAI and Google, and names their trademarks", () => {
+  it("its last line says Hersir is independent of Anthropic, OpenAI and Google, and names their trademarks", () => {
     expect(readme.trimEnd().split("\n").at(-1)).toBe(
-      "GizAi is an independent open-source project by YoTech, not affiliated with or endorsed by Anthropic, OpenAI or Google. " +
+      "Hersir is an independent open-source project by YoTech, not affiliated with or endorsed by Anthropic, OpenAI or Google. " +
         "It runs Claude Code, Codex CLI and Gemini CLI with your own accounts, and never sells AI usage. " +
         "Claude Code is a trademark of Anthropic, Codex of OpenAI, and Gemini of Google LLC.",
     );
@@ -316,7 +319,7 @@ const anchors = (path) => withoutCode(read(path)).split("\n").filter((l) => /^#{
 function repoLinks(path) {
   const links = [];
   for (const [, target] of withoutCode(read(path)).matchAll(/\]\(([^)\s]+)\)/g)) {
-    const blob = target.match(/^https:\/\/github\.com\/Yotech-AI\/gizai\/blob\/main\/(.+)$/);
+    const blob = target.match(/^https:\/\/github\.com\/Yotech-AI\/hersir\/blob\/main\/(.+)$/);
     if (blob) links.push({ target, file: blob[1].split("#")[0], anchor: blob[1].split("#")[1] });
     else if (!/^[a-z]+:/.test(target)) {
       const [file, anchor] = target.split("#");
@@ -352,10 +355,10 @@ describe("the community files", () => {
     expect(security).not.toMatch(/@[a-z0-9-]+\.[a-z]{2,}/i);
   });
 
-  it("CONTRIBUTING.md: set up and test, never against your own GizAi, the code's rules, pull requests into main, Apache-2.0 without a CLA", () => {
+  it("CONTRIBUTING.md: set up and test, never against your own Hersir, the code's rules, pull requests into main, Apache-2.0 without a CLA", () => {
     const contributing = read("CONTRIBUTING.md");
     const headings = anchors("CONTRIBUTING.md");
-    expect(headings).toEqual(expect.arrayContaining(["set-up", "never-test-against-your-own-gizai", "pull-requests", "licence"]));
+    expect(headings).toEqual(expect.arrayContaining(["set-up", "never-test-against-your-own-hersir", "pull-requests", "licence"]));
     expect(contributing).toMatch(/source scripts\/env\.sh[\s\S]*cargo test --workspace && npm test/);
     expect(contributing).toMatch(/scripts\/ui-test\.sh/);
     expect(contributing).toMatch(/GIZAI_DATA_DIR/);
@@ -396,7 +399,7 @@ describe("docs/RELEASING.md", () => {
     const notes = withoutCode(releasing).split("\n## Release notes\n")[1].split("\n## ")[0];
     expect(notes).toMatch(/\*\*A share line:\*\*[\s\S]*\*\*What's new:\*\* at most six bullets[\s\S]*\*\*Update:\*\*[\s\S]*\*\*All changes:\*\*/);
     const sample = releasing.match(/```markdown\n([\s\S]*?)```/)[1];
-    expect(sample).toMatch(/^GizAi \d+\.\d+\.\d+ .+\n\n## What's new\n/);
+    expect(sample).toMatch(/^Hersir \d+\.\d+\.\d+ .+\n\n## What's new\n/);
     const bullets = sample.split("## What's new")[1].split("\n**Update:**")[0].match(/^- \*\*/gm);
     expect(bullets.length).toBeGreaterThan(0);
     expect(bullets.length).toBeLessThanOrEqual(6);
@@ -405,51 +408,204 @@ describe("docs/RELEASING.md", () => {
   });
 });
 
-// The "Gizai"s the docs keep: file names, and the app's own texts they quote, each still in the app's code (when the
-// app's rebrand changes one, the doc that quotes it shows up here).
-const QUOTES = ['"Gizai"', "From Gizai's catalog", "a tool from outside Gizai", "Gizai keeps the call", "because Gizai quit", "Open Gizai", "Quit Gizai completely"];
-const FILE_NAMES = /Gizai\.(app|lnk)/g;
-// Records of their day, which keep the name they had.
-const DATED = /^docs\/(research|superpowers)\/|^docs\/(HANDOFF-|MORNING-)|^docs\/(OPEN-ITEMS|v0\.1-notes|v0\.3-notes)\.md$/;
+// The docs that say Hersir (GA-234): the README, CLAUDE.md, NOTICE, the community files and the issue forms, every
+// Markdown file in docs/, and design's READMEs and notes. Not the records of their day, which keep the name they had:
+// the past release notes, the dated plans, and one morning's notes and open items.
+const DATED = /^docs\/superpowers\/plans\/|^docs\/(MORNING-2026-10-07|OPEN-ITEMS|v0\.1-notes|v0\.3-notes)\.md$/;
+const NAMED_DOCS = git("ls-files", "README.md", "CLAUDE.md", "NOTICE", "CONTRIBUTING.md", "SECURITY.md", ".github/ISSUE_TEMPLATE", ".github/pull_request_template.md", "docs/*.md", "design/*.md")
+  .stdout.split("\n").filter((p) => p && !DATED.test(p));
+// The one line for people who knew the old name, word for word.
+const OLD_NAME = "Hersir was called GizAi until version 0.14.";
+// The old name, spelled any way the docs had it: GizAi, Gizai, GizAI or Giz AI (Figma's file Giz-AI and giz.ai aren't it).
+const OLD = /Giz ?[Aa][Ii]/;
+// The old name the docs keep, in backticks or a code block, as the code has it (or Figma, for the app's variables, and
+// Homebrew, whose class for gizai.rb is Gizai): the data folders on macOS and Windows, the install folder on Windows
+// and the backups folder.
+const KEPT = [
+  { name: /Application Support\/Gizai/, code: ["src-tauri/src/lib.rs", 'join("Library/Application Support/Gizai")'] },
+  { name: /APPDATA%\\Gizai/, code: ["src-tauri/src/lib.rs", '.join("Gizai")'] },
+  { name: /Programs\\Gizai/, code: ["install.ps1", "Join-Path $env:LOCALAPPDATA 'Programs\\Gizai'"] },
+  { name: /Gizai backups/, code: ["crates/gizai-core/src/backups.rs", 'pub const FOLDER_NAME: &str = "Gizai backups";'] },
+  { name: /GizAi (colour|size)/ },
+  { name: /class Gizai < Formula/ },
+];
+const withoutKept = (text) => KEPT.reduce((rest, k) => rest.replace(new RegExp(k.name.source, "g"), ""), text);
+// The code in a Markdown file, line by line: each line of its code blocks, and its `code` spans.
+function codeParts(md) {
+  const parts = [];
+  let block = false;
+  md.split("\n").forEach((text, i) => {
+    if (/^ *```/.test(text)) block = !block;
+    else if (block) parts.push({ line: i + 1, text });
+    else for (const [span] of text.matchAll(/`[^`]*`/g)) parts.push({ line: i + 1, text: span });
+  });
+  return parts;
+}
+// The app's own texts with Hersir the docs quote, each in the app's code outside its tests (when the app changes one,
+// the doc that quotes it shows up here).
+const QUOTES = ["Open Hersir", "Quit Hersir completely", "From Hersir's catalog", "a tool from outside Hersir", "because Hersir quit", "Hersir can't find what", "Hersir pushed", "Hersir kept", "no Hersir data", "This Hersir runs from", "From Hersir card"];
+// The names the code keeps (the card's item 4), which the docs give as the code has them, and the forms they'd take
+// if a doc renamed them by mistake.
+const CODE_NAMES = ["gizai --version", "gizai-mcp", "gizai-launch", "~/.local/share/gizai", "GIZAI_DATA_DIR", "GIZAI_PREFIX", "GIZAI_RESULT", "ai.gizai.app", "mcp__gizai", ".gizai-tmp", "gizai-installed.txt", ".gizai-team.json", "gizai-backups.json"];
+const RENAMED = /\bhersir(-mcp|-launch|-src|-installed\.txt|-backups|\.db|\.desktop|\.exe)\b|\bHERSIR_|ai\.hersir|mcp__hersir|\.hersir-(tmp|team)|\bhersir:[a-z]|\/(share|lib|bin)\/hersir\b|`hersir[ `]|APPDATA%\\Hersir|Programs\\Hersir|Application Support\/Hersir|Hersir backups/;
 
-describe('one name: GizAi in the docs, and "Gizai" only where it is kept', () => {
-  const docs = git("ls-files", "README.md", "CLAUDE.md", "CONTRIBUTING.md", "SECURITY.md", ".github/ISSUE_TEMPLATE", ".github/pull_request_template.md", "docs/*.md")
-    .stdout.split("\n").filter((p) => p && !DATED.test(p));
-
-  it("the docs it covers include the README, CLAUDE.md, the community files and the docs in the research's table", () => {
-    for (const doc of ["README.md", "CLAUDE.md", "CONTRIBUTING.md", "SECURITY.md", "docs/PLATFORMS.md", "docs/agent-tools.md", "docs/RELEASING.md", "docs/memory.md", "docs/PAID-FEATURES.md", "docs/features/board.md"])
-      expect(docs).toContain(doc);
-    expect(docs.filter((d) => DATED.test(d))).toEqual([]);
+describe("one name: Hersir in the docs, and Gizai only in the names the code keeps (GA-234)", () => {
+  it("the docs it covers include the README, NOTICE, the community files, every doc in docs/ and design's READMEs, but not the records of their day", () => {
+    for (const doc of ["README.md", "CLAUDE.md", "NOTICE", "CONTRIBUTING.md", "SECURITY.md", ".github/pull_request_template.md", ".github/ISSUE_TEMPLATE/bug.yml", ".github/ISSUE_TEMPLATE/config.yml",
+      "docs/install.md", "docs/settings.md", "docs/memory.md", "docs/agent-tools.md", "docs/RELEASING.md", "docs/PLATFORMS.md", "docs/PAID-FEATURES.md", "docs/backup-format.md",
+      "docs/team-template-format.md", "docs/HANDOFF-2026-10-07.md", "docs/features/board.md", "docs/research/packaging.md", "docs/superpowers/specs/2026-10-06-gizai-chat-design.md",
+      "design/README.md", "design/SOURCES.md", "design/brand/README.md", "design/website/feature-page.md"])
+      expect(NAMED_DOCS).toContain(doc);
+    for (const doc of ["docs/v0.1-notes.md", "docs/v0.3-notes.md", "docs/superpowers/plans/2026-10-06-gizai-chat.md", "docs/MORNING-2026-10-07.md", "docs/OPEN-ITEMS.md"]) {
+      expect(existsSync(join(ROOT, doc)), doc).toBe(true);
+      expect(NAMED_DOCS).not.toContain(doc);
+    }
   });
 
-  it('"Gizai" is left only in code and paths (in backticks or a code block), file names and the app\'s own texts', () => {
+  it("no doc says GizAi or Gizai outside backticks and code blocks, but for the line for people who knew the old name", () => {
     const left = [];
-    for (const doc of docs) {
-      const lines = withoutCode(read(doc)).split("\n");
-      lines.forEach((line, i) => {
-        let rest = line.replace(/`[^`]*`/g, "").replace(FILE_NAMES, "");
-        for (const quote of QUOTES) rest = rest.split(quote).join("");
-        if (rest.includes("Gizai")) left.push(`${doc}:${i + 1}: ${line.trim().slice(0, 120)}`);
+    for (const doc of NAMED_DOCS) {
+      withoutCode(read(doc)).split("\n").forEach((line, i) => {
+        if (OLD.test(line.replace(/`[^`]*`/g, "").split(OLD_NAME).join(""))) left.push(`${doc}:${i + 1}: ${line.trim().slice(0, 120)}`);
       });
     }
     expect(left).toEqual([]);
   });
 
-  it("each text the docs quote with Gizai is still the app's own", () => {
-    for (const quote of QUOTES) {
-      const r = git("grep", "-lF", quote, "--", "src", "src-tauri/src", "crates/*/src");
-      expect(r.stdout, quote).not.toBe("");
+  it("in backticks and code blocks, the old name is only in the names the code keeps: the data, install and backups folders", () => {
+    const left = [];
+    for (const doc of NAMED_DOCS) for (const { line, text } of codeParts(read(doc))) if (OLD.test(withoutKept(text))) left.push(`${doc}:${line}: ${text.trim().slice(0, 120)}`);
+    expect(left).toEqual([]);
+  });
+
+  it("each name kept with Gizai is still the code's, and still in a doc", () => {
+    for (const { name, code } of KEPT) {
+      expect(NAMED_DOCS.some((doc) => name.test(read(doc))), String(name)).toBe(true);
+      if (code) expect(read(code[0]), String(name)).toContain(code[1]);
     }
   });
 
-  it("the names installs and updates find GizAi by stay: productName, the window title, the identifier, the data folders and the desktop entry", () => {
+  it('README.md\'s "What it is" and the top of docs/install.md say "Hersir was called GizAi until version 0.14.", and no other doc does', () => {
+    const whatItIs = read("README.md").split("\n## What it is\n")[1].split("\n## ")[0];
+    expect(whatItIs.split("\n\n").map((p) => p.trim())).toContain(OLD_NAME);
+    expect(read("docs/install.md").split("\n").slice(0, 3)).toEqual(["# Install Hersir", "", OLD_NAME]);
+    expect(NAMED_DOCS.filter((doc) => read(doc).includes(OLD_NAME))).toEqual(["README.md", "docs/install.md"]);
+  });
+
+  it("each text with Hersir the docs quote from the app is the app's own", () => {
+    for (const quote of QUOTES) {
+      expect(NAMED_DOCS.some((doc) => read(doc).includes(quote)), quote).toBe(true);
+      expect(git("grep", "-lF", quote, "--", "src", "src-tauri/src", "crates", ":!*.test.*", ":!**/tests/**").stdout, quote).not.toBe("");
+    }
+  });
+
+  it("links go to github.com/Yotech-AI/hersir and gizai.app, none to Yotech-AI/gizai, hersir.ai or hersir.dev, and the install lines stay word for word", () => {
+    const wrong = [];
+    for (const doc of NAMED_DOCS) {
+      read(doc).split("\n").forEach((line, i) => {
+        if (/Yotech-AI\/gizai(?![\w-])|\b[Hh]ersir\.(ai|dev)\b/.test(line)) wrong.push(`${doc}:${i + 1}: ${line.trim().slice(0, 120)}`);
+      });
+    }
+    expect(wrong).toEqual([]);
+    expect(NAMED_DOCS.filter((doc) => read(doc).includes(`${REPO}/`)).length).toBeGreaterThan(10);
+    for (const doc of ["README.md", "docs/install.md"]) {
+      expect(read(doc), doc).toContain("curl -fsSL https://gizai.app/install.sh | sh");
+      expect(read(doc), doc).toContain("irm https://gizai.app/install.ps1 | iex");
+    }
+    expect(read("README.md")).toContain("[Website](https://gizai.app)");
+  });
+
+  it("commands, paths, variables and file names are the code's: the docs name gizai, GIZAI_*, ai.gizai.app and mcp__gizai, never a hersir in their place", () => {
+    const docs = NAMED_DOCS.map(read).join("\n");
+    for (const name of CODE_NAMES) {
+      expect(docs, name).toContain(name);
+      expect(git("grep", "-lF", name, "--", "src", "src-tauri", "crates", "install.sh", "install.ps1", "scripts", ":!*.test.*", ":!**/tests/**").stdout, name).not.toBe("");
+    }
+    const renamed = [];
+    for (const doc of NAMED_DOCS) {
+      read(doc).split("\n").forEach((line, i) => {
+        if (RENAMED.test(line)) renamed.push(`${doc}:${i + 1}: ${line.trim().slice(0, 120)}`);
+      });
+    }
+    expect(renamed).toEqual([]);
+  });
+
+  it.each(NAMED_DOCS.filter((doc) => doc.endsWith(".md") && !doc.startsWith("docs/research/")))("every relative link and #anchor in %s resolves", (doc) => {
+    const broken = repoLinks(doc).filter(({ file, anchor }) => !existsSync(join(ROOT, file)) || (anchor && !anchors(file).includes(anchor)));
+    expect(broken.map((l) => l.target)).toEqual([]);
+  });
+
+  // GA-233: the app's name for the OS is Hersir; the names an installed Gizai is found by stay, so it updates into it.
+  it("the app is called Hersir (productName, the window title, the launcher), while the identifier, the program, the data folders and the desktop entry's file stay", () => {
     const conf = JSON.parse(read("src-tauri/tauri.conf.json"));
-    expect(conf.productName).toBe("Gizai");
+    expect(conf.productName).toBe("Hersir");
+    expect(conf.app.windows[0].title).toBe("Hersir");
     expect(conf.identifier).toBe("ai.gizai.app");
-    expect(conf.app.windows[0].title).toBe("Gizai");
-    expect(read("install.sh")).toContain(`grep -q '"productName": "Gizai"'`);
-    expect(read("install.sh")).toMatch(/^Name=Gizai$/m);
+    expect(conf.mainBinaryName).toBe("gizai");
+    expect(read("install.sh")).toContain(`grep -q '"productName": "Hersir"'`);
+    expect(read("install.ps1")).toContain(`-Pattern '"productName": "Hersir"'`);
+    expect(read("install.sh")).toMatch(/^Name=Hersir$/m);
+    expect(read("install.sh")).toContain('cat > "$APPS/gizai.desktop" <<DESKTOP');
+    expect(read("install.sh")).toMatch(/^Icon=gizai$/m);
+    expect(read("install.sh")).toMatch(/^StartupWMClass=gizai$/m);
     expect(read("src-tauri/src/lib.rs")).toContain('join("Library/Application Support/Gizai")');
     expect(read("src-tauri/src/lib.rs")).toMatch(/\.join\("Gizai"\)/);
+    expect(read("crates/gizai-agents/src/secrets.rs")).toContain('pub const SERVICE: &str = "gizai";');
+  });
+});
+
+// What install.sh, install.ps1 and the one-line scripts print: the header install.sh and install.ps1 print for --help
+// and -Help (the lines their own help reads), and every line of code, which holds each say, step, Say and Step, the
+// help get.sh and get.ps1 print and the notes they print later. Comments outside the header are never printed.
+const INSTALLERS = ["install.sh", "install.ps1", "scripts/get.sh", "scripts/get.ps1"];
+function printed(path) {
+  const text = read(path);
+  const [from, to] = path === "install.sh" ? text.match(/sed -n '(\d+),(\d+)p' "\$0"/).slice(1).map(Number)
+    : path === "install.ps1" ? [1, Number(text.match(/-TotalCount (\d+)/)[1])] : [0, 0];
+  return text.split("\n").map((line, i) => ({ n: i + 1, line })).filter(({ n, line }) => (n >= from && n <= to) || !/^\s*#/.test(line));
+}
+// The Gizai an installer keeps (the card's item 8): the data and install folders, the old install's Gizai.app and
+// Gizai.lnk, and the code's own names for its functions and types, which print nothing.
+const INSTALLER_KEPT = /Application Support\/Gizai|APPDATA%\\Gizai|APPDATA 'Gizai'|Programs\\Gizai|Gizai\.(app|lnk)|Invoke-Gizai|\$NewGizai|GizaiInstall/g;
+
+describe("the installers' messages say Hersir (GA-234)", () => {
+  it("what they print includes their help and their messages", () => {
+    const lines = (path) => printed(path).map((p) => p.line.trim());
+    expect(lines("install.sh")).toContain("# Hersir installer for Linux and macOS. Builds Hersir from source and installs it for you alone (no sudo):");
+    expect(lines("install.sh")).toContain("#   ./install.sh --uninstall     remove Hersir (add --purge to delete your data too)");
+    expect(lines("install.sh")).toContain('[ "$ok" = 1 ] && say "Everything Hersir needs to build is here."');
+    expect(lines("install.ps1")).toContain("# Hersir installer for Windows. Builds Hersir from source and installs it for you alone (no administrator rights):");
+    expect(lines("install.ps1")).toContain("if ($ok) { Say 'Everything Hersir needs to build is here.' }");
+    expect(lines("scripts/get.sh")).toContain("Hersir's one-line install for Linux and macOS:");
+    expect(lines("scripts/get.ps1")).toContain('Say "Hersir\'s one-line install for Windows, in PowerShell:"');
+    expect(lines("install.sh").some((l) => l.startsWith("# The tray icon loads libayatana-appindicator"))).toBe(false);
+  });
+
+  it.each(INSTALLERS)("nothing %s prints says Gizai, but for the data and install folders and the old install's Gizai.app and Gizai.lnk", (path) => {
+    const left = printed(path).filter(({ line }) => OLD.test(line.replace(INSTALLER_KEPT, ""))).map(({ n, line }) => `${path}:${n}: ${line.trim().slice(0, 120)}`);
+    expect(left).toEqual([]);
+  });
+
+  it("a message names Gizai.app or Gizai.lnk only for the old install's files", () => {
+    const old = INSTALLERS.flatMap((path) => printed(path).filter(({ line }) => /Gizai\.(app|lnk)/.test(line) && /\b(say|Say)\b/.test(line)).map(({ line }) => line.trim()));
+    expect(old).toEqual(['rm -rf "$LIB/Gizai.app" || say "Note: could not remove the old $LIB/Gizai.app (Hersir.app replaces it). Remove it yourself."']);
+  });
+
+  it('install.ps1 quotes the tray in its own words: "(Quit Hersir completely, in its tray menu)"', () => {
+    const quit = read("src-tauri/src/lib.rs").match(/MenuItem::with_id\(app, "quit", "([^"]+)"/)[1];
+    expect(quit).toBe("Quit Hersir completely");
+    const quotes = read("install.ps1").split("\n").filter((l) => l.includes("in its tray menu"));
+    expect(quotes).toHaveLength(2);
+    for (const l of quotes) expect(l).toContain(`(${quit}, in its tray menu)`);
+  });
+
+  it("Cargo.toml's descriptions and browser.html's title say Hersir", () => {
+    const tomls = git("ls-files", "Cargo.toml", "*/Cargo.toml").stdout.split("\n").filter(Boolean);
+    const descriptions = tomls.flatMap((t) => [...read(t).matchAll(/^description = "(.*)"$/gm)].map((m) => m[1]));
+    expect(descriptions).toHaveLength(4);
+    for (const d of descriptions) expect(d).toMatch(/^Hersir[: ]/);
+    expect(descriptions.filter((d) => OLD.test(d))).toEqual([]);
+    expect(read("browser.html")).toContain("<title>Hersir (browser mode)</title>");
+    expect(read("browser.html")).not.toMatch(OLD);
   });
 });

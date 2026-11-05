@@ -157,9 +157,9 @@ describe("a fetch that failed, with Try again", () => {
     expect(mainBar(main({ fetchedAt: NOW - 3 * 60 * MIN, fetchError: why }), opts()))
       .toEqual({ kind: "fetch-failed", text: "Couldn't fetch main from origin: could not resolve host github.com. The counts are from the last fetch, 3h ago." });
   });
-  it("never fetched: Gizai can't tell yet whether the folder is behind", () => {
+  it("never fetched: Hersir can't tell yet whether the folder is behind", () => {
     expect(mainBar(main({ fetchedAt: null, behind: 0, fetchError: `${why}.` }), opts()))
-      .toEqual({ kind: "fetch-failed", text: "Couldn't fetch main from origin: could not resolve host github.com. Gizai can't tell yet whether kade-portal is behind." });
+      .toEqual({ kind: "fetch-failed", text: "Couldn't fetch main from origin: could not resolve host github.com. Hersir can't tell yet whether kade-portal is behind." });
   });
 });
 

@@ -89,7 +89,7 @@ fn an_editor_folder_is_refused_with_the_agent_folders_refusals_and_says_why() {
     assert_eq!(refused("~"), "Editor folders: ~ can't be used: that's your home folder: pick the folder that holds your projects inside it");
     assert!(refused(&tmp.path().display().to_string()).contains("it holds your home folder"));
     assert_eq!(refused("~/.ssh"), "Editor folders: ~/.ssh can't be used: it holds keys or logins (~/.ssh)");
-    assert!(refused(&format!("{data}/worktrees")).ends_with(&format!("that's Gizai's data folder ({data}), or inside it")));
+    assert!(refused(&format!("{data}/worktrees")).ends_with(&format!("that's Hersir's data folder ({data}), or inside it")));
     assert!(refused("~/keys").contains("it leads to ~/.ssh: it holds keys or logins"), "{}", refused("~/keys"));
     assert_eq!(refused("~/notes.txt"), "Editor folders: ~/notes.txt can't be used: that's a file: pick a folder");
     let twice = editor::clean_roots(&s(&["~/Herd", &p.home.join("Herd/").display().to_string()]), &p).unwrap_err().to_string();
@@ -198,7 +198,7 @@ fn a_folder_the_editor_may_not_open_is_refused_in_a_plain_sentence() {
     assert_eq!(find(&p.home.join(".ssh").display().to_string()).unwrap_err(), "The Editor can't open ~/.ssh: it holds keys or logins (~/.ssh)");
     let data = p.data[0].display().to_string();
     let why = find(&wt.join("SHOP/SHOP-1").display().to_string()).unwrap_err();
-    assert!(why.ends_with(&format!("that's Gizai's data folder ({data}), or inside it")), "a worktree of a card that never started: {why}");
+    assert!(why.ends_with(&format!("that's Hersir's data folder ({data}), or inside it")), "a worktree of a card that never started: {why}");
     let why = find(&tmp.path().join("other").display().to_string()).unwrap_err();
     assert_eq!(why, format!("The Editor can't open {}: it isn't a project's folder, a folder in one of the Editor folders (Settings → General), or a card's worktree",
                             tmp.path().join("other").display()));

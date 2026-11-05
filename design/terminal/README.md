@@ -52,7 +52,7 @@ with 0 closes, closing asks once in place, no limit, free) are drawn as they are
 - `term-bg` is `bg` and `term-fg` is `text`: the panel and the code above it are one surface.
 - `term-red` and `term-green` are `diff-del` and `diff-add`, so `git diff` in a terminal reads as a card's Changes.
   Yellow is the gold of `syn-type`, blue the blue of `syn-function`.
-- `term-cyan` is a sky blue and `term-magenta` a violet, clearly apart from teal `live` (an agent at work) and magenta
+- `term-cyan` is a sky blue and `term-magenta` a violet, clearly apart from teal `live` (an agent at work) and gold
   `needs` ("needs you").
 - Bright colours are the stronger ones on each background: lighter in dark, darker in light. Three are block colours,
   under 4.5:1 by nature (black in dark; white and bright white in light); xterm.js's `minimumContrastRatio` of 4.5 lifts
@@ -100,6 +100,6 @@ Each value with its contrast on `term-bg`. `=` follows another token, with its v
 
 Added under "Colour carries meaning, never decoration", after the line on `needs`:
 
-> - The terminal's own colours (`term-*`) are what programs print, not Gizai's states: `term-cyan` is a sky blue and
+> - The terminal's own colours (`term-*`) are what programs print, not Hersir's states: `term-cyan` is a sky blue and
 >   `term-magenta` a violet, at least 35° of hue (OKLCH) from `live` and `needs`, so a program's cyan never reads as an
 >   agent at work, nor its magenta as "needs you".

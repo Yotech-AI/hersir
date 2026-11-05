@@ -75,7 +75,7 @@
           "dark": "#c58af9",
           "light": "#8a3cc2"
         },
-        "usage": "ANSI 5: images in ls. A violet: at least 35° of hue from needs (magenta, “needs you”)."
+        "usage": "ANSI 5: images in ls. A violet: at least 35° of hue from needs (gold, “needs you”)."
       },
       {
         "name": "term-cyan",

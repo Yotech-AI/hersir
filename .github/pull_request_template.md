@@ -1,6 +1,6 @@
 ## What changed
 
-<!-- What changes for the person using GizAi, in a few plain lines. Name the issue it fixes, like "Fixes #12". -->
+<!-- What changes for the person using Hersir, in a few plain lines. Name the issue it fixes, like "Fixes #12". -->
 
 ## How it was tested
 

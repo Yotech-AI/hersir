@@ -511,7 +511,7 @@ pub fn reset_session(db: &Db, thread_id: &str) -> Result<()> {
 }
 
 /// What a chat says when Gizai stopped while an answer was being written (it crashed, or the computer went off).
-pub const INTERRUPTED: &str = "Interrupted: Gizai closed before the Team Lead finished this answer.";
+pub const INTERRUPTED: &str = "Interrupted: Hersir closed before the Team Lead finished this answer.";
 
 /// About how long (characters) the conversation a new session is handed may be.
 pub const HANDOVER_CAP: usize = 40_000;
@@ -562,7 +562,7 @@ fn handover_entry(m: &ChatMessage) -> Option<String> {
     match m.role.as_str() {
         "user" => Some(format!("User: {}", body())),
         "agent" => Some(format!("You: {}", body())),
-        "system" if is_decision_note(m) => Some(format!("(Gizai: {})", body())),
+        "system" if is_decision_note(m) => Some(format!("(Hersir: {})", body())),
         "tool" => {
             let name = m.tool_name.clone().unwrap_or_default();
             let name = name.trim_start_matches("mcp__gizai__");

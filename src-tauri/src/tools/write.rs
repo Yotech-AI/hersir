@@ -33,7 +33,7 @@ fn task_done(cx: &Cx, id: &str, what: &str, held_after: Option<&str>) -> Result<
     let mut v = json!({"ok": true, "done": what, "task": task, "link": link("task", &t.id, &format!("{} {}", t.identifier, short(&t.title, 60)))});
     if let Some(tool) = held_after {
         v["on_hold"] = json!(format!("{} waits on hold for the user's OK, so no agent starts it: you used {tool}, a tool from outside \
-            Gizai, in this answer. Tell the user, and ask them to check it and take it off hold.", t.identifier));
+            Hersir, in this answer. Tell the user, and ask them to check it and take it off hold.", t.identifier));
     }
     Ok(v)
 }
@@ -41,7 +41,7 @@ fn task_done(cx: &Cx, id: &str, what: &str, held_after: Option<&str>) -> Result<
 /// GA-101: why a card waits on hold `needs_decision` when the Team Lead put it where an agent would start it, or changed it
 /// there, after using `tool`, a tool from outside Gizai.
 fn waiting_for_ok(tool: &str) -> String {
-    format!("Waiting for your OK: the Team Lead put this card here after using {tool}, a tool from outside Gizai. Check it, then take it off hold.")
+    format!("Waiting for your OK: the Team Lead put this card here after using {tool}, a tool from outside Hersir. Check it, then take it off hold.")
 }
 
 /// An Auto column: its agents pick its cards up by themselves (`workflow::waiting_for`).

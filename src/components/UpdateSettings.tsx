@@ -24,9 +24,9 @@ export function UpdateSettings() {
   const release = s.available;
   const update = () => release && act(startUpdate(release.version));
   return (
-    <FormSection title="Updates" text="Gizai updates from its releases on GitHub. An update builds the new version from source in the background, backs up your data, installs it and offers a restart. If a step fails, the installed version keeps working.">
+    <FormSection title="Updates" text="Hersir updates from its releases on GitHub. An update builds the new version from source in the background, backs up your data, installs it and offers a restart. If a step fails, the installed version keeps working.">
       <Field label="Version" wide>
-        <div className={`gh-line ${line.mark === "new" ? "ok" : line.mark}`}><Mark className="icon" /><span>Gizai {s.current}. {line.text}</span></div>
+        <div className={`gh-line ${line.mark === "new" ? "ok" : line.mark}`}><Mark className="icon" /><span>Hersir {s.current}. {line.text}</span></div>
         {release?.url?.startsWith("https://") && (
           <div><button className="btn ghost sm" onClick={() => openUrl(release.url!).catch(() => {})}><ExternalLink className="icon" />Release {release.version} on GitHub</button></div>
         )}
@@ -44,24 +44,24 @@ export function UpdateSettings() {
             </>
           ) : job?.step === "installed" || s.installed ? (
             <>
-              <div className="gh-line ok"><CircleCheck className="icon" /><span>Version {job?.step === "installed" ? job.version : s.installed} is installed. Restart Gizai to use it.</span></div>
+              <div className="gh-line ok"><CircleCheck className="icon" /><span>Version {job?.step === "installed" ? job.version : s.installed} is installed. Restart Hersir to use it.</span></div>
               {job?.step === "installed" && job.problem && <span className="warn">{job.problem}</span>}
               {job?.backup && <span className="hint">Your data was backed up to <span className="mono">{job.backup}</span></span>}
-              <div><RestartButton className="btn primary" label="Restart Gizai" /></div>
+              <div><RestartButton className="btn primary" label="Restart Hersir" /></div>
             </>
           ) : (
             <>
               {job?.step === "failed" && (
                 <div className="update-failed" role="alert">
                   <div className="gh-line failed"><CircleX className="icon" /><span>The update to {job.version} didn't work: {job.problem ?? "it failed"}. {job.unchanged
-                    ? `Gizai ${s.current} is still installed and works as before.`
-                    : "The installer stopped partway, so the installed Gizai may not start: try again, or run ./install.sh from a checkout of production."}</span></div>
+                    ? `Hersir ${s.current} is still installed and works as before.`
+                    : "The installer stopped partway, so the installed Hersir may not start: try again, or run ./install.sh from a checkout of production."}</span></div>
                   {job.output && <pre className="update-output mono">{job.output}</pre>}
                   <span className="hint">Everything it did is in <span className="mono">{job.log}</span></span>
                 </div>
               )}
               {job?.step === "stopped" && (
-                <div className="gh-line skipped"><CircleMinus className="icon" /><span>The update to {job.version} was stopped. Gizai {s.current} is still installed.</span></div>
+                <div className="gh-line skipped"><CircleMinus className="icon" /><span>The update to {job.version} was stopped. Hersir {s.current} is still installed.</span></div>
               )}
               {release && (s.cannotInstall
                 ? <div className="gh-line skipped"><CircleMinus className="icon" /><span>{s.cannotInstall}</span></div>
@@ -70,7 +70,7 @@ export function UpdateSettings() {
           )}
         </Field>
       )}
-      <Field label="New releases" wide hint="Gizai asks GitHub for the latest release 20 seconds after it starts and every six hours. It sends nothing about you or your work.">
+      <Field label="New releases" wide hint="Hersir asks GitHub for the latest release 20 seconds after it starts and every six hours. It sends nothing about you or your work.">
         <label className="check"><input type="checkbox" checked={s.autoCheck} onChange={(e) => act(setUpdateAutoCheck(e.target.checked))} />Check for new releases automatically</label>
         <div><button className="btn" onClick={() => act(checkForUpdates())} disabled={s.checking}><RefreshCw className="icon" />{s.checking ? "Checking…" : "Check now"}</button></div>
         {err && <div className="gh-line failed" role="alert"><CircleX className="icon" /><span>{err}</span></div>}

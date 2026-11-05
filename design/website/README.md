@@ -1,6 +1,6 @@
 # Website: the homepage, desktop (GA-144)
 
-GizAi's homepage, designed in Figma from GA-52's brandbook, for Jefsev's review. Desktop first: the sub-pages (one per
+Hersir's homepage, designed in Figma from GA-52's brandbook, for Jefsev's review. Desktop first: the sub-pages (one per
 feature) and mobile come later, and so does building the site.
 
 **Round 2** follows Jefsev's review of 13 Oct 2026 ("the basics are there, but it lacks personality"): ADA moves up
@@ -26,14 +26,14 @@ site's accent; the mountains' wireframe lines through the page; and the mountain
 
 ## The page, top to bottom
 
-1. **Top bar**, 72 px, sticky, with a 1 px line under it: the logo; Tour, ADA, Features and Get GizAi, which scroll to
-   their section; View on GitHub (https://github.com/Yotech-AI/gizai); the dark and light switch.
-2. **Hero**: the mark at 72 px, the headline, one line, Get GizAi (primary) and View on GitHub (secondary), then the
+1. **Top bar**, 72 px, sticky, with a 1 px line under it: the logo; Tour, ADA, Features and Get Hersir, which scroll to
+   their section; View on GitHub (https://github.com/Yotech-AI/hersir); the dark and light switch.
+2. **Hero**: the mark at 72 px, the headline, one line, Get Hersir (primary) and View on GitHub (secondary), then the
    product tour in a 1280 × 832 frame, with a plus at each corner.
 3. **ADA**, right after the tour: the outlined ADA and what the letters stand for; the headline and the three
    paragraphs; the three points in a strip of lines.
 4. **Features**: eight numbered rows, guide to guide, split by 1 px lines. Row 01 is open.
-5. **Get GizAi**: one line to install per system, each with Copy, and Or build from source.
+5. **Get Hersir**: one line to install per system, each with Copy, and Or build from source.
 6. **Footer**: the logo, Made by YoTech, GitHub and Apache-2.0 licence; under it the mountains' empty sky.
 7. **The mountain band**, fixed along the bottom of the window, behind everything.
 
@@ -41,7 +41,7 @@ site's accent; the mountains' wireframe lines through the page; and the mountain
 
 **Headline (Display):** Your agents build it. You review. ("review" in pink)
 
-**The line under it (Lead):** GizAi is a free desktop app where a team of AI coding agents works through your board
+**The line under it (Lead):** Hersir is a free desktop app where a team of AI coding agents works through your board
 and hands every card back to you for review.
 
 **ADA** (copy kept from round 1)
@@ -52,13 +52,13 @@ and hands every card back to you for review.
 - An IDE with an AI assistant is built around you writing code. The assistant helps in the file you have open, one
   request at a time. An ADA is built around the work: agents take whole cards, side by side, and you look at what comes
   back.
-- GizAi is an ADA. Its board decides which agent works on what. A Team Lead plans the work with you, and QA tests every
+- Hersir is an ADA. Its board decides which agent works on what. A Team Lead plans the work with you, and QA tests every
   card before it comes back to you.
 - The three points: **The board leads.** Cards and columns decide what gets done, and by whom. **Agents work side by
   side.** Every card gets its own agent, git worktree and branch. **You review and decide.** Nothing reaches your main
   branch until you merge it.
 
-**Features:** label Features, title What GizAi does, lead "One app, from the card you write to the pull request you
+**Features:** label Features, title What Hersir does, lead "One app, from the card you write to the pull request you
 merge." Each name is an H2 without its full stop, as the brandbook's headings are.
 
 | # | Name (H2) | Text | Opens | Open shows |
@@ -67,19 +67,19 @@ merge." Each name is an H2 without its full stop, as the brandbook's headings ar
 | 02 | A Team Lead you talk to | A chat that turns your requests into cards, starts agents and checks the board. It asks you only what it can't decide, and you approve in one click. | `/features/team-lead` | GIF: the chat turns a request into cards and starts agents; a one-click approval |
 | 03 | Bring your own CLI | Claude Code, Codex, Gemini or another coding CLI, on your own machine, with your own logins and accounts. See each account's usage limits and move agents to one with room. | `/features/cli` | Screenshot: Settings, Coding CLIs, the accounts and their usage limits |
 | 04 | Tested before you see it | QA runs the tests, adds missing ones and opens the pull request. You review and merge, and DevOps releases. | `/features/testing` | Screenshot: a card in Testing, the QA run, its tests and pull request |
-| 05 | The Editor and Terminal, built in | Open a project or a card's worktree, see its git status and edit, with your own shell in the panel under the code. Free, like the rest of GizAi. | `/features/editor-and-terminal` | GIF: the Editor on a card's worktree, git marks, a shell under the code |
+| 05 | The Editor and Terminal, built in | Open a project or a card's worktree, see its git status and edit, with your own shell in the panel under the code. Free, like the rest of Hersir. | `/features/editor-and-terminal` | GIF: the Editor on a card's worktree, git marks, a shell under the code |
 | 06 | Memory | Decisions and gotchas as linked notes, with a graph. Agents learn on every card, and one client's notes never reach another's. | `/features/memory` | Screenshot: linked notes and their graph |
 | 07 | Tools per agent | MCP servers, web search and a hidden browser for testing web pages. Each stays off until you switch it on. | `/features/tools` | Screenshot: an agent's tools, each with its switch |
 | 08 | The Inbox | Questions, approvals and cards to review in one place. "Run this for me" for the commands an agent may not run. | `/features/inbox` | Screenshot: a question, an approval and a Run this for me |
 
 There is no "Local-first and open" row: open source isn't a feature, and local-first is part of row 03.
 
-**Get GizAi:** label Install; lead "One line in a terminal installs GizAi on your computer. It's free, for Linux,
+**Get Hersir:** label Install; lead "One line in a terminal installs Hersir on your computer. It's free, for Linux,
 macOS and Windows." Then:
 
 - Linux and macOS: `curl -fsSL https://gizai.app/install.sh | sh`
 - Windows · PowerShell: `irm https://gizai.app/install.ps1 | iex`
-- Or build from source: the README's Install steps (https://github.com/Yotech-AI/gizai#install).
+- Or build from source: the README's Install steps (https://github.com/Yotech-AI/hersir#install).
 
 ## What the design decides
 

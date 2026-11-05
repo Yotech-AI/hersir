@@ -85,7 +85,7 @@ pub fn at(dir: &Path) -> Option<At> {
 pub fn remove(dir: &Path, root: &Path) -> Result<(), AgentError> {
     let parent = dir.parent().and_then(|p| p.canonicalize().ok());
     if dir.file_name().is_none() || parent.is_none() || parent != root.canonicalize().ok() {
-        return Err(AgentError::Git(format!("{} is not one of Gizai's copies", dir.display())));
+        return Err(AgentError::Git(format!("{} is not one of Hersir's copies", dir.display())));
     }
     let meta = match std::fs::symlink_metadata(dir) {
         Ok(m) => m,
