@@ -1,6 +1,6 @@
 [package]
 name = "gizai-core"
-description = "Gizai core: SQLite store, domain and workflow (no Tauri)"
+description = "Hersir core: SQLite store, domain and workflow (no Tauri)"
 edition.workspace = true
 license.workspace = true
 version.workspace = true

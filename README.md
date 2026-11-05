@@ -2,7 +2,7 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="design/brand/logo-horizontal-on-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset="design/brand/logo-horizontal-on-light.svg">
-    <img alt="GizAi" src="design/brand/logo-horizontal-on-light.svg" width="320">
+    <img alt="Hersir" src="design/brand/logo-horizontal-on-light.svg" width="320">
   </picture>
 </p>
 
@@ -13,21 +13,23 @@
 A free, open-source desktop app where a team of AI coding agents works through your board in parallel, on Claude Code,
 Codex CLI or Gemini CLI. Made for freelancers and software companies with several clients and projects.
 
-[Website](https://gizai.app) · [Install](#install) · [Docs](#documentation) · [Releases](https://github.com/Yotech-AI/gizai/releases) · [Licence](LICENSE)
+[Website](https://gizai.app) · [Install](#install) · [Docs](#documentation) · [Releases](https://github.com/Yotech-AI/hersir/releases) · [Licence](LICENSE)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/tour/tour-dark.gif">
   <source media="(prefers-color-scheme: light)" srcset="docs/tour/tour-light.gif">
-  <img alt="GizAi's product tour: the board and a live agent run, the Team Lead's chat, Claude Code and Codex, a card tested by QA, the Editor and its Terminal, Memory, an agent's tools and the Inbox" src="docs/tour/tour-light.gif">
+  <img alt="Hersir's product tour: the board and a live agent run, the Team Lead's chat, Claude Code and Codex, a card tested by QA, the Editor and its Terminal, Memory, an agent's tools and the Inbox" src="docs/tour/tour-light.gif">
 </picture>
 
 </div>
 
 ## What it is
 
-GizAi is an Agentic Development Application (ADA). You write the cards; agents build them side by side, each card in
+Hersir is an Agentic Development Application (ADA). You write the cards; agents build them side by side, each card in
 its own git worktree and branch; a QA agent tests the card and opens its pull request; and you review and merge.
 Everything runs on your own computer, with your own git repositories, logins and coding CLIs.
+
+Hersir was called GizAi until version 0.14.
 
 ## Made for work with several clients
 
@@ -76,7 +78,7 @@ On Windows 11, in PowerShell:
 irm https://gizai.app/install.ps1 | iex
 ```
 
-It gets the source of the latest release, checks what your computer is missing, then builds GizAi and installs it for you alone, without sudo or administrator rights. Run it again to update. Every system needs git, Rust, Node.js 20 or newer, and Claude Code or Codex, logged in.
+It gets the source of the latest release, checks what your computer is missing, then builds Hersir and installs it for you alone, without sudo or administrator rights. Run it again to update. Every system needs git, Rust, Node.js 20 or newer, and Claude Code or Codex, logged in.
 
 - **Linux:** also WebKitGTK 4.1, and for the tray icon `libayatana-appindicator` on Arch and Omarchy or `libayatana-appindicator3-1` on Debian and Ubuntu. The check names the packages.
 - **macOS** on Apple silicon: also Apple's Command Line Tools, from `xcode-select --install`.
@@ -85,16 +87,16 @@ It gets the source of the latest release, checks what your computer is missing, 
 Or build from a clone:
 
 ```sh
-git clone --branch production https://github.com/Yotech-AI/gizai.git
-cd gizai
+git clone --branch production https://github.com/Yotech-AI/hersir.git
+cd hersir
 ./install.sh
 ```
 
 On Windows, in PowerShell:
 
 ```powershell
-git clone --branch production https://github.com/Yotech-AI/gizai.git
-cd gizai
+git clone --branch production https://github.com/Yotech-AI/hersir.git
+cd hersir
 powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
@@ -104,19 +106,19 @@ The details are in [docs/install.md](docs/install.md): what each system needs, u
 
 1. Install Claude Code or Codex and log in to it. The Team Lead's chat needs Claude Code.
 2. For projects on GitHub, install gh and log in (`gh auth login`, or Settings → GitHub): QA opens the pull requests with it.
-3. Open GizAi: the workflow and five agents are ready. Talk to the Team Lead on the Chat page.
+3. Open Hersir: the workflow and five agents are ready. Talk to the Team Lead on the Chat page.
 4. Add a project with its git repository, and put a card in To do.
 5. The Backend or Frontend Agent builds it, the QA Agent tests it, and it lands in your Review.
 
 ## Documentation
 
 - [Install](docs/install.md): what each system needs, when macOS or Windows warns, updates, your data and no telemetry.
-- [Settings](docs/settings.md): what each tab holds, how GizAi looks, the tray, and the screenshot settings.
+- [Settings](docs/settings.md): what each tab holds, how Hersir looks, the tray, and the screenshot settings.
 - Features: [Board](docs/features/board.md) · [Team Lead](docs/features/team-lead.md) · [CLIs](docs/features/cli.md) · [Testing](docs/features/testing.md) · [Editor and Terminal](docs/features/editor-and-terminal.md) · [Memory](docs/features/memory.md) · [Tools](docs/features/tools.md) · [Inbox](docs/features/inbox.md) · [Screenshots](docs/features/screenshots.md)
 - [Memory in depth](docs/memory.md): folders, properties, links, search, and how runs get notes.
 - [Agent tools in depth](docs/agent-tools.md): MCP servers, signing in, the web, the browser and the safety rules.
 - [Linux, macOS and Windows](docs/PLATFORMS.md): what differs on each system.
-- [Releasing](docs/RELEASING.md): how a release is made, and how GizAi updates itself.
+- [Releasing](docs/RELEASING.md): how a release is made, and how Hersir updates itself.
 - [Paid features](docs/PAID-FEATURES.md): the plan for paid hosted services; the app stays free.
 
 ## Development
@@ -132,16 +134,16 @@ node scripts/bundle-size.mjs             # after npm run build: each file's byte
 
 A performance card runs `scripts/perf.sh` on `main` and on its branch, on the same machine with nothing else running, and puts `scripts/perf.sh --compare` of the two in its pull request (`docs/research/performance.md` §7 says what each scenario measures). For the database alone: `cargo run --release -p gizai-core --example bench_queries -- <data dir>` on `prep_perf`'s data.
 
-The capture makes the product tour's stills: GizAi with made-up data in a headless compositor, scene by scene, in dark and light, with a `scenes.json` of what each step clicked. The tour video and the two GIFs above (`docs/tour/tour-dark.gif` and `tour-light.gif`) are made from those stills in the website's repository, which holds the tour's Remotion project.
+The capture makes the product tour's stills: Hersir with made-up data in a headless compositor, scene by scene, in dark and light, with a `scenes.json` of what each step clicked. The tour video and the two GIFs above (`docs/tour/tour-dark.gif` and `tour-light.gif`) are made from those stills in the website's repository, which holds the tour's Remotion project.
 
-On every pull request and every push to `main`, CI (`.github/workflows/ci.yml`) builds GizAi and runs `cargo test --workspace` and `npm test` on Linux, macOS (Apple silicon) and Windows, and checks the install scripts there. A pull request that changes an install script also installs GizAi with the one line on Ubuntu, Fedora, Arch Linux, openSUSE Tumbleweed, macOS and Windows (`.github/workflows/install.yml`). A pull request into `main` that changes nothing but GizAi's version, a release's first step, skips both, and its checks pass within a minute or two: the release's pull request into `production` runs them in full (`docs/RELEASING.md`). After each release, and every week, gizai.app's own lines install it on Ubuntu, macOS and Windows (`.github/workflows/one-line.yml`).
+On every pull request and every push to `main`, CI (`.github/workflows/ci.yml`) builds Hersir and runs `cargo test --workspace` and `npm test` on Linux, macOS (Apple silicon) and Windows, and checks the install scripts there. A pull request that changes an install script also installs Hersir with the one line on Ubuntu, Fedora, Arch Linux, openSUSE Tumbleweed, macOS and Windows (`.github/workflows/install.yml`). A pull request into `main` that changes nothing but Hersir's version, a release's first step, skips both, and its checks pass within a minute or two: the release's pull request into `production` runs them in full (`docs/RELEASING.md`). After each release, and every week, gizai.app's own lines install it on Ubuntu, macOS and Windows (`.github/workflows/one-line.yml`).
 
 [CLAUDE.md](CLAUDE.md) has the rules for working in this repository, [docs/HANDOFF-2026-10-07.md](docs/HANDOFF-2026-10-07.md) explains how it is built, and [docs/RELEASING.md](docs/RELEASING.md) how a release is made.
 
 ## Licence
 
-GizAi is open source under the [Apache License 2.0](LICENSE); see also [NOTICE](NOTICE). You may use, change and share it, also commercially, if you include the licence and the NOTICE and mark the files you changed. The licence gives no rights to the GizAi name and logo. Releases published before the switch to Apache-2.0 stay under the MIT licence.
+Hersir is open source under the [Apache License 2.0](LICENSE); see also [NOTICE](NOTICE). You may use, change and share it, also commercially, if you include the licence and the NOTICE and mark the files you changed. The licence gives no rights to the Hersir name and logo. Releases published before the switch to Apache-2.0 stay under the MIT licence.
 
 The whole app is free, with the agents, the Team Lead's chat, the Editor and the terminals; the plan for paid features is hosted services only, like an encrypted backup and sync ([docs/PAID-FEATURES.md](docs/PAID-FEATURES.md)).
 
-GizAi is an independent open-source project by YoTech, not affiliated with or endorsed by Anthropic, OpenAI or Google. It runs Claude Code, Codex CLI and Gemini CLI with your own accounts, and never sells AI usage. Claude Code is a trademark of Anthropic, Codex of OpenAI, and Gemini of Google LLC.
+Hersir is an independent open-source project by YoTech, not affiliated with or endorsed by Anthropic, OpenAI or Google. It runs Claude Code, Codex CLI and Gemini CLI with your own accounts, and never sells AI usage. Claude Code is a trademark of Anthropic, Codex of OpenAI, and Gemini of Google LLC.

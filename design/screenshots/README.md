@@ -4,7 +4,7 @@ The design of GA-173's research (`docs/research/screenshots.md` §3.7, §3.8 and
 Jefsev's review, before SF1 and SF2 build it. It lives in Figma, file **Giz-AI**, page **App: Screenshots** (`158:2`):
 https://www.figma.com/design/Q2dp2xiv8MMm90Xwj3ToCI/Giz-AI?node-id=158-2
 
-Every frame is the window, 1440 × 900 (`src-tauri/tauri.conf.json`), drawn with the app's tokens (the GizAi colour and
+Every frame is the window, 1440 × 900 (`src-tauri/tauri.conf.json`), drawn with the app's tokens (the `GizAi colour` and
 size variables, Dark and Light modes), the App/* text styles and the App/* components of GA-168 (page App: Onboarding,
 `135:21`), plus the components below. `use_figma` places no images, so each screenshot is a grey placeholder with its
 size marked (`Shot/Picture`).
@@ -43,11 +43,11 @@ Inbox, y 4400 the settings; components at x 9000.
    have: **New**, and Compare is off for it. Compare has two ways: **Side by side** and a **Slider**.
 2. **The larger view has more than Previous, Next and Close**: Fit \| 100% (key `1`), **Open** in the system's image
    viewer (as Attachments do), Compare (key `C`).
-3. **No port and no demo-data field in the project**: Gizai picks a free port per run from Settings → Agents and runs →
+3. **No port and no demo-data field in the project**: Hersir picks a free port per run from Settings → Agents and runs →
    Screenshots → Preview ports and hands it in `GIZAI_PREVIEW_PORT` (and `PORT`); the demo data is the Preview command's
    own job, in a throwaway database in `GIZAI_PREVIEW_DIR`. The project has Screenshots, Preview command, Start time,
    Themes, Sizes and Whole page.
-4. **Sizes and themes are the project's**, in its form → Preview, not in Settings: a website has Desktop and Mobile, Gizai
+4. **Sizes and themes are the project's**, in its form → Preview, not in Settings: a website has Desktop and Mobile, Hersir
    Window and Small. Settings has how many a run, the largest file, how long they're kept and the ports.
 5. **One more switch**, the card's own: Properties → Screenshots → Screenshots before Review (the research's table), so
    the empty tab has a fourth reason, Off for this card.
@@ -121,7 +121,7 @@ Inbox, y 4400 the settings; components at x 9000.
 
 ## Tokens and components
 
-**Colours** (GizAi colour, Dark and Light): `surface/side`, `bg`, `raised`, `overlay`, `hover`, `selected`; `line/line`,
+**Colours** (`GizAi colour`, Dark and Light): `surface/side`, `bg`, `raised`, `overlay`, `hover`, `selected`; `line/line`,
 `line-2`; `text/text`, `text-2`, `text-3`; `accent/accent`, `accent-soft`, `on-accent`, `focus`; `status/success` and
 `-soft` (QA passed), `danger` and `-soft` (QA failed, High risk, the preview's note), `warning` and `-soft` (Stopped at
 the time limit, Left out), `needs` and `-soft` (Needs a decision, Review, On hold); the glyphs `st-*`; labels `c-*`.
@@ -170,7 +170,7 @@ compare, Esc close; in 100% drag or scroll to look around. In Compare there is n
 
 The sidebar, in every frame (from the Chat frame): New task, N, Search, Ctrl K, Inbox, 2 (3 on the board and in the
 Inbox, which count the cards that need you), Work, Chat, Tasks, Clients,
-Projects, gizai-website, Gizai, spoorwegmuseum, Terminal, New terminal, Editor, Open a folder, Agents, Team Lead,
+Projects, gizai-website, Hersir, spoorwegmuseum, Terminal, New terminal, Editor, Open a folder, Agents, Team Lead,
 Backend Agent, Frontend Agent, QA Agent, DevOps Agent, Memory, Company, Usage, Team, Users, Settings.
 
 **Screenshots tab** (`166:71`, `168:479`): Tasks / gizai-website / GW-8 · Copy ID · Card · Changes +120 −8 ·
@@ -245,16 +245,16 @@ collection Jefsev 5 h ago. IN PROGRESS 1: GA-180 Research: a preview command per
 1 h ago. A click on a row with the sign opens the card on its Screenshots tab.
 
 **The project's form** (`175:4306`): Edit gizai-website · "Projects hold tasks, docs and files. Agents work on projects
-linked to a git repository." Section **Preview**: "While an agent works on a card, Gizai serves the card’s branch with
+linked to a git repository." Section **Preview**: "While an agent works on a card, Hersir serves the card’s branch with
 demo data, so the agent can take screenshots of the screens it changed. The card shows them on its Screenshots tab."
 
 | Field | Control (default) | Hint |
 |---|---|---|
 | Screenshots | ☑ Take screenshots of this project’s screens | On by default. Off: no agent takes any here, and its cards have no Screenshots tab. |
-| Preview command | `npx astro dev --host 127.0.0.1 --port "$GIZAI_PREVIEW_PORT" --ignore-lock` (empty) | Empty by default: no preview, so no screenshots. Runs with bash -c in the card’s worktree when a run starts whose agent takes screenshots, on a free port in GIZAI_PREVIEW_PORT (and PORT), with GIZAI_PREVIEW_DIR for a throwaway database. Serve demo data, never your .env database. Gizai ends it with the run. |
+| Preview command | `npx astro dev --host 127.0.0.1 --port "$GIZAI_PREVIEW_PORT" --ignore-lock` (empty) | Empty by default: no preview, so no screenshots. Runs with bash -c in the card’s worktree when a run starts whose agent takes screenshots, on a free port in GIZAI_PREVIEW_PORT (and PORT), with GIZAI_PREVIEW_DIR for a throwaway database. Serve demo data, never your .env database. Hersir ends it with the run. |
 | Start time (seconds) | 120 | 10 to 600; 120 by default. The agent starts once the page answers, or after this long without it. |
-| Themes | ☑ Both themes, dark and light (off) | Off by default (on for Gizai). On: each changed screen in the first theme, and the card’s main screen in the other one too. |
-| Sizes | Desktop 1280 × 800, Mobile 390 × 844, Add a size | 1 to 4 sizes, each 320 to 3840 wide and 320 to 2400 high. Desktop 1280 × 800 and Mobile 390 × 844 by default; Gizai’s own are Window 1440 × 900 and Small 900 × 600. |
+| Themes | ☑ Both themes, dark and light (off) | Off by default (on for Hersir). On: each changed screen in the first theme, and the card’s main screen in the other one too. |
+| Sizes | Desktop 1280 × 800, Mobile 390 × 844, Add a size | 1 to 4 sizes, each 320 to 3840 wide and 320 to 2400 high. Desktop 1280 × 800 and Mobile 390 × 844 by default; Hersir’s own are Window 1440 × 900 and Small 900 × 600. |
 | Whole page | ☐ The whole length of each page | Off by default: one window’s height at each size. |
 
 Then Budget · "Optional. Shown on the project page." · Budget (€) 4800 · Budget (hours) 60; the foot: Ctrl+Enter saves ·
@@ -272,20 +272,20 @@ run that changed a screen, it saves screenshots of it for the card’s Screensho
 Preview)." · "List its tools in Settings → MCP servers → chrome-devtools to switch them one by one; until then, all its
 tools are on." The field's hint: "Chrome DevTools: a hidden Chrome with a throwaway profile, never on your screen and
 never your own browser, profile or logins. Every click is a tool call, and the cap per run is in Settings → Runs.
-Suggested for QA, Frontend and Design agents, never switched on by Gizai." With the browser off, the new switch is off
+Suggested for QA, Frontend and Design agents, never switched on by Hersir." With the browser off, the new switch is off
 and disabled (45 %). Then, as today: Instructions · "Sent with every run, before the task. Must end by asking for the
 GIZAI_RESULT line." · Instructions (the editor shows a sample of the agent's instructions); the foot: Ctrl+Enter saves ·
 Cancel · Save changes.
 
 **Settings** (`175:4718`): Settings · Save settings · General · Appearance · Notifications · Agents and runs · MCP
 servers · GitHub and Bitbucket. Runs (as today): Minutes per run 90 "5 to 480"; Tool calls per run 200 "20 to 2000. Every
-file read, edit and command is one." New section **Screenshots**: "What Gizai keeps of the screenshots agents take at
+file read, edit and command is one." New section **Screenshots**: "What Hersir keeps of the screenshots agents take at
 the end of their runs, and the ports of the projects’ previews. Each project sets its sizes and themes in its form →
 Preview."
 
 | Field | Default | Hint (range) |
 |---|---|---|
-| Screenshots per run | 12 | 1 to 30; 12 by default. Gizai keeps the first ones by file name and says in the run what it left out. |
+| Screenshots per run | 12 | 1 to 30; 12 by default. Hersir keeps the first ones by file name and says in the run what it left out. |
 | Largest screenshot (MB) | 10 | 1 to 50; 10 by default. |
 | Keep per card (sets) | 3 | 1 to 20; 3 by default. A newer run’s set removes the oldest beyond these. |
 | Delete a finished card’s screenshots after (days) | 30 | 0 to 365; 30 by default, counted from Done or Cancelled. 0 keeps them. |
