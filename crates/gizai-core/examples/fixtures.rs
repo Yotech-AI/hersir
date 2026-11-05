@@ -636,7 +636,7 @@ fn main() {
         "kind": "claude_code", "web": {"search": null, "fetch": null, "domains": null},
         "browser": {"disabled": null, "needs": needs, "version": browser.version, "lastRun": last_run, "tools": [],
                     "summary": "Its tools aren't listed yet: List tools in Settings → MCP servers shows them.", "risk": "unknown"},
-        "builtin": {"tools": catalog, "source": "Gizai's catalog: after its first run, or Ask Claude Code again, it shows the tools Claude Code itself reports.",
+        "builtin": {"tools": catalog, "source": "Hersir's catalog: after its first run, or Ask Claude Code again, it shows the tools Claude Code itself reports.",
                     "canAsk": true, "slash": null},
         "saved": saved,
     });
