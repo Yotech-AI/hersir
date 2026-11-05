@@ -233,7 +233,7 @@ fn agent_fields(cx: &Cx, a: &Args) -> Vec<(&'static str, &'static str, String)> 
         out.push((key, label, v));
     }
     if let Some(list) = a.list("allowed_tools") {
-        out.push(("allowed_tools", "Allowed commands", if list.is_empty() { "Gizai's default list".into() } else { list.join(", ") }));
+        out.push(("allowed_tools", "Allowed commands", if list.is_empty() { "Hersir's default list".into() } else { list.join(", ") }));
     }
     out
 }
@@ -241,7 +241,10 @@ fn agent_fields(cx: &Cx, a: &Args) -> Vec<(&'static str, &'static str, String)> 
 fn create_agent(cx: &Cx, a: &Args) -> Result<Preview, String> {
     let name = a.req("name")?;
     let role = a.req("role")?;
-    let fields = agent_fields(cx, a).into_iter().map(|(_, label, v)| field(label, if v.is_empty() { "—".into() } else { v })).collect();
+    // GA-225: the team it joins, which must be named when there is more than one.
+    let t = resolve::team_arg(cx, a)?;
+    let mut fields: Vec<Field> = team_field(cx, &t).into_iter().collect();
+    fields.extend(agent_fields(cx, a).into_iter().map(|(_, label, v)| field(label, if v.is_empty() { "—".into() } else { v })));
     Ok(Preview { line: format!("Add the agent {name} ({role})"), fields, text: a.opt("instructions_md"), ..Default::default() })
 }
 
@@ -260,7 +263,7 @@ fn agent_now(cx: &Cx, m: &gizai_core::team::Member, key: &str) -> String {
         "monthly_budget_usd" => m.budget_usd_micros.map(|b| format!("${}", b as f64 / 1e6)).unwrap_or_else(|| "—".into()),
         "board_check_minutes" => m.board_check_minutes.filter(|n| *n > 0).map(|n| format!("{n} minutes")).unwrap_or_else(|| "off".into()),
         "shares_memory_with" => m.shares_memory_with.as_deref().map(name_of).unwrap_or_else(|| "none (its own folder)".into()),
-        "allowed_tools" => if m.allowed_tools.is_empty() { "Gizai's default list".into() } else { m.allowed_tools.join(", ") },
+        "allowed_tools" => if m.allowed_tools.is_empty() { "Hersir's default list".into() } else { m.allowed_tools.join(", ") },
         _ => String::new(),
     }
 }
@@ -303,12 +306,19 @@ fn names(list: &[String]) -> String {
     if list.is_empty() { "none".into() } else { list.join(", ") }
 }
 
+/// GA-225: the team a call names, as a field, when there is more than one team to tell apart.
+fn team_field(cx: &Cx, t: &gizai_core::team::Team) -> Option<Field> {
+    let teams = gizai_core::team::list(cx.db()).unwrap_or_default();
+    (teams.len() > 1).then(|| field("Team", t.name.clone()))
+}
+
 fn add_column(cx: &Cx, a: &Args) -> Result<Preview, String> {
-    let t = resolve::team_of(cx, None)?;
+    let t = resolve::team_arg(cx, a)?;
     let name = a.req("name")?;
     let after = resolve::column(&t, &a.req("after")?)?;
     let kind = a.opt("kind").or_else(|| a.opt("category")).unwrap_or_default();
-    let mut fields = vec![field("Column", name.clone()), field("After", after.name.clone()), field("Kind", kind)];
+    let mut fields: Vec<Field> = team_field(cx, &t).into_iter().collect();
+    fields.extend([field("Column", name.clone()), field("After", after.name.clone()), field("Kind", kind)]);
     if let Some(list) = a.list("agents") {
         fields.push(field("Agents", names(&list)));
     }
@@ -320,10 +330,11 @@ fn add_column(cx: &Cx, a: &Args) -> Result<Preview, String> {
 }
 
 fn set_column(cx: &Cx, a: &Args) -> Result<Preview, String> {
-    let t = resolve::team_of(cx, None)?;
+    let t = resolve::team_arg(cx, a)?;
     let col = resolve::column(&t, &a.req("column")?)?;
     let column_name = |id: Option<&str>| id.and_then(|id| t.states.iter().find(|s| s.id == id)).map(|s| s.name.clone()).unwrap_or_else(|| "none".into());
-    let mut fields = vec![field("Column", col.name.clone())];
+    let mut fields: Vec<Field> = team_field(cx, &t).into_iter().collect();
+    fields.push(field("Column", col.name.clone()));
     if let Some(n) = a.opt("new_name") {
         fields.push(change("Name", col.name.clone(), n));
     }
@@ -365,7 +376,7 @@ fn attach_file(cx: &Cx, a: &Args) -> Result<Preview, String> {
     };
     let warning = match std::fs::metadata(&expanded) {
         Ok(m) if m.is_file() => { fields.push(field("Size", size(m.len()))); None }
-        _ => Some(format!("Gizai can't read {raw} now, so approving fails.")),
+        _ => Some(format!("Hersir can't read {raw} now, so approving fails.")),
     };
     fields.push(field("Goes to", to.clone()));
     Ok(Preview { line: format!("Attach {name} to {to}"), fields, warning, ..Default::default() })
@@ -399,7 +410,7 @@ fn merge_pull_request(cx: &Cx, a: &Args) -> Result<Preview, String> {
     let pr = match (&t.pr_url, &t.pr_state) {
         (Some(url), Some(state)) => format!("{url} ({state})"),
         (Some(url), None) => url.clone(),
-        _ => "none Gizai knows of yet".into(),
+        _ => "none Hersir knows of yet".into(),
     };
     Ok(Preview { line: format!("Merge {}'s pull request", t.identifier),
                  fields: vec![field("Card", card(&t)), field("Column", t.state_name.clone()), field("Pull request", pr)], ..Default::default() })

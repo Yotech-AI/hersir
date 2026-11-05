@@ -202,7 +202,7 @@ where
     W: AsyncWrite + Unpin,
 {
     if !same_user {
-        return refuse(w, "this socket is for the user running Gizai").await;
+        return refuse(w, "this socket is for the user running Hersir").await;
     }
     let mut reader = BufReader::new(r);
     let mut hello = String::new();

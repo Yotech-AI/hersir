@@ -237,7 +237,7 @@ name: deploy-GA\ndescription: \"How Gizai is released\"\nmetadata:\n  type: refe
     assert_eq!(r.skipped[0].file, shown(&format!("~/.claude-2/projects/{gizai}/memory/push-token.md")));
     assert!(r.skipped[0].why.contains("GitHub token") && !r.skipped[0].why.contains("ghp_abc"), "{:?}", r.skipped[0]);
     assert_eq!(r.list, None, "a short list goes in the thread itself");
-    assert_eq!(r.left_out, LeftOut::default(), "every folder here is one of Gizai's places");
+    assert_eq!(r.left_out, LeftOut::default(), "every folder here is one of Hersir's places");
     for n in memory::list(&f.db, &f.lead()).unwrap() {
         let body = memory::get(&f.db, &f.lead(), &n.id).unwrap().body_md;
         assert!(!body.contains(TOKEN) && !body.contains("Push with"), "{}: {body}", n.path);
@@ -686,7 +686,7 @@ fn only_the_folders_of_gizais_places_come_in_and_the_others_are_only_counted() {
     let notes = f.note("Team Lead/Notes").body_md;
     assert!(notes.contains(&format!("- {DAY}: Imported 4 notes from Claude Code's own memory")), "{notes}");
     assert!(notes.contains("- Left out, not read: 3 folders of other paths, with 5 notes. Claude Code keeps a folder per path it works in, \
-and only those of Gizai's places come in"), "{notes}");
+and only those of Hersir's places come in"), "{notes}");
     for gone in [named(&site), named(&secret), format!("{}-old", named(&linked)), "hugo".into(), "style.md".into(), "push.md".into(),
                  "binary.md".into(), "old.md".into(), TOKEN.into()] {
         assert!(!notes.contains(&gone), "{gone}: {notes}");
@@ -712,7 +712,7 @@ and only those of Gizai's places come in"), "{notes}");
 #[test]
 fn with_only_other_folders_nothing_comes_in_and_no_thread_is_written() {
     let f = setup();
-    f.file(&format!(".claude/projects/{}/memory/notes.md", folder("/home/me/elsewhere")), b"Not one of Gizai's.\n");
+    f.file(&format!(".claude/projects/{}/memory/notes.md", folder("/home/me/elsewhere")), b"Not one of Hersir's.\n");
     assert_eq!(f.import(), Report::default());
     assert!(memory::find(&f.db, "Team Lead/Notes").unwrap().is_none_or(|n| !n.body_md.contains("Left out")));
     assert!(f.imported().is_empty());

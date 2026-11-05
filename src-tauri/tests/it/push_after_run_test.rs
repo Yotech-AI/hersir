@@ -159,7 +159,7 @@ async fn a_claude_code_run_that_commits_but_does_not_push_leaves_its_branch_on_g
     let t = task(&c);
     assert_eq!((t.state_name.as_str(), t.hold.as_deref()), ("Testing", None));
 
-    let said = format!("Gizai pushed {branch} (2 commits).");
+    let said = format!("Hersir pushed {branch} (2 commits).");
     assert_eq!(notes(&c.st, &s.run_id), [said.clone()], "the run output says what Gizai pushed");
     let log = std::fs::read_to_string(&run.log_path).unwrap();
     assert!(log.lines().any(|l| l.contains("\"gizai_note\"") && l.contains(&said)), "in the run's log: {log}");
@@ -235,7 +235,7 @@ c Pushed\ngit push -q origin HEAD || exit 1\nc Left1\nc Left2\nexec bash '{FAKE}
     let (_, wt2, branch2) = run_of(&c, &s2.run_id);
     assert_eq!(branch2, branch, "the card's branch");
     assert_eq!(git(&c.bare, &["rev-parse", &format!("refs/heads/{branch}")]), git(&wt2, &["rev-parse", "HEAD"]));
-    assert_eq!(notes(&c.st, &s2.run_id), [format!("Gizai pushed {branch} (2 commits).")], "only the two GitHub didn't have");
+    assert_eq!(notes(&c.st, &s2.run_id), [format!("Hersir pushed {branch} (2 commits).")], "only the two GitHub didn't have");
     assert_eq!(std::fs::read_to_string(&pushes).unwrap().lines().count(), 3, "two pushes by the agent, one by Gizai");
 }
 
@@ -271,7 +271,7 @@ exec bash '{FAKE}' \"$@\"\n", o = other.display()));
     // the run output says why
     let said = notes(&c.st, &s.run_id);
     assert!(said.iter().any(|n| n.contains(&format!("Couldn't push {branch}")) && n.contains("The branch on GitHub has commits this one doesn't")), "{said:?}");
-    assert!(!said.iter().any(|n| n.starts_with("Gizai pushed")), "{said:?}");
+    assert!(!said.iter().any(|n| n.starts_with("Hersir pushed")), "{said:?}");
     // and nothing starts again or tries again by itself
     tokio::time::sleep(Duration::from_millis(1500)).await;
     assert_eq!(gizai_core::runs::list_for_task(&c.st.db, &c.task).unwrap().len(), 1);
@@ -317,7 +317,7 @@ async fn a_stopped_run_and_a_run_stopped_at_a_limit_are_pushed_too() {
     let s = done.await.unwrap();
     assert_eq!(s.status, "cancelled");
     assert_eq!(git(&c.bare, &["log", "-1", "--format=%s", &branch]), "Before stop");
-    assert_eq!(notes(&c.st, &run_id), [format!("Gizai pushed {branch} (1 commit).")]);
+    assert_eq!(notes(&c.st, &run_id), [format!("Hersir pushed {branch} (1 commit).")]);
     assert_eq!(task(&c).hold, None, "a stopped run's card is held only when the push fails");
 
     // the tool-call limit, on Codex
@@ -331,7 +331,7 @@ async fn a_stopped_run_and_a_run_stopped_at_a_limit_are_pushed_too() {
     assert_eq!(s.status, "timed_out", "{:?}", s.error);
     let (_, _, branch) = run_of(&c, &s.run_id);
     assert_eq!(git(&c.bare, &["log", "-1", "--format=%s", &branch]), "Before the limit");
-    assert_eq!(notes(&c.st, &s.run_id), [format!("Gizai pushed {branch} (1 commit).")]);
+    assert_eq!(notes(&c.st, &s.run_id), [format!("Hersir pushed {branch} (1 commit).")]);
 }
 
 #[tokio::test]
@@ -366,7 +366,7 @@ async fn codex_gemini_and_other_clis_get_the_same_push_after_their_runs() {
         let (run, wt, branch) = run_of(&c, &s.run_id);
         assert_eq!(run.adapter.as_deref().map(|a| a.is_empty()), Some(false), "{kind}: ran on its CLI");
         assert_eq!(git(&c.bare, &["rev-parse", &format!("refs/heads/{branch}")]), git(&wt, &["rev-parse", "HEAD"]), "{kind}");
-        assert_eq!(notes(&c.st, &s.run_id), [format!("Gizai pushed {branch} (2 commits).")], "{kind}");
+        assert_eq!(notes(&c.st, &s.run_id), [format!("Hersir pushed {branch} (2 commits).")], "{kind}");
         assert_eq!(task(&c).state_name, "Testing", "{kind}");
     }
 }
@@ -410,7 +410,7 @@ async fn a_project_without_a_link_is_not_pushed_and_its_card_moves_on_as_before(
     gizai_core::tasks::update(&st.db, &st.you_id, &task, TaskPatch { description_md: Some("FAKE_COMMIT_TWICE".into()), ..Default::default() }).unwrap();
     let s = gizai_lib::runs::run_once(&st, &task, None, Some(FAKE.into())).await.unwrap();
     let branch = gizai_core::runs::get(&st.db, &s.run_id).unwrap().branch.unwrap();
-    assert!(!has_branch(&bare, &branch), "no link: Gizai doesn't push");
+    assert!(!has_branch(&bare, &branch), "no link: Hersir doesn't push");
     assert!(notes(&st, &s.run_id).is_empty());
     assert_eq!(gizai_core::tasks::get(&st.db, &task).unwrap().state_name, "Testing");
 }
@@ -427,6 +427,6 @@ echo draft > draft.txt\nexec bash '{FAKE}' \"$@\"\n"));
     assert_eq!(git(&c.bare, &["log", "-1", "--format=%s", &branch]), "Committed");
     assert!(git(&c.bare, &["ls-tree", "-r", "--name-only", &branch]).lines().all(|f| f != "draft.txt"), "only commits go");
     assert_eq!(std::fs::read_to_string(wt.join("draft.txt")).unwrap(), "draft\n", "the uncommitted file stays");
-    assert_eq!(notes(&c.st, &s.run_id), [format!("Gizai pushed {branch} (1 commit)."),
-                                         "Its worktree has 1 uncommitted change, which Gizai doesn't push.".to_string()]);
+    assert_eq!(notes(&c.st, &s.run_id), [format!("Hersir pushed {branch} (1 commit)."),
+                                         "Its worktree has 1 uncommitted change, which Hersir doesn't push.".to_string()]);
 }

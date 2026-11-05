@@ -15,7 +15,9 @@ export type Contact = { id: string; clientId: string; name: string; role?: strin
 export type Person = { id: string; name: string; handle: string; title?: string | null; email?: string | null; openTasks: number };
 export type Project = {
   id: string; clientId?: string | null; clientName?: string | null; number: string; key: string; name: string; status: string;
-  color?: string | null; goalMd?: string | null; repoPath?: string | null; repoUrl?: string | null; defaultBranch: string; teamId?: string | null;
+  color?: string | null; goalMd?: string | null; repoPath?: string | null; repoUrl?: string | null; defaultBranch: string;
+  /** The team whose board its cards are on (GA-225): its own, else the first team. */
+  teamId?: string | null; teamName?: string | null;
   budgetAmountMinor?: number | null; budgetHours?: number | null; openTasks: number; doneTasks: number; updatedAt: number;
   /** AI usage: the API cost of the runs on its cards this month (UTC), an estimate at API prices; and how many of those runs
    *  have an unknown cost (tokens but no cost: a CLI that reports none). */
@@ -53,7 +55,13 @@ export type ProjectInput = {
   previewStartSecs?: number | null;   // 120, 10–600                     (SB2)
   /** Test runs at once (GA-212): 1–20; 0 removes it (no limit of its own). Left out (null): kept as it is. */
   testRunsAtOnce?: number | null;
+  /** The project's team (GA-225). Left out (null): the first team for a new project, kept on an edit. Another team moves the
+   *  project and all its cards there; refused while one of its cards has a run live or starting. */
+  teamId?: string | null;
 };
+/** What moving a project to another team does, for the project form's question (GA-225). `cards`: all of them, archived
+ *  ones included: they all move. */
+export type TeamMove = { project: string; from: string; to: string; cards: number };
 export type Label = { id: string; name: string; color?: string | null };
 export type Task = {
   id: string; identifier: string; projectId?: string | null; projectName?: string | null; projectColor?: string | null;
@@ -192,6 +200,19 @@ export type ColumnInput = { name?: string; agentIds?: string[]; auto?: boolean; 
 export type ColumnRemoval = { cards: number; archived: number; defaultTarget?: string | null; relinked: string[]; unlinked: string[]; blocked?: string | null };
 /** A label with the number of cards that carry it. */
 export type LabelInfo = { id: string; name: string; color?: string | null; cards: number };
+/* Team templates (GA-226, contract TT; the file is docs/team-template-format.md). TemplateSource holds one of a built-in's
+ * key, the path of a file the person picked, or the file's text. */
+export type TemplateSource = { builtin?: string; path?: string; json?: string };
+export type TemplateWarning = { agent: string | null; field: string; kind: "email" | "path" | "url" | "secret"; excerpt: string };
+export type TemplatePlanAgent = { name: string; fileName: string; role: string; cliName: string; model: string | null; effort: string | null;
+  permissionMode: string; extraTools: string[]; missingServers: string[]; active: boolean };
+export type TemplatePlan = { teamName: string; columns: { name: string; kind: string; auto: boolean; next: string | null; agents: string[] }[];
+  agents: TemplatePlanAgent[]; labelsAdded: string[]; notes: string[] };
+// check_team_export(teamId) -> TemplateWarning[]                      (writes nothing)
+// save_team_template(teamId, path) -> void                             (writes the file, format 1)
+// team_templates() -> { key: string; name: string; description: string }[]
+// preview_team_template(source: TemplateSource) -> TemplatePlan        (a refusal is an error string)
+// import_team_template(source: TemplateSource, name: string) -> string  (the new team's id)
 export type AppInfo = { version: string; data_dir: string; selftest: boolean; you_id: string; start_route?: string | null; selftest_mode?: string | null; data_label?: string | null };
 /** What the first start's onboarding saves (GA-162): your name, the team's, and the id of a CLI in Settings → Coding CLIs
  *  for the Backend, Frontend, QA and DevOps Agents (null: they stay where the seed put them). */

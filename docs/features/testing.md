@@ -9,7 +9,7 @@ A QA agent tests a card in its own worktree before it reaches your Review, and o
 3. Passed: QA pushes its tests and opens the pull request on GitHub, and the card moves to your Review.
 4. Failed: the card goes back to the column it came from, to its builder, with a numbered list of what is wrong.
 
-What QA checks and writes comes from the QA Agent's starting instructions, which you can change in its form. After three rounds back, GizAi holds the card for you.
+What QA checks and writes comes from the QA Agent's starting instructions, which you can change in its form. After three rounds back, Hersir holds the card for you.
 
 - A card with Testing off skips Testing columns: a done answer sends it on to the column after them, Review in the usual flow.
 - A DevOps run never sends a card to QA.
@@ -21,32 +21,32 @@ A test run builds and runs the project's whole test suite in the card's own work
 
 - A test run is a run on a card in a Testing column. Runs on cards in other columns never count and never wait.
 - While the project has that many test runs live or starting, the queue passes over its other cards in Testing and the agent takes its next card, so other projects' cards aren't held up. A card that waits starts by itself once one of those runs has ended.
-- Run, Continue and the Team Lead's `start_agent_run` and `continue_agent_run` wait too, and say why: "Giz AI tests 1 card at a time (project settings): wait for GA-211 to finish testing, or raise the limit on the project page."
+- Run, Continue and the Team Lead's `start_agent_run` and `continue_agent_run` wait too, and say why: "Hersir tests 1 card at a time (project settings): wait for GA-211 to finish testing, or raise the limit on the project page."
 - Runs at once (Settings → Runs), each agent's cards at once and the wait for memory still hold: this is one more limit.
 - A card that has waited over an hour only for it is a finding of the Team Lead's board check (`test_runs_full`).
 - The Team Lead's `get_project` and `list_projects` show it, and `update_project` sets it (`test_runs_at_once`; 0 clears it).
 
-## GizAi pushes after every run
+## Hersir pushes after every run
 
-When a run on a card ends (also after Stop or a limit) and its project is linked to GitHub, Bitbucket or a git URL, GizAi pushes the card's branch itself when it has commits the remote doesn't have. It pushes before the card moves on, so the next agent (QA, for its pull request) finds the branch.
+When a run on a card ends (also after Stop or a limit) and its project is linked to GitHub, Bitbucket or a git URL, Hersir pushes the card's branch itself when it has commits the remote doesn't have. It pushes before the card moves on, so the next agent (QA, for its pull request) finds the branch.
 
 - It pushes to the same remote and over the same Push over setting as Open pull request, never by force.
 - Only commits go: uncommitted changes stay in the worktree, and the run's output says how many there are.
-- The run's output and the Run panel say "GizAi pushed <branch> (3 commits)", or why it couldn't.
+- The run's output and the Run panel say "Hersir pushed <branch> (3 commits)", or why it couldn't.
 - A push that fails (the branch on GitHub has commits this one doesn't, no access, no network) is not forced or tried again. The card stays where it is, on hold "blocked" with the reason, and shows in [the Inbox](inbox.md).
 
 So a `git push` the agent's CLI refuses no longer holds a card up, and "How this run works" tells agents so. They keep `git push` in their list.
 
 ## An agent's own push
 
-A run of a project linked to GitHub or Bitbucket gets git settings in its environment only. So a plain `git push origin HEAD` from the worktree reaches the project's repository the way GizAi's push does, and QA can push its branch and open its pull request during its run.
+A run of a project linked to GitHub or Bitbucket gets git settings in its environment only. So a plain `git push origin HEAD` from the worktree reaches the project's repository the way Hersir's push does, and QA can push its branch and open its pull request during its run.
 
 - The settings are `GIT_CONFIG_COUNT` with its keys and values; Codex also gets them in its shell environment policy.
 - The push goes over SSH with your keys or over HTTPS with gh's login (Settings → GitHub → Push over), and to Bitbucket over SSH.
 - They touch only the project's own repository. Each address it goes by (its link, and each remote that is the same repository) gets a `pushInsteadOf` rule to its SSH or HTTPS address, and over HTTPS gh's login is the only credential helper for github.com.
 - Fetches, other repositories and `git remote get-url` without `--push` stay as they are, and no git config file or remote changes.
-- An address that a rewrite of your own already sends somewhere (an `insteadOf` for a mirror, or a test's local repository) is left to yours, as it is for GizAi's push.
-- With Push over HTTPS and gh missing, a run starts without the settings and its log says why. GizAi's push after the run needs gh too.
+- An address that a rewrite of your own already sends somewhere (an `insteadOf` for a mirror, or a test's local repository) is left to yours, as it is for Hersir's push.
+- With Push over HTTPS and gh missing, a run starts without the settings and its log says why. Hersir's push after the run needs gh too.
 - New and continued runs get them alike. A project with another git URL gets none, as its address says where a push goes.
 
 ## Review on GitHub
@@ -54,7 +54,7 @@ A run of a project linked to GitHub or Bitbucket gets git settings in its enviro
 - **Open pull request** pushes a card's branch over SSH with your keys (or HTTPS with gh's login) and opens its pull request with gh.
 - **A merge on GitHub** moves the card to Review's next column (Deploy; Done for a team without a Deploy column) and removes its worktree. What the card changed stays readable in [its Changes](editor-and-terminal.md#a-cards-changes).
 - **The PR check** asks git every 2 minutes, and GitHub only when something moved there, and at least every 10 minutes: one light call per repository, so it stays far below GitHub's API limit.
-- **Settings → GitHub** shows whether gh is found and logged in and how pushes go, with Check connection for every linked project and Log in with GitHub. GizAi never stores a token or password.
+- **Settings → GitHub** shows whether gh is found and logged in and how pushes go, with Check connection for every linked project and Log in with GitHub. Hersir never stores a token or password.
 
 ## Review on Bitbucket Cloud
 

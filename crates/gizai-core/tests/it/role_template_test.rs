@@ -11,17 +11,17 @@ fn rest(t: &str) -> &str {
 fn builders_get_our_own_instructions_they_push_and_leave_tests_and_pull_requests_to_qa() {
     // GA-63: the Backend and Frontend Agents' texts, word for word (crates/gizai-core/roles).
     let be = role_template("backend");
-    assert!(be.starts_with("You are the Backend Agent in Gizai's Software team. You build the server side of a card (APIs, database, jobs, services). \
+    assert!(be.starts_with("You are the Backend Agent in Hersir's Software team. You build the server side of a card (APIs, database, jobs, services). \
                             You do not test and you do not open pull requests: the QA Agent does both.\n"), "{be}");
     let fe = role_template("frontend");
-    assert!(fe.starts_with("You are the Frontend Agent in Gizai's Software team. You build the user-facing part of a card (pages, components, styling, \
+    assert!(fe.starts_with("You are the Frontend Agent in Hersir's Software team. You build the user-facing part of a card (pages, components, styling, \
                             client-side behaviour). You do not test and you do not open pull requests: the QA Agent does both.\n"), "{fe}");
     for t in [&be, &fe] {
         assert!(t.contains("push the branch with `git push -u origin HEAD` (for a project without a remote, committing is enough)"), "{t}");
         assert!(t.contains("never merge, except the main branch into your branch when 'Your branch' below asks for it"), "{t}");
         assert!(t.contains("(README, CLAUDE.md, AGENTS.md, an agent guide)"), "{t}");
         assert!(t.contains("Do not run tests") && t.contains("Do not open a pull request."), "{t}");
-        assert!(t.contains("A run has limits: Gizai names them at the end of this prompt."), "{t}");
+        assert!(t.contains("A run has limits: Hersir names them at the end of this prompt."), "{t}");
         assert!(t.contains("- ready_for_testing: ") && t.contains("- needs_decision: "), "{t}");
         // The old stubs told builders to write tests and never push.
         assert!(!t.contains("add or update tests") && !t.contains("Never push"), "{t}");
@@ -32,7 +32,7 @@ fn builders_get_our_own_instructions_they_push_and_leave_tests_and_pull_requests
 #[test]
 fn qa_runs_the_tests_and_opens_the_pull_request_on_github_only() {
     let qa = role_template("qa");
-    assert!(qa.starts_with("You are the QA Agent in Gizai's Software team. You check the work of the developer agents (Backend, Frontend and the like). \
+    assert!(qa.starts_with("You are the QA Agent in Hersir's Software team. You check the work of the developer agents (Backend, Frontend and the like). \
                             You are the only agent that runs tests and the only one that opens pull requests.\n"), "{qa}");
     assert!(qa.contains("Do not change application code. You may add or fix tests only"), "{qa}");
     assert!(qa.contains("When the project's remote is on GitHub (`git remote -v`), open a pull request with `gh pr create`"), "{qa}");
@@ -56,15 +56,15 @@ fn the_lead_keeps_its_template() {
 fn the_leads_memory_line_says_to_propose_a_note_from_outside_gizai_and_save_it_once_confirmed() {
     // GA-84: memory's writes are refused after a tool from outside Gizai, so the template says what to do instead.
     let lead = role_template("lead");
-    let line = lead.lines().find(|l| l.starts_with("- Keep Gizai's Memory:")).unwrap_or_else(|| panic!("{lead}"));
-    assert!(line.ends_with("After you read something from outside Gizai (another MCP server, the web, the browser), propose the note and save it \
+    let line = lead.lines().find(|l| l.starts_with("- Keep Hersir's Memory:")).unwrap_or_else(|| panic!("{lead}"));
+    assert!(line.ends_with("After you read something from outside Hersir (another MCP server, the web, the browser), propose the note and save it \
                             once the user has confirmed."), "{line}");
 }
 
 #[test]
 fn devops_releases_and_deploys_by_the_projects_own_flow_without_our_projects() {
     let o = role_template("devops");
-    assert!(o.starts_with("You are the DevOps Agent in Gizai's Software team. You make releases, you deploy them, you fix pull requests that can't be merged"), "{o}");
+    assert!(o.starts_with("You are the DevOps Agent in Hersir's Software team. You make releases, you deploy them, you fix pull requests that can't be merged"), "{o}");
     assert!(o.contains("\nOutcomes: deployed, ready_for_testing, needs_decision."), "{o}");
     assert!(o.contains("The card goes to Review for the user, never to QA."), "{o}");
     // It waits the way "How this run works" says: a check first, then a short sleep.
@@ -80,7 +80,7 @@ fn devops_keeps_a_projects_deploy_note_in_gizais_memory_not_in_claude_codes() {
     // GA-85: the same content and format, in Deployments/<KEY>, reported as learned lines for the Team Lead to fold in.
     let o = role_template("devops");
     let section = &o[o.find("## Memory: how each project is deployed").expect("its section")..o.find("## Outcomes").unwrap()];
-    for want in ["Each project has one deploy note in Gizai's Memory, Deployments/<KEY> (Deployments/KADE for project KADE)",
+    for want in ["Each project has one deploy note in Hersir's Memory, Deployments/<KEY> (Deployments/KADE for project KADE)",
                  "`type: deployment`, `project: <KEY>` and `applies_to: devops`", "comes into your run in the Memory section",
                  "At the start of a run, read this project's deploy note there.", "the repo's own docs and workflows win",
                  "Report what changed as `learned` lines on your result line", "The Team Lead folds them into the deploy note.",
@@ -93,7 +93,7 @@ fn devops_keeps_a_projects_deploy_note_in_gizais_memory_not_in_claude_codes() {
     for gone in ["MEMORY.md", "memory directory", "deploy-<KEY>", "your memory", "If you cannot save memory"] {
         assert!(!o.contains(gone), "{gone}: {o}");
     }
-    assert!(o.contains("Find out how a project is deployed, for its deploy note in Gizai's Memory"), "{o}");
+    assert!(o.contains("Find out how a project is deployed, for its deploy note in Hersir's Memory"), "{o}");
     assert!(o.contains("'Memory:' with what you reported for the deploy note"), "{o}");
     assert!(o.contains("Never put secret values in a learned line or a summary"), "{o}");
 }
@@ -113,7 +113,7 @@ fn the_lead_folds_a_devops_agents_learned_lines_into_the_projects_deploy_note() 
 fn design_is_the_frontend_text_with_its_own_name_and_job() {
     let d = role_template("design");
     let (first, _) = d.split_once('\n').unwrap();
-    assert_eq!(first, "You are the Design Agent in Gizai's Software team. You design the screens and flows a card asks for and build them as UI \
+    assert_eq!(first, "You are the Design Agent in Hersir's Software team. You design the screens and flows a card asks for and build them as UI \
                        components and styles, following the project's design system; explain your design decisions in the hand-over. You do not \
                        test and you do not open pull requests: the QA Agent does both.");
     assert_eq!(rest(&d), rest(&role_template("frontend")));
@@ -124,7 +124,7 @@ fn any_other_role_is_the_backend_text_with_its_own_name() {
     for (role, name) in [("docs", "Docs"), ("data", "Data"), ("mobile-app", "Mobile-app")] {
         let t = role_template(role);
         let (first, _) = t.split_once('\n').unwrap();
-        assert_eq!(first, format!("You are the {name} Agent in Gizai's Software team. You build what the card asks for. You do not test and you do not \
+        assert_eq!(first, format!("You are the {name} Agent in Hersir's Software team. You build what the card asks for. You do not test and you do not \
                                    open pull requests: the QA Agent does both."));
         assert_eq!(rest(&t), rest(&role_template("backend")), "{role}");
     }
@@ -156,22 +156,22 @@ fn every_working_role_hears_that_gizai_pushes_its_branch_after_the_run_and_keeps
     // GA-56: Gizai pushes the card's branch's commits when a run ends, so a refused push is no reason for needs_decision.
     for role in ["backend", "frontend", "design", "docs"] {
         let t = role_template(role);
-        assert!(t.contains("Gizai also pushes the branch's commits when your run ends, so a refused push is no reason for needs_decision: \
+        assert!(t.contains("Hersir also pushes the branch's commits when your run ends, so a refused push is no reason for needs_decision: \
                             mention it in your hand-over and end with the outcome the work deserves."), "{role}: {t}");
-        assert!(t.contains("whether your push went through (Gizai pushes the branch after the run either way)"), "{role}: {t}");
+        assert!(t.contains("whether your push went through (Hersir pushes the branch after the run either way)"), "{role}: {t}");
         assert!(t.contains("- ready_for_testing: the work is committed and the hand-over is written."), "{role}: {t}");
         assert!(!t.contains("committed (and pushed)"), "{role}: {t}");
     }
     let qa = role_template("qa");
-    assert!(qa.contains("If the push is refused, go on: Gizai pushes this branch's commits when your run ends, before the card moves on."), "{qa}");
-    assert!(qa.contains("A refused `git push` is no reason for needs_decision: Gizai pushes the branch when your run ends, so mention it in \
+    assert!(qa.contains("If the push is refused, go on: Hersir pushes this branch's commits when your run ends, before the card moves on."), "{qa}");
+    assert!(qa.contains("A refused `git push` is no reason for needs_decision: Hersir pushes the branch when your run ends, so mention it in \
                          your summary and end with the outcome the work deserves."), "{qa}");
     assert!(qa.contains("If your push was refused, also give it `--head <branch>`"), "{qa}");
     assert!(!qa.contains("when pushing or opening the pull request fails"), "a failed push is no longer a reason to stop: {qa}");
     let devops = role_template("devops");
-    assert!(devops.contains("The one exception is a refused push of the card's own branch: Gizai pushes that branch's commits when your run ends"), "{devops}");
-    assert!(devops.contains("Gizai pushes nothing else: not a pull request's branch, not a tag."), "{devops}");
-    assert!(devops.contains("if only that push is refused, go on, since Gizai pushes it after the run"), "{devops}");
+    assert!(devops.contains("The one exception is a refused push of the card's own branch: Hersir pushes that branch's commits when your run ends"), "{devops}");
+    assert!(devops.contains("Hersir pushes nothing else: not a pull request's branch, not a tag."), "{devops}");
+    assert!(devops.contains("if only that push is refused, go on, since Hersir pushes it after the run"), "{devops}");
     // they all keep git push in their allowed commands
     for role in ["backend", "frontend", "design", "docs", "qa", "devops"] {
         assert!(role_tools(role).iter().any(|t| t == "Bash(git push:*)"), "{role}: {:?}", role_tools(role));
@@ -195,9 +195,59 @@ fn every_working_role_hears_how_to_ask_the_user_to_run_a_command_next_to_the_pus
             .replace("\"issues\":[]", &format!("\"issues\":[],{example}"))).unwrap_or_else(|e| panic!("{role}: {e}: {example}"));
         assert_eq!(line["run_for_me"], serde_json::json!(["sudo pacman -S libayatana-appindicator"]), "{role}");
         // the push line is kept, before it
-        let push = ["Gizai pushes", "Gizai also pushes"].iter().filter_map(|w| t.find(w)).min().unwrap_or_else(|| panic!("{role}: no push line: {t}"));
+        let push = ["Hersir pushes", "Hersir also pushes"].iter().filter_map(|w| t.find(w)).min().unwrap_or_else(|| panic!("{role}: no push line: {t}"));
         assert!(push < t.find("Run this for me").unwrap(), "{role}: {t}");
     }
     // the Team Lead runs no card, so it isn't told
     assert!(!role_template("lead").contains("run_for_me"));
+}
+
+#[test]
+fn every_template_says_hersir_never_gizai_and_keeps_the_gizai_result_line() {
+    // GA-232: the product is Hersir; GIZAI_RESULT is a code name every agent's saved instructions use, so it stays.
+    for role in ["lead", "backend", "frontend", "design", "qa", "devops", "docs", "mobile-app"] {
+        let t = role_template(role);
+        assert!(t.starts_with("You are the ") && t.lines().next().unwrap().contains(" in Hersir's Software team."), "{role}: {t}");
+        for old in ["Gizai", "GizAi", "GizAI"] {
+            assert!(!t.contains(old), "{role} says {old}: {t}");
+        }
+        assert!(t.contains(RESULT_LINE), "{role}: {t}");
+    }
+}
+
+#[test]
+fn an_agents_saved_instructions_stay_as_they_are_and_only_a_new_agent_gets_the_hersir_template() {
+    // GA-232: saved instructions are data. An agent made before the rename keeps its text at the next start (the seed runs
+    // again on the same data folder), with its GIZAI_RESULT line; a new agent gets the new template.
+    use gizai_core::{db::Db, model::AgentInput, seed::ensure_seed_with_agents, team};
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("gizai.db");
+    let old = role_template("backend").replace("Hersir", "Gizai");
+    let (you, team_id, be) = {
+        let db = Db::open(&path).unwrap();
+        let s = ensure_seed_with_agents(&db, "Sanne", || None).unwrap();
+        let t = team::get(&db, &s.team_id).unwrap();
+        let be = t.members.iter().find(|m| m.name == "Backend Agent").unwrap().clone();
+        let input = AgentInput { name: be.name.clone(), role_key: be.role_key.clone(), wakeup: be.wakeup.clone().unwrap_or_default(),
+                                 adapter: be.adapter.clone().unwrap_or_default(), permission_mode: be.permission_mode.clone().unwrap_or_default(),
+                                 instructions_md: Some(old.clone()), allowed_tools: be.allowed_tools.clone(), ..Default::default() };
+        team::update_agent(&db, &s.you_id, &be.actor_id, input).unwrap();
+        (s.you_id, s.team_id, be.actor_id)
+    };
+    // the next start
+    let db = Db::open(&path).unwrap();
+    ensure_seed_with_agents(&db, "Sanne", || None).unwrap();
+    let kept = team::agent(&db, &be).unwrap().instructions_md.unwrap();
+    assert_eq!(kept, old);
+    assert!(kept.starts_with("You are the Backend Agent in Gizai's Software team.") && kept.contains(RESULT_LINE), "{kept}");
+    // the other seeded agents keep theirs too: the template they got, now with Hersir
+    let t = team::get(&db, &team_id).unwrap();
+    let qa = t.members.iter().find(|m| m.name == "QA Agent").unwrap();
+    assert_eq!(qa.instructions_md.as_deref(), Some(role_template("qa").as_str()));
+    // a new agent without instructions of its own gets its role's template, with Hersir
+    let new = team::add_agent(&db, &you, &team_id, AgentInput { name: "Docs Agent".into(), role_key: "docs".into(), wakeup: "on_assign".into(),
+                                                                 ..Default::default() }).unwrap();
+    let got = team::agent(&db, &new).unwrap().instructions_md.unwrap();
+    assert_eq!(got, role_template("docs"));
+    assert!(got.starts_with("You are the Docs Agent in Hersir's Software team.") && got.contains(RESULT_LINE), "{got}");
 }

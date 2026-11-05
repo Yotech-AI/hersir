@@ -432,7 +432,7 @@ async fn a_second_click_while_the_first_still_works_says_gizai_is_busy() {
     let tmp = real_tempdir();
     let c = yours(tmp.path());
     let (a, b) = tokio::join!(hand::start(&c.st, &c.task), hand::start(&c.st, &c.task));
-    let busy = "Gizai is still busy with KADE-1 for you: wait a moment".to_string();
+    let busy = "Hersir is still busy with KADE-1 for you: wait a moment".to_string();
     assert!(matches!((&a, &b), (Ok(_), Err(e)) | (Err(e), Ok(_)) if *e == busy), "{a:?} {b:?}");
     // once it is done, the next one goes
     hand::start(&c.st, &c.task).await.unwrap();

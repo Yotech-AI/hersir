@@ -82,11 +82,11 @@ fn the_whole_disk_the_home_folder_and_the_folders_above_it_are_refused() {
 fn gizais_data_folder_is_refused_with_what_is_inside_and_above_it() {
     for p in ["/home/u/.local/share/gizai", "/home/u/.local/share/gizai/worktrees/GA/GA-45", "/var/gizai-dev", "/var/gizai-dev/backups"] {
         let why = refusal(p).unwrap_or_else(|| panic!("{p} was allowed"));
-        assert!(why.contains("Gizai's data folder"), "{p}: {why}");
+        assert!(why.contains("Hersir's data folder"), "{p}: {why}");
     }
     assert!(refusal("/home/u/.local/share/gizai").unwrap().contains("~/.local/share/gizai"), "shown from ~");
-    assert!(refusal("/home/u/.local").unwrap().contains("holds Gizai's data folder"));
-    assert!(refusal("/var").unwrap().contains("holds Gizai's data folder"));
+    assert!(refusal("/home/u/.local").unwrap().contains("holds Hersir's data folder"));
+    assert!(refusal("/var").unwrap().contains("holds Hersir's data folder"));
 }
 
 #[test]
@@ -123,7 +123,7 @@ fn clean_expands_drops_empty_rows_and_names_the_first_refused_folder() {
         (vec![f("/", "read")], "whole disk"),
         (vec![f("~", "read")], "your home folder"),
         (vec![f("~/.ssh", "read")], "keys or logins (~/.ssh)"),
-        (vec![f("~/.local/share/gizai/worktrees", "read")], "Gizai's data folder"),
+        (vec![f("~/.local/share/gizai/worktrees", "read")], "Hersir's data folder"),
         (vec![f("shared", "read")], "give the full path"),
         (vec![f("~/a,b", "read")], "rename the folder"),
         (vec![f("~/a*", "read")], "rename the folder"),
@@ -240,7 +240,7 @@ fn an_agents_folders_save_and_reload_and_none_keeps_them() {
     // Gizai's own data folder (the database's folder) is refused too
     let e = team::update_agent(&db, &s.you_id, &id, agent_input("Backend Agent", Some(vec![f(&dir.path().join("data/worktrees").display().to_string(), "read")])))
         .unwrap_err();
-    assert!(e.to_string().contains("Gizai's data folder"), "{e}");
+    assert!(e.to_string().contains("Hersir's data folder"), "{e}");
     team::update_agent(&db, &s.you_id, &id, agent_input("Backend Agent", Some(vec![]))).unwrap();
     assert!(team::agent(&db, &id).unwrap().folders.is_empty(), "an empty list clears it");
     // a new agent can be given folders from the form, and a refused one stops it

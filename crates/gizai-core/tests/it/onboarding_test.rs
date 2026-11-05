@@ -122,7 +122,7 @@ fn ensure_seed_and_a_database_seeded_before_never_wait() {
 
 #[test]
 fn the_welcome_message_is_the_cards_text_word_for_word() {
-    assert_eq!(WELCOME, "Hi! I just installed GizAi and set up my team. Please welcome me, tell me in a few lines what you and the team can do, and ask whether I'd like help setting up agents, clients, projects, tasks or anything else.");
+    assert_eq!(WELCOME, "Hi! I just installed Hersir and set up my team. Please welcome me, tell me in a few lines what you and the team can do, and ask whether I'd like help setting up agents, clients, projects, tasks or anything else.");
 }
 
 #[test]

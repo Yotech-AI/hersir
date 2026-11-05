@@ -137,7 +137,7 @@ async fn a_commit_pushed_to_github_shows_up_in_the_copy_at_the_next_turn_and_the
     let dir = copy(&st, "KADE");
     assert_eq!(turn.dirs, [dir.display().to_string()]);
     assert_eq!(git_out(&dir, &["rev-parse", "HEAD"]), first);
-    assert!(turn.line.starts_with("[Gizai: Your copies of the code: KADE ") && turn.line.contains(&first[..7]), "{}", turn.line);
+    assert!(turn.line.starts_with("[Hersir: Your copies of the code: KADE ") && turn.line.contains(&first[..7]), "{}", turn.line);
     assert!(!turn.line.contains("couldn't"), "{}", turn.line);
     // the same commit a new card of the project starts from, chosen by the same helper
     let start = gizai_lib::git::start_point(&project(&st, "KADE"), &herd, None).unwrap();
@@ -599,7 +599,7 @@ async fn update_checkout_with_stash_puts_uncommitted_changes_in_gits_stash_first
     assert_eq!(said, format!("Updated KADE's linked folder {h}: put the uncommitted changes in package-lock.json in git's stash (git -C {h} \
                               stash pop brings them back), stayed at {} (already main's commit) and ran npm ci.", &head[..7], h = herd.display()));
     // one stash entry with that change; the folder is clean and at main's commit; npm ci ran; the untracked file stays
-    assert_eq!(stashes(&herd), ["On main: Gizai: before the update to main"]);
+    assert_eq!(stashes(&herd), ["On main: Hersir: before the update to main"]);
     assert_eq!(git_out(&herd, &["stash", "show", "--name-only", "stash@{0}"]), "package-lock.json");
     assert_eq!(git_out(&herd, &["status", "--porcelain"]), "?? notes.txt");
     assert_eq!(git_out(&herd, &["rev-parse", "HEAD"]), head);
@@ -713,7 +713,7 @@ async fn when_a_step_after_the_stash_fails_the_chat_says_the_changes_are_in_gits
     assert!(said.starts_with(&format!("The update of KADE's linked folder {h} stopped: npm ci failed (exit code 1). Before that it put the \
                                        uncommitted changes in package-lock.json in git's stash (git -C {h} stash pop brings them back).")), "{said}");
     assert!(said.contains("npm ERR! code EUSAGE"), "the end of the output: {said}");
-    assert_eq!(stashes(&herd), ["On main: Gizai: before the update to main"]);
+    assert_eq!(stashes(&herd), ["On main: Hersir: before the update to main"]);
 }
 
 // ---- GA-160: GA-156's stash where it meets GA-154's closing note, as 0.11.0 has them together ----
@@ -765,7 +765,7 @@ async fn approving_a_kept_update_with_stash_stashes_ends_the_answer_with_the_clo
     assert_eq!(said[1], gizai_lib::pending::ANSWER_DONE, "{said:?}");
     assert_eq!(said[2], result, "{said:?}");
     assert!(gizai_lib::pending::list(&st, &thread).unwrap().is_empty());
-    assert_eq!(stashes(&herd), ["On main: Gizai: before the update to main"]);
+    assert_eq!(stashes(&herd), ["On main: Hersir: before the update to main"]);
     assert_eq!(git_out(&herd, &["stash", "show", "--name-only", "stash@{0}"]), "package-lock.json");
     assert_eq!(std::fs::read_to_string(herd.join("node_modules/calls.log")).unwrap(), "npm ci --no-audit --no-fund\n");
 }

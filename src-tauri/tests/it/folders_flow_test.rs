@@ -228,7 +228,7 @@ fn the_forms_check_refuses_gizais_data_folder_and_warns_about_a_main_checkout() 
     let check = |folder: Folder| gizai_lib::folders::check(&st, &[folder]).remove(0);
     let checks = [check(f(&st.data_dir.join("worktrees"), "read")), check(f(&repo, "change")), check(f(&repo, "read")),
                   check(Folder { path: "~/.ssh".into(), access: "read".into() })];
-    assert!(checks[0].error.as_deref().unwrap().contains("Gizai's data folder"), "{checks:?}");
+    assert!(checks[0].error.as_deref().unwrap().contains("Hersir's data folder"), "{checks:?}");
     assert_eq!(checks[1].error, None);
     assert!(checks[1].warning.as_deref().unwrap().starts_with("This is Kade's main checkout"), "{checks:?}");
     assert_eq!((&checks[2].error, &checks[2].warning), (&None, &None), "reading it is fine: {checks:?}");

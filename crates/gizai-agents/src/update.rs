@@ -21,7 +21,7 @@ use crate::connection::{self, Problem};
 use crate::os::{self, End, Tree};
 
 /// Gizai's own repository: its releases and their source (GIZAI_REPO changes it, as it does for install.sh).
-pub const REPO: &str = "https://github.com/Yotech-AI/gizai.git";
+pub const REPO: &str = "https://github.com/Yotech-AI/hersir.git";
 
 /// How long getting a release's source may take.
 pub const SOURCE_LIMIT: Duration = Duration::from_secs(15 * 60);
@@ -104,7 +104,7 @@ struct GithubRelease {
 /// Reads GitHub's answer for a release. A draft, a pre-release, or a tag that isn't vMAJOR.MINOR.PATCH is no release to
 /// update to.
 pub fn parse_release(json: &str) -> Result<Release, Problem> {
-    let r: GithubRelease = serde_json::from_str(json).map_err(|e| Problem::plain(format!("GitHub gave an answer Gizai can't read ({e})")))?;
+    let r: GithubRelease = serde_json::from_str(json).map_err(|e| Problem::plain(format!("GitHub gave an answer Hersir can't read ({e})")))?;
     if r.draft || r.prerelease {
         let kind = if r.draft { "a draft" } else { "a pre-release" };
         return Err(Problem::plain(format!("The latest release, {}, is {kind}", r.tag_name)));
@@ -140,7 +140,7 @@ pub fn latest_release(url: &str, user_agent: &str, limit: Duration) -> Result<Op
         .args(["--header", "Accept: application/vnd.github+json", "--header", "X-GitHub-Api-Version: 2022-11-28"])
         .args(["--user-agent", user_agent, "--write-out", "\n%{http_code}", "--url", url]);
     let (ok, out, err) = crate::github::run(cmd, None, limit + Duration::from_secs(5)).map_err(|e| match e.kind() {
-        ErrorKind::NotFound => Problem::new("curl isn't installed", "Install curl with your package manager: Gizai asks GitHub for new releases with it."),
+        ErrorKind::NotFound => Problem::new("curl isn't installed", "Install curl with your package manager: Hersir asks GitHub for new releases with it."),
         ErrorKind::TimedOut => connection::no_answer(limit),
         _ => Problem::plain(format!("can't run curl: {e}")),
     })?;
@@ -174,8 +174,8 @@ fn curl_problem(said: &str, url: &str, limit: Duration) -> Problem {
 /// The prefix the installer installed the Gizai at `exe` into. None for a Gizai that runs from anywhere else (a build in
 /// a checkout's target/, a test build): an update never installs there. The layouts:
 /// - Linux (install.sh): `<prefix>/lib/gizai/gizai`.
-/// - macOS (install.sh): the same, a link into `<prefix>/lib/gizai/Gizai.app`; started from the Dock or Finder Gizai is
-///   `<prefix>/lib/gizai/Gizai.app/Contents/MacOS/gizai`. `exe` is resolved first (std's `current_exe` doesn't follow
+/// - macOS (install.sh): the same, a link into `<prefix>/lib/gizai/Hersir.app`; started from the Dock or Finder Gizai is
+///   `<prefix>/lib/gizai/Hersir.app/Contents/MacOS/gizai`. `exe` is resolved first (std's `current_exe` doesn't follow
 ///   links on macOS), and both give `<prefix>`.
 /// - Windows (install.ps1): `<prefix>\gizai.exe`, in a folder that holds install.ps1's marker `gizai-installed.txt` (a
 ///   build in target\release has none).
@@ -197,17 +197,17 @@ pub fn install_prefix(exe: &Path) -> Option<PathBuf> {
     }
 }
 
-/// macOS: `exe` with its links resolved, and Gizai.app's own binary (`<dir>/Gizai.app/Contents/MacOS/gizai`) taken as
+/// macOS: `exe` with its links resolved, and Hersir.app's own binary (`<dir>/Hersir.app/Contents/MacOS/gizai`) taken as
 /// the `<dir>/gizai` that install.sh links to it.
 #[cfg(target_os = "macos")]
 fn mac_exe(exe: &Path) -> PathBuf {
     let exe = exe.canonicalize().unwrap_or_else(|_| exe.to_path_buf());
-    let in_app = exe.file_name().is_some_and(|n| n == "gizai") && exe.parent().is_some_and(|d| d.ends_with("Gizai.app/Contents/MacOS"));
+    let in_app = exe.file_name().is_some_and(|n| n == "gizai") && exe.parent().is_some_and(|d| d.ends_with("Hersir.app/Contents/MacOS"));
     let link = exe.ancestors().nth(3).filter(|_| in_app).map(|app| app.with_file_name("gizai"));
     link.unwrap_or(exe)
 }
 
-/// The Gizai binary installed into `prefix`: `<prefix>/lib/gizai/gizai` (on macOS a link into Gizai.app, which
+/// The Gizai binary installed into `prefix`: `<prefix>/lib/gizai/gizai` (on macOS a link into Hersir.app, which
 /// install.sh keeps), on Windows `<prefix>\gizai.exe`.
 pub fn installed_exe(prefix: &Path) -> PathBuf {
     if cfg!(windows) { prefix.join("gizai.exe") } else { prefix.join("lib/gizai/gizai") }
@@ -359,7 +359,7 @@ fn fetch_problem(f: UpdateFailed, repo: &str, tag: &str) -> UpdateFailed {
     } else if ["Could not resolve host", "Failed to connect", "Couldn't connect to server", "Connection timed out", "Network is unreachable"].iter().any(|s| has(s)) {
         "Can't reach GitHub. Check your internet connection, then try again".to_string()
     } else if has("Repository not found") || has("does not appear to be a git repository") {
-        format!("Gizai can't find its repository at {repo}")
+        format!("Hersir can't find its repository at {repo}")
     } else {
         return f;
     };
@@ -406,7 +406,7 @@ pub fn install(dir: &Path, prefix: &Path, path: Option<&OsStr>, log: &Log, stop:
 fn installer(dir: &Path, path: Option<&OsStr>) -> Result<Command, UpdateFailed> {
     let script = dir.join(INSTALLER);
     if !script.is_file() {
-        return Err(UpdateFailed::plain(format!("The release has no {INSTALLER}, so Gizai can't build it")));
+        return Err(UpdateFailed::plain(format!("The release has no {INSTALLER}, so Hersir can't build it")));
     }
     #[cfg(not(windows))]
     let mut cmd = os::command("bash");
@@ -436,7 +436,7 @@ fn run(shown: &str, mut cmd: Command, log: &Log, limit: Duration, stop: &Stop, l
         .env("GIT_TERMINAL_PROMPT", "0").env("NO_COLOR", "1").env("CARGO_TERM_COLOR", "never")
         .env("npm_config_color", "false").env("npm_config_update_notifier", "false").env("npm_config_fund", "false").env("npm_config_audit", "false");
     let (mut child, tree) = os::spawn_tree(&mut cmd, low).map_err(|e| match e.kind() {
-        ErrorKind::NotFound => UpdateFailed::plain(format!("{program} isn't installed (or not on Gizai's PATH)")),
+        ErrorKind::NotFound => UpdateFailed::plain(format!("{program} isn't installed (or not on Hersir's PATH)")),
         _ => UpdateFailed::plain(format!("Couldn't start {shown}: {e}")),
     })?;
     stop.now(Some(tree.clone()));
@@ -509,6 +509,6 @@ fn run(shown: &str, mut cmd: Command, log: &Log, limit: Duration, stop: &Stop, l
             Some(code) => format!("{shown} failed (exit code {code})"),
             None => format!("{shown} was ended by a signal"),
         })),
-        None => Err(failed(format!("Gizai lost track of {shown}"))),
+        None => Err(failed(format!("Hersir lost track of {shown}"))),
     }
 }

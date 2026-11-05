@@ -38,7 +38,7 @@ export function runsAtOnceWarning(runsAtOnce: number, agents: CardAgent[]): stri
  *  for free memory before it starts a run. */
 export function runsMemoryHint(s: Pick<Settings, "computerMemoryGb" | "runsMemoryEnforced">): string {
   const has = s.computerMemoryGb ? ` This computer has ${s.computerMemoryGb} GB.` : "";
-  const only = s.runsMemoryEnforced ? "" : " On this system Gizai only waits for free memory before it starts a run.";
+  const only = s.runsMemoryEnforced ? "" : " On this system Hersir only waits for free memory before it starts a run.";
   return `All agent runs together.${has}${only}`;
 }
 
@@ -51,7 +51,7 @@ export function runsMemoryError(gb: number | undefined): string | null {
 
 /** The warning by Quit Gizai completely: what stops, and how many runs and chat answers it stops when some are at work. */
 export function quitWarning(runs: number, answers: number): string {
-  const text = "Quitting stops all agents (running cards are stopped), heartbeats and notifications until you start Gizai again. Closing the window only hides Gizai.";
+  const text = "Quitting stops all agents (running cards are stopped), heartbeats and notifications until you start Hersir again. Closing the window only hides Hersir.";
   const live = [runs > 0 && `${runs} ${runs === 1 ? "run" : "runs"}`, answers > 0 && `${answers} chat ${answers === 1 ? "answer" : "answers"}`].filter(Boolean);
   if (live.length === 0) return text;
   return `${text} Now ${live.join(" and ")} will be stopped.`;

@@ -73,7 +73,7 @@ function FoldersField({ value, onChange, kind, lead }: { value: AgentFolder[]; o
   return (
     <Field label="Folders" wide hint={<>
       Folders besides its card's worktree that its file tools may read, or read and change. They limit the file tools, not the commands it may run: an allowed command can still reach any folder.
-      {" "}Never /, your home folder, Gizai's data folder or folders with keys (~/.ssh, ~/.gnupg, ~/.config, …).
+      {" "}Never /, your home folder, Hersir's data folder or folders with keys (~/.ssh, ~/.gnupg, ~/.config, …).
       {" "}{FOLDERS_NOTE[kind]}
       {lead && " In chat the Team Lead only reads them; read and change also lets it update that folder (update_checkout) after you say yes in the chat."}
     </>}>
@@ -279,7 +279,7 @@ export function AgentDrawer({ teamId, agentId, preset, onClose }: { teamId?: str
         <FormSection title="Chat" text="The agent you talk to on the Chat page: your Team Lead. Only one agent has Chat.">
           <Field label="Chat" wide htmlFor="a-chat"
             warn={kind !== "claude_code" ? "Chat runs on Claude Code: pick a Claude Code CLI under Runs on to turn it on." : d.chat && chatOwner && chatOwner.actorId !== agentId ? `Chat moves from ${chatOwner.name} to this agent.` : null}
-            hint="In chat it uses Gizai's tools: clients, projects, tasks, agents, docs, files and your inbox. It can read your linked repositories but doesn't edit files or run commands there. The settings below are for its work on tasks.">
+            hint="In chat it uses Hersir's tools: clients, projects, tasks, agents, docs, files and your inbox. It can read your linked repositories but doesn't edit files or run commands there. The settings below are for its work on tasks.">
             <label className="check"><input id="a-chat" type="checkbox" checked={d.chat} disabled={kind !== "claude_code"} onChange={(e) => set("chat", e.target.checked)} /> Talk to this agent on the Chat page</label>
           </Field>
           <Field label="Board check" wide htmlFor="a-board"
@@ -292,7 +292,7 @@ export function AgentDrawer({ teamId, agentId, preset, onClose }: { teamId?: str
             </span>
           </Field>
         </FormSection>
-        <FormSection title="Memory" text="Notes Gizai keeps for its agents: decisions, preferences and gotchas. Each agent has its own folder in Memory, or shares another agent's.">
+        <FormSection title="Memory" text="Notes Hersir keeps for its agents: decisions, preferences and gotchas. Each agent has its own folder in Memory, or shares another agent's.">
           <Field label="Memory" wide htmlFor="a-memory"
             hint="On: its runs get its own notes and the team's notes on the card's project, client and role, and what it learned on a card is added to its notes. Settings → Runs turns memory off for every agent.">
             <label className="check"><input id="a-memory" type="checkbox" checked={d.memory} onChange={(e) => set("memory", e.target.checked)} /> Use memory</label>
@@ -308,7 +308,7 @@ export function AgentDrawer({ teamId, agentId, preset, onClose }: { teamId?: str
         </FormSection>
         <FormSection title="Permissions" text={`What ${cliName} may do without asking. A background agent can't answer questions.`}>
           {kind === "other" ? (
-            <Field label="Permission mode" wide><span>{cliName} runs with its own settings: Gizai passes it no permissions. Put the options it needs in its arguments (Settings → Coding CLIs).</span></Field>
+            <Field label="Permission mode" wide><span>{cliName} runs with its own settings: Hersir passes it no permissions. Put the options it needs in its arguments (Settings → Coding CLIs).</span></Field>
           ) : (
             <Field label="Permission mode" htmlFor="a-perm" wide warn={RISKY.has(d.permissionMode) ? PERMISSIONS[kind][d.permissionMode] : null} hint={RISKY.has(d.permissionMode) ? null : PERMISSIONS[kind][d.permissionMode]}>
               <select id="a-perm" className="select" value={d.permissionMode} onChange={(e) => set("permissionMode", e.target.value)}>

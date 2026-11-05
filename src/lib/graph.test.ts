@@ -1,7 +1,7 @@
 // GA-69: the memory graph's pure parts (src/lib/graph.ts): buildGraph's dots and lines (notes, wikilinks and embeds, a
 // dim dot for a link that finds no note, cards, projects, clients, agents and people that notes name, tags), what the
 // settings show (graphView: the kinds, the page's scope, the local graph's depth and directions, the query with path:
-// and tag:, orphans), the connections list, the groups and the calm palette (no teal, no magenta), the kept settings,
+// and tag:, orphans), the connections list, the groups and the calm palette (no teal, no gold), the kept settings,
 // and the canvas's sums (a dot's size, the labels' fade, fitting, Animate's order, the arrow keys). Then 500 notes.
 import { describe, expect, it } from "vitest";
 import {
@@ -473,19 +473,19 @@ describe("defaultGroups and groupOf: colour by query", () => {
 const fs = await import(/* @vite-ignore */ ["node", "fs"].join(":"));
 const css = (name: string): string => fs.readFileSync(new URL(`../styles/${name}`, import.meta.url), "utf8");
 
-describe("the graph's colours: calm, never teal or magenta", () => {
-  // Gizai keeps teal (--live) for an agent working now and magenta (--needs) for "needs you", in both themes.
+describe("the graph's colours: calm, never teal or gold", () => {
+  // Gizai keeps teal (--live) for an agent working now and gold (--needs, Hersir's amber since GA-230) for "needs you", in both themes.
   const tokens = css("tokens.css");
   const tokenValues = (name: string) => [...tokens.matchAll(new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{6})`, "g"))].map((m) => m[1]!);
   const reserved = [...tokenValues("live"), ...tokenValues("needs")];
   const hueGap = (a: number, b: number) => Math.min(Math.abs(a - b), 360 - Math.abs(a - b));
 
-  it("reads both themes' teal and magenta from the design tokens", () => {
+  it("reads both themes' teal and gold from the design tokens", () => {
     expect(reserved).toHaveLength(4);
     for (const c of reserved) expect(hueOf(c).sat).toBeGreaterThan(0.5);
   });
 
-  it("keeps every palette colour, in dark and light, at least 30° of hue away from teal and magenta", () => {
+  it("keeps every palette colour, in dark and light, at least 30° of hue away from teal and gold", () => {
     for (const p of PALETTE) for (const c of [p.dark, p.light]) {
       for (const r of reserved) expect([p.key, c, r, hueGap(hueOf(c).hue, hueOf(r).hue) >= 30]).toEqual([p.key, c, r, true]);
     }
@@ -499,7 +499,7 @@ describe("the graph's colours: calm, never teal or magenta", () => {
     expect(paletteColor("sage", "light")).toBe(PALETTE.find((p) => p.key === "sage")!.light);
   });
 
-  it("never uses the teal or magenta tokens or colours in the graph's code or styles", () => {
+  it("never uses the teal or gold tokens or colours in the graph's code or styles", () => {
     const app = css("app.css");
     const graphCss = app.slice(app.indexOf("The memory graph (GA-69)"));
     expect(graphCss.length).toBeGreaterThan(500);

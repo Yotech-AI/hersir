@@ -1,7 +1,7 @@
-# Performance: where Gizai is slow, and how to make it faster (GA-170)
+# Performance: where Hersir is slow, and how to make it faster (GA-170)
 
 Research for the roadmap item "Performance: a faster app" (gizai.app/roadmap, GW-5). Research only: no code, settings or
-dependencies change with this card. Written by the R&D Agent on 14 Oct 2026, against `main` at 24535e3 (Gizai 0.11.0).
+dependencies change with this card. Written by the R&D Agent on 14 Oct 2026, against `main` at 24535e3 (Hersir 0.11.0).
 
 **Marks:** **[V]** verified in the code or a primary source (named next to it); **[I]** my judgement or an estimate.
 
@@ -15,13 +15,13 @@ dependencies change with this card. Written by the R&D Agent on 14 Oct 2026, aga
 - **Then (F5 to F7):** every page and the 300 KB self-test load at start; typing redraws whole pages; timers, animations
   and each window focus (it follows the mouse on Omarchy) cost git and redraws at rest. FW: WebKitGTK 2.54 uses the GPU.
 - **Measured here:** the 7 Oct bundle (one 1.21 MB file), library sizes, call counts, this PC's GPU and the UI tests'
-  speed budgets. Start-up, memory, CPU and frames need a running Gizai: the harness takes them (section 7, code in 7.1);
+  speed budgets. Start-up, memory, CPU and frames need a running Hersir: the harness takes them (section 7, code in 7.1);
   GA-188 built it, and section 3 has its baseline.
 - **Recommendation (option A):** the harness first (P1a, P1b), then one card per cost, each measured before and after.
 
 ## 2. The project now
 
-**What it does.** Gizai is a desktop app for clients, projects and cards, worked on by local Claude Code agents. You see
+**What it does.** Hersir is a desktop app for clients, projects and cards, worked on by local Claude Code agents. You see
 the board, the Inbox, a chat with the Team Lead, Memory (notes and their graph), a Code Editor, terminals and a Usage page.
 Agents run in the background, one process tree per run, and stream what they do back into the app.
 
@@ -40,13 +40,13 @@ Agents run in the background, one process tree per run, and stream what they do 
 **How a start goes** **[V]**:
 
 1. `run()` (`src-tauri/src/lib.rs:431`) builds Tauri with its plugins. On the event loop's Ready, Tauri first builds the
-   windows from `tauri.conf.json` and then calls Gizai's `setup` closure, on the main thread (Tauri 2.12.1,
+   windows from `tauri.conf.json` and then calls Hersir's `setup` closure, on the main thread (Tauri 2.12.1,
    `crates/tauri/src/app.rs`, `fn setup`: the `for window_config in app.config().app.windows` loop comes before
    `(setup)(app)`).
 2. The window starts loading the page (WebKit's own web process) while `setup` runs `open_state` (`lib.rs:477`), which
    is `open_data` with the default agents (`lib.rs:222-227`), on the main thread: the data folder's lock (`lib.rs:229`),
    opening and upgrading the database (`lib.rs:230`; a snapshot first when the schema is older, `db.rs:155-160`, then the
-   migrations, `db.rs:184`), the seed (`lib.rs:231-235`), Memory's groups and folders (`:237-243`), runs a previous Gizai
+   migrations, `db.rs:184`), the seed (`lib.rs:231-235`), Memory's groups and folders (`:237-243`), runs a previous Hersir
    left (`:247-255`, a git call per such run through `runs::record_head`), questions and chat queues (`:257-261`), stray
    chat configs (`:262`), housekeeping (`:263`) and the pending actions (`:275`). Housekeeping reads the date of every
    log in `runs/` and `chat/` (`crates/gizai-core/src/housekeeping.rs:29-54`), so it grows with the last 30 days of runs.
@@ -67,9 +67,9 @@ the webview (how WebKitGTK draws).
 ## 3. Measurements
 
 **What this run could measure.** An R&D run may read files and run `git`, `rg`, `ls`, `wc`, `npm view`, `npm ls` and
-`cargo tree`. It may not build, start Gizai, run the repository's scripts, or read outside this worktree and
-`/home/jefsev/Herd` (so not `/proc` of a running Gizai). So the numbers below are the ones files and code give; the ones
-that need a running Gizai are in the second table, with how the harness (section 7, card P1) takes them.
+`cargo tree`. It may not build, start Hersir, run the repository's scripts, or read outside this worktree and
+`/home/jefsev/Herd` (so not `/proc` of a running Hersir). So the numbers below are the ones files and code give; the ones
+that need a running Hersir are in the second table, with how the harness (section 7, card P1) takes them.
 
 | What | Number | How it was taken |
 |---|---|---|
@@ -98,7 +98,7 @@ P1 adds theirs, with the same frame timing.
 
 **The baseline (GA-188).** Taken with the harness (section 7) on 16 Oct 2026, on this PC (AMD Ryzen 7 7800X3D, 8 cores;
 the AMD Radeon RX 7800 XT through Mesa) in the headless cage at 1280 × 720, on GA-188's branch at `80ed59a`: `main` at
-`69b871a` (Gizai 0.12.0, after GA-178's lazy pages and GA-190's reloads) plus the harness. `scripts/perf.sh` ran each
+`69b871a` (Hersir 0.12.0, after GA-178's lazy pages and GA-190's reloads) plus the harness. `scripts/perf.sh` ran each
 scenario five times on a fresh copy of `prep_perf`'s data; every number is the **median of the four warm runs**, with the
 cold run's (WebKit's cache empty) where it differs. `.devdata/perf/80ed59a.json` keeps every number of every run, and a
 later card puts its own run beside it with `scripts/perf.sh --compare`. The headless window never has the focus, so `idle`
@@ -107,7 +107,7 @@ and `editor` tell the page it has it (section 7).
 | What the card asks | Baseline | How it is taken |
 |---|---|---|
 | Start-up, cold and warm, launch to board | Warm (median of 4): the page begins **332 ms** after the launch (the four runs: 330 to 333), `app_info` has answered at 438 ms and the first card is drawn at **464 ms**; cold (WebKit's cache empty): 352, 769 and 801 ms. Inside the page (warm): its script has run at 24 ms (`DOMContentLoaded`), the sidebar is drawn at 39, `app_info` answers at 107 and the first card shows at 132 ms (cold 449) | `scripts/perf.sh start`: from the launch (`date +%s%3N`) to the page's `timeOrigin`, to `app_info` answered and to the first card drawn; the times inside the page from the counter |
-| Memory (RSS) and CPU at rest, with a run, while the Team Lead answers | At rest on the board (`idle`, 60 s): the app 180.7 MB, the web process 288.7 MB, the network process 60.3 MB; CPU: the app 0.1 %, the web process 0.3 %. While a run streams 50 events a second (`runlog`): the app 2.3 %, the web process 23.4 %, the run's own processes 0.1 %. While the Team Lead streams its 20 KB answer (`lead`): the app 3.5 %, the web process **128.1 %** (more than a core), which grows to 530.7 MB (median over the run 414.5 MB) | `scripts/perf.sh idle runlog lead`: `VmRSS` and CPU % per process of the test Gizai, from `/proc` every 500 ms. For **your own** Gizai, this read-only line gives memory per process now: `ps -o pid,rss,pcpu,etime,comm -p "$(pgrep -d, -x gizai),$(pgrep -d, -P "$(pgrep -x gizai)")"` (RSS in KiB; `pcpu` is the average since the process started, so for CPU now use `top -b -d 10 -n 2 -p <those pids>` and read the second block) |
+| Memory (RSS) and CPU at rest, with a run, while the Team Lead answers | At rest on the board (`idle`, 60 s): the app 180.7 MB, the web process 288.7 MB, the network process 60.3 MB; CPU: the app 0.1 %, the web process 0.3 %. While a run streams 50 events a second (`runlog`): the app 2.3 %, the web process 23.4 %, the run's own processes 0.1 %. While the Team Lead streams its 20 KB answer (`lead`): the app 3.5 %, the web process **128.1 %** (more than a core), which grows to 530.7 MB (median over the run 414.5 MB) | `scripts/perf.sh idle runlog lead`: `VmRSS` and CPU % per process of the test Hersir, from `/proc` every 500 ms. For **your own** Hersir, this read-only line gives memory per process now: `ps -o pid,rss,pcpu,etime,comm -p "$(pgrep -d, -x gizai),$(pgrep -d, -P "$(pgrep -x gizai)")"` (RSS in KiB; `pcpu` is the average since the process started, so for CPU now use `top -b -d 10 -n 2 -p <those pids>` and read the second block) |
 | The UI with 500 cards, 1,000 messages, 300 notes, a big repository, a run's live log | **Board** (500 cards): every open column drawn 187 ms into the page, 578 ms after the launch; scrolling each open column 60 fps, longest frame 48 ms (in To do, the first column scrolled, while the start drew the board a second time; the other columns 17 to 19 ms: from `3615b32` the probe scrolls only once the board stays on the page, and then measured 60 fps and 18 ms in every column of all five runs, with another test run on the machine); a card dragged to the next column drawn there in 18 ms. **Chat** (1,000 messages): the first screen 105 ms (7 messages in the page), scrolling up to the first message 17.9 s at 400 px a frame, 60 fps, longest frame 22 ms; 50 characters typed 60 fps, longest frame 17 ms. **Memory** (300 notes): the tree 60 ms; a search typed 63 fps, longest frame 16 ms, its hits 161 ms after the last key (150 of them the wait for typing to pause); the graph loaded in 53 ms, 61 fps while it lays out (longest frame 20 ms), settled in 1,491 ms, a frame's work 1.6 ms. **Editor** (20,000 files): the tree 130 ms; the 5,000-line file opened in 63 ms in the cold run (the warm runs reopened it from the tabs the run before had left: 2 to 14 ms; the probe now forgets them first). **Run log** (5,000 events): loaded 51 ms, drawn 57 ms (32 lines in the page), scrolling 60 fps, longest frame 21 ms; while a run streams 50 events a second: 62 fps, longest frame 20 ms; the Team Lead's answer: 57 fps, longest frame 43 ms | `scripts/perf.sh board chat memory editor runlog lead` on `prep_perf`'s data: time to drawn, frames a second and the longest frame while scrolling, typing or streaming |
 | `npm run build`'s chunk sizes today | At start 658,441 bytes (194,398 gzipped) in 3 files: the app's JS 509,220, its CSS 148,505; later 2,759,567 (1,147,235) in 103 files, the largest `xterm-ScmBfeDI.js` 331,178, `dist-ByECefBn.js` 301,260, `selftest-Y_5XNRpk.js` 191,910; in all 3,418,008 | `npm run build && node scripts/bundle-size.mjs` (`perf.sh` keeps it in its result) |
 | Backend calls and how much comes back | The start's first 5 s: 58 calls, 9 of them listeners, bringing back 552 KB, 437 KB of it `list_tasks`; `list_screenshots` 34 times, once per Review card. A drag on the board: 3 calls, 464 KB, 1 `rows-changed`. At rest on the board for 60 s: 0 calls. The Editor open for 60 s: 42 calls (`editor_folders` 8, `editor_main` 6, `editor_versions` 20, `editor_git` 8). A live run of 20 s: 1,002 `run-event`s, 2 `rows-changed`, 5 calls. The Team Lead's answer (7 s): 691 `chat-event`s, 12 `rows-changed` and 15 calls, which bring back 1,291 KB | the counter (`src/lib/perf.ts`) in every scenario: calls, answer bytes (as JSON) and ms per command, and the events heard |
@@ -177,14 +177,14 @@ numbers; each finding's code is verified **[V]**.
   `PullPanel.tsx:22`, `FileDrop.tsx:25`); a recent chat 7 (the sidebar's 5 and `src/pages/ChatPage.tsx:37-38`). In all,
   55 `useData` calls in `src/` reload this way.
 - **Who writes.** Every saved chat message and every tool result in a Team Lead answer sends a notice
-  (`src-tauri/src/chat.rs:348`, `:1274`), and so do an agent's own writes through Gizai's tools during a run (comments,
+  (`src-tauri/src/chat.rs:348`, `:1274`), and so do an agent's own writes through Hersir's tools during a run (comments,
   Memory notes, limits). So each step of a Team Lead answer, in any chat, costs the board its 9 reloads.
 - **At start** the default route makes 16 backend calls and 18 listener registrations (each one an IPC call too): `app_info`,
   `terminal_list`, the sidebar's 5 lists, `live_runs` twice, `chat_live`, `editor_apps`, `update_status` and the task page's
   4 lists. That is with no Editor folder in the sidebar; with some, `editor_folders` adds one call and each folder two
   more, `editor_git` and `editor_main` (`src/components/Sidebar.tsx:283-293`).
 - **When it bites.** With an agent run going and while the Team Lead works, writes come every few seconds; each one costs
-  the reload storm above. This is the most likely cause of "Gizai gets sluggish while agents work" **[I]**.
+  the reload storm above. This is the most likely cause of "Hersir gets sluggish while agents work" **[I]**.
 
 ### F2. Streaming text redraws, and re-parses, everything above it
 
@@ -284,7 +284,7 @@ Read from the code; no query plan was taken in this run (it can't run SQLite), s
     (`src/pages/ProjectPage.tsx:18`) and while you type a repository path in the project form, 300 ms after typing
     pauses (`src/components/ProjectForm.tsx:45-48`). On a big repository the window waits for `git status`.
 
-  Apart from the start's `git rev-parse` for each run a previous Gizai left (`src-tauri/src/lib.rs:252`, section 2),
+  Apart from the start's `git rev-parse` for each run a previous Hersir left (`src-tauri/src/lib.rs:252`, section 2),
   everything else that starts git runs off the main thread: every Editor command goes through `spawn_blocking`
   (`src-tauri/src/editor.rs:301-304`), and so do a run's preparation and every `git fetch` **[V]**.
 - **On the async runtime.** A run's start (`start_inner`, `src-tauri/src/runs.rs:803`) makes several git calls inline
@@ -351,7 +351,7 @@ Read from the code; no query plan was taken in this run (it can't run SQLite), s
   per folder, which run git) and again on every window focus (`src/components/Sidebar.tsx:286-295`). The Editor refreshes
   git and its folder every 10 s (`src/pages/EditorPage.tsx:194`), its standing against main every 10 s (`:248`, a `git
   fetch` when one is due) and its open files' versions every 3 s (`:390`). These skip while `document.hidden` is true, and
-  nothing else in the app listens for visibility; whether WebKitGTK sets it when Gizai is closed to the tray or sits on
+  nothing else in the app listens for visibility; whether WebKitGTK sets it when Hersir is closed to the tray or sits on
   another Hyprland workspace is not known (P9 checks it). The run panel's 1 s clock (`RunPanel.tsx:91`) and the Usage page's
   60 s tick (`src/pages/UsagePage.tsx:234`) don't check at all.
 - **A window focus is a refresh.** The sidebar, the Editor page and the terminal page also load again on every window
@@ -363,7 +363,7 @@ Read from the code; no query plan was taken in this run (it can't run SQLite), s
   changed, `:383-420`, `:786`): by my count 35 to 65 git processes, plus three per open folder **[I]**. Omarchy turns
   on Hyprland's focus follows mouse (`follow_mouse = 1` in its `default/hypr/input.lua`, unless your own
   `~/.config/hypr/input.lua` sets it otherwise) **[V]**, so the window gets focus whenever the pointer moves onto it:
-  moving the mouse between a terminal and Gizai's Editor starts that many git processes each time **[I]** (P9 counts
+  moving the mouse between a terminal and Hersir's Editor starts that many git processes each time **[I]** (P9 counts
   the focus events first).
 - **Animations that never stop** while agents work: the `gz-ping` pulse runs forever (`src/styles/components.css:133`) on
   every live marker: a working card (`Board.tsx:47`), the sidebar's live tags (`Sidebar.tsx:122`), a read-only Editor
@@ -385,8 +385,8 @@ Read from the code; no query plan was taken in this run (it can't run SQLite), s
 
 ### FW. The webview: WebKitGTK already draws on the GPU; keep it that way
 
-- **What Gizai sets.** The launcher only points EGL at Mesa when the machine has no NVIDIA GPU (`install.sh:316-317`) and
-  starts Gizai through a login shell so agents find their tools (`install.sh:320`); neither it nor Gizai sets any WebKit
+- **What Hersir sets.** The launcher only points EGL at Mesa when the machine has no NVIDIA GPU (`install.sh:316-317`) and
+  starts Hersir through a login shell so agents find their tools (`install.sh:320`); neither it nor Hersir sets any WebKit
   variable (`rg WEBKIT_` finds none in `src-tauri/` or the scripts) **[V]**. This PC draws on an AMD GPU through Mesa
   (section 3), so the NVIDIA problems in section 5 don't apply to it.
 - **What WebKitGTK does now.** Arch's `webkit2gtk-4.1` is 2.54.1 (built 2 Oct 2026, archlinux.org's package data), so an
@@ -406,22 +406,22 @@ Read from the code; no query plan was taken in this run (it can't run SQLite), s
   to `postMessage` only if that fails (`tauri-2.12.1/scripts/ipc-protocol.js:20-37`, `:61-66`) **[V]**. Where they
   differ: a hidden window. Tauri's `backgroundThrottling` setting, which sets whether a hidden web view throttles or
   suspends its timers, works on macOS 14 and later only, and is "Unsupported" on Linux and Windows (`tauri-utils-2.10.1/src/config.rs:2234-2249`)
-  **[V]**; so on Linux only Gizai's own visibility checks quiet a hidden window (F7, P9). WebView2 can be asked to use
+  **[V]**; so on Linux only Hersir's own visibility checks quiet a hidden window (F7, P9). WebView2 can be asked to use
   less memory while hidden (`MemoryUsageTargetLevel`, section 5); WebKitGTK has the cache model and the memory pressure
-  settings instead. The costs in F1 to F7 are Gizai's own work, so they are the same on all three **[I]**.
+  settings instead. The costs in F1 to F7 are Hersir's own work, so they are the same on all three **[I]**.
 
 ## 5. Compared with what Tauri, WebKitGTK, React, Vite and SQLite recommend
 
-Each line: the advice (quoted from a primary source, read on 14 Oct 2026, links in section 10), what Gizai does, and the gap.
+Each line: the advice (quoted from a primary source, read on 14 Oct 2026, links in section 10), what Hersir does, and the gap.
 
-| Advice | Gizai today | Gap |
+| Advice | Hersir today | Gap |
 |---|---|---|
 | **Tauri:** "Commands without the async keyword are executed on the main thread"; "Asynchronous commands are preferred in Tauri to perform heavy work in a manner that doesn't result in UI freezes or slowdowns" (Calling Rust; Tauri's macro does the same: a plain `fn` gets the blocking execution context, `tauri-macros/src/command/wrapper.rs`) | 112 of 187 commands are plain `fn`, every list and search among them (F1) | **Large** (P3) |
 | **Tauri:** "The event system is not designed for low latency or high throughput situations"; "Channels are designed to be fast and deliver ordered data" (Calling the frontend) | Terminals use a channel with 8 ms batching; run and chat streams send one JSON event per stream event (`src-tauri/src/lib.rs:290-295`) | **Medium** (P5) |
 | **Tauri:** large answers are slow as JSON; "To return array buffers in an optimized way, use tauri::ipc::Response" | Lists come back whole, as JSON, after every write, with fields the board doesn't show (F1) | Medium; fixed mostly by P2 (fewer reloads) and P12 (smaller lists), not by a new format |
-| **WebKitGTK:** hardware acceleration is the default, and in 2.54 "now always used"; the DMA-BUF renderer is the only accelerated one since 2.44 ("The X11 and WPE renderers have been removed in favor of the DMA-BUF one"); 2.54's Skia compositor improves MotionMark "by around 36%… while keeping the GPU markedly less busy" | Gizai sets no WebKit variable (FW) | None. Keep it so; `WEBKIT_DISABLE_DMABUF_RENDERER=1` would turn acceleration off altogether (WebKit's `AcceleratedBackingStore.cpp` leaves no transport mode when it is set, so `canUseHardwareAcceleration()` is false; my reading of the source **[I]**) |
+| **WebKitGTK:** hardware acceleration is the default, and in 2.54 "now always used"; the DMA-BUF renderer is the only accelerated one since 2.44 ("The X11 and WPE renderers have been removed in favor of the DMA-BUF one"); 2.54's Skia compositor improves MotionMark "by around 36%… while keeping the GPU markedly less busy" | Hersir sets no WebKit variable (FW) | None. Keep it so; `WEBKIT_DISABLE_DMABUF_RENDERER=1` would turn acceleration off altogether (WebKit's `AcceleratedBackingStore.cpp` leaves no transport mode when it is set, so `canUseHardwareAcceleration()` is false; my reading of the source **[I]**) |
 | **Tauri's Linux graphics guide:** most NVIDIA problems come from "the WebKitGTK DMABUF renderer requesting buffer formats the NVIDIA driver does not provide"; `__NV_DISABLE_EXPLICIT_SYNC=1` fixes "Error 71" "without a performance cost"; the other switches cost speed; "Only ship an unconditional override like this if you have verified your app is affected" | The launcher's only graphics setting is Mesa's EGL on machines without NVIDIA (`install.sh:316-317`) | None for this PC; question 6 for NVIDIA machines. One third-party report (xnmp/tauri-explorer#1057, secondary) measured scrolling at 44 to 68 ms a frame on 2.54.1 with an RTX 3070, and 17 ms with `WEBKIT_DMABUF_RENDERER_FORCE_SHM=1` |
-| **WebKitGTK memory:** the cache model `WEBKIT_CACHE_MODEL_DOCUMENT_VIEWER` would "Disable the cache completely, which substantially reduces memory usage" (the default is the web browser model); `MemoryPressureSettings` sets the web process's memory limit ("the system's RAM size with a maximum of 3GB" by default) | Neither is set (`rg` finds no cache model or memory pressure setting) | Small, worth one measured try: Gizai's pages come from inside the app, so a web cache buys little **[I]** (P9) |
+| **WebKitGTK memory:** the cache model `WEBKIT_CACHE_MODEL_DOCUMENT_VIEWER` would "Disable the cache completely, which substantially reduces memory usage" (the default is the web browser model); `MemoryPressureSettings` sets the web process's memory limit ("the system's RAM size with a maximum of 3GB" by default) | Neither is set (`rg` finds no cache model or memory pressure setting) | Small, worth one measured try: Hersir's pages come from inside the app, so a web cache buys little **[I]** (P9) |
 | **WebView2 (Windows):** "Batch messages wherever possible, because frequent message passing can increase CPU usage"; set `MemoryUsageTargetLevel` to Low "on inactive WebViews" (wry has `set_memory_usage_level` since 0.35.0) | Unbatched run and chat events; no memory level when the window is closed to the tray | Medium on Windows; P5 batches for all three systems |
 | **macOS (WKWebView):** each web view's page runs in its own WebContent process, and since macOS Sonoma "all drawing… occurs in the 'GPU Process'" | Nothing macOS-specific in drawing; a login shell runs once at start for the PATH (`src-tauri/src/shell_path.rs:8-18`) | None known |
 | **React:** "lazy lets you defer loading component's code until it is rendered for the first time"; "memo is only valuable when your component re-renders often with the same exact props, and its re-rendering logic is expensive" (it is, for Markdown); `useDeferredValue` keeps typing responsive with a slow list; for long lists "we recommend using a technique known as 'windowing'" (the old docs; react.dev has no newer page) | No `lazy`; `MarkdownView`, `MessageGroup`, `Stream` and `Column` aren't memoised; only `DataTable` virtualises | **Large** for streaming (P4), medium for start (P6) and long lists (P7) |
@@ -441,7 +441,7 @@ rest is Tauri, React and SQLite as they are.
 | **Size** | Fourteen cards of one pull request each (section 8); the harness (P1a, P1b) and P3 are the biggest | Three to five large cards that touch every page at once | Two or three cards |
 | **Gain** | Each finding's gain, shown in numbers before and after | The largest in the long run, and what a future sync needs (`changes` is meant as its log, `crates/gizai-core/src/db.rs:1-2`) | Most of A's gains for F1, F2 and F5 |
 | **Risk** | Low: small steps, each checked; the order can change when the numbers come | High: one change across the app, hard to test in steps, in the way of every card in flight | Unproven: no numbers to show the gain or catch a step back, and the roadmap's "faster" can't be shown |
-| **Libraries** | none new | possibly TanStack Query (MIT) for the store, or Gizai's own | none new |
+| **Libraries** | none new | possibly TanStack Query (MIT) for the store, or Hersir's own | none new |
 
 **Recommendation: A.** The biggest costs (F1, F2) have small, local fixes; the harness turns "feels faster" into numbers
 the roadmap can show, and it guards the gains afterwards. B's direction (say what changed, reload only that) is kept in the
@@ -460,7 +460,7 @@ settle time, a frame's work) and the data makers' pattern (`crates/gizai-core/ex
 joins the runs and prints the tables, instead of Python; the app and `prep_perf` run in a scratch home folder
 (`.devdata/perf/home`), because the Editor refuses a folder inside `~/.local/share/gizai`, where a card's worktree is; the
 scenarios that open their own page start on People, so the board's start doesn't overlap what they measure; the headless
-window never has the focus, so in `idle` and `editor` the probe tells the page it has it (else Gizai's git checks rest, as
+window never has the focus, so in `idle` and `editor` the probe tells the page it has it (else Hersir's git checks rest, as
 for a window nobody uses: GA-190), and notes that it didn't (`had_focus`); `prep_perf` sets 2,000 tool calls a run (the
 streaming fake makes 333). Each scenario's numbers are named in `src/selftest.ts` (`perfProbe`); a result file has every
 run's numbers, the medians of the warm runs and the cold run's. Section 3 has the baseline.
@@ -606,7 +606,7 @@ export const perfReport = () => ({
 ```
 
 **The sampler** (inside `scripts/perf.sh`'s runner, written and started in `cage` as `scripts/shot-cage.sh` writes its
-runner at `:14-27` and starts it at `:29-34`): it notes the launch, starts Gizai, and every 500 ms writes one line per process of the app and everything
+runner at `:14-27` and starts it at `:29-34`): it notes the launch, starts Hersir, and every 500 ms writes one line per process of the app and everything
 under it (WebKit's web and network processes, agent runs), however deep:
 
 ```bash
@@ -638,7 +638,7 @@ board     …
 
 **What it can't show** **[I]**: the headless cage draws with wlroots' `gles2` renderer on the same GPU
 (`WLR_RENDERER=gles2`, `WLR_RENDER_DRM_DEVICE=/dev/dri/renderD128`, `scripts/smoke-cage.sh:18`) in a 1280 × 720 output, not
-in Hyprland on your screen, so its numbers are for comparing before and after, not the ones you feel. For your own Gizai,
+in Hyprland on your screen, so its numbers are for comparing before and after, not the ones you feel. For your own Hersir,
 the read-only line in section 3 gives its memory and CPU.
 
 ## 8. Proposed cards
@@ -790,7 +790,7 @@ by side.
   drawers loaded when first asked for (`src/lib/drawers.tsx:3-8`), which takes the Markdown editor and CodeMirror out of
   the start files (F5); the self-test loaded with `import()` only when `app_info` says it is a test run
   (`src/App.tsx:27`, used at `:77-167`). A test run is `selftest` or any `selftest_mode` (`src/types.ts:160`): the tour,
-  the update test and the screenshots start Gizai with a mode only (`scripts/tour-capture.sh:94`,
+  the update test and the screenshots start Hersir with a mode only (`scripts/tour-capture.sh:94`,
   `scripts/update-test.sh:74`, `scripts/shot-cage.sh:31`), and their steps run in the self-test's code
   (`src/App.tsx:76-77`).
 - **Acceptance:**
@@ -924,7 +924,7 @@ by side.
 ## 9. Open questions
 
 1. **A baseline on your machine now, or with P1?** Two things you can run in seconds give today's numbers before any card:
-   the bundle (`source scripts/env.sh && npm run build` in this worktree; `dist/` is ignored by git) and your Gizai's memory
+   the bundle (`source scripts/env.sh && npm run build` in this worktree; `dist/` is ignored by git) and your Hersir's memory
    (the `ps` line in section 3, once at rest and once while an agent works). *Recommendation:* let P1 take all of it, in the
    cage, so every later card compares against the same setup; run the `ps` line once if you want a feel for today's memory.
 2. **What should feel faster first?** Staying smooth while agents and the Team Lead work (F1 to F4), the start (F5), or long
@@ -938,13 +938,13 @@ by side.
    set), as a separate file inside the app. *Recommendation:* yes; the UI tests, the tour and the screenshots keep
    working, and only test runs load it.
 6. **NVIDIA.** This PC draws on an AMD Radeon RX 7800 XT through Mesa (section 3), so the NVIDIA problems in section 5
-   don't touch it, and P1's numbers won't show them. Should Gizai do anything for users with NVIDIA GPUs before 1.0?
+   don't touch it, and P1's numbers won't show them. Should Hersir do anything for users with NVIDIA GPUs before 1.0?
    *Recommendation:* no setting by default (Tauri's guide warns against unconditional overrides); if a user reports a slow
    or blank window, ask for `WEBKIT_DMABUF_RENDERER_FORCE_SHM=1` or `__NV_DISABLE_EXPLICIT_SYNC=1` as a test, and only
    then add a launcher setting for NVIDIA machines.
 7. **macOS and Windows.** Measure there too? *Recommendation:* not now: the harness is Linux-only (cage), and the fixes are
    the same on all three; CI's runners are too noisy for frame numbers.
-8. **History that only grows.** Runs, comments, chat messages and the `changes` log are never deleted (F3). Should Gizai
+8. **History that only grows.** Runs, comments, chat messages and the `changes` log are never deleted (F3). Should Hersir
    ever thin them out, for example the `changes` rows of cards archived a year ago? *Recommendation:* not now: with
    P8's indexes their size stops mattering for speed, and `changes` is meant as the log a future sync reads
    (`crates/gizai-core/src/db.rs:1-2`); look again if `bench_queries` on `prep_perf --years 3`'s data still shows growth

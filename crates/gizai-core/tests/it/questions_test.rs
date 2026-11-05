@@ -309,9 +309,9 @@ fn a_question_the_team_lead_couldnt_look_at_doesnt_count_toward_the_limit() {
     let q = setup();
     for _ in 0..2 {
         let (r, _) = q.ask();
-        questions::skip(&q.db, &r, "The gizai-mcp helper is missing next to Gizai").unwrap();
+        questions::skip(&q.db, &r, "The gizai-mcp helper is missing next to Hersir").unwrap();
         let l = q.lead_of(&r).unwrap();
-        assert_eq!((l.state.as_str(), l.reason.as_deref()), ("skipped", Some("The gizai-mcp helper is missing next to Gizai")));
+        assert_eq!((l.state.as_str(), l.reason.as_deref()), ("skipped", Some("The gizai-mcp helper is missing next to Hersir")));
         assert!(q.in_inbox() && !q.card().with_lead, "skipped: the Inbox as before");
         assert!(q.leads_comments().is_empty(), "without a comment");
         q.person_says("CSV.");
@@ -381,11 +381,11 @@ fn questions_that_waited_for_the_team_lead_when_gizai_stopped_go_to_you_at_the_n
     assert_eq!((lrun.status.as_str(), lrun.error.as_deref(), lrun.question_task_id.as_deref()), ("failed", Some("interrupted"), Some(q.task.as_str())));
     assert_eq!(questions::recover(&q.db).unwrap(), 1);
     let t = q.card();
-    assert_eq!(t.hold_reason.as_deref(), Some("Team Lead escalated to you: Gizai stopped before it had answered"));
+    assert_eq!(t.hold_reason.as_deref(), Some("Team Lead escalated to you: Hersir stopped before it had answered"));
     assert!(q.in_inbox());
     let c = q.leads_comments();
     assert_eq!(c.len(), 1);
-    assert_eq!((c[0].author_id.as_str(), c[0].body_md.as_str()), (q.lead.as_str(), "Gizai stopped before I had answered this question, so it is yours to decide."));
+    assert_eq!((c[0].author_id.as_str(), c[0].body_md.as_str()), (q.lead.as_str(), "Hersir stopped before I had answered this question, so it is yours to decide."));
     assert_eq!(questions::recover(&q.db).unwrap(), 0, "once");
 }
 

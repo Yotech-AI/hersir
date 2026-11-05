@@ -1,15 +1,15 @@
-# Gizai installer for Windows. Builds Gizai from source and installs it for you alone (no administrator rights):
+# Hersir installer for Windows. Builds Hersir from source and installs it for you alone (no administrator rights):
 #   %LOCALAPPDATA%\Programs\Gizai\   gizai.exe, gizai-mcp.exe (the helper chat uses) and gizai-installed.txt
-#   Start menu\Programs\Gizai.lnk     the shortcut that starts Gizai and lets Windows show its notifications
+#   Start menu\Programs\Hersir.lnk    the shortcut that starts Hersir and lets Windows show its notifications
 # Your data lives in %APPDATA%\Gizai and is never touched by install or uninstall (unless -Purge).
-# Gizai runs the coding CLIs installed on Windows itself; it never uses WSL.
+# Hersir runs the coding CLIs installed on Windows itself; it never uses WSL.
 #
 # Usage, in PowerShell (Windows PowerShell 5.1 or PowerShell 7):
 #   .\install.ps1                from a checkout: check, build and install
 #   .\install.ps1 -Check         only report what is missing
-#   .\install.ps1 -BuildOnly     check and build, install nothing (Gizai's own Update runs this, then -SkipBuild)
+#   .\install.ps1 -BuildOnly     check and build, install nothing (Hersir's own Update runs this, then -SkipBuild)
 #   .\install.ps1 -SkipBuild     install the programs already built in target\release
-#   .\install.ps1 -Uninstall     remove Gizai (add -Purge to delete your data too)
+#   .\install.ps1 -Uninstall     remove Hersir (add -Purge to delete your data too)
 # When PowerShell won't run scripts: powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
 # Run outside a checkout, it clones (or updates) the source into %LOCALAPPDATA%\gizai-src first.
 # Environment: GIZAI_REPO (the git URL to clone), GIZAI_BRANCH (default production: the released code; main is
@@ -74,11 +74,11 @@ if ($BuildOnly -and $SkipBuild) {
   exit 2
 }
 if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
-  Say 'install.ps1 is for Windows. On Linux and macOS, install Gizai with install.sh.'
+  Say 'install.ps1 is for Windows. On Linux and macOS, install Hersir with install.sh.'
   exit 1
 }
 
-$DefaultRepo = 'https://github.com/Yotech-AI/gizai.git'
+$DefaultRepo = 'https://github.com/Yotech-AI/hersir.git'
 $Repo = if ($env:GIZAI_REPO) { $env:GIZAI_REPO } else { $DefaultRepo }
 $Prefix = if ($env:GIZAI_PREFIX) { $env:GIZAI_PREFIX } else { Join-Path $env:LOCALAPPDATA 'Programs\Gizai' }
 $Prefix = Full $Prefix
@@ -86,30 +86,38 @@ $Data = if ($env:GIZAI_DATA_DIR) { $env:GIZAI_DATA_DIR } else { Join-Path $env:A
 $Data = Full $Data
 $SrcClone = Join-Path $env:LOCALAPPDATA 'gizai-src'
 $StartMenu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
-$Shortcut = Join-Path $StartMenu 'Gizai.lnk'
+$Shortcut = Join-Path $StartMenu 'Hersir.lnk'
+# The shortcut's name before the app was called Hersir (GA-233): an install or uninstall removes it.
+$OldShortcut = Join-Path $StartMenu 'Gizai.lnk'
 $Exe = Join-Path $Prefix 'gizai.exe'
-# An installed Gizai knows its install by this file (a build in target\release has none).
+# An installed Hersir knows its install by this file (a build in target\release has none).
 $Marker = Join-Path $Prefix 'gizai-installed.txt'
 $Programs = @('gizai.exe', 'gizai-mcp.exe')
 
+# Removes the Start menu shortcut $Link when it starts this install's Hersir.
+function Remove-OwnShortcut([string]$Link) {
+  if (Test-Path -LiteralPath $Link) {
+    $target = (New-Object -ComObject WScript.Shell).CreateShortcut($Link).TargetPath
+    if ($target -eq $Exe) { Remove-Item -LiteralPath $Link -Force }
+  }
+}
+
 # ---------- uninstall ----------
 if ($Uninstall) {
-  Step 'Removing Gizai'
+  Step 'Removing Hersir'
   try {
     foreach ($f in @($Programs) + @('gizai-installed.txt')) {
       $path = Join-Path $Prefix $f
       if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
     }
   } catch {
-    Say "Could not remove Gizai from ${Prefix}: is it open? Quit it (Quit Gizai completely, in its tray menu), then run this again."
+    Say "Could not remove Hersir from ${Prefix}: is it open? Quit it (Quit Hersir completely, in its tray menu), then run this again."
     exit 1
   }
   Get-ChildItem -LiteralPath $Prefix -Force -Filter '.*.old.*' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
-  # The Start menu shortcut goes only when it starts this install's Gizai.
-  if (Test-Path -LiteralPath $Shortcut) {
-    $target = (New-Object -ComObject WScript.Shell).CreateShortcut($Shortcut).TargetPath
-    if ($target -eq $Exe) { Remove-Item -LiteralPath $Shortcut -Force }
-  }
+  # The Start menu shortcuts go only when they start this install's Hersir: Hersir.lnk, and Gizai.lnk from before GA-233.
+  Remove-OwnShortcut $Shortcut
+  Remove-OwnShortcut $OldShortcut
   if (-not (Get-ChildItem -LiteralPath $Prefix -Force -ErrorAction SilentlyContinue)) {
     Remove-Item -LiteralPath $Prefix -Force -ErrorAction SilentlyContinue
   }
@@ -124,7 +132,7 @@ if ($Uninstall) {
 }
 
 # ---------- check ----------
-Step 'Checking what Gizai needs'
+Step 'Checking what Hersir needs'
 $notes = New-Object System.Collections.Generic.List[string]
 if (-not (Have 'git')) {
   $notes.Add('Git for Windows is missing (Claude Code needs it too): winget install --id Git.Git -e   (then open a new terminal)')
@@ -133,7 +141,7 @@ if (-not $SkipBuild) {
   if (Have 'cargo') {
     $rustc = Read-Program 'rustc' @('-vV')
     if ($rustc -match 'host: (\S+)' -and $Matches[1] -notlike '*-windows-msvc') {
-      $notes.Add("Rust builds for $($Matches[1]) here; Gizai needs Rust's MSVC toolchain: rustup default stable-msvc")
+      $notes.Add("Rust builds for $($Matches[1]) here; Hersir needs Rust's MSVC toolchain: rustup default stable-msvc")
     }
   } else {
     $notes.Add('Rust is missing: winget install --id Rustlang.Rustup -e, or rustup-init.exe from https://rustup.rs   (then open a new terminal)')
@@ -167,9 +175,9 @@ $claude = Get-Command 'claude' -ErrorAction SilentlyContinue | Select-Object -Fi
 if ($claude) {
   Say "Claude Code: found ($($claude.Source)). Make sure you are logged in: run 'claude' once."
 } else {
-  Say "Claude Code: not found. Gizai's agents and chat run it; install it from https://docs.claude.com/en/docs/claude-code and log in."
+  Say "Claude Code: not found. Hersir's agents and chat run it; install it from https://docs.claude.com/en/docs/claude-code and log in."
 }
-# Gizai's window is WebView2, which comes with Windows 11. Building doesn't need it; starting Gizai does.
+# Hersir's window is WebView2, which comes with Windows 11. Building doesn't need it; starting Hersir does.
 $webView = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
 $hasWebView = $false
 foreach ($key in @("HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\$webView", "HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\$webView",
@@ -178,9 +186,9 @@ foreach ($key in @("HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\$web
   if ($pv -and $pv.pv -and $pv.pv -ne '0.0.0.0') { $hasWebView = $true }
 }
 if (-not $hasWebView) {
-  Say "WebView2: not found, so Gizai's window can't open. Windows 11 comes with it; get the Evergreen Runtime from https://developer.microsoft.com/microsoft-edge/webview2/"
+  Say "WebView2: not found, so Hersir's window can't open. Windows 11 comes with it; get the Evergreen Runtime from https://developer.microsoft.com/microsoft-edge/webview2/"
 }
-if ($ok) { Say 'Everything Gizai needs to build is here.' }
+if ($ok) { Say 'Everything Hersir needs to build is here.' }
 if ($Check) { if ($ok) { exit 0 } else { exit 1 } }
 if (-not $ok -and -not $SkipBuild) {
   Say ''
@@ -190,7 +198,7 @@ if (-not $ok -and -not $SkipBuild) {
 
 # ---------- source ----------
 $conf = if ($PSScriptRoot) { Join-Path $PSScriptRoot 'src-tauri\tauri.conf.json' } else { '' }
-if ($conf -and (Test-Path -LiteralPath $conf) -and (Select-String -LiteralPath $conf -Pattern '"productName": "Gizai"' -SimpleMatch -Quiet)) {
+if ($conf -and (Test-Path -LiteralPath $conf) -and (Select-String -LiteralPath $conf -Pattern '"productName": "Hersir"' -SimpleMatch -Quiet)) {
   $Src = $PSScriptRoot
 } else {
   Step 'Getting the source'
@@ -243,7 +251,7 @@ if ($BuildOnly) {
 }
 
 # ---------- back up ----------
-# Before replacing a Gizai you use, snapshot its data (the new build opens it, and may upgrade it, on its next start).
+# Before replacing a Hersir you use, snapshot its data (the new build opens it, and may upgrade it, on its next start).
 $db = Join-Path $Data 'gizai.db'
 if (Test-Path -LiteralPath $db) {
   Step 'Backing up your data'
@@ -265,15 +273,15 @@ New-Item -ItemType Directory -Force -Path $Prefix | Out-Null
 # Programs an earlier install renamed aside go now (one that still runs stays until the next install).
 Get-ChildItem -LiteralPath $Prefix -Force -Filter '.*.old.*' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
 # Each program goes in under a temporary name of this installer's own first, then replaces the old one with renames: a
-# copy that fails (a full disk) leaves the installed Gizai as it was. Windows won't overwrite a program that runs (an
-# open Gizai, or the helper a chat uses) but can rename it, so the old one is renamed aside first.
+# copy that fails (a full disk) leaves the installed Hersir as it was. Windows won't overwrite a program that runs (an
+# open Hersir, or the helper a chat uses) but can rename it, so the old one is renamed aside first.
 $new = @{}; $old = @{}
 foreach ($p in $Programs) { $new[$p] = Join-Path $Prefix ".$p.new.$PID"; $old[$p] = Join-Path $Prefix ".$p.old.$PID" }
 try {
   foreach ($p in $Programs) { Copy-Item -LiteralPath (Join-Path $Release $p) -Destination $new[$p] -Force }
 } catch {
   foreach ($p in $Programs) { Remove-Item -LiteralPath $new[$p] -Force -ErrorAction SilentlyContinue }
-  Say "Could not copy Gizai into ${Prefix}, so nothing was installed."
+  Say "Could not copy Hersir into ${Prefix}, so nothing was installed."
   exit 1
 }
 try {
@@ -284,14 +292,14 @@ try {
   foreach ($p in $Programs) { [System.IO.File]::Move($new[$p], (Join-Path $Prefix $p)) }
 } catch {
   $why = $_.Exception.Message
-  # Put back what was renamed aside, so the Gizai you had stays as it was.
+  # Put back what was renamed aside, so the Hersir you had stays as it was.
   foreach ($p in $Programs) {
     $dst = Join-Path $Prefix $p
     if ((Test-Path -LiteralPath $old[$p]) -and -not (Test-Path -LiteralPath $dst)) { [System.IO.File]::Move($old[$p], $dst) }
     Remove-Item -LiteralPath $new[$p] -Force -ErrorAction SilentlyContinue
   }
-  Say "Could not replace Gizai in ${Prefix}: $why"
-  Say 'So nothing was installed. If Gizai is open, quit it (Quit Gizai completely, in its tray menu), then run this again.'
+  Say "Could not replace Hersir in ${Prefix}: $why"
+  Say 'So nothing was installed. If Hersir is open, quit it (Quit Hersir completely, in its tray menu), then run this again.'
   exit 1
 }
 foreach ($p in $Programs) { Remove-Item -LiteralPath $old[$p] -Force -ErrorAction SilentlyContinue }
@@ -299,7 +307,7 @@ $installed = Invoke-Gizai $Exe @('--version')
 $version = if ($installed.Ok -and $installed.Text) { $installed.Text } else { 'gizai' }
 Set-Content -LiteralPath $Marker -Value $version -Encoding Ascii
 
-# The Start menu shortcut carries Gizai's AppUserModelID, ai.gizai.app: Windows shows a desktop app's notifications only
+# The Start menu shortcut carries Hersir's AppUserModelID, ai.gizai.app: Windows shows a desktop app's notifications only
 # for an ID that a Start menu shortcut has. WScript.Shell can't set one, so this C# sets it through IPropertyStore.
 $shortcutCode = @'
 using System;
@@ -390,25 +398,29 @@ namespace GizaiInstall
     }
 }
 '@
+$madeShortcut = $true
 try {
   if (-not ('GizaiInstall.Shortcut' -as [type])) { Add-Type -TypeDefinition $shortcutCode }
   New-Item -ItemType Directory -Force -Path $StartMenu | Out-Null
   [GizaiInstall.Shortcut]::Save($Shortcut, $Exe, $Prefix, 'Clients, projects and tasks, worked on by local AI agents', 'ai.gizai.app')
 } catch {
-  # Without the C# (a locked-down PowerShell), a plain shortcut: Gizai starts from the Start menu, without notifications.
+  # Without the C# (a locked-down PowerShell), a plain shortcut: Hersir starts from the Start menu, without notifications.
   $why = $_.Exception.Message
   try {
     $link = (New-Object -ComObject WScript.Shell).CreateShortcut($Shortcut)
     $link.TargetPath = $Exe
     $link.WorkingDirectory = $Prefix
     $link.Save()
-    Say "Note: the Start menu shortcut has no app ID ($why), so Windows may not show Gizai's notifications."
+    Say "Note: the Start menu shortcut has no app ID ($why), so Windows may not show Hersir's notifications."
   } catch {
-    Say "Could not make the Start menu shortcut ($why). Start Gizai with: $Exe"
+    $madeShortcut = $false
+    Say "Could not make the Start menu shortcut ($why). Start Hersir with: $Exe"
   }
 }
+# Gizai.lnk goes once Hersir.lnk is there, when it starts this install's Hersir (an install from before GA-233 made it).
+if ($madeShortcut) { Remove-OwnShortcut $OldShortcut }
 
 Step "Done: $version"
-Say "Start Gizai from the Start menu, or run: & '$Exe'"
+Say "Start Hersir from the Start menu, or run: & '$Exe'"
 Say "Your data: $Data"
-Say 'Update: Gizai offers new releases above Company in its sidebar (or run this installer again). Remove: run it with -Uninstall.'
+Say 'Update: Hersir offers new releases above Company in its sidebar (or run this installer again). Remove: run it with -Uninstall.'

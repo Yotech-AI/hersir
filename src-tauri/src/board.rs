@@ -103,7 +103,7 @@ fn blocked(st: &AppState, agent: &team::Member) -> Option<String> {
         return Some("agents are paused in Settings".into());
     }
     if crate::runs::is_closing(st) {
-        return Some("Gizai is quitting".into());
+        return Some("Hersir is quitting".into());
     }
     if chat::checking(st) {
         return Some("a board check is still running".into());

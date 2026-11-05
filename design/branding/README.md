@@ -1,6 +1,6 @@
 # Mountains along the bottom of the window (GA-139)
 
-Gizai's own wireframe landscape as a band along the bottom of the window, from the left edge to the right edge, under the
+Hersir's own wireframe landscape as a band along the bottom of the window, from the left edge to the right edge, under the
 sidebar and the main column, for Jefsev to pick a strength. On Omarchy a little of the desktop's teal wireframe mountains
 shows through the window; this draws mountains of our own, a bit more visible, never in the way of text or controls. A
 frontend card builds the strength Jefsev picks; the website (GA-52) can use the hero.
@@ -41,7 +41,7 @@ Nothing in the app changes in this card.
 - **Three strengths.** Subtle (about what shows through now), medium (the proposal) and strong (the bright strip of
   Jefsev's screenshot). Subtle and medium keep `text`, `text-2` and `text-3` at 4.5:1 between the lines at the band's
   bottom edge; strong drops `text-3` under 4.5:1 there (the table below). The focus ring keeps 3:1 in all three.
-- **Height:** `clamp(var(--size-band-min), 14vh, var(--size-band))`, 80 to 128px: 126px in Gizai's first window (900 high),
+- **Height:** `clamp(var(--size-band-min), 14vh, var(--size-band))`, 80 to 128px: 126px in Hersir's first window (900 high),
   84px in its smallest (600). Under 560px high, with high contrast, in forced colours and on paper it goes.
 - **Never in the way:** `pointer-events: none`, `user-select: none`, `aria-hidden="true"`; no motion, no space taken.
 - **Settings → Appearance** gets a section, Background, with one checkbox, “Show mountains along the bottom”, on by

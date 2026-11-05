@@ -14,7 +14,7 @@ pub const KEY: &str = "onboarding";
 const PENDING: &str = "pending";
 
 /// The welcome chat's first message, yours, word for word.
-pub const WELCOME: &str = "Hi! I just installed GizAi and set up my team. Please welcome me, tell me in a few lines what you and the team can do, and ask whether I'd like help setting up agents, clients, projects, tasks or anything else.";
+pub const WELCOME: &str = "Hi! I just installed Hersir and set up my team. Please welcome me, tell me in a few lines what you and the team can do, and ask whether I'd like help setting up agents, clients, projects, tasks or anything else.";
 
 /// What the onboarding asks.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]

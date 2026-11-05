@@ -401,7 +401,7 @@ async fn codex_and_gemini_agents_get_only_what_their_cli_takes_and_the_rest_is_r
         let agent = put_agent_on(&st, &cli);
         let v = app_mcp::tools_view(&st, Some(&agent), &cli).unwrap();
         assert!(v.browser.disabled.as_deref().is_some_and(|w| w.contains(name)), "{name}: {:?}", v.browser.disabled);
-        assert!(v.builtin.source.starts_with("From Gizai's catalog"), "{name}: {}", v.builtin.source);
+        assert!(v.builtin.source.starts_with("From Hersir's catalog"), "{name}: {}", v.builtin.source);
         assert!(!v.builtin.can_ask);
         let e = app_mcp::save_cli_tools(&st, &agent, refused.clone()).unwrap_err();
         assert!(e.contains(name), "{name}: {e}");
@@ -601,7 +601,7 @@ async fn after_a_chat_answer_used_a_web_tool_or_the_browser_the_acting_tools_are
         assert_eq!(msgs.iter().map(|m| m.0.as_str()).collect::<Vec<_>>(), [tool, "mcp__gizai__set_agent_status"], "{msgs:?}");
         let (_, is_error, text) = &msgs[1];
         // GA-102: not run, but kept for the user to approve with one click
-        assert!(*is_error && text == &format!("set_agent_status wasn't run: this answer used {tool}, a tool from outside Gizai. Gizai keeps \
+        assert!(*is_error && text == &format!("set_agent_status wasn't run: this answer used {tool}, a tool from outside Hersir. Hersir keeps \
                 the call for the user to approve with one click. Tell them in a sentence what it does."), "{tool}: {msgs:?}");
         let kept = gizai_lib::pending::list(st, &thread).unwrap();
         assert!(kept.len() == 1 && kept[0].action.tool == "set_agent_status" && kept[0].action.outside_tool == tool, "{tool}: {kept:?}");

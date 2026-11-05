@@ -1,6 +1,6 @@
-# Gizai: a card's changes, and an Editor for local folders (research, 2026-10-11)
+# Hersir: a card's changes, and an Editor for local folders (research, 2026-10-11)
 
-Status: research only, no code. Written by the R&D Agent for GA-91 on 2026-10-11, in two passes. The first pass read `main` at `f3541f0`. The second pass, later the same day with web search and page fetches allowed, checked the outside facts in primary sources and re-checked every line reference against `main` at `9c32546` (Gizai 0.7.1, database schema 16). This branch has since merged `main` at `def0520`. Its two newer commits (PR #82, GA-99) change only tests that this document doesn't cite, so every reference still holds.
+Status: research only, no code. Written by the R&D Agent for GA-91 on 2026-10-11, in two passes. The first pass read `main` at `f3541f0`. The second pass, later the same day with web search and page fetches allowed, checked the outside facts in primary sources and re-checked every line reference against `main` at `9c32546` (Hersir 0.7.1, database schema 16). This branch has since merged `main` at `def0520`. Its two newer commits (PR #82, GA-99) change only tests that this document doesn't cite, so every reference still holds.
 Legend: **[V]** = verified today, in the code (file and line), with the command named (`git`, `gh`, `npm view`, `cargo tree`, `which`), or in the primary source named (its link and the date read are in §8). **[I]** = my judgement, or a fact I could not check in a primary source (the reason is given).
 Limits: the run may not start node or a browser, so nothing was measured in a browser. No source gives the speed of any of the diff components on a 2,000-line diff (§4.2), so card F1 measures it before the Changes view ships. Bitbucket's API reference was too long to fetch, and Zed's documentation doesn't describe the Changes panel the card describes. What rests on those stays [I].
 
@@ -8,15 +8,15 @@ Limits: the run may not start node or a browser, so nothing was measured in a br
 
 ## 1. Summary
 
-1. Both parts fit how Gizai is built: git runs as a command, every card has its own worktree, CodeMirror 6 is already in the app, and the screens reach Rust only through `src/api.ts`. [V]
-2. **A card's changes can always come from local git**, without GitHub's or Bitbucket's API. While the worktree exists, it is compared (uncommitted files included) against its merge base with main. When only the branch is left, the branch is. After a merge, Gizai uses the range it saved at the merge in two hidden refs, which works for a merge commit, a squash and a rebase alike. For cards merged before that, it uses the merge commit against its first parent, which for PR #81 gives exactly GitHub's diff (34 files, +1923 −112). `gh pr diff` is only the last resort: it needs the network, and gives a patch without the files around it. [V `git`, `gh`, GitHub's docs]
+1. Both parts fit how Hersir is built: git runs as a command, every card has its own worktree, CodeMirror 6 is already in the app, and the screens reach Rust only through `src/api.ts`. [V]
+2. **A card's changes can always come from local git**, without GitHub's or Bitbucket's API. While the worktree exists, it is compared (uncommitted files included) against its merge base with main. When only the branch is left, the branch is. After a merge, Hersir uses the range it saved at the merge in two hidden refs, which works for a merge commit, a squash and a rebase alike. For cards merged before that, it uses the merge commit against its first parent, which for PR #81 gives exactly GitHub's diff (34 files, +1923 −112). `gh pr diff` is only the last resort: it needs the network, and gives a patch without the files around it. [V `git`, `gh`, GitHub's docs]
 3. **Card diffs here are big.** Of the 71 merged card pull requests (11 Oct), the median changes 951 lines in 19 files, a quarter change more than 2,108 lines (32 files), and the largest 15,131 lines in 245 files (#52). The view must list files first, load each diff as it scrolls into sight, and fold unchanged code and lock files. [V `gh pr list`]
 4. **Recommended: CodeMirror 6 for both** (`@codemirror/merge` for the diff; language packages and `@codemirror/search` for the editor), coloured with new syntax and diff tokens in the design system, with one Blade language for both screens. The merge view's own diff gives up on precision in big files, so the backend sends git's hunks and the view uses them (`DiffConfig.override`, since 6.12.0). Not `@pierre/diffs` or `@git-diff-view`: they bring a second colouring system (Shiki or highlight.js) next to CodeMirror's, and Pierre's package is 7.5 MB and releases about ten times a month. Not Monaco: far heavier, no Blade, and a look of its own. [V packages, docs; I judgement]
 5. **Changes:** a **Changes** tab at the top of the card, next to the card itself (Card | Changes +964 −112), full width: the file list on the left, every file's diff below each other on the right, removed lines red and added lines green, unchanged code folded. Each run in the Runs tab gets "Show changes" too. [I]
 6. **Editor:** a folding **Editor** section in the sidebar above Agents, listing the folders you opened, and an Editor page: file tree, tabs, syntax colours, find and replace, search in the folder, Ctrl+S, each file's git status, outside changes, and a bar with behind, ahead and uncommitted, **Fetch** and **Update** (a fast-forward only, with `update_checkout`'s rules). [I]
 7. **Blade is the one real gap:** no CodeMirror package for it exists, so we write a small Blade language on top of `@codemirror/lang-php`, on the model of CodeMirror's own Liquid language (HTML with template tags). [V registry, web search; I effort]
 8. **A person's card:** Open in editor makes the card's worktree as for an agent and pins the card to you, so agents leave it alone; Commit, Push and Hand over then move it on as a builder's `ready_for_testing` does. One rule in `qa_fail` changes. [V `workflow.rs:185`; I]
-9. **Also add Open in VS Code, Zed or PhpStorm:** cheap, and better for big edits; the built-in editor stays basic. Zed's command is `zeditor` on Arch-based systems such as this computer, so Gizai looks for each editor under all its names. **Free:** nothing in `docs/PAID-FEATURES.md` changes; add the editor to "What stays free". [V `which`, the editors' docs; I]
+9. **Also add Open in VS Code, Zed or PhpStorm:** cheap, and better for big edits; the built-in editor stays basic. Zed's command is `zeditor` on Arch-based systems such as this computer, so Hersir looks for each editor under all its names. **Free:** nothing in `docs/PAID-FEATURES.md` changes; add the editor to "What stays free". [V `which`, the editors' docs; I]
 10. **Eleven cards** (§6): two Design cards and nine build cards. Four can start at once (both designs, both first backends), and a card's changes can ship before the Editor.
 
 ### Changed in the second pass
@@ -36,16 +36,16 @@ Limits: the run may not start node or a browser, so nothing was measured in a br
 
 ## 2. The project now
 
-### 2.1 What Gizai does for its users
+### 2.1 What Hersir does for its users
 
-Gizai is a local desktop app for one developer and a team of coding agents (README.md:3-5; docs/HANDOFF-2026-10-07.md:5-29). [V]
+Hersir is a local desktop app for one developer and a team of coding agents (README.md:3-5; docs/HANDOFF-2026-10-07.md:5-29). [V]
 
 - **Work:** clients with contacts, projects (each linked to a local git repository, its *linked folder*, and optionally to GitHub, Bitbucket or another git URL), tasks on a board or in a list, with labels, priorities, acceptance criteria, files and docs, and an Inbox for "needs you" (README.md:125-126).
 - **The board** is the card flow Backlog → To do → In progress → Testing → Review → Deploy → Done. Each column holds the agents that work its cards, is Auto (its agents take its cards by priority) or Manual (only Run starts one), and links to its next column; you set this up on Team → Workflow (README.md:133-134; `crates/gizai-core/src/columns.rs`, `workflow.rs`).
-- **Agents** are coding CLIs (Claude Code, Codex, Gemini, others) with a role, model, effort, allowed commands, folders, tools and a budget. Each run is headless, in the card's own **git worktree** `<data>/worktrees/<KEY>/<identifier>` on the branch `gizai/<identifier>-<slug>` (`crates/gizai-agents/src/worktree.rs:84-120`; `src-tauri/src/runs.rs:693-717`). A new worktree is prepared first: paths copied from the linked folder, `composer install` or `npm ci` for what is missing, a setup command (`runs.rs:722-733`). A run ends with a `GIZAI_RESULT` line that moves the card (`workflow.rs:380-489`), and Gizai pushes the branch after every run (README.md:181).
+- **Agents** are coding CLIs (Claude Code, Codex, Gemini, others) with a role, model, effort, allowed commands, folders, tools and a budget. Each run is headless, in the card's own **git worktree** `<data>/worktrees/<KEY>/<identifier>` on the branch `gizai/<identifier>-<slug>` (`crates/gizai-agents/src/worktree.rs:84-120`; `src-tauri/src/runs.rs:693-717`). A new worktree is prepared first: paths copied from the linked folder, `composer install` or `npm ci` for what is missing, a setup command (`runs.rs:722-733`). A run ends with a `GIZAI_RESULT` line that moves the card (`workflow.rs:380-489`), and Hersir pushes the branch after every run (README.md:181).
 - **QA and review:** the QA Agent tests cards in Testing; a pass moves them to Review, assigned to the person who reviews (`workflow.rs:345-351`, `:409-411`). Open pull request pushes the branch and opens the pull request with `gh` or Bitbucket's API (`src-tauri/src/pulls.rs:239-283`). The PR check asks every two minutes (`src-tauri/src/lib.rs:495-504`); a merge moves the card to Deploy or Done and removes its worktree, and its branch when the pull request has its latest commit (`pulls.rs:388-437`).
 - **Runs:** live output, history with why each run ended, the commits it made (from `base_sha` to `head_sha`, `crates/gizai-core/src/model.rs:383-388`; `runs.rs:1170-1185`), Continue with a note, Run this for me, limits and budgets.
-- **The Team Lead** answers in Chat with Gizai's own tools over MCP (`crates/gizai-mcp`, `src-tauri/src/tools/`), checks the board every 15 minutes when switched on, and reads its own read-only copies of the code at `<data>/code/<KEY>` (`src-tauri/src/code.rs:1-15`). When a linked folder's dependencies are behind main it offers to update it, and `update_checkout` does it: a fast-forward, then `composer install` or `npm ci`, never a merge, reset or the setup command (`code.rs:370-399`; `crates/gizai-agents/src/checkout.rs`).
+- **The Team Lead** answers in Chat with Hersir's own tools over MCP (`crates/gizai-mcp`, `src-tauri/src/tools/`), checks the board every 15 minutes when switched on, and reads its own read-only copies of the code at `<data>/code/<KEY>` (`src-tauri/src/code.rs:1-15`). When a linked folder's dependencies are behind main it offers to update it, and `update_checkout` does it: a fast-forward, then `composer install` or `npm ci`, never a merge, reset or the setup command (`code.rs:370-399`; `crates/gizai-agents/src/checkout.rs`).
 - **Memory** (notes per agent and shared, the Memory page), **Usage** (tokens, API cost, subscription limits), **Settings** in tabs (General, Appearance, Notifications, Agents and runs, MCP servers, GitHub and Bitbucket; `src/router.ts:11`), desktop notifications, a tray icon, and updates from GitHub Releases (README.md:127-163).
 
 ### 2.2 How it is built
@@ -66,7 +66,7 @@ Gizai is a local desktop app for one developer and a team of coding agents (READ
 
 - **Tests** (CLAUDE.md:39-45): `cargo test --workspace` (core, agents, MCP and `src-tauri/tests/*_flow_test.rs`, all with fake coding CLIs such as `crates/gizai-agents/tests/fake-claude.sh`); `npm test` (vitest, `src/lib/*.test.ts` and component tests); `npm run build`; `scripts/ui-test.sh` when the screens change: headless probes in `cage` driven by `src/selftest.ts`, against `.devdata/demo` made by `crates/gizai-core/examples/prep_*.rs`. Screenshots with `scripts/shot-cage.sh`. Never on Jeffrey's screen or data (CLAUDE.md:18-30).
 - **CI** builds and tests every pull request and push to `main` on Linux, macOS and Windows: `npm ci`, `npm run build`, `npm test`, `cargo build`, `cargo test` (`.github/workflows/ci.yml:90-101`). Code for one system goes behind `cfg(...)`, programs start through `gizai_agents::os::command` (CLAUDE.md:47-50).
-- **Release** (`docs/RELEASING.md`): bump the version in three places, merge `main` into `production` with a merge commit, tag `vX.Y.Z`, publish a GitHub Release; installed Gizais build it from source. A database change makes it a MINOR version (`RELEASING.md:21-27`).
+- **Release** (`docs/RELEASING.md`): bump the version in three places, merge `main` into `production` with a merge commit, tag `vX.Y.Z`, publish a GitHub Release; installed copies build it from source. A database change makes it a MINOR version (`RELEASING.md:21-27`).
 
 ### 2.4 What the two features touch
 
@@ -84,10 +84,10 @@ Gizai is a local desktop app for one developer and a team of coding agents (READ
 | Linked folder `checkout.rs`, `code.rs` | `status` (behind, dependencies; local only, `checkout.rs:59-76`), `plan` (`:144-196`), `update` (`:224-258`); `update_checkout` from chat (`code.rs:370-405`) | | Behind and Update in the Editor |
 | Workflow `crates/gizai-core/src/workflow.rs` | The queue skips cards pinned to someone else, but a person as assignee doesn't stop it (`:185-188`); `qa_fail` gives the card back to its implementer (`:457-475`) | | A person's card: pin, hand over, QA fail |
 | Settings | Key–value; `runs::Settings` holds what Settings shows (`src-tauri/src/runs.rs:165`) | | `editor_roots` (default `~/Herd`) |
-| Folder checks `crates/gizai-core/src/folders.rs` | Refuses `/`, home, Gizai's data, key folders for agent folders (`:46-56`, `:189`) | | the same refusals for Editor roots |
+| Folder checks `crates/gizai-core/src/folders.rs` | Refuses `/`, home, Hersir's data, key folders for agent folders (`:46-56`, `:189`) | | the same refusals for Editor roots |
 | Opener | `tauri-plugin-opener` opens files and links (`commands.rs:318-328`) | | Open in VS Code, Zed, PhpStorm |
 
-What the work must not touch: the Team Lead's copies (`<data>/code/<KEY>`), which Gizai resets at will (`crates/gizai-agents/src/copies.rs:37-43`), and Gizai's own data folder apart from card worktrees. [V]
+What the work must not touch: the Team Lead's copies (`<data>/code/<KEY>`), which Hersir resets at will (`crates/gizai-agents/src/copies.rs:37-43`), and Hersir's own data folder apart from card worktrees. [V]
 
 ---
 
@@ -99,7 +99,7 @@ From the card (Jefsev, 10 and 11 October 2026):
 
 1. **A card's changes.** On a card, see at a glance which files it changed and the changed lines, like Zed's Changes panel: a Changes tab and a tab per open file beside the conversation; "Since origin/main +6 −4" on top; each changed file under its path, removed lines red and added lines green, with line numbers; unchanged code folded, with arrows to open it. Easy to use comes first.
 2. **An Editor in the sidebar, above Agents.** Open a local folder (a project in `~/Herd/*`) in a basic code editor with syntax colours. It shows when the folder is behind main on GitHub. A small card can then go to a person who does it quicker by hand.
-3. It may be built before the website and offered there as a free feature, so Gizai suits every developer, also one who codes by hand next to the agents.
+3. It may be built before the website and offered there as a free feature, so Hersir suits every developer, also one who codes by hand next to the agents.
 
 What "a person's card" means here [I]: a card assigned to a person, which that person builds in the card's own worktree with the Editor (or their own editor), then hands over to QA or to Review like an agent would.
 
@@ -111,7 +111,7 @@ What "a person's card" means here [I]: a card assigned to a person, which that p
 
 Answer: always from local git, in this order. [V for the commands' sources; I for the order]
 
-| Card | Changes come from | How (git as a command, like the rest of Gizai) | What they include |
+| Card | Changes come from | How (git as a command, like the rest of Hersir) | What they include |
 |---|---|---|---|
 | No branch yet (Backlog, To do before its first run) | nothing | `tasks.branch` is set by the first run (`crates/gizai-core/src/runs.rs:113`) [V] | "No changes yet: the first run makes this card's branch." |
 | Its worktree is there (In progress, Testing, Review, a person's card) | the worktree against its **merge base** with main as last fetched | `git merge-base HEAD <main>`, then `git diff --numstat -z -M <base>` and `git ls-files --others --exclude-standard -z` for new files | commits **and** uncommitted changes; untracked files count as added |
@@ -125,11 +125,11 @@ Notes:
 
 - `<main>` is the ref card starts use: `refs/remotes/<remote>/<branch>` when the repository has a remote for the project's link, `refs/gizai/base/<branch>` when it hasn't, the local default branch without a link (`src-tauri/src/git.rs:65-72`, `worktree.rs:327-335`). On screen it reads **"Since origin/main"** (or "Since main"). [V]
 - Against the merge base, not main's tip: otherwise every commit main got since the card started would show as removed lines. [I]
-- `.gizai-tmp/` never shows: Gizai keeps it out of git status through `info/exclude` (`worktree.rs:204-247`). [V]
-- **After a merge** the worktree and, when the pull request has its latest commit, the branch are gone (`pulls.rs:420-437`). What the merge leaves on main depends on how it was merged. GitHub's docs on `merge_commit_sha`: after a merge commit it is that merge commit, after a squash the squashed commit on the base branch, after a rebase "the commit that the base branch was updated to", which is only the last of the rebased commits. [V GitHub's REST docs] So "the merge commit against its first parent" is right after a merge commit (this repository's way: `f3541f0` has the parents `4d03026` and `e3b1d2c`; and Gizai's own merge, `gh pr merge --merge`, `github.rs:161-163`) and after a squash. After a rebase merge it would quietly show only the card's last commit. [V for the rules; I for the consequence] For PR #81, `git diff f3541f0^1 f3541f0` and `git diff 4d03026...e3b1d2c` both give 34 files, +1923 −112, exactly GitHub's numbers (`gh pr view 81 --json additions,deletions,changedFiles`). [V]
-- **So Gizai saves the range at the merge.** The PR check reads the branch tip just before it cleans up (`pulls.rs:402`). B1 adds one step there, before `clean_up`. It fetches main as a card start does, then writes two refs in the linked repository with `git update-ref`: `refs/gizai/merged/<identifier>/head`, pointing at that tip, and `refs/gizai/merged/<identifier>/base`, pointing at `git merge-base <tip> <merge commit>^1`. After a merge commit or a squash, that first parent is main just before the merge. After a rebase it is the previous rebased commit, whose merge base with the tip is still where the card started, because rebased commits are copies and not ancestors of the tip. So one rule fits all three. [I, from how `git merge-base` works] The merge commit comes from `gh` (`mergeCommit` in `gh pr view --json`'s field list [V `gh`]) or from Bitbucket (`merge_commit.hash` on the pull request [I: Atlassian's API reference was too long to fetch]). When offline or without the merge commit, base is `git merge-base <tip> <main>` with main as last fetched, unless that gives the tip itself (main already has the merge); then nothing is saved and the next rows apply.
-- **Why refs and not a database column:** a ref keeps the card's commits on this computer after its branch is deleted. After a squash or a rebase nothing else points to them, and `git gc` removes unreachable commits two weeks old (`gc.pruneExpire`, default `2.weeks.ago` [V git docs]). Gizai already keeps a ref of its own, `refs/gizai/base/<branch>` (`worktree.rs:327-335`) [V], and refs need no migration. The cost: tools that show every ref (`git log --all`, some git apps) show these too. [I] (Open question 7.)
-- `gh pr diff` is only the last resort. It needs the network and gh's login, works for GitHub only, and gives a patch without the files around it (so no "show more lines"). By default it also neutralises terminal escape sequences in the text, so Gizai must pass `--allow-escape-sequences` to get the files as they are. [V `gh pr diff --help`]
+- `.gizai-tmp/` never shows: Hersir keeps it out of git status through `info/exclude` (`worktree.rs:204-247`). [V]
+- **After a merge** the worktree and, when the pull request has its latest commit, the branch are gone (`pulls.rs:420-437`). What the merge leaves on main depends on how it was merged. GitHub's docs on `merge_commit_sha`: after a merge commit it is that merge commit, after a squash the squashed commit on the base branch, after a rebase "the commit that the base branch was updated to", which is only the last of the rebased commits. [V GitHub's REST docs] So "the merge commit against its first parent" is right after a merge commit (this repository's way: `f3541f0` has the parents `4d03026` and `e3b1d2c`; and Hersir's own merge, `gh pr merge --merge`, `github.rs:161-163`) and after a squash. After a rebase merge it would quietly show only the card's last commit. [V for the rules; I for the consequence] For PR #81, `git diff f3541f0^1 f3541f0` and `git diff 4d03026...e3b1d2c` both give 34 files, +1923 −112, exactly GitHub's numbers (`gh pr view 81 --json additions,deletions,changedFiles`). [V]
+- **So Hersir saves the range at the merge.** The PR check reads the branch tip just before it cleans up (`pulls.rs:402`). B1 adds one step there, before `clean_up`. It fetches main as a card start does, then writes two refs in the linked repository with `git update-ref`: `refs/gizai/merged/<identifier>/head`, pointing at that tip, and `refs/gizai/merged/<identifier>/base`, pointing at `git merge-base <tip> <merge commit>^1`. After a merge commit or a squash, that first parent is main just before the merge. After a rebase it is the previous rebased commit, whose merge base with the tip is still where the card started, because rebased commits are copies and not ancestors of the tip. So one rule fits all three. [I, from how `git merge-base` works] The merge commit comes from `gh` (`mergeCommit` in `gh pr view --json`'s field list [V `gh`]) or from Bitbucket (`merge_commit.hash` on the pull request [I: Atlassian's API reference was too long to fetch]). When offline or without the merge commit, base is `git merge-base <tip> <main>` with main as last fetched, unless that gives the tip itself (main already has the merge); then nothing is saved and the next rows apply.
+- **Why refs and not a database column:** a ref keeps the card's commits on this computer after its branch is deleted. After a squash or a rebase nothing else points to them, and `git gc` removes unreachable commits two weeks old (`gc.pruneExpire`, default `2.weeks.ago` [V git docs]). Hersir already keeps a ref of its own, `refs/gizai/base/<branch>` (`worktree.rs:327-335`) [V], and refs need no migration. The cost: tools that show every ref (`git log --all`, some git apps) show these too. [I] (Open question 7.)
+- `gh pr diff` is only the last resort. It needs the network and gh's login, works for GitHub only, and gives a patch without the files around it (so no "show more lines"). By default it also neutralises terminal escape sequences in the text, so Hersir must pass `--allow-escape-sequences` to get the files as they are. [V `gh pr diff --help`]
 - **The hosts' limits.** GitHub's web view shows at most 20,000 lines or 1 MB of diff, 500 KB a file and 300 files a pull request, and its files API lists at most 3,000 files. Bitbucket's view shows at most 2,000 changed lines or 100 KB a file, 8,000 lines in all and 200 files. [V GitHub's "Repository limits" and REST docs; Atlassian's "Limits for viewing content and diffs"] `gh pr diff` isn't held to GitHub's web limits. Today it returned the largest card's diff (#52: 245 files, 20,732 lines, 1.25 MB) and a release pull request's (#33: 27,708 lines, 1.58 MB) in full. The 300-file limit couldn't be tried: no pull request here has more than 271 files. [V `gh pr diff 52 | wc`, `gh pr diff 33 | wc`] Local git has none of these limits, which is one more reason to prefer it.
 - **Per run: yes.** It is cheap (the two ids are saved already, `runs.rs:878-880`, `:1158-1165`) and answers "what did this run do?". It shows commits only; a run's own note already says how many uncommitted changes it left (README.md:181). [V]
 
@@ -159,7 +159,7 @@ Screen by screen, with sketches: §5.1.
 
 **Q3. Which component: CodeMirror's merge view, `@pierre/diffs` or `@git-diff-view/react`?**
 
-Answer: compared in §4.2 on size, licence, upkeep, colours for PHP, Blade, TSX and Rust, Gizai's light and dark themes, speed on a 2,000-line diff and fit with the app's content security policy.
+Answer: compared in §4.2 on size, licence, upkeep, colours for PHP, Blade, TSX and Rust, Hersir's light and dark themes, speed on a 2,000-line diff and fit with the app's content security policy.
 
 Recommendation: **`@codemirror/merge`**, its `unifiedMergeView`, read-only (`EditorState.readOnly`, `mergeControls: false`), fed with git's hunks through `diffConfig.override`, with F1's own fold bar. [V the options; I the choice]
 
@@ -186,7 +186,7 @@ Answer and recommendation: [I, with the refusals V]
   - the projects' linked folders (`projects.repo_path`, `model.rs:87`);
   - any folder directly under the roots set in Settings → General → Editor folders (default `~/Herd`), so `~/Herd/kade-portal` opens without being a project first;
   - a card's worktree (`<data>/worktrees/<KEY>/<identifier>`), from the card.
-- **Never:** `/`, the home folder itself, the folders that hold keys or logins and Gizai's data folder apart from card worktrees, with the refusals agent folders already use (`crates/gizai-core/src/folders.rs:46-56`, `:189`). Not the Team Lead's copies either (`<data>/code/`): Gizai throws away anything changed in them (`copies.rs:37-43`). A link that leads out of the opened folder is refused.
+- **Never:** `/`, the home folder itself, the folders that hold keys or logins and Hersir's data folder apart from card worktrees, with the refusals agent folders already use (`crates/gizai-core/src/folders.rs:46-56`, `:189`). Not the Team Lead's copies either (`<data>/code/`): Hersir throws away anything changed in them (`copies.rs:37-43`). A link that leads out of the opened folder is refused.
 - **Card worktrees** are **read-only while an agent works on the card**, and editable when the card is yours (a person's card, Q8). On any other card's worktree the Editor says so and offers "Edit anyway" (your changes become part of the card, uncommitted, for its next run).
 - **Hidden:** `.git/` (never shown or written).
 - **Folders git ignores** (`node_modules/`, `vendor/`, `target/`, `dist/`, `storage/`, …): shown greyed and folded, the files in them read-only, left out of search. An ignored file elsewhere, such as `.env`, opens and saves as usual.
@@ -211,7 +211,7 @@ Answer and recommendation: [I]
 | New file, rename, delete | in the tree's menu; delete asks first |
 | Open in VS Code, Zed or PhpStorm | Q9 |
 
-Waits for later: language servers (`@codemirror/lsp-client` exists, MIT, 6.3.0 of 2026-09-17 [V `npm view`]; it talks to a server through a `Transport` the app writes, an object that sends and receives JSON messages, and leaves connecting to it to that code [V README]; in Gizai a Rust command would start each server and pass its messages as events, and each server needs installing per language [I]); a terminal; formatting (Prettier, Pint, rustfmt); git blame, staging and merge conflicts; image previews; settings for tab size and wrapping (the first version indents as the file already does).
+Waits for later: language servers (`@codemirror/lsp-client` exists, MIT, 6.3.0 of 2026-09-17 [V `npm view`]; it talks to a server through a `Transport` the app writes, an object that sends and receives JSON messages, and leaves connecting to it to that code [V README]; in Hersir a Rust command would start each server and pass its messages as events, and each server needs installing per language [I]); a terminal; formatting (Prettier, Pint, rustfmt); git blame, staging and merge conflicts; image previews; settings for tab size and wrapping (the first version indents as the file already does).
 
 **Q7. Behind main: how often to fetch, what to show, and an Update button.**
 
@@ -245,15 +245,15 @@ Recommendation: build it last (cards B4 and F4), on top of the Editor; it needs 
 
 Answer: cheap and worth having next to a small built-in editor, not instead of it. [I]
 
-- Gizai already has `tauri-plugin-opener` (`commands.rs:318-328`), and finds programs on PATH with `os::find_in` (`crates/gizai-agents/src/os.rs:67`), which handles Windows' `.cmd` shims; Gizai starts programs only through `os::command` (CLAUDE.md:49). [V]
+- Hersir already has `tauri-plugin-opener` (`commands.rs:318-328`), and finds programs on PATH with `os::find_in` (`crates/gizai-agents/src/os.rs:67`), which handles Windows' `.cmd` shims; Hersir starts programs only through `os::command` (CLAUDE.md:49). [V]
 - **The editors' command lines** [V their docs, read 2026-10-11]:
   - *VS Code:* `code <folder>`, and `code -g <file>:<line>[:<column>]` for a file at a line; `-r` reuses the last window. The Windows and Linux installers put `code` on PATH; on macOS you run "Shell Command: Install 'code' command in PATH" once.
   - *Zed:* `zed <folder>`, `zed <file>:<line>:<column>`; `-a` adds the paths to the open window. On macOS "cli: install cli binary" puts it in `/usr/local/bin/zed`. On Linux "the binary name may vary by distribution (commonly zed or zeditor)", and packages may also call it `zedit`. **This computer has only `/usr/bin/zeditor`** [V `which`], so looking for `zed` alone would miss Jefsev's own Zed.
   - *PhpStorm:* `phpstorm.sh [--line <n>] [--column <n>] <path>` on Linux and macOS, `phpstorm64.exe` on Windows. The JetBrains Toolbox App writes launcher scripts named after the IDE into a folder of its own, which isn't always on PATH. PhpStorm makes a folder that isn't a project yet into one by adding `.idea/`.
   - *macOS without those tools:* `open -a "<App>" <folder>`. [I]
-- So B2 looks for every name: `code`; `zed`, `zeditor` and `zedit`; `phpstorm`, `phpstorm.sh` and Toolbox's scripts folder. On Windows, `.cmd` and `.exe` are found through `os::find_in`. Before it opens a card's worktree in PhpStorm, B2 adds `/.idea/` to the repository's `info/exclude`, as Gizai does for `.gizai-tmp/` (`worktree.rs:229`), so PhpStorm's files never become part of a card. Laravel's own `.gitignore` already ignores `/.idea`, `/.vscode` and `/.zed`; Gizai's doesn't. [V laravel/laravel 12.x `.gitignore`, Gizai's `.gitignore`; I approach]
+- So B2 looks for every name: `code`; `zed`, `zeditor` and `zedit`; `phpstorm`, `phpstorm.sh` and Toolbox's scripts folder. On Windows, `.cmd` and `.exe` are found through `os::find_in`. Before it opens a card's worktree in PhpStorm, B2 adds `/.idea/` to the repository's `info/exclude`, as Hersir does for `.gizai-tmp/` (`worktree.rs:229`), so PhpStorm's files never become part of a card. Laravel's own `.gitignore` already ignores `/.idea`, `/.vscode` and `/.zed`; Hersir's doesn't. [V laravel/laravel 12.x `.gitignore`, Hersir's `.gitignore`; I approach]
 - Show only the ones found, in a small **Open in** menu on the Editor's top bar, on a folder's row in the sidebar, and on a card with a worktree.
-- The built-in editor is for a quick look and a small fix without leaving Gizai, and for reading an agent's worktree; a big piece of work is better in the developer's own editor, which Gizai then still follows (Changes, behind main, Hand over).
+- The built-in editor is for a quick look and a small fix without leaving Hersir, and for reading an agent's worktree; a big piece of work is better in the developer's own editor, which Hersir then still follows (Changes, behind main, Hand over).
 
 Recommendation: yes, in the first Editor cards (B2 and F2).
 
@@ -278,7 +278,7 @@ Recommendation: add "the code editor and a card's changes" to the list under "Wh
 
 **B. A ready-made diff view for Changes, CodeMirror for the Editor.** Changes uses `@pierre/diffs` (colours with Shiki: TextMate grammars, as in VS Code) or `@git-diff-view/react` (highlight.js through lowlight by default, or Shiki), fed with `git diff`'s patch or both texts. For Blade, Pierre has Shiki's grammar; `@git-diff-view` needs Shiki, or highlight.js's unmaintained third-party grammar.
 
-- *What it takes:* the component, Shiki and its grammars, and a Shiki theme in Gizai's colours. Shiki's CSS-variables theme is "a lot less granular" than a real theme [V shiki.style], so in practice it means a theme file kept in step with the tokens by hand [I]. Pierre draws inside Shadow DOM, styled through `--diffs-*` CSS variables [V diffs.com]. Its workers come from a `workerFactory: () => Worker` the app passes [V its types], so a worker file bundled by Vite fits the policy as it is (`script-src 'self'`; `worker-src` falls back to `script-src` [V MDN]). Pierre's default engine is Shiki's JavaScript one (`'shiki-js'`; `'shiki-wasm'` on request [V diffs.com]), so it doesn't need `'wasm-unsafe-eval'`, without which WebAssembly is blocked [V MDN].
+- *What it takes:* the component, Shiki and its grammars, and a Shiki theme in Hersir's colours. Shiki's CSS-variables theme is "a lot less granular" than a real theme [V shiki.style], so in practice it means a theme file kept in step with the tokens by hand [I]. Pierre draws inside Shadow DOM, styled through `--diffs-*` CSS variables [V diffs.com]. Its workers come from a `workerFactory: () => Worker` the app passes [V its types], so a worker file bundled by Vite fits the policy as it is (`script-src 'self'`; `worker-src` falls back to `script-src` [V MDN]). Pierre's default engine is Shiki's JavaScript one (`'shiki-js'`; `'shiki-wasm'` on request [V diffs.com]), so it doesn't need `'wasm-unsafe-eval'`, without which WebAssembly is blocked [V MDN].
 - *Libraries:* `@pierre/diffs` 1.5.2, Apache-2.0, 7.47 MB unpacked in 860 files, depends on `shiki` 3 or 4, `diff` 9 and Pierre's theme packages, 107 versions since 2025-12-10, maintained by Pierre's team [V `npm view`]. It has a virtualised `CodeView` for many files and diffs in one scroll, folded context that opens 100 lines a click (`expansionLineCount`), line annotations and an edit mode [V diffs.com]. `@git-diff-view/react` 0.1.7, MIT, 1.31 MB unpacked plus `@git-diff-view/core` 1.40 MB, one maintainer, last release 2026-07-13 [V `npm view`]. Split (the default) or unified, light or dark, "High performance with Web Worker support" [V README]. Its repository also lists a Lezer highlighter, `@git-diff-view/lezer`, which isn't on npm [V npm 404].
 - *Risks:* two colouring systems in one app (Shiki or highlight.js in diffs, CodeMirror in the Editor), so the same file looks different in the two places unless both themes are kept in step by hand. Shiki's grammars are large (`@shikijs/langs` is 8.65 MB unpacked [V]). Its JavaScript engine needs the RegExp `v` flag for full grammar support [V shiki.style]; whether WebKitGTK has it wasn't checked [I]. `@pierre/diffs` moves fast (about ten versions a month [V]); `@git-diff-view` is pre-1.0 with one maintainer [V].
 - *Rough size:* the Changes view itself is a little smaller than in A (the component draws hunks, folds and both line numbers), but the theme work and the Blade checks make up for it; the Editor still needs all of A's language work.
@@ -286,7 +286,7 @@ Recommendation: add "the code editor and a card's changes" to the list under "Wh
 **C. Monaco for both.** VS Code's editor: a diff editor that can hide unchanged regions, and a full editor.
 
 - *Libraries:* `monaco-editor` 0.57.0, MIT, 101.7 MB unpacked [V `npm view`]; usually wrapped with `@monaco-editor/react` 4.7.0 [V].
-- *Risks:* several MB in the bundle and heavy in WebKitGTK [I]. Its language services run in web workers that have to be set up [V README]. `defineTheme` takes fixed colour strings [V its types], so light and dark and Settings → Appearance's fonts and sizes need wiring by hand [I]. It has PHP, Twig and Razor but no Blade [V its language folders]. It looks like VS Code, not like Gizai. The CodeMirror code the app ships today (about 1.4 MB of unminified ES modules, `node_modules/@codemirror/*/dist/index.js` and `@lezer/*`, [V `wc -c`]) would stay for Markdown.
+- *Risks:* several MB in the bundle and heavy in WebKitGTK [I]. Its language services run in web workers that have to be set up [V README]. `defineTheme` takes fixed colour strings [V its types], so light and dark and Settings → Appearance's fonts and sizes need wiring by hand [I]. It has PHP, Twig and Razor but no Blade [V its language folders]. It looks like VS Code, not like Hersir. The CodeMirror code the app ships today (about 1.4 MB of unminified ES modules, `node_modules/@codemirror/*/dist/index.js` and `@lezer/*`, [V `wc -c`]) would stay for Markdown.
 - *Rough size:* like A, plus the integration work; no saving where it counts (Blade, theme).
 
 ### 4.2 The diff components compared
@@ -301,7 +301,7 @@ Recommendation: add "the code editor and a card's changes" to the list under "Wh
 | **Blade** | **none: our own small language**, on the model of `lang-liquid` [V no package] | Shiki `blade` [V exports] | only a third-party highlight.js grammar (`highlightjs-blade` 0.1.0, last 2022) [V npm, language list]; Shiki through `@git-diff-view/shiki` [V] | none [V its language folders] |
 | TSX | `lang-javascript` with JSX and TypeScript, installed [V] | Shiki `tsx` [V exports] | highlight.js `typescript`, with `tsx` as an alias [V its language list]; Shiki `tsx` | built in [I] |
 | Rust | `@codemirror/lang-rust` [V] | Shiki `rust` [V exports] | highlight.js `rust`, built in [V] | built in [V its language folders] |
-| Gizai's light and dark themes | CSS variables in the theme, as `MarkdownEditor.tsx:229-250` already does: follows the `t` key and Appearance at once [V pattern] | Shiki themes (`{ dark, light }`) drawn in Shadow DOM, with `--diffs-*` CSS variables [V diffs.com]; Shiki's CSS-variables theme is coarse [V shiki.style] | its own `light`/`dark` CSS (`diffViewTheme`), restyled by hand [V README] | `defineTheme` with colour strings [V types], set again on every theme change [I] |
+| Hersir's light and dark themes | CSS variables in the theme, as `MarkdownEditor.tsx:229-250` already does: follows the `t` key and Appearance at once [V pattern] | Shiki themes (`{ dark, light }`) drawn in Shadow DOM, with `--diffs-*` CSS variables [V diffs.com]; Shiki's CSS-variables theme is coarse [V shiki.style] | its own `light`/`dark` CSS (`diffViewTheme`), restyled by hand [V README] | `defineTheme` with colour strings [V types], set again on every theme change [I] |
 | Where the work runs | the main thread, in a state field [V source] | highlighting in an optional worker pool [V diffs.com, types] | "Web Worker support" [V README] | language services in web workers [V README] |
 | Many files, big files | draws only what is in sight plus a margin [V system guide]; its own diff turns rough in big files [V forum], git's hunks avoid that | one virtualised scroll for many files and diffs (`CodeView`) [V diffs.com] | the README doesn't say [V]; a code index of the repository describes a virtual list [I] | draws only what is in sight [I] |
 | Speed, 2,000-line diff | no published number [V: guide, types, changelog, forum read] | no published number [V diffs.com docs] | no published number [V README] | not looked for |
@@ -336,10 +336,10 @@ All screens use the design system as it is: the top bar with breadcrumbs and act
 **Screen 1: the card, with its Changes tab.** The task page gets two tabs at the top, under the top bar: **Card** (the page as it is now) and **Changes** with its counts (Lucide `file-diff`). The counts load with the card (`card_changes`, file list only); "No changes" when there are none; nothing when the card has no branch yet.
 
 ```
-┌ Tasks / Gizai / GA-91 ─────────────────────────────── [Copy ID] [Open in ▾] [▸] ┐
+┌ Tasks / Hersir / GA-91 ────────────────────────────── [Copy ID] [Open in ▾] [▸] ┐
 │  Card   Changes +964 −112                                                       │
 │  ───────                                                                        │
-│  ◑ ▮▮▮ GA-91  ● Gizai                                                           │
+│  ◑ ▮▮▮ GA-91  ● Hersir                                                          │
 │  Research for the code editor…                                                  │
 │  (the card as now: description, criteria, attachments, run, pull request,       │
 │   Comments · Activity · Runs)                                                   │
@@ -349,7 +349,7 @@ All screens use the design system as it is: the top bar with breadcrumbs and act
 **Screen 2: Changes.** Full width; Properties closes while it is open (`]` brings it back).
 
 ```
-┌ Tasks / Gizai / GA-91 ─────────────────────────────── [Copy ID] [Open in ▾] [▸] ┐
+┌ Tasks / Hersir / GA-91 ────────────────────────────── [Copy ID] [Open in ▾] [▸] ┐
 │  Card   Changes +964 −112                                                       │
 │         ─────────────────                                                       │
 ├─────────────────────────┬───────────────────────────────────────────────────────┤
@@ -376,7 +376,7 @@ All screens use the design system as it is: the top bar with breadcrumbs and act
 
 **Screen 3: one run's changes.** The Runs tab's row gets **Show changes**; it opens the same view, limited to that run: "Run by Backend Agent, 10 Oct 14:02: 2 commits, +40 −3" with **All changes** to go back.
 
-**States.** No branch yet: "No changes yet: the first run makes this card's branch." No changes: "This card's branch has no changes against origin/main." Merged, nothing saved and no gh: "Gizai can't find what this card changed: fetch main, or log gh in (Settings → GitHub)." A failure says what went wrong and how to fix it, in the error banner (`design/README.md:15-17`).
+**States.** No branch yet: "No changes yet: the first run makes this card's branch." No changes: "This card's branch has no changes against origin/main." Merged, nothing saved and no gh: "Hersir can't find what this card changed: fetch main, or log gh in (Settings → GitHub)." A failure says what went wrong and how to fix it, in the error banner (`design/README.md:15-17`).
 
 **Colours.** New tokens in `design/tokens.json`, for dark and light, turned into CSS by `scripts/tokens-css.ts` [I values for D1 to set]:
 
@@ -395,7 +395,7 @@ Rules for D1: green and red of their own, near `--success` and `--danger` but se
 
 ```
 │ PROJECTS                         + │
-│  ● Gizai                           │
+│  ● Hersir                          │
 │  ● Kade portal                     │
 │ EDITOR                         + ⌄ │
 │  ▣ gizai               3 behind    │
@@ -481,14 +481,14 @@ If it feels slow, a later card adds the `notify` crate for the open folders only
 - It uses inotify on Linux, FSEvents on macOS (kqueue as an option), ReadDirectoryChangesW on Windows, and polling anywhere.
 - `notify-debouncer-mini` and `-full` (MIT or Apache-2.0) group events.
 - Its docs warn that on Linux a big tree can hit "the max-files watched limits of your user or system" ("No space left on device"), that network folders and WSL may send no events, and that editors save in different ways.
-- It isn't in Gizai's dependencies yet [V `cargo tree -i notify`]; `notify-rust` 4.18.2 is a different crate, for desktop notifications.
+- It isn't in Hersir's dependencies yet [V `cargo tree -i notify`]; `notify-rust` 4.18.2 is a different crate, for desktop notifications.
 
 ### 5.4 Security and privacy
 
 - **One gate for every path.** The screen sends a folder (one `editor_folders` returned) and a path inside it, never an absolute path. Rust re-checks on every call that the folder is still allowed (§3.2 Q5), makes the path canonical, refuses `..`, any `.git` part and links that lead outside the folder, and refuses writes in read-only places (ignored folders, a live agent's worktree, files over 1 MB). The rules live in the core with tests, as the agent folder rules do (`folders.rs`). [I]
 - **Safe writes.** Save writes a temporary file in the same folder and renames it over the file, keeping its permissions; it refuses when the file changed on disk since it was read. Line endings and a byte order mark stay as they were. [I]
 - **Nothing leaves the computer.** Search, diffs and saving are local. The only network use is `git fetch` from the project's own remote, as card starts do (and once at a merge, to save the card's range), and `gh` or Bitbucket for a merged card with nothing saved. No file contents go to agents, logs or GitHub. [I]
-- **What Gizai writes in your repository.** As now, worktrees and `gizai/…` branches (and `refs/gizai/base/<branch>` without a remote). New are two refs per merged card under `refs/gizai/merged/`, and `/.idea/` in `info/exclude` when PhpStorm opens a card's worktree. Gizai's pushes send only the card's branch (`refs/heads/<branch>:refs/heads/<branch>`, `worktree.rs:398`), so these refs stay on this computer. A pull request's diff from `gh` is shown as text, never run. [V push; I design]
+- **What Hersir writes in your repository.** As now, worktrees and `gizai/…` branches (and `refs/gizai/base/<branch>` without a remote). New are two refs per merged card under `refs/gizai/merged/`, and `/.idea/` in `info/exclude` when PhpStorm opens a card's worktree. Hersir's pushes send only the card's branch (`refs/heads/<branch>:refs/heads/<branch>`, `worktree.rs:398`), so these refs stay on this computer. A pull request's diff from `gh` is shown as text, never run. [V push; I design]
 - **No new rights for the window.** No file system plugin, the same capabilities and content security policy (`capabilities/default.json`, `tauri.conf.json:18`). [V today]
 - **Update** stays as careful as `update_checkout`: fast-forward only, git hooks off (`checkout.rs:230`), never the setup command. A person's Commit runs the repository's own git hooks, as a commit in a terminal would. [V for update; I for commit]
 - **Agents' work is safe:** a worktree is read-only while its agent runs, and a card pinned to a person is never taken by an agent (`workflow.rs:185-188`). [V rule; I design]
@@ -713,7 +713,7 @@ export type FileDiff = {
 };
 ```
 
-Errors are plain sentences, like the rest of the app ("Gizai can't find what GA-12 changed: fetch main, or log gh in (Settings → GitHub)").
+Errors are plain sentences, like the rest of the app ("Hersir can't find what GA-12 changed: fetch main, or log gh in (Settings → GitHub)").
 
 ### Contract C2: B2 → F2 (the Editor's folders and files)
 
@@ -838,7 +838,7 @@ export const startByHand = (taskId: string) => invoke<T.HandCard>("start_by_hand
 export const handCard = (taskId: string) => invoke<T.HandCard>("hand_card", { taskId });
 /** Commits every change in the card's worktree with this message. */
 export const handCommit = (taskId: string, message: string) => invoke<T.Commit>("hand_commit", { taskId, message });
-/** Pushes the card's branch like Gizai's push after a run; resolves with what it did ("Pushed gizai/ga-123-… (2 commits)."). */
+/** Pushes the card's branch like Hersir's push after a run; resolves with what it did ("Pushed gizai/ga-123-… (2 commits)."). */
 export const handPush = (taskId: string) => invoke<string>("hand_push", { taskId });
 /** Refuses uncommitted changes; pushes, moves the card to Testing (Review with its Testing switch off) and takes the pin off.
  *  Resolves with the column's name. */
@@ -861,7 +861,7 @@ export type HandCard = { taskId: string; folder: string; branch: string; changed
 2. **Which folders may the Editor open?** Recommended: the projects' linked folders, the folders under `~/Herd` (more roots in Settings), and card worktrees. Should Browse… also open any other folder once, without adding it as a root? Recommended: no, add it as a root instead, so the list stays clear.
 3. **Editing an agent's worktree when no agent works on it.** Recommended: read-only, with "Edit anyway" (your changes stay uncommitted in the card for its next run). Or always read-only outside a person's card?
 4. **Where does a person's Hand over go?** Recommended: like an agent's work, to Testing for the QA Agent when the card's Testing switch is on, else to Review. Or always straight to Review?
-5. **Who is "a person" for Open in editor?** Recommended: only you (the person using this Gizai); a card assigned to another person shows who has it, without Open in editor.
+5. **Who is "a person" for Open in editor?** Recommended: only you (the person using this Hersir); a card assigned to another person shows who has it, without Open in editor.
 6. **Blade in the first version.** Recommended: our own small Blade language (about a day of F0). The cheaper start colours `.blade.php` as HTML with PHP, leaving `{{ }}` and `@directives` plain.
 7. **Keep a merged card's changes with two hidden refs** (`refs/gizai/merged/<identifier>/base` and `/head`) in the project's repository. Recommended: yes. It works offline after a merge commit, a squash and a rebase alike, and keeps the card's commits from git's clean-up. It needs no database change (so no MINOR release just for B1), and the refs are never pushed. The cost: `git log --all` and some git apps show them. The other ways are a database column with the merge commit, or asking GitHub or Bitbucket each time a merged card's changes open. The column is wrong after a rebase merge, and a squashed card's own commits can be cleaned up. Asking each time needs the network and gets no file texts.
 8. **Which external editors first?** Recommended: VS Code, Zed and PhpStorm, each found under all its names (Zed is `zeditor` on this computer); others (Cursor, Sublime Text) when asked.
@@ -920,7 +920,7 @@ All read on 2026-10-11: the registry and GitHub with `npm view` and `gh` in both
 - `shiki` 4.5.0 and `@shikijs/langs` 4.5.0 (8.65 MB; exports `./blade`, `./dotenv`, `./php`, `./rust`, `./sql`, `./tsx`, `./yaml`); `highlight.js` 11.12.0 (its grammars are exported through a wildcard); `highlightjs-blade` 0.1.0 (2022-05-05)
 - `monaco-editor` 0.57.0 (README), `@monaco-editor/react` 4.7.0; `codemirror-shiki` 0.3.0; no `codemirror-lang-blade` or `codemirror-blade` (404)
 
-**GitHub through `gh`, for this repository (Yotech-AI/gizai)**
+**GitHub through `gh`, for this repository (Yotech-AI/hersir)**
 
 - `gh pr list --state merged --limit 200 --json number,headRefName,additions,deletions,changedFiles`: the 71 merged card pull requests' sizes (§1 item 3)
 - `gh pr view 81 --json …`: the field list (`mergeCommit`, `baseRefOid`, `headRefOid`, `files`, …) and PR #81's merge commit and counts

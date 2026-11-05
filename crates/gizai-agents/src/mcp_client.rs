@@ -401,11 +401,11 @@ fn session(c: &mut impl Conn) -> Result<Listing, ListError> {
     let hello = json!({
         "protocolVersion": PROTOCOL_VERSION,
         "capabilities": {},
-        "clientInfo": {"name": "Gizai", "version": env!("CARGO_PKG_VERSION")},
+        "clientInfo": {"name": "Hersir", "version": env!("CARGO_PKG_VERSION")},
     });
     let init = c.call(1, "initialize", Some(hello))?.map_err(RpcError::failed)?;
     if !init.is_object() {
-        return Err(failed("The server's answer to Gizai's hello isn't MCP."));
+        return Err(failed("The server's answer to Hersir's hello isn't MCP."));
     }
     let protocol_version = text_at(&init, "protocolVersion");
     c.agreed(&protocol_version);
@@ -511,7 +511,7 @@ impl Server {
         let server = Server {
             child, tree, input: Some(in_tx), output: out_rx, tail: tail.clone(), stderr_done: done_rx, status: None, ended: false, limit,
         };
-        let not_started = |e: io::Error| failed(format!("Couldn't start {command}: Gizai couldn't read its output ({e})."));
+        let not_started = |e: io::Error| failed(format!("Couldn't start {command}: Hersir couldn't read its output ({e})."));
         if let Some(mut w) = stdin {
             thread::Builder::new().name("mcp-stdin".into()).spawn(move || {
                 for line in in_rx {
@@ -767,7 +767,7 @@ impl Web {
             // Redirects are followed by `send`, only within the server's own site and with the body sent again.
             .max_redirects(0)
             .timeout_global(Some(limit.timeout))
-            .user_agent(format!("Gizai/{}", env!("CARGO_PKG_VERSION")))
+            .user_agent(format!("Hersir/{}", env!("CARGO_PKG_VERSION")))
             .build()
             .new_agent();
         Ok(Web { agent, headers, limit })
@@ -803,11 +803,11 @@ impl Web {
             let (true, Some(location)) = (resp.status().is_redirection(), location) else { return Ok((url, resp)) };
             let next = resolve(&url, &location);
             if !same_site(&url, &next) {
-                return Err(failed(format!("The server sent Gizai on to another site: {next}. Use that address instead.")));
+                return Err(failed(format!("The server sent Hersir on to another site: {next}. Use that address instead.")));
             }
             url = next;
         }
-        Err(failed("The server sent Gizai on too many redirects."))
+        Err(failed("The server sent Hersir on too many redirects."))
     }
 
     fn post(&self, url: &str, extra: &[(&str, &str)], msg: &Value) -> Result<(String, Response<ureq::Body>), ListError> {
@@ -1111,7 +1111,7 @@ fn list_sse(t: &Target, limit: Limit) -> Result<Listing, ListError> {
     };
     // The headers (a key, a token) only ever go to the server's own site.
     if !same_site(&url, &endpoint) {
-        return Err(failed(format!("The server wants its messages sent to another site ({}), which Gizai doesn't do.", host_of(&endpoint))));
+        return Err(failed(format!("The server wants its messages sent to another site ({}), which Hersir doesn't do.", host_of(&endpoint))));
     }
     session(&mut Sse { web, endpoint, events })
     // Dropping the stream closes it, which ends the session.

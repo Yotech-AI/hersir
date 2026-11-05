@@ -478,8 +478,8 @@ pub fn recover(db: &Db) -> Result<usize> {
     })?;
     let mut n = 0;
     for (asked, lead_run) in waiting {
-        if escalate(db, &asked, lead_run.as_deref(), "Gizai stopped before it had answered",
-                    "Gizai stopped before I had answered this question, so it is yours to decide.")? {
+        if escalate(db, &asked, lead_run.as_deref(), "Hersir stopped before it had answered",
+                    "Hersir stopped before I had answered this question, so it is yours to decide.")? {
             n += 1;
         }
     }

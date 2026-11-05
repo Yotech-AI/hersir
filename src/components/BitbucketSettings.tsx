@@ -78,15 +78,15 @@ export function BitbucketSettings({ say }: { say: (ok: boolean, text: string) =>
 
   const account: StatusLine | null = statusErr ? { mark: "failed", text: statusErr } : status ? accountLine(status) : null;
   return (
-    <FormSection title="Bitbucket" text="Gizai pushes a card's branch to Bitbucket over SSH after every agent run, and Open pull request pushes it and opens its pull request through Bitbucket's API, with your Atlassian email and an API token. Every two minutes Gizai asks Bitbucket about the pull requests of cards in Review; a merge moves the card to Done. Your email and token stay in your keychain.">
-      <Field label="Account" wide hint={status?.account && !statusErr ? "Gizai opens pull requests on Bitbucket as this account." : undefined}>
+    <FormSection title="Bitbucket" text="Hersir pushes a card's branch to Bitbucket over SSH after every agent run, and Open pull request pushes it and opens its pull request through Bitbucket's API, with your Atlassian email and an API token. Every two minutes Hersir asks Bitbucket about the pull requests of cards in Review; a merge moves the card to Done. Your email and token stay in your keychain.">
+      <Field label="Account" wide hint={status?.account && !statusErr ? "Hersir opens pull requests on Bitbucket as this account." : undefined}>
         {account ? <Line mark={account.mark}>{account.text}</Line> : <div className="gh-line muted">Checking…</div>}
       </Field>
       <Field label="Atlassian email" htmlFor="s-bb-email" hint="The email you log in to Atlassian with">
         <input id="s-bb-email" className="input" type="email" autoComplete="off" spellCheck={false} value={email} placeholder="you@example.com"
           onChange={(e) => { typed.current = true; setEmail(e.target.value); }} onKeyDown={onEnter} />
       </Field>
-      <Field label="API token" htmlFor="s-bb-token" hint={status?.hasToken ? "A saved token is never shown again" : "Goes to your keychain, never to Gizai's database"}>
+      <Field label="API token" htmlFor="s-bb-token" hint={status?.hasToken ? "A saved token is never shown again" : "Goes to your keychain, never to Hersir's database"}>
         <input id="s-bb-token" className="input mono" type="password" autoComplete="off" value={token} placeholder={tokenPlaceholder(status)}
           onChange={(e) => setToken(e.target.value)} onKeyDown={onEnter} />
       </Field>
@@ -97,7 +97,7 @@ export function BitbucketSettings({ say }: { say: (ok: boolean, text: string) =>
         </div>
         {removing && (
           <div className="bb-confirm" role="alert">
-            <span>Remove your Bitbucket email and API token? Gizai can't open or follow pull requests on Bitbucket until you save them again.</span>
+            <span>Remove your Bitbucket email and API token? Hersir can't open or follow pull requests on Bitbucket until you save them again.</span>
             <span className="bb-actions"><button className="btn ghost sm" onClick={() => setRemoving(false)}>Cancel</button>
               <button className="btn sm" disabled={!!doing} onClick={remove}>{doing === "remove" ? "Removing…" : "Remove"}</button></span>
           </div>

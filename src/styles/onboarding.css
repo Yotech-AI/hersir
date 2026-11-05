@@ -11,9 +11,10 @@
 /* ---------- the top bar ---------- */
 .onb-top { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 16px; padding: 0 20px;
   border-bottom: 1px solid var(--line); }
-/* the logo, 20px high, in one colour: inside the app it is never pink (the brandbook) */
+/* the logo, 24px high (its mark on its own 24px grid, the least the whole mark is drawn at), in one colour: inside the
+   app the gold means only "needs you", so the logo is never gold (design/brand/README.md) */
 .onb-logo { display: flex; color: var(--text-2); }
-.onb-logo svg { display: block; width: 79.7px; height: 20px; }
+.onb-logo svg { display: block; width: 81.16px; height: 24px; }
 .onb-skip { justify-self: end; }
 
 /* the steps: a 20px circle and the name, 8 apart; 12, a 32 × 1 connector and 12 between two steps. Done: a check on

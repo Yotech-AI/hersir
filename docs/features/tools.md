@@ -6,7 +6,7 @@ Each agent gets the commands its role allows, the folders you give it, and the t
 
 The agent form → Tools has MCP servers, web search, fetching pages, a hidden browser for testing web pages, and the CLI's own built-in tools. Everything is off until you switch it on per agent, with a switch per server and per tool.
 
-GizAi builds no tools of its own: each one is the CLI's own or comes from an MCP server. A web or built-in tool named in an agent's allowed commands is left out of its runs.
+Hersir builds no tools of its own: each one is the CLI's own or comes from an MCP server. A web or built-in tool named in an agent's allowed commands is left out of its runs.
 
 ## MCP servers
 
@@ -14,8 +14,8 @@ Agents can use outside services through MCP servers, like Otus OS. Settings → 
 
 - Add a server by hand (a command, or an address), or **Import from Claude Code**, which reads the servers your Claude Code accounts already have: read only, with the values going into the keychain.
 - **List tools** shows what each tool does, its parameters and its risk, before you switch anything on.
-- A server that asks for it gets **Sign in**: GizAi signs in as a device of its own, in your default browser.
-- Environment values, headers and sign-in tokens stay in the OS keychain, never in GizAi's database.
+- A server that asks for it gets **Sign in**: Hersir signs in as a device of its own, in your default browser.
+- Environment values, headers and sign-in tokens stay in the OS keychain, never in Hersir's database.
 
 ## The web
 
@@ -31,13 +31,13 @@ Agents can use outside services through MCP servers, like Otus OS. Settings → 
 
 - It always runs headless with a throwaway profile: never on your screen, never your own browser, profile or logins.
 - It needs Node 20.19 or newer with npx, and Google Chrome or Chromium (never Brave). The form says what is missing.
-- GizAi installs none of it: `npx` fetches the pinned server, and the server starts the browser.
+- Hersir installs none of it: `npx` fetches the pinned server, and the server starts the browser.
 
 MCP servers and the browser work on Claude Code. Codex and Gemini agents show them disabled, with why.
 
 ## Built-in tools
 
-**Built-in tools** lists what the agent's CLI offers: GizAi's catalog merged with what the CLI itself reports. For Claude Code that is its list from the agent's last run, or **Ask Claude Code again**, which starts it without a login. Each tool says what it allows and how risky it is; a few, like Read and Grep, are always on.
+**Built-in tools** lists what the agent's CLI offers: Hersir's catalog merged with what the CLI itself reports. For Claude Code that is its list from the agent's last run, or **Ask Claude Code again**, which starts it without a login. Each tool says what it allows and how risky it is; a few, like Read and Grep, are always on.
 
 **Slash commands and skills**, in Built-in tools, lets a Claude Code agent's task runs use your slash commands and skills, like `/design`, plugins' too.
 
@@ -49,16 +49,16 @@ MCP servers and the browser work on Claude Code. Codex and Gemini agents show th
 
 A new agent starts with its role's allowed commands.
 
-- GizAi's default list has the usual git, package manager and test commands, the read-only helpers agents use in pipes (`head`, `tail`, `wc`, `sort`, `uniq`, `cut`, `diff`, `grep`, `jq`, `pwd`, `which` and `tree`), and `sleep`, to wait between checks. The Team Lead gets that list.
+- Hersir's default list has the usual git, package manager and test commands, the read-only helpers agents use in pipes (`head`, `tail`, `wc`, `sort`, `uniq`, `cut`, `diff`, `grep`, `jq`, `pwd`, `which` and `tree`), and `sleep`, to wait between checks. The Team Lead gets that list.
 - Builders (Backend, Frontend, Design and your own roles) also get `git push`, `git pull`, `git fetch`, a few read-only git commands, `node`, `echo` and `printf`.
 - QA gets the builders' list plus `gh pr create`, `list`, `view` and `edit`.
 - DevOps gets a list of its own for releases.
 
-An agent without a list runs with GizAi's default list. An agent with its own list needs `Bash(sleep:*)` added to it to wait between checks.
+An agent without a list runs with Hersir's default list. An agent with its own list needs `Bash(sleep:*)` added to it to wait between checks.
 
 ## Folders
 
-Besides its worktree, an agent can have folders of its own, each set to read or to read and change (agent form → Permissions). They limit the agent's file tools, not the commands it runs. `/`, your home folder, GizAi's data and folders with keys are refused.
+Besides its worktree, an agent can have folders of its own, each set to read or to read and change (agent form → Permissions). They limit the agent's file tools, not the commands it runs. `/`, your home folder, Hersir's data and folders with keys are refused.
 
 ## The rules of a run
 
@@ -66,23 +66,23 @@ Agent runs are headless: nobody is there to approve anything while one runs, so 
 
 ### A temp folder per card
 
-Each card's runs get a short temp folder outside its worktree, GizAi's data folder and any git repository: `/var/tmp/gizai-<uid>/<card>-<hash>`, like `/var/tmp/gizai-1000/DSO-30-1a2b3c4d` (on Windows `%TEMP%\gizai\<card>-<hash>`). Before every run GizAi makes it, empty, and sets `TMPDIR`, `TMP` and `TEMP` to it for every CLI. So `mktemp`, PHP's `sys_get_temp_dir()`, Node's `os.tmpdir()`, Python's `tempfile` and the agents' browser write there.
+Each card's runs get a short temp folder outside its worktree, Hersir's data folder and any git repository: `/var/tmp/gizai-<uid>/<card>-<hash>`, like `/var/tmp/gizai-1000/DSO-30-1a2b3c4d` (on Windows `%TEMP%\gizai\<card>-<hash>`). Before every run Hersir makes it, empty, and sets `TMPDIR`, `TMP` and `TEMP` to it for every CLI. So `mktemp`, PHP's `sys_get_temp_dir()`, Node's `os.tmpdir()`, Python's `tempfile` and the agents' browser write there.
 
 - It is short: on Linux and macOS at most 50 characters for any card name, so a Unix socket in it fits. Chromium makes its socket at `$TMPDIR/org.chromium.Chromium.XXXXXX/SingletonSocket`, and a socket path must be shorter than 108 bytes (104 on macOS): in the worktree, the agents' browser couldn't start.
 - The hash comes from the worktree's path, so worktrees with the same name in different data folders get different folders.
 - It is in `/var/tmp`, on disk: `/tmp` is in memory on many systems (Arch, Fedora), and files there would count toward the runs' memory limit.
 - Claude Code gets it with `--add-dir`, Codex as a writable root and Gemini with `--include-directories`, so the agent may read and change it.
-- GizAi makes `/var/tmp/gizai-<uid>` with mode 0700. One that is already there is used only when it is a real folder (not a link), yours and closed to others. Otherwise, or when the folder can't be made, the run uses the worktree's `.gizai-tmp/` instead, and its log says why.
+- Hersir makes `/var/tmp/gizai-<uid>` with mode 0700. One that is already there is used only when it is a real folder (not a link), yours and closed to others. Otherwise, or when the folder can't be made, the run uses the worktree's `.gizai-tmp/` instead, and its log says why.
 - The folder is emptied when the run ends, also after Stop or a limit, and removed with the card's worktree. Links in it are removed, never followed.
 
 The worktree's own `.gizai-tmp/` stays for the screenshots and the preview:
 
-- GizAi adds `/.gizai-tmp/` once to the repository's `.git/info/exclude`, which your checkout and every worktree share. So the folder never shows in `git status`, and `.gitignore` is left alone.
+- Hersir adds `/.gizai-tmp/` once to the repository's `.git/info/exclude`, which your checkout and every worktree share. So the folder never shows in `git status`, and `.gitignore` is left alone.
 - It is emptied when the run ends, also after Stop or a limit, and goes with the worktree.
 
 ### How this run works
 
-Every task prompt, new or continued, ends with "How this run works": nobody can approve anything, the commands the agent may run (its allowed list), the shell rules of its CLI, the temp folder's path, and that GizAi pushes the branch when the run ends.
+Every task prompt, new or continued, ends with "How this run works": nobody can approve anything, the commands the agent may run (its allowed list), the shell rules of its CLI, the temp folder's path, and that Hersir pushes the branch when the run ends.
 
 For Claude Code in acceptEdits mode (the default), checked against Claude Code 2.1.289:
 
@@ -104,7 +104,7 @@ Checked against Claude Code 2.1.289: a command that starts with a sleep of more 
 
 ### Refused in this run
 
-Claude Code reports every tool call it refused, with the reason. GizAi saves them on the run:
+Claude Code reports every tool call it refused, with the reason. Hersir saves them on the run:
 
 - the Run panel lists them under "Refused in this run";
 - Show output marks each one where it happened;

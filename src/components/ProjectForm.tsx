@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Plus, X } from "lucide-react";
-import { checkRepo, getProject, listClients, saveProject, type RepoCheck } from "../api";
+import { checkRepo, getProject, listClients, listTeams, projectTeamMove, saveProject, type RepoCheck } from "../api";
 import { go } from "../router";
-import type { Project, ProjectInput, ProjectScreenshots } from "../types";
+import type { Project, ProjectInput, ProjectScreenshots, TeamSummary } from "../types";
 import { modKey } from "../lib/keys";
 import { suggestKey } from "../lib/projectKey";
+import { moveQuestion, shownTeam, useCurrentTeam } from "../lib/team";
 import {
   HEIGHT, nextSize, projectShotsFrom, projectShotsProblem, shownNumber, SIZES, START_SECS, typedNumber, WIDTH, type ShotSize, type ShotsProblem,
 } from "../lib/screenshotSettings";
@@ -19,7 +20,8 @@ export const PROJECT_COLORS = ["#6f97ff", "#3fb8a0", "#e3bd3c", "#a98bfa", "#f29
 
 /** The form's values for project `p`, or a new project's. Preview (GA-185): Screenshots on, Desktop 1280 × 800 and Mobile
  *  390 × 844, one theme, one window's height, no Preview command (saved as "", which leaves none) and 120 seconds. Test
- *  runs at once (GA-212): empty, no limit (saved as 0, which leaves none). */
+ *  runs at once (GA-212): empty, no limit (saved as 0, which leaves none). Team (GA-225): its own; none for a new project
+ *  (the form offers the team picked on the board). */
 export function toProjectInput(p?: Project | null): ProjectInput {
   return {
     name: p?.name ?? "", key: p?.key ?? "", clientId: p?.clientId ?? null, status: p?.status ?? "active", goalMd: p?.goalMd ?? "",
@@ -29,6 +31,7 @@ export function toProjectInput(p?: Project | null): ProjectInput {
     testRunsAtOnce: p?.testRunsAtOnce ?? null,
     leadMayMerge: p?.leadMayMerge ?? false,
     screenshots: projectShotsFrom(p?.screenshots), previewCommand: p?.previewCommand ?? "", previewStartSecs: p?.previewStartSecs ?? START_SECS.default,
+    teamId: p?.teamId ?? null,
   };
 }
 
@@ -64,8 +67,14 @@ export function ProjectDrawer({ id, onClose }: { id?: string; onClose: () => voi
   const [copyText, setCopyText] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // GA-225: the teams (a Team select only when there is more than one); the question before a move, while it is asked.
+  const [teams, setTeams] = useState<TeamSummary[]>([]);
+  const [pickedTeam] = useCurrentTeam();
+  const [project, setProject] = useState<Project | null>(null);
+  const [moveAsk, setMoveAsk] = useState<string | null>(null);
   useEffect(() => { listClients().then((c) => setClients(c.map((x) => ({ id: x.id, name: x.name })))).catch(() => {}); }, []);
-  useEffect(() => { if (id) getProject(id).then((p) => { const i = toProjectInput(p); setInitial(i); setV(i); }).catch((e) => setErr(String(e))); }, [id]);
+  useEffect(() => { listTeams().then((ts) => setTeams(ts ?? [])).catch(() => {}); }, []);
+  useEffect(() => { if (id) getProject(id).then((p) => { const i = toProjectInput(p); setProject(p); setInitial(i); setV(i); }).catch((e) => setErr(String(e))); }, [id]);
   const repoPath = v?.repoPath?.trim();
   useEffect(() => {
     if (!repoPath) { setRepo(null); return; }
@@ -92,15 +101,32 @@ export function ProjectDrawer({ id, onClose }: { id?: string; onClose: () => voi
     setShots({ sizes: shots.sizes.filter((_, j) => j !== i) });
     focusSoon(sizeInput(Math.min(i, shots.sizes.length - 2), "name"));
   };
-  const save = async () => {
+  // GA-225: the team it is saved in. A new project: the one picked in the select, else the team the board shows (none with
+  // one team: the first team, as before).
+  const several = teams.length > 1;
+  const teamId = v.teamId || (isNew && several ? shownTeam(teams, pickedTeam) : null);
+  const moving = !isNew && !!v.teamId && v.teamId !== initial.teamId;
+  const teamName = (t: string | null | undefined) => teams.find((x) => x.id === t)?.name ?? "";
+  // `moveOk`: the move question was answered with Move.
+  const save = async (moveOk = false) => {
+    if (moveAsk && !moveOk) return;
     // A value outside its range is refused before saving, with why, as the backend would refuse it.
     const testRuns = testRunsProblem(v.testRunsAtOnce);
     if (testRuns) { setErr(testRuns); focusSoon("p-test-runs"); return; }
     const problem = projectShotsProblem(v);
     if (problem) { setErr(problem.message); focusSoon(problemInput(problem)); return; }
     setBusy(true);
+    // A move to another team asks first, with what it does to the cards (GA-225).
+    if (moving && !moveOk && id) {
+      const m = await projectTeamMove(id, v.teamId!).catch(() => null);
+      setMoveAsk(moveQuestion(m ?? { project: initial.name, from: project?.teamName ?? teamName(initial.teamId), to: teamName(v.teamId),
+        cards: (project?.openTasks ?? 0) + (project?.doneTasks ?? 0) }));
+      setBusy(false);
+      return;
+    }
+    setMoveAsk(null);
     // An empty Test runs at once is saved as 0, which removes the limit (left out, it would be kept).
-    const input = { ...v, testRunsAtOnce: testRunsToSave(v.testRunsAtOnce) };
+    const input = { ...v, testRunsAtOnce: testRunsToSave(v.testRunsAtOnce), teamId };
     try { const saved = await saveProject(id ?? null, input); onClose(); if (isNew) go({ page: "project", id: saved }); }
     catch (e) { setErr(String(e)); setBusy(false); }
   };
@@ -112,8 +138,12 @@ export function ProjectDrawer({ id, onClose }: { id?: string; onClose: () => voi
     : repo?.isGit ? { hint: `Git repository · on branch ${repo.branch ?? "?"}` } : { hint: "Agents work in their own git worktree of it." };
   return (
     <Drawer title={isNew ? "New project" : `Edit ${initial.name}`} subtitle="Projects hold tasks, docs and files. Agents work on projects linked to a git repository."
-      onClose={onClose} dirty={JSON.stringify(v) !== JSON.stringify(initial)} error={err} hint={`${modKey()}+Enter saves`}
-      actions={<><button className="btn ghost" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy || !v.name.trim()} onClick={save}>{isNew ? "Create project" : "Save changes"}</button></>}>
+      onClose={onClose} dirty={JSON.stringify(v) !== JSON.stringify(initial)} error={err}
+      hint={moveAsk ? <span role="alert" style={{ color: "var(--text)", fontSize: "var(--fs-sm)" }}>{moveAsk}</span> : `${modKey()}+Enter saves`}
+      actions={moveAsk
+        ? <><button key="keep" className="btn ghost" autoFocus onClick={() => setMoveAsk(null)}>Cancel</button>
+          <button key="move" className="btn primary" disabled={busy} onClick={() => save(true)}>Move</button></>
+        : <><button className="btn ghost" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy || !v.name.trim()} onClick={() => save()}>{isNew ? "Create project" : "Save changes"}</button></>}>
       <form className="form" onSubmit={(e) => { e.preventDefault(); save(); }} onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save(); } }}>
         <FormSection title="Project" text={<>Its name, client and task key. Tasks become {v.key || "KEY"}-1, {v.key || "KEY"}-2…</>}>
           <Field label="Name" htmlFor="p-name"><input id="p-name" className="input" autoFocus value={v.name}
@@ -122,6 +152,9 @@ export function ProjectDrawer({ id, onClose }: { id?: string; onClose: () => voi
             <input id="p-key" className="input mono" maxLength={6} disabled={!isNew} value={v.key} onChange={(e) => { setKeyTouched(true); set("key", e.target.value.toUpperCase()); }} /></Field>
           <Field label="Client" htmlFor="p-client"><select id="p-client" className="select" value={v.clientId ?? ""} onChange={(e) => set("clientId", e.target.value || null)}>
             <option value="">Internal (no client)</option>{clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
+          {several && <Field label="Team" htmlFor="p-team" hint={isNew ? "Its cards go on this team's board" : "Another team takes its cards to that team's board"}>
+            <select id="p-team" className="select" value={teamId ?? ""} onChange={(e) => { setMoveAsk(null); set("teamId", e.target.value); }}>
+              {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></Field>}
           <Field label="Status" htmlFor="p-status"><select id="p-status" className="select" value={v.status ?? "active"} onChange={(e) => set("status", e.target.value)}>
             {["planned", "active", "paused", "done", "archived"].map((s) => <option key={s} value={s}>{s[0].toUpperCase() + s.slice(1)}</option>)}</select></Field>
           <Field label="Colour" wide><div className="swatches">{PROJECT_COLORS.map((c) => (
@@ -142,7 +175,7 @@ export function ProjectDrawer({ id, onClose }: { id?: string; onClose: () => voi
             <label className="check"><input type="checkbox" checked={v.leadMayMerge ?? false} onChange={(e) => set("leadMayMerge", e.target.checked)} />Team Lead may merge</label>
           </Field>
         </FormSection>
-        <FormSection title="New worktrees" text="Each card gets its own git worktree. Before the agent starts in a new one, Gizai copies these paths, installs what is still missing, then runs the setup command.">
+        <FormSection title="New worktrees" text="Each card gets its own git worktree. Before the agent starts in a new one, Hersir copies these paths, installs what is still missing, then runs the setup command.">
           <Field label="Copy from the main checkout" htmlFor="p-copy" wide
             hint="One file or folder per line, relative to the repository. Copied with cp --reflink=auto (instant on btrfs), so agents start with a warm build. A path the main checkout doesn't have is skipped.">
             <textarea id="p-copy" className="textarea mono" rows={4} value={copyText ?? copy.join("\n")} onChange={(e) => setCopy(e.target.value)}
@@ -162,12 +195,12 @@ export function ProjectDrawer({ id, onClose }: { id?: string; onClose: () => voi
               onChange={(e) => set("testRunsAtOnce", typedNumber(e.target.value))} />
           </Field>
         </FormSection>
-        <FormSection id="project-preview" title="Preview" text="While an agent works on a card, Gizai serves the card’s branch with demo data, so the agent can take screenshots of the screens it changed. The card shows them on its Screenshots tab.">
+        <FormSection id="project-preview" title="Preview" text="While an agent works on a card, Hersir serves the card’s branch with demo data, so the agent can take screenshots of the screens it changed. The card shows them on its Screenshots tab.">
           <Field label="Screenshots" htmlFor="p-shots" wide hint="On by default. Off: no agent takes any here, and its cards have no Screenshots tab.">
             <label className="check"><input id="p-shots" type="checkbox" checked={shots.on} onChange={(e) => setShots({ on: e.target.checked })} />Take screenshots of this project’s screens</label>
           </Field>
           <Field label="Preview command" htmlFor="p-preview" wide
-            hint="Empty by default: no preview, so no screenshots. Runs with bash -c in the card’s worktree when a run starts whose agent takes screenshots, on a free port in GIZAI_PREVIEW_PORT (and PORT), with GIZAI_PREVIEW_DIR for a throwaway database. Serve demo data, never your .env database. Gizai ends it with the run.">
+            hint="Empty by default: no preview, so no screenshots. Runs with bash -c in the card’s worktree when a run starts whose agent takes screenshots, on a free port in GIZAI_PREVIEW_PORT (and PORT), with GIZAI_PREVIEW_DIR for a throwaway database. Serve demo data, never your .env database. Hersir ends it with the run.">
             <input id="p-preview" className="input mono" spellCheck={false} autoComplete="off" value={v.previewCommand ?? ""} onChange={(e) => set("previewCommand", e.target.value)}
               placeholder={'npx astro dev --host 127.0.0.1 --port "$GIZAI_PREVIEW_PORT" --ignore-lock'} />
           </Field>
@@ -175,11 +208,11 @@ export function ProjectDrawer({ id, onClose }: { id?: string; onClose: () => voi
             <input id="p-start" className="input" type="number" min={START_SECS.low} max={START_SECS.high} step={1} value={shownNumber(v.previewStartSecs)}
               onChange={(e) => set("previewStartSecs", typedNumber(e.target.value))} />
           </Field>
-          <Field label="Themes" htmlFor="p-themes" hint="Off by default (on for Gizai). On: each changed screen in the first theme, and the card’s main screen in the other one too.">
+          <Field label="Themes" htmlFor="p-themes" hint="Off by default (on for Hersir). On: each changed screen in the first theme, and the card’s main screen in the other one too.">
             <label className="check"><input id="p-themes" type="checkbox" checked={shots.bothThemes} onChange={(e) => setShots({ bothThemes: e.target.checked })} />Both themes, dark and light</label>
           </Field>
           <Field label="Sizes" htmlFor={sizeInput(0, "name")} wide
-            hint="1 to 4 sizes, each 320 to 3840 wide and 320 to 2400 high. Desktop 1280 × 800 and Mobile 390 × 844 by default; Gizai’s own are Window 1440 × 900 and Small 900 × 600.">
+            hint="1 to 4 sizes, each 320 to 3840 wide and 320 to 2400 high. Desktop 1280 × 800 and Mobile 390 × 844 by default; Hersir’s own are Window 1440 × 900 and Small 900 × 600.">
             <div className="shot-sizes" role="group" aria-label="Sizes">
               {shots.sizes.map((size, i) => (
                 <div key={i} className="shot-size">

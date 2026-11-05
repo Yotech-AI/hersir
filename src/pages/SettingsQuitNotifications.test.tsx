@@ -68,7 +68,7 @@ const LABELS = [
   "A card goes on hold",
   "A card waits for your review or deploy",
   "The Team Lead asks you something (a Question or Approval chat)",
-  "The Team Lead answers in a chat while the Gizai window is hidden or in the background",
+  "The Team Lead answers in a chat while the Hersir window is hidden or in the background",
 ];
 
 type Page = { s?: Partial<Settings>; agents?: CardAgent[] };
@@ -102,7 +102,7 @@ beforeEach(() => { calls.length = 0; liveRuns = []; liveChats = []; });
 describe("the top of Settings", () => {
   // GA-42 put Settings in tabs: General opens first, with Quit Gizai completely at its top, then Updates; Notifications
   // and Runs have tabs of their own, after it.
-  it("starts with Quit Gizai completely, at the top of General, the tab that opens first; Notifications and Runs come after it", () => {
+  it("starts with Quit Hersir completely, at the top of General, the tab that opens first; Notifications and Runs come after it", () => {
     const html = render();
     const general = html.indexOf('aria-label="General">');
     const notifications = html.indexOf('aria-label="Notifications">');
@@ -110,17 +110,17 @@ describe("the top of Settings", () => {
     expect(html).toMatch(/<div role="tabpanel" class="form settings-panel" aria-label="General">/);
     expect(general).toBeGreaterThan(-1);
     const t = text(html.slice(general));
-    expect(t.indexOf("Quit Gizai completely")).toBeGreaterThan(-1);
-    expect(t.indexOf("Quit Gizai completely")).toBeLessThan(t.indexOf("Updates"));
+    expect(t.indexOf("Quit Hersir completely")).toBeGreaterThan(-1);
+    expect(t.indexOf("Quit Hersir completely")).toBeLessThan(t.indexOf("Updates"));
     expect(general).toBeLessThan(notifications);
     expect(notifications).toBeLessThan(agents);
     expect(html.indexOf("Runs at once")).toBeGreaterThan(agents);
     expect(html.indexOf('<section class="form-section"><header><h3>Quit</h3>')).toBe(html.indexOf('<section class="form-section">'));
-    expect(html).toMatch(/<button class="btn danger">.*<span>Quit Gizai completely<\/span><\/button>/);
+    expect(html).toMatch(/<button class="btn danger">.*<span>Quit Hersir completely<\/span><\/button>/);
   });
-  it("warns what quitting stops and that closing the window only hides Gizai", () => {
+  it("warns what quitting stops and that closing the window only hides Hersir", () => {
     const t = text(render());
-    expect(t).toContain("Quitting stops all agents (running cards are stopped), heartbeats and notifications until you start Gizai again. Closing the window only hides Gizai.");
+    expect(t).toContain("Quitting stops all agents (running cards are stopped), heartbeats and notifications until you start Hersir again. Closing the window only hides Hersir.");
     expect(t).not.toContain("will be stopped");
   });
   it("says how many runs and chat answers will be stopped while some are live", () => {
@@ -165,7 +165,7 @@ describe("Settings → Notifications", () => {
   });
 });
 
-describe("Quit Gizai completely", () => {
+describe("Quit Hersir completely", () => {
   function quitTree(asking = false) {
     sets = [];
     // asking, busy, err (the live runs and answers come from the replaced hooks)

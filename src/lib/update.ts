@@ -52,7 +52,7 @@ export function checkLine(s: UpdateStatus, now = Date.now()): { mark: CheckMark;
   const when = s.checkedAt ? ` (checked ${relTime(s.checkedAt, now)})` : "";
   if (s.checking) return { mark: "skipped", text: "Asking GitHub for the latest release…" };
   if (s.problem) return { mark: "failed", text: `The last check didn't work${when}: ${s.problem.fix ? `${s.problem.what}. ${s.problem.fix}` : s.problem.what}` };
-  if (s.installed) return { mark: "new", text: `Version ${s.installed} is installed. Restart Gizai to use it.` };
+  if (s.installed) return { mark: "new", text: `Version ${s.installed} is installed. Restart Hersir to use it.` };
   if (s.available) return { mark: "new", text: `Version ${s.available.version} is out${when}.` };
   if (!s.checkedAt) return { mark: "skipped", text: "Not checked yet." };
   if (!s.latest) return { mark: "skipped", text: `There is no release on GitHub yet${when}.` };

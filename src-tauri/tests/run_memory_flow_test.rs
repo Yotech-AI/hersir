@@ -107,7 +107,7 @@ async fn with_a_fake_reading_over_80_percent_or_under_2_gb_free_no_run_starts_th
     let later = gizai_core::ids::now_ms() + 61 * 60_000;
     let found: Vec<(String, String, String)> = gizai_lib::board::findings(&a.st, later).unwrap().into_iter().map(|f| (f.task_id, f.code, f.reason)).collect();
     assert!(found.iter().any(|(t, code, reason)| t == &waiting && code == "memory"
-                && reason == "Gizai has been waiting for memory for over an hour: agent runs use 8.5 of 10 GB (Settings → Runs)"), "{found:?}");
+                && reason == "Hersir has been waiting for memory for over an hour: agent runs use 8.5 of 10 GB (Settings → Runs)"), "{found:?}");
 
     // exactly 80% is no reason to wait; over it is
     a.st.run_memory.fake_reading(Some(Reading { used: Some(8 * GB), available: Some(40 * GB) }));
@@ -460,7 +460,7 @@ async fn at_a_1_gb_limit_a_runs_command_that_asks_for_2_gb_is_ended_another_run_
     let lines: Vec<&ChangeEntry> = activity.iter().filter(|e| e.diff.get("cleanup").and_then(|c| c.as_str()) == Some(said)).collect();
     assert_eq!(lines.len(), 1, "once: {activity:?}");
     // and the run's own output, at its end
-    let note = "Linux ended a process in this run: Gizai's agent runs reached their memory limit of 1 GB together. \
+    let note = "Linux ended a process in this run: Hersir's agent runs reached their memory limit of 1 GB together. \
                 Change it in Settings → Runs → Memory for agent runs.";
     let notes: Vec<String> = runs::events_for(&a.st, &big_run).into_iter().filter_map(|e| match e.event {
         gizai_agents::stream::RunEvent::Note { text } => Some(text),

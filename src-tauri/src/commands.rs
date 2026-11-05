@@ -97,12 +97,23 @@ pub async fn list_projects(st: State<'_, AppState>) -> R<Vec<Project>> { off(&st
 pub async fn get_project(st: State<'_, AppState>, id: String) -> R<Project> { off(&st, move |st| projects::get(&st.db, &id).map_err(e)).await }
 #[tauri::command]
 pub async fn save_project(app: AppHandle, st: State<'_, AppState>, id: Option<String>, input: ProjectInput) -> R<String> {
-    let out = off(&st, move |st| match id {
-        Some(id) => projects::update(&st.db, &st.you_id, &id, input).map(|_| id),
-        None => projects::create(&st.db, &st.you_id, input),
+    // GA-225: another team moves the project and its cards (`runs::update_project`).
+    let (out, moved) = off(&st, move |st| match id {
+        Some(id) => crate::runs::update_project(st, &st.you_id, &id, input).map(|moved| (id, moved)),
+        None => projects::create(&st.db, &st.you_id, input).map(|id| (id, false)),
     }.map_err(e)).await?;
     changed(&app, "projects");
+    if moved {
+        // Its cards are in the new team's columns: that team's agents may take those in its Auto columns.
+        changed(&app, "tasks");
+        pull_soon(&st);
+    }
     Ok(out)
+}
+/// GA-225: what moving the project to team `team_id` would do, for the project form's question (`projects::team_move`).
+#[tauri::command]
+pub async fn project_team_move(st: State<'_, AppState>, id: String, team_id: String) -> R<projects::TeamMove> {
+    off(&st, move |st| projects::team_move(&st.db, &id, &team_id).map_err(e)).await
 }
 
 // ---- tasks ----
@@ -535,6 +546,42 @@ pub async fn role_template(role: String) -> String { gizai_core::seed::role_temp
 #[tauri::command]
 pub async fn role_tools(role: String) -> Vec<String> { gizai_core::seed::role_tools(&team::role_key(&role)) }
 
+// ---- team templates (GA-226, docs/team-template-format.md) ----
+use gizai_core::templates;
+
+/// Export's check: each place in the team's template that looks private (an email, a local path, a URL with a query or
+/// a password, a key or token). Writes nothing.
+#[tauri::command]
+pub async fn check_team_export(st: State<'_, AppState>, team_id: String) -> R<Vec<templates::Warning>> {
+    off(&st, move |st| templates::check_export(&st.db, &team_id).map_err(e)).await
+}
+/// Writes the team to `path` (picked with the dialog's save) as a template, format 1.
+#[tauri::command]
+pub async fn save_team_template(st: State<'_, AppState>, team_id: String, path: String) -> R<()> {
+    off(&st, move |st| templates::save(&st.db, &team_id, std::path::Path::new(&path)).map_err(e)).await
+}
+/// The built-in templates. Memory only: on the async runtime.
+#[tauri::command]
+pub async fn team_templates() -> Vec<templates::Builtin> { templates::builtins() }
+/// The check: what importing the template makes; a refusal is an error that says why. Writes nothing.
+#[tauri::command]
+pub async fn preview_team_template(st: State<'_, AppState>, source: templates::Source) -> R<templates::Plan> {
+    off(&st, move |st| templates::preview(&st.db, &source).map_err(e)).await
+}
+/// Makes a new team called `name` from the template; returns its id. Its agents come in paused from a file (active from a
+/// built-in), and nothing starts by itself: the new team has no cards yet.
+#[tauri::command]
+pub async fn import_team_template(app: AppHandle, st: State<'_, AppState>, source: templates::Source, name: String) -> R<String> {
+    let id = off(&st, move |st| templates::import(&st.db, &st.you_id, &source, &name).map_err(e)).await?;
+    changed(&app, "teams");
+    changed(&app, "actors");
+    changed(&app, "workflow_states");
+    changed(&app, "labels");
+    // The agents' memory folders.
+    changed(&app, "docs");
+    Ok(id)
+}
+
 // ---- agent runs ----
 use crate::runs;
 
@@ -911,7 +958,7 @@ pub async fn stop_update(st: State<'_, AppState>) -> R<crate::update::UpdateStat
 pub async fn restart_gizai(app: AppHandle, st: State<'_, AppState>) -> R<()> {
     off(&st, |st| {
         let mut cmd = crate::update::restart_command(st)?;
-        cmd.spawn().map(|_| ()).map_err(|e| format!("Couldn't restart Gizai: {e}"))
+        cmd.spawn().map(|_| ()).map_err(|e| format!("Couldn't restart Hersir: {e}"))
     }).await?;
     // the restart after an update doesn't back up on quit
     st.backups.quit_without_backup();
