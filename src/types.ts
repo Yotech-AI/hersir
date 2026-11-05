@@ -584,7 +584,7 @@ export type RestoreStatus = {
   savedToday: string | null;      // the before-restore snapshot's name, once it is made
   result: { ok: boolean; at: number; snapshot: string; fromComputer: string; message: string } | null;   // after the restart
 };
-export type DayStat ={ dayStart: number; succeeded: number; failed: number; other: number };
+export type DayStat = { dayStart: number; succeeded: number; failed: number; other: number };
 
 // ---- the Usage page (gizai-core usage.rs) ----
 export type UsagePeriod = "today" | "7d" | "30d" | "month";
