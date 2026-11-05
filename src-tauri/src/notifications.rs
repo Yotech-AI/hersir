@@ -422,7 +422,7 @@ fn show_now(app: &AppHandle, n: Notice) {
 }
 
 /// macOS: the notification only informs (a click shows nothing more): the tray's Open Gizai and the Dock icon bring the
-/// window back. It comes from Gizai (`APP_ID`, Gizai.app's bundle id) when macOS knows Gizai.app, else from notify-rust's
+/// window back. It comes from Gizai (`APP_ID`, Hersir.app's bundle id) when macOS knows Hersir.app, else from notify-rust's
 /// stand-in, Finder. Whether it shows is up to System Settings → Notifications.
 #[cfg(target_os = "macos")]
 fn show_now(_app: &AppHandle, n: Notice) {

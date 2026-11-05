@@ -296,7 +296,7 @@ n=$(( $(cat "$RUNNER_TEMP/runs" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$RUN
 echo "get.sh\${1:+ $1}" >> "$RAN"
 echo "== Finding GizAi's latest release"
 if [ "$n" -le "\${FAKE_API_FAILS:-0}" ]; then
-  echo "Could not read the latest release from https://api.github.com/repos/Yotech-AI/gizai/releases/latest. Check your internet connection, then run this again."
+  echo "Could not read the latest release from https://api.github.com/repos/Yotech-AI/hersir/releases/latest. Check your internet connection, then run this again."
   exit 1
 fi
 case "$1" in

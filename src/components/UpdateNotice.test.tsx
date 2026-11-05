@@ -11,9 +11,9 @@ const { UpdateNotice } = await import("./UpdateNotice");
 const { UpdateSettings } = await import("./UpdateSettings");
 const { Sidebar } = await import("./Sidebar");
 
-const release: Release = { version: "0.1.6", tag: "v0.1.6", url: "https://github.com/Yotech-AI/gizai/releases/tag/v0.1.6", notes: "- Faster boards" };
+const release: Release = { version: "0.1.6", tag: "v0.1.6", url: "https://github.com/Yotech-AI/hersir/releases/tag/v0.1.6", notes: "- Faster boards" };
 const status = (more: Partial<UpdateStatus> = {}): UpdateStatus => ({
-  current: "0.1.5", autoCheck: true, checking: false, repo: "https://github.com/Yotech-AI/gizai.git", checkedAt: Date.now(),
+  current: "0.1.5", autoCheck: true, checking: false, repo: "https://github.com/Yotech-AI/hersir.git", checkedAt: Date.now(),
   installTo: "/home/you/.local", ...more,
 });
 const job = (step: UpdateStep, more: Partial<UpdateJob> = {}): UpdateJob =>

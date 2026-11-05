@@ -1,9 +1,10 @@
 # Installs Gizai the way people do, into a scratch folder, on Linux (Ubuntu 24.04 itself, and Fedora, Arch Linux and
 # openSUSE Tumbleweed in containers), macOS (Apple silicon) and Windows. The first install is the one line at the pull
 # request's own commit, with a full build: scripts/get.sh piped into sh, or scripts/get.ps1 from memory in Windows
-# PowerShell 5.1. Then, over it, what Gizai's own update does: build only, then install. Then the checks, and the one
-# line's uninstall. On Linux the system packages come from the line install.sh --check prints for that system, so each
-# distribution's line is tried too.
+# PowerShell 5.1. Then, over it, what Gizai's own update does: build only, then install. On macOS and Windows that
+# update goes over an install as Gizai made it before it was called Hersir (GA-233), with Gizai.app and Gizai.lnk,
+# which it must remove. Then the checks, and the one line's uninstall. On Linux the system packages come from the line
+# install.sh --check prints for that system, so each distribution's line is tried too.
 # A release build takes a while, so it runs only on pull requests that change an installer, and by hand. A pull request
 # into main that only bumps Gizai's version passes without building or installing (the "Version only?" job).
 # It signs, releases and uploads nothing.
@@ -177,6 +178,23 @@ jobs:
         shell: bash
         run: cat scripts/get.sh | GIZAI_REPO="$GITHUB_WORKSPACE" GIZAI_REF=HEAD sh
 
+      # An install from before GA-233 has Gizai.app where Hersir.app is now: lib/gizai's links, gizai-launch and the
+      # link in ~/Applications go into it (an install into ~/.local makes that link; one into another prefix, as here,
+      # doesn't). The update over it must replace them all and remove Gizai.app.
+      - name: Make it an install from before GA-233 (macOS)
+        if: needs.version.outputs.only != 'true' && runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -eu
+          lib="$GIZAI_PREFIX/lib/gizai"
+          mv "$lib/Hersir.app" "$lib/Gizai.app"
+          ln -sfn Gizai.app/Contents/MacOS/gizai "$lib/gizai"
+          ln -sfn Gizai.app/Contents/MacOS/gizai-mcp "$lib/gizai-mcp"
+          sed -i '' 's#/Hersir\.app/#/Gizai.app/#' "$lib/gizai-launch"
+          mkdir -p "$HOME/Applications"
+          ln -sfn "$lib/Gizai.app" "$HOME/Applications/Gizai.app"
+          "$GIZAI_PREFIX/bin/gizai" --version
+
       # Over that install, what Gizai's own update does, in the source folder the one line made: build only, then
       # install what was built. macOS's own bash 3.2, as on a Mac.
       - name: Update over it (install.sh --build-only, then --skip-build)
@@ -201,6 +219,8 @@ jobs:
           [ "$link" = "$lib/gizai-launch" ] || fail "$GIZAI_PREFIX/bin/gizai links to $link, not to $lib/gizai-launch."
           grep -qFx "Exec=$lib/gizai-launch" "$XDG_DATA_HOME/applications/gizai.desktop" \
             || fail "$XDG_DATA_HOME/applications/gizai.desktop has no line Exec=$lib/gizai-launch."
+          grep -qFx "Name=Hersir" "$XDG_DATA_HOME/applications/gizai.desktop" \
+            || fail "$XDG_DATA_HOME/applications/gizai.desktop has no line Name=Hersir."
           for size in 32 64 128 256 512; do
             test -s "$icons/${size}x${size}/apps/gizai.png" || fail "$icons/${size}x${size}/apps/gizai.png is missing."
           done
@@ -215,12 +235,25 @@ jobs:
         shell: bash
         run: |
           set -eu
-          app="$GIZAI_PREFIX/lib/gizai/Gizai.app"
+          fail() { echo "$*"; exit 1; }
+          lib="$GIZAI_PREFIX/lib/gizai"
+          app="$lib/Hersir.app"
           test -x "$app/Contents/MacOS/gizai"
           test -x "$app/Contents/MacOS/gizai-mcp"
           codesign --verify --deep --strict "$app"
           "$GIZAI_PREFIX/bin/gizai" --version
-          "$GIZAI_PREFIX/lib/gizai/gizai" --version | grep -E '^gizai [0-9]+\.[0-9]+\.[0-9]+'
+          "$lib/gizai" --version | grep -E '^gizai [0-9]+\.[0-9]+\.[0-9]+'
+          name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$app/Contents/Info.plist")"
+          [ "$name" = Hersir ] || fail "Hersir.app calls itself $name, not Hersir."
+          id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")"
+          [ "$id" = ai.gizai.app ] || fail "Hersir.app's id is $id, not ai.gizai.app."
+          for program in gizai gizai-mcp; do
+            link="$(readlink "$lib/$program")" || fail "$lib/$program isn't a link."
+            [ "$link" = "Hersir.app/Contents/MacOS/$program" ] || fail "$lib/$program links to $link, not into Hersir.app."
+          done
+          grep -qF "exec \"$app/Contents/MacOS/gizai\"" "$lib/gizai-launch" || fail "$lib/gizai-launch doesn't start Hersir.app."
+          if [ -e "$lib/Gizai.app" ] || [ -L "$lib/Gizai.app" ]; then fail "The update left $lib/Gizai.app."; fi
+          if [ -L "$HOME/Applications/Gizai.app" ]; then fail "The update left the link $HOME/Applications/Gizai.app."; fi
 
       # The one line's uninstall removes the programs, the command and, on Linux, the desktop entry and the icons. It
       # keeps the data folder: a file put there first must still be there.
@@ -231,10 +264,18 @@ jobs:
           fail() { echo "$*"; exit 1; }
           mkdir -p "$GIZAI_DATA_DIR"
           echo "The uninstall keeps this." > "$GIZAI_DATA_DIR/keep.txt"
+          # macOS: the links in ~/Applications that an install into ~/.local makes, to Hersir.app and (before GA-233)
+          # to Gizai.app
+          if [ "$RUNNER_OS" = macOS ]; then
+            mkdir -p "$HOME/Applications"
+            ln -sfn "$GIZAI_PREFIX/lib/gizai/Hersir.app" "$HOME/Applications/Hersir.app"
+            ln -sfn "$GIZAI_PREFIX/lib/gizai/Gizai.app" "$HOME/Applications/Gizai.app"
+          fi
           cat scripts/get.sh | GIZAI_REPO="$GITHUB_WORKSPACE" GIZAI_REF=HEAD sh -s -- --uninstall
           icons="$XDG_DATA_HOME/icons/hicolor"
           for path in "$GIZAI_PREFIX/lib/gizai" "$GIZAI_PREFIX/bin/gizai" "$XDG_DATA_HOME/applications/gizai.desktop" \
-            "$icons/scalable/apps/gizai.svg" "$icons"/{32x32,64x64,128x128,256x256,512x512}/apps/gizai.png; do
+            "$icons/scalable/apps/gizai.svg" "$icons"/{32x32,64x64,128x128,256x256,512x512}/apps/gizai.png \
+            "$HOME/Applications/Hersir.app" "$HOME/Applications/Gizai.app"; do
             if [ -e "$path" ] || [ -L "$path" ]; then fail "$path is still there after the uninstall."; fi
           done
           test -f "$GIZAI_DATA_DIR/keep.txt" || fail "The uninstall removed $GIZAI_DATA_DIR/keep.txt from the data folder."
@@ -253,6 +294,14 @@ jobs:
           powershell -NoProfile -ExecutionPolicy Bypass -File $iex | Tee-Object -Variable out
           if (@($out)[-1] -ne 'returned 0') { "get.ps1 didn't install Gizai: it $(@($out)[-1])"; exit 1 }
 
+      # An install from before GA-233 has its Start menu shortcut as Gizai.lnk: the update over it must remove it.
+      - name: Make it an install from before GA-233 (Windows)
+        if: needs.version.outputs.only != 'true' && runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $menu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
+          Move-Item -LiteralPath (Join-Path $menu 'Hersir.lnk') -Destination (Join-Path $menu 'Gizai.lnk') -Force
+
       # Over that install, what Gizai's own update does, in the source folder the one line made, with Windows
       # PowerShell 5.1: build only, then install what was built.
       - name: Update over it (install.ps1 -BuildOnly, then -SkipBuild)
@@ -265,7 +314,8 @@ jobs:
             if ($LASTEXITCODE -ne 0) { "install.ps1 $step failed"; exit 1 }
           }
 
-      # The Start menu shortcut must carry Gizai's AppUserModelID, without which Windows shows none of its notifications.
+      # The Start menu shortcut, Hersir.lnk, must carry Gizai's AppUserModelID, without which Windows shows none of its
+      # notifications. The update removed Gizai.lnk.
       - name: What it installed (Windows)
         if: needs.version.outputs.only != 'true' && runner.os == 'Windows'
         shell: powershell
@@ -275,18 +325,22 @@ jobs:
           if ("$marker" -notmatch '^gizai \d+\.\d+\.\d+') { 'gizai-installed.txt should say the version'; exit 1 }
           if (-not (Test-Path -LiteralPath "$env:GIZAI_PREFIX\gizai-mcp.exe")) { 'gizai-mcp.exe is missing'; exit 1 }
           $menu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
-          $id = (New-Object -ComObject Shell.Application).NameSpace($menu).ParseName('Gizai.lnk').ExtendedProperty('System.AppUserModel.ID')
+          $id = (New-Object -ComObject Shell.Application).NameSpace($menu).ParseName('Hersir.lnk').ExtendedProperty('System.AppUserModel.ID')
           "shortcut app id: $id"
-          if ($id -ne 'ai.gizai.app') { 'the Start menu shortcut should carry ai.gizai.app'; exit 1 }
+          if ($id -ne 'ai.gizai.app') { 'the Start menu shortcut Hersir.lnk should carry ai.gizai.app'; exit 1 }
+          if (Test-Path -LiteralPath (Join-Path $menu 'Gizai.lnk')) { 'the update should have removed Gizai.lnk'; exit 1 }
 
       # The one line's uninstall, with its option as people give it one: & ([scriptblock]::Create(...)) -Uninstall. It
-      # keeps the data folder: a file put there first must still be there.
+      # removes Hersir.lnk and, from before GA-233, Gizai.lnk, and keeps the data folder: a file put there first must
+      # still be there.
       - name: Uninstall with the one line (get.ps1 -Uninstall)
         if: needs.version.outputs.only != 'true' && runner.os == 'Windows'
         shell: powershell
         run: |
           New-Item -ItemType Directory -Force -Path $env:GIZAI_DATA_DIR | Out-Null
           Set-Content -LiteralPath "$env:GIZAI_DATA_DIR\keep.txt" -Value 'The uninstall keeps this.'
+          $menu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
+          Copy-Item -LiteralPath (Join-Path $menu 'Hersir.lnk') -Destination (Join-Path $menu 'Gizai.lnk') -Force
           $env:GIZAI_REPO = $env:GITHUB_WORKSPACE; $env:GIZAI_REF = 'HEAD'
           $iex = "$env:RUNNER_TEMP\iex-get-ps1-uninstall.ps1"
           Set-Content -LiteralPath $iex -Value '& ([scriptblock]::Create((Get-Content -LiteralPath scripts\get.ps1 -Raw))) -Uninstall; "returned $LASTEXITCODE"'
@@ -295,6 +349,7 @@ jobs:
           foreach ($file in @('gizai.exe', 'gizai-mcp.exe', 'gizai-installed.txt')) {
             if (Test-Path -LiteralPath "$env:GIZAI_PREFIX\$file") { "$file should be gone"; exit 1 }
           }
-          $menu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
-          if (Test-Path -LiteralPath (Join-Path $menu 'Gizai.lnk')) { 'the Start menu shortcut should be gone'; exit 1 }
+          foreach ($link in @('Hersir.lnk', 'Gizai.lnk')) {
+            if (Test-Path -LiteralPath (Join-Path $menu $link)) { "the Start menu shortcut $link should be gone"; exit 1 }
+          }
           if (-not (Test-Path -LiteralPath "$env:GIZAI_DATA_DIR\keep.txt")) { 'the uninstall removed keep.txt from the data folder'; exit 1 }
