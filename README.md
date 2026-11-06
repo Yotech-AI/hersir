@@ -8,12 +8,12 @@
 
 <div align="center">
 
-**Your agents build it. You review.**
+**Your coding agents need a chief, not a babysitter.**
 
 A free, open-source desktop app where a team of AI coding agents works through your board in parallel, on Claude Code,
 Codex CLI or Gemini CLI. Made for freelancers and software companies with several clients and projects.
 
-[Website](https://gizai.app) · [Install](#install) · [Docs](#documentation) · [Releases](https://github.com/Yotech-AI/hersir/releases) · [Licence](LICENSE)
+[Website](https://hersir.dev) · [Install](#install) · [Docs](#documentation) · [Releases](https://github.com/Yotech-AI/hersir/releases) · [Licence](LICENSE)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/tour/tour-dark.gif">
@@ -69,13 +69,13 @@ that researches a feature before it's built.
 On Linux and macOS:
 
 ```sh
-curl -fsSL https://gizai.app/install.sh | sh
+curl -fsSL https://hersir.dev/install.sh | sh
 ```
 
 On Windows 11, in PowerShell:
 
 ```powershell
-irm https://gizai.app/install.ps1 | iex
+irm https://hersir.dev/install.ps1 | iex
 ```
 
 It gets the source of the latest release, checks what your computer is missing, then builds Hersir and installs it for you alone, without sudo or administrator rights. Run it again to update. Every system needs git, Rust, Node.js 20 or newer, and Claude Code or Codex, logged in.
@@ -136,7 +136,7 @@ A performance card runs `scripts/perf.sh` on `main` and on its branch, on the sa
 
 The capture makes the product tour's stills: Hersir with made-up data in a headless compositor, scene by scene, in dark and light, with a `scenes.json` of what each step clicked. The tour video and the two GIFs above (`docs/tour/tour-dark.gif` and `tour-light.gif`) are made from those stills in the website's repository, which holds the tour's Remotion project.
 
-On every pull request and every push to `main`, CI (`.github/workflows/ci.yml`) builds Hersir and runs `cargo test --workspace` and `npm test` on Linux, macOS (Apple silicon) and Windows, and checks the install scripts there. A pull request that changes an install script also installs Hersir with the one line on Ubuntu, Fedora, Arch Linux, openSUSE Tumbleweed, macOS and Windows (`.github/workflows/install.yml`). A pull request into `main` that changes nothing but Hersir's version, a release's first step, skips both, and its checks pass within a minute or two: the release's pull request into `production` runs them in full (`docs/RELEASING.md`). After each release, and every week, gizai.app's own lines install it on Ubuntu, macOS and Windows (`.github/workflows/one-line.yml`).
+On every pull request and every push to `main`, CI (`.github/workflows/ci.yml`) builds Hersir and runs `cargo test --workspace` and `npm test` on Linux, macOS (Apple silicon) and Windows, and checks the install scripts there. A pull request that changes an install script also installs Hersir with the one line on Ubuntu, Fedora, Arch Linux, openSUSE Tumbleweed, macOS and Windows (`.github/workflows/install.yml`). A pull request into `main` that changes nothing but Hersir's version, a release's first step, skips both, and its checks pass within a minute or two: the release's pull request into `production` runs them in full (`docs/RELEASING.md`). After each release, and every week, hersir.dev's own lines install it on Ubuntu, macOS and Windows (`.github/workflows/one-line.yml`).
 
 [CLAUDE.md](CLAUDE.md) has the rules for working in this repository, [docs/HANDOFF-2026-10-07.md](docs/HANDOFF-2026-10-07.md) explains how it is built, and [docs/RELEASING.md](docs/RELEASING.md) how a release is made.
 

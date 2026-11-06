@@ -288,7 +288,7 @@ describe("install.yml: what a container gets before the package line", () => {
 
 const LINE = "The one line (Linux, macOS)";
 
-// gizai.app's install.sh, as curl hands it to sh: it can't read the latest release for its first $FAKE_API_FAILS runs;
+// hersir.dev's install.sh, as curl hands it to sh: it can't read the latest release for its first $FAKE_API_FAILS runs;
 // after that --check names Ubuntu's packages, --uninstall removes Gizai, and otherwise it installs gizai $FAKE_VERSION
 // (or fails with $FAKE_FAIL).
 const FAKE_GET = `#!/bin/sh
@@ -335,12 +335,12 @@ function oneLine(env) {
   return { ...r, dir };
 }
 
-describe.runIf(unix)("one-line.yml: gizai.app's line on Linux and macOS", () => {
-  it("is a script with no expressions in it, and runs gizai.app's own line", () => {
+describe.runIf(unix)("one-line.yml: hersir.dev's line on Linux and macOS", () => {
+  it("is a script with no expressions in it, and runs hersir.dev's own line", () => {
     const script = stepRun(".github/workflows/one-line.yml", LINE);
     expect(script).not.toContain("${{");
-    expect(script).toContain("line 'curl -fsSL https://gizai.app/install.sh | sh'");
-    expect(script).toContain("line 'curl -fsSL https://gizai.app/install.sh | sh -s -- --uninstall'");
+    expect(script).toContain("line 'curl -fsSL https://hersir.dev/install.sh | sh'");
+    expect(script).toContain("line 'curl -fsSL https://hersir.dev/install.sh | sh -s -- --uninstall'");
   });
 
   it("installs the latest release, then uninstalls it, with nothing tried again", () => {
@@ -348,9 +348,9 @@ describe.runIf(unix)("one-line.yml: gizai.app's line on Linux and macOS", () => 
     expect(r.status, r.out).toBe(0);
     expect(r.out).toContain("The latest release: v0.13.0. Installed: gizai 0.13.0.");
     expect(r.ran).toEqual([
-      "curl -fsSL https://gizai.app/install.sh",
+      "curl -fsSL https://hersir.dev/install.sh",
       "get.sh",
-      "curl -fsSL https://gizai.app/install.sh",
+      "curl -fsSL https://hersir.dev/install.sh",
       "get.sh --uninstall",
     ]);
     expect(existsSync(join(r.dir, "gizai", "bin", "gizai"))).toBe(false);
@@ -419,5 +419,10 @@ describe("one-line.yml: when it runs", () => {
   it("runs on ubuntu-24.04, macos-14 and windows-latest, with nothing from the checkout", () => {
     expect(text).toContain("os: [ubuntu-24.04, macos-14, windows-latest]");
     expect(text).not.toContain("actions/checkout");
+  });
+
+  it("on Windows runs hersir.dev's own lines, to install and to uninstall", () => {
+    expect(text).toContain("Invoke-Line 'irm https://hersir.dev/install.ps1 | iex'");
+    expect(text).toContain("Invoke-Line '& ([scriptblock]::Create((irm https://hersir.dev/install.ps1))) -Uninstall'");
   });
 });

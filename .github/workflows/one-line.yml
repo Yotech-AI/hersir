@@ -1,7 +1,7 @@
-# Installs GizAi's latest release with gizai.app's own one lines, as someone reading docs/install.md does, into a
+# Installs GizAi's latest release with hersir.dev's own one lines, as someone reading docs/install.md does, into a
 # scratch folder, on Ubuntu 24.04, macOS (Apple silicon) and Windows:
-#   curl -fsSL https://gizai.app/install.sh | sh     (on Ubuntu first with --check, then the packages it names)
-#   irm https://gizai.app/install.ps1 | iex          (in Windows PowerShell 5.1)
+#   curl -fsSL https://hersir.dev/install.sh | sh     (on Ubuntu first with --check, then the packages it names)
+#   irm https://hersir.dev/install.ps1 | iex          (in Windows PowerShell 5.1)
 # It passes when the installed Gizai is the latest release on GitHub, then uninstalls it with the same line. It uses
 # nothing from the checkout. It runs when a release is published, every week, by hand, and on a pull request that
 # changes this file. It signs, releases and uploads nothing.
@@ -82,7 +82,7 @@ jobs:
 
           # Ubuntu: the check first, then the system packages it names, with its own line (made non-interactive).
           if [ "$RUNNER_OS" = Linux ]; then
-            line 'curl -fsSL https://gizai.app/install.sh | sh -s -- --check' || true
+            line 'curl -fsSL https://hersir.dev/install.sh | sh -s -- --check' || true
             packages="$(sed -n '/^Install them with:$/{n;s/^ *//;p;q;}' "$RUNNER_TEMP/line.log")"
             if [ -n "$packages" ]; then
               sudo apt-get update
@@ -92,13 +92,13 @@ jobs:
             fi
           fi
 
-          line 'curl -fsSL https://gizai.app/install.sh | sh' || fail "The one line didn't install GizAi."
+          line 'curl -fsSL https://hersir.dev/install.sh | sh' || fail "The one line didn't install GizAi."
 
           installed="$("$GIZAI_PREFIX/bin/gizai" --version)" || fail "$GIZAI_PREFIX/bin/gizai --version failed: $installed"
           echo "The latest release: $LATEST. Installed: $installed."
           [ "$installed" = "gizai ${LATEST#v}" ] || fail "The one line installed $installed, not the latest release, $LATEST."
 
-          line 'curl -fsSL https://gizai.app/install.sh | sh -s -- --uninstall' || fail "The one line didn't uninstall GizAi."
+          line 'curl -fsSL https://hersir.dev/install.sh | sh -s -- --uninstall' || fail "The one line didn't uninstall GizAi."
           for path in "$GIZAI_PREFIX/lib/gizai" "$GIZAI_PREFIX/bin/gizai" "$XDG_DATA_HOME/applications/gizai.desktop"; do
             if [ -e "$path" ] || [ -L "$path" ]; then fail "$path is still there after the uninstall."; fi
           done
@@ -133,7 +133,7 @@ jobs:
             }
           }
 
-          Invoke-Line 'irm https://gizai.app/install.ps1 | iex'
+          Invoke-Line 'irm https://hersir.dev/install.ps1 | iex'
 
           $marker = "$env:GIZAI_PREFIX\gizai-installed.txt"
           if (-not (Test-Path -LiteralPath $marker)) { "The one line installed nothing: $marker is missing."; exit 1 }
@@ -141,7 +141,7 @@ jobs:
           "The latest release: $env:LATEST. Installed: $installed."
           if ("$installed" -ne "gizai $($env:LATEST -replace '^v', '')") { "The one line installed $installed, not the latest release, $env:LATEST."; exit 1 }
 
-          Invoke-Line '& ([scriptblock]::Create((irm https://gizai.app/install.ps1))) -Uninstall'
+          Invoke-Line '& ([scriptblock]::Create((irm https://hersir.dev/install.ps1))) -Uninstall'
           foreach ($file in @('gizai.exe', 'gizai-mcp.exe', 'gizai-installed.txt')) {
             if (Test-Path -LiteralPath "$env:GIZAI_PREFIX\$file") { "$file is still there after the uninstall."; exit 1 }
           }

@@ -1,6 +1,6 @@
 # Hersir's one-line install for Windows, in PowerShell (Windows PowerShell 5.1 or PowerShell 7):
-#   irm https://gizai.app/install.ps1 | iex
-# The website sends gizai.app/install.ps1 on to this script, scripts/get.ps1 on the production branch, on GitHub.
+#   irm https://hersir.dev/install.ps1 | iex
+# The website sends hersir.dev/install.ps1 on to this script, scripts/get.ps1 on the production branch, on GitHub.
 # It gets the source of the latest release, the tag Hersir's own update fetches (docs/RELEASING.md), into
 # %LOCALAPPDATA%\gizai-src, or updates it there. Then it runs that release's install.ps1 with Windows PowerShell:
 # install.ps1 -Check first, then install.ps1, which builds and installs Hersir as it does from a clone. Run it again to
@@ -34,10 +34,10 @@ param(
   $PSNativeCommandUseErrorActionPreference = $false
 
   # What this script gets comes from GitHub, so an install never depends on the website: the source from $DefaultRepo,
-  # the latest release from GitHub's API. The one lines it only shows you are gizai.app's.
+  # the latest release from GitHub's API. The one lines it only shows you are hersir.dev's.
   $DefaultRepo = 'https://github.com/Yotech-AI/hersir.git'
-  $GetPs1 = 'https://gizai.app/install.ps1'
-  $GetSh = 'https://gizai.app/install.sh'
+  $GetPs1 = 'https://hersir.dev/install.ps1'
+  $GetSh = 'https://hersir.dev/install.sh'
 
   function Say([string]$Text) { Write-Output $Text }
   function Step([string]$Text) { Write-Output ''; Write-Output "== $Text" }

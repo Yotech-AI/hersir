@@ -319,7 +319,7 @@ describe.skipIf(!unix)("scripts/get.sh", { timeout: 60_000 }, () => {
     const c = newCase();
     const r = getSh(c, ["--help"]);
     expect(r.code).toBe(0);
-    expect(r.out).toContain("curl -fsSL https://gizai.app/install.sh | sh");
+    expect(r.out).toContain("curl -fsSL https://hersir.dev/install.sh | sh");
     expect(r.out).not.toContain("raw.githubusercontent.com");
     expect(r.out).toContain("--uninstall");
     expect(readdirSync(c.home)).toEqual([]);
@@ -364,12 +364,12 @@ describe.skipIf(!unix)("scripts/get.sh", { timeout: 60_000 }, () => {
     const r = getSh(c, [], { PATH: tools(c, ["git", "bash", "curl"], { uname: "#!/bin/sh\necho MINGW64_NT-10.0-26100\n" }) });
     expect(r.code).toBe(1);
     expect(r.out.trim()).toBe(
-      "This installs Hersir on Linux and macOS. On Windows, run this in PowerShell: irm https://gizai.app/install.ps1 | iex",
+      "This installs Hersir on Linux and macOS. On Windows, run this in PowerShell: irm https://hersir.dev/install.ps1 | iex",
     );
     expect(readdirSync(c.home)).toEqual([]);
   });
 
-  it("gets what it downloads from GitHub, never from gizai.app: the latest release from GitHub's API, the source from github.com", () => {
+  it("gets what it downloads from GitHub, never from hersir.dev: the latest release from GitHub's API, the source from github.com", () => {
     // curl and git stand-ins that write down what they were asked and stop there, so nothing goes over the network
     const realGit = spawnSync("/bin/sh", ["-c", "command -v git"], { encoding: "utf8" }).stdout.trim();
     const net = (c) => join(c.root, "net.log");
@@ -398,7 +398,7 @@ describe.skipIf(!unix)("scripts/get.sh", { timeout: 60_000 }, () => {
     expect(fetched[0]).toMatch(/ fetch .* -- https:\/\/github\.com\/Yotech-AI\/hersir\.git v0\.2\.0$/);
     expect(runs(d)).toEqual([]);
 
-    for (const log of [...asked, ...fetched]) expect(log).not.toContain("gizai.app");
+    for (const log of [...asked, ...fetched]) expect(log).not.toContain("hersir.dev");
   });
 
   it("gets a branch or a commit instead of the latest release with GIZAI_REF, and stops at one that doesn't exist", () => {
@@ -459,14 +459,14 @@ describe.skipIf(!unix)("scripts/get.sh", { timeout: 60_000 }, () => {
   });
 });
 
-// The one lines people see are gizai.app's (GA-159), which the website sends on to get.sh and get.ps1 on production;
+// The one lines people see are hersir.dev's (GA-159), which the website sends on to get.sh and get.ps1 on production;
 // what the scripts download stays on GitHub. get.ps1 is read as text here: CI runs it, on Windows.
 describe("the one-line installs people see", () => {
-  const CURL = "curl -fsSL https://gizai.app/install.sh | sh";
-  const IRM = "irm https://gizai.app/install.ps1 | iex";
+  const CURL = "curl -fsSL https://hersir.dev/install.sh | sh";
+  const IRM = "irm https://hersir.dev/install.ps1 | iex";
   const read = (path) => readFileSync(join(REPO_ROOT, path), "utf8");
 
-  it("README.md, docs/install.md and the website's design show gizai.app's lines, not GitHub's raw addresses", () => {
+  it("README.md, docs/install.md and the website's design show hersir.dev's lines, not GitHub's raw addresses", () => {
     for (const path of ["README.md", "docs/install.md", "design/website/README.md"]) {
       const text = read(path);
       expect(text, path).toContain(CURL);
@@ -476,18 +476,18 @@ describe("the one-line installs people see", () => {
     }
   });
 
-  it("get.sh and get.ps1 show gizai.app's lines in their headers, and only ever show them", () => {
+  it("get.sh and get.ps1 show hersir.dev's lines in their headers, and only ever show them", () => {
     const sh = read("scripts/get.sh").split("\n");
     expect(sh[2]).toBe(`#   ${CURL}`);
-    expect(sh).toContain("GET_PS1=https://gizai.app/install.ps1");
+    expect(sh).toContain("GET_PS1=https://hersir.dev/install.ps1");
     expect(sh.filter((line) => line.includes("$GET_PS1")).map((line) => line.trim())).toEqual([
       '*) say "This installs Hersir on Linux and macOS. On Windows, run this in PowerShell: irm $GET_PS1 | iex"; return 1 ;;',
     ]);
 
     const ps1 = read("scripts/get.ps1").split(/\r?\n/);
     expect(ps1[1]).toBe(`#   ${IRM}`);
-    expect(ps1).toContain("  $GetPs1 = 'https://gizai.app/install.ps1'");
-    expect(ps1).toContain("  $GetSh = 'https://gizai.app/install.sh'");
+    expect(ps1).toContain("  $GetPs1 = 'https://hersir.dev/install.ps1'");
+    expect(ps1).toContain("  $GetSh = 'https://hersir.dev/install.sh'");
     const shown = ps1.filter((line) => /\$GetPs1|\$GetSh/.test(line) && !/^\s*\$Get(Ps1|Sh) = /.test(line));
     expect(shown.map((line) => line.trim())).toEqual([
       'Say "  irm $GetPs1 | iex"',
@@ -495,14 +495,14 @@ describe("the one-line installs people see", () => {
     ]);
   });
 
-  it("get.sh and get.ps1 download from GitHub: gizai.app is only in what they show and in comments", () => {
+  it("get.sh and get.ps1 download from GitHub: hersir.dev is only in what they show and in comments", () => {
     for (const path of ["scripts/get.sh", "scripts/get.ps1"]) {
       const lines = read(path).split(/\r?\n/);
-      const app = lines.filter((line) => line.includes("gizai.app") && !line.trim().startsWith("#"));
-      expect(app.map((line) => line.trim()), path).toEqual(
+      const site = lines.filter((line) => line.includes("hersir.dev") && !line.trim().startsWith("#"));
+      expect(site.map((line) => line.trim()), path).toEqual(
         path.endsWith(".sh")
-          ? ["GET_PS1=https://gizai.app/install.ps1", CURL]
-          : ["$GetPs1 = 'https://gizai.app/install.ps1'", "$GetSh = 'https://gizai.app/install.sh'"],
+          ? ["GET_PS1=https://hersir.dev/install.ps1", CURL]
+          : ["$GetPs1 = 'https://hersir.dev/install.ps1'", "$GetSh = 'https://hersir.dev/install.sh'"],
       );
     }
     const ps1 = read("scripts/get.ps1");

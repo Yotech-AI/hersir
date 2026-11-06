@@ -66,7 +66,7 @@ Optional, your call: a **supporter licence** (€25–50 once, like Obsidian Cat
 
 ```
 Hersir desktop (Apache-2.0)                 Hersir Cloud (hosted, EU)
-├─ crates/gizai-cloud-client   ── HTTPS ──► api.gizai.app  (Rust, axum)
+├─ crates/gizai-cloud-client   ── HTTPS ──► api.hersir.dev  (Rust, axum)
 │   sign-in, keychain, snapshot,             ├─ accounts, devices, entitlements (signed)
 │   encrypt, upload, restore,                ├─ backups: encrypted blobs → object storage (EU)
 │   push/pull changes                        ├─ sync: encrypted change log, ordered per workspace
