@@ -23,7 +23,7 @@ use gizai_core::db::Db;
 use gizai_core::files::{self, Evidence};
 use gizai_core::mcp_servers::{self, AgentServer, AgentTools};
 use gizai_core::model::*;
-use gizai_core::{backups, clients, clis, comments, db, docs, editor, ids, labels, memory, onboarding, projects, pulls, questions, runs,
+use gizai_core::{backups, clients, clis, comments, db, docs, editor, ids, labels, memory, onboarding, projects, pulls, questions, restore, runs,
     screenshots, seed, settings, tasks, team, tokens, users, workflow};
 use serde::Serialize;
 use serde_json::{Map, Value, json};
@@ -602,6 +602,8 @@ fn main() {
         last: Some(backups::Last { name: backups::snapshot_name(backups::Reason::Daily, daily_at, &backups::device_tag(&me)), made_at: daily_at, bytes: 1_153_434 }),
         last_error: None, next: backups::next_due(every, Some(daily_at), now),
     }));
+    // Its restore (contract BR): none runs, none is ready and none was just done. mock.ts answers Restore's steps.
+    c.insert("restore_status".into(), val(restore::RestoreStatus { state: "none".into(), ..Default::default() }));
     // Settings → GitHub and Bitbucket (src-tauri's github::Status and bitbucket::BitbucketStatus): gh logged in, no Bitbucket login.
     c.insert("github_status".into(), json!({"ghPath": "/usr/bin/gh", "ghVersion": "2.62.0", "ghProblem": null, "account": "jefsev",
         "accountProblem": null, "pushOver": "ssh", "login": null, "loginCommand": "gh auth login --hostname github.com --web"}));
