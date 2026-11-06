@@ -100,7 +100,7 @@ Replace `X.Y.Z` with the new version.
    curl -s https://api.github.com/repos/Yotech-AI/hersir/releases/latest | grep '"tag_name"'   # what Hersir reads: vX.Y.Z
    ```
 
-   Publishing the release also starts One-line install (`.github/workflows/one-line.yml`): gizai.app's own lines install the new release on Ubuntu 24.04, macOS 14 and Windows, then uninstall it. Its jobs take 7 to 12 minutes and must be green on all three:
+   Publishing the release also starts One-line install (`.github/workflows/one-line.yml`): hersir.dev's own lines install the new release on Ubuntu 24.04, macOS 14 and Windows, then uninstall it. Its jobs take 7 to 12 minutes and must be green on all three:
 
    ```sh
    gh run list --workflow one-line.yml --event release --limit 1 --json headBranch,status,conclusion,url   # vX.Y.Z, completed, success
@@ -134,7 +134,7 @@ Hersir 0.11.0 installs with one line on Linux, macOS and Windows, and is now ope
 
 ## What's new
 
-- **Install with one line.** `curl -fsSL https://gizai.app/install.sh | sh` on Linux and macOS, or `irm https://gizai.app/install.ps1 | iex` in PowerShell on Windows 11. Run it again to update.
+- **Install with one line.** `curl -fsSL https://hersir.dev/install.sh | sh` on Linux and macOS, or `irm https://hersir.dev/install.ps1 | iex` in PowerShell on Windows 11. Run it again to update.
 - **Apache-2.0.** Hersir's licence is now the Apache License 2.0. Releases before it stay under MIT.
 - **The Team Lead can update a linked folder with uncommitted changes:** after your yes, it puts them in git's stash first.
 - **The chat says when an answer is done** after your last Approve or Discard.
@@ -181,7 +181,7 @@ Every release must keep this working, because the Hersir that updates runs the *
   - Only an install that stopped between its renames (seconds) can leave a mix. Settings → Updates then says to try again or to run `./install.sh`.
 - **Stop** ends the update while it gets the source or builds. Quitting Hersir does that too.
 - **So `install.sh` must keep these working:** `--build-only`, `--skip-build`, `GIZAI_PREFIX` and `XDG_DATA_HOME`, with macOS's own bash 3.2 and BSD tools too. **And `install.ps1`:** `-BuildOnly`, `-SkipBuild` and `GIZAI_PREFIX`, with Windows PowerShell 5.1 (what an update runs) and PowerShell 7. CI checks that both scripts parse and that their checks (`--check`, `-Check`) pass.
-- **The one-line installs run the release's installer too.** `scripts/get.sh` (`curl -fsSL https://gizai.app/install.sh | sh`) and `scripts/get.ps1` (`irm https://gizai.app/install.ps1 | iex`) are read from `production`: gizai.app sends its two addresses on to them there, so they must keep their names and place. What they get themselves comes from GitHub, never from the website. They get the same tag as an update, shallow, into `~/.local/share/gizai-src` (`%LOCALAPPDATA%\gizai-src` on Windows), never into the data folder. Then they run its `install.sh --check` and `install.sh` (`install.ps1 -Check` and `install.ps1`), with the flags they were given. So `--check` and `-Check` must keep working too. CI checks that both scripts parse and runs their checks against the pull request's own commit.
+- **The one-line installs run the release's installer too.** `scripts/get.sh` (`curl -fsSL https://hersir.dev/install.sh | sh`) and `scripts/get.ps1` (`irm https://hersir.dev/install.ps1 | iex`) are read from `production`: hersir.dev sends its two addresses on to them there, so they must keep their names and place. What they get themselves comes from GitHub, never from the website. They get the same tag as an update, shallow, into `~/.local/share/gizai-src` (`%LOCALAPPDATA%\gizai-src` on Windows), never into the data folder. Then they run its `install.sh --check` and `install.sh` (`install.ps1 -Check` and `install.ps1`), with the flags they were given. So `--check` and `-Check` must keep working too. CI checks that both scripts parse and runs their checks against the pull request's own commit.
 - **Only an installed Hersir updates itself.** That is a Hersir that runs as `<prefix>/lib/gizai/gizai` (on macOS also `<prefix>/lib/gizai/Hersir.app/Contents/MacOS/gizai`, when it starts from the Dock), or on Windows as a `gizai.exe` with `install.ps1`'s `gizai-installed.txt` next to it. A dev build (`scripts/run.sh`) or a test build says why it doesn't, and never installs anything.
 - **From a terminal** it works as before: `git pull` in a checkout of `production`, then `./install.sh` (on Windows `.\install.ps1`).
 - **Headless test and screenshot runs** (`GIZAI_SELFTEST` or `GIZAI_ROUTE` set) skip the automatic check, unless `GIZAI_RELEASES_URL` is set too.
