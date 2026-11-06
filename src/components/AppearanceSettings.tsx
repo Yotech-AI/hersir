@@ -34,7 +34,7 @@ export function AppearanceSettings() {
               <label key={f.key} className={`font-choice${a.font === f.key ? " on" : ""}`} data-font={f.key}>
                 <input type="radio" name="gizai-font" checked={a.font === f.key} onChange={() => setAppearance({ font: f.key })} />
                 <span className="fc-name">{f.name}</span>
-                <span className="fc-sample">Export invoices as CSV <span className="mono">KADE-41</span></span>
+                <span className="fc-sample">Export invoices as CSV <span className="mono">NWS-41</span></span>
                 <span className="fc-note">{f.note}</span>
               </label>
             ))}
@@ -60,7 +60,7 @@ export function AppearanceSettings() {
             </div>
             <div className="panel docs-sample" aria-label="Tasks and docs">
               <span className="faint">Tasks and docs</span>
-              <div className="prose"><h3>Acceptance criteria</h3><p>The portal replaces the Excel lists Kade's office keeps today.</p></div>
+              <div className="prose"><h3>Acceptance criteria</h3><p>The portal replaces the Excel lists Northwind's office keeps today.</p></div>
             </div>
           </div>
         </Field>
