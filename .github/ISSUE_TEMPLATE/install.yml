@@ -52,8 +52,8 @@ body:
       label: What the check says
       description: >-
         The output of `./install.sh --check` in your clone (on Windows `.\install.ps1 -Check`): it shows what is missing.
-        After the one-line install, run `curl -fsSL https://gizai.app/install.sh | sh -s -- --check`,
-        or on Windows `& ([scriptblock]::Create((irm https://gizai.app/install.ps1))) -Check`.
+        After the one-line install, run `curl -fsSL https://hersir.dev/install.sh | sh -s -- --check`,
+        or on Windows `& ([scriptblock]::Create((irm https://hersir.dev/install.ps1))) -Check`.
       render: text
     validations:
       required: true
