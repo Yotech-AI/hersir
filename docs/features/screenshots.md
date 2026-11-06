@@ -107,7 +107,7 @@ For Hersir's developers, and the agents that work on it: `npm run browser` serve
 - The app's own UI test has the same six sets, with real pictures: `cargo run -p gizai-core --example prep_screenshots -- <dir>` gives them to the demo data's GFW-2, and `scripts/ui-test.sh` opens its Screenshots tab with `screenshotsProbe` (`src/selftest.ts`): the sets, the larger view, Compare, Esc, the board's sign and the Inbox row.
 - A command without a fixture answers empty and logs its name in the browser's console. `gizaiBlobUrls()` in the console lists the pictures' `blob:` URLs that are alive, so you can see them freed when the pictures leave the screen.
 - `t` switches the theme, as in the app (or set `gizai-theme` in localStorage).
-- What differs from the app: Chrome draws it, not the app's webview, and native dialogs, file drops and the tray don't exist there. The app's own build (`npm run build`, `npm run tauri build`) contains none of it.
+- What differs from the app: Chrome draws it, not the app's webview, and native dialogs, file drops and the tray don't exist there. Restore from another folder… finds a made-up USB disk instead, whose backups show what a restore can do: one restores, one is refused when it is checked, and one fails at the start. The app's own build (`npm run build`, `npm run tauri build`) contains none of it.
 
 ## Free
 
