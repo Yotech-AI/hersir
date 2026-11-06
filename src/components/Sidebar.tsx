@@ -1,6 +1,6 @@
 // The sidebar (design system: Sidebar): quick actions, work areas, projects, the team's agents and their memory scroll;
-// the company pages stay at the bottom, with the update notice above them when a newer release is out. A Gizai on other
-// data than the usual folder says so there. Terminal (GA-136), Editor (GA-113), Agents and Memory fold with the caret at
+// the company pages stay at the bottom, with the update notice above them when a newer release is out, and the restore's
+// (GA-219) when one runs, is ready or has just been done. A Gizai on other data than the usual folder says so there. Terminal (GA-136), Editor (GA-113), Agents and Memory fold with the caret at
 // the end of their heading (GA-90).
 import {
   Building2, ChartColumn, ChevronDown, ChevronUp, Crown, FlaskConical, FolderCode, FolderKanban, Inbox, Keyboard, Library, ListTodo, LoaderCircle, MessagesSquare,
@@ -26,6 +26,7 @@ import { roleIcon } from "./Avatar";
 import { FolderPicker, workingWho } from "./editor/FolderPicker";
 import { ContextMenu, openInItems, useEditorApps, type MenuItem } from "./editor/Menus";
 import { useChatLive } from "./chat/useChat";
+import { RestoreNotice } from "./RestoreNotice";
 import { UpdateNotice } from "./UpdateNotice";
 import { closeTerminal, NameInput, NewTerminalPicker, RowCloseAsk, showInEditor } from "./terminal/TerminalParts";
 
@@ -106,6 +107,7 @@ export function Sidebar({ route, youId, onSearch, onNewTask, dataLabel, dataDir 
 
       <div className="side-foot">
         <UpdateNotice />
+        <RestoreNotice />
         <div className="nav-section">
           <div className="nav-label">Company</div>
           <Item to={{ page: "usage" }} icon={ChartColumn} label="Usage" active={is("usage")} />

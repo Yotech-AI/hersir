@@ -122,10 +122,21 @@ select.chip { appearance: none; padding-right: 26px; background-image: url("data
 .input.bk-keep { width: 96px; flex: none; }
 .backup-list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
 .backup-list > li { display: grid; gap: 2px; padding: 4px 0; border-bottom: 1px solid var(--line); }
-.backup-list .bk-row { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+.backup-list .bk-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; min-width: 0; }
 .backup-list .bk-when { flex: none; min-width: 10em; }
-.backup-list .bk-what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.backup-list .bk-what { flex: 1 1 12em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .backup-list .bk-size { flex: none; color: var(--text-2); }
+/* Restore (GA-219): each snapshot's button, the steps and Restart now above the list, the other folder below it, how it went */
+.backup-list .bk-do { display: flex; flex: none; justify-content: flex-end; min-width: 88px; margin-left: auto; }
+.bk-restore { display: grid; gap: 8px; }
+.bk-ready { font-weight: 600; }
+.bk-other { display: grid; grid-column: 1 / -1; gap: 8px; }
+.bk-other-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.bk-other .warn { font-size: var(--fs-xs); color: var(--warning); }
+.bk-other .error { font-size: var(--fs-xs); color: var(--danger); }
+.ask.bk-ask p { overflow-wrap: anywhere; }
+.bk-result { grid-column: 1 / -1; }
+.bk-result .btn { flex: none; margin-left: auto; }
 .cli-list { display: grid; gap: 8px; }
 .cli-list ul { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
 .cli-list li { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--line); }
@@ -402,6 +413,14 @@ a.member:hover { border-color: var(--line-2); }
 .update-notice.failed .icon { color: var(--danger); }
 .update-error { color: var(--danger); font-size: var(--fs-xs); line-height: 1.4; overflow-wrap: anywhere; }
 .update-failed { display: flex; flex-direction: column; gap: 6px; }
+/* a restore that is ready, and how it went: in the sidebar a long reason scrolls, so the company pages stay in sight */
+.restore-note { display: flex; align-items: flex-start; gap: 8px; padding: 6px 10px; border: 1px solid var(--line-2); border-radius: var(--radius);
+  background: var(--raised); color: var(--text); font-size: var(--fs); line-height: 1.4; overflow-wrap: anywhere; }
+.restore-note .icon { flex: none; margin-top: 2px; color: var(--accent); }
+.restore-note.ok .icon { color: var(--success); }
+.restore-note.failed { border-color: var(--danger); background: var(--danger-soft); }
+.restore-note.failed .icon { color: var(--danger); }
+.side-foot .restore-note { max-height: 11em; overflow-y: auto; }
 .update-output { margin: 0; max-height: 240px; overflow: auto; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--raised);
   color: var(--text-2); font-size: var(--fs-xs); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
 .update-notes summary { color: var(--text-2); font-size: var(--fs-sm); cursor: pointer; }
