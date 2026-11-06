@@ -22,18 +22,25 @@ const INKS = {
 const TILE = { top: "#1a2128", bottom: "#0b0e11" }; // the icon's iron tile, top to bottom, with a white edge at 8 %
 const n = (v) => +v.toFixed(2);
 
-// Moves and scales absolute path data (M, L, C and Z only, so every number pair is a point): x by sx, y by sy.
-function move(d, dx, dy, sx = 1, sy = sx) {
+// Maps absolute path data (M, L, C and Z only, so every number pair is a point): x by fx, y by fy.
+function mapPoints(d, fx, fy) {
   let i = 0;
-  return d.replace(/-?\d*\.?\d+/g, (s) => String(n(i++ % 2 ? +s * sy + dy : +s * sx + dx)));
+  return d.replace(/-?\d*\.?\d+/g, (s) => String(n(i++ % 2 ? fy(+s) : fx(+s))));
 }
+// Moves and scales them: x by sx, y by sy.
+const move = (d, dx, dy, sx = 1, sy = sx) => mapPoints(d, (x) => x * sx + dx, (y) => y * sy + dy);
 
-// The mark on its 24 px grid: four strokes of 2 with round caps. The stems (x 6 and 18, y 3 to 21) are the longship's
-// stem and stern; the sheer and the keel leave them at y 8 and sag between them, to 11.6 and 15.6, like a hull.
-const MARK = "M6 3L6 21M18 3L18 21M6 8C6.8 10.8 8.2 11.6 12 11.6C15.8 11.6 17.2 10.8 18 8M6 8C6.4 13.6 8.2 15.6 12 15.6C15.8 15.6 17.6 13.6 18 8";
-// The mark, its grid scaled by sx and sy and moved to (dx, dy), its strokes `w` wide.
-const mark = (ink, dx, dy, sx, sy = sx, w = 2 * sx) =>
-  `<path fill="none" stroke="${ink}" stroke-width="${n(w)}" stroke-linecap="round" stroke-linejoin="round" d="${move(MARK, dx, dy, sx, sy)}"/>`;
+// The mark on its 24 px grid, one filled outline (GA-239): four strokes of 2 with round caps, merged and mirrored around
+// x 12. The stems (x 6 and 18, y 3 to 21) are the longship's stem and stern; the sheer and the keel leave them at y 8 and
+// sag between them, to 11.6 and 15.6, like a hull. As separate strokes the hull's caps touched the stems' outer edges at
+// y 8 and browsers painted them out of the line; merged, each outer edge is one straight line, from cap to cap.
+const MARK = "M5 3C5 2.448 5.448 2 6 2C6.552 2 7 2.448 7 3L7 7.857C7.256 8.708 7.617 9.55 8.421 10.011C9.371 10.555 10.935 10.6 12 10.6C13.065 10.6 14.629 10.555 15.579 10.011C16.383 9.55 16.744 8.708 17 7.857L17 3C17 2.448 17.448 2 18 2C18.552 2 19 2.448 19 3L19 21C19 21.552 18.552 22 18 22C17.448 22 17 21.552 17 21L17 14.593C15.718 16.125 13.931 16.6 12 16.6C10.069 16.6 8.282 16.125 7 14.593L7 21C7 21.552 6.552 22 6 22C5.448 22 5 21.552 5 21ZM7.748 11.914C8.068 12.745 8.534 13.504 9.305 13.984C10.096 14.476 11.085 14.6 12 14.6C12.915 14.6 13.904 14.476 14.695 13.984C15.466 13.504 15.932 12.745 16.252 11.914C14.988 12.516 13.38 12.6 12 12.6C10.62 12.6 9.012 12.516 7.748 11.914Z";
+// The mark, its grid scaled by s and moved to (dx, dy).
+const mark = (ink, dx, dy, s) => `<path fill="${ink}" d="${move(MARK, dx, dy, s)}"/>`;
+// The mark as the 48 px cut draws it: at 1.5, but the space between the stems at 1.6, so the stems are 3 px on whole
+// pixels, 19 apart instead of 18.
+const stretch48 = (x) => (x <= 7 ? 1.5 * x + 0.5 : x >= 17 ? 1.5 * x + 1.5 : 1.6 * x - 0.2);
+const mark48 = (ink, dx, dy) => `<path fill="${ink}" d="${mapPoints(MARK, (x) => stretch48(x) + dx, (y) => 1.5 * y + dy)}"/>`;
 // The 16 px cut, on the pixel grid: stems 2 px (x 4 and 12, y 2.5 to 13.5) and the hull filled, so it stays a boat.
 const CUT16 = {
   stems: "M4 2.5L4 13.5M12 2.5L12 13.5",
@@ -76,11 +83,11 @@ const gradient = (id) => `<defs><linearGradient id="${id}" x1="0" y1="0" x2="0" 
 const tile = (s, rx, id) => `${gradient(id)}\n<rect width="${s}" height="${s}" rx="${rx}" fill="url(#${id})"/>\n`
   + `<rect x="0.5" y="0.5" width="${s - 1}" height="${s - 1}" rx="${rx - 0.5}" fill="none" stroke="#ffffff" stroke-opacity="0.08"/>`;
 // The small icons on the pixel grid. 16: the 16 px cut on the whole tile. 32: the mark 1:1 on its 24 grid, 4 in. 48 (no
-// frame in Figma): the 32's drawing at 1.5, strokes 3, its stems 19 apart instead of 18 so they land on whole pixels.
+// frame in Figma): the 32's drawing at 1.5, its stems 19 apart instead of 18 so they land on whole pixels.
 const SMALL = {
   16: { rx: 3.5, body: () => cut16(AMBER.dark) },
   32: { rx: 7, body: () => mark(AMBER.dark, 4, 4, 1) },
-  48: { rx: 10.5, body: () => mark(AMBER.dark, 5, 6, 19 / 12, 1.5, 3) },
+  48: { rx: 10.5, body: () => mark48(AMBER.dark, 5, 6) },
 };
 const small = (s) => svg(s, s, `${tile(s, SMALL[s].rx, `hs-tile-${s}`)}\n${SMALL[s].body()}`);
 for (const s of [16, 32, 48]) files[`favicon-${s}.svg`] = small(s);
@@ -112,8 +119,8 @@ function macIcon() {
 files["app-icon-macos-1024.svg"] = svg(1024, 1024, macIcon());
 
 // The macOS menu bar's template image (src-tauri/icons/tray-template.png, 36 px for 18 pt): the mark in black on
-// transparent, drawn as the 48 px cut is, strokes 3 and its stems on whole pixels; macOS colours it for its look.
-files["tray-template.svg"] = svg(36, 36, mark("#000000", -1, 0, 19 / 12, 1.5, 3));
+// transparent, drawn as the 48 px cut is, its stems on whole pixels; macOS colours it for its look.
+files["tray-template.svg"] = svg(36, 36, mark48("#000000", -1, 0));
 
 for (const [name, body] of Object.entries(files)) writeFileSync(join(DIR, name), body);
 
