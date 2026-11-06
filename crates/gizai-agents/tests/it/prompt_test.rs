@@ -93,6 +93,11 @@ fn bullets(s: &str) -> usize {
     s.lines().filter(|l| l.starts_with("- ")).count()
 }
 
+/// The bullet that says where throwaway files go. Run this for me names `.gizai-tmp` too, only to keep output out of it (GA-236).
+fn throwaway_line(s: &str) -> &str {
+    s.lines().find(|l| l.contains("Throwaway files")).unwrap()
+}
+
 #[test]
 fn every_task_prompt_new_continued_and_answered_ends_with_how_this_run_works() {
     let r = rules(Kind::ClaudeCode, "");
@@ -147,7 +152,8 @@ fn only_rules_that_hold_for_the_mode_and_the_cli_go_in() {
     assert!(s.contains("Nobody can approve anything during this run.") && s.contains("`/w/KADE-1/.gizai-tmp`") && !s.contains("commands"), "{s}");
     // without a temp folder (Gizai couldn't make it): no path, still not /tmp
     let s = rules_section(&RunRules { temp_dir: None, ..rules(Kind::ClaudeCode, "") });
-    assert!(s.contains("Throwaway files never go in `/tmp`") && !s.contains(".gizai-tmp") && !s.contains("TMPDIR, TMP and TEMP point"), "{s}");
+    assert!(throwaway_line(&s).contains("Throwaway files never go in `/tmp`") && !throwaway_line(&s).contains(".gizai-tmp"), "{s}");
+    assert!(!s.contains("TMPDIR, TMP and TEMP point"), "{s}");
 }
 
 // GA-54: the waiting rule in "How this run works", and Gizai's nudge.
@@ -337,12 +343,20 @@ fn an_answered_continue_quotes_the_answer_then_the_note_and_a_note_alone_is_the_
     assert!(answered_prompt("Use semicolons.", None).contains("It was answered on the card since:\n\n> Use semicolons.\n\n"));
 }
 
+// GA-236, word for word: the Inbox shows no folder, and Hersir empties these two folders when a run starts and when it ends.
+const FOLDER_AND_OUTPUT: &str = "The user pastes each one into a terminal that can be in any folder, so one that uses a relative path or a \
+project's files starts with a `cd` to the full path of its folder. Hersir empties `.gizai-tmp` and your temp folder when a run starts and when \
+it ends, so output you need to read afterwards goes to a file in your worktree outside `.gizai-tmp`, named by its full path and never committed.";
+
 #[test]
 fn every_task_prompt_on_every_cli_says_how_to_ask_the_user_to_run_a_command() {
     for want in ["a command you may not run", "sudo", "an install", "not a push of this branch", "finish what you can", "`needs_decision`",
                  "exactly as it is to be typed", "`run_for_me`", "The user runs them and continues this run", "check that they worked"] {
         assert!(RUN_FOR_ME.contains(want), "{want} missing in {RUN_FOR_ME}");
     }
+    // the folder and the output: right after the sentence with the example, before "The user runs them", on the one line
+    assert!(RUN_FOR_ME.contains(&format!("libayatana-appindicator\"]`. {FOLDER_AND_OUTPUT} The user runs them")), "{RUN_FOR_ME}");
+    assert!(!RUN_FOR_ME.contains('\n'), "{RUN_FOR_ME}");
     // its example is a working result line
     let example = RUN_FOR_ME.split('`').find(|s| s.starts_with("\"run_for_me\"")).unwrap();
     let line = format!("GIZAI_RESULT: {{\"outcome\":\"needs_decision\",\"summary\":\"s\",\"issues\":[],{example}}}");
@@ -359,6 +373,7 @@ fn every_task_prompt_on_every_cli_says_how_to_ask_the_user_to_run_a_command() {
                     // a bullet of its own, once, with the push line kept, and the section stays about 12 lines
                     assert!(sec.contains(&format!("\n- {RUN_FOR_ME}\n")), "{kind:?} {mode:?} {which}: {sec}");
                     assert_eq!(full.matches("run_for_me").count(), 2, "{kind:?} {mode:?} {which}: once, with its example: {full}");
+                    assert_eq!(full.matches(FOLDER_AND_OUTPUT).count(), 1, "{kind:?} {mode:?} {which}: {full}");
                     assert_eq!(sec.matches(PUSHED_BY_GIZAI).count(), 1, "{kind:?} {mode:?} {which}");
                     assert!(bullets(sec) <= 12, "{kind:?} {mode:?} {which}: at most about 12 lines ({}): {sec}", bullets(sec));
                 }
@@ -367,6 +382,17 @@ fn every_task_prompt_on_every_cli_says_how_to_ask_the_user_to_run_a_command() {
     }
     // it names neither "commands" (another CLI's section names none) nor sleep (named only when the agent may run it)
     assert!(!RUN_FOR_ME.contains("commands") && !RUN_FOR_ME.contains("sleep"), "{RUN_FOR_ME}");
+}
+
+// GA-236: the Inbox doc says it too, under Run this for me, once and after "Older result lines still work".
+#[test]
+fn the_inbox_doc_says_a_command_starts_with_its_folder_and_where_its_output_goes() {
+    let doc = include_str!("../../../../docs/features/inbox.md");
+    let section = &doc[doc.find("## Run this for me").unwrap()..doc.find("## Notifications").unwrap()];
+    let sentence = "An agent starts a command that needs a folder with a `cd` to its full path, and sends output it must read afterwards to a file in \
+its worktree outside `.gizai-tmp`, because Hersir empties that folder when a run starts and when it ends.";
+    assert_eq!(section.matches(sentence).count(), 1, "{section}");
+    assert!(section.find("Older result lines still work").unwrap() < section.find(sentence).unwrap(), "{section}");
 }
 
 // GA-210: the run's temp folder is short and outside the worktree. "How this run works" names it for every CLI, and
@@ -380,7 +406,9 @@ fn how_this_run_works_names_the_short_temp_folder_for_every_cli() {
         assert!(s.contains(&format!("Throwaway files go only in `{SHORT_TEMP}` (TMPDIR, TMP and TEMP point there")), "{kind:?}: {s}");
         assert!(s.contains("never in `/tmp` or anywhere else, and are never committed. Hersir empties that folder when the run ends."),
                 "{kind:?}: {s}");
-        assert!(!s.contains(".gizai-tmp"), "{kind:?}: {s}");
+        // GA-236: `.gizai-tmp` isn't where throwaway files go; only Run this for me names it, to keep output out of it
+        assert!(!throwaway_line(&s).contains(".gizai-tmp"), "{kind:?}: {s}");
+        assert!(!s.replace(RUN_FOR_ME, "").contains(".gizai-tmp"), "{kind:?}: {s}");
         // only Claude Code in acceptEdits: a variable such as $TMPDIR is refused in its commands
         assert_eq!(s.contains("; in a command, write this path, not `$TMPDIR`)"), kind == Kind::ClaudeCode, "{kind:?}: {s}");
     }
