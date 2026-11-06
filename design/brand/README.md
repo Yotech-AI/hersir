@@ -40,7 +40,7 @@ The mark and each logo come in four colours: `-on-dark` (the mark #f2a53a, the n
   `M6 3L6 21M18 3L18 21M6 8C6.8 10.8 8.2 11.6 12 11.6C15.8 11.6 17.2 10.8 18 8M6 8C6.4 13.6 8.2 15.6 12 15.6C15.8 15.6 17.6 13.6 18 8`.
   Its curves are cut short, the shape staying the same, and its left and right halves mirror number for number: each hull
   edge in 8 pieces from stem to middle, each quarter of a cap in 4. Chromium's software renderer draws long flat curves
-  unevenly left and right, which tilted the top of the hole. Above about 300 px it can still differ on a few pixels of a row.
+  unevenly left and right, which tilted the top of the hole. Above about 340 px it can still differ on a few pixels of a row.
   Use it from 24 px up; under 24 px use the 16 px cut, whose hull is filled so it stays an H with a boat in it.
 - **The wordmark** reads Hersir: Schibsted Grotesk Bold, outlined, the r–s pair closed 6 % and the i–r pair 2.5 % so
   the eye runs through it as one word. Its H is the longboat H at the font's weight. Say it HER-seer.
