@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::AgentError;
-use crate::worktree::{git, same, worktrees};
+use crate::worktree::{git, one_at_a_time, same, worktrees};
 
 /// The commit a copy shows.
 #[derive(Debug, Clone, PartialEq)]
@@ -61,11 +61,11 @@ pub fn sync(repo: &Path, dir: &Path, rev: &str) -> Result<(At, bool), AgentError
         }
         let path = dir.to_string_lossy();
         let add = || git(repo, &["worktree", "add", "--quiet", "--detach", &path, &sha]);
-        if add().is_err() {
+        one_at_a_time(repo, || add().or_else(|_| {
             // a copy whose folder was deleted by hand is still in git's list
             git(repo, &["worktree", "prune"])?;
-            add()?;
-        }
+            add()
+        }))?;
         true
     };
     let date = git(repo, &["log", "-1", "--format=%cs", &sha]).unwrap_or_default();
@@ -101,13 +101,13 @@ pub fn remove(dir: &Path, root: &Path) -> Result<(), AgentError> {
         .and_then(|list| list.into_iter().next()).map(|(p, _)| p)
         .filter(|m| !same(m, dir));
     if let Some(m) = &main {
-        let _ = git(m, &["worktree", "remove", "--force", &dir.to_string_lossy()]);
+        let _ = one_at_a_time(m, || git(m, &["worktree", "remove", "--force", &dir.to_string_lossy()]));
     }
     if std::fs::symlink_metadata(dir).is_ok() {
         std::fs::remove_dir_all(dir)?;
     }
     if let Some(m) = &main {
-        let _ = git(m, &["worktree", "prune"]);
+        let _ = one_at_a_time(m, || git(m, &["worktree", "prune"]));
     }
     Ok(())
 }
