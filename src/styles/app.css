@@ -130,6 +130,7 @@ select.chip { appearance: none; padding-right: 26px; background-image: url("data
 .backup-list .bk-do { display: flex; flex: none; justify-content: flex-end; min-width: 88px; margin-left: auto; }
 .bk-restore { display: grid; gap: 8px; }
 .bk-ready { font-weight: 600; }
+.bk-restore .btn.primary { height: auto; min-height: calc(30px + var(--ui-box, 0px)); padding-block: 4px; white-space: normal; text-align: left; } /* its question with agents at work is long */
 .bk-other { display: grid; grid-column: 1 / -1; gap: 8px; }
 .bk-other-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .bk-other .warn { font-size: var(--fs-xs); color: var(--warning); }
