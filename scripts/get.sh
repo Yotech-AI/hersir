@@ -1,7 +1,7 @@
 #!/bin/sh
 # Hersir's one-line install for Linux and macOS:
-#   curl -fsSL https://gizai.app/install.sh | sh
-# The website sends gizai.app/install.sh on to this script, scripts/get.sh on the production branch, on GitHub.
+#   curl -fsSL https://hersir.dev/install.sh | sh
+# The website sends hersir.dev/install.sh on to this script, scripts/get.sh on the production branch, on GitHub.
 # It gets the source of the latest release, the tag Hersir's own update fetches (docs/RELEASING.md), into
 # ${XDG_DATA_HOME:-~/.local/share}/gizai-src, or updates it there. Then it runs that release's install.sh with bash:
 # install.sh --check first, then install.sh, which builds and installs Hersir as it does from a clone. Run it again to
@@ -15,9 +15,9 @@
 # short runs nothing.
 
 # What this script gets comes from GitHub, so an install never depends on the website: the source from DEFAULT_REPO,
-# the latest release from GitHub's API. The one line for Windows, which it only shows you, is gizai.app's.
+# the latest release from GitHub's API. The one line for Windows, which it only shows you, is hersir.dev's.
 DEFAULT_REPO=https://github.com/Yotech-AI/hersir.git
-GET_PS1=https://gizai.app/install.ps1
+GET_PS1=https://hersir.dev/install.ps1
 
 say() { printf '%s\n' "$*"; }
 step() { printf '\n== %s\n' "$*"; }
@@ -35,7 +35,7 @@ words() {
 usage() {
   cat <<'USAGE'
 Hersir's one-line install for Linux and macOS:
-  curl -fsSL https://gizai.app/install.sh | sh
+  curl -fsSL https://hersir.dev/install.sh | sh
 It gets the source of Hersir's latest release into ~/.local/share/gizai-src (or updates it there), then runs that
 release's install.sh: --check first, then the install. Run it again to update.
 
