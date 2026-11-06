@@ -78,7 +78,7 @@ An agent that ends its run asking for a decision (`needs_decision`) asks the Tea
 - The card stays on hold but out of your Inbox ("With the Team Lead").
 - A short run of the Team Lead reads the question, and looks in memory, the card, the docs and its copies of the code.
 - It answers with a comment on the card. The agent's session continues with that answer as its Continue note, and the answer is kept in memory, linked to the card.
-- Or it asks you: a comment "Needs <you>: why, the options, my advice", and the card lands in the Inbox with "Team Lead escalated to you: why".
+- Or it asks you: a comment "Needs `<you>`: why, the options, my advice", and the card lands in the Inbox with "Team Lead escalated to you: why".
 
 Money, scope, deadlines, client messages, security, deleting and anything it can't find always come to you. So does any error, timeout or run without an answer. At most one try per question and two per card, and the question right after a Team Lead answer comes to you.
 
