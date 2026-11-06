@@ -589,7 +589,7 @@ describe("the list", () => {
     expect(r[3]).toMatch(/^\w{3} 25 Oct, 08:00 \| Daily · from work-laptop \| 7\.1 MB \| A newer Hersir made it \(0\.16\.0\): update Hersir to restore it$/);
     expect(r[4]).toBe("21 Oct, 08:00 | Weekly · from another computer | 7.4 MB");
     expect(r[5]).toBe("20 Oct, 12:00 | Before a restore | 7.4 MB");
-    expect(fieldText("Backups")).not.toContain("Restore");
+    // GA-219 gives each row Restore, or why it can't be restored instead (BackupRestore.test.tsx)
   });
 
   it("this computer's rows don't name a computer", async () => {
