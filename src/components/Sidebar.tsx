@@ -1,7 +1,7 @@
 // The sidebar (design system: Sidebar): quick actions, work areas, projects, the team's agents and their memory scroll;
 // the company pages stay at the bottom, with the update notice above them when a newer release is out, and the restore's
-// (GA-219) when one runs, is ready or has just been done. A Gizai on other data than the usual folder says so there. Terminal (GA-136), Editor (GA-113), Agents and Memory fold with the caret at
-// the end of their heading (GA-90).
+// (GA-219) when one runs, is ready or has just been done. A Gizai on other data than the usual folder says so there.
+// Terminal (GA-136), Editor (GA-113), Agents and Memory fold with the caret at the end of their heading (GA-90).
 import {
   Building2, ChartColumn, ChevronDown, ChevronUp, Crown, FlaskConical, FolderCode, FolderKanban, Inbox, Keyboard, Library, ListTodo, LoaderCircle, MessagesSquare,
   Network, Plus, Search, Settings, SquarePen, Terminal as TerminalIcon, Users, type LucideIcon,

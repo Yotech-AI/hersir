@@ -73,8 +73,9 @@ export function BackupSettings() {
   const restore = useRestore();
   // The snapshot Restore asks about, and the folder it is in.
   const [asking, setAsking] = useState<{ entry: BackupEntry; folder: string } | null>(null);
-  // Restore from another folder…: the folder picked and its snapshots.
+  // Restore from another folder…: the folder picked, how many times one was (picked again, it is read again) and its snapshots.
   const [other, setOther] = useState<string | null>(null);
+  const [otherPicks, setOtherPicks] = useState(0);
   const [otherList, setOtherList] = useState<BackupEntry[] | null>(null);
   const [otherErr, setOtherErr] = useState<string | null>(null);
   const restorePanel = useRef<HTMLDivElement>(null);
@@ -112,7 +113,7 @@ export function BackupSettings() {
   }, [listKey]);
 
   // The other folder's snapshots, read again when one is made: today's data may be saved there.
-  const otherKey = other === null ? null : JSON.stringify([other, !!s?.running, s?.last?.name ?? null, restore?.savedToday ?? null]);
+  const otherKey = other === null ? null : JSON.stringify([other, otherPicks, !!s?.running, s?.last?.name ?? null, restore?.savedToday ?? null]);
   useEffect(() => {
     if (other === null) return;
     let live = true;
@@ -192,7 +193,7 @@ export function BackupSettings() {
     setErr("other", null);
     try {
       const dir = await open({ directory: true, multiple: false, title: PICK_TITLE });
-      if (typeof dir === "string") { setOther(dir); setOtherList(null); setOtherErr(null); }
+      if (typeof dir === "string") { setOther(dir); setOtherPicks((n) => n + 1); setOtherList(null); setOtherErr(null); }
     } catch (e) { setErr("other", String(e)); }
   };
   const startIt = (a: { entry: BackupEntry; folder: string }) => {
@@ -216,7 +217,6 @@ export function BackupSettings() {
               <span className="bk-size mono">{entrySize(e)}</span>
               <span className="bk-do">
                 {!problem && <button type="button" className="btn sm" aria-label={`Restore the backup of ${when}`} disabled={restoring || !!s.running}
-                  title={restoring ? "A restore is running already" : s.running ? "A backup is running: restore once it is done" : undefined}
                   onClick={() => setAsking({ entry: e, folder })}><ArchiveRestore className="icon" />Restore</button>}
               </span>
             </div>
