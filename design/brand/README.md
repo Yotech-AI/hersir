@@ -20,7 +20,7 @@ Figma, change its numbers in `gen-brand.mjs`.
 | `logo-horizontal-*.svg` | The mark (48 high) and the wordmark side by side, 162.32 × 48: Figma's Hersir logo · Horizontal. |
 | `logo-stacked-*.svg` | The mark (88 high) over the wordmark, 113.69 × 133.82: Hersir logo · Stacked. |
 | `favicon.svg` | The SVG favicon: the 32 px drawing, which browsers scale. |
-| `favicon-16.svg`, `-32.svg`, `-48.svg` | The favicon drawn on the pixel grid: 16 is the 16 px cut, 32 the mark 1:1 on its grid. Figma has no 48: it is the 32's drawing at 1.5, strokes 3 px, its stems 19 apart instead of 18 so they land on whole pixels. |
+| `favicon-16.svg`, `-32.svg`, `-48.svg` | The favicon drawn on the pixel grid: 16 is the 16 px cut, 32 the mark 1:1 on its grid. Figma has no 48: it is the 32's drawing at 1.5, stems 3 px, the space between them at 1.6, so they land on whole pixels, 19 apart instead of 18. |
 | `app-icon-1024.svg` | The app icon's master for Linux and Windows: Figma's 1024 tile as an 896 px tile in the 1024 canvas, the margin icon themes leave. `src-tauri/icons/gizai.svg` is the same drawing. |
 | `app-icon-macos-1024.svg` | macOS: Apple's 824 px rounded square (continuous corners) in the 1024 canvas, with its shadow. |
 | `app-icon-16.svg`, `-32.svg` | The app icon at 16 and 32 px, drawn on the pixel grid: the favicon's drawings. |
@@ -35,8 +35,10 @@ The mark and each logo come in four colours: `-on-dark` (the mark #f2a53a, the n
 
 - **The mark** is the longboat H (take B, the hull): the H of Hersir drawn as a longship. The stems are its stem and
   stern posts; the sheer and the keel leave them high (y 8 on the 24 grid) and sag between them (to 11.6 and 15.6) like
-  a hull. Four strokes of one weight, 2 on the 24 grid, round caps. Use it from 24 px up; under 24 px use the 16 px cut,
-  whose hull is filled so it stays an H with a boat in it.
+  a hull. Four strokes of one weight, 2 on the 24 grid, round caps, merged into one filled outline, so each stem's outer
+  edge is one straight line from cap to cap, in every renderer and at every size (GA-239). The strokes it is merged from:
+  `M6 3L6 21M18 3L18 21M6 8C6.8 10.8 8.2 11.6 12 11.6C15.8 11.6 17.2 10.8 18 8M6 8C6.4 13.6 8.2 15.6 12 15.6C15.8 15.6 17.6 13.6 18 8`.
+  Use it from 24 px up; under 24 px use the 16 px cut, whose hull is filled so it stays an H with a boat in it.
 - **The wordmark** reads Hersir: Schibsted Grotesk Bold, outlined, the r–s pair closed 6 % and the i–r pair 2.5 % so
   the eye runs through it as one word. Its H is the longboat H at the font's weight. Say it HER-seer.
 - **Colour**: on dark and on light the longboat H is amber, Hersir colour's `brand/amber` (#f2a53a, 9.4:1 on the brand's
@@ -68,4 +70,7 @@ The mark and each logo come in four colours: `-on-dark` (the mark #f2a53a, the n
   until Jefsev has seen the change). The frame **Hersir · 8 App statuses: before and after (GA-230)** (236:384) on the
   same page shows the app's status glyphs, badges and the Inbox count with the old pink and amber and with the gold and
   yellow, in dark and light, with the numbers and the memory graph's new colours, for Jefsev's review.
+- The frame **Hersir mark: before and after (GA-239)** (246:528) on the same page shows the four strokes and the one
+  outline at 800 %, what a browser paints with each, and the logo, the favicon and the app icon at real size, in dark and
+  light.
 - The old brandbook (page Brandbook, GA-52) stays as it was.
