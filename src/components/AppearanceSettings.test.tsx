@@ -66,7 +66,7 @@ describe("Settings → Appearance", () => {
   it("offers the five fonts, each a choice shown in its own font, the default picked", () => {
     const html = render();
     expect(html).toContain('role="radiogroup" aria-label="Font"');
-    const choices = [...html.matchAll(/<label class="font-choice( on)?" data-font="([^"]+)"><input type="radio" name="gizai-font"( checked="")?\/><span class="fc-name">([^<]+)<\/span><span class="fc-sample">[^<]*<span class="mono">KADE-41<\/span>/g)];
+    const choices = [...html.matchAll(/<label class="font-choice( on)?" data-font="([^"]+)"><input type="radio" name="gizai-font"( checked="")?\/><span class="fc-name">([^<]+)<\/span><span class="fc-sample">[^<]*<span class="mono">NWS-41<\/span>/g)];
     expect(choices.map((m) => [m[2], m[4], !!m[1], !!m[3]])).toEqual([
       ["atkinson", "Atkinson Hyperlegible", true, true],
       ["jetbrains-mono", "JetBrains Mono", false, false],
@@ -76,6 +76,14 @@ describe("Settings → Appearance", () => {
     ]);
     // Inter says it is like the apps the card names
     expect(text(html)).toContain("Used by many apps, like Figma and Linear");
+  });
+  it.each(["dark", "light"] as const)("its font and docs samples use the tour's made-up names, in %s (GA-240)", (theme) => {
+    setAppearance({ theme });
+    const html = render();
+    expect(html.match(/<span class="fc-sample">Export invoices as CSV <span class="mono">NWS-41<\/span><\/span>/g)).toHaveLength(5);
+    expect(text(html)).toContain("The portal replaces the Excel lists Northwind's office keeps today.");
+    expect(html).not.toContain("KADE-41");
+    expect(text(html)).not.toContain("Kade's");
   });
   it("has a picker per text size with the card's sizes, today's size pressed", () => {
     const html = render();

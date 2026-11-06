@@ -1029,7 +1029,7 @@ fn the_approve_paragraph_in_the_docs_says_a_last_note_says_the_answer_is_done() 
                     The Team Lead's answer above is done: send a message to go on.\"";
     let approve = docs.lines().find(|l| l.trim_start().starts_with("**Approve** runs exactly that call")).expect("the Approve paragraph");
     // right after the sentence about the note that says what happened
-    assert!(approve.contains(&format!("\"Discarded: <what>.\", and the Team Lead's next answer in that chat starts with what you decided, in square \
+    assert!(approve.contains(&format!("\"Discarded: `<what>`.\", and the Team Lead's next answer in that chat starts with what you decided, in square \
                                        brackets. {sentence}")), "{approve}");
     assert_eq!(docs.matches(sentence).count(), 1);
 }
