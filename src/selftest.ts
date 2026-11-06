@@ -1902,7 +1902,7 @@ function hsv(r: number, g: number, b: number) {
   const h = d === 0 ? 0 : max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
   return { hue: (h * 60 + 360) % 360, sat: max ? d / max : 0, val: max / 255 };
 }
-/** How many drawn pixels of the canvas are the teal (--live) or magenta (--needs) of this theme: near the token's colour
+/** How many drawn pixels of the canvas are the teal (--live) or gold (--needs) of this theme: near the token's colour
  *  (within 120 of its RGB and 18° of its hue). Pixels only of that hue (where two dots' edges blend) are listed apart. */
 const huePixels: { at: number[]; rgba: number[] }[] = [];
 function reservedPixels(c: HTMLCanvasElement): number {
@@ -1931,7 +1931,7 @@ async function coloursDrawn(f: () => Promise<void>): Promise<string[]> {
   try { await f(); } finally { Object.defineProperty(proto, "fillStyle", fd); Object.defineProperty(proto, "strokeStyle", sd); }
   return [...seen];
 }
-/** The colours that are teal or magenta: within 18° of --live's or --needs's hue and colourful (any theme's tokens). */
+/** The colours that are teal or gold: within 18° of --live's or --needs's hue and colourful (any theme's tokens). */
 const reservedColours = (colours: string[], tokens: string[]) => {
   const hues = tokens.map((t) => hsv(...hexRgb(t)).hue);
   return colours.filter((c) => /^#[0-9a-f]{6}$/i.test(c)).filter((c) => { const p = hsv(...hexRgb(c)); return p.sat >= 0.35 && hues.some((h) => Math.min(Math.abs(p.hue - h), 360 - Math.abs(p.hue - h)) < 18); });
@@ -1982,7 +1982,7 @@ const accessibleName = (el: Element) => el.getAttribute("aria-label") || textOf(
  *  the hub lights it and its lines in the accent and dims the rest; a click opens it; Graph shows it in the accent and
  *  Notes goes back to it, as does the browser's Back; dragging a dot moves it, the layout follows and nothing opens; the
  *  wheel zooms around the pointer and labels show only once zoomed in; dragging the background pans; the zoom buttons
- *  and the + - 0 keys; the arrow keys pick a dot and list its connections; no teal or magenta pixel, in dark and light. b:
+ *  and the + - 0 keys; the arrow keys pick a dot and list its connections; no teal or gold pixel, in dark and light. b:
  *  the settings panel's Filters, Groups (a colour per top folder), Display and Forces each do what they say and are kept
  *  when the page opens again; Animate grows the graph in the order the notes were made; Restore puts the defaults back.
  *  c: the local graph beside Note 0 lists its connections, follows depth, incoming and outgoing, and follows the note
@@ -2168,7 +2168,7 @@ async function graphPartA(hubId: string) {
   const keyboardOk = connName === "Connections of Note 0" && connButtons.length >= 10 && reachable && connName2.startsWith("Connections of ") && connName2 !== connName
     && !q(".graph-connections") && c3.tabIndex === 0 && (c3.getAttribute("aria-label") ?? "").startsWith("Graph of ");
 
-  // No teal or magenta anywhere, also in the light theme (where the accent is the light one): no pixel of those colours in
+  // No teal or gold anywhere, also in the light theme (where the accent is the light one): no pixel of those colours in
   // the dark theme, and no colour drawn with in either theme (light dots' edges blend, so its pixels are only counted).
   out.reserved_settled = reservedPixels(c3);
   const tokens = [cssVar("--live"), cssVar("--needs")];
