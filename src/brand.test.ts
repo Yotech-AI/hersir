@@ -4,6 +4,8 @@
 // as before; gizai.svg is the app icon and tray-template.png the mark in black on transparent; the onboarding's logo is
 // the horizontal logo in one colour. needs is the brand gold, readable as text, every status keeps 35° of hue and a
 // ΔE2000 of 15 from it, the accent stays blue, and the terminal's cyan and magenta keep away from live and needs.
+// GA-239 QA: the mark is one filled outline, the outline of the same four strokes: in every drawing each stem's outer edge
+// is one straight line from cap to cap, left and right mirror each other, and the icons show it pixel by pixel.
 // Files are read from disk; node:fs and node:zlib come in through a computed specifier, as in terminalTokens.test.ts.
 import { describe, expect, it } from "vitest";
 import { tokensCss, type Tokens } from "./lib/tokensCss";
@@ -124,8 +126,88 @@ function unpackRgb(data: Uint8Array, n: number): number[][] {
   return [out.slice(0, n), out.slice(n, 2 * n), out.slice(2 * n, 3 * n)];
 }
 
+// ---- path data: absolute M, L, C and Z only, as gen-brand.mjs writes it ----
+type Point = readonly [number, number];
+/** One subpath: where it starts, and each step with its points (L one, C two handles and its end, Z none). */
+type Sub = { start: Point; steps: { op: string; points: Point[] }[] };
+function subpaths(d: string): Sub[] {
+  const subs: Sub[] = [];
+  for (const [, op = "", args = ""] of d.matchAll(/([MLCZ])([^MLCZ]*)/g)) {
+    const nums = args.trim() ? args.trim().split(/\s+/).map(Number) : [];
+    const points: Point[] = [];
+    for (let i = 0; i + 1 < nums.length; i += 2) points.push([nums[i]!, nums[i + 1]!]);
+    if (op === "M") subs.push({ start: points[0]!, steps: [] });
+    else subs[subs.length - 1]!.steps.push({ op, points });
+  }
+  return subs;
+}
+const pointsOf = (d: string): Point[] => subpaths(d).flatMap((s) => [s.start, ...s.steps.flatMap((step) => step.points)]);
+/** A subpath as short straight pieces, n to each step. */
+function flatten(sub: Sub, n = 40): Point[] {
+  const out: Point[] = [sub.start];
+  let p = sub.start;
+  for (const { op, points } of sub.steps) {
+    const to = op === "Z" ? sub.start : points[points.length - 1]!;
+    for (let i = 1; i <= n; i++) {
+      const t = i / n, u = 1 - t, at = p;
+      if (op === "C") {
+        const [a, b] = points as [Point, Point, Point];
+        out.push([u ** 3 * at[0] + 3 * u * u * t * a[0] + 3 * u * t * t * b[0] + t ** 3 * to[0], u ** 3 * at[1] + 3 * u * u * t * a[1] + 3 * u * t * t * b[1] + t ** 3 * to[1]]);
+      } else out.push([at[0] + (to[0] - at[0]) * t, at[1] + (to[1] - at[1]) * t]);
+    }
+    p = to;
+  }
+  return out;
+}
+function distanceTo(p: Point, lines: Point[][]): number {
+  let best = Infinity;
+  for (const line of lines) for (let i = 1; i < line.length; i++) {
+    const a = line[i - 1]!, b = line[i]!, dx = b[0] - a[0], dy = b[1] - a[1], len = dx * dx + dy * dy;
+    const t = len ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len)) : 0;
+    best = Math.min(best, Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy));
+  }
+  return best;
+}
+const signedArea = (line: Point[]) => line.reduce((sum, p, i) => { const q = line[(i + 1) % line.length]!; return sum + p[0] * q[1] - q[0] * p[1]; }, 0) / 2;
+/** The mark on its 24 grid, moved and scaled as gen-brand.mjs does: its numbers rounded to two decimals. */
+function placed(d: string, dx: number, dy: number, s: number): string {
+  let i = 0;
+  return d.replace(/-?\d*\.?\d+/g, (v) => String(+(i++ % 2 ? +v * s + dy : +v * s + dx).toFixed(2)));
+}
+/** The outer contour's stems: its outermost x on each side, and how many straight steps run along each (one, when each edge is one line). */
+function stemEdges(d: string) {
+  const outer = subpaths(d)[0]!;
+  const ends: Point[] = [outer.start, ...outer.steps.map((s) => (s.op === "Z" ? outer.start : s.points[s.points.length - 1]!))];
+  const ops = outer.steps.map((s) => s.op);
+  const all = pointsOf(d), left = Math.min(...all.map((p) => p[0])), right = Math.max(...all.map((p) => p[0]));
+  const lines = (x: number) => ops.flatMap((op, i) => (op !== "C" && ends[i]![0] === x && ends[i + 1]![0] === x ? [[ends[i]!, ends[i + 1]!] as const] : []));
+  const span = (x: number) => { const ys = lines(x).flat().map((p) => p[1]); return { x, top: Math.min(...ys), bottom: Math.max(...ys) }; };
+  return { left: span(left), right: span(right), leftLines: lines(left).length, rightLines: lines(right).length };
+}
+/**
+ * How much a stem's outer edge wobbles in an image, from cap to cap: for each row, the coverage (0 to 1) of the column that
+ * holds the edge, against the middle row's value, and the coverage of the column outside it. `size` is the drawing's own width.
+ */
+function edgeWobble(im: ReturnType<typeof png>, e: ReturnType<typeof stemEdges>, size: number, cover: (x: number, y: number, bgx: number) => number) {
+  const sc = im.w / size, top = Math.ceil(e.left.top * sc), bottom = Math.floor(e.left.bottom * sc) - 1;
+  const side = (col: number, out: number) => {
+    const values: number[] = [];
+    let outside = 0;
+    for (let y = top; y <= bottom; y++) {
+      values.push(cover(col, y, col + 3 * out));
+      outside = Math.max(outside, Math.abs(cover(col + out, y, col + 3 * out)));
+    }
+    const mid = [...values].sort((a, b) => a - b)[values.length >> 1] ?? 0;
+    return { wobble: Math.max(...values.map((v) => Math.abs(v - mid))), outside };
+  };
+  return { left: side(Math.floor(e.left.x * sc + 1e-6), -1), right: side(Math.ceil(e.right.x * sc - 1e-6) - 1, 1) };
+}
+
 const BRAND = "design/brand";
-const MARK_D = "M6 3L6 21M18 3L18 21M6 8C6.8 10.8 8.2 11.6 12 11.6C15.8 11.6 17.2 10.8 18 8M6 8C6.4 13.6 8.2 15.6 12 15.6C15.8 15.6 17.6 13.6 18 8";
+// gen-brand.mjs's MARK, on the 24 grid. Change it with that file's numbers (GA-239).
+const MARK_D = "M5 3C5 2.448 5.448 2 6 2C6.552 2 7 2.448 7 3L7 7.857C7.256 8.708 7.617 9.55 8.421 10.011C9.371 10.555 10.935 10.6 12 10.6C13.065 10.6 14.629 10.555 15.579 10.011C16.383 9.55 16.744 8.708 17 7.857L17 3C17 2.448 17.448 2 18 2C18.552 2 19 2.448 19 3L19 21C19 21.552 18.552 22 18 22C17.448 22 17 21.552 17 21L17 14.593C15.718 16.125 13.931 16.6 12 16.6C10.069 16.6 8.282 16.125 7 14.593L7 21C7 21.552 6.552 22 6 22C5.448 22 5 21.552 5 21ZM7.748 11.914C8.068 12.745 8.534 13.504 9.305 13.984C10.096 14.476 11.085 14.6 12 14.6C12.915 14.6 13.904 14.476 14.695 13.984C15.466 13.504 15.932 12.745 16.252 11.914C14.988 12.516 13.38 12.6 12 12.6C10.62 12.6 9.012 12.516 7.748 11.914Z";
+// The four strokes of 2 it is merged from, the drawing Jefsev approved in GW-11: the stems, the sheer and the keel.
+const MARK_STROKES = "M6 3L6 21M18 3L18 21M6 8C6.8 10.8 8.2 11.6 12 11.6C15.8 11.6 17.2 10.8 18 8M6 8C6.4 13.6 8.2 15.6 12 15.6C15.8 15.6 17.6 13.6 18 8";
 const AMBER = "#f2a53a", AMBER_LIGHT = "#9e5500";
 // GizAi's G (GA-52), the drawing these files replace
 const OLD_G = "M75.11 11.56A45 45 0 1 0";
@@ -147,19 +229,18 @@ describe("design/brand holds Hersir's mark, logo, favicon and app icon (GA-230)"
   });
 
   it("draws the mark on its 24 grid in the four colours: the brand amber on dark and on light, white and black", () => {
-    const stroke = { "on-dark": AMBER, "on-light": AMBER_LIGHT, white: "#ffffff", black: "#000000" } as const;
+    const ink = { "on-dark": AMBER, "on-light": AMBER_LIGHT, white: "#ffffff", black: "#000000" } as const;
     for (const c of COLOURS) {
       const svg = read(`${BRAND}/mark-${c}.svg`);
       expect([c, svg]).toEqual([c, expect.stringContaining('viewBox="0 0 24 24"')]);
-      expect([c, svg]).toEqual([c, expect.stringContaining(`stroke="${stroke[c as keyof typeof stroke]}" stroke-width="2"`)]);
-      expect([c, svg]).toEqual([c, expect.stringContaining(`d="${MARK_D}"`)]);
+      expect([c, svg]).toEqual([c, expect.stringContaining(`<path fill="${ink[c as keyof typeof ink]}" d="${placed(MARK_D, 0, 0, 1)}"/>`)]);
       // one colour each: no other colour in the file
-      expect([c, [...new Set(svg.match(/#[0-9a-f]{6}/gi))]]).toEqual([c, [stroke[c as keyof typeof stroke]]]);
+      expect([c, [...new Set(svg.match(/#[0-9a-f]{6}/gi))]]).toEqual([c, [ink[c as keyof typeof ink]]]);
     }
     // the logos: the mark amber with the name in text colour on dark and on light; one colour for white and black
     for (const kind of ["horizontal", "stacked"]) {
-      expect(read(`${BRAND}/logo-${kind}-on-dark.svg`)).toContain(`stroke="${AMBER}"`);
-      expect(read(`${BRAND}/logo-${kind}-on-light.svg`)).toContain(`stroke="${AMBER_LIGHT}"`);
+      expect(read(`${BRAND}/logo-${kind}-on-dark.svg`)).toContain(`<path fill="${AMBER}"`);
+      expect(read(`${BRAND}/logo-${kind}-on-light.svg`)).toContain(`<path fill="${AMBER_LIGHT}"`);
       for (const [c, hex] of [["white", "#ffffff"], ["black", "#000000"]]) {
         expect([kind, c, [...new Set(read(`${BRAND}/logo-${kind}-${c}.svg`).match(/#[0-9a-f]{6}/gi))]]).toEqual([kind, c, [hex]]);
       }
@@ -169,9 +250,15 @@ describe("design/brand holds Hersir's mark, logo, favicon and app icon (GA-230)"
   it("cuts the favicon at 16, 32 and 48 px and the app icon at 16 and 32 px, the 16 px cut with its filled hull", () => {
     for (const s of [16, 32, 48]) expect(read(`${BRAND}/favicon-${s}.svg`)).toContain(`width="${s}" height="${s}" viewBox="0 0 ${s} ${s}"`);
     for (const s of [16, 32]) expect(read(`${BRAND}/app-icon-${s}.svg`)).toContain(`width="${s}" height="${s}" viewBox="0 0 ${s} ${s}"`);
-    // the 16 px cut fills the hull between sheer and keel, so it stays an H with a boat in it
-    expect(read(`${BRAND}/favicon-16.svg`)).toMatch(new RegExp(`<path fill="${AMBER}"`));
-    expect(read(`${BRAND}/favicon-32.svg`)).not.toMatch(new RegExp(`<path fill="${AMBER}"`));
+    // the 16 px cut fills the hull between sheer and keel, so it stays an H with a boat in it: its stems are strokes and
+    // its hull one closed shape, where the 32 px drawing is the mark with its hole, one outline without a stroke (GA-239)
+    for (const f of ["favicon-16.svg", "app-icon-16.svg"]) {
+      const cut = read(`${BRAND}/${f}`);
+      expect([f, cut]).toEqual([f, expect.stringContaining(`stroke="${AMBER}" stroke-width="2" stroke-linecap="round" d="M4 2.5L4 13.5M12 2.5L12 13.5"`)]);
+      expect([f, cut]).toEqual([f, expect.stringContaining(`<path fill="${AMBER}" stroke="${AMBER}" stroke-width="0.6" stroke-linejoin="round" d="M4 5C4.4 9.6 5.6 10.8 8 10.8C10.4 10.8 11.6 9.6 12 5C11.4 6.9 10.4 7.6 8 7.6C5.6 7.6 4.6 6.9 4 5Z"/>`)]);
+    }
+    expect(read(`${BRAND}/favicon-32.svg`)).toContain(`<path fill="${AMBER}" d="${placed(MARK_D, 4, 4, 1)}"/>`);
+    expect(read(`${BRAND}/favicon-32.svg`)).not.toContain(`stroke="${AMBER}"`);
   });
 
   it("makes the 1024 app icon for Linux and Windows and macOS's 824 px rounded square with its shadow", () => {
@@ -181,7 +268,7 @@ describe("design/brand holds Hersir's mark, logo, favicon and app icon (GA-230)"
     expect(mac).toContain('filter="url(#hs-shadow)"');
     // Apple's grid: the square runs from 100 to 924, 824 wide
     expect(mac).toMatch(/d="M100 [\d.]+C100 [\s\S]*L924 [\d.]+/);
-    expect(mac).toContain(`stroke="${AMBER}"`);
+    expect(mac).toContain(`<path fill="${AMBER}"`);
   });
 
   it("README describes every file, the colours and the cuts, and names the Figma frames", () => {
@@ -190,9 +277,147 @@ describe("design/brand holds Hersir's mark, logo, favicon and app icon (GA-230)"
     for (const name of ["mark-*.svg", "logo-horizontal-*.svg", "logo-stacked-*.svg", "favicon.svg", "favicon-16.svg", "app-icon-1024.svg", "app-icon-macos-1024.svg", "app-icon-16.svg", "tray-template.svg", "gen-brand.mjs", "make-icons.mjs"]) {
       expect([name, readme.includes(`\`${name}\``)]).toEqual([name, true]);
     }
-    for (const id of ["198:258", "198:263", "184:2", "236:384"]) expect([id, readme.includes(id)]).toEqual([id, true]);
+    for (const id of ["198:258", "198:263", "184:2", "236:384", "246:528"]) expect([id, readme.includes(id)]).toEqual([id, true]);
     expect(readme).toContain(AMBER);
     expect(readme).toContain(AMBER_LIGHT);
+    // GA-239: it says the mark is one outline, and keeps the strokes it is merged from
+    expect(readme).toContain("merged into one filled outline");
+    expect(readme).toContain(MARK_STROKES);
+  });
+});
+
+describe("the longboat H is one filled outline, so each stem is one straight line (GA-239)", () => {
+  const big = (at: number, k: number) => ({ dx: at + 172 * k, dy: at + 172 * k, s: (680 * k) / 24 });
+  const LOGOS = ["on-dark", "on-light", "white", "black"].flatMap((c) => [`${BRAND}/logo-horizontal-${c}.svg`, `${BRAND}/logo-stacked-${c}.svg`]);
+  // Each drawing of the mark and where its 24 grid is. The logos' first path is the mark; in the others it is the last.
+  const DRAWINGS = new Map<string, { dx: number; dy: number; s: number }>([
+    ...["on-dark", "on-light", "white", "black"].map((c) => [`${BRAND}/mark-${c}.svg`, { dx: 0, dy: 0, s: 1 }] as const),
+    ...LOGOS.map((f) => [f, f.includes("stacked") ? { dx: 12.84, dy: 0, s: 88 / 24 } : { dx: 0, dy: 0, s: 2 }] as const),
+    ["src/assets/gizai-logo.svg", { dx: 0, dy: 0, s: 2 }],
+    ...["favicon.svg", "favicon-32.svg", "app-icon-32.svg"].map((f) => [`${BRAND}/${f}`, { dx: 4, dy: 4, s: 1 }] as const),
+    [`${BRAND}/app-icon-1024.svg`, big(64, 896 / 1024)],
+    ["src-tauri/icons/gizai.svg", big(64, 896 / 1024)],
+    [`${BRAND}/app-icon-macos-1024.svg`, big(100, 824 / 1024)],
+  ]);
+  // The 48 px cut and the tray: the mark at 1.5 with the stems on whole pixels, so its grid isn't scaled evenly.
+  const CUTS = new Map([[`${BRAND}/favicon-48.svg`, { left: 13, right: 35, top: 10.5, bottom: 37.5 }], [`${BRAND}/tray-template.svg`, { left: 7, right: 29, top: 4.5, bottom: 31.5 }]]);
+  const ALL = [...DRAWINGS.keys(), ...CUTS.keys()];
+  const markOf = (f: string) => {
+    const paths = [...read(f).matchAll(/<path [^>]*\/>/g)].map((m) => m[0]);
+    const path = f.includes("logo") ? paths[0] : paths[paths.length - 1];
+    return { path: path ?? "", d: / d="([^"]+)"/.exec(path ?? "")?.[1] ?? "" };
+  };
+
+  it("gen-brand.mjs's MARK is the outline these tests pin", () => {
+    expect(read(`${BRAND}/gen-brand.mjs`)).toContain(`const MARK = "${MARK_D}";`);
+  });
+
+  it("is the outline of the same four strokes: every point of it lies 1 from their centre lines, and none of them is nearer than 1 to its edge", () => {
+    const outline = subpaths(MARK_D).map((s) => flatten(s));
+    const strokes = subpaths(MARK_STROKES).map((s) => flatten(s));
+    for (const sub of outline) for (const p of sub) expect([p, Math.abs(distanceTo(p, strokes) - 1) < 0.005]).toEqual([p, true]);
+    // so the weight is 2 all along, and the stems (x 6 and 18, y 3 to 21) and the sag (11.6 and 15.6) are where they were
+    for (const line of strokes) for (const p of line) expect([p, distanceTo(p, outline) > 0.995]).toEqual([p, true]);
+    const all = pointsOf(MARK_D);
+    expect([Math.min(...all.map((p) => p[0])), Math.max(...all.map((p) => p[0])), Math.min(...all.map((p) => p[1])), Math.max(...all.map((p) => p[1]))]).toEqual([5, 19, 2, 22]);
+  });
+
+  it("keeps the hole between the sheer and the keel: two closed shapes wound opposite ways, as a nonzero fill needs", () => {
+    const subs = subpaths(MARK_D);
+    expect(subs).toHaveLength(2);
+    const [outer, hole] = subs.map((s) => signedArea(flatten(s))) as [number, number];
+    expect(outer * hole).toBeLessThan(0);
+    // the stems' 2 × 20 and the hull's sag between them, less the hole
+    expect([Math.round(Math.abs(outer)), Math.round(Math.abs(hole))]).toEqual([138, 13]);
+  });
+
+  it("every drawing is that outline at its place, filled, with no stroke left on the mark", () => {
+    for (const [f, at] of DRAWINGS) {
+      const { path, d } = markOf(f);
+      expect([f, d]).toEqual([f, placed(MARK_D, at.dx, at.dy, at.s)]);
+      expect([f, path.includes("stroke")]).toEqual([f, false]);
+    }
+    for (const f of CUTS.keys()) expect([f, markOf(f).path.includes("stroke")]).toEqual([f, false]);
+    expect(markOf("src/assets/gizai-logo.svg").path).toContain('fill="currentColor"');
+    expect(markOf(`${BRAND}/tray-template.svg`).path).toContain('fill="#000000"');
+  });
+
+  it("in every drawing each stem's outer edge is one straight line from cap to cap, the same height on both sides", () => {
+    for (const f of ALL) {
+      const e = stemEdges(markOf(f).d);
+      expect([f, e.leftLines]).toEqual([f, 1]);
+      expect([f, e.rightLines]).toEqual([f, 1]);
+      expect([f, e.left.top, e.left.bottom]).toEqual([f, e.right.top, e.right.bottom]);
+      const at = DRAWINGS.get(f);
+      // 18 of the grid long, rounded to the files' two decimals
+      if (at) expect([f, Math.abs(e.left.bottom - e.left.top - 18 * at.s) < 0.011]).toEqual([f, true]);
+    }
+    // the 48 px cut and the tray keep their stems on whole pixels, 3 wide and 19 apart
+    for (const [f, want] of CUTS) {
+      const e = stemEdges(markOf(f).d);
+      expect([f, e.left.x, e.right.x, e.left.top, e.left.bottom]).toEqual([f, want.left, want.right, want.top, want.bottom]);
+      expect([f, pointsOf(markOf(f).d).some(([x]) => x === want.left + 3), pointsOf(markOf(f).d).some(([x]) => x === want.right - 3)]).toEqual([f, true, true]);
+    }
+  });
+
+  it("in every drawing left and right mirror each other, point by point", () => {
+    for (const f of ALL) {
+      const { d } = markOf(f), points = pointsOf(d), e = stemEdges(d), twice = e.left.x + e.right.x;
+      // within the files' rounding to two decimals
+      for (const [x, y] of points) expect([f, x, y, points.some(([u, v]) => Math.abs(u - (twice - x)) < 0.0101 && Math.abs(v - y) < 0.0101)]).toEqual([f, x, y, true]);
+    }
+  });
+
+  describe("pixel by pixel, as resvg made the icons", () => {
+    const ICONS = "src-tauri/icons";
+    const master = stemEdges(markOf("src-tauri/icons/gizai.svg").d), mac = stemEdges(markOf(`${BRAND}/app-icon-macos-1024.svg`).d);
+    const cut32 = stemEdges(markOf(`${BRAND}/app-icon-32.svg`).d), tray = stemEdges(markOf(`${BRAND}/tray-template.svg`).d);
+    const PNGS: [string, number][] = [["icon.png", 512], ["128x128@2x.png", 256], ["128x128.png", 128], ["64x64.png", 64], ["StoreLogo.png", 50], ["Square30x30Logo.png", 30], ["Square44x44Logo.png", 44], ["Square71x71Logo.png", 71], ["Square89x89Logo.png", 89], ["Square107x107Logo.png", 107], ["Square142x142Logo.png", 142], ["Square150x150Logo.png", 150], ["Square284x284Logo.png", 284], ["Square310x310Logo.png", 310]];
+    type Image = [string, ReturnType<typeof png>, ReturnType<typeof stemEdges>, number];
+    // Decoded once: the two tests below read the same 26 images, the largest 1024 px.
+    let decoded: Image[] | undefined;
+    const IMAGES = (): Image[] => {
+      if (decoded) return decoded;
+      const ico = icoEntries(bytes(`${ICONS}/icon.ico`)), icns = icnsParts(bytes(`${ICONS}/icon.icns`));
+      decoded = [
+        ...PNGS.map(([f, size]): Image => {
+          const im = png(bytes(`${ICONS}/${f}`));
+          expect([f, im.w, im.h]).toEqual([f, size, size]);
+          return [f, im, master, 1024];
+        }),
+        ["32x32.png", png(bytes(`${ICONS}/32x32.png`)), cut32, 32],
+        ...[24, 48, 64, 256].map((s): Image => [`icon.ico ${s}`, png(ico.get(s)), master, 1024]),
+        ...["ic07", "ic08", "ic09", "ic10", "ic12", "ic13", "ic14"].map((t): Image => [`icon.icns ${t}`, png(icns.get(t)), mac, 1024]),
+      ];
+      return decoded;
+    };
+
+    it("no row of a stem's outer edge differs from the others, and nothing lies outside it, in any PNG, icon.ico or icon.icns", () => {
+      for (const [f, im, e, size] of IMAGES()) {
+        const got = edgeWobble(im, e, size, (x, y, bgx) => { const bg = im.at(bgx, y)[0]!; return (im.at(x, y)[0]! - bg) / (0xf2 - bg); });
+        expect([f, got.left.wobble < 0.015, got.left.outside < 0.015, got.right.wobble < 0.015, got.right.outside < 0.015]).toEqual([f, true, true, true, true]);
+      }
+    }, 30_000);
+
+    it("the tray's template too, by its see-through", () => {
+      const im = png(bytes(`${ICONS}/tray-template.png`));
+      const got = edgeWobble(im, tray, 36, (x, y) => im.at(x, y)[3]! / 255);
+      // its edges are on whole pixels: the column inside is solid, the one outside empty, all the way down
+      expect(got).toEqual({ left: { wobble: 0, outside: 0 }, right: { wobble: 0, outside: 0 } });
+    });
+
+    it("left and right mirror each other in each of them, within resvg's steps of coverage", () => {
+      const bg = rgbOf("#0b0e11");
+      for (const [f, { w, h, px }] of [...IMAGES().map(([f, im]) => [f, im] as const), ["tray-template.png", png(bytes(`${ICONS}/tray-template.png`))] as const]) {
+        let worst = 0;
+        for (let y = 0; y < h; y++) for (let x = 0; x < w >> 1; x++) {
+          const p = (y * w + x) * 4, q = (y * w + w - 1 - x) * 4, a = px[p + 3]! / 255, b = px[q + 3]! / 255;
+          // on the tile's bottom colour, so see-through pixels' own colours don't count
+          for (let k = 0; k < 3; k++) worst = Math.max(worst, Math.abs(px[p + k]! * a + bg[k as 0 | 1 | 2] * (1 - a) - px[q + k]! * b - bg[k as 0 | 1 | 2] * (1 - b)));
+        }
+        expect([f, worst <= 64]).toEqual([f, true]);
+      }
+    }, 30_000);
   });
 });
 
