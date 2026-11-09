@@ -102,4 +102,22 @@ fn each_hersir_variable_wins_over_its_gizai_name_which_still_works_alone() {
     assert!(matches!(run_memory::Slice::set_up(&name, run_memory::GB), Err(e) if e == "HERSIR_RUNS_SLICE is off"), "HERSIR_RUNS_SLICE=off");
     assert!(run_memory::end_leftovers_in(&name).is_empty());
     unset_both("RUNS_SLICE");
+
+    // an update's installer (the release's install.sh, a stub here) gets neither HERSIR_DATA_DIR nor GIZAI_DATA_DIR of the
+    // Hersir that updates, so it backs up the data folder of its prefix by Hersir's rule (GA-249, item 8)
+    #[cfg(unix)]
+    {
+        use gizai_agents::update::{self as up, Log, Stop};
+        let source = tmp.path().join("source");
+        std::fs::create_dir_all(&source).unwrap();
+        let seen = tmp.path().join("seen");
+        std::fs::write(source.join("install.sh"), format!(
+            "echo \"hersir=${{HERSIR_DATA_DIR-unset}} gizai=${{GIZAI_DATA_DIR-unset}}\" > '{}'\n", seen.display())).unwrap();
+        set("HERSIR_DATA_DIR", tmp.path().join("hersir-data"));
+        set("GIZAI_DATA_DIR", tmp.path().join("gizai-data"));
+        let log = Log::create(&tmp.path().join("update.log")).unwrap();
+        up::install(&source, &tmp.path().join("prefix"), None, &log, &Stop::default()).unwrap();
+        assert_eq!(std::fs::read_to_string(&seen).unwrap(), "hersir=unset gizai=unset\n", "the installer got a data folder variable");
+        unset_both("DATA_DIR");
+    }
 }
