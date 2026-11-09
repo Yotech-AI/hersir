@@ -78,7 +78,9 @@ Replace `X.Y.Z` with the new version.
    - from CI, about 12 minutes: `ubuntu-24.04`, `macos-15` and `windows-latest`;
    - from Install, which runs as the release changes `src-tauri/tauri.conf.json`: `Version only?`, then six installs through the one line, `install on ubuntu-24.04`, `install on fedora`, `install on archlinux`, `install on opensuse/tumbleweed`, `install on macos-15` and `install on windows-latest`. Each one builds Hersir in full, then again as an update, in 8 to 17 minutes (the Windows install is the slowest).
 
-   Each must say `COMPLETED SUCCESS`. A check that is still `IN_PROGRESS` needs a few more minutes. On a failure, don't release: the card goes back to whoever can fix it.
+   A release that changes `install.sh`, `install.ps1` or `.github/workflows/release-builds.yml` has six more checks, from Release builds, which on a pull request builds the archives of step 4 and uploads nothing: `What to build`, `build linux-x86_64`, `build macos-arm64`, `build windows-x86_64`, `SHA256SUMS` and `upload to the release`.
+
+   Each must say `COMPLETED SUCCESS`, except `upload to the release`, which a pull request skips: `COMPLETED SKIPPED`. A check that is still `IN_PROGRESS` needs a few more minutes. On a failure, don't release: the card goes back to whoever can fix it.
 
 3. **Create the release** on `production`, with the release card's notes ([Release notes](#release-notes)) above GitHub's list of the merged pull requests:
 
@@ -107,6 +109,18 @@ Replace `X.Y.Z` with the new version.
    ```
 
    A red run is a `needs_decision` with what its log says (`gh run view <id> --log-failed`), not a new release.
+
+   Publishing the release starts Release builds (`.github/workflows/release-builds.yml`) too. It builds the release's tag with the release's own `install.sh --build-only` on Ubuntu 22.04 (x86_64) and macOS (Apple silicon), and `install.ps1 -BuildOnly` on Windows (x86_64). It checks that each build installs with `--skip-build` (`-SkipBuild`) and says the version, then attaches four files to the release with the workflow's own token. Each system builds Hersir in full, so give it about 20 minutes. Then its run must be green, and the release must have the four:
+
+   ```sh
+   gh run list --workflow release-builds.yml --event release --limit 1 --json headBranch,status,conclusion,url   # vX.Y.Z, completed, success
+   gh release view vX.Y.Z --json assets --jq '.assets[].name'
+   ```
+
+   - `hersir-X.Y.Z-linux-x86_64.tar.gz`, `hersir-X.Y.Z-macos-arm64.tar.gz` and `hersir-X.Y.Z-windows-x86_64.zip`: each holds the files `install.sh --skip-build` (`install.ps1 -SkipBuild`) installs from a build, at the paths the build leaves them: `target/release/gizai` and `target/release/gizai-mcp`, on macOS also `target/release/bundle/macos/Hersir.app`, on Windows the two `.exe` files. Unpacked into the release's source, `--skip-build` installs them as if they had been built there.
+   - `SHA256SUMS`: one line per archive, `<sha256>  <file name>`, as `sha256sum` writes it. `sha256sum -c SHA256SUMS` checks the three.
+
+   The one-line install and Update don't use them yet: they still build from source. A red run is a `needs_decision` with what its log says, not a new release: the release keeps working without its builds. Once the cause is fixed, `gh workflow run release-builds.yml -f tag=vX.Y.Z` builds the release's tag again and attaches the four, replacing any it has. The same command gives a release from before this workflow its builds; whether to run it for one is Jeffrey's call.
 
    Every installed Hersir sees the release within six hours, or at once with Settings → Updates → Check now.
 
@@ -156,7 +170,7 @@ Hersir 0.11.0 installs with one line on Linux, macOS and Windows, and is now ope
 - **Never move or delete a released tag, and never reuse a version.** An installed Hersir may have fetched it already. A mistake gets fixed with the next patch version.
 - **Never push to `production` directly or force a push.** Only the pull request from `main` changes it.
 - **Never tag `main` or a card's branch.** Release tags point at `production`.
-- **No binaries attached yet, and nothing signed.** Hersir builds every release from source on the computer it runs on: Linux, macOS (Apple silicon) and Windows. There is no Apple Developer account and no Windows certificate. Prebuilt binaries, installers and signing come later, when Hersir has paid features. Never set up an account or buy a certificate for it.
+- **Nothing signed beyond the build's own signature, and never an account or a certificate.** Release builds (`.github/workflows/release-builds.yml`) attaches ready-made builds to every release: the release's own installers build them on GitHub's runners (step 4). Nothing in them is signed beyond what the build does itself: on macOS, the ad-hoc signature every Apple silicon build has. There is no Apple Developer account and no Windows certificate: never set up an account or buy a certificate for it. Never offer the builds as browser downloads either: a browser marks what it downloads, and Gatekeeper and SmartScreen stop an unsigned app with that mark. Installers and signing come later, when Hersir has paid features.
 
 ## How Hersir updates itself
 
