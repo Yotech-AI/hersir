@@ -2,14 +2,16 @@
 #   irm https://hersir.dev/install.ps1 | iex
 # The website sends hersir.dev/install.ps1 on to this script, scripts/get.ps1 on the production branch, on GitHub.
 # It gets the source of the latest release, the tag Hersir's own update fetches (docs/RELEASING.md), into
-# %LOCALAPPDATA%\gizai-src, or updates it there. Then it runs that release's install.ps1 with Windows PowerShell:
+# %LOCALAPPDATA%\hersir-src, or updates it there. Then it runs that release's install.ps1 with Windows PowerShell:
 # install.ps1 -Check first, then install.ps1, which builds and installs Hersir as it does from a clone. Run it again to
 # update. Nothing goes into Hersir's data folder. The source folder is this script's own: changes in it are replaced.
+# Before 0.17.0 it was gizai-src: that one becomes hersir-src, with its build, so the next build is quicker.
 #
 # Options go to install.ps1:  & ([scriptblock]::Create((irm <url>))) -Check   (see -Help)
-# Environment: GIZAI_PREFIX goes to install.ps1 too ($env:GIZAI_PREFIX = 'D:\Apps\Hersir' first). GIZAI_REPO is the git
-# repository, GIZAI_RELEASES_URL what it asks for the latest release (by default GitHub's; also http and file URLs),
-# and GIZAI_REF a tag, branch or commit to get instead of the latest release (for tests and CI).
+# Environment: HERSIR_PREFIX goes to install.ps1 too ($env:HERSIR_PREFIX = 'D:\Apps\Hersir' first). HERSIR_REPO is the
+# git repository, HERSIR_RELEASES_URL what it asks for the latest release (by default GitHub's; also http and file
+# URLs), and HERSIR_REF a tag, branch or commit to get instead of the latest release (for tests and CI). Their names
+# from before 0.17.0, GIZAI_PREFIX, GIZAI_REPO, GIZAI_RELEASES_URL and GIZAI_REF, still work; a HERSIR_ one wins.
 # Piped into iex, it runs in your own PowerShell session: its StrictMode and preferences stay its own, only its options
 # ($Check and the others, all off) are left as variables, and it ends without exit, which would close the window (its
 # result is in $LASTEXITCODE). Run as a file, it exits with it. A mistyped option stops it before anything happens.
@@ -53,19 +55,28 @@ param(
     $ErrorActionPreference = 'Continue'
     & $Exe @Arguments 2>&1 | ForEach-Object { "$_" }
   }
+  # A setting from the environment: HERSIR_<name>, else GIZAI_<name>, its name before 0.17.0, which still works alone.
+  function Get-Setting([string]$Name) {
+    foreach ($var in @("HERSIR_$Name", "GIZAI_$Name")) {
+      $value = [Environment]::GetEnvironmentVariable($var)
+      if ($value) { return $value }
+    }
+    return ''
+  }
 
   if ($Help) {
     Say "Hersir's one-line install for Windows, in PowerShell:"
     Say "  irm $GetPs1 | iex"
-    Say 'It gets the source of the latest release into %LOCALAPPDATA%\gizai-src (or updates it there), then runs that'
+    Say 'It gets the source of the latest release into %LOCALAPPDATA%\hersir-src (or updates it there), then runs that'
     Say "release's install.ps1: -Check first, then the install. Run it again to update."
     Say ''
     Say 'Options go to install.ps1:'
     Say '  & ([scriptblock]::Create((irm <url>))) -Check       get the source and show what is missing'
     Say '  & ([scriptblock]::Create((irm <url>))) -Uninstall   remove Hersir; add -Purge to delete your data and the source'
     Say '  -BuildOnly and -SkipBuild work as they do for install.ps1 (see install.ps1 -Help).'
-    Say 'Environment: GIZAI_PREFIX (default %LOCALAPPDATA%\Programs\Gizai), as for install.ps1; GIZAI_REPO,'
-    Say 'GIZAI_RELEASES_URL, and GIZAI_REF (a tag, branch or commit to get instead of the latest release, for tests).'
+    Say 'Environment: HERSIR_PREFIX (default %LOCALAPPDATA%\Programs\Hersir), as for install.ps1; HERSIR_REPO,'
+    Say 'HERSIR_RELEASES_URL, and HERSIR_REF (a tag, branch or commit to get instead of the latest release, for tests).'
+    Say 'Their GIZAI_ names from before 0.17.0 still work.'
     Finish 0; return
   }
 
@@ -85,18 +96,19 @@ param(
       Finish 1; return
     }
 
-    $repo = if ($env:GIZAI_REPO) { $env:GIZAI_REPO } else { $DefaultRepo }
+    $repo = Get-Setting 'REPO'
+    if (-not $repo) { $repo = $DefaultRepo }
     # a folder of the repository: as a full path, as git runs in the source folder
     if (Test-Path -LiteralPath $repo -PathType Container) { $repo = (Resolve-Path -LiteralPath $repo).ProviderPath }
-    $ref = "$env:GIZAI_REF"
+    $ref = Get-Setting 'REF'
     $tag = ''
     if (-not $ref) {
-      $url = "$env:GIZAI_RELEASES_URL"
+      $url = Get-Setting 'RELEASES_URL'
       if (-not $url) {
         if ($repo -match '^(https://github\.com/|git@github\.com:|ssh://git@github\.com/)(.+?)(\.git)?/?$') {
           $url = "https://api.github.com/repos/$($Matches[2])/releases/latest"
         } else {
-          Say "$repo isn't on GitHub, so there is no latest release to ask it for: set GIZAI_RELEASES_URL or GIZAI_REF."
+          Say "$repo isn't on GitHub, so there is no latest release to ask it for: set HERSIR_RELEASES_URL or HERSIR_REF."
           Finish 1; return
         }
       }
@@ -131,7 +143,17 @@ param(
     }
     $what = if ($tag) { $tag } else { $ref }
 
-    $dir = Join-Path $env:LOCALAPPDATA 'gizai-src'
+    $dir = Join-Path $env:LOCALAPPDATA 'hersir-src'
+    # The source folder from before 0.17.0, gizai-src, becomes hersir-src with its build, so the next build is quicker;
+    # with a hersir-src there already (or when it can't be moved), it goes.
+    $oldDir = Join-Path $env:LOCALAPPDATA 'gizai-src'
+    if (Test-Path -LiteralPath $oldDir -PathType Container) {
+      $moved = $false
+      if (-not (Test-Path -LiteralPath $dir)) {
+        try { Move-Item -LiteralPath $oldDir -Destination $dir; $moved = $true } catch { }
+      }
+      if (-not $moved) { Remove-Item -LiteralPath $oldDir -Recurse -Force -ErrorAction SilentlyContinue }
+    }
     $gitDir = Join-Path $dir '.git'
     Step "Getting $what into $dir"
     New-Item -ItemType Directory -Force -Path $dir | Out-Null

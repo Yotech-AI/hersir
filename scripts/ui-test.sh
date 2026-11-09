@@ -150,8 +150,8 @@ cd "$(dirname "$0")/.."
 source scripts/app-ready.sh
 gz_demo || { echo "could not make the demo data"; exit 1; }
 gz_app || { echo "could not build the app"; exit 1; }
-# The chat test needs gizai-mcp next to the app (a fresh checkout doesn't have it yet).
-(source scripts/env.sh && cargo build --release -q -p gizai-mcp) || { echo "could not build gizai-mcp"; exit 1; }
+# The chat test needs hersir-mcp next to the app (a fresh checkout doesn't have it yet; the crate gizai-mcp builds it).
+(source scripts/env.sh && cargo build --release -q -p gizai-mcp) || { echo "could not build hersir-mcp"; exit 1; }
 # Every test copy points Claude Code at the fake, so the agent form's model list never starts the real claude.
 fresh() { rm -rf .devdata/uitest && mkdir -p .devdata/uitest && cp -r .devdata/demo/. .devdata/uitest/
   python3 -c "import sqlite3,json,time,sys; c=sqlite3.connect('.devdata/uitest/gizai.db'); c.execute(\"insert or replace into settings(key,org_id,value_json,updated_at) values('claude_bin','',?,?)\", (json.dumps(sys.argv[1]), int(time.time()*1000))); c.commit()" "$PWD/crates/gizai-agents/tests/fake-claude.sh"; }

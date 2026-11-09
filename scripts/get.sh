@@ -3,14 +3,17 @@
 #   curl -fsSL https://hersir.dev/install.sh | sh
 # The website sends hersir.dev/install.sh on to this script, scripts/get.sh on the production branch, on GitHub.
 # It gets the source of the latest release, the tag Hersir's own update fetches (docs/RELEASING.md), into
-# ${XDG_DATA_HOME:-~/.local/share}/gizai-src, or updates it there. Then it runs that release's install.sh with bash:
+# ${XDG_DATA_HOME:-~/.local/share}/hersir-src, or updates it there. Then it runs that release's install.sh with bash:
 # install.sh --check first, then install.sh, which builds and installs Hersir as it does from a clone. Run it again to
 # update. Nothing goes into Hersir's data folder. The source folder is this script's own: changes in it are replaced.
+# Before 0.17.0 it was gizai-src: that one becomes hersir-src, with its build, so the next build is quicker.
 #
 # Options go to install.sh, after sh -s --:   curl -fsSL <url> | sh -s -- --check   (see usage below)
-# Environment: GIZAI_PREFIX and XDG_DATA_HOME go to install.sh too (curl -fsSL <url> | GIZAI_PREFIX=$HOME/opt/hersir sh).
-# GIZAI_REPO is the git repository, GIZAI_RELEASES_URL what it asks for the latest release (by default GitHub's; also
-# http and file URLs), and GIZAI_REF a tag, branch or commit to get instead of the latest release (for tests and CI).
+# Environment: HERSIR_PREFIX and XDG_DATA_HOME go to install.sh too (curl -fsSL <url> | HERSIR_PREFIX=$HOME/opt/hersir sh).
+# HERSIR_REPO is the git repository, HERSIR_RELEASES_URL what it asks for the latest release (by default GitHub's; also
+# http and file URLs), and HERSIR_REF a tag, branch or commit to get instead of the latest release (for tests and CI).
+# Their names from before 0.17.0, GIZAI_PREFIX, GIZAI_REPO, GIZAI_RELEASES_URL and GIZAI_REF, still work; a HERSIR_ one
+# wins.
 # A POSIX sh script, for dash and macOS's sh. It does everything in main, called on its last line, so a download cut
 # short runs nothing.
 
@@ -36,15 +39,16 @@ usage() {
   cat <<'USAGE'
 Hersir's one-line install for Linux and macOS:
   curl -fsSL https://hersir.dev/install.sh | sh
-It gets the source of Hersir's latest release into ~/.local/share/gizai-src (or updates it there), then runs that
+It gets the source of Hersir's latest release into ~/.local/share/hersir-src (or updates it there), then runs that
 release's install.sh: --check first, then the install. Run it again to update.
 
 Options go to install.sh, after sh -s --:
   curl -fsSL <url> | sh -s -- --check       get the source and show what is missing
   curl -fsSL <url> | sh -s -- --uninstall   remove Hersir; add --purge to delete your data and the source
   --build-only and --skip-build work as they do for install.sh (see install.sh --help).
-Environment: GIZAI_PREFIX (default ~/.local) and XDG_DATA_HOME, as for install.sh; GIZAI_REPO, GIZAI_RELEASES_URL,
-and GIZAI_REF (a tag, branch or commit to get instead of the latest release, for tests).
+Environment: HERSIR_PREFIX (default ~/.local) and XDG_DATA_HOME, as for install.sh; HERSIR_REPO, HERSIR_RELEASES_URL,
+and HERSIR_REF (a tag, branch or commit to get instead of the latest release, for tests). Their GIZAI_ names from
+before 0.17.0 still work.
 USAGE
 }
 
@@ -82,8 +86,12 @@ main() {
   elif [ "$os" = Darwin ] && [ "$(command -v git)" = /usr/bin/git ] && ! xcode-select -p >/dev/null 2>&1; then
     missing="git"
   fi
+  # Each HERSIR_ variable wins over its name from before 0.17.0, GIZAI_, which still works alone.
+  repo="${HERSIR_REPO:-${GIZAI_REPO:-$DEFAULT_REPO}}"
+  ref="${HERSIR_REF:-${GIZAI_REF:-}}"
+  url="${HERSIR_RELEASES_URL:-${GIZAI_RELEASES_URL:-}}"
   have bash || missing="$missing bash"
-  [ -n "${GIZAI_REF:-}" ] || have curl || missing="$missing curl"
+  [ -n "$ref" ] || have curl || missing="$missing curl"
   if [ "$os" = Darwin ] && [ "$missing" = git ]; then
     say "To install Hersir, first install Apple's Command Line Tools, which bring git: run xcode-select --install, then run this again."
     return 1
@@ -93,19 +101,16 @@ main() {
     return 1
   fi
 
-  repo="${GIZAI_REPO:-$DEFAULT_REPO}"
   # a folder of the repository: as a full path, as git runs in the source folder
   if [ -d "$repo" ]; then repo="$(cd "$repo" && pwd -P)"; fi
-  ref="${GIZAI_REF:-}"
   if [ -z "$ref" ]; then
-    url="${GIZAI_RELEASES_URL:-}"
     if [ -z "$url" ]; then
       case "$repo" in
         https://github.com/*|git@github.com:*|ssh://git@github.com/*)
           name="${repo#*github.com[/:]}"; name="${name%/}"; name="${name%.git}"
           url="https://api.github.com/repos/$name/releases/latest" ;;
         *)
-          say "$repo isn't on GitHub, so there is no latest release to ask it for: set GIZAI_RELEASES_URL or GIZAI_REF."
+          say "$repo isn't on GitHub, so there is no latest release to ask it for: set HERSIR_RELEASES_URL or HERSIR_REF."
           return 1 ;;
       esac
     fi
@@ -126,7 +131,13 @@ main() {
   fi
   what="${tag:-$ref}"
 
-  dir="${XDG_DATA_HOME:-$HOME/.local/share}/gizai-src"
+  share="${XDG_DATA_HOME:-$HOME/.local/share}"
+  dir="$share/hersir-src"
+  # The source folder from before 0.17.0, gizai-src, becomes hersir-src with its build, so the next build is quicker;
+  # with a hersir-src there already, it goes.
+  if [ -d "$share/gizai-src" ]; then
+    if [ -e "$dir" ] || ! mv "$share/gizai-src" "$dir" 2>/dev/null; then rm -rf "$share/gizai-src"; fi
+  fi
   step "Getting $what into $dir"
   mkdir -p "$dir" && dir="$(cd "$dir" && pwd -P)" || { say "Could not make $dir."; return 1; }
   # A .git that git can't use (one cut short) is made again.

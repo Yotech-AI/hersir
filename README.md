@@ -24,6 +24,8 @@ its own git worktree and branch; a QA agent tests the card and opens its pull re
 Everything runs on your own computer, with your own git repositories, logins and coding CLIs.
 
 Hersir was called GizAi until version 0.14.
+From 0.17.0 its programs and command are `hersir` too. An install from before 0.17.0 keeps its folders when it updates,
+and `gizai` still starts it.
 
 ## Made for work with several clients
 

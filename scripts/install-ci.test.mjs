@@ -294,7 +294,9 @@ const LINE = "The one line (Linux, macOS)";
 const FAKE_GET = `#!/bin/sh
 n=$(( $(cat "$RUNNER_TEMP/runs" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$RUNNER_TEMP/runs"
 echo "get.sh\${1:+ $1}" >> "$RAN"
-echo "== Finding GizAi's latest release"
+# a release from 0.17.0 on installs the hersir names and reads HERSIR_PREFIX first (GA-248); an older one, gizai and GIZAI_PREFIX
+case "$FAKE_VERSION" in 0.1[7-9].*|0.[2-9][0-9].*|[1-9]*) name=hersir P="\${HERSIR_PREFIX:-$GIZAI_PREFIX}" ;; *) name=gizai P="$GIZAI_PREFIX" ;; esac
+echo "== Finding Hersir's latest release"
 if [ "$n" -le "\${FAKE_API_FAILS:-0}" ]; then
   echo "Could not read the latest release from https://api.github.com/repos/Yotech-AI/hersir/releases/latest. Check your internet connection, then run this again."
   exit 1
@@ -306,13 +308,13 @@ case "$1" in
     echo "  sudo apt install libwebkit2gtk-4.1-dev build-essential"
     exit 1 ;;
   --uninstall)
-    rm -rf "$GIZAI_PREFIX/lib/gizai" "$GIZAI_PREFIX/bin/gizai" "$XDG_DATA_HOME/applications/gizai.desktop" ;;
+    rm -rf "$P/lib/$name" "$P/bin/$name" "$XDG_DATA_HOME/applications/$name.desktop" ;;
   *)
     if [ -n "\${FAKE_FAIL:-}" ]; then echo "$FAKE_FAIL"; exit 1; fi
-    mkdir -p "$GIZAI_PREFIX/lib/gizai" "$GIZAI_PREFIX/bin" "$XDG_DATA_HOME/applications"
-    printf '#!/bin/sh\\necho "gizai %s"\\n' "$FAKE_VERSION" > "$GIZAI_PREFIX/bin/gizai"
-    chmod +x "$GIZAI_PREFIX/bin/gizai"
-    echo "Exec=$GIZAI_PREFIX/lib/gizai/gizai-launch" > "$XDG_DATA_HOME/applications/gizai.desktop" ;;
+    mkdir -p "$P/lib/$name" "$P/bin" "$XDG_DATA_HOME/applications"
+    printf '#!/bin/sh\\necho "%s %s"\\n' "$name" "$FAKE_VERSION" > "$P/bin/$name"
+    chmod +x "$P/bin/$name"
+    echo "Exec=$P/lib/$name/$name-launch" > "$XDG_DATA_HOME/applications/$name.desktop" ;;
 esac
 `;
 
@@ -325,7 +327,9 @@ function oneLine(env) {
   const r = runStep(stepRun(".github/workflows/one-line.yml", LINE), dir, {
     RUNNER_OS: "macOS",
     RUNNER_TEMP: dir,
-    GIZAI_PREFIX: join(dir, "gizai"),
+    // the step's env gives the prefix under both names (GA-248)
+    HERSIR_PREFIX: join(dir, "hersir"),
+    GIZAI_PREFIX: join(dir, "hersir"),
     XDG_DATA_HOME: join(dir, "share"),
     GIZAI_DATA_DIR: join(dir, "share", "gizai"),
     LATEST: "v0.13.0",
@@ -353,8 +357,19 @@ describe.runIf(unix)("one-line.yml: hersir.dev's line on Linux and macOS", () =>
       "curl -fsSL https://hersir.dev/install.sh",
       "get.sh --uninstall",
     ]);
-    expect(existsSync(join(r.dir, "gizai", "bin", "gizai"))).toBe(false);
-    expect(existsSync(join(r.dir, "gizai", "lib", "gizai"))).toBe(false);
+    expect(existsSync(join(r.dir, "hersir", "bin", "gizai"))).toBe(false);
+    expect(existsSync(join(r.dir, "hersir", "lib", "gizai"))).toBe(false);
+  });
+
+  it("from 0.17.0 on, checks the hersir command a release installs, and its uninstall (GA-248)", () => {
+    const r = oneLine({ LATEST: "v0.17.0", FAKE_VERSION: "0.17.0" });
+    expect(r.status, r.out).toBe(0);
+    expect(r.out).toContain("The latest release: v0.17.0. Installed: hersir 0.17.0.");
+    expect(existsSync(join(r.dir, "hersir", "bin", "hersir"))).toBe(false);
+    expect(existsSync(join(r.dir, "hersir", "lib", "hersir"))).toBe(false);
+    const wrong = oneLine({ LATEST: "v1.0.0", FAKE_VERSION: "0.17.0" });
+    expect(wrong.status).toBe(1);
+    expect(wrong.out).toContain("The one line installed hersir 0.17.0, not the latest release, v1.0.0.");
   });
 
   it.runIf(linux)("on Ubuntu runs the check first, then the packages it names with apt -y, then the line", () => {
@@ -384,7 +399,7 @@ describe.runIf(unix)("one-line.yml: hersir.dev's line on Linux and macOS", () =>
     expect(r.ran.filter((l) => l.startsWith("sleep"))).toHaveLength(3);
     expect(r.out).not.toContain("(4 of 3)");
     expect(r.out.trimEnd().split("\n").at(-1)).toBe(
-      "The one line could not read GizAi's latest release from GitHub's API, also not after trying again 3 times, a minute apart. GitHub allows 60 calls an hour without a login, and the runners share them: run this again later.",
+      "The one line could not read Hersir's latest release from GitHub's API, also not after trying again 3 times, a minute apart. GitHub allows 60 calls an hour without a login, and the runners share them: run this again later.",
     );
   });
 
@@ -393,7 +408,7 @@ describe.runIf(unix)("one-line.yml: hersir.dev's line on Linux and macOS", () =>
     expect(r.status).toBe(1);
     expect(r.ran.filter((l) => l.startsWith("sleep"))).toEqual([]);
     expect(r.ran.filter((l) => l.startsWith("get.sh"))).toEqual(["get.sh"]);
-    expect(r.out).toContain("The one line didn't install GizAi.");
+    expect(r.out).toContain("The one line didn't install Hersir.");
   });
 
   it("fails when what it installed isn't the latest release", () => {
@@ -453,7 +468,9 @@ describe("the runners: macos-15, as GitHub retired the image before it", () => {
       expect(versions(text).every((v) => v === "15"), workflow).toBe(true);
       expect(text, workflow).not.toContain("macos-latest");
     }
-    expect(workflows.flatMap((w) => versions(read(w)))).toHaveLength(4);
+    // ci.yml's matrix, one-line.yml's, and install.yml's two jobs (install, and the update from 0.16.0, GA-248), each with
+    // its system and runner
+    expect(workflows.flatMap((w) => versions(read(w)))).toHaveLength(6);
   });
 
   it("RELEASING.md names the checks as the workflows make them", () => {

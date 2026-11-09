@@ -546,10 +546,10 @@ async fn the_team_leads_chat_gets_the_browser_next_to_gizai_when_it_is_on() {
 
 // ---- the Team Lead's rules ----
 
-/// The shim binary: target/debug/gizai-mcp (built here when missing).
+/// The shim binary: target/debug/hersir-mcp, which the crate gizai-mcp builds (built here when missing).
 fn shim() -> PathBuf {
     static BUILT: std::sync::Once = std::sync::Once::new();
-    let path = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/debug/gizai-mcp"));
+    let path = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/debug/hersir-mcp"));
     BUILT.call_once(|| {
         if path.is_file() {
             return;
@@ -557,7 +557,7 @@ fn shim() -> PathBuf {
         let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
         let ok = std::process::Command::new(cargo).args(["build", "-q", "-p", "gizai-mcp"])
             .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/..")).status().map(|s| s.success()).unwrap_or(false);
-        assert!(ok && path.is_file(), "could not build gizai-mcp");
+        assert!(ok && path.is_file(), "could not build hersir-mcp (the crate gizai-mcp)");
     });
     path
 }

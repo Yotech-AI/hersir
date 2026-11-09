@@ -35,6 +35,7 @@ pub mod tools;
 mod tour;
 mod unsaved;
 pub mod update;
+pub mod webview_storage;
 pub mod worktrees;
 
 use gizai_agents::env;
@@ -59,7 +60,7 @@ pub struct AppState {
     pub temp_base: PathBuf,
     /// Where the MCP server for chat turns listens (see `mcp::socket_path`).
     pub mcp_socket: PathBuf,
-    /// The `gizai-mcp` shim Claude Code starts in a chat turn (None: not found next to Gizai).
+    /// The `hersir-mcp` shim Claude Code starts in a chat turn (None: not found next to Gizai).
     pub mcp_shim: Option<PathBuf>,
     pub chat: Arc<chat::ChatManager>,
     /// The Chief's read-only copies of the projects' code (see `code`).
@@ -147,9 +148,10 @@ fn exit_app(app: AppHandle, code: i32) {
     app.exit(code);
 }
 
-/// Gizai's identifier (tauri.conf.json's): the macOS app bundle's id, and on Windows the AppUserModelID its Start menu
-/// shortcut and notifications carry.
-pub const APP_ID: &str = "ai.gizai.app";
+/// Hersir's identifier (tauri.conf.json's): the macOS app bundle's id, on Windows the AppUserModelID its Start menu
+/// shortcut and notifications carry, and on Linux the start of the single-instance name (`instance_id`). It was
+/// ai.gizai.app before 0.17.0 (GA-248; see `webview_storage`).
+pub const APP_ID: &str = "dev.hersir.app";
 
 /// The data folder: HERSIR_DATA_DIR, else GIZAI_DATA_DIR, else the usual one.
 pub fn data_dir() -> PathBuf {
@@ -201,7 +203,7 @@ pub fn data_dir_key(dir: &std::path::Path) -> String {
 /// The D-Bus name that keeps Gizai to one window per data folder, so a test Gizai with its own data can run
 /// next to the one you use.
 pub fn instance_id(dir: &std::path::Path) -> String {
-    format!("ai.gizai.app.d{}", data_dir_key(dir))
+    format!("{APP_ID}.d{}", data_dir_key(dir))
 }
 
 /// A short name shown in the window title and sidebar when Gizai runs on data other than the usual folder.
@@ -569,6 +571,8 @@ pub fn test_task(st: &AppState, repo: &str, label: &str) -> String {
 pub fn run() {
     let dir = data_dir();
     let _ = std::fs::create_dir_all(&dir); // so the instance id names the folder the same way from the first start
+    // The window's storage from before the app id was dev.hersir.app comes along, before the window opens (GA-248).
+    webview_storage::carry_at_start(&dir);
     // Windows: Gizai's identity (the Start menu shortcut has it too): its notifications show as Gizai's, and the taskbar
     // groups its window with the shortcut. Before any window opens.
     #[cfg(windows)]
@@ -682,7 +686,7 @@ pub fn run() {
             // The release check: 20 seconds after start, then every ten minutes, Gizai asks GitHub for the latest
             // release when a check is due (Check for new releases is on, and the last check is six hours old).
             // Headless test and screenshot runs don't ask GitHub, unless they point the check at a fake release.
-            if !test_run || std::env::var_os("GIZAI_RELEASES_URL").is_some() {
+            if !test_run || gizai_agents::os::hersir_var("RELEASES_URL").is_some() {
                 let st = state.clone();
                 tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(update::FIRST_CHECK_AFTER).await;

@@ -1,5 +1,5 @@
 //! Gizai's MCP server for chat turns, on a user-only local socket: a unix socket on Linux and macOS, a named pipe on
-//! Windows. Claude Code starts the `gizai-mcp` shim, which connects here and sends the turn's token as its first line;
+//! Windows. Claude Code starts the `hersir-mcp` shim, which connects here and sends the turn's token as its first line;
 //! with a valid token the connection gets the Gizai tools, acting as the token's agent. No TCP port, no web server.
 //!
 //! The unix socket is 0600, in a folder of the user's (0700 when Gizai makes it), and serves only processes of the same
@@ -62,14 +62,14 @@ pub fn socket_path_in(runtime_dir: Option<&Path>, data_dir: &Path) -> PathBuf {
     std::env::temp_dir().join(format!("gizai-{uid}")).join(name)
 }
 
-/// The `gizai-mcp` shim (`gizai-mcp.exe` on Windows): `$HERSIR_MCP_BIN` (or `$GIZAI_MCP_BIN`), else next to Gizai's
-/// own binary.
+/// The `hersir-mcp` shim (`hersir-mcp.exe` on Windows): `$HERSIR_MCP_BIN` (or `$GIZAI_MCP_BIN`, its name before
+/// 0.17.0), else next to Hersir's own program, where install.sh and install.ps1 put it.
 pub fn shim_bin() -> Option<PathBuf> {
-    if let Some(p) = gizai_agents::env::var_os("HERSIR_MCP_BIN").map(PathBuf::from) {
+    if let Some(p) = gizai_agents::os::hersir_var("MCP_BIN").map(PathBuf::from) {
         return Some(p).filter(|p| p.is_file());
     }
     let exe = std::env::current_exe().ok()?;
-    Some(exe.parent()?.join(format!("gizai-mcp{}", std::env::consts::EXE_SUFFIX))).filter(|p| p.is_file())
+    Some(exe.parent()?.join(format!("hersir-mcp{}", std::env::consts::EXE_SUFFIX))).filter(|p| p.is_file())
 }
 
 /// Binds the socket and serves connections until the app ends. A socket file left by an earlier Gizai is
