@@ -48,7 +48,7 @@ pub fn targets_for_caller(atoms: *mut GdkAtom, n_atoms: c_int) -> (*mut GdkAtom,
     if n_atoms < 0 { (std::ptr::null_mut(), 0) } else { (atoms, n_atoms) }
 }
 
-/// How often the wrapper has turned a count below 0 into 0 so far. Counted in a self-test run only (GIZAI_SELFTEST):
+/// How often the wrapper has turned a count below 0 into 0 so far. Counted in a self-test run only (HERSIR_SELFTEST):
 /// elsewhere it stays 0.
 pub fn guarded() -> u64 {
     GUARDED.load(Ordering::Relaxed)
