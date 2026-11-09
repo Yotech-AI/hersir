@@ -291,7 +291,7 @@ async fn in_the_next_messages_of_a_chat_that_used_an_outside_tool_the_acting_cal
     };
     // the first message reads Otus and only reads Hersir
     let (thread, _) = turn(None, r#"OUTSIDE Read the release notes in Otus. CALL get_task {"task": "KADE-1"}"#).await;
-    assert_eq!(last_tool(&thread).1, false);
+    assert!(!last_tool(&thread).1);
     assert_eq!(app_chat::used_outside(&st, &thread).as_deref(), Some("mcp__otus__search"));
     // the next messages use no outside tool, even a plain "ok": what acts is kept all the same
     let mut runs = vec![];
@@ -312,14 +312,14 @@ async fn in_the_next_messages_of_a_chat_that_used_an_outside_tool_the_acting_cal
     assert_eq!(team::all_agents(&st.db).unwrap().into_iter().find(|(_, m)| m.name == "Backend Agent").unwrap().1.status, "active");
     // reading still works there
     let (_, _) = turn(Some(thread.clone()), r#"CALL get_task {"task": "KADE-1"}"#).await;
-    assert_eq!(last_tool(&thread).1, false);
-    // the chat said it once, though two of its answers' tools were outside ones... (one here)
+    assert!(!last_tool(&thread).1);
+    // another answer there that uses an outside tool again: the chat still says it once
     let (_, _) = turn(Some(thread.clone()), r#"OUTSIDE Again. CALL get_overview {}"#).await;
     assert_eq!(t.notes(&thread).iter().filter(|n| n.1["kind"] == "outside").count(), 1, "{:?}", t.notes(&thread));
 
     // a new chat starts unmarked: the same calls run
     let (other, _) = turn(None, r#"CALL comment_on_task {"task": "KADE-1", "body_md": "Export as CSV."}"#).await;
-    assert_eq!(last_tool(&other).1, false, "{:?}", last_tool(&other));
+    assert!(!last_tool(&other).1, "{:?}", last_tool(&other));
     assert!(app_chat::used_outside(&st, &other).is_none());
     assert_eq!(t.comments("KADE-1"), [(t.lead.clone(), "Export as CSV.".to_string())]);
     assert!(t.notes(&other).is_empty() && pending::list(&st, &other).unwrap().is_empty());
@@ -541,6 +541,81 @@ async fn ga101s_hold_is_refused_off_from_a_board_check_and_from_chat_answers_and
     assert_eq!(t.card("KADE-2").hold_kind, None);
     let r = tools::call_check(&t.st, &t.lead, &check, "update_task", json!({"task": "KADE-2", "clear_hold": true})).await.unwrap();
     assert!(r["task"]["hold"].is_null(), "{r}");
+}
+
+const FAKE_RUN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../crates/gizai-agents/tests/fake-claude.sh");
+
+/// The run fake, whose run ends asking for a decision (needs_decision).
+fn asking_fake(dir: &Path) -> String {
+    let d = dir.join("fake-asks");
+    std::fs::create_dir_all(d.join("fixtures")).unwrap();
+    let src = Path::new(FAKE_RUN).parent().unwrap().join("fixtures");
+    let run = std::fs::read_to_string(src.join("run-ok.jsonl")).unwrap().replace("ready_for_testing", "needs_decision");
+    std::fs::write(d.join("fixtures/run-ok.jsonl"), run).unwrap();
+    std::fs::copy(src.join("models-init.jsonl"), d.join("fixtures/models-init.jsonl")).unwrap();
+    // copied by a child, so this process never holds a script open for writing (ETXTBSY)
+    assert!(std::process::Command::new("cp").arg(FAKE_RUN).arg(d.join("fake-claude.sh")).status().unwrap().success());
+    d.join("fake-claude.sh").to_string_lossy().into_owned()
+}
+
+async fn until(what: &str, mut ok: impl FnMut() -> bool) {
+    let t0 = std::time::Instant::now();
+    while !ok() {
+        assert!(t0.elapsed() < Duration::from_secs(30), "timed out waiting for: {what}");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
+/// The other way the user lifts GA-101's hold: approving a Continue the Chief's marked chat kept. Its preview says the hold
+/// comes off; the same Continue from another chat is refused.
+#[tokio::test]
+async fn approving_a_kept_continue_takes_ga101s_hold_off_and_the_runs_next_question_is_an_ordinary_hold() {
+    let tmp = tempfile::tempdir().unwrap();
+    let st = gizai_lib::test_state(tmp.path());
+    settings::set(&st.db, "claude_bin", &asking_fake(tmp.path())).unwrap();
+    settings::set(&st.db, "agents_paused", &true).unwrap();
+    let repo = git_repo(tmp.path(), "repo");
+    let card = gizai_lib::test_task(&st, repo.to_str().unwrap(), "backend");
+    let team_id = team::list(&st.db).unwrap()[0].id.clone();
+    let lead = team::add_agent(&st.db, &st.you_id, &team_id, AgentInput { name: "Team Lead".into(), role_key: "lead".into(), chat_enabled: Some(true),
+        ..Default::default() }).unwrap();
+    let (_, done) = gizai_lib::runs::start(&st, &card, None, None, "manual").await.unwrap();
+    tokio::time::timeout(Duration::from_secs(30), done).await.unwrap().unwrap();
+    until("the run has ended", || gizai_lib::runs::live(&st).is_empty()).await;
+    let t = tasks::get(&st.db, &card).unwrap();
+    assert_eq!((t.hold.as_deref(), t.hold_kind.as_deref()), (Some("needs_decision"), None), "the run asked a decision: an ordinary hold");
+    // in a marked chat the Chief changes what the card says in its Auto column: it waits on GA-101's hold
+    let marked = chat::create_thread(&st.db, &st.you_id, &lead, "Read Otus, then fix KADE-1").unwrap();
+    app_chat::mark_outside(&st, &marked, "mcp__otus__search");
+    let r = tools::call_in(&st, &lead, Some(&marked), "update_task", json!({"task": "KADE-1", "description_md": "Use JSON, as Otus says."})).await.unwrap();
+    assert!(r["on_hold"].is_string(), "{r}");
+    assert!(tasks::get(&st.db, &card).unwrap().waits_for_your_ok());
+    // another chat's Continue is refused; the marked chat's waits for you, saying the hold comes off
+    let other = chat::create_thread(&st.db, &st.you_id, &lead, "Continue KADE-1").unwrap();
+    let e = tools::call_in(&st, &lead, Some(&other), "continue_agent_run", json!({"task": "KADE-1", "note": "Use JSON."})).await.unwrap_err();
+    assert_eq!(e, ONLY_THE_USER);
+    let e = tools::call_in(&st, &lead, Some(&marked), "continue_agent_run", json!({"task": "KADE-1", "note": "Use JSON."})).await.unwrap_err();
+    assert_eq!(e, kept_text("continue_agent_run"));
+    let kept = pending::list(&st, &marked).unwrap();
+    let v = serde_json::to_value(&kept[0]).unwrap();
+    let f = fields(&v);
+    assert_eq!(field(&f, "Hold"), &("Hold".into(), Some(format!("needs_decision: {WAITING}")), "none: it comes off hold".into()), "{f:?}");
+    assert_eq!(gizai_core::runs::list_for_task(&st.db, &card).unwrap().len(), 1, "nothing continued yet");
+    // you approve it: the run continues, and the hold is off
+    let a = pending::approve(&st, &kept[0].action.id).await.unwrap();
+    assert_eq!(a.status, "approved", "{a:?}");
+    let t = tasks::get(&st.db, &card).unwrap();
+    assert!(!t.waits_for_your_ok(), "{:?} {:?}", t.hold, t.hold_kind);
+    until("the continued run ends", || gizai_lib::runs::live(&st).is_empty()
+        && gizai_core::runs::list_for_task(&st.db, &card).unwrap().iter().all(|r| r.ended_at.is_some())).await;
+    assert_eq!(gizai_core::runs::list_for_task(&st.db, &card).unwrap().len(), 2, "continued once");
+    // the continued run asks again: an ordinary hold, which a Continue from another chat may take off as before
+    let t = tasks::get(&st.db, &card).unwrap();
+    assert_eq!((t.hold.as_deref(), t.hold_kind.as_deref()), (Some("needs_decision"), None), "not GA-101's kind any more");
+    let r = tools::call_in(&st, &lead, Some(&other), "continue_agent_run", json!({"task": "KADE-1", "note": "Go on."})).await;
+    assert!(r.is_ok(), "{r:?}");
+    until("the third run ends", || gizai_lib::runs::live(&st).is_empty()
+        && gizai_core::runs::list_for_task(&st.db, &card).unwrap().iter().all(|r| r.ended_at.is_some())).await;
 }
 
 #[tokio::test]
