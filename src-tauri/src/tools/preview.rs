@@ -1,6 +1,7 @@
 //! What a call of a tool in `NOT_AFTER_OUTSIDE` (or one of `KEPT_SOMETIMES`, GA-261) would do, for a pending action
-//! (GA-102): one plain line, what it is about and what changes, and the text it saves or adds. Worked out when you look at it, from the board and memory as
-//! they are then; a call that can't work as things are now says why (`Preview::warning`). Reads only.
+//! (GA-102): one plain line, what it is about and what changes, and the text it saves or adds. Worked out when you look at
+//! it, from the board and memory as they are then; a call that can't work as things are now says why
+//! (`Preview::warning`). Reads only.
 use gizai_core::memory;
 use gizai_core::pending::{DiffLine, line_diff};
 use serde::Serialize;
