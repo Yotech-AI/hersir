@@ -565,7 +565,7 @@ pub fn for_run(st: &AppState, agent: &Member, min_valid: Duration) -> (Vec<RunSe
         if a.server_id == core_mcp::BROWSER {
             match browser_target(st, agent.cli_tools.insecure_certs) {
                 Ok(t) => {
-                    let (known_tools, tools_off) = known_tools(lists.get(core_mcp::BROWSER), &a.tools_off);
+                    let (known_tools, tools_off) = tools_for_run(lists.get(core_mcp::BROWSER), &a.tools_off);
                     out.push(RunServer { name: core_mcp::BROWSER.into(), entry: browser::entry(&t.command, &t.args, &t.env), tools_off, known_tools })
                 }
                 Err(e) => notes.push(format!("Left out the browser ({}): {e}. Settings → MCP servers says what it needs.", core_mcp::BROWSER)),
@@ -601,7 +601,7 @@ pub fn for_run(st: &AppState, agent: &Member, min_valid: Duration) -> (Vec<RunSe
             out.push(RunServer { name: s.name.clone(), entry, tools_off: vec![], known_tools: vec![] });
             continue;
         }
-        let (known_tools, tools_off) = known_tools(cached, &a.tools_off);
+        let (known_tools, tools_off) = tools_for_run(cached, &a.tools_off);
         out.push(RunServer { name: s.name.clone(), entry, tools_off, known_tools });
     }
     (out, notes)
@@ -612,7 +612,7 @@ pub fn for_run(st: &AppState, agent: &Member, min_valid: Duration) -> (Vec<RunSe
 /// a rule, as Claude Code would read `mcp__<server>__x Bash` as two rules, the second any command: it is left out of the
 /// tools, and counting it as off makes the run allow the server's other tools by name, never the whole server
 /// (`mcp_run::permissions`, which names no tool like it either).
-fn known_tools(cached: Option<&core_mcp::ToolList>, off: &[String]) -> (Vec<String>, Vec<String>) {
+fn tools_for_run(cached: Option<&core_mcp::ToolList>, off: &[String]) -> (Vec<String>, Vec<String>) {
     let names = cached.map(|c| c.tools.iter().filter_map(|v| v.get("name").and_then(|n| n.as_str()).map(str::to_string)).collect::<Vec<_>>());
     let (known, left_out): (Vec<String>, Vec<String>) = names.unwrap_or_default().into_iter().partition(|n| core_mcp::valid_tool_name(n));
     (known, off.iter().cloned().chain(left_out).collect())
