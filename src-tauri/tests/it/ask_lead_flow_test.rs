@@ -316,9 +316,9 @@ async fn escalated_the_inbox_with_the_reason_the_options_and_the_advice_and_your
     assert!(s.continued.is_none());
     let card = t.card();
     assert_eq!((card.hold.as_deref(), card.hold_reason.as_deref(), card.with_lead),
-               (Some("needs_decision"), Some("Team Lead escalated to you: the client pays per export, so it is about money"), false));
+               (Some("needs_decision"), Some("Chief escalated to you: the client pays per export, so it is about money"), false));
     assert!(t.in_inbox());
-    assert_eq!(t.notice().as_deref(), Some("KADE-1 is on hold: Team Lead escalated to you: the client pays per export, so it is about money"));
+    assert_eq!(t.notice().as_deref(), Some("KADE-1 is on hold: Chief escalated to you: the client pays per export, so it is about money"));
     let c = t.leads_comments();
     assert_eq!(c.len(), 1);
     assert_eq!(c[0].body_md, format!("Needs {}: the client pays per export, so it is about money\n\nOptions:\n1. CSV for every invoice\n2. one JSON file a month\n\n\
@@ -353,7 +353,7 @@ async fn a_failed_a_silent_and_a_timed_out_team_lead_run_send_the_question_to_yo
         assert_eq!(s.state, "escalated", "{word}: {s:?}");
         assert!(s.reason.as_deref().unwrap().starts_with(reason), "{word}: {:?}", s.reason);
         let card = t.card();
-        assert!(card.hold_reason.as_deref().unwrap().starts_with(&format!("Team Lead escalated to you: {reason}")), "{word}: {:?}", card.hold_reason);
+        assert!(card.hold_reason.as_deref().unwrap().starts_with(&format!("Chief escalated to you: {reason}")), "{word}: {:?}", card.hold_reason);
         assert!(t.in_inbox() && !card.with_lead && t.notice().is_some(), "{word}");
         let c = t.leads_comments();
         assert_eq!(c.len(), 1, "{word}");
@@ -395,7 +395,7 @@ async fn an_answer_the_agent_cant_be_continued_with_goes_to_you_with_the_answer(
     let reason = s.reason.unwrap();
     assert!(reason.starts_with("it answered, but Hersir couldn't continue Backend Agent with the answer ("), "{reason}");
     let card = t.card();
-    assert_eq!(card.hold_reason.as_deref(), Some(format!("Team Lead escalated to you: {reason}").as_str()));
+    assert_eq!(card.hold_reason.as_deref(), Some(format!("Chief escalated to you: {reason}").as_str()));
     assert!(t.in_inbox() && !card.with_lead);
     let c = t.leads_comments();
     assert_eq!(c.len(), 1, "{c:?}");
@@ -436,7 +436,7 @@ async fn a_second_question_after_a_team_lead_answer_goes_to_the_inbox() {
     assert_eq!(done.await.unwrap().outcome.as_deref(), Some("needs_decision"));
     assert!(ask_lead::take(&t.st, &cont_id).is_none(), "the Team Lead doesn't take it");
     let l = core_runs::get(&t.st.db, &cont_id).unwrap().lead.unwrap();
-    assert_eq!((l.state.as_str(), l.reason.as_deref()), ("limit", Some("the Team Lead answered this card's last question")));
+    assert_eq!((l.state.as_str(), l.reason.as_deref()), ("limit", Some("the Chief answered this card's last question")));
     let card = t.card();
     assert_eq!((card.hold.as_deref(), card.with_lead), (Some("needs_decision"), false));
     assert!(t.in_inbox() && t.notice().is_some());

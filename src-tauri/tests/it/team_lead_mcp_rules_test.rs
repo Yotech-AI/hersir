@@ -808,7 +808,7 @@ async fn a_board_check_gets_no_tool_from_outside_gizai_even_with_the_team_leads_
 
 // ---- GA-101: a card the Team Lead puts where an agent would start it waits on hold for your OK ----
 
-const WAITING: &str = "Waiting for your OK: the Team Lead put this card here after using mcp__otus__search, a tool from outside Hersir. \
+const WAITING: &str = "Waiting for your OK: the Chief put this card here after using mcp__otus__search, a tool from outside Hersir. \
     Check it, then take it off hold.";
 
 /// Design and Research: Auto work columns the Backend Agent is on (next: Testing). Manual: a work column it is on that

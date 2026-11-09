@@ -39,7 +39,7 @@ fn agents(st: &gizai_lib::AppState) -> Vec<(String, String, String)> {
 fn on(cli: &str, mode: &str, lead_on: &str) -> Vec<(String, String, String)> {
     let mut v: Vec<(String, String, String)> = ["Backend Agent", "DevOps Agent", "Frontend Agent", "QA Agent"].iter()
         .map(|n| (n.to_string(), cli.to_string(), mode.to_string())).collect();
-    v.push(("Team Lead".into(), lead_on.into(), "acceptEdits".into()));
+    v.push(("Chief".into(), lead_on.into(), "acceptEdits".into()));
     v.sort();
     v
 }
@@ -56,7 +56,7 @@ fn a_new_install_gets_five_agents_on_claude_code_or_on_codex_when_only_codex_is_
     }
     let open = |name: &str| gizai_lib::open_state(tmp.path().join(name), Arc::new(|_| {})).unwrap();
 
-    // 1. Only Codex: it is added under Settings → Coding CLIs and runs everyone but the Team Lead, who chats on Claude Code.
+    // 1. Only Codex: it is added under Settings → Coding CLIs and runs everyone but the Chief, who chats on Claude Code.
     let codex_only = bin_with(&tmp.path().join("codex-only"), &["codex"]);
     set_path(&codex_only);
     let st = open("codex-data");
@@ -67,7 +67,7 @@ fn a_new_install_gets_five_agents_on_claude_code_or_on_codex_when_only_codex_is_
     assert_eq!(cx.command, codex_only.join("codex").display().to_string(), "the program the login shell found");
     assert!(!cx.id.is_empty());
     assert_eq!(agents(&st), on(&cx.id, "workspace-write", clis::CLAUDE_CODE));
-    assert_eq!(team::chat_agent(&st.db).unwrap().unwrap().name, "Team Lead");
+    assert_eq!(team::chat_agent(&st.db).unwrap().unwrap().name, "Chief");
     assert_eq!(gizai_core::settings::get::<String>(&st.db, "claude_bin").unwrap(), None, "looking for Claude Code saves nothing");
     let t = team::get(&st.db, &team::list(&st.db).unwrap()[0].id).unwrap();
     for m in t.members.iter().filter(|m| m.kind == "agent") {
