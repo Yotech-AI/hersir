@@ -577,8 +577,9 @@ jobs:
           fail() { echo "$*"; exit 1; }
           want="hersir $VERSION"
           lib="$OLD_PREFIX/lib/gizai"
+          # the launchers start Hersir through a login shell on Linux: its last line is Hersir's
           for program in "$lib/gizai" "$lib/gizai-launch" "$lib/hersir" "$lib/hersir-launch" "$OLD_PREFIX/bin/gizai" "$OLD_PREFIX/bin/hersir"; do
-            got="$("$program" --version)" || fail "$program --version failed: $got"
+            got="$("$program" --version | tail -n 1)" || fail "$program --version failed: $got"
             echo "$program --version: $got"
             [ "$got" = "$want" ] || fail "$program says $got, not $want: it doesn't start the new Hersir."
           done
