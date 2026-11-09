@@ -31,6 +31,8 @@ GIZAI_RESULT: {"outcome":"needs_decision","summary":"…","issues":[],"run_for_m
 
 Older result lines still work. "How this run works" and the role instructions tell agents how to ask.
 
+An agent starts a command that needs a folder with a `cd` to its full path, and sends output it must read afterwards to a file in its worktree outside `.gizai-tmp`, because Hersir empties that folder when a run starts and when it ends.
+
 1. The card goes on hold and waits at the top of your Inbox, under the Team Lead's chats, and on its Run panel: each command exactly as written, with a copy button.
 2. Run the commands in a terminal and press **Done, continue**.
 3. The run continues with your note that the commands were run, also saved on the card, so the agent checks that they worked and carries on.
