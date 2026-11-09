@@ -1,9 +1,9 @@
-//! merge_pull_request (GA-86): the Team Lead merges a card's own pull request on GitHub, in a project that lets it (Team
-//! Lead may merge, a person's switch), once QA passed exactly its latest commit and every check on it succeeded. Every
+//! merge_pull_request (GA-86): the Chief merges a card's own pull request on GitHub, in a project that lets it (Chief may
+//! merge, a person's switch), once QA passed exactly its latest commit and every check on it succeeded. Every
 //! rule is checked here, in Gizai's code, before gh merges anything: a rule that fails refuses with its reason and
 //! changes nothing. The merge is a merge commit (`gh pr merge --merge`), as the team merges, and only while the pull
-//! request's latest commit is still the one QA passed. Then the card gets the Team Lead's comment, its activity and a
-//! desktop notification say the Team Lead merged it, and Gizai's PR check moves it on (Deploy) and cleans up its
+//! request's latest commit is still the one QA passed. Then the card gets the Chief's comment, its activity and a
+//! desktop notification say the Chief merged it, and Gizai's PR check moves it on (Deploy) and cleans up its
 //! worktree, as when you merge. Releases and deploys stay yours.
 use std::path::{Path, PathBuf};
 
@@ -87,7 +87,7 @@ fn card_rules(cx: &Cx, t: Task, you: &str) -> Result<Ready, String> {
     let project_id = t.project_id.clone().ok_or_else(|| format!("{id} has no project, so it has no pull request to merge. Nothing changed."))?;
     let p = projects::get(cx.db(), &project_id).map_err(err)?;
     if !p.lead_may_merge {
-        return Err(format!("{} doesn't let you merge: its Team Lead may merge switch is off, and only {you} switches it on (the project page → \
+        return Err(format!("{} doesn't let you merge: its Chief may merge switch is off, and only {you} switches it on (the project page → \
                             Edit). {id} waits in Review for {you} to merge. Nothing changed.", p.key));
     }
     match super::provider(p.repo_url.as_deref()).as_deref() {
@@ -203,7 +203,7 @@ fn refuse(cx: &Cx, r: &Ready, why: Refused) -> String {
             why.why)
 }
 
-/// After GitHub merged it: the Team Lead's comment and activity entry, the desktop notification, then Gizai's PR check,
+/// After GitHub merged it: the Chief's comment and activity entry, the desktop notification, then Gizai's PR check,
 /// which moves the card on and cleans up its worktree.
 async fn after_merge(cx: &Cx<'_>, r: &Ready, pr: &PullDetails, you: &str) -> Result<Value, String> {
     let t = &r.task;

@@ -178,11 +178,11 @@ fn the_inbox_gives_held_cards_cards_waiting_for_you_and_the_team_leads_chats_wit
     assert_eq!(d.notice.title, format!("{} is merged and waits for deploy", t.ident(&deploy)));
 
     let q = get(&format!("chat:{question}"));
-    assert_eq!(q.notice, Notice { kind: Kind::LeadAsks, title: "The Team Lead asks: Which API for the login?".into(),
+    assert_eq!(q.notice, Notice { kind: Kind::LeadAsks, title: "The Chief asks: Which API for the login?".into(),
                                   body: format!("Question about {}", t.ident(&held)), route: format!("#/chat/{question}") });
     let a = get(&format!("chat:{approval}"));
     assert_eq!((a.notice.kind, a.notice.title.as_str(), a.notice.body.clone()),
-               (Kind::LeadAsks, "The Team Lead asks: Merge the release branch", format!("Approval for {}", t.ident(&review))));
+               (Kind::LeadAsks, "The Chief asks: Merge the release branch", format!("Approval for {}", t.ident(&review))));
 
     // nothing else: not someone else's review, not a closed card's hold, not a plain card
     assert_eq!(items.len(), 7, "{:?}", keys(&items));
@@ -235,7 +235,7 @@ fn at_start_the_inbox_counts_as_seen_and_each_new_item_notifies_once() {
     // the Team Lead asks: once; a second message in the same waiting chat is the same item
     let (thread, _) = chat::start_lead_chat(&t.st.db, &lead, "Which API for the login?", "question", &[card.clone()], "Old or new?", None).unwrap();
     let sent = notifications::look(&t.st);
-    assert_eq!(t.titles(&sent), ["The Team Lead asks: Which API for the login?"]);
+    assert_eq!(t.titles(&sent), ["The Chief asks: Which API for the login?"]);
     assert_eq!(sent[0].route, format!("#/chat/{thread}"));
     let (again, new) = chat::start_lead_chat(&t.st.db, &lead, "Still waiting", "question", &[card.clone()], "Any news?", None).unwrap();
     assert_eq!((again.as_str(), new), (thread.as_str(), false));
@@ -350,12 +350,12 @@ fn the_team_lead_answered_notifies_only_while_the_window_is_out_of_sight() {
     // hidden, minimised or not focused
     t.away.store(true, Ordering::SeqCst);
     let n = notifications::answered(&t.st, &thread, &summary("succeeded", None)).expect("answered");
-    assert_eq!((n.kind, n.title.clone(), n.route.clone()), (Kind::LeadAnswered, format!("The Team Lead answered: {title}"), format!("#/chat/{thread}")));
+    assert_eq!((n.kind, n.title.clone(), n.route.clone()), (Kind::LeadAnswered, format!("The Chief answered: {title}"), format!("#/chat/{thread}")));
     assert!(n.body.starts_with("Here is the plan: step step") && n.body.ends_with('…') && n.body.chars().count() <= 161, "the start of the answer: {:?}", n.body);
     let n = notifications::answered(&t.st, &thread, &summary("failed", Some("API Error: 500 the fake failed"))).expect("couldn't answer");
-    assert_eq!((n.title.as_str(), n.body.as_str()), (format!("The Team Lead couldn't answer: {title}").as_str(), "API Error: 500 the fake failed"));
+    assert_eq!((n.title.as_str(), n.body.as_str()), (format!("The Chief couldn't answer: {title}").as_str(), "API Error: 500 the fake failed"));
     let n = notifications::answered(&t.st, &thread, &summary("timed_out", None)).expect("timed out");
-    assert_eq!(n.title, format!("The Team Lead couldn't answer: {title}"));
+    assert_eq!(n.title, format!("The Chief couldn't answer: {title}"));
     assert_eq!(t.shown().len(), 3);
 
     // you pressed Stop, or a message only went in the queue: nothing
@@ -415,13 +415,13 @@ async fn a_real_chat_answer_ends_with_the_team_lead_answered_when_the_window_is_
     let shown = t.shown.lock().unwrap().clone();
     assert_eq!(shown.len(), 1, "{shown:?}");
     assert_eq!((shown[0].kind, shown[0].title.clone(), shown[0].body.as_str(), shown[0].route.clone()),
-               (Kind::LeadAnswered, format!("The Team Lead answered: {title}"), "Here is the overview.", format!("#/chat/{thread}")));
+               (Kind::LeadAnswered, format!("The Chief answered: {title}"), "Here is the overview.", format!("#/chat/{thread}")));
 
     // an answer that fails: "couldn't answer"
     let (_, s) = turn("FAKE_CHAT_FAIL please", Some(thread.clone())).await;
     assert_eq!(s.status, "failed", "{s:?}");
     let last = t.shown.lock().unwrap().last().cloned().unwrap();
-    assert_eq!(last.title, format!("The Team Lead couldn't answer: {title}"));
+    assert_eq!(last.title, format!("The Chief couldn't answer: {title}"));
     assert_eq!(t.shown().len(), 2);
     server.abort();
     drop(t.dir);

@@ -215,7 +215,7 @@ fn update_checkout_may_update_a_folder_only_when_the_team_leads_list_sets_it_to_
     assert_eq!(gizai_lib::folders::lead_may_update(&t.st, &kade.join("src")), Ok(()));
     assert!(gizai_lib::folders::lead_may_update(&t.st, &shop.join("src")).is_err(), "inside a read folder");
     let e = gizai_lib::folders::lead_may_update(&t.st, &shop).unwrap_err();
-    assert!(e.contains("is set to read in the Team Lead's folders") && e.contains("nothing changed"), "{e}");
+    assert!(e.contains("is set to read in the Chief's folders (Team page → Chief → Folders)") && e.contains("nothing changed"), "{e}");
     assert_eq!(gizai_lib::folders::lead_may_update(&t.st, t._dir.path().join("elsewhere").as_path()), Ok(()));
 }
 

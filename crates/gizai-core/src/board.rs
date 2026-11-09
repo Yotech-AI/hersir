@@ -1,12 +1,12 @@
-//! The Team Lead's board check, in code (no model): what on the board needs attention. Answered cards (a person's
+//! The Chief's board check, in code (no model): what on the board needs attention. Answered cards (a person's
 //! comment after a "needs a decision" hold), other held cards, cards in an Auto column no agent will start (with why)
 //! and cards in In progress whose run stopped part-way. Only To do, In progress and Testing count (cards in a Manual
-//! column wait for Run by design), and paused, done and archived projects are left out. The Team Lead's scheduled check and
-//! the `check_board` tool both use it, so they see the same thing. A card whose question is with the Team Lead (GA-70,
+//! column wait for Run by design), and paused, done and archived projects are left out. The Chief's scheduled check and
+//! the `check_board` tool both use it, so they see the same thing. A card whose question is with the Chief (GA-70,
 //! `questions`) is left out, and so is one whose question it escalated to the user, until they answer on the card.
 //!
-//! What each check saw is kept on its run (`runs.findings_json`): a finding is new when the Team Lead hasn't seen it
-//! yet, or its card changed since (a comment, a run, a move, the hold), not counting the Team Lead's own changes.
+//! What each check saw is kept on its run (`runs.findings_json`): a finding is new when the Chief hasn't seen it
+//! yet, or its card changed since (a comment, a run, a move, the hold), not counting the Chief's own changes.
 use std::collections::HashMap;
 
 use rusqlite::{Connection, OptionalExtension};
@@ -41,7 +41,7 @@ pub struct Context {
     pub agents_paused: bool,
     /// Settings → Runs at once.
     pub max_concurrent: i64,
-    /// The Team Lead: its own comments and changes don't make a finding new.
+    /// The Chief: its own comments and changes don't make a finding new.
     pub lead_id: Option<String>,
     /// GA-202: since when no run starts for want of memory, and why ("Waiting for memory: …", Settings → Runs → Memory for
     /// agent runs). Meanwhile a free slot isn't a finding; after an hour the wait is.
@@ -54,7 +54,7 @@ pub struct LastRun {
     pub id: String,
     pub agent: String,
     pub status: String,
-    /// What started it: `nudge` is a Continue (a person's or the Team Lead's), `result_nudge` Gizai's own nudge after a
+    /// What started it: `nudge` is a Continue (a person's or the Chief's), `result_nudge` Gizai's own nudge after a
     /// run ended without its result line.
     pub trigger: String,
     pub outcome: Option<String>,
@@ -70,7 +70,7 @@ pub struct Finding {
     /// Why, as a code. held: the hold. waiting: no_agents, testing_off, agents_paused, paused, budget, pull_paused,
     /// stopped_run, free_slot, runs_full, memory, test_runs_full (its project's Test runs at once, GA-212) or
     /// builds_on_blocked (a card it builds on is on hold or cancelled, GA-228). stopped:
-    /// limit, failed, no_result, stopped (by a person) or quit. review: may_merge (the Team Lead may merge it, GA-86).
+    /// limit, failed, no_result, stopped (by a person) or quit. review: may_merge (the Chief may merge it, GA-86).
     pub code: String,
     pub task_id: String,
     /// The card's identifier, like GA-12.
@@ -89,7 +89,7 @@ pub struct Finding {
     /// Answered: the person's comment.
     pub answer: Option<String>,
     pub last_run: Option<LastRun>,
-    /// The card's last change not made by the Team Lead (`changes.seq`).
+    /// The card's last change not made by the Chief (`changes.seq`).
     pub stamp: i64,
     /// Held: the commands its last run asks the user to run ("Run this for me", GA-31; `Task::run_for_me`). The user
     /// runs them and presses Done, continue in the Inbox.
@@ -137,7 +137,7 @@ struct Card {
     hold_at: i64,
     created_at: i64,
     run_for_me: Vec<String>,
-    /// On hold for a decision: what the Team Lead did with its question (GA-70), as `questions` keeps it.
+    /// On hold for a decision: what the Chief did with its question (GA-70), as `questions` keeps it.
     lead: Option<String>,
     /// Pinned to a person, who does it by hand (GA-111, `workflow::start_by_hand`).
     by_hand: bool,
@@ -225,7 +225,7 @@ pub fn check(db: &Db, cx: &Context) -> Result<Vec<Finding>> {
 
         let mut out = vec![];
         for card in cards {
-            // GA-70: a question that is with the Team Lead is its own run's to handle, not a check's.
+            // GA-70: a question that is with the Chief is its own run's to handle, not a check's.
             if matches!(card.lead.as_deref(), Some("asking" | "answering")) {
                 continue;
             }
@@ -260,7 +260,7 @@ pub fn check(db: &Db, cx: &Context) -> Result<Vec<Finding>> {
                         answer: Some(body),
                         ..base("answered", "answered", at, last_agent, "A person answered after the card was put on hold".into())
                     },
-                    // GA-70: the Team Lead already looked at this question and asked the user (the Inbox), or its limits
+                    // GA-70: the Chief already looked at this question and asked the user (the Inbox), or its limits
                     // sent it to them (no loops): it waits for them.
                     None if matches!(card.lead.as_deref(), Some("escalated" | "limit")) => continue,
                     None => {
@@ -421,8 +421,8 @@ pub fn may_merge_key(task_id: &str) -> String {
     format!("{task_id}:review:may_merge")
 }
 
-/// Cards in Review the Team Lead may merge (GA-86): kind `review`, code `may_merge`. Testing on, not on hold, no run at
-/// work, the latest QA verdict `qa_pass`, in an open project on GitHub whose Team Lead may merge switch is on, and no
+/// Cards in Review the Chief may merge (GA-86): kind `review`, code `may_merge`. Testing on, not on hold, no run at
+/// work, the latest QA verdict `qa_pass`, in an open project on GitHub whose Chief may merge switch is on, and no
 /// release under way in it (`pulls::release_under_way`): after the release the finding comes back, new. Whether GitHub
 /// can merge it and its checks are green, merge_pull_request asks GitHub itself.
 fn may_merge(c: &Connection, cx: &Context) -> Result<Vec<Finding>> {
@@ -535,7 +535,7 @@ pub fn new_findings(db: &Db, agent_id: &str, findings: &[Finding]) -> Result<Vec
     Ok(findings.iter().filter(|f| !seen.iter().any(|s| s.key == f.key() && s.stamp >= f.stamp)).cloned().collect())
 }
 
-/// Records a queued check of the Team Lead: no card and no chat, and every finding it sees.
+/// Records a queued check of the Chief: no card and no chat, and every finding it sees.
 pub fn create_run(db: &Db, agent_id: &str, session_id: &str, cwd: &str, log_path: &str, saw: &[Seen]) -> Result<String> {
     let json = serde_json::to_string(saw)?;
     db.write(Some(agent_id), |w| {
@@ -597,7 +597,7 @@ pub fn finish_run(db: &Db, run_id: &str, status: &str, cost_usd_micros: i64, inp
     })
 }
 
-/// When the Team Lead last looked at the board (the interval counts from here).
+/// When the Chief last looked at the board (the interval counts from here).
 pub fn touch(db: &Db, agent_id: &str, at: i64) -> Result<()> {
     db.write(None, |w| {
         w.conn().execute("UPDATE agent_configs SET board_checked_at=?2 WHERE actor_id=?1", rusqlite::params![agent_id, at])?;

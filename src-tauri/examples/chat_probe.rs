@@ -38,7 +38,7 @@ async fn main() {
     }
     if team::chat_agent(&st.db).unwrap().is_none() {
         let tid = team::list(&st.db).unwrap()[0].id.clone();
-        team::add_agent(&st.db, &st.you_id, &tid, AgentInput { name: "Team Lead".into(), role_key: "lead".into(), model: Some(model),
+        team::add_agent(&st.db, &st.you_id, &tid, AgentInput { name: "Chief".into(), role_key: "lead".into(), model: Some(model),
             chat_enabled: Some(true), ..Default::default() }).unwrap();
     }
     println!("claude: {:?}", gizai_lib::runs::detect_claude(&st));

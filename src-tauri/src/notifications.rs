@@ -2,11 +2,11 @@
 //! is hidden. Four kinds, each with its own switch, all on by default:
 //! - a card goes on hold, and a card lands in Review or Deploy assigned to you: the cards in the Inbox
 //!   (`tasks::needs_you`);
-//! - the Team Lead starts a Question or Approval chat: the chats at the top of the Inbox (`chat::waiting_lead_chats`),
-//!   and a chat gets calls of the Team Lead's that wait for your approval (GA-102, `chat::chats_with_pending`);
+//! - the Chief starts a Question or Approval chat: the chats at the top of the Inbox (`chat::waiting_lead_chats`),
+//!   and a chat gets calls of the Chief's that wait for your approval (GA-102, `chat::chats_with_pending`);
 //! - an answer in a chat ends while Gizai's window is hidden or not focused (`answered`).
 //!
-//! The Team Lead merging a card's pull request (`lead_merged`, GA-86) notifies too, under the switch for cards waiting
+//! The Chief merging a card's pull request (`lead_merged`, GA-86) notifies too, under the switch for cards waiting
 //! for you.
 //!
 //! The Inbox is looked at again when tasks or chats change (`poke`; a burst of changes is one look, at most one every
@@ -43,11 +43,11 @@ pub enum Kind {
     Hold,
     /// A card landed in Review or Deploy, assigned to you.
     Waiting,
-    /// The Team Lead started a Question or Approval chat.
+    /// The Chief started a Question or Approval chat.
     LeadAsks,
     /// An answer in a chat ended while Gizai's window was out of sight.
     LeadAnswered,
-    /// The Team Lead merged a card's pull request (GA-86). Under the Waiting switch: the card waits for deploy now.
+    /// The Chief merged a card's pull request (GA-86). Under the Waiting switch: the card waits for deploy now.
     LeadMerged,
 }
 
@@ -121,7 +121,7 @@ pub fn save_switches(db: &Db, s: &Switches) -> Result<(), String> {
 pub struct Desktop {
     /// Shows a notification: every notification goes through here.
     pub show: Arc<dyn Fn(Notice) + Send + Sync>,
-    /// Whether Gizai's window is hidden, minimised or not focused ("The Team Lead answered" only notifies then).
+    /// Whether Gizai's window is hidden, minimised or not focused ("The Chief answered" only notifies then).
     pub away: Arc<dyn Fn() -> bool + Send + Sync>,
 }
 
@@ -137,7 +137,7 @@ impl Desktop {
 pub struct Watch {
     /// The keys of the items in the Inbox at the last look; None before the first look.
     seen: Mutex<Option<HashSet<String>>>,
-    /// Items a notification of their own already told (the Team Lead's merge, `lead_merged`): a look doesn't notify them
+    /// Items a notification of their own already told (the Chief's merge, `lead_merged`): a look doesn't notify them
     /// again.
     told: Mutex<HashSet<String>>,
     poke: tokio::sync::Notify,
@@ -159,14 +159,14 @@ pub fn new_items(seen: &HashSet<String>, now: Vec<Item>) -> (Vec<Item>, HashSet<
 
 /// What is in the Inbox now, as items: a card on hold (keyed by when its hold was set, so a new hold is a new item),
 /// a card waiting for you in Review or Deploy (keyed by the column's kind, so the merge that moves it to Deploy is new),
-/// a chat the Team Lead started that waits for you, and a chat with calls of the Team Lead's that wait for your approval
+/// a chat the Chief started that waits for you, and a chat with calls of the Chief's that wait for your approval
 /// (GA-102: keyed by the chat, so it notifies again only after its calls were all approved or discarded and new ones came).
 /// A card in Review that is also on hold is both.
 pub fn inbox(db: &Db, you_id: &str) -> Result<Vec<Item>, String> {
     let mut items = vec![];
     for t in tasks::needs_you(db, you_id).map_err(|e| e.to_string())? {
         let route = format!("#/task/{}", t.id);
-        // A card whose question is with the Team Lead (GA-70) doesn't need you yet: it notifies if the Team Lead asks you.
+        // A card whose question is with the Chief (GA-70) doesn't need you yet: it notifies if the Chief asks you.
         if let Some(hold) = t.hold.as_ref().filter(|_| !t.with_lead) {
             let why = t.hold_reason.as_deref().map(str::trim).filter(|r| !r.is_empty())
                 .map(|r| short(r, REASON_CHARS)).unwrap_or_else(|| hold_name(hold).into());
@@ -196,15 +196,15 @@ pub fn inbox(db: &Db, you_id: &str) -> Result<Vec<Item>, String> {
         };
         items.push(Item {
             key: format!("chat:{}", c.id),
-            notice: Notice { kind: Kind::LeadAsks, title: format!("The Team Lead asks: {}", c.title), body, route: format!("#/chat/{}", c.id) },
+            notice: Notice { kind: Kind::LeadAsks, title: format!("The Chief asks: {}", c.title), body, route: format!("#/chat/{}", c.id) },
         });
     }
-    // GA-102: a chat with calls of the Team Lead's that wait for your approval (after a tool from outside Gizai).
+    // GA-102: a chat with calls of the Chief's that wait for your approval (after a tool from outside Gizai).
     for c in chat::chats_with_pending(db).map_err(|e| e.to_string())? {
         let n = c.pending_actions;
         items.push(Item {
             key: format!("pending:{}", c.id),
-            notice: Notice { kind: Kind::LeadAsks, title: format!("The Team Lead waits for your OK: {}", c.title),
+            notice: Notice { kind: Kind::LeadAsks, title: format!("The Chief waits for your OK: {}", c.title),
                              body: if n == 1 { "1 action to approve or discard".into() } else { format!("{n} actions to approve or discard") },
                              route: format!("#/chat/{}", c.id) },
         });
@@ -289,8 +289,8 @@ pub async fn watch(st: AppState) {
     }
 }
 
-/// An answer in a chat ended (`chat::chain` returned: the answer and the messages queued after it are done). "The Team
-/// Lead answered: <chat>" with the start of the answer, or "The Team Lead couldn't answer: <chat>" with why, when its
+/// An answer in a chat ended (`chat::chain` returned: the answer and the messages queued after it are done). "The
+/// Chief answered: <chat>" with the start of the answer, or "The Chief couldn't answer: <chat>" with why, when its
 /// switch is on and Gizai's window is hidden, minimised or not focused. Nothing after Stop or while Gizai quits. Returns
 /// what it sent.
 pub fn answered(st: &AppState, thread_id: &str, summary: &TurnSummary) -> Option<Notice> {
@@ -304,19 +304,19 @@ pub fn answered(st: &AppState, thread_id: &str, summary: &TurnSummary) -> Option
     }
     let thread = chat::get_thread(&st.db, thread_id).ok()?;
     let n = if failed {
-        Notice { kind: Kind::LeadAnswered, title: format!("The Team Lead couldn't answer: {}", thread.title),
+        Notice { kind: Kind::LeadAnswered, title: format!("The Chief couldn't answer: {}", thread.title),
                  body: summary.error.as_deref().map(|e| short(e, BODY_CHARS)).unwrap_or_default(), route: format!("#/chat/{thread_id}") }
     } else {
         let answer = chat::messages(&st.db, thread_id).unwrap_or_default().into_iter().rev()
             .find(|m| m.role == "agent" && m.body_md.as_deref().is_some_and(|b| !b.trim().is_empty()))
             .and_then(|m| m.body_md).map(|b| short(&b, BODY_CHARS)).unwrap_or_default();
-        Notice { kind: Kind::LeadAnswered, title: format!("The Team Lead answered: {}", thread.title), body: answer, route: format!("#/chat/{thread_id}") }
+        Notice { kind: Kind::LeadAnswered, title: format!("The Chief answered: {}", thread.title), body: answer, route: format!("#/chat/{thread_id}") }
     };
     (st.desktop.show)(n.clone());
     Some(n)
 }
 
-/// The Team Lead merged `task`'s pull request `number` (merge_pull_request, GA-86): "The Team Lead merged GA-12's pull
+/// The Chief merged `task`'s pull request `number` (merge_pull_request, GA-86): "The Chief merged GA-12's pull
 /// request #34", with the card's title, when the Waiting switch is on, also while Gizai's window shows, so you see every
 /// merge. Called before the PR check moves the card to Deploy: the Inbox's own "GA-12 is merged and waits for deploy"
 /// then doesn't notify as well. Nothing while Gizai quits. Returns what it sent.
@@ -325,7 +325,7 @@ pub fn lead_merged(st: &AppState, task: &gizai_core::model::Task, number: u64) -
     if crate::runs::is_closing(st) || !switches(&st.db).waiting {
         return None;
     }
-    let n = Notice { kind: Kind::LeadMerged, title: format!("The Team Lead merged {}'s pull request #{number}", task.identifier),
+    let n = Notice { kind: Kind::LeadMerged, title: format!("The Chief merged {}'s pull request #{number}", task.identifier),
                      body: task.title.clone(), route: format!("#/task/{}", task.id) };
     (st.desktop.show)(n.clone());
     Some(n)

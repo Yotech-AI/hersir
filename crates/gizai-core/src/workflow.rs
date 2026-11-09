@@ -38,8 +38,8 @@ pub struct GateResult {
     pub moved_to: Option<String>,
     /// The hold the card got.
     pub hold: Option<String>,
-    /// The Team Lead took the card's question (GA-70, `questions::hand_over_in`): its id. The card stays on hold, out of
-    /// the Inbox, while the Team Lead answers it or asks you.
+    /// The Chief took the card's question (GA-70, `questions::hand_over_in`): its id. The card stays on hold, out of
+    /// the Inbox, while the Chief answers it or asks you.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lead: Option<String>,
 }
@@ -221,7 +221,7 @@ impl TestRunsFull {
         format!("{} tests {} {} at a time (project settings)", self.project, self.limit, if self.limit == 1 { "card" } else { "cards" })
     }
 
-    /// Why a start waits (Run, Continue, the Team Lead's start_agent_run): "Giz AI tests 2 cards at a time (project
+    /// Why a start waits (Run, Continue, the Chief's start_agent_run): "Giz AI tests 2 cards at a time (project
     /// settings): wait for GA-188 or GA-211 to finish testing, or raise the limit on the project page."
     pub fn message(&self) -> String {
         format!("{}: wait for {} to finish testing, or raise the limit on the project page.", self.tests(), or_list(&self.cards))
@@ -459,7 +459,7 @@ fn set_fields(w: &Writer, task_id: &str, sql_set: &str, params: &[&dyn rusqlite:
 ///   takes the person's pin off: the agent built it.
 /// - `qa_fail` sends it back to the column it came from, to the agent that built it; three bounces hold it. A card a
 ///   person built by hand (GA-111, `start_by_hand`) goes back to that person, pinned to them again.
-/// - `needs_decision` holds it where it is. The Team Lead looks at the question first when it can (GA-70,
+/// - `needs_decision` holds it where it is. The Chief looks at the question first when it can (GA-70,
 ///   `questions::hand_over_in`, then `GateResult::lead`): the card stays out of the Inbox until it answers or asks you.
 /// Cards a person moved to Backlog, Done or Cancelled while the agent worked stay where they are, and a Deploy card
 /// moves only on `deployed`. GA-32's DevOps rules hold: a DevOps run never sends a card to QA (`ready_for_testing`
@@ -579,7 +579,7 @@ pub fn apply_outcome_with(db: &Db, run_id: &str, outcome: Option<&Outcome>, run_
                     };
                     set_hold(w, &task_id, "needs_decision", &reason)?;
                     g.hold = Some("needs_decision".into());
-                    // GA-70: the Team Lead looks at the question first when it can; the card stays out of the Inbox meanwhile.
+                    // GA-70: the Chief looks at the question first when it can; the card stays out of the Inbox meanwhile.
                     if o.outcome == "needs_decision" {
                         g.lead = crate::questions::hand_over_in(w, run_id, &task_id, &agent, &role, run_for_me)?;
                     }

@@ -41,7 +41,7 @@ pub struct Member {
     pub effort: Option<String>,
     /// Cards it works on at once.
     pub max_runs: i64,
-    /// The Team Lead checks the board this often (minutes); None = off.
+    /// The Chief checks the board this often (minutes); None = off.
     pub board_check_minutes: Option<i64>,
     /// When it last looked at the board.
     pub board_checked_at: Option<i64>,
@@ -173,7 +173,7 @@ pub fn get(db: &Db, id: &str) -> Result<Team> {
 }
 
 /// `get` without each agent's instructions (`instructions_md` None), for the window (GA-191): only an agent's page and
-/// form show them, and they ask `agent`. The agents' and the Team Lead's tools keep `get`'s full rows.
+/// form show them, and they ask `agent`. The agents' and the Chief's tools keep `get`'s full rows.
 pub fn get_lean(db: &Db, id: &str) -> Result<Team> {
     db.read(|c| team_in(c, id, false))
 }
@@ -232,7 +232,7 @@ pub fn add_branch(db: &Db, actor: &str, team_id: &str, name: &str) -> Result<Vec
         return Err(Error::Invalid("give the branch a name (at most 32 characters), like Docs or Security".into()));
     }
     if ["lead", "reviewer"].contains(&key.as_str()) {
-        return Err(Error::Invalid(format!("{name} is taken: the Team Lead and the reviewer sit above the branches")));
+        return Err(Error::Invalid(format!("{name} is taken: the Chief and the reviewer sit above the branches")));
     }
     db.write(Some(actor), |w| {
         let mut branches = branches_in(w.conn(), team_id)?;
@@ -404,7 +404,7 @@ fn insert_agent(w: &crate::db::Writer, actor: &str, team_id: &str, a: &CleanAgen
     if let Some(with) = input.shares_memory_with.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         crate::memory::set_shares_in(w, actor, &id, Some(with))?;
     }
-    // Its own memory folder, Agents/<name>/, with a Notes note, unless it shares one (the Team Lead's Team Lead/Notes is
+    // Its own memory folder, Agents/<name>/, with a Notes note, unless it shares one (the Chief's Team Lead/Notes is
     // made on first use).
     crate::memory::ensure_agent_notes_in(w, &id)?;
     Ok(id)
@@ -500,7 +500,7 @@ pub fn update_agent(db: &Db, actor: &str, actor_id: &str, input: AgentInput) -> 
             Some(false) => { c.execute("UPDATE agent_configs SET chat_enabled=0 WHERE actor_id=?1", [actor_id])?; }
             None => {}
         }
-        // Memory (GA-96): the folder it shares, else its own; the Team Lead keeps its notes in Team Lead/, so an agent that
+        // Memory (GA-96): the folder it shares, else its own; the Chief keeps its notes in Team Lead/, so an agent that
         // became it shares no folder and a group it owned goes on with its next agent.
         if let Some(with) = input.shares_memory_with.as_deref().map(str::trim) {
             crate::memory::set_shares_in(w, actor, actor_id, Some(with).filter(|s| !s.is_empty()))?;
