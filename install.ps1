@@ -1,7 +1,9 @@
 # Hersir installer for Windows. Builds Hersir from source and installs it for you alone (no administrator rights):
 #   %LOCALAPPDATA%\Programs\Gizai\   gizai.exe, gizai-mcp.exe (the helper chat uses) and gizai-installed.txt
 #   Start menu\Programs\Hersir.lnk    the shortcut that starts Hersir and lets Windows show its notifications
-# Your data lives in %APPDATA%\Gizai and is never touched by install or uninstall (unless -Purge).
+# Your data lives in %APPDATA%\Hersir, or in %APPDATA%\Gizai of an install from before 0.17.0 when it holds gizai.db and
+# there is no %APPDATA%\Hersir: the folder Hersir uses. An install backs it up first and names it; only -Uninstall -Purge
+# deletes it.
 # Hersir runs the coding CLIs installed on Windows itself; it never uses WSL.
 #
 # Usage, in PowerShell (Windows PowerShell 5.1 or PowerShell 7):
@@ -13,7 +15,8 @@
 # When PowerShell won't run scripts: powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
 # Run outside a checkout, it clones (or updates) the source into %LOCALAPPDATA%\gizai-src first.
 # Environment: GIZAI_REPO (the git URL to clone), GIZAI_BRANCH (default production: the released code; main is
-# development), GIZAI_PREFIX (default %LOCALAPPDATA%\Programs\Gizai), GIZAI_DATA_DIR (default %APPDATA%\Gizai).
+# development), GIZAI_PREFIX (default %LOCALAPPDATA%\Programs\Gizai), HERSIR_DATA_DIR, else GIZAI_DATA_DIR (another
+# data folder).
 [CmdletBinding()]
 param(
   [switch]$Check,
@@ -66,7 +69,7 @@ function Invoke-Gizai([string]$Exe, [string[]]$Arguments) {
 }
 
 if ($Help) {
-  Get-Content -LiteralPath $PSCommandPath -TotalCount 16 | ForEach-Object { $_ -replace '^# ?', '' }
+  Get-Content -LiteralPath $PSCommandPath -TotalCount 19 | ForEach-Object { $_ -replace '^# ?', '' }
   exit 0
 }
 if ($BuildOnly -and $SkipBuild) {
@@ -82,7 +85,14 @@ $DefaultRepo = 'https://github.com/Yotech-AI/hersir.git'
 $Repo = if ($env:GIZAI_REPO) { $env:GIZAI_REPO } else { $DefaultRepo }
 $Prefix = if ($env:GIZAI_PREFIX) { $env:GIZAI_PREFIX } else { Join-Path $env:LOCALAPPDATA 'Programs\Gizai' }
 $Prefix = Full $Prefix
-$Data = if ($env:GIZAI_DATA_DIR) { $env:GIZAI_DATA_DIR } else { Join-Path $env:APPDATA 'Gizai' }
+# The data folder Hersir uses, which is what an install backs up and -Purge deletes (GA-249): HERSIR_DATA_DIR, else
+# GIZAI_DATA_DIR (its name before 0.17.0), else %APPDATA%\Hersir when it exists, else %APPDATA%\Gizai from before 0.17.0
+# when it holds gizai.db, else %APPDATA%\Hersir. Nothing is moved.
+$Data = if ($env:HERSIR_DATA_DIR) { $env:HERSIR_DATA_DIR } elseif ($env:GIZAI_DATA_DIR) { $env:GIZAI_DATA_DIR } else {
+  $newData = Join-Path $env:APPDATA 'Hersir'
+  $oldData = Join-Path $env:APPDATA 'Gizai'
+  if (-not (Test-Path -LiteralPath $newData) -and (Test-Path -LiteralPath (Join-Path $oldData 'gizai.db') -PathType Leaf)) { $oldData } else { $newData }
+}
 $Data = Full $Data
 $SrcClone = Join-Path $env:LOCALAPPDATA 'gizai-src'
 $StartMenu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
@@ -255,9 +265,12 @@ if ($BuildOnly) {
 $db = Join-Path $Data 'gizai.db'
 if (Test-Path -LiteralPath $db) {
   Step 'Backing up your data'
-  $dataBefore = $env:GIZAI_DATA_DIR
-  $env:GIZAI_DATA_DIR = $Data
-  try { $snap = Invoke-Gizai $NewGizai @('--backup', 'before-install') } finally { $env:GIZAI_DATA_DIR = $dataBefore }
+  # The data folder goes to the new Hersir under both its names (HERSIR_DATA_DIR wins over GIZAI_DATA_DIR).
+  $dataBefore = $env:HERSIR_DATA_DIR; $gizaiDataBefore = $env:GIZAI_DATA_DIR
+  $env:HERSIR_DATA_DIR = $Data; $env:GIZAI_DATA_DIR = $Data
+  try { $snap = Invoke-Gizai $NewGizai @('--backup', 'before-install') } finally {
+    $env:HERSIR_DATA_DIR = $dataBefore; $env:GIZAI_DATA_DIR = $gizaiDataBefore
+  }
   if ($snap.Ok) {
     Say "Backed up your data to $($snap.Text)"
   } else {
