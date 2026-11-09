@@ -255,6 +255,8 @@ pub(crate) async fn get_task(cx: &Cx<'_>, a: &Args) -> Result<Value, String> {
         "with_team_lead": t.with_lead,
         // GA-111: pinned to a person who does it by hand (Open in editor): no agent takes it until they hand it over.
         "by_hand": t.by_hand,
+        // GA-261: on hold for the user's OK after a tool from outside Hersir (GA-101): only the user takes that hold off.
+        "waiting_for_ok": t.waits_for_your_ok(),
         "created": ymd(t.created_at), "updated": ymd(t.updated_at),
         "archived": t.archived_at.is_some(), "archived_on": t.archived_at.map(ymd), "archived_by": t.archived_by,
         "builds_on": builds_on, "needed_by": needed_by,

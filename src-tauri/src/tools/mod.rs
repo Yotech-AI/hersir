@@ -138,7 +138,7 @@ pub(crate) fn refused_after(name: &str, tool: &str) -> String {
 
 /// A call can come in before Gizai has read the chat answer's stream up to it, so before an outside tool in the same
 /// message is marked: it waits until the stream shows the call itself (`chat::wait_shown`). Not shown in time, it is
-/// refused and nothing changes. A call no stream shows (made directly), or in an answer already marked, doesn't wait.
+/// refused and nothing changes. A call no stream shows (made directly), or in a chat already marked, doesn't wait.
 async fn shown(st: &AppState, thread: &str, from: Option<Stream<'_>>, name: &str, a: &Args) -> Result<(), String> {
     if let Some(s) = from.filter(|_| crate::chat::used_outside(st, thread).is_none())
         && crate::chat::wait_shown(st, s.run, s.tool_use, name, &a.0, SHOWN_WAIT).await != crate::chat::Shown::Yes {
