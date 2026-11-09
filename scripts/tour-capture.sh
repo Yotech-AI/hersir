@@ -75,6 +75,8 @@ prepare() {
   # the terminals' shell in the fake home: a short prompt, and git without a pager
   printf '%s\n' "PS1='\\[\\e[1;34m\\]\\w\\[\\e[0m\\] \\$ '" 'export GIT_PAGER=cat' > "$FAKE_HOME/.bashrc"
   printf '%s\n' '[ -f ~/.bashrc ] && . ~/.bashrc' > "$FAKE_HOME/.bash_profile"
+  # npm (the Terminal's npx) never goes online: no "New version of npm available" notice under the build
+  printf '%s\n' 'offline=true' 'update-notifier=false' > "$FAKE_HOME/.npmrc"
   cp -a "$LIVE" "$BASE"
 }
 prepare || { echo "could not make the fake data"; exit 1; }
