@@ -1,10 +1,11 @@
 // Tests for the product tour's capture (GA-149, round 3). This repository keeps only the capture, which needs the app:
 // scripts/tour-capture.sh writes its stills and scenes.json to --out <folder>, or to .devdata/tour/capture, which git
-// ignores; the tour video and the README's GIFs are made from those stills in the website's repository. The screen is
+// ignores; the website's repository makes hersir.dev's pictures from those stills. The screen is
 // 1600 × 1040 CSS pixels at scale 2, so every still is 3200 × 2080; the eight scenes are in the website's order; and
 // the capture uses made-up data only, in a fake home, so no real project, client, folder or user name and no real home
 // folder can show. The capture itself runs in a headless cage (cage, grim, wlr-randr), so it is run by hand, not here:
-// these tests read the script, and run its argument handling on Linux.
+// these tests read the script, and run its argument handling on Linux. The last two parts (from tour-renders.test.mjs,
+// GA-149, and GA-241) check that the tour's video and GIFs left this repository and its README.
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -19,7 +20,14 @@ const WEBSITE_ORDER = ["01-board", "02-chat", "03-clis", "04-review", "05-editor
 
 const read = (...parts) => readFileSync(join(ROOT, ...parts), "utf8");
 const sh = read("scripts", "tour-capture.sh");
-const git = (...args) => spawnSync("git", args, { cwd: ROOT, encoding: "utf8" });
+const git = (...args) => spawnSync("git", args, { cwd: ROOT, encoding: "utf8", maxBuffer: 64 * 1000 * 1000 });
+const tracked = (...paths) => {
+  const r = git("ls-files", "--", ...paths);
+  if (r.status !== 0) throw new Error(`git ls-files: ${r.stderr}`);
+  return r.stdout.split("\n").filter(Boolean);
+};
+/** The README's old tour folder, built from its parts so the card's search for its name (GA-241) finds nothing here. */
+const TOUR_DIR = ["docs", "tour"].join("/");
 
 /** The script's `scene <n> <name> "<title>" <route> <steps…>` lines, with their steps, joined over line ends. */
 function scenes() {
@@ -213,5 +221,90 @@ describe("the capture uses made-up data only", () => {
     const prep = read("crates/gizai-core/examples/prep_tour.rs");
     expect(prep).toContain("~/.local/bin/claude");
     expect(prep).toContain("~/.local/bin/codex");
+  });
+});
+
+describe("the tour's video and GIFs left this repository (GA-149, GA-241)", () => {
+  it("the README's old tour folder is gone, on disk and in git, and git has no GIF of the tour anywhere", () => {
+    expect(existsSync(join(ROOT, "docs", "tour"))).toBe(false);
+    expect(tracked(TOUR_DIR)).toEqual([]);
+    expect(tracked().filter((p) => /(^|\/)tour-[a-z]+\.gif$/i.test(p))).toEqual([]);
+  });
+
+  it("nothing in git outside docs/research and docs/superpowers names that folder or its two GIFs", () => {
+    const r = git("grep", "-nE", `${TOUR_DIR}|tour-(dark|light)\\.gif`, "--", ".", ":(exclude)docs/research", ":(exclude)docs/superpowers");
+    expect(r.stdout).toBe("");
+    // 1 is git grep's "nothing found", not an error
+    expect(r.status).toBe(1);
+  });
+
+  it("git has no video/ folder, and no MP4, WebM or poster of the tour anywhere", () => {
+    expect(tracked("video")).toEqual([]);
+    expect(tracked().filter((p) => /\.(mp4|webm|mov)$/i.test(p) || /(^|\/)tour-[a-z]+-poster\.png$/.test(p))).toEqual([]);
+  });
+
+  it("nothing in git points to the video project, its stills or the renders that left", () => {
+    const r = git("grep", "-nE", "(^|[^a-z/])video/(capture|src|out|render\\.mjs|package\\.json|README)|tour-(dark|light)(\\.mp4|\\.webm|-poster\\.png)",
+      "--", ".", ":(exclude)scripts/tour-*.test.mjs");
+    expect(r.stdout).toBe("");
+  });
+
+  it("package.json has no workspaces and no Remotion, and the lock file has nothing from video/", () => {
+    const pkg = JSON.parse(read("package.json"));
+    expect(pkg.workspaces).toBeUndefined();
+    const deps = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies });
+    expect(deps.filter((d) => /remotion/.test(d))).toEqual([]);
+    expect(JSON.stringify(pkg.scripts)).not.toMatch(/video/);
+    const lock = JSON.parse(read("package-lock.json"));
+    expect(Object.keys(lock.packages).filter((p) => p.startsWith("video") || /remotion/.test(p))).toEqual([]);
+  });
+
+  it("tsc and vitest only look in src/ (and vitest in scripts/)", () => {
+    expect(JSON.parse(read("tsconfig.json")).include).toEqual(["src"]);
+    const vitest = read("vitest.config.ts");
+    const include = [...vitest.match(/include:\s*\[([^\]]*)\]/)[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+    expect(include.length).toBeGreaterThan(0);
+    for (const pattern of include) expect(pattern).toMatch(/^(src|scripts)\//);
+  });
+});
+
+describe("the README (GA-241): no tour under the logo, and the capture makes the stills of each feature", () => {
+  const readme = read("README.md");
+  const lines = readme.split("\n");
+  const development = (readme.split(/\n## /).find((s) => s.startsWith("Development\n")) ?? "").split("\n");
+  const CAPTURE = "scripts/tour-capture.sh --out <folder>   # the stills of each feature, in dark and light (default .devdata/tour/capture)";
+  const STILLS = "The capture makes the stills of each feature: Hersir with made-up data in a headless compositor, scene by scene, " +
+    "in dark and light, with a `scenes.json` of what each step clicked. The website's repository makes hersir.dev's pictures from them.";
+
+  it("its only <picture> is the logo's: no GIF, no tour and no link into the old tour folder", () => {
+    const pictures = readme.match(/<picture>[\s\S]*?<\/picture>/g) ?? [];
+    expect(pictures).toHaveLength(1);
+    expect(pictures[0]).toContain('<img alt="Hersir" src="design/brand/logo-horizontal-on-light.svg" width="320">');
+    expect(readme).not.toMatch(/\.gif\b/i);
+    expect(readme).not.toContain(TOUR_DIR);
+    expect(readme).not.toMatch(/product tour|tour video|Remotion/i);
+  });
+
+  it("the centered block under the logo closes one blank line after the links, and What it is comes next", () => {
+    expect(lines[8]).toBe('<div align="center">');
+    expect(lines[15]).toMatch(/^\[Website\]\(https:\/\/hersir\.dev\) · \[Install\]/);
+    expect(lines.slice(16, 20)).toEqual(["", "</div>", "", "## What it is"]);
+    expect(readme.match(/<\/?div\b[^>]*>/g)).toEqual(['<div align="center">', "</div>"]);
+  });
+
+  it("its Development section runs the capture for the stills of each feature, after the UI tests", () => {
+    expect(development.filter((l) => l.startsWith("scripts/tour-capture.sh"))).toEqual([CAPTURE]);
+    expect(development[development.indexOf(CAPTURE) - 1]).toMatch(/^scripts\/ui-test\.sh /);
+  });
+
+  it("and says, after the performance paragraph, that the website's repository makes hersir.dev's pictures from the stills", () => {
+    expect(development.filter((l) => l.startsWith("The capture makes"))).toEqual([STILLS]);
+    expect(development[development.indexOf(STILLS) - 2]).toMatch(/^A performance card runs `scripts\/perf\.sh`/);
+  });
+
+  it("names no video/ folder, MP4, WebM or poster, and the old GIF and its script are gone", () => {
+    expect(readme).not.toMatch(/video\/|\.mp4|\.webm|poster/);
+    for (const old of ["docs/gizai.gif", "docs/gizai.mp4", "scripts/readme-gif.sh"]) expect(existsSync(join(ROOT, old))).toBe(false);
+    expect(readme).not.toMatch(/docs\/gizai\.gif|readme-gif/);
   });
 });
