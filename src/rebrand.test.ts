@@ -2,7 +2,8 @@
 // toasts, dialogs, aria-labels and titles) says Gizai or GizAi any more: what is left is in comments, the readers that take
 // the backend's texts with either name (until GA-232, and older runs and chats), the in-app self-test and the browser
 // mode's fixtures (the backend's texts, GA-232's). The code's names stay: storage keys and events (settings, drafts and
-// open tabs survive an update), the MCP server name gizai, gizai: links, the template file name, GIZAI_* and the logo's file.
+// open tabs survive an update), the MCP server name gizai, gizai: links, GIZAI_RESULT and the logo's file. GA-249 gave the
+// template file (<team>.hersir-team.json) and the GIZAI_* variables their hersir names; the GIZAI_* ones are set too.
 // Files are read from disk; node:fs comes in through a computed specifier, as in band.test.ts.
 import { describe, expect, it } from "vitest";
 import { KEYS } from "./lib/appearance";
@@ -94,17 +95,18 @@ describe("the code's names stay (GA-231): settings, drafts and open tabs survive
     expect(files.filter((f) => /["'`]hersir[.-]/i.test(read(f)))).toEqual([]);
   });
 
-  it("the MCP server name gizai is Hersir's own; gizai: links and the template file name stay", () => {
+  it("the MCP server name gizai is Hersir's own and gizai: links stay; Export offers <team>.hersir-team.json (GA-249)", () => {
     expect(TAKEN_NAMES).toEqual(["gizai", "chrome-devtools"]);
     expect(nameProblem("gizai", [])).toBe("gizai is Hersir's own: give the server another name");
     expect(itemLink({ kind: "task", key: "GA-12", text: "GA-12 - Fix the login" } as Parameters<typeof itemLink>[0])).toBe("[GA-12 - Fix the login](gizai:task/GA-12)");
-    expect(templateFileName("Software team")).toBe("Software team.gizai-team.json");
+    expect(templateFileName("Software team")).toBe("Software team.hersir-team.json");
   });
 
-  it("texts that show a name of the code keep it: GIZAI_RESULT, GIZAI_PREVIEW_*, the logo's file", () => {
+  it("texts that show a name of the code keep it: GIZAI_RESULT, the logo's file; the preview's hint names HERSIR_PREVIEW_* and says GIZAI_PREVIEW_* are set too (GA-249)", () => {
     expect(read("src/components/CliSettings.tsx")).toContain("Hersir reads its output as plain text and looks for the GIZAI_RESULT line at the end.");
     const project = read("src/components/ProjectForm.tsx");
-    expect(project).toContain("on a free port in GIZAI_PREVIEW_PORT (and PORT), with GIZAI_PREVIEW_DIR for a throwaway database. Serve demo data, never your .env database. Hersir ends it with the run.");
+    expect(project).toContain("on a free port in HERSIR_PREVIEW_PORT (and PORT), with HERSIR_PREVIEW_DIR for a throwaway database. The GIZAI_PREVIEW_* names are set too. Serve demo data, never your .env database. Hersir ends it with the run.");
+    expect(project).toContain(`placeholder={'npx astro dev --host 127.0.0.1 --port "$HERSIR_PREVIEW_PORT" --ignore-lock'}`);
     expect(read("src/pages/OnboardingPage.tsx")).toContain('import logo from "../assets/gizai-logo.svg?raw";');
   });
 });
