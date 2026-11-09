@@ -14,8 +14,9 @@ const KIND_WORDS: Record<string, string> = {
 };
 export const kindWord = (kind: string) => KIND_WORDS[kind] ?? kind;
 
-/** The file name Export offers: `<team name>.gizai-team.json`, with characters a file name can't have as "-". */
-export const templateFileName = (team: string) => `${team.replace(/[<>:"/\\|?*]/g, "-").trim() || "Team"}.gizai-team.json`;
+/** The file name Export offers: `<team name>.hersir-team.json` (`.gizai-team.json` before 0.17.0, which New team still
+ *  reads), with characters a file name can't have as "-". */
+export const templateFileName = (team: string) => `${team.replace(/[<>:"/\\|?*]/g, "-").trim() || "Team"}.hersir-team.json`;
 
 /** A path's last part, with / or \ between folders. */
 export const baseName = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? path;
