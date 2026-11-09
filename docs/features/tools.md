@@ -43,13 +43,13 @@ MCP servers and the browser work on Claude Code. Codex and Gemini agents show th
 
 - Medium risk: they can steer the run, so switch it on only for an agent that needs one.
 - On, its runs go without `--disable-slash-commands` and get `SlashCommand` and `Skill`. Hooks stay off, and settings still come only from your user settings.
-- The Team Lead's chat never gets them, and Codex and Gemini agents show the switch disabled, with why.
+- The Chief's chat never gets them, and Codex and Gemini agents show the switch disabled, with why.
 
 ## Allowed commands
 
 A new agent starts with its role's allowed commands.
 
-- Hersir's default list has the usual git, package manager and test commands, the read-only helpers agents use in pipes (`head`, `tail`, `wc`, `sort`, `uniq`, `cut`, `diff`, `grep`, `jq`, `pwd`, `which` and `tree`), and `sleep`, to wait between checks. The Team Lead gets that list.
+- Hersir's default list has the usual git, package manager and test commands, the read-only helpers agents use in pipes (`head`, `tail`, `wc`, `sort`, `uniq`, `cut`, `diff`, `grep`, `jq`, `pwd`, `which` and `tree`), and `sleep`, to wait between checks. The Chief gets that list.
 - Builders (Backend, Frontend, Design and your own roles) also get `git push`, `git pull`, `git fetch`, a few read-only git commands, `node`, `echo` and `printf`.
 - QA gets the builders' list plus `gh pr create`, `list`, `view` and `edit`.
 - DevOps gets a list of its own for releases.
@@ -108,13 +108,13 @@ Claude Code reports every tool call it refused, with the reason. Hersir saves th
 
 - the Run panel lists them under "Refused in this run";
 - Show output marks each one where it happened;
-- the Team Lead's `get_task` and `get_agent` return them for each run.
+- the Chief's `get_task` and `get_agent` return them for each run.
 
 Codex and Gemini don't report refusals, so their runs list none.
 
 ## Safety
 
-After a chat answer used an outside tool (an MCP server, the web, the browser), the Team Lead's calls that start runs, change agents or columns, save to memory or merge wait under that answer for your Approve, each with a preview. See [Approve with one click](team-lead.md#approve-with-one-click).
+After a chat answer used an outside tool (an MCP server, the web, the browser), the Chief's calls that start runs, change agents or columns, save to memory or merge wait under that answer for your Approve, each with a preview. See [Approve with one click](chief.md#approve-with-one-click).
 
 ## Read more
 

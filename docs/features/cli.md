@@ -8,7 +8,7 @@ Each agent runs on the coding CLI you pick, like Claude Code, Codex or Gemini, o
 - **A second account** of one, with its own environment (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`).
 - **Settings → Coding CLIs** adds them, or finds the ones installed. Each agent picks its CLI under Runs on, in its form.
 
-With only Codex installed, Hersir adds it under Settings → Coding CLIs and runs every agent but the Team Lead on it.
+With only Codex installed, Hersir adds it under Settings → Coding CLIs and runs every agent but the Chief on it.
 
 ## On your own machine
 
@@ -25,13 +25,13 @@ Hersir never sells Claude usage: agents keep running on your own Claude Code log
 - Hersir never stores a GitHub token or password: pushes go over SSH with your keys, or over HTTPS with gh's login.
 - An agent's folders never include `/`, your home folder, Hersir's data or folders with keys ([Folders](tools.md#folders)).
 
-## The Team Lead needs Claude Code
+## The Chief needs Claude Code
 
-The Team Lead's chat runs on Claude Code. Runs on, under the chat's text box, moves a chat to another Claude Code account: see [The chat](team-lead.md#the-chat).
+The Chief's chat runs on Claude Code. Runs on, under the chat's text box, moves a chat to another Claude Code account: see [The chat](chief.md#the-chat).
 
 ## What each CLI gets
 
-- **Claude Code** gets everything: the Team Lead's chat, MCP servers and the browser, and slash commands and skills.
+- **Claude Code** gets everything: the Chief's chat, MCP servers and the browser, and slash commands and skills.
 - **Codex** has its own web search, and its sandbox blocks what it doesn't allow.
 - **Gemini** fetches pages, and searches the web by its own policy.
 - **Other CLIs** run with their output read as text.
@@ -40,7 +40,7 @@ Memory works the same on every CLI. Which tools each CLI can use: [Tools per age
 
 ## Usage
 
-Usage (in Company) shows the agents' input tokens (cache included), output tokens and API cost for today, 7 days, 30 days or this month. It shows them in total with a bar per day, per agent and per project, with the Team Lead's chat on its own line.
+Usage (in Company) shows the agents' input tokens (cache included), output tokens and API cost for today, 7 days, 30 days or this month. It shows them in total with a bar per day, per agent and per project, with the Chief's chat on its own line.
 
 - The Projects list shows each project's API cost this month.
 - API cost is what the tokens would cost at API prices, not a bill.
