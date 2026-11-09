@@ -313,6 +313,26 @@ pub fn get_thread(db: &Db, id: &str) -> Result<ChatThread> {
     })
 }
 
+/// GA-261: the first tool from outside Hersir the chat used (an MCP server of the Chief's own, the web, the browser), like
+/// `mcp__otus__search`, if any (`mark_outside`): from then on what the Chief does there waits for your Approve. A new chat
+/// has none, and a chat that has one keeps it.
+pub fn outside_tool(db: &Db, thread_id: &str) -> Result<Option<String>> {
+    db.read(|c| Ok(c.query_row("SELECT outside_tool FROM chat_threads WHERE id=?1", [thread_id], |r| r.get::<_, Option<String>>(0))
+        .optional()?.flatten()))
+}
+
+/// GA-261: the chat used `tool`, a tool from outside Hersir: it is marked for good, with the first such tool it used. True
+/// when this marked it (it wasn't marked before).
+pub fn mark_outside(db: &Db, thread_id: &str, tool: &str) -> Result<bool> {
+    db.write(None, |w| {
+        let n = w.conn().execute("UPDATE chat_threads SET outside_tool=?2 WHERE id=?1 AND outside_tool IS NULL", rusqlite::params![thread_id, tool])?;
+        if n > 0 {
+            w.update("chat_threads", thread_id, serde_json::json!({"outsideTool": tool}))?;
+        }
+        Ok(n > 0)
+    })
+}
+
 /// The chats the Chief started that still wait for you (the Inbox), newest activity first. The database picks them
 /// (GA-191), as `thread_row` tells `waiting`.
 pub fn waiting_lead_chats(db: &Db) -> Result<Vec<ChatThread>> {

@@ -438,9 +438,22 @@ fn reviewer(c: &Connection, t: &TaskRow) -> Result<Option<String>> {
 }
 
 pub(crate) fn set_hold(w: &Writer, task_id: &str, hold: &str, reason: &str) -> Result<()> {
-    w.conn().execute("UPDATE tasks SET hold=?2, hold_reason=?3, hold_at=?4, updated_at=?4, version=version+1 WHERE id=?1",
-                     rusqlite::params![task_id, hold, reason, ids::now_ms()])?;
-    w.update("tasks", task_id, serde_json::json!({"hold": hold, "holdReason": reason}))
+    set_hold_as(w, task_id, hold, reason, None)
+}
+
+/// `set_hold` of the kind `kind` (GA-261, `model::HOLD_WAITING_FOR_OK`). None keeps the kind of the hold the card is on
+/// (a run that was under way puts its own hold on a card that waits for your OK: only you take it off still), and a card
+/// that wasn't on hold gets none.
+pub(crate) fn set_hold_as(w: &Writer, task_id: &str, hold: &str, reason: &str, kind: Option<&str>) -> Result<()> {
+    // The right-hand sides read the row as it was: `hold` is the hold before this one.
+    w.conn().execute("UPDATE tasks SET hold=?2, hold_reason=?3, hold_at=?4, hold_kind=COALESCE(?5, CASE WHEN hold IS NOT NULL THEN hold_kind END),
+                        updated_at=?4, version=version+1 WHERE id=?1",
+                     rusqlite::params![task_id, hold, reason, ids::now_ms(), kind])?;
+    let mut diff = serde_json::json!({"hold": hold, "holdReason": reason});
+    if let Some(k) = kind {
+        diff["holdKind"] = k.into();
+    }
+    w.update("tasks", task_id, diff)
 }
 
 fn set_fields(w: &Writer, task_id: &str, sql_set: &str, params: &[&dyn rusqlite::ToSql], diff: serde_json::Value) -> Result<()> {
@@ -746,7 +759,7 @@ pub fn by_hand_check(db: &Db, person: &str, task_id: &str, idle: bool) -> Result
 /// person's move into To do or In progress answers it (`tasks::move_to`).
 fn release_hold(w: &Writer, task_id: &str, why: &str) -> Result<()> {
     let n = w.conn().execute(
-        "UPDATE tasks SET hold=NULL, hold_reason=NULL, hold_at=NULL, fail_count=0, updated_at=?2, version=version+1 WHERE id=?1 AND hold IS NOT NULL",
+        "UPDATE tasks SET hold=NULL, hold_reason=NULL, hold_at=NULL, hold_kind=NULL, fail_count=0, updated_at=?2, version=version+1 WHERE id=?1 AND hold IS NOT NULL",
         rusqlite::params![task_id, ids::now_ms()])?;
     if n > 0 {
         w.update("tasks", task_id, serde_json::json!({"hold": null, "released": why}))?;
