@@ -373,8 +373,9 @@ fn show_now(app: &AppHandle, n: Notice) {
     use std::sync::atomic::{AtomicUsize, Ordering};
     static WAITING: AtomicUsize = AtomicUsize::new(0);
     let mut note = notify_rust::Notification::new();
-    note.appname("Hersir").summary(&n.title).body(&body_text(&n.body)).icon("gizai")
-        .hint(notify_rust::Hint::DesktopEntry("gizai".into()))
+    // install.sh's icon and desktop entry, hersir.svg and hersir.desktop (gizai's before 0.17.0, GA-248)
+    note.appname("Hersir").summary(&n.title).body(&body_text(&n.body)).icon("hersir")
+        .hint(notify_rust::Hint::DesktopEntry("hersir".into()))
         .action("default", "Open");
     let handle = match note.show() {
         Ok(h) => h,

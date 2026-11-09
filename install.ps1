@@ -1,6 +1,8 @@
 # Hersir installer for Windows. Builds Hersir from source and installs it for you alone (no administrator rights):
-#   %LOCALAPPDATA%\Programs\Gizai\   gizai.exe, gizai-mcp.exe (the helper chat uses) and gizai-installed.txt
+#   %LOCALAPPDATA%\Programs\Hersir\  hersir.exe, hersir-mcp.exe (the helper chat uses) and hersir-installed.txt
 #   Start menu\Programs\Hersir.lnk    the shortcut that starts Hersir and lets Windows show its notifications
+# An install from before 0.17.0, %LOCALAPPDATA%\Programs\Gizai with gizai.exe, is updated where it is: it gets the
+# hersir names beside its gizai ones, which keep working.
 # Your data lives in %APPDATA%\Hersir, or in %APPDATA%\Gizai of an install from before 0.17.0 when it holds gizai.db and
 # there is no %APPDATA%\Hersir: the folder Hersir uses. An install backs it up first and names it; only -Uninstall -Purge
 # deletes it.
@@ -11,12 +13,13 @@
 #   .\install.ps1 -Check         only report what is missing
 #   .\install.ps1 -BuildOnly     check and build, install nothing (Hersir's own Update runs this, then -SkipBuild)
 #   .\install.ps1 -SkipBuild     install the programs already built in target\release
-#   .\install.ps1 -Uninstall     remove Hersir (add -Purge to delete your data too)
+#   .\install.ps1 -Uninstall     remove Hersir, also an install from before 0.17.0 (add -Purge to delete your data too)
 # When PowerShell won't run scripts: powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
-# Run outside a checkout, it clones (or updates) the source into %LOCALAPPDATA%\gizai-src first.
-# Environment: GIZAI_REPO (the git URL to clone), GIZAI_BRANCH (default production: the released code; main is
-# development), GIZAI_PREFIX (default %LOCALAPPDATA%\Programs\Gizai), HERSIR_DATA_DIR, else GIZAI_DATA_DIR (another
-# data folder).
+# Run outside a checkout, it clones (or updates) the source into %LOCALAPPDATA%\hersir-src first.
+# Environment: HERSIR_REPO (the git URL to clone), HERSIR_BRANCH (default production: the released code; main is
+# development), HERSIR_PREFIX (default %LOCALAPPDATA%\Programs\Hersir), HERSIR_DATA_DIR, else GIZAI_DATA_DIR (another
+# data folder). Their names from before 0.17.0, GIZAI_REPO, GIZAI_BRANCH and GIZAI_PREFIX, still work; a HERSIR_ one
+# wins.
 [CmdletBinding()]
 param(
   [switch]$Check,
@@ -52,9 +55,9 @@ function Read-Program([string]$Exe, [string[]]$Arguments) {
   (& $Exe @Arguments 2>&1 | ForEach-Object { "$_" }) -join "`n"
 }
 
-# Runs gizai.exe and says whether it worked, with what it printed. gizai.exe is a window app without a console of its
+# Runs hersir.exe and says whether it worked, with what it printed. hersir.exe is a window app without a console of its
 # own: run directly, PowerShell neither waits for it nor shows its output. Start-Process waits, with the output in files.
-function Invoke-Gizai([string]$Exe, [string[]]$Arguments) {
+function Invoke-Hersir([string]$Exe, [string[]]$Arguments) {
   $out = [System.IO.Path]::GetTempFileName()
   $err = [System.IO.Path]::GetTempFileName()
   try {
@@ -69,7 +72,7 @@ function Invoke-Gizai([string]$Exe, [string[]]$Arguments) {
 }
 
 if ($Help) {
-  Get-Content -LiteralPath $PSCommandPath -TotalCount 19 | ForEach-Object { $_ -replace '^# ?', '' }
+  Get-Content -LiteralPath $PSCommandPath -TotalCount 22 | ForEach-Object { $_ -replace '^# ?', '' }
   exit 0
 }
 if ($BuildOnly -and $SkipBuild) {
@@ -82,9 +85,27 @@ if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
 }
 
 $DefaultRepo = 'https://github.com/Yotech-AI/hersir.git'
-$Repo = if ($env:GIZAI_REPO) { $env:GIZAI_REPO } else { $DefaultRepo }
-$Prefix = if ($env:GIZAI_PREFIX) { $env:GIZAI_PREFIX } else { Join-Path $env:LOCALAPPDATA 'Programs\Gizai' }
-$Prefix = Full $Prefix
+# A setting from the environment: HERSIR_<name>, else GIZAI_<name>, its name before 0.17.0, which still works alone.
+function Get-Setting([string]$Name) {
+  foreach ($var in @("HERSIR_$Name", "GIZAI_$Name")) {
+    $value = [Environment]::GetEnvironmentVariable($var)
+    if ($value) { return $value }
+  }
+  return ''
+}
+# An install from before 0.17.0 (GA-248) in $Dir: gizai.exe beside gizai-installed.txt. It is updated where it is, as
+# 0.16.0's own update checks and restarts <prefix>\gizai.exe: it gets the hersir names beside its gizai ones.
+function Test-OldInstall([string]$Dir) {
+  (Test-Path -LiteralPath (Join-Path $Dir 'gizai.exe')) -and (Test-Path -LiteralPath (Join-Path $Dir 'gizai-installed.txt'))
+}
+$Repo = Get-Setting 'REPO'
+if (-not $Repo) { $Repo = $DefaultRepo }
+$NewPrefix = Full (Join-Path $env:LOCALAPPDATA 'Programs\Hersir')
+$OldPrefix = Full (Join-Path $env:LOCALAPPDATA 'Programs\Gizai')
+$GivenPrefix = Get-Setting 'PREFIX'
+# Without one given: the usual folder of an install from before 0.17.0 when there is one, else Hersir's.
+$Prefix = if ($GivenPrefix) { Full $GivenPrefix } elseif (Test-OldInstall $OldPrefix) { $OldPrefix } else { $NewPrefix }
+$OldLayout = Test-OldInstall $Prefix
 # The data folder Hersir uses, which is what an install backs up and -Purge deletes (GA-249): HERSIR_DATA_DIR, else
 # GIZAI_DATA_DIR (its name before 0.17.0), else %APPDATA%\Hersir when it exists, else %APPDATA%\Gizai from before 0.17.0
 # when it holds gizai.db, else %APPDATA%\Hersir. Nothing is moved.
@@ -94,46 +115,67 @@ $Data = if ($env:HERSIR_DATA_DIR) { $env:HERSIR_DATA_DIR } elseif ($env:GIZAI_DA
   if (-not (Test-Path -LiteralPath $newData) -and (Test-Path -LiteralPath (Join-Path $oldData 'gizai.db') -PathType Leaf)) { $oldData } else { $newData }
 }
 $Data = Full $Data
-$SrcClone = Join-Path $env:LOCALAPPDATA 'gizai-src'
+$SrcClone = Join-Path $env:LOCALAPPDATA 'hersir-src'
+# The source copy from before 0.17.0: an install removes it, unless it runs from it.
+$OldSrcClone = Join-Path $env:LOCALAPPDATA 'gizai-src'
 $StartMenu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
 $Shortcut = Join-Path $StartMenu 'Hersir.lnk'
 # The shortcut's name before the app was called Hersir (GA-233): an install or uninstall removes it.
 $OldShortcut = Join-Path $StartMenu 'Gizai.lnk'
-$Exe = Join-Path $Prefix 'gizai.exe'
-# An installed Hersir knows its install by this file (a build in target\release has none).
-$Marker = Join-Path $Prefix 'gizai-installed.txt'
-$Programs = @('gizai.exe', 'gizai-mcp.exe')
+$Exe = Join-Path $Prefix 'hersir.exe'
+# An installed Hersir knows its install by this file (a build in target\release has none). One from before 0.17.0 keeps
+# its own, gizai-installed.txt, too.
+$Marker = Join-Path $Prefix 'hersir-installed.txt'
+$OldMarker = Join-Path $Prefix 'gizai-installed.txt'
+# What the build makes, and the names it goes in under (name = what the build made). An install from before 0.17.0 gets
+# gizai.exe and gizai-mcp.exe too, as copies (a link may need rights you don't have): the gizai command and 0.16.0's own
+# update start the new Hersir.
+$BuiltNames = @('hersir.exe', 'hersir-mcp.exe')
+$Programs = [ordered]@{ 'hersir.exe' = 'hersir.exe'; 'hersir-mcp.exe' = 'hersir-mcp.exe' }
+if ($OldLayout) { $Programs['gizai.exe'] = 'hersir.exe'; $Programs['gizai-mcp.exe'] = 'hersir-mcp.exe' }
 
-# Removes the Start menu shortcut $Link when it starts this install's Hersir.
-function Remove-OwnShortcut([string]$Link) {
+# Removes the Start menu shortcut $Link when it starts the Hersir installed in one of $Dirs: hersir.exe, or gizai.exe
+# (before 0.17.0).
+function Remove-OwnShortcut([string]$Link, [string[]]$Dirs) {
   if (Test-Path -LiteralPath $Link) {
     $target = (New-Object -ComObject WScript.Shell).CreateShortcut($Link).TargetPath
-    if ($target -eq $Exe) { Remove-Item -LiteralPath $Link -Force }
+    $own = foreach ($dir in $Dirs) { Join-Path $dir 'hersir.exe'; Join-Path $dir 'gizai.exe' }
+    if (@($own) -contains $target) { Remove-Item -LiteralPath $Link -Force }
   }
 }
 
 # ---------- uninstall ----------
 if ($Uninstall) {
   Step 'Removing Hersir'
+  # Both layouts: Hersir's names, and the gizai ones of an install from before 0.17.0. Without a prefix given, in both
+  # usual folders.
+  $dirs = if ($GivenPrefix) { @($Prefix) } else { @($NewPrefix, $OldPrefix) }
+  $files = @('hersir.exe', 'hersir-mcp.exe', 'hersir-installed.txt', 'gizai.exe', 'gizai-mcp.exe', 'gizai-installed.txt')
   try {
-    foreach ($f in @($Programs) + @('gizai-installed.txt')) {
-      $path = Join-Path $Prefix $f
-      if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
+    foreach ($dir in $dirs) {
+      foreach ($f in $files) {
+        $path = Join-Path $dir $f
+        if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force }
+      }
     }
   } catch {
-    Say "Could not remove Hersir from ${Prefix}: is it open? Quit it (Quit Hersir completely, in its tray menu), then run this again."
+    Say "Could not remove Hersir from ${dir}: is it open? Quit it (Quit Hersir completely, in its tray menu), then run this again."
     exit 1
   }
-  Get-ChildItem -LiteralPath $Prefix -Force -Filter '.*.old.*' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+  foreach ($dir in $dirs) {
+    Get-ChildItem -LiteralPath $dir -Force -Filter '.*.old.*' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+  }
   # The Start menu shortcuts go only when they start this install's Hersir: Hersir.lnk, and Gizai.lnk from before GA-233.
-  Remove-OwnShortcut $Shortcut
-  Remove-OwnShortcut $OldShortcut
-  if (-not (Get-ChildItem -LiteralPath $Prefix -Force -ErrorAction SilentlyContinue)) {
-    Remove-Item -LiteralPath $Prefix -Force -ErrorAction SilentlyContinue
+  Remove-OwnShortcut $Shortcut $dirs
+  Remove-OwnShortcut $OldShortcut $dirs
+  foreach ($dir in $dirs) {
+    if (-not (Get-ChildItem -LiteralPath $dir -Force -ErrorAction SilentlyContinue)) {
+      Remove-Item -LiteralPath $dir -Force -ErrorAction SilentlyContinue
+    }
   }
   Say 'Removed the app and the Start menu shortcut.'
   if ($Purge) {
-    Remove-Item -LiteralPath $Data, $SrcClone -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $Data, $SrcClone, $OldSrcClone -Recurse -Force -ErrorAction SilentlyContinue
     Say "Deleted your data ($Data) and the source copy ($SrcClone)."
   } else {
     Say "Your data stays in $Data (run with -Uninstall -Purge to delete it)."
@@ -215,7 +257,8 @@ if ($conf -and (Test-Path -LiteralPath $conf) -and (Select-String -LiteralPath $
   if (Test-Path -LiteralPath (Join-Path $SrcClone '.git')) {
     Invoke-Step 'git' @('-C', $SrcClone, 'pull', '--ff-only')
   } else {
-    $branch = if ($env:GIZAI_BRANCH) { $env:GIZAI_BRANCH } else { 'production' }
+    $branch = Get-Setting 'BRANCH'
+    if (-not $branch) { $branch = 'production' }
     Invoke-Step 'git' @('clone', '--depth', '1', '--branch', $branch, $Repo, $SrcClone)
   }
   $Src = $SrcClone
@@ -236,25 +279,26 @@ if (-not $SkipBuild) {
   try {
     # npm.cmd rather than npm: no npm.ps1, which the execution policy may refuse.
     Invoke-Step 'npm.cmd' @('ci')
-    # The Tauri CLI, never a plain cargo build --release: that can make a gizai.exe that loads the dev URL. Called
+    # The Tauri CLI, never a plain cargo build --release: that can make a hersir.exe that loads the dev URL. Called
     # directly rather than through npm run with "--", which Windows PowerShell may drop before npm sees it.
     Invoke-Step (Join-Path $Src 'node_modules\.bin\tauri.cmd') @('build', '--no-bundle')
+    # the crate gizai-mcp builds the program hersir-mcp.exe
     Invoke-Step 'cargo' @('build', '--release', '-p', 'gizai-mcp')
   } finally {
     Pop-Location
     foreach ($name in @($before.Keys)) { [Environment]::SetEnvironmentVariable($name, $before[$name]) }
   }
 }
-foreach ($p in $Programs) {
+foreach ($p in $BuiltNames) {
   if (-not (Test-Path -LiteralPath (Join-Path $Release $p))) {
     Say "$(Join-Path $Release $p) is missing: build first (run without -SkipBuild)."
     exit 1
   }
 }
-$NewGizai = Join-Path $Release 'gizai.exe'
+$NewHersir = Join-Path $Release 'hersir.exe'
 if ($BuildOnly) {
-  $built = Invoke-Gizai $NewGizai @('--version')
-  $name = if ($built.Ok -and $built.Text) { $built.Text } else { 'gizai' }
+  $built = Invoke-Hersir $NewHersir @('--version')
+  $name = if ($built.Ok -and $built.Text) { $built.Text } else { 'hersir' }
   Step "Built: $name, in $Release"
   Say "Nothing was installed. Install it with: $(Join-Path $Src 'install.ps1') -SkipBuild"
   exit 0
@@ -268,7 +312,7 @@ if (Test-Path -LiteralPath $db) {
   # The data folder goes to the new Hersir under both its names (HERSIR_DATA_DIR wins over GIZAI_DATA_DIR).
   $dataBefore = $env:HERSIR_DATA_DIR; $gizaiDataBefore = $env:GIZAI_DATA_DIR
   $env:HERSIR_DATA_DIR = $Data; $env:GIZAI_DATA_DIR = $Data
-  try { $snap = Invoke-Gizai $NewGizai @('--backup', 'before-install') } finally {
+  try { $snap = Invoke-Hersir $NewHersir @('--backup', 'before-install') } finally {
     $env:HERSIR_DATA_DIR = $dataBefore; $env:GIZAI_DATA_DIR = $gizaiDataBefore
   }
   if ($snap.Ok) {
@@ -289,24 +333,25 @@ Get-ChildItem -LiteralPath $Prefix -Force -Filter '.*.old.*' -ErrorAction Silent
 # copy that fails (a full disk) leaves the installed Hersir as it was. Windows won't overwrite a program that runs (an
 # open Hersir, or the helper a chat uses) but can rename it, so the old one is renamed aside first.
 $new = @{}; $old = @{}
-foreach ($p in $Programs) { $new[$p] = Join-Path $Prefix ".$p.new.$PID"; $old[$p] = Join-Path $Prefix ".$p.old.$PID" }
+$names = @($Programs.Keys)
+foreach ($p in $names) { $new[$p] = Join-Path $Prefix ".$p.new.$PID"; $old[$p] = Join-Path $Prefix ".$p.old.$PID" }
 try {
-  foreach ($p in $Programs) { Copy-Item -LiteralPath (Join-Path $Release $p) -Destination $new[$p] -Force }
+  foreach ($p in $names) { Copy-Item -LiteralPath (Join-Path $Release $Programs[$p]) -Destination $new[$p] -Force }
 } catch {
-  foreach ($p in $Programs) { Remove-Item -LiteralPath $new[$p] -Force -ErrorAction SilentlyContinue }
+  foreach ($p in $names) { Remove-Item -LiteralPath $new[$p] -Force -ErrorAction SilentlyContinue }
   Say "Could not copy Hersir into ${Prefix}, so nothing was installed."
   exit 1
 }
 try {
-  foreach ($p in $Programs) {
+  foreach ($p in $names) {
     $dst = Join-Path $Prefix $p
     if (Test-Path -LiteralPath $dst) { [System.IO.File]::Move($dst, $old[$p]) }
   }
-  foreach ($p in $Programs) { [System.IO.File]::Move($new[$p], (Join-Path $Prefix $p)) }
+  foreach ($p in $names) { [System.IO.File]::Move($new[$p], (Join-Path $Prefix $p)) }
 } catch {
   $why = $_.Exception.Message
   # Put back what was renamed aside, so the Hersir you had stays as it was.
-  foreach ($p in $Programs) {
+  foreach ($p in $names) {
     $dst = Join-Path $Prefix $p
     if ((Test-Path -LiteralPath $old[$p]) -and -not (Test-Path -LiteralPath $dst)) { [System.IO.File]::Move($old[$p], $dst) }
     Remove-Item -LiteralPath $new[$p] -Force -ErrorAction SilentlyContinue
@@ -315,19 +360,21 @@ try {
   Say 'So nothing was installed. If Hersir is open, quit it (Quit Hersir completely, in its tray menu), then run this again.'
   exit 1
 }
-foreach ($p in $Programs) { Remove-Item -LiteralPath $old[$p] -Force -ErrorAction SilentlyContinue }
-$installed = Invoke-Gizai $Exe @('--version')
-$version = if ($installed.Ok -and $installed.Text) { $installed.Text } else { 'gizai' }
+foreach ($p in $names) { Remove-Item -LiteralPath $old[$p] -Force -ErrorAction SilentlyContinue }
+$installed = Invoke-Hersir $Exe @('--version')
+$version = if ($installed.Ok -and $installed.Text) { $installed.Text } else { 'hersir' }
 Set-Content -LiteralPath $Marker -Value $version -Encoding Ascii
+if ($OldLayout) { Set-Content -LiteralPath $OldMarker -Value $version -Encoding Ascii }
 
-# The Start menu shortcut carries Hersir's AppUserModelID, ai.gizai.app: Windows shows a desktop app's notifications only
-# for an ID that a Start menu shortcut has. WScript.Shell can't set one, so this C# sets it through IPropertyStore.
+# The Start menu shortcut carries Hersir's AppUserModelID, dev.hersir.app (ai.gizai.app before 0.17.0): Windows shows a
+# desktop app's notifications only for an ID that a Start menu shortcut has. WScript.Shell can't set one, so this C#
+# sets it through IPropertyStore. The shortcut starts hersir.exe, also in an install from before 0.17.0.
 $shortcutCode = @'
 using System;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 
-namespace GizaiInstall
+namespace HersirInstall
 {
     [ComImport, Guid("00021401-0000-0000-C000-000000000046")]
     class CShellLink { }
@@ -413,9 +460,9 @@ namespace GizaiInstall
 '@
 $madeShortcut = $true
 try {
-  if (-not ('GizaiInstall.Shortcut' -as [type])) { Add-Type -TypeDefinition $shortcutCode }
+  if (-not ('HersirInstall.Shortcut' -as [type])) { Add-Type -TypeDefinition $shortcutCode }
   New-Item -ItemType Directory -Force -Path $StartMenu | Out-Null
-  [GizaiInstall.Shortcut]::Save($Shortcut, $Exe, $Prefix, 'Clients, projects and tasks, worked on by local AI agents', 'ai.gizai.app')
+  [HersirInstall.Shortcut]::Save($Shortcut, $Exe, $Prefix, 'Clients, projects and tasks, worked on by local AI agents', 'dev.hersir.app')
 } catch {
   # Without the C# (a locked-down PowerShell), a plain shortcut: Hersir starts from the Start menu, without notifications.
   $why = $_.Exception.Message
@@ -431,9 +478,17 @@ try {
   }
 }
 # Gizai.lnk goes once Hersir.lnk is there, when it starts this install's Hersir (an install from before GA-233 made it).
-if ($madeShortcut) { Remove-OwnShortcut $OldShortcut }
+if ($madeShortcut) { Remove-OwnShortcut $OldShortcut @($Prefix) }
+
+# The one line's source copy from before 0.17.0, gizai-src (it is hersir-src now), goes, unless this runs from it.
+$fromOldClone = ((Full $Src) + '\').StartsWith((Full $OldSrcClone) + '\', [StringComparison]::OrdinalIgnoreCase)
+if (-not $fromOldClone -and (Test-Path -LiteralPath $OldSrcClone)) {
+  Remove-Item -LiteralPath $OldSrcClone -Recurse -Force -ErrorAction SilentlyContinue
+  if (Test-Path -LiteralPath $OldSrcClone) { Say "Note: could not remove $OldSrcClone, the source copy from before 0.17.0. Remove it yourself." }
+}
 
 Step "Done: $version"
 Say "Start Hersir from the Start menu, or run: & '$Exe'"
+if ($OldLayout) { Say "Your install from before 0.17.0 stays in $Prefix, and gizai.exe there still works." }
 Say "Your data: $Data"
 Say 'Update: Hersir offers new releases above Company in its sidebar (or run this installer again). Remove: run it with -Uninstall.'

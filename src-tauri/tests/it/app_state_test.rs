@@ -52,7 +52,7 @@ fn each_data_folder_is_its_own_single_instance() {
     assert_eq!(id, gizai_lib::instance_id(&dir.path().join("x/../a")), "the same folder, spelled differently");
     assert_ne!(id, gizai_lib::instance_id(&b));
     // a valid D-Bus name: dot-separated elements of [A-Za-z0-9_], none starting with a digit
-    assert!(id.starts_with("ai.gizai.app.") && id.len() < 200, "{id}");
+    assert!(id.starts_with("dev.hersir.app.") && id.len() < 200, "{id}");
     for part in id.split('.') {
         assert!(!part.is_empty() && !part.starts_with(|c: char| c.is_ascii_digit()), "{id}");
         assert!(part.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'), "{id}");

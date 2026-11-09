@@ -219,16 +219,16 @@ fn alive(pid: u32) -> bool {
     std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|s| !s[s.rfind(')').unwrap() + 2..].starts_with('Z'))
 }
 
-/// The shim binary: target/debug/gizai-mcp (built by `cargo test --workspace`; built here when missing).
+/// The shim binary: target/debug/hersir-mcp, which the crate gizai-mcp builds (built by `cargo test --workspace`; built here when missing).
 #[cfg(target_os = "linux")]
 fn shim() -> PathBuf {
     static BUILT: std::sync::Once = std::sync::Once::new();
-    let path = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/debug/gizai-mcp"));
+    let path = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/debug/hersir-mcp"));
     BUILT.call_once(|| {
         let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
         let ok = std::process::Command::new(cargo).args(["build", "-q", "-p", "gizai-mcp"])
             .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/..")).status().map(|s| s.success()).unwrap_or(false);
-        assert!(ok && path.is_file(), "could not build gizai-mcp");
+        assert!(ok && path.is_file(), "could not build hersir-mcp (the crate gizai-mcp)");
     });
     path
 }

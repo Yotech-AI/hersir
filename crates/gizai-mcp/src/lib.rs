@@ -1,6 +1,6 @@
 //! The server side of MCP (Model Context Protocol) as Claude Code speaks it over stdio: newline-delimited
 //! JSON-RPC 2.0 with `initialize`, `ping`, `tools/list` and `tools/call`. Gizai serves it on a local socket (a
-//! named pipe on Windows, see `pipe`); the `gizai-mcp` shim (src/bin) connects Claude Code's stdio to that socket.
+//! named pipe on Windows, see `pipe`); the `hersir-mcp` shim (src/bin) connects Claude Code's stdio to that socket.
 //! No Tauri, no database.
 use std::future::Future;
 

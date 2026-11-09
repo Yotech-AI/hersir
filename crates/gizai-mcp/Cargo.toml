@@ -1,9 +1,15 @@
 [package]
 name = "gizai-mcp"
-description = "Hersir MCP: the Model Context Protocol over JSON lines (server side) and the gizai-mcp stdio shim"
+description = "Hersir MCP: the Model Context Protocol over JSON lines (server side) and the hersir-mcp stdio shim"
 edition.workspace = true
 license.workspace = true
 version.workspace = true
+
+# The shim is the program hersir-mcp (hersir-mcp.exe on Windows); the crate keeps its name, as the other crates do
+# (GA-248).
+[[bin]]
+name = "hersir-mcp"
+path = "src/bin/gizai-mcp.rs"
 
 [dependencies]
 serde_json = { workspace = true }
