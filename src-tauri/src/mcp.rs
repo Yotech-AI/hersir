@@ -62,13 +62,14 @@ pub fn socket_path_in(runtime_dir: Option<&Path>, data_dir: &Path) -> PathBuf {
     std::env::temp_dir().join(format!("gizai-{uid}")).join(name)
 }
 
-/// The `gizai-mcp` shim (`gizai-mcp.exe` on Windows): `$GIZAI_MCP_BIN`, else next to Gizai's own binary.
+/// The `hersir-mcp` shim (`hersir-mcp.exe` on Windows): `$HERSIR_MCP_BIN` (or `$GIZAI_MCP_BIN`, its name before
+/// 0.17.0), else next to Hersir's own program, where install.sh and install.ps1 put it.
 pub fn shim_bin() -> Option<PathBuf> {
-    if let Some(p) = std::env::var_os("GIZAI_MCP_BIN").map(PathBuf::from) {
+    if let Some(p) = gizai_agents::os::hersir_var("MCP_BIN").map(PathBuf::from) {
         return Some(p).filter(|p| p.is_file());
     }
     let exe = std::env::current_exe().ok()?;
-    Some(exe.parent()?.join(format!("gizai-mcp{}", std::env::consts::EXE_SUFFIX))).filter(|p| p.is_file())
+    Some(exe.parent()?.join(format!("hersir-mcp{}", std::env::consts::EXE_SUFFIX))).filter(|p| p.is_file())
 }
 
 /// Binds the socket and serves connections until the app ends. A socket file left by an earlier Gizai is

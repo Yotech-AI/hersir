@@ -434,7 +434,7 @@ fn prepare(st: &AppState, thread: Option<&ChatThread>, new_cli: Option<&str>, bi
     }
     let bin = crate::clis::spec(st, &cli, bin_override)?;
     let shim = st.mcp_shim.clone().filter(|p| p.is_file())
-        .ok_or("The gizai-mcp helper is missing next to Hersir: rebuild with scripts/run.sh")?;
+        .ok_or("The hersir-mcp helper is missing next to Hersir: rebuild with scripts/run.sh")?;
     Ok(Plan { agent, cli, bin, shim })
 }
 
@@ -1435,7 +1435,7 @@ pub fn start_check(st: &AppState, agent: Member, prompt: String, saw: Vec<gizai_
         return Err(format!("{} runs on {}: the board check needs a Claude Code CLI", agent.name, cli.name));
     }
     let bin = crate::clis::spec(st, &cli, None)?;
-    let shim = st.mcp_shim.clone().filter(|p| p.is_file()).ok_or("The gizai-mcp helper is missing next to Hersir: rebuild with scripts/run.sh")?;
+    let shim = st.mcp_shim.clone().filter(|p| p.is_file()).ok_or("The hersir-mcp helper is missing next to Hersir: rebuild with scripts/run.sh")?;
     let st2 = st.clone();
     Ok(tokio::spawn(async move {
         let s = check_once(&st2, &agent, &prompt, &saw, &bin, &shim).await;
@@ -1619,7 +1619,7 @@ pub fn question_ready(st: &AppState, agent: &Member) -> Result<(), String> {
     }
     crate::clis::spec(st, &cli, None)?;
     if !st.mcp_shim.as_ref().is_some_and(|p| p.is_file()) {
-        return Err("The gizai-mcp helper is missing next to Hersir: rebuild with scripts/run.sh".into());
+        return Err("The hersir-mcp helper is missing next to Hersir: rebuild with scripts/run.sh".into());
     }
     Ok(())
 }
@@ -1645,7 +1645,7 @@ pub async fn question_once(st: &AppState, agent: &Member, asked_run_id: &str, pr
         Err(e) => return fail("", e),
     };
     let Some(shim) = st.mcp_shim.clone().filter(|p| p.is_file()) else {
-        return fail("", "The gizai-mcp helper is missing next to Hersir: rebuild with scripts/run.sh".into());
+        return fail("", "The hersir-mcp helper is missing next to Hersir: rebuild with scripts/run.sh".into());
     };
     let chat_dir = st.data_dir.join("chat");
     let cwd = st.data_dir.join("lead");
