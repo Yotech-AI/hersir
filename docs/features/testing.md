@@ -32,7 +32,7 @@ When a run on a card ends (also after Stop or a limit) and its project is linked
 
 - It pushes to the same remote and over the same Push over setting as Open pull request, never by force.
 - Only commits go: uncommitted changes stay in the worktree, and the run's output says how many there are.
-- The run's output and the Run panel say "Hersir pushed <branch> (3 commits)", or why it couldn't.
+- The run's output and the Run panel say "Hersir pushed `<branch>` (3 commits)", or why it couldn't.
 - A push that fails (the branch on GitHub has commits this one doesn't, no access, no network) is not forced or tried again. The card stays where it is, on hold "blocked" with the reason, and shows in [the Inbox](inbox.md).
 
 So a `git push` the agent's CLI refuses no longer holds a card up, and "How this run works" tells agents so. They keep `git push` in their list.

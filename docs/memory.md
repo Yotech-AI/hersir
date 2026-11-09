@@ -61,7 +61,7 @@ owner, keeps *Its own folder*:
   brings its group along.
 - **Joining:** the bullets under `## Learned` in the agent's `Notes` are added under `## Learned` in the owner's `Notes`
   (a bullet the owner's has already is not added again), and its other notes move into the owner's folder, keeping their
-  place in it; a title that is taken gets " (<agent name>)" added. The links to them are rewritten as `memory_move` does,
+  place in it; a title that is taken gets " (`<agent name>`)" added. The links to them are rewritten as `memory_move` does,
   so they still work. The agent's `Notes` goes once its learned lines are in the owner's: when only its template is
   left (the properties `type: note` and `tags: [agent]`, its title and the line about what it is); anything else in it
   moves as `Notes (<agent name>)`. A `Notes` about another client or project than the owner's moves whole, so its lines
@@ -252,7 +252,7 @@ When a task agent ends its run with `needs_decision`, the Team Lead looks at the
    Lead.
 3. **The Team Lead's run on the question** (trigger `question`, role lead, no card of its own, so the card's latest run
    stays the agent's): a fresh session with the question, the card, its description, acceptance criteria and last
-   comments, and its Memory block. It only reads: memory, the card and the project's docs through the gizai tools (the
+   comments, and its Memory block. It only reads: memory, the card and the project's docs through the `gizai` tools (the
    tools that change things are refused), and its copies of the code with Read, Glob and Grep. Its rules: always leave
    money, scope, deadlines, messages to clients, security, deleting and anything it can't find in memory or on the card to
    you. It ends with a result line:
@@ -271,10 +271,10 @@ When a task agent ends its run with `needs_decision`, the Team Lead looks at the
    A start that only has to wait (Runs at once full, the agent paused or over its budget) is tried again every 30
    seconds for ten minutes, with the card still with the Team Lead.
 5. **Escalated**, and also a failed or timed-out run, one without its result line, or an answer the agent can't be
-   continued with: the Team Lead's comment "Needs <you>: why", the options and its advice, and the hold's reason becomes
+   continued with: the Team Lead's comment "Needs `<you>`: why", the options and its advice, and the hold's reason becomes
    "Team Lead escalated to you: why", in the Inbox (it notifies as a new hold). A question still with the Team Lead when
    Hersir stops goes to you at the next start. A later Continue doesn't count the Team Lead's comment as an answer. When the
-   Team Lead can't run here at all (no gizai-mcp helper, its CLI not found), the question goes to you as before, without
+   Team Lead can't run here at all (no `gizai-mcp` helper, its CLI not found), the question goes to you as before, without
    a comment, and the Runs tab says why.
 6. **Your answer.** When the agent starts again on a card whose question the Team Lead escalated, the comments people
    wrote since are kept in `Decisions/<project name>` as the Team Lead's, with the card, once per question.
