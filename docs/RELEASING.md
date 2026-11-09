@@ -184,7 +184,7 @@ Every release must keep this working, because the Hersir that updates runs the *
 - **The one-line installs run the release's installer too.** `scripts/get.sh` (`curl -fsSL https://hersir.dev/install.sh | sh`) and `scripts/get.ps1` (`irm https://hersir.dev/install.ps1 | iex`) are read from `production`: hersir.dev sends its two addresses on to them there, so they must keep their names and place. What they get themselves comes from GitHub, never from the website. They get the same tag as an update, shallow, into `~/.local/share/gizai-src` (`%LOCALAPPDATA%\gizai-src` on Windows), never into the data folder. Then they run its `install.sh --check` and `install.sh` (`install.ps1 -Check` and `install.ps1`), with the flags they were given. So `--check` and `-Check` must keep working too. CI checks that both scripts parse and runs their checks against the pull request's own commit.
 - **Only an installed Hersir updates itself.** That is a Hersir that runs as `<prefix>/lib/gizai/gizai` (on macOS also `<prefix>/lib/gizai/Hersir.app/Contents/MacOS/gizai`, when it starts from the Dock), or on Windows as a `gizai.exe` with `install.ps1`'s `gizai-installed.txt` next to it. A dev build (`scripts/run.sh`) or a test build says why it doesn't, and never installs anything.
 - **From a terminal** it works as before: `git pull` in a checkout of `production`, then `./install.sh` (on Windows `.\install.ps1`).
-- **Headless test and screenshot runs** (`GIZAI_SELFTEST` or `GIZAI_ROUTE` set) skip the automatic check, unless `GIZAI_RELEASES_URL` is set too.
+- **Headless test and screenshot runs** (`HERSIR_SELFTEST` or `HERSIR_ROUTE` set, or their `GIZAI_` names) skip the automatic check, unless `GIZAI_RELEASES_URL` is set too.
 - **Settings for tests and forks:**
   - `GIZAI_REPO`: the repository the tag is fetched from. Default `https://github.com/Yotech-AI/hersir.git`.
   - `GIZAI_RELEASES_URL`: what the check reads. Default: GitHub's latest release of `GIZAI_REPO`. It also takes `http://` and `file://` addresses.
@@ -218,13 +218,13 @@ Never test against the Hersir Jeffrey uses: not `./install.sh`, not `~/.local/li
 3. **Start that Hersir headless,** in `cage` the way `scripts/shot-cage.sh` starts one, but with these settings:
 
    ```sh
-   HOME="$T/home" XDG_DATA_HOME="$T/home/.local/share" GIZAI_DATA_DIR="$T/data" \
-     GIZAI_REPO="$T/fake-repo" GIZAI_RELEASES_URL="file://$T/latest.json" GIZAI_SKIP_ONBOARDING=1 \
+   HOME="$T/home" XDG_DATA_HOME="$T/home/.local/share" HERSIR_DATA_DIR="$T/data" \
+     GIZAI_REPO="$T/fake-repo" GIZAI_RELEASES_URL="file://$T/latest.json" HERSIR_SKIP_ONBOARDING=1 \
      "$T/home/.local/lib/gizai/gizai"
    ```
 
    - Hersir installs an update into the prefix it runs from: here `$T/home/.local`. The installer's desktop entry and icons go to `$T/home/.local/share`.
-   - `$T/data` is new, so `GIZAI_SKIP_ONBOARDING=1` skips the first start's onboarding ([docs/install.md](install.md#first-start)).
+   - `$T/data` is new, so `HERSIR_SKIP_ONBOARDING=1` skips the first start's onboarding ([docs/install.md](install.md#first-start)).
    - Keep `HOME` and `XDG_DATA_HOME` in the scratch folder anyway: other tools write there too.
    - A Hersir that runs from `target/release` never installs; it says why in Settings → Updates.
 

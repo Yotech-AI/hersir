@@ -142,7 +142,7 @@ The first time Hersir opens, it walks you through four steps:
 
 You can skip it. Hersir is set up already: you (named after your login), My company, My team, and five agents (the Team Lead, Backend, Frontend, QA and DevOps) on Claude Code, or on Codex when only Codex is installed. Change them later on the Team page and in Settings.
 
-`GIZAI_SKIP_ONBOARDING=1` starts Hersir as if you skipped it: for scripts and tests on a new data folder.
+`HERSIR_SKIP_ONBOARDING=1` starts Hersir as if you skipped it: for scripts and tests on a new data folder.
 
 ## Updates
 
@@ -159,7 +159,11 @@ You can still update from a terminal: run the [one line](#in-one-line) again, or
 
 ## Your data
 
-Hersir keeps your data in one folder on your computer: the database, logs, worktrees and backups. It is `~/.local/share/gizai` on Linux, `~/Library/Application Support/Gizai` on macOS and `%APPDATA%\Gizai` on Windows, and `GIZAI_DATA_DIR` points it elsewhere. One Hersir runs per data folder.
+Hersir keeps your data in one folder on your computer: the database, logs, worktrees and backups. It is `~/.local/share/hersir` on Linux (`$XDG_DATA_HOME/hersir` when that is set), `~/Library/Application Support/Hersir` on macOS and `%APPDATA%\Hersir` on Windows. `HERSIR_DATA_DIR` points it elsewhere. One Hersir runs per data folder.
+
+An install from before 0.17.0 keeps its data where it is, in `~/.local/share/gizai`, `~/Library/Application Support/Gizai` or `%APPDATA%\Gizai`: Hersir uses the hersir folder when there is one, else the gizai folder when it holds Hersir's data (its `gizai.db`), else it makes the hersir folder. It never moves or copies your data.
+
+Each variable Hersir reads has a `HERSIR_` name and, from before 0.17.0, a `GIZAI_` one: `GIZAI_DATA_DIR` still works, and `HERSIR_DATA_DIR` wins when both are set.
 
 It cleans up after itself when it starts and once a day while it runs:
 
