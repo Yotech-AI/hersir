@@ -268,11 +268,14 @@ pub fn pull_number(url: &str) -> Option<u64> {
     url.trim_end_matches('/').rsplit('/').next()?.parse().ok()
 }
 
-/// gh without prompts, colours or update checks.
+/// gh without prompts, colours or update checks. The git gh starts in the repository it runs in (`gh pr create` asks
+/// git status, say) runs none of the repository's hooks and no fsmonitor program, like Hersir's own git
+/// (`worktree::NO_HOOKS`, GA-263): the same settings, in gh's environment.
 pub(crate) fn gh_command(gh: &Path) -> Command {
     let mut cmd = crate::os::command(gh);
     cmd.env("GH_PROMPT_DISABLED", "1").env("GH_NO_UPDATE_NOTIFIER", "1").env("GH_NO_EXTENSION_UPDATE_NOTIFIER", "1")
-        .env("GH_SPINNER_DISABLED", "1").env("NO_COLOR", "1").env("CLICOLOR", "0").env("GIT_TERMINAL_PROMPT", "0");
+        .env("GH_SPINNER_DISABLED", "1").env("NO_COLOR", "1").env("CLICOLOR", "0").env("GIT_TERMINAL_PROMPT", "0")
+        .envs(crate::connection::git_env(&crate::worktree::no_hooks_settings()));
     cmd
 }
 
