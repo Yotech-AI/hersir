@@ -109,7 +109,7 @@ fn only_a_person_sets_team_lead_may_merge_and_other_changes_keep_it() {
     for agent in [&lead, &be] {
         for on in [true, false] {
             let e = projects::update(&f.db, agent, &f.project, f.input(Some(on))).unwrap_err().to_string();
-            assert!(e.contains("Team Lead may merge is switched only by a person") && e.contains("Nothing changed"), "{e}");
+            assert!(e.contains("Chief may merge is switched only by a person") && e.contains("Nothing changed"), "{e}");
         }
         let e = projects::create(&f.db, agent, ProjectInput { name: "Shop".into(), key: "SHOP".into(), lead_may_merge: Some(false),
             ..Default::default() }).unwrap_err().to_string();

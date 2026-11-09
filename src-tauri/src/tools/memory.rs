@@ -1,11 +1,11 @@
-//! The memory tools (GA-19): the Team Lead lists, searches, reads, writes, appends to and moves the notes in Gizai's
-//! Memory (`gizai_core::memory`), as itself, so the activity feed shows it did. The Team Lead sees every scope.
+//! The memory tools (GA-19): the Chief lists, searches, reads, writes, appends to and moves the notes in Gizai's
+//! Memory (`gizai_core::memory`), as itself, so the activity feed shows it did. The Chief sees every scope.
 use gizai_core::memory::{self, Note, Who};
 use serde_json::{Value, json};
 
 use super::{Args, Cx, err, ymd};
 
-/// The caller as memory sees it. The agent with Chat on is the Team Lead, whatever its role says.
+/// The caller as memory sees it. The agent with Chat on is the Chief, whatever its role says.
 pub(super) fn who(cx: &Cx) -> Result<Who, String> {
     let who = Who::of(cx.db(), cx.actor).map_err(err)?;
     let chat = gizai_core::team::chat_agent(cx.db()).ok().flatten().is_some_and(|a| a.actor_id == cx.actor);

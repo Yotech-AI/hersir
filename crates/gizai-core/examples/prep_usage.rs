@@ -1,8 +1,8 @@
 //! Prepares a copy of the demo data for the UI Usage test (GA-33): three paused agents (agents paused in Settings too, and
 //! Claude Code pointed at the fake) and finished runs with their tokens and cost. Today: the Backend Agent on KADE ($0.42)
-//! and GFW ($0.15), a Codex run on KADE with tokens but no cost (unknown), and a chat turn of the Team Lead ($0.03);
+//! and GFW ($0.15), a Codex run on KADE with tokens but no cost (unknown), and a chat turn of the Chief ($0.03);
 //! 20 days ago: the Backend Agent on KADE ($1.00).
-//! GA-62, the Subscription tab: Settings → Coding CLIs also has Claude Code 2 (with the Team Lead on it), Codex (with the
+//! GA-62, the Subscription tab: Settings → Coding CLIs also has Claude Code 2 (with the Chief on it), Codex (with the
 //! Codex Agent) and Gemini, and the limits their runs reported: Claude Code's session 42% and weekly 85% (no Fable number),
 //! Claude Code 2's session limit reached (in words) and weekly 35%, Codex's 5-hour 23.5% and weekly 41%.
 //! usage: cargo run -p gizai-core --example prep_usage -- <data dir> <fake claude>
@@ -24,7 +24,7 @@ fn main() {
     };
     let backend = agent("Backend Agent", "backend", None);
     let codex = agent("Codex Agent", "backend", None);
-    let lead = agent("Team Lead", "lead", Some(true));
+    let lead = agent("Chief", "lead", Some(true));
 
     let all = tasks::list(&db, &TaskFilter::default()).unwrap();
     let card = |prefix: &str, n: usize| all.iter().filter(|t| t.identifier.starts_with(prefix)).nth(n).unwrap().id.clone();

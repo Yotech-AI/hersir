@@ -19,7 +19,7 @@ const COLS: &str = "t.id, t.identifier, t.project_id, p.name, p.color, t.title, 
   LEFT JOIN projects p ON p.id = t.project_id
   LEFT JOIN actors a ON a.id = t.assignee_actor_id";
 
-/// Whether the card's question is with the Team Lead (GA-70): on hold needs_decision, and the Team Lead asks or answers
+/// Whether the card's question is with the Chief (GA-70): on hold needs_decision, and the Chief asks or answers
 /// on its latest run that went to it. 1, 0 or NULL.
 const WITH_LEAD: &str = "CASE WHEN t.hold = 'needs_decision' THEN (SELECT json_extract(r.outcome_json, '$.lead.state') IN ('asking','answering') FROM runs r
       WHERE r.task_id = t.id AND r.deleted_at IS NULL AND json_extract(r.outcome_json, '$.lead') IS NOT NULL
@@ -83,7 +83,7 @@ pub fn list(db: &Db, filter: &TaskFilter) -> Result<Vec<Task>> {
 }
 
 /// `list` without each card's acceptance criteria too (`acceptance_md` None), for the window's lists (GA-191): only a
-/// card's own page shows them, and it asks `get`. The agents' and the Team Lead's tools keep `list`'s full rows.
+/// card's own page shows them, and it asks `get`. The agents' and the Chief's tools keep `list`'s full rows.
 pub fn list_lean(db: &Db, filter: &TaskFilter) -> Result<Vec<Task>> {
     db.read(|c| list_in(c, filter, false))
 }
@@ -124,7 +124,7 @@ pub fn archived(db: &Db, project_id: Option<&str>) -> Result<Vec<Task>> {
     })
 }
 
-/// The Inbox: open cards on hold (an agent or a gate needs a person), except a card whose question is with the Team Lead
+/// The Inbox: open cards on hold (an agent or a gate needs a person), except a card whose question is with the Chief
 /// (GA-70: it answers or asks you first), and cards waiting for `you` in Review or Deploy (merged, not deployed yet).
 /// Same rule as the UI's `needsYou`.
 /// The database picks them (GA-191): the other open cards aren't read.
@@ -407,7 +407,7 @@ fn update_in(w: &Writer, actor: &str, id: &str, patch: &TaskPatch) -> Result<()>
                 cols.push(("fail_count", V::Integer(0)));
                 cols.push(("hold_at", V::Null));
             } else {
-                // a comment after this answers it (the Team Lead's board check)
+                // a comment after this answers it (the Chief's board check)
                 cols.push(("hold_at", V::Integer(ids::now_ms())));
             }
         }
@@ -436,7 +436,7 @@ fn update_in(w: &Writer, actor: &str, id: &str, patch: &TaskPatch) -> Result<()>
     }
 }
 
-/// A move by hand (the board, the Team Lead's `move_task`). A person dragging a card on hold into To do or In progress
+/// A move by hand (the board, the Chief's `move_task`). A person dragging a card on hold into To do or In progress
 /// answers the hold: it comes off (with fresh tries), so the queue or the next board check starts the card. Gates move
 /// cards with `move_in` and keep their holds.
 pub fn move_to(db: &Db, actor: &str, id: &str, state_id: &str, sort_key: &str) -> Result<()> {

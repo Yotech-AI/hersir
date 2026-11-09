@@ -1,19 +1,19 @@
-//! Agents ask the Team Lead before a person (GA-70). When a task agent ends its run with `needs_decision` and the step is
-//! on (Settings → Runs → Ask the Team Lead first), the card goes to the Team Lead first: it stays on hold, but out of the
-//! Inbox, while the Team Lead's run on the question (trigger `question`) reads it, looks in memory and either answers (the
+//! Agents ask the Chief before a person (GA-70). When a task agent ends its run with `needs_decision` and the step is
+//! on (Settings → Runs → Ask the Chief first), the card goes to the Chief first: it stays on hold, but out of the
+//! Inbox, while the Chief's run on the question (trigger `question`) reads it, looks in memory and either answers (the
 //! answer goes on the card and the agent's session continues with it) or escalates (a comment with why, the options and
 //! its advice, and the card lands in the Inbox). Any error, a timeout or a run without an answer escalates too.
 //!
-//! What the Team Lead did is kept with the question: under `lead` in the asking run's `outcome_json` (state `asking`,
+//! What the Chief did is kept with the question: under `lead` in the asking run's `outcome_json` (state `asking`,
 //! `answering` while Gizai continues the agent, then `answered`, `escalated`, `dropped` when the card moved on without
-//! it, or `skipped` when the Team Lead can't run here at all, which goes to you as before; `limit` when the limits sent
-//! the question to you, so the board check leaves it to you as well). The Team Lead's own run is a run without a card, stored with trigger `approval` (the runs table's CHECK takes no
+//! it, or `skipped` when the Chief can't run here at all, which goes to you as before; `limit` when the limits sent
+//! the question to you, so the board check leaves it to you as well). The Chief's own run is a run without a card, stored with trigger `approval` (the runs table's CHECK takes no
 //! new trigger without rebuilding the whole table) and read as `question`, its `outcome_json` naming the run that asked.
 //! So the runs table needs no new column.
 //!
-//! Limits, so there are no loops: one Team Lead attempt per question, two per card, and the question right after a Team
-//! Lead answer goes to the person. A `run_for_me` request, a gate's hold (QA bounces, an answer the role can't give, a
-//! deploy outside Deploy) and a failed push never go to the Team Lead.
+//! Limits, so there are no loops: one Chief attempt per question, two per card, and the question right after a
+//! Chief answer goes to the person. A `run_for_me` request, a gate's hold (QA bounces, an answer the role can't give, a
+//! deploy outside Deploy) and a failed push never go to the Chief.
 use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
@@ -21,18 +21,18 @@ use crate::db::{Db, Writer};
 use crate::memory::{self, Saved, Who};
 use crate::{Error, Result, clis, comments, ids, runs, settings, team, util};
 
-/// The Team Lead takes at most this many questions per card.
+/// The Chief takes at most this many questions per card.
 pub const MAX_PER_CARD: i64 = 2;
-/// The trigger a Team Lead's run on a question reports (`Run::trigger`).
+/// The trigger a Chief's run on a question reports (`Run::trigger`).
 pub const TRIGGER: &str = "question";
 /// How it is stored: the runs table's CHECK has no `question`, and `approval` was never used (see `runs::reported_trigger`).
 pub(crate) const STORED_TRIGGER: &str = "approval";
-/// Settings → Runs → Ask the Team Lead first.
+/// Settings → Runs → Ask the Chief first.
 const SETTING: &str = "ask_lead_first";
 /// An answer or a reason is kept on the question at most this long (the comment has it in full).
 const KEEP_CHARS: usize = 600;
 
-/// Whether task agents ask the Team Lead before a person (Settings → Runs): on unless switched off.
+/// Whether task agents ask the Chief before a person (Settings → Runs): on unless switched off.
 pub fn enabled(db: &Db) -> bool {
     settings::get::<bool>(db, SETTING).ok().flatten().unwrap_or(true)
 }
@@ -42,18 +42,18 @@ pub fn set_enabled(db: &Db, on: bool) -> Result<()> {
     settings::set(db, SETTING, &on)
 }
 
-/// What the Team Lead did with a run's question, as the card's Runs tab shows it (`Run::lead`).
+/// What the Chief did with a run's question, as the card's Runs tab shows it (`Run::lead`).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LeadAnswer {
-    /// `asking` (the Team Lead looks at it now), `answering` (it answered, and Gizai continues the agent), `answered`,
+    /// `asking` (the Chief looks at it now), `answering` (it answered, and Gizai continues the agent), `answered`,
     /// `escalated` (it asked you: the Inbox), `dropped` (the card moved on before it was done), `skipped` (it can't run
     /// here, `reason` says why: the question went to you as before) or `limit` (the limits sent it to you, `reason`
     /// says which).
     pub state: String,
-    /// The Team Lead.
+    /// The Chief.
     pub lead_id: Option<String>,
-    /// The Team Lead's run on the question, once it started.
+    /// The Chief's run on the question, once it started.
     pub run_id: Option<String>,
     /// Escalated: why you decide.
     pub reason: Option<String>,
@@ -61,11 +61,11 @@ pub struct LeadAnswer {
     pub answer: Option<String>,
     /// The memory note the answer was saved in.
     pub note: Option<String>,
-    /// What the Team Lead's run on the question cost (it counts toward the Team Lead's budget).
+    /// What the Chief's run on the question cost (it counts toward the Chief's budget).
     pub cost_usd_micros: i64,
     /// You answered after it escalated, and Gizai saved your answer in memory.
     pub learned: bool,
-    /// Escalated: the Team Lead's comment that asks you ("Needs <you>: …"). It is no answer to the question
+    /// Escalated: the Chief's comment that asks you ("Needs <you>: …"). It is no answer to the question
     /// (`runs::continue_answered` doesn't count it as one).
     pub comment_id: Option<String>,
 }
@@ -86,7 +86,7 @@ struct Stored {
     comment: Option<String>,
 }
 
-/// The question's record (`outcome_json.lead`, as JSON text) and the Team Lead's run's cost as `Run::lead`.
+/// The question's record (`outcome_json.lead`, as JSON text) and the Chief's run's cost as `Run::lead`.
 pub(crate) fn lead_of(json: Option<String>, cost: Option<i64>) -> Option<LeadAnswer> {
     let s: Stored = serde_json::from_str(&json?).ok()?;
     Some(LeadAnswer { state: s.state, lead_id: s.lead, run_id: s.run, reason: s.reason, answer: s.answer, note: s.note,
@@ -112,11 +112,11 @@ fn cut(s: &str, n: usize) -> String {
     }
 }
 
-/// The Team Lead takes the question a task agent's run (`run_id`, on `task_id`) ended with, when: the run asks nobody to
-/// run commands (`run_for_me`), its agent isn't the Team Lead, the step is on, agents aren't paused in Settings, the Team
-/// Lead (the agent with Chat on) is active, runs on a Claude Code CLI and is under its monthly budget, the card had fewer
-/// than `MAX_PER_CARD` Team Lead attempts, and the card's question before this one wasn't answered by the Team Lead.
-/// Records the hand-over on the run (state `asking`) and returns the Team Lead's id; None: the question goes to the Inbox
+/// The Chief takes the question a task agent's run (`run_id`, on `task_id`) ended with, when: the run asks nobody to
+/// run commands (`run_for_me`), its agent isn't the Chief, the step is on, agents aren't paused in Settings, the
+/// Chief (the agent with Chat on) is active, runs on a Claude Code CLI and is under its monthly budget, the card had fewer
+/// than `MAX_PER_CARD` Chief attempts, and the card's question before this one wasn't answered by the Chief.
+/// Records the hand-over on the run (state `asking`) and returns the Chief's id; None: the question goes to the Inbox
 /// as before. Called by `workflow::apply_outcome_with` inside its write, after the hold is set.
 pub(crate) fn hand_over_in(w: &Writer, run_id: &str, task_id: &str, agent_id: &str, role: &str, run_for_me: &[String]) -> Result<Option<String>> {
     let c = w.conn();
@@ -155,20 +155,20 @@ pub(crate) fn hand_over_in(w: &Writer, run_id: &str, task_id: &str, agent_id: &s
            AND json_extract(outcome_json, '$.lead.state') <> 'skipped'",
         rusqlite::params![task_id, run_id], |r| r.get(0))?;
     if tries >= MAX_PER_CARD {
-        return limit("the Team Lead already took two questions on this card");
+        return limit("the Chief already took two questions on this card");
     }
-    // The question right after a Team Lead answer goes to the person: no loops.
+    // The question right after a Chief answer goes to the person: no loops.
     let before: Option<Option<String>> = c.query_row(
         "SELECT json_extract(outcome_json, '$.lead.state') FROM runs WHERE task_id=?1 AND id<>?2 AND outcome='needs_decision' AND deleted_at IS NULL
          ORDER BY created_at DESC, id DESC LIMIT 1", rusqlite::params![task_id, run_id], |r| r.get(0)).optional()?;
     if matches!(before.flatten().as_deref(), Some("answering" | "answered")) {
-        return limit("the Team Lead answered this card's last question");
+        return limit("the Chief answered this card's last question");
     }
     save_stored(w, run_id, &Stored { state: "asking".into(), lead: Some(lead.actor_id.clone()), at: ids::now_ms(), ..Default::default() })?;
     Ok(Some(lead.actor_id))
 }
 
-/// A run's question, for the Team Lead's run on it.
+/// A run's question, for the Chief's run on it.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Question {
@@ -191,7 +191,7 @@ pub struct Question {
     pub role: String,
     /// What the agent wrote: its summary, then its numbered issues.
     pub text: String,
-    /// What the Team Lead did with it so far.
+    /// What the Chief did with it so far.
     pub lead: LeadAnswer,
 }
 
@@ -220,8 +220,8 @@ pub fn question(db: &Db, run_id: &str) -> Result<Question> {
     })
 }
 
-/// Records a queued run of the Team Lead on the question `asked_run_id`: no card and no chat (so the card's latest run
-/// stays the one that asked, which the answer continues), trigger `question`, role lead, on the Team Lead's own CLI. The
+/// Records a queued run of the Chief on the question `asked_run_id`: no card and no chat (so the card's latest run
+/// stays the one that asked, which the answer continues), trigger `question`, role lead, on the Chief's own CLI. The
 /// question remembers it.
 pub fn create_run(db: &Db, lead_id: &str, asked_run_id: &str, session_id: &str, cwd: &str, log_path: &str) -> Result<String> {
     db.write(Some(lead_id), |w| {
@@ -249,7 +249,7 @@ pub fn create_run(db: &Db, lead_id: &str, asked_run_id: &str, session_id: &str, 
     })
 }
 
-/// Records the end of the Team Lead's run on a question: its cost (it counts toward the Team Lead's budget), its last
+/// Records the end of the Chief's run on a question: its cost (it counts toward the Chief's budget), its last
 /// message and, when it failed, why.
 #[allow(clippy::too_many_arguments)]
 pub fn finish_run(db: &Db, run_id: &str, status: &str, cost_usd_micros: i64, input_tokens: i64, output_tokens: i64, error: Option<&str>,
@@ -264,13 +264,13 @@ pub fn finish_run(db: &Db, run_id: &str, status: &str, cost_usd_micros: i64, inp
                     version=version+1 WHERE id=?1 AND trigger=?9",
             rusqlite::params![run_id, status, cost_usd_micros, input_tokens, output_tokens, error, summary, now, STORED_TRIGGER])?;
         if n == 0 {
-            return Err(Error::NotFound(format!("the Team Lead's run {run_id}")));
+            return Err(Error::NotFound(format!("the Chief's run {run_id}")));
         }
         w.update("runs", run_id, serde_json::json!({"status": status, "cost_usd_micros": cost_usd_micros}))
     })
 }
 
-/// The card still waits for the Team Lead on this question: the question is `asking` or `answering` and the card is still
+/// The card still waits for the Chief on this question: the question is `asking` or `answering` and the card is still
 /// on hold for a decision (a person may have cleared the hold, or moved the card on, meanwhile).
 fn waiting_in(c: &Connection, asked_run_id: &str) -> Result<Option<(Stored, String)>> {
     let Some(s) = stored_in(c, asked_run_id)? else { return Ok(None) };
@@ -286,12 +286,12 @@ fn waiting_in(c: &Connection, asked_run_id: &str) -> Result<Option<(Stored, Stri
     })
 }
 
-/// Whether the card still waits for the Team Lead on the question `asked_run_id` (see `waiting_in`).
+/// Whether the card still waits for the Chief on the question `asked_run_id` (see `waiting_in`).
 pub fn waiting(db: &Db, asked_run_id: &str) -> Result<bool> {
     db.read(|c| Ok(waiting_in(c, asked_run_id)?.is_some()))
 }
 
-/// The Team Lead answered `answer`: the question is `answering` while Gizai continues the agent with it (the card stays
+/// The Chief answered `answer`: the question is `answering` while Gizai continues the agent with it (the card stays
 /// out of the Inbox meanwhile). False when the card no longer waits for it (the question is `dropped`).
 pub fn answering(db: &Db, asked_run_id: &str, answer: &str, note: Option<&str>) -> Result<bool> {
     db.write(None, |w| {
@@ -307,7 +307,7 @@ pub fn answering(db: &Db, asked_run_id: &str, answer: &str, note: Option<&str>) 
     })
 }
 
-/// The agent carries on with the Team Lead's answer: the question is `answered`.
+/// The agent carries on with the Chief's answer: the question is `answered`.
 pub fn answered(db: &Db, asked_run_id: &str) -> Result<()> {
     db.write(None, |w| {
         let Some(mut s) = stored_in(w.conn(), asked_run_id)? else { return Ok(()) };
@@ -316,8 +316,8 @@ pub fn answered(db: &Db, asked_run_id: &str) -> Result<()> {
     })
 }
 
-/// The Team Lead can't look at questions here (`why`: no MCP helper, its CLI isn't Claude Code or isn't found): the
-/// question goes to you as if the Team Lead hadn't taken it, without a comment; the card, on hold with the agent's
+/// The Chief can't look at questions here (`why`: no MCP helper, its CLI isn't Claude Code or isn't found): the
+/// question goes to you as if the Chief hadn't taken it, without a comment; the card, on hold with the agent's
 /// question, is in the Inbox now. The question is `skipped`.
 pub fn skip(db: &Db, asked_run_id: &str, why: &str) -> Result<()> {
     db.write(None, |w| {
@@ -331,7 +331,7 @@ pub fn skip(db: &Db, asked_run_id: &str, why: &str) -> Result<()> {
     })
 }
 
-/// The card moved on before the Team Lead was done (a person cleared the hold, or started a run): the question no longer
+/// The card moved on before the Chief was done (a person cleared the hold, or started a run): the question no longer
 /// waits for it.
 fn drop_in(w: &Writer, asked_run_id: &str) -> Result<()> {
     match stored_in(w.conn(), asked_run_id)? {
@@ -343,10 +343,10 @@ fn drop_in(w: &Writer, asked_run_id: &str) -> Result<()> {
     }
 }
 
-/// The Team Lead asks you: its comment (`comment`, "Needs <you>: why, the options, my advice") goes on the card as the
-/// Team Lead (with its run, when there is one), and the card stays on hold for a decision with the reason "Team Lead
+/// The Chief asks you: its comment (`comment`, "Needs <you>: why, the options, my advice") goes on the card as the
+/// Chief (with its run, when there is one), and the card stays on hold for a decision with the reason "Chief
 /// escalated to you: <reason>", now in the Inbox (the hold's time is now, so it notifies as new). The question is
-/// `escalated`. False when the card no longer waited for the Team Lead: nothing is posted or held.
+/// `escalated`. False when the card no longer waited for the Chief: nothing is posted or held.
 pub fn escalate(db: &Db, asked_run_id: &str, lead_run_id: Option<&str>, reason: &str, comment: &str) -> Result<bool> {
     let lead = db.read(|c| Ok(stored_in(c, asked_run_id)?.and_then(|s| s.lead)))?;
     db.write(lead.as_deref(), |w| {
@@ -358,7 +358,7 @@ pub fn escalate(db: &Db, asked_run_id: &str, lead_run_id: Option<&str>, reason: 
         if let (Some(lead), false) = (s.lead.as_deref(), comment.trim().is_empty()) {
             s.comment = Some(comments::add_in(w, lead, &task, comment.trim(), lead_run_id)?);
         }
-        crate::workflow::set_hold(w, &task, "needs_decision", &format!("Team Lead escalated to you: {reason}"))?;
+        crate::workflow::set_hold(w, &task, "needs_decision", &format!("Chief escalated to you: {reason}"))?;
         s.state = "escalated".into();
         s.reason = Some(reason);
         s.escalated_at = Some(ids::now_ms());
@@ -375,14 +375,14 @@ fn note_title(s: &str) -> String {
     if t.trim().is_empty() { "General".into() } else { t.trim().to_string() }
 }
 
-/// Where answers to a project's questions go when the Team Lead names no note: `Decisions/<project name>` (`General`
+/// Where answers to a project's questions go when the Chief names no note: `Decisions/<project name>` (`General`
 /// without a project), with properties that give it to the agents on that project's cards.
 pub fn decisions_path(project_name: Option<&str>) -> String {
     format!("Decisions/{}", note_title(project_name.unwrap_or("General")))
 }
 
-/// Saves an answer to the question `asked_run_id` in memory as the Team Lead, linked to the card (its identifier is in
-/// the text): `text` in the note at `path` when the Team Lead named one (a shared folder, like `Decisions/Exports` or
+/// Saves an answer to the question `asked_run_id` in memory as the Chief, linked to the card (its identifier is in
+/// the text): `text` in the note at `path` when the Chief named one (a shared folder, like `Decisions/Exports` or
 /// `Standards/CSV`), as `- <day>: <text>`, without the labels it may start with (`memory::unlabelled`); a note that isn't
 /// there yet is made with `type:` after its folder and the card's `project:`, so the runs on that project's cards get it
 /// (GA-172). Else, or when that can't be saved, a dated line in the project's decisions note (`decisions_path`):
@@ -416,7 +416,7 @@ pub fn remember(db: &Db, lead_id: &str, asked_run_id: &str, run_id: Option<&str>
                 props.push_str(&format!("project: {key}\n"));
             }
             let what = q.project_name.as_deref().unwrap_or("cards without a project");
-            let body = format!("{props}---\n# {}\n\nAnswers to the agents' questions on {what}, kept by the Team Lead.\n\n{line}\n", memory::title_of(&path));
+            let body = format!("{props}---\n# {}\n\nAnswers to the agents' questions on {what}, kept by the Chief.\n\n{line}\n", memory::title_of(&path));
             memory::write(db, &who, &path, &body, None, run_id)
         }
     }
@@ -432,7 +432,7 @@ pub fn noted(db: &Db, asked_run_id: &str, note: &str) -> Result<()> {
 }
 
 /// Learn from your answer: a run `new_run_id` starts on the card after its last run's question was escalated to you, and
-/// people wrote on the card since. What they wrote is saved in memory as the Team Lead (`remember`), linked to the card,
+/// people wrote on the card since. What they wrote is saved in memory as the Chief (`remember`), linked to the card,
 /// once per question. Returns the note it went to; None when there was nothing to learn.
 pub fn learn_from_person(db: &Db, task_id: &str, new_run_id: &str, day: &str) -> Result<Option<Saved>> {
     let found: Option<(String, Option<String>)> = db.read(|c| Ok(c.query_row(
@@ -468,7 +468,7 @@ pub fn learn_from_person(db: &Db, task_id: &str, new_run_id: &str, day: &str) ->
     Ok(Some(saved))
 }
 
-/// The questions that waited for the Team Lead when Gizai stopped (its run is gone with it): each goes to you, with a
+/// The questions that waited for the Chief when Gizai stopped (its run is gone with it): each goes to you, with a
 /// comment that says so. Run at start-up, after `runs::recover_interrupted`. Returns how many there were.
 pub fn recover(db: &Db) -> Result<usize> {
     let waiting: Vec<(String, Option<String>)> = db.read(|c| {

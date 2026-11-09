@@ -100,7 +100,7 @@ async fn a_new_install_waits_until_the_onboarding_is_finished_and_the_welcome_ch
     assert_eq!(team_name, "YoTech");
     let mut want: Vec<(String, String, String)> = ["Backend Agent", "DevOps Agent", "Frontend Agent", "QA Agent"].iter()
         .map(|n| (n.to_string(), codex.clone(), "workspace-write".to_string())).collect();
-    want.push(("Team Lead".into(), clis::CLAUDE_CODE.into(), "acceptEdits".into()));
+    want.push(("Chief".into(), clis::CLAUDE_CODE.into(), "acceptEdits".into()));
     want.sort();
     assert_eq!(agents, want);
 
@@ -108,7 +108,7 @@ async fn a_new_install_waits_until_the_onboarding_is_finished_and_the_welcome_ch
     let threads = chat::list_threads(&t.st.db).unwrap();
     assert_eq!(threads.iter().map(|th| th.id.as_str()).collect::<Vec<_>>(), [thread.as_str()], "one new chat");
     let lead = team::chat_agent(&t.st.db).unwrap().unwrap();
-    assert_eq!(lead.name, "Team Lead");
+    assert_eq!(lead.name, "Chief");
     let th = chat::get_thread(&t.st.db, &thread).unwrap();
     assert_eq!(th.agent_id, lead.actor_id);
     let first = chat::messages(&t.st.db, &thread).unwrap().into_iter().next().expect("a first message");
