@@ -784,8 +784,8 @@ fn thousands(n: usize) -> String {
 
 /// Refuses a template a team can't be made from, saying why: no columns, more than 50 agents or 30 columns,
 /// instructions over 100,000 characters, an unknown kind, two columns or agents with one name (ignoring case), a next
-/// column or a column's agent that isn't in it, agents or Auto on a backlog, review, done or cancelled column, and an Auto
-/// column without a next one.
+/// column or a column's agent that isn't in it, agents or Auto on a backlog, review, done or cancelled column, an Auto
+/// column without a next one, and an allowed command that isn't one rule (GA-262, `team::one_rule`).
 fn check(f: &TemplateFile) -> Result<()> {
     let no = |why: String| Err(Error::Invalid(why));
     if f.name.trim().is_empty() {
@@ -830,6 +830,9 @@ fn check(f: &TemplateFile) -> Result<()> {
         let role = team::role_key(&a.role);
         if role.is_empty() || role.len() > 32 {
             return no(format!("{} has no role: give it one of at most 32 characters, like backend or qa.", a.name.trim()));
+        }
+        if let Some(t) = a.allowed_tools.iter().map(|t| t.trim()).find(|t| !t.is_empty() && !team::one_rule(t)) {
+            return no(format!("{}'s allowed commands: {}", a.name.trim(), team::not_one_rule(t)));
         }
     }
     for c in &f.columns {
