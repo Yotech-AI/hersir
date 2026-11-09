@@ -15,7 +15,7 @@ In short: a release is a GitHub Release with a version tag, `vX.Y.Z`, on the `pr
 
 - When `main` has something worth giving to the people who use Hersir: a finished card or a fix.
 - Only when `main` passes everything in CLAUDE.md (`cargo test --workspace`, `npm test`, `npm run build`, `scripts/ui-test.sh`) and builds with `npm run tauri build -- --no-bundle`. A release that doesn't build fails for everyone who presses Update. Their installed Hersir keeps working, but they're stuck on it.
-- Only when CI passes on Linux, macOS and Windows. Hersir runs on all three, and each one builds the release from source. CI (`.github/workflows/ci.yml`) runs on every pull request and every push to `main`. Its three checks show on the pull request: `ubuntu-24.04`, `macos-14` and `windows-latest`.
+- Only when CI passes on Linux, macOS and Windows. Hersir runs on all three, and each one builds the release from source. CI (`.github/workflows/ci.yml`) runs on every pull request and every push to `main`. Its three checks show on the pull request: `ubuntu-24.04`, `macos-15` and `windows-latest`.
 - Jeffrey decides when to release. An agent releases only when a card asks for it and names the version.
 
 ## Choosing the version
@@ -54,7 +54,7 @@ Replace `X.Y.Z` with the new version.
 
    The label keeps the bump and the release's pull request (step 2) out of the release's list of changes (`.github/release.yml`). gh refuses to open a pull request with a label the repository doesn't have: until Jeffrey has made `release` (by hand, once), open both without `--label release` and say so on the card.
 
-   A pull request that changes nothing but the version skips the build and the tests, so its checks pass within a minute or two: `ubuntu-24.04`, `macos-14` and `windows-latest` from CI, and from Install `Version only?` and the six installs (step 2 names them), which the bump starts as it changes `src-tauri/tauri.conf.json`. Merge it as soon as they report:
+   A pull request that changes nothing but the version skips the build and the tests, so its checks pass within a minute or two: `ubuntu-24.04`, `macos-15` and `windows-latest` from CI, and from Install `Version only?` and the six installs (step 2 names them), which the bump starts as it changes `src-tauri/tauri.conf.json`. Merge it as soon as they report:
 
    ```sh
    gh pr view <number> --json statusCheckRollup --jq '.statusCheckRollup[] | "\(.name): \(.status) \(.conclusion)"'
@@ -75,8 +75,8 @@ Replace `X.Y.Z` with the new version.
    ```
 
    That's ten checks:
-   - from CI, about 12 minutes: `ubuntu-24.04`, `macos-14` and `windows-latest`;
-   - from Install, which runs as the release changes `src-tauri/tauri.conf.json`: `Version only?`, then six installs through the one line, `install on ubuntu-24.04`, `install on fedora`, `install on archlinux`, `install on opensuse/tumbleweed`, `install on macos-14` and `install on windows-latest`. Each one builds Hersir in full, then again as an update, in 8 to 17 minutes (the Windows install is the slowest).
+   - from CI, about 12 minutes: `ubuntu-24.04`, `macos-15` and `windows-latest`;
+   - from Install, which runs as the release changes `src-tauri/tauri.conf.json`: `Version only?`, then six installs through the one line, `install on ubuntu-24.04`, `install on fedora`, `install on archlinux`, `install on opensuse/tumbleweed`, `install on macos-15` and `install on windows-latest`. Each one builds Hersir in full, then again as an update, in 8 to 17 minutes (the Windows install is the slowest).
 
    Each must say `COMPLETED SUCCESS`. A check that is still `IN_PROGRESS` needs a few more minutes. On a failure, don't release: the card goes back to whoever can fix it.
 
@@ -100,7 +100,7 @@ Replace `X.Y.Z` with the new version.
    curl -s https://api.github.com/repos/Yotech-AI/hersir/releases/latest | grep '"tag_name"'   # what Hersir reads: vX.Y.Z
    ```
 
-   Publishing the release also starts One-line install (`.github/workflows/one-line.yml`): hersir.dev's own lines install the new release on Ubuntu 24.04, macOS 14 and Windows, then uninstall it. Its jobs take 7 to 12 minutes and must be green on all three:
+   Publishing the release also starts One-line install (`.github/workflows/one-line.yml`): hersir.dev's own lines install the new release on Ubuntu 24.04, macOS 15 and Windows, then uninstall it. Its jobs take 7 to 12 minutes and must be green on all three:
 
    ```sh
    gh run list --workflow one-line.yml --event release --limit 1 --json headBranch,status,conclusion,url   # vX.Y.Z, completed, success
