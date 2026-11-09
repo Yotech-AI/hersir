@@ -78,7 +78,7 @@ Names link the file together: a column's `next` and `agents`, and an agent's `sh
 | `effort` | its effort level (Claude Code's `--effort`, Codex's reasoning effort), or `null` |
 | `permission_mode` | its permission mode, like `acceptEdits` (Claude Code), `workspace-write` (Codex) or `auto_edit` (Gemini); `""` for an Other CLI |
 | `instructions_md` | its instructions, at most 100,000 characters |
-| `allowed_tools` | its allowed commands, like `Bash(git status:*)` |
+| `allowed_tools` | its allowed commands, like `Bash(git status:*)`, each one rule (one command per entry) |
 | `cards_at_once` | the cards it works on at once, 1 to 10 |
 | `monthly_budget_usd` | its monthly budget in dollars (`25` or `25.5`), or `null` for none |
 | `chat` | it answers on the Chat page (the Chief) |
@@ -132,7 +132,8 @@ It refuses a template a team can't be made from, saying why:
 - two columns or two agents have the same name (ignoring case);
 - a `next` or a column's agent isn't in the file, or a column goes next to itself;
 - a backlog, review, done or cancelled column has agents or is Auto;
-- an Auto column has no `next`.
+- an Auto column has no `next`;
+- an agent's allowed command isn't one rule (GA-262): "Backend Agent's allowed commands: `Bash(ls:*) Bash(*)` isn't one rule: write each command as its own entry, like Bash(npm test:*)."
 
 Otherwise its plan (`TemplatePlan`) says what the new team gets:
 
