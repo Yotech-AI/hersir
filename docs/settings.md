@@ -9,7 +9,7 @@ Where each setting lives, what a backup holds and how to restore one, how Hersir
 | General | Quit, Updates, the Editor's folders, Data: where Hersir keeps your data, and the worktrees of finished cards; and Backups: a folder for copies of your data, how often, how many to keep, Back up now, the backups there and Restore |
 | Appearance | The font, text sizes, theme, density and the mountains |
 | Notifications | A switch for each kind of notification |
-| Agents and runs | Coding CLIs; Runs: limits, runs at once, memory for agent runs, Pause all agents, memory and Ask the Team Lead first; and Screenshots: what Hersir keeps of agents' screenshots, and the previews' ports |
+| Agents and runs | Coding CLIs; Runs: limits, runs at once, memory for agent runs, Pause all agents, memory and Ask the Chief first; and Screenshots: what Hersir keeps of agents' screenshots, and the previews' ports |
 | MCP servers | The outside services agents can use, and the built-in browser |
 | GitHub and Bitbucket | gh and how pushes go, Check connection, and your Bitbucket login |
 

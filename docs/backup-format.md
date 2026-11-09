@@ -2,7 +2,7 @@
 
 Hersir backs up your data as snapshots in a backups folder (GA-216). This page describes that folder as format 1: its layout, a snapshot's name, the manifest field by field, and how a snapshot is made and removed. Hersir Cloud will write its backups in the same format (see [For Hersir Cloud](#for-hersir-cloud)), so one restore reads both. The restore is GA-218's (see [Restore](#restore)). The code is `gizai_core::backups` and `gizai_core::restore`, and the app's side is `src-tauri/src/backups.rs` and `src-tauri/src/restore.rs`.
 
-A snapshot holds only the database and the stored files it names (attachments and screenshots). Nothing from the OS keychain, a worktree, the logs (`runs/`, `chat/`), the Team Lead's code copies or `update/` goes into it. Snapshots are not encrypted: whoever can open the folder can read them, and a synced folder gets the data as it is.
+A snapshot holds only the database and the stored files it names (attachments and screenshots). Nothing from the OS keychain, a worktree, the logs (`runs/`, `chat/`), the Chief's code copies or `update/` goes into it. Snapshots are not encrypted: whoever can open the folder can read them, and a synced folder gets the data as it is.
 
 ## The backups folder
 

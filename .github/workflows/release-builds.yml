@@ -1,0 +1,346 @@
+# Ready-made builds of Hersir for every release, on Linux (x86_64), macOS (Apple silicon) and Windows (x86_64), each made
+# by the release's own installer as someone would make it (install.sh --build-only, install.ps1 -BuildOnly). An archive
+# holds exactly the files install.sh --skip-build (install.ps1 -SkipBuild) installs from a build, at the paths the build
+# leaves them in the source:
+#   hersir-X.Y.Z-linux-x86_64.tar.gz   target/release/gizai and target/release/gizai-mcp
+#   hersir-X.Y.Z-macos-arm64.tar.gz    the same, and target/release/bundle/macos/Hersir.app
+#   hersir-X.Y.Z-windows-x86_64.zip    target/release/gizai.exe and target/release/gizai-mcp.exe
+#   SHA256SUMS                         one line per archive, "<sha256>  <file name>", as sha256sum writes it
+# Each archive is checked before it counts: unpacked into a fresh checkout of the same commit, it installs with
+# --skip-build (-SkipBuild) into a scratch folder, and the installed gizai --version says the version.
+# - A published release: it builds the release's tag and attaches the four files to the release, with the workflow's
+#   own token, in the one job that may write. By hand, with a release's tag, it does the same for a release that exists
+#   (and replaces the builds it has).
+# - A pull request that changes this workflow or an installer: it builds the pull request's last commit and keeps the
+#   archives and SHA256SUMS as the run's artifacts, for QA. It uploads nothing to a release.
+# Nothing is signed beyond what the build does itself: on macOS, the ad-hoc signature every Apple silicon build has.
+name: Release builds
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The release's tag, like v1.2.3"
+        required: true
+        type: string
+  # Any change to an installer, not only to its build steps: a path filter can't tell them apart.
+  pull_request:
+    paths:
+      - .github/workflows/release-builds.yml
+      - install.sh
+      - install.ps1
+
+permissions:
+  contents: read
+
+# A newer push to the same pull request cancels the run that is still going. Two runs for one release wait for each other.
+concurrency:
+  group: release-builds-${{ github.event.release.tag_name || inputs.tag || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # What to build: the release's tag, which must be a version like v1.2.3 that has a release, or the pull request's last
+  # commit (not the merge with its base, which QA couldn't check out).
+  what:
+    name: What to build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      ref: ${{ steps.what.outputs.ref }}
+      tag: ${{ steps.what.outputs.tag }}
+    steps:
+      - name: The release's tag, or the pull request's commit
+        id: what
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            echo "The pull request's last commit: $HEAD_SHA"
+            echo "ref=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          tag="${RELEASE_TAG:-$INPUT_TAG}"
+          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "The tag ${tag:-(none)} isn't a version like v1.2.3, so there is no release to build."
+            exit 1
+          fi
+          if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json tagName > /dev/null; then
+            echo "$GITHUB_REPOSITORY has no release $tag."
+            exit 1
+          fi
+          echo "The release: $tag"
+          { echo "tag=$tag"; echo "ref=refs/tags/$tag"; } >> "$GITHUB_OUTPUT"
+
+  build:
+    name: build ${{ matrix.system }}
+    needs: what
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Ubuntu 22.04 rather than 24.04: a build runs where the glibc is as old as the one it was built with or
+          # newer, and 22.04's (2.35) is older than that of every distribution the Install workflow covers.
+          - system: linux-x86_64
+            runner: ubuntu-22.04
+            arch: X64
+            ext: tar.gz
+          - system: macos-arm64
+            runner: macos-15
+            arch: ARM64
+            ext: tar.gz
+          - system: windows-x86_64
+            runner: windows-latest
+            arch: X64
+            ext: zip
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    steps:
+      # Windows' git turns LF into CRLF on checkout. The build keeps the repository's LF, as CI's and Install's builds
+      # do: Hersir embeds text files as they are in the checkout.
+      - name: Keep LF line endings
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
+
+      # No caches: each build starts clean, as on a computer that builds Hersir for the first time. No token is left in
+      # the checkout for the build's own scripts.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.what.outputs.ref }}
+          persist-credentials: false
+
+      # Node.js and Rust, which the installer's check asks for.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # The version the source says, which a release's tag must say too, and the archive's name from it. The runner must
+      # be the system that name says.
+      - name: The version
+        id: version
+        shell: bash
+        env:
+          TAG: ${{ needs.what.outputs.tag }}
+          SYSTEM: ${{ matrix.system }}
+          ARCH: ${{ matrix.arch }}
+          EXT: ${{ matrix.ext }}
+        run: |
+          version="$(node -p 'require("./src-tauri/tauri.conf.json").version')"
+          if [ -n "$TAG" ] && [ "$TAG" != "v$version" ]; then
+            echo "The release is $TAG, but its src-tauri/tauri.conf.json says version $version."
+            exit 1
+          fi
+          if [ "$RUNNER_ARCH" != "$ARCH" ]; then
+            echo "This runner is $RUNNER_ARCH, not $ARCH, so its build isn't $SYSTEM."
+            exit 1
+          fi
+          echo "Building hersir-$version-$SYSTEM.$EXT from $(git rev-parse HEAD)."
+          { echo "version=$version"; echo "archive=hersir-$version-$SYSTEM.$EXT"; } >> "$GITHUB_OUTPUT"
+
+      # The system packages the build needs, with the line the release's install.sh --check prints for Ubuntu, as
+      # someone would copy it: only made non-interactive. Nothing when it names none.
+      - name: System packages, as install.sh --check names them
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          check="$(bash ./install.sh --check 2>&1)" || true
+          printf '%s\n' "$check"
+          line="$(printf '%s\n' "$check" | sed -n '/^Install them with:$/{n;s/^ *//;p;q;}')"
+          if [ -z "$line" ]; then echo "install.sh --check names no system packages to install."; exit 0; fi
+          cmd="$(printf '%s\n' "$line" | sed 's/apt install /apt install -y /g')"
+          printf '\ninstall.sh --check says: %s\nRunning: %s\n' "$line" "$cmd"
+          sudo apt-get update
+          eval "$cmd"
+
+      # The build people make themselves, and Hersir's own update: the release's installer, build only. With macOS's
+      # own bash 3.2, as on a Mac.
+      - name: Build (install.sh --build-only)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: /bin/bash ./install.sh --build-only
+
+      # With Windows PowerShell 5.1, as Hersir's own update runs it.
+      - name: Build (install.ps1 -BuildOnly)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -BuildOnly
+          if ($LASTEXITCODE -ne 0) { 'install.ps1 -BuildOnly failed'; exit 1 }
+
+      # The archive: exactly the files --skip-build installs, at the paths the build left them. On Linux owned by root
+      # rather than the runner's user. On macOS without extended attributes, and without the ._ files macOS's tar
+      # would add for them (COPYFILE_DISABLE): Hersir.app's ad-hoc signature is in its files.
+      - name: Pack (Linux, macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          ARCHIVE: ${{ steps.version.outputs.archive }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/builds"
+          out="$RUNNER_TEMP/builds/$ARCHIVE"
+          if [ "$RUNNER_OS" = macOS ]; then
+            COPYFILE_DISABLE=1 /usr/bin/tar --no-xattrs -czf "$out" \
+              target/release/gizai target/release/gizai-mcp target/release/bundle/macos/Hersir.app
+          else
+            tar --owner=0 --group=0 --numeric-owner -czf "$out" target/release/gizai target/release/gizai-mcp
+          fi
+          tar -tzvf "$out"
+          ls -l "$out"
+
+      # The same as a zip, written with .NET, with / between the folders of a name as zip files have them.
+      - name: Pack (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        env:
+          ARCHIVE: ${{ steps.version.outputs.archive }}
+        run: |
+          Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+          $builds = Join-Path $env:RUNNER_TEMP 'builds'
+          New-Item -ItemType Directory -Force -Path $builds | Out-Null
+          $out = Join-Path $builds $env:ARCHIVE
+          $zip = [System.IO.Compression.ZipFile]::Open($out, 'Create')
+          try {
+            foreach ($p in @('gizai.exe', 'gizai-mcp.exe')) {
+              $file = Join-Path $env:GITHUB_WORKSPACE "target\release\$p"
+              [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $file, "target/release/$p", 'Optimal') | Out-Null
+            }
+          } finally {
+            $zip.Dispose()
+          }
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($out)
+          try { $zip.Entries | ForEach-Object { '{0,12}  {1}' -f $_.Length, $_.FullName } } finally { $zip.Dispose() }
+          "$out, $((Get-Item -LiteralPath $out).Length) bytes"
+
+      # The check: a fresh checkout of the same commit, without node_modules and without a build, ...
+      - name: A fresh checkout of the same commit
+        shell: bash
+        run: git worktree add --detach "$RUNNER_TEMP/fresh" HEAD
+
+      # ... with the archive unpacked into it, installs with its own install.sh --skip-build into a scratch folder, and
+      # the installed gizai says the version.
+      - name: Check the archive (Linux, macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          ARCHIVE: ${{ steps.version.outputs.archive }}
+          VERSION: ${{ steps.version.outputs.version }}
+          GIZAI_PREFIX: ${{ runner.temp }}/scratch
+          XDG_DATA_HOME: ${{ runner.temp }}/scratch/share
+          GIZAI_DATA_DIR: ${{ runner.temp }}/scratch/share/gizai
+        run: |
+          fresh="$RUNNER_TEMP/fresh"
+          tar -xzf "$RUNNER_TEMP/builds/$ARCHIVE" -C "$fresh"
+          /bin/bash "$fresh/install.sh" --skip-build
+          got="$("$GIZAI_PREFIX/bin/gizai" --version)" || { echo "$GIZAI_PREFIX/bin/gizai --version failed: $got"; exit 1; }
+          echo "gizai --version: $got"
+          if [ "$got" != "gizai $VERSION" ]; then echo "The installed gizai says $got, not gizai $VERSION."; exit 1; fi
+
+      # The same with install.ps1 -SkipBuild, in Windows PowerShell 5.1, which unpacks the zip with Expand-Archive.
+      # install.ps1 writes what the installed gizai.exe --version says into gizai-installed.txt.
+      - name: Check the archive (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        env:
+          ARCHIVE: ${{ steps.version.outputs.archive }}
+          VERSION: ${{ steps.version.outputs.version }}
+          GIZAI_PREFIX: ${{ runner.temp }}\scratch
+          GIZAI_DATA_DIR: ${{ runner.temp }}\scratch-data
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          $fresh = Join-Path $env:RUNNER_TEMP 'fresh'
+          Expand-Archive -LiteralPath (Join-Path $env:RUNNER_TEMP "builds\$env:ARCHIVE") -DestinationPath $fresh
+          powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $fresh 'install.ps1') -SkipBuild
+          if ($LASTEXITCODE -ne 0) { 'install.ps1 -SkipBuild failed'; exit 1 }
+          $got = Get-Content -LiteralPath (Join-Path $env:GIZAI_PREFIX 'gizai-installed.txt')
+          "gizai --version: $got"
+          if ("$got" -ne "gizai $env:VERSION") { "The installed gizai.exe says $got, not gizai $env:VERSION."; exit 1 }
+
+      # The archive as the run's artifact, by its own name: for SHA256SUMS and the release, or for QA on a pull request.
+      # Stored as it is: it is compressed already. A run that is run again replaces it.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.version.outputs.archive }}
+          path: ${{ runner.temp }}/builds/${{ steps.version.outputs.archive }}
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: true
+
+  # SHA256SUMS, once all three archives are there and are the same version (the release's, for a release): one line per
+  # archive, as sha256sum writes it, checked with sha256sum -c. Kept as the run's artifact too.
+  sums:
+    name: SHA256SUMS
+    needs: [what, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: hersir-*
+          path: builds
+          merge-multiple: true
+
+      - name: Write SHA256SUMS
+        working-directory: builds
+        env:
+          TAG: ${{ needs.what.outputs.tag }}
+        run: |
+          fail() { echo "$*"; exit 1; }
+          ls -l
+          set -- hersir-*
+          version="${1#hersir-}"
+          version="${version%%-*}"
+          archives="hersir-$version-linux-x86_64.tar.gz hersir-$version-macos-arm64.tar.gz hersir-$version-windows-x86_64.zip"
+          [ "$*" = "$archives" ] || fail "The archives are $*, not $archives."
+          if [ -n "$TAG" ] && [ "$TAG" != "v$version" ]; then fail "The archives are version $version, not the release's, $TAG."; fi
+          sha256sum $archives > SHA256SUMS
+          cat SHA256SUMS
+          sha256sum -c SHA256SUMS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SHA256SUMS
+          path: builds/SHA256SUMS
+          if-no-files-found: error
+          overwrite: true
+
+  # The only job whose token may write, and it never runs for a pull request: it attaches the three archives to the
+  # release, then SHA256SUMS (replacing any the release has), and checks that the release has all four.
+  upload:
+    name: upload to the release
+    needs: [what, sums]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: builds
+          merge-multiple: true
+
+      - name: Upload to the release
+        working-directory: builds
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.what.outputs.tag }}
+        run: |
+          fail() { echo "$*"; exit 1; }
+          sha256sum -c SHA256SUMS
+          archives="$(awk '{ print $2 }' SHA256SUMS)"
+          gh release upload "$TAG" $archives --clobber --repo "$GITHUB_REPOSITORY"
+          gh release upload "$TAG" SHA256SUMS --clobber --repo "$GITHUB_REPOSITORY"
+          assets="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')"
+          printf 'The release %s has:\n%s\n' "$TAG" "$assets"
+          for file in $archives SHA256SUMS; do
+            printf '%s\n' "$assets" | grep -qxF "$file" || fail "The release $TAG has no $file."
+          done

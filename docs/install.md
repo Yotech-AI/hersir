@@ -41,7 +41,7 @@ The install script's options go after the line:
 
 ## What every system needs
 
-- [Claude Code](https://docs.claude.com/en/docs/claude-code) or Codex, installed and logged in; for Claude Code, run `claude` once. The Team Lead's chat needs Claude Code. Agents can also run on Gemini or another coding CLI you have installed and logged in (Settings → Coding CLIs).
+- [Claude Code](https://docs.claude.com/en/docs/claude-code) or Codex, installed and logged in; for Claude Code, run `claude` once. The Chief's chat needs Claude Code. Agents can also run on Gemini or another coding CLI you have installed and logged in (Settings → Coding CLIs).
 - git, Rust ([rustup](https://rustup.rs)) and Node.js 20 or newer.
 - Optional, to review cards as pull requests on GitHub: the [GitHub CLI](https://cli.github.com) and an SSH key on your GitHub account. Settings → GitHub shows what's missing and can log gh in.
 - Optional, for a project on Bitbucket Cloud: an SSH key on your Bitbucket account and an API token with the scopes `read:user:bitbucket`, `read:pullrequest:bitbucket` and `write:pullrequest:bitbucket` (Atlassian account → Security → API tokens). Save the token with your Atlassian email in Settings → Bitbucket. Hersir keeps them in your keychain.
@@ -136,11 +136,11 @@ After an update, macOS may ask once whether Hersir may use what it saved in your
 The first time Hersir opens, it walks you through four steps:
 
 1. your name and your team's name;
-2. which coding CLIs to use: it lists the ones it finds installed. The Backend, Frontend, QA and DevOps Agents run on the one you pick; the Team Lead stays on Claude Code, where its chat runs;
+2. which coding CLIs to use: it lists the ones it finds installed. The Backend, Frontend, QA and DevOps Agents run on the one you pick; the Chief stays on Claude Code, where its chat runs;
 3. importing MCP servers from Claude Code, if you want;
-4. the Team Lead's chat, when Claude Code is installed: it welcomes you and asks whether you'd like help setting up agents, clients, projects, tasks or anything else.
+4. the Chief's chat, when Claude Code is installed: it welcomes you and asks whether you'd like help setting up agents, clients, projects, tasks or anything else.
 
-You can skip it. Hersir is set up already: you (named after your login), My company, My team, and five agents (the Team Lead, Backend, Frontend, QA and DevOps) on Claude Code, or on Codex when only Codex is installed. Change them later on the Team page and in Settings.
+You can skip it. Hersir is set up already: you (named after your login), My company, My team, and five agents (the Chief, Backend, Frontend, QA and DevOps) on Claude Code, or on Codex when only Codex is installed. Change them later on the Team page and in Settings.
 
 `HERSIR_SKIP_ONBOARDING=1` starts Hersir as if you skipped it: for scripts and tests on a new data folder.
 
@@ -168,7 +168,7 @@ Each variable Hersir reads has a `HERSIR_` name and, from before 0.17.0, a `GIZA
 It cleans up after itself when it starts and once a day while it runs:
 
 - **Run and chat logs** (`runs/` and `chat/`): kept for 30 days after the run, chat answer or board check ended, then removed. The run stays in the history with its summary, cost and commits; Show output says its log is gone.
-- **Keys for the Team Lead's tools** (`api_tokens` in `gizai.db`): each one lasts a chat answer or board check, and is removed a day after it expired or was revoked.
+- **Keys for the Chief's tools** (`api_tokens` in `gizai.db`): each one lasts a chat answer or board check, and is removed a day after it expired or was revoked.
 - **Screenshots** of what agents built (`files/`): a card keeps its newest 3 sets, and all of them go 30 days after it reached Done or Cancelled (0 days keeps them). What you attached to a card is never removed.
 - **Stored files nothing uses any more** (`files/`): a file no attachment, screenshot or chat message names any more is removed, a day after it was last stored.
 - **Backups** (`backups/`): one before every update, install and database upgrade, and `gizai --backup` makes one when you ask. The newest 20 are kept. Their names use your local time, like `gizai-before-update-20261009-143502-123.db`.
