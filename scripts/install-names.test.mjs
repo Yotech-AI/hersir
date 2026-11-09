@@ -13,7 +13,7 @@
 // HERSIR_DATA_DIR wins over GIZAI_DATA_DIR; on Linux the script reads neither, and the backup gets its folder under both
 // names. The stand-in build backs up the folder the real one would: HERSIR_DATA_DIR, else GIZAI_DATA_DIR.
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -486,5 +486,79 @@ describe("the installers' help is their whole header, which names the data folde
     expect(text).toContain("# Your data lives in %APPDATA%\\Hersir, or in %APPDATA%\\Gizai of an install from before 0.17.0 when it holds gizai.db");
     expect(text).toContain("only -Uninstall -Purge\n# deletes it.");
     expect(text).toContain("HERSIR_DATA_DIR, else GIZAI_DATA_DIR (another\n# data folder).");
+  });
+});
+
+// GA-248 with GA-249: 0.16.0's own update of an install it made (lib/gizai), with its data where 0.16.0 kept it, in
+// the gizai folder with gizai.db. 0.16.0 runs the new install.sh --skip-build with GIZAI_PREFIX and XDG_DATA_HOME
+// (<prefix>/share) alone, then checks lib/gizai/gizai --version and restarts lib/gizai/gizai-launch. The install is
+// updated where it is, and the data stays where it is: backed up there, named, and used by the new Hersir (no hersir
+// data folder appears). The 0.16.0 install is made by hand, as 0.16.0's install.sh left it, so this runs without tags.
+describe.runIf(linux)("install.sh on Linux: 0.16.0's own update of its install, with the data in the gizai folder", () => {
+  // An install as 0.16.0's install.sh left it in `home`, with its data in ~/.local/share/gizai.
+  function installed016(home) {
+    const lib = join(home, ".local/lib/gizai");
+    const share = join(home, ".local/share");
+    write(join(lib, "gizai"), '#!/bin/sh\n[ "$1" = --version ] && echo "gizai 0.16.0"\nexit 0\n', 0o755);
+    write(join(lib, "gizai-mcp"), "#!/bin/sh\nexit 0\n", 0o755);
+    write(join(lib, "gizai-launch"), `#!/bin/sh\nexec "${lib}/gizai" "$@"\n`, 0o755);
+    mkdirSync(join(home, ".local/bin"), { recursive: true });
+    symlinkSync(join(lib, "gizai-launch"), join(home, ".local/bin/gizai"));
+    write(join(share, "applications/gizai.desktop"), `[Desktop Entry]\nType=Application\nName=Hersir\nExec=${lib}/gizai-launch\nIcon=gizai\nStartupWMClass=gizai\n`);
+    write(join(share, "icons/hicolor/scalable/apps/gizai.svg"), "<svg/>\n");
+    for (const size of [32, 64, 128, 256, 512]) write(join(share, `icons/hicolor/${size}x${size}/apps/gizai.png`), "png");
+    const data = join(share, "gizai");
+    write(join(data, "gizai.db"), "the 0.16.0 data");
+    write(join(data, "notes/keep.txt"), "made before 0.17.0\n");
+    return { lib, share, data, update: { GIZAI_PREFIX: join(home, ".local"), XDG_DATA_HOME: share } };
+  }
+
+  it("is updated in lib/gizai, both commands and 0.16.0's check and restart start the new Hersir, one launcher entry is left, and the data is backed up and named where it is", () => {
+    const home = newHome();
+    const { lib, share, data, update } = installed016(home);
+    expect(says(home, "gizai")).toBe("gizai 0.16.0");
+    const r = installWith(update, source(null, "0.17.0", "Linux"), home, "Linux", "--skip-build");
+    expect(r.code, r.out).toBe(0);
+    // 0.16.0's check: lib/gizai/gizai --version, its second word the new version; its restart: lib/gizai/gizai-launch
+    const run = (path) => spawnSync(path, ["--version"], { env: { HOME: home, PATH: process.env.PATH }, encoding: "utf8" }).stdout.trim();
+    expect(run(join(lib, "gizai")).split(" ")[1]).toBe("0.17.0");
+    for (const program of ["gizai", "gizai-launch", "hersir", "hersir-launch"]) expect(run(join(lib, program)), program).toBe("hersir 0.17.0");
+    expect(says(home, "gizai")).toBe("hersir 0.17.0");
+    expect(says(home, "hersir")).toBe("hersir 0.17.0");
+    expect(there(join(home, ".local/lib/hersir")), "updated where it is").toBe(false);
+    expect(readdirSync(join(share, "applications")).filter((f) => f.endsWith(".desktop"))).toEqual(["hersir.desktop"]);
+    expect(readFileSync(join(share, "applications/hersir.desktop"), "utf8")).toContain(`Exec=${lib}/hersir-launch\n`);
+    // the data: backed up with the new build in the gizai folder Hersir goes on using, unchanged, and no hersir folder
+    expect(r.out).toContain(`Backed up your data to ${backupIn(data)}`);
+    expect(readFileSync(backupIn(data), "utf8")).toBe("the 0.16.0 data");
+    expect(readFileSync(join(data, "gizai.db"), "utf8")).toBe("the 0.16.0 data");
+    expect(readFileSync(join(data, "notes/keep.txt"), "utf8")).toBe("made before 0.17.0\n");
+    expect(files(data)).toEqual(["backups", "gizai.db", "notes"]);
+    expect(r.out).toContain(`Your data: ${data}\n`);
+    expect(there(join(share, "hersir")), "no hersir data folder").toBe(false);
+  });
+
+  it("the next update (0.17.0's, with HERSIR_PREFIX too) keeps the install and the data where they are; the uninstall removes both layouts and keeps the gizai data, which the purge deletes", () => {
+    const home = newHome();
+    const { lib, share, data, update } = installed016(home);
+    const src = source(null, "0.17.0", "Linux");
+    expect(installWith(update, src, home, "Linux", "--skip-build").code).toBe(0);
+    const next = installWith({ ...update, HERSIR_PREFIX: join(home, ".local") }, src, home, "Linux", "--skip-build");
+    expect(next.code, next.out).toBe(0);
+    expect(says(home, "gizai")).toBe("hersir 0.17.0");
+    expect(there(join(home, ".local/lib/hersir"))).toBe(false);
+    expect(next.out).toContain(`Your data: ${data}\n`);
+    expect(there(join(share, "hersir"))).toBe(false);
+
+    const u = installWith(update, src, home, "Linux", "--uninstall");
+    expect(u.code, u.out).toBe(0);
+    for (const path of [lib, join(home, ".local/lib/hersir"), join(home, ".local/bin/gizai"), join(home, ".local/bin/hersir"), join(share, "applications/hersir.desktop"), join(share, "applications/gizai.desktop")])
+      expect(there(path), path).toBe(false);
+    expect(u.out).toContain(`Your data stays in ${data} (run with --uninstall --purge to delete it).`);
+    expect(readFileSync(join(data, "gizai.db"), "utf8")).toBe("the 0.16.0 data");
+    const p = installWith(update, src, home, "Linux", "--uninstall", "--purge");
+    expect(p.code, p.out).toBe(0);
+    expect(p.out).toContain(`Deleted your data (${data})`);
+    expect(there(data)).toBe(false);
   });
 });
