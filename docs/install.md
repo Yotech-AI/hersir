@@ -13,22 +13,23 @@ Hersir is early: its version is still 0.x. Every release is on [GitHub Releases]
 On Linux and macOS, in a terminal:
 
 ```sh
-curl -fsSL https://gizai.app/install.sh | sh
+curl -fsSL https://hersir.dev/install.sh | sh
 ```
 
 On Windows, in PowerShell:
 
 ```powershell
-irm https://gizai.app/install.ps1 | iex
+irm https://hersir.dev/install.ps1 | iex
 ```
 
 It gets the source of the latest release into `~/.local/share/gizai-src` (on Windows `%LOCALAPPDATA%\gizai-src`), or updates it there. Then it runs that release's install script: first its check, which names what is missing, then the build and the install. Run it again to update.
 
-- gizai.app sends the line on to [`scripts/get.sh`](https://github.com/Yotech-AI/hersir/blob/production/scripts/get.sh) (on Windows [`scripts/get.ps1`](https://github.com/Yotech-AI/hersir/blob/production/scripts/get.ps1)) on the `production` branch, where you can read it first. The source it gets comes from GitHub.
+- hersir.dev sends the line on to [`scripts/get.sh`](https://github.com/Yotech-AI/hersir/blob/production/scripts/get.sh) (on Windows [`scripts/get.ps1`](https://github.com/Yotech-AI/hersir/blob/production/scripts/get.ps1)) on the `production` branch, where you can read it first. The source it gets comes from GitHub.
+- Older install lines with gizai.app keep working.
 - Without git (on Linux and macOS also bash and curl), it says what to install first and does nothing else.
 - The source folder is the install's own: changes in it are replaced. Your data stays in [its own folder](#your-data).
 - `--uninstall --purge` (`-Uninstall -Purge` on Windows) deletes the source folder with your data.
-- CI proves the line: it installs, updates and uninstalls Hersir with it on Ubuntu 24.04, Fedora, Arch Linux, openSUSE Tumbleweed, macOS 14 on Apple silicon and Windows whenever an install script changes, and runs gizai.app's own lines on Ubuntu, macOS and Windows after each release and every week.
+- CI proves the line: it installs, updates and uninstalls Hersir with it on Ubuntu 24.04, Fedora, Arch Linux, openSUSE Tumbleweed, macOS 14 on Apple silicon and Windows whenever an install script changes, and runs hersir.dev's own lines on Ubuntu, macOS and Windows after each release and every week.
 
 The install script's options go after the line:
 

@@ -77,8 +77,8 @@ There is no "Local-first and open" row: open source isn't a feature, and local-f
 **Get Hersir:** label Install; lead "One line in a terminal installs Hersir on your computer. It's free, for Linux,
 macOS and Windows." Then:
 
-- Linux and macOS: `curl -fsSL https://gizai.app/install.sh | sh`
-- Windows · PowerShell: `irm https://gizai.app/install.ps1 | iex`
+- Linux and macOS: `curl -fsSL https://hersir.dev/install.sh | sh`
+- Windows · PowerShell: `irm https://hersir.dev/install.ps1 | iex`
 - Or build from source: the README's Install steps (https://github.com/Yotech-AI/hersir#install).
 
 ## What the design decides
