@@ -702,6 +702,8 @@ export type McpToolView = {
   hints: McpHints; hintsSent: string[];
   /** low | medium | high */
   risk: string; summary: string; notes: string[];
+  /** GA-262: why runs leave it out, never allowing it ("left out: its name isn't a plain tool name"); null when they don't. */
+  leftOut?: string | null;
 };
 export type McpListed = { serverName: string; serverVersion: string; listedAt: number; tools: McpToolView[] };
 export type McpServerView = McpServer & {

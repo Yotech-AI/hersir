@@ -559,15 +559,15 @@ pub fn for_run(st: &AppState, agent: &Member, min_valid: Duration) -> (Vec<RunSe
     }
     let servers = core_mcp::list(&st.db).unwrap_or_default();
     let lists = core_mcp::tool_lists(&st.db).unwrap_or_default();
-    let known = |id: &str| lists.get(id).map(|c| c.tools.iter().filter_map(|v| v.get("name").and_then(|n| n.as_str()).map(str::to_string)).collect())
-        .unwrap_or_default();
     for a in on {
         // The built-in browser: always hidden with a throwaway profile, its options checked (`browser_target`). On Windows
         // its entry starts npx by name through cmd (`browser::entry`).
         if a.server_id == core_mcp::BROWSER {
             match browser_target(st, agent.cli_tools.insecure_certs) {
-                Ok(t) => out.push(RunServer { name: core_mcp::BROWSER.into(), entry: browser::entry(&t.command, &t.args, &t.env),
-                                              tools_off: a.tools_off.clone(), known_tools: known(core_mcp::BROWSER) }),
+                Ok(t) => {
+                    let (known_tools, tools_off) = known_tools(lists.get(core_mcp::BROWSER), &a.tools_off);
+                    out.push(RunServer { name: core_mcp::BROWSER.into(), entry: browser::entry(&t.command, &t.args, &t.env), tools_off, known_tools })
+                }
                 Err(e) => notes.push(format!("Left out the browser ({}): {e}. Settings → MCP servers says what it needs.", core_mcp::BROWSER)),
             }
             continue;
@@ -601,10 +601,21 @@ pub fn for_run(st: &AppState, agent: &Member, min_valid: Duration) -> (Vec<RunSe
             out.push(RunServer { name: s.name.clone(), entry, tools_off: vec![], known_tools: vec![] });
             continue;
         }
-        let known_tools = cached.map(|c| c.tools.iter().filter_map(|v| v.get("name").and_then(|n| n.as_str()).map(str::to_string)).collect()).unwrap_or_default();
-        out.push(RunServer { name: s.name.clone(), entry, tools_off: a.tools_off.clone(), known_tools });
+        let (known_tools, tools_off) = known_tools(cached, &a.tools_off);
+        out.push(RunServer { name: s.name.clone(), entry, tools_off, known_tools });
     }
     (out, notes)
+}
+
+/// A server's tools for a run, from its cached `tools/list` answer, and its tools off: the agent's (`off`), and GA-262 each
+/// tool whose name isn't a plain tool name (`core_mcp::valid_tool_name`). Such a tool is never allowed and never named in
+/// a rule, as Claude Code would read `mcp__<server>__x Bash` as two rules, the second any command: it is left out of the
+/// tools, and counting it as off makes the run allow the server's other tools by name, never the whole server
+/// (`mcp_run::permissions`, which names no tool like it either).
+fn known_tools(cached: Option<&core_mcp::ToolList>, off: &[String]) -> (Vec<String>, Vec<String>) {
+    let names = cached.map(|c| c.tools.iter().filter_map(|v| v.get("name").and_then(|n| n.as_str()).map(str::to_string)).collect::<Vec<_>>());
+    let (known, left_out): (Vec<String>, Vec<String>) = names.unwrap_or_default().into_iter().partition(|n| core_mcp::valid_tool_name(n));
+    (known, off.iter().cloned().chain(left_out).collect())
 }
 
 /// The names of the run's servers that Claude Code signs in to: when the run's init line says one needs sign-in, the run

@@ -59,6 +59,9 @@ pub struct ToolView {
     pub summary: String,
     /// Which hints the server sent, and what is assumed for the rest.
     pub notes: Vec<String>,
+    /// GA-262: why runs leave it out, never allowing it (`mcp_run::LEFT_OUT`: its name isn't a plain tool name); None when
+    /// they don't.
+    pub left_out: Option<String>,
 }
 
 const HINTS: [&str; 4] = ["readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"];
@@ -90,6 +93,9 @@ pub fn describe(tool: &Value) -> ToolView {
         hints_sent,
         risk: risk.to_string(),
         summary: summary(&hints),
+        // Its name as the server sent it, untrimmed: runs check that one (`mcp_run::plain_tool_name`).
+        left_out: (!crate::mcp_run::plain_tool_name(tool.get("name").and_then(Value::as_str).unwrap_or_default()))
+            .then(|| crate::mcp_run::LEFT_OUT.to_string()),
     }
 }
 
