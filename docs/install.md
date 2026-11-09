@@ -28,7 +28,7 @@ It gets the source of the latest release into `~/.local/share/gizai-src` (on Win
 - Older install lines with gizai.app keep working.
 - Without git (on Linux and macOS also bash and curl), it says what to install first and does nothing else.
 - The source folder is the install's own: changes in it are replaced. Your data stays in [its own folder](#your-data).
-- `--uninstall --purge` (`-Uninstall -Purge` on Windows) deletes the source folder with your data.
+- `--uninstall --purge` (`-Uninstall -Purge` on Windows) deletes the source folder with your data: the data folder Hersir uses, which is the hersir folder, or, when there is none, the gizai folder of an install from before 0.17.0 that holds `gizai.db` ([Your data](#your-data)). On macOS and Windows, `HERSIR_DATA_DIR` (else `GIZAI_DATA_DIR`) names another one.
 - CI proves the line: it installs, updates and uninstalls Hersir with it on Ubuntu 24.04, Fedora, Arch Linux, openSUSE Tumbleweed, macOS 15 on Apple silicon and Windows whenever an install script changes, and runs hersir.dev's own lines on Ubuntu, macOS and Windows after each release and every week.
 
 The install script's options go after the line:
@@ -64,7 +64,7 @@ The installer builds Hersir and installs it for your user in `~/.local`, with no
 |---|---|
 | `./install.sh --check` | Shows what is missing and the command that installs it |
 | `./install.sh` | Installs, or updates (your data is backed up first) |
-| `./install.sh --uninstall` | Removes Hersir and keeps your data in `~/.local/share/gizai` |
+| `./install.sh --uninstall` | Removes Hersir and keeps your data in `~/.local/share/hersir`, or in `~/.local/share/gizai` of an install from before 0.17.0 when that holds `gizai.db` and there is no hersir folder ([Your data](#your-data)) |
 
 ## macOS
 
@@ -118,7 +118,7 @@ Hersir runs the coding CLIs installed on Windows itself, like `claude.exe` or np
 |---|---|
 | `.\install.ps1 -Check` | Shows what is missing and how to install it |
 | `.\install.ps1` | Installs, or updates (your data is backed up first) |
-| `.\install.ps1 -Uninstall` | Removes Hersir and keeps your data in `%APPDATA%\Gizai` |
+| `.\install.ps1 -Uninstall` | Removes Hersir and keeps your data in `%APPDATA%\Hersir`, or in `%APPDATA%\Gizai` of an install from before 0.17.0 when that holds `gizai.db` and there is no `%APPDATA%\Hersir` ([Your data](#your-data)) |
 
 If PowerShell won't run scripts, start these the way the block above does: `powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Check`. The one line needs no such change: it starts `install.ps1` that way itself.
 
