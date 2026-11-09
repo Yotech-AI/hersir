@@ -1025,11 +1025,12 @@ async fn two_decisions_in_a_chat_that_end_together_give_one_closing_note_after_b
 #[test]
 fn the_approve_paragraph_in_the_docs_says_a_last_note_says_the_answer_is_done() {
     let docs = include_str!("../../../docs/agent-tools.md");
-    let sentence = "When nothing waits any more and the Team Lead isn't answering, a last note says so: \"Nothing else waits for your OK. \
-                    The Team Lead's answer above is done: send a message to go on.\"";
+    // GA-256: the docs say Chief (the app's own text follows on the Rust texts' card)
+    let sentence = "When nothing waits any more and the Chief isn't answering, a last note says so: \"Nothing else waits for your OK. \
+                    The Chief's answer above is done: send a message to go on.\"";
     let approve = docs.lines().find(|l| l.trim_start().starts_with("**Approve** runs exactly that call")).expect("the Approve paragraph");
     // right after the sentence about the note that says what happened
-    assert!(approve.contains(&format!("\"Discarded: `<what>`.\", and the Team Lead's next answer in that chat starts with what you decided, in square \
+    assert!(approve.contains(&format!("\"Discarded: `<what>`.\", and the Chief's next answer in that chat starts with what you decided, in square \
                                        brackets. {sentence}")), "{approve}");
     assert_eq!(docs.matches(sentence).count(), 1);
 }
@@ -1065,9 +1066,9 @@ fn update_checkout_takes_stash_in_the_cards_words() {
     assert!(tool.description.contains("Changes nothing, and says why, with uncommitted changes unless stash is true, a merge or rebase in progress"),
             "{}", tool.description);
     assert_eq!(tool.input_schema["required"], json!(["project"]), "stash is optional");
-    let lead = include_str!("../../../docs/features/team-lead.md");
+    let lead = include_str!("../../../docs/features/chief.md");
     assert!(lead.contains("After your yes it updates the folder:\n\n- with uncommitted changes in tracked files, only if you agreed: put them \
-                           in git's stash first (git stash pop brings them back);\n- a fast-forward to main"), "the first bullet in docs/features/team-lead.md");
+                           in git's stash first (git stash pop brings them back);\n- a fast-forward to main"), "the first bullet in docs/features/chief.md");
     let docs = include_str!("../../../docs/agent-tools.md");
     assert!(docs.contains("- `update_checkout`: the project, the folder, and whether it stashes first;"), "docs/agent-tools.md");
 }

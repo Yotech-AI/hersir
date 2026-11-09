@@ -701,7 +701,7 @@ fn the_lead_role_template_and_the_tool_describe_the_rules() {
     assert!(!tool.read_only);
     assert!(tool.description.contains("qa_pass"), "{}", tool.description);
     let docs = include_str!("../../../docs/agent-tools.md");
-    for part in ["## The Team Lead merges pull requests", "merge_pull_request", "Team Lead may merge", "--merge --match-head-commit",
+    for part in ["## The Chief merges pull requests", "merge_pull_request", "Chief may merge", "--merge --match-head-commit",
                  "A Bitbucket project is refused", "No release is under way", "Not after an outside tool"] {
         assert!(docs.contains(part), "{part:?} in docs/agent-tools.md");
     }
