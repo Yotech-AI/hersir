@@ -316,7 +316,8 @@ fn export_in(c: &Connection, team_id: &str) -> Result<TemplateFile> {
         FileAgent {
             name: name.clone(), role: m.role_key.clone(), title: m.title.clone(), cli, model: m.model.clone(), effort: m.effort.clone(),
             permission_mode: Some(m.permission_mode.clone().unwrap_or_default()), instructions_md: m.instructions_md.clone(),
-            allowed_tools: m.allowed_tools.clone(), cards_at_once: m.max_runs, monthly_budget_usd: m.budget_usd_micros.map(|b| b as f64 / 1e6),
+            // GA-262: as its runs get them: an entry saved before each had to be one rule is left out, as importing refuses it.
+            allowed_tools: m.allowed_tools.iter().filter(|t| team::one_rule(t)).cloned().collect(), cards_at_once: m.max_runs, monthly_budget_usd: m.budget_usd_micros.map(|b| b as f64 / 1e6),
             chat: m.chat_enabled, board_check_minutes: m.board_check_minutes, use_memory: m.use_memory,
             shares_memory_with: m.shares_memory_with.as_deref().filter(|o| *o != m.actor_id).and_then(name_of),
             web_search: m.cli_tools.web_search, web_fetch: m.cli_tools.web_fetch, fetch_domains: m.cli_tools.fetch_domains.clone(),

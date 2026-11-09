@@ -78,7 +78,7 @@ Names link the file together: a column's `next` and `agents`, and an agent's `sh
 | `effort` | its effort level (Claude Code's `--effort`, Codex's reasoning effort), or `null` |
 | `permission_mode` | its permission mode, like `acceptEdits` (Claude Code), `workspace-write` (Codex) or `auto_edit` (Gemini); `""` for an Other CLI |
 | `instructions_md` | its instructions, at most 100,000 characters |
-| `allowed_tools` | its allowed commands, like `Bash(git status:*)`, each one rule (one command per entry) |
+| `allowed_tools` | its allowed commands, like `Bash(git status:*)`, each one rule (one command per entry). Export leaves out one saved before Hersir checked that, as runs do. |
 | `cards_at_once` | the cards it works on at once, 1 to 10 |
 | `monthly_budget_usd` | its monthly budget in dollars (`25` or `25.5`), or `null` for none |
 | `chat` | it answers on the Chat page (the Chief) |
