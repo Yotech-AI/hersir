@@ -137,6 +137,34 @@ describe("Release builds: when it runs, and who may write to a release", () => {
     expect(job("build")).toContain("          persist-credentials: false\n");
   });
 
+  it("takes the pull request's last commit, the published release's tag and the typed tag from the event", () => {
+    const what = job("what");
+    expect(what).toContain("          RELEASE_TAG: ${{ github.event.release.tag_name }}\n");
+    expect(what).toContain("          INPUT_TAG: ${{ inputs.tag }}\n");
+    // not github.sha, which on a pull request is the merge with its base
+    expect(what).toContain("          HEAD_SHA: ${{ github.event.pull_request.head.sha }}\n");
+    expect(what).toContain("    outputs:\n      ref: ${{ steps.what.outputs.ref }}\n      tag: ${{ steps.what.outputs.tag }}\n");
+  });
+
+  it("cancels only a pull request's older run, never a release's: two runs for one release wait for each other", () => {
+    expect(on).toContain(
+      [
+        "concurrency:",
+        "  group: release-builds-${{ github.event.release.tag_name || inputs.tag || github.ref }}",
+        "  cancel-in-progress: ${{ github.event_name == 'pull_request' }}",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("uploads nothing when a build fails: SHA256SUMS waits for all three builds, and the upload for SHA256SUMS", () => {
+    expect(job("build")).toContain("      fail-fast: false\n");
+    expect(job("sums")).toContain("    needs: [what, build]\n");
+    expect(job("upload")).toContain("    needs: [what, sums]\n");
+    // nothing runs a job after a failure anyway
+    expect(workflow).not.toMatch(/always\(\)|failure\(\)|cancelled\(\)|continue-on-error/);
+  });
+
   it("names its checks as RELEASING.md does: What to build, build <system>, SHA256SUMS and upload to the release", () => {
     expect(JOBS.map(jobName)).toEqual(["What to build", "build ${{ matrix.system }}", "SHA256SUMS", "upload to the release"]);
     const releasing = read("docs/RELEASING.md");
@@ -198,6 +226,41 @@ describe("Release builds: the three systems and their archives (the contract)", 
 
   it("signs nothing: no codesign, signtool or certificate in the workflow", () => {
     expect(workflow).not.toMatch(/codesign|signtool|notarytool|certificate|APPLE_|\.p12/i);
+  });
+
+  it("packs the macOS build with macOS's own tar, without extended attributes or the ._ files that would carry them", () => {
+    expect(stepRun("Pack (Linux, macOS)")).toContain(
+      'if [ "$RUNNER_OS" = macOS ]; then\n  COPYFILE_DISABLE=1 /usr/bin/tar --no-xattrs -czf "$out" \\\n',
+    );
+  });
+
+  it("checks each archive in scratch folders under the runner's temp folder, never the runner's own install", () => {
+    const env = (name) => build.split(`- name: ${name}\n`)[1].split("        run: |")[0];
+    expect(env("Check the archive (Linux, macOS)")).toContain(
+      [
+        "          GIZAI_PREFIX: ${{ runner.temp }}/scratch",
+        "          XDG_DATA_HOME: ${{ runner.temp }}/scratch/share",
+        "          GIZAI_DATA_DIR: ${{ runner.temp }}/scratch/share/gizai",
+        "",
+      ].join("\n"),
+    );
+    expect(env("Check the archive (Windows)")).toContain(
+      "          GIZAI_PREFIX: ${{ runner.temp }}\\scratch\n          GIZAI_DATA_DIR: ${{ runner.temp }}\\scratch-data\n",
+    );
+    // the check unpacks into a fresh checkout of the same commit, without the build's target or node_modules
+    expect(build).toContain(
+      '      - name: A fresh checkout of the same commit\n        shell: bash\n        run: git worktree add --detach "$RUNNER_TEMP/fresh" HEAD\n',
+    );
+  });
+
+  it("on Windows reads the version from gizai-installed.txt, which install.ps1 -SkipBuild writes from the installed gizai.exe", () => {
+    expect(stepRun("Check the archive (Windows)")).toContain(
+      "$got = Get-Content -LiteralPath (Join-Path $env:GIZAI_PREFIX 'gizai-installed.txt')\n",
+    );
+    const ps1 = read("install.ps1");
+    expect(ps1).toContain("$Marker = Join-Path $Prefix 'gizai-installed.txt'\n");
+    expect(ps1).toContain("$installed = Invoke-Gizai $Exe @('--version')\n");
+    expect(ps1).toContain("Set-Content -LiteralPath $Marker -Value $version -Encoding Ascii\n");
   });
 
   it("keeps each archive as an artifact named like the file, replaced when the run runs again", () => {
