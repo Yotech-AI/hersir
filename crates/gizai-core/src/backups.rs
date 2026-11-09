@@ -26,7 +26,10 @@ pub const MARKER: &str = "gizai-backups.json";
 /// …and what it says.
 pub const MARKER_JSON: &str = r#"{"format":"gizai-backups","format_version":1}"#;
 /// The backups folder Gizai makes inside a chosen folder that isn't one itself.
-pub const FOLDER_NAME: &str = "Gizai backups";
+pub const FOLDER_NAME: &str = "Hersir backups";
+/// The name an older Gizai gave it (before GA-246): one that holds `gizai-backups.json` is still used, as it is, while
+/// its chosen folder has no FOLDER_NAME.
+pub const OLD_FOLDER_NAME: &str = "Gizai backups";
 /// The format this Gizai writes and reads: the marker's and each manifest's `format_version`.
 pub const FORMAT_VERSION: i64 = 1;
 /// A manifest's `format`.
@@ -65,7 +68,7 @@ pub const LAST_ERROR_KEY: &str = "backup_last_error";
 const KEPT_REASONS: [&str; 4] = ["daily", "weekly", "manual", "quit"];
 
 /// The backups folder's README.txt.
-const README: &str = "Gizai backups
+const README: &str = "Hersir backups
 
 This folder holds snapshots of Hersir's data, made by Hersir on each computer that backs up here: its database and the
 files it stores (attachments and screenshots). Hersir makes them on a schedule, when you press Back up now, and when
@@ -404,9 +407,15 @@ pub fn set_last_error(db: &Db, error: Option<&LastError>) -> Result<()> {
 // ---- the folder ----
 
 /// The backups folder a chosen folder stands for: the folder itself when it holds `gizai-backups.json`, else its
-/// `Gizai backups` (made by the first snapshot). Settings' folder, `list`'s and a restore's are read the same way.
+/// `Hersir backups` (made by the first snapshot). A chosen folder without one whose `Gizai backups` holds
+/// `gizai-backups.json` (an older Gizai made it) goes on with that one, which is never renamed. Settings' folder,
+/// `list`'s and a restore's are read the same way.
 pub fn backups_dir(chosen: &Path) -> PathBuf {
-    if chosen.join(MARKER).is_file() { chosen.to_path_buf() } else { chosen.join(FOLDER_NAME) }
+    if chosen.join(MARKER).is_file() {
+        return chosen.to_path_buf();
+    }
+    let (dir, old) = (chosen.join(FOLDER_NAME), chosen.join(OLD_FOLDER_NAME));
+    if !dir.exists() && old.join(MARKER).is_file() { old } else { dir }
 }
 
 /// Why chosen folder `chosen` can't take snapshots now, in plain words; None when it can. It is missing (a USB disk that
