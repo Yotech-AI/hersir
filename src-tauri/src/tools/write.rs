@@ -106,8 +106,9 @@ fn guard_agent_powers(a: &Args) -> Result<(), String> {
         return Err(format!("{m} can't be set from chat: it lets an agent run anything. Set it yourself in the agent form if you really want it."));
     }
     let allowed = a.list("allowed_tools").unwrap_or_default();
-    // GA-262: each entry one rule, as the agent form saves them: Claude Code would read `Bash(ls:*) Bash(*)` as two.
-    if let Some(t) = allowed.iter().find(|t| !team::one_rule(t)) {
+    // GA-262: each entry one rule, as the agent form saves them: Claude Code would read `Bash(ls:*) Bash(*)` or `Bash(a) b`
+    // as two. One without a `)`, like `Bash(git status:*`, is no command at all, and the check below says so.
+    if let Some(t) = allowed.iter().find(|t| t.contains(')') && !team::one_rule(t)) {
         return Err(team::not_one_rule(t));
     }
     for t in &allowed {
