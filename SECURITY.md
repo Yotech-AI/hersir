@@ -13,8 +13,8 @@ That form is the only way to report a security problem. Never report one in a pu
 ## What counts
 
 - An agent getting past what you allowed it: its commands, folders or tools ([Tools per agent](docs/features/tools.md), and the [safety rules](docs/agent-tools.md#safety-rules) in depth).
-- The Team Lead's approval step: a call that should wait for your Approve and runs without it ([Approve with one click](docs/features/team-lead.md#approve-with-one-click)).
-- The socket or named pipe of the Team Lead's tools ([Linux, macOS and Windows](docs/PLATFORMS.md#every-linux-only-spot)).
+- The Chief's approval step: a call that should wait for your Approve and runs without it ([Approve with one click](docs/features/chief.md#approve-with-one-click)).
+- The socket or named pipe of the Chief's tools ([Linux, macOS and Windows](docs/PLATFORMS.md#every-linux-only-spot)).
 - Keys and tokens: a sign-in, key or token that leaves your keychain, or reaches a run or a file it shouldn't ([Your keys stay yours](docs/features/cli.md#your-keys-stay-yours)).
 - The install scripts, the one-line installs and updates ([How Hersir updates itself](docs/RELEASING.md#how-hersir-updates-itself)).
 
