@@ -601,7 +601,7 @@ async fn after_a_chat_answer_used_a_web_tool_or_the_browser_the_acting_tools_are
         assert_eq!(msgs.iter().map(|m| m.0.as_str()).collect::<Vec<_>>(), [tool, "mcp__gizai__set_agent_status"], "{msgs:?}");
         let (_, is_error, text) = &msgs[1];
         // GA-102: not run, but kept for the user to approve with one click
-        assert!(*is_error && text == &format!("set_agent_status wasn't run: this answer used {tool}, a tool from outside Hersir. Hersir keeps \
+        assert!(*is_error && text == &format!("set_agent_status wasn't run: this chat used {tool}, a tool from outside Hersir. Hersir keeps \
                 the call for the user to approve with one click. Tell them in a sentence what it does."), "{tool}: {msgs:?}");
         let kept = gizai_lib::pending::list(st, &thread).unwrap();
         assert!(kept.len() == 1 && kept[0].action.tool == "set_agent_status" && kept[0].action.outside_tool == tool, "{tool}: {kept:?}");
