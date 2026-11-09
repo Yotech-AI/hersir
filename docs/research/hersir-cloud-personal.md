@@ -4,11 +4,16 @@ Research for GA-67, 9 November 2026, by the R&D Agent. No code was changed. It t
 
 **[V]** = verified: in this repository (a file and line), or on a primary source read on 2026-11-09 (listed in [Sources](#9-sources)). **[I]** = my judgement.
 
-> Draft 1: the project, the code findings, and the backup and sync design. The outside research (encryption, server, sign-in, payments, legal) is being added.
-
 ## 1. Summary
 
-(Written last.)
+1. **Order**: Cloud Backup first, on your own computers with a plan given by hand; Multiple devices next (its engine can be built at the same time); Personal goes on sale once Paddle and the legal pack are done. Eight cards, about 30 to 40 agent-days (section 6).
+2. **Encryption: end-to-end for both** (recommended over the 9 Oct readable copy): a random account key in each computer's keychain plus a recovery code; the server holds ciphertext, never needs Hersir's schema, and a breach doesn't expose your customers' clients.
+3. **The code's biggest surprise**: `changes` can't drive sync as it is. Its rows are feed summaries, some writes log nothing, and its clock isn't a real HLC. Sync gets a trigger-written log beside it, a real HLC, last writer wins per field, and card numbers settled in the server's order.
+4. **Cloud Backup** keeps format 1's manifest and GA-218's restore; only the transport is new: a page-for-page copy in 256 KiB chunks, each compressed and encrypted, named by a keyed hash, uploaded straight to storage.
+5. **Server**: one Hetzner server in Germany, Rust, SQLite with Litestream, Hetzner Object Storage: about €14 a month up to a few hundred customers, about €71 at 1,000.
+6. **Sign-in**: Zitadel Cloud (EU region) through the OAuth client Hersir already has, then Hersir Cloud's own device tokens. **Payments**: Paddle (no OSS for the S.L.; fees 7% of the yearly price, 16% of the monthly).
+7. **Legal**: templates for the notice, privacy policy, records, DPA (the Commission's clauses) and breach procedure; a Spanish lawyer for the terms and their fit with Paddle.
+8. **Twelve open questions** (section 7); the first is to confirm end-to-end encryption.
 
 ## 2. The project now
 
@@ -68,7 +73,7 @@ These change the plan, mostly for Multiple devices.
 Why, now that the phone chat comes later [I]:
 
 - **What the readable copy bought is out of scope now**: a phone or web view reading data through an API, snapshots made on the server, conflicts settled on the server.
-- **It would hold your customers' clients in plaintext**: names, emails, phone numbers, IBANs and notes, on a server one person guards. Encryption at rest protects stolen disks and leaked backups, not a hacked app server, the operator or a court order (S-E14). A readable sync would also undo the backups' encryption: the same data would sit in plaintext beside them.
+- **It would hold your customers' clients in plaintext**: names, emails, phone numbers, IBANs and notes, on a server one person guards. Encryption at rest protects stolen disks and leaked backups, not a hacked app server, the operator or a court order. A readable sync would also undo the backups' encryption: the same data would sit in plaintext beside them.
 - **An end-to-end server never needs Hersir's schema.** It doesn't migrate anything, so a Hersir release with a migration needs no server release. A readable master copy must apply every change with `gizai-core` and migrate every customer's database in step with each app release: release coupling a one-person team pays for every time.
 - **GDPR**: a breach of ciphertext whose keys only the customer holds is, in the main, a matter for the breach record, not for telling the people in it (Art. 34(3)(a), below).
 - **It is what the plan, the website and comparable tools say**: `PAID-FEATURES.md:82-87`; "Encrypted backups of your data"; end-to-end by default at Obsidian, Standard Notes, Joplin, Actual Budget and Ente (S-E1 to S-E9).
@@ -81,7 +86,7 @@ Why, now that the phone chat comes later [I]:
 | Data key, id key, key id | derived from AK with HKDF-SHA256 | computed when needed; the key id (16 bytes) is on the server, to tell a wrong code from a right one |
 | Recovery code | 128 random bits, shown as 26 characters in groups (`HC-7K2Q-…`) | on paper or in your password manager; the server keeps AK sealed with a key derived from it |
 
-- **A new computer gets the key** by signing in and typing the recovery code (v1). Later: *Approve on your other computer*, a short code and a key exchange (X25519) through the server, as Signal links devices (S-E10). Passkeys (WebAuthn PRF) could add one more way, once support is less patchy than in 2026 (S-E11, S-E12).
+- **A new computer gets the key** by signing in and typing the recovery code (v1). Later: *Approve on your other computer*, a short code and a key exchange (X25519) through the server, as Signal links devices [I]. Passkeys (WebAuthn PRF) could add one more way, once support is less patchy than in 2026: Bitwarden unlocks vaults with PRF, but only in Chromium browsers and not in Chrome profiles (S-E3; browser support from bug trackers, search results only).
 - **No passphrase in v1.** A key sealed by a passphrase sits on the server, where a weak passphrase can be guessed offline after a breach; Argon2id slows that, it doesn't stop it. A random 128-bit code can't be guessed, and needs no Argon2 at all. 1Password and Ente add a random secret for this reason (S-E4, S-E8). This changes the plan's "Argon2id from a passphrase" (`PAID-FEATURES.md:83`).
 - **What is lost when the key is lost**: only when every computer and the recovery code are gone. Then the cloud copies (backups and the sync log) can't be read by anyone, Hersir included; the data on your computers is untouched. While one computer still has the key, it can show a new recovery code (AK is sealed again; nothing is encrypted again). Setup says so plainly and asks you to type back part of the code before the first upload, as Apple asks for a recovery key before Advanced Data Protection (S-E2).
 - **Ciphers** [V versions]: XChaCha20-Poly1305 (`chacha20poly1305` 0.11.0, Apache-2.0 or MIT; audited by NCC Group in 2020, before this version line), HKDF and HMAC with SHA-256 (`hkdf`, `hmac`, the `sha2` Hersir already has). Each object is at most a 4 MiB chunk sealed whole, with a random 24-byte nonce and its id as associated data, so no streaming construction is needed. Not `age` (0.12.1 says "[BETA]" and its passphrases use scrypt) (S-E15 to S-E18).
@@ -100,7 +105,7 @@ Why, now that the phone chat comes later [I]:
 
 #### What a later phone chat would need
 
-- **With end-to-end**: the phone gets the key (or a chat-only key) by scanning a code on a computer, as WhatsApp and Signal link devices; push notifications carry a wake-up or a small encrypted payload that the phone decrypts (an iOS Notification Service Extension; an Android data message) (S-E10) [I].
+- **With end-to-end**: the phone gets the key (or a chat-only key) by scanning a code on a computer, as WhatsApp and Signal link devices; push notifications carry a wake-up or a small encrypted payload that the phone decrypts (an iOS Notification Service Extension; an Android data message) [I].
 - **With a readable server**: the phone signs in and reads an API; but client names in push payloads would pass through Apple and Google, so you'd encrypt or leave them out anyway [I].
 - End-to-end doesn't block it; it adds pairing and decryption on the phone. Since the phone chat talks to the Team Lead on its home computer, it can use a relay with its own key, without the phone ever syncing the whole database [I].
 
@@ -127,7 +132,7 @@ Two risks: Hetzner raised cloud prices three times in 2026 and has limited new c
 
 | Set-up | For | Against |
 |---|---|---|
-| **A. Hetzner server + Hetzner Object Storage** (recommended) | one EU company; cheapest at scale (about €6.35 a TB against $15 on R2); keeps Rust | you run a server: about 1 to 3 hours a month (S-S9) |
+| **A. Hetzner server + Hetzner Object Storage** (recommended) | one EU company; cheapest at scale (about €6.35 a TB against $15 on R2); keeps Rust | you run a server: about 1 to 3 hours a month [I] |
 | B. Hetzner server + Cloudflare R2 (EU jurisdiction) | R2 is mature, free egress, $0.015 a GB-month | a US sub-processor under the EU-US Data Privacy Framework (whose appeal, C-703/25 P, is pending) and SCCs (S-S10, S-S11) |
 | C. Cloudflare Workers + one Durable Object per customer + R2, all with `jurisdiction: eu` | no server at all; cheapest at 10 to 100 customers; Durable Objects order a workspace's log by nature | US company; Durable Object ids are logged outside the jurisdiction; `workers-rs` "expect a few rough edges", D1 in Rust is alpha, so in practice TypeScript; lock-in (S-S12 to S-S16) |
 | D. Scaleway (France) servers, storage and managed PostgreSQL | EU company with managed Postgres (about €11 a month) | its price pages returned 403 today (search snippets only) (S-S17) |
@@ -140,7 +145,7 @@ Cloudflare D1, Durable Objects and R2 all take a jurisdiction (`eu`) at creation
 - **Its own backups**: Litestream replicates the server's SQLite to a bucket at a second provider (Scaleway or Backblaze B2), so one locked account can't take everything; Hetzner's 7 daily images on top. A monthly restore drill onto a throwaway server. The customers' objects stay in one location (they are backups already, and every computer keeps its data).
 - **Monitoring**: healthchecks.io (free for 20 checks) for Litestream, the retention job and a minute-by-minute ping; an uptime check with a status page (Uptime Kuma on a second small server, or Better Stack's free tier); errors to email, or Sentry (from $26 a month, US company, a data-residency option) once there are paying customers. No customer data in logs: ids and sizes only (S-S18 to S-S20).
 
-#### Cost a month (EUR, excl. VAT) [I, from the prices above, S-S9]
+#### Cost a month (EUR, excl. VAT) [I, computed from the prices above and S-S15]
 
 Assumptions: per customer 3 GB stored (1.5 × 0.2 GB database and 1.8 GB files) and 50 MB in the server's database; one CX23 up to a few hundred customers, a CX43 at 1,000 with a standby server and paid error tracking.
 
@@ -385,3 +390,469 @@ Everything else syncs: organisations, people and agents (with their settings, no
    Also: applying a transaction twice equals applying it once; each computer's clock only goes up; no two live cards share a number; restoring a backup gives back the database it was made from; an unchanged database uploads no new chunks (S-B6).
 2. **Against the real server**: the server run locally, and two Hersirs with their own data folders (`GIZAI_DATA_DIR`), driven through their commands, never the UI; `toxiproxy` (2.13.0, MIT) between them for latency and cuts, or `turmoil` (0.7.2, MIT) to simulate the network inside one test (S-B7, S-B8).
 3. **In real use**: your desktop and laptop, with sync's log visible in Settings until it has run a few weeks without surprises.
+
+### 3.8 Question 7: Legal
+
+**Recommendation** [I]: do the template work now (items 1 to 7 below, with the European Commission's and the AEPD's material), then one fixed-fee job for a Spanish consumer and technology lawyer: the terms of service in a business and a consumer version, a review of the DPA, and how both fit Paddle's terms and its withdrawal flow. Don't charge before the terms and Paddle's checkout are signed off. This is research, not legal advice (S-L1 to S-L19).
+
+YoTech's two roles [I]: **controller** for account, billing, support and website data; **processor** for the data customers back up and sync (their clients). Using that data for its own purposes would make YoTech its controller (LOPDGDD art. 33.2) [V S-L2].
+
+| # | What | What it needs | Template or lawyer |
+|---|---|---|---|
+| 1 | Legal notice (LSSI-CE art. 10) | NEXO IV GRUPO, S.L., its registered address, email, Registro Mercantil entry and NIF, on the website, permanently and free; before an order the steps, the language and storable terms (art. 27); a confirmation within 24 hours (art. 28) [V S-L1] | template |
+| 2 | Privacy policy (GDPR art. 13) | for account holders and visitors: purposes, legal bases, recipients (Paddle as a separate controller, Zitadel and Hetzner as processors), retention, rights, the right to complain to the AEPD [I]; the AEPD's Facilita EMPRENDE helps [V S-L4] | template, a quick review |
+| 3 | Records of processing (art. 30; LOPDGDD art. 31) | one as controller, one as processor; the AEPD's Gestiona RGPD covers it [V S-L2, S-L4] | template |
+| 4 | DPO | not needed: YoTech isn't on LOPDGDD art. 34.1's list, and art. 37's triggers aren't met; a short memo says so [V S-L2; I] | in-house |
+| 5 | DPA offered to customers (art. 28) | the Commission's standard clauses between controllers and processors (Decision 2021/915), with Clause 7.7 option 2 (sub-processors by general authorisation, notice of changes, a right to object); at the end of the service, delete or return as the customer decides (LOPDGDD art. 33.3-4) [V S-L6, S-L2] | template, lawyer review |
+| 6 | Sub-processors | a public list (Hetzner Online GmbH, Germany: hosting and storage; Zitadel, Switzerland: sign-in; the email sender) with 30 days' notice of changes; Paddle is a controller of its own for payments. All EU or adequate countries (Switzerland, the UK), so no US transfer in the recommended set-up [I] | in-house |
+| 7 | Breach procedure | as controller: tell the AEPD within 72 hours through its electronic office, record every breach, notified or not [V S-L3]; as processor: tell each customer without undue delay, with a fixed number of hours in the DPA; the AEPD's Asesora Brecha and Comunica-Brecha RGPD tools [V S-L4]; with end-to-end encryption the content stays unreadable | template |
+| 8 | Consumers (TRLGDCU) | the total price with VAT per billing period (art. 97.1 e); 14 days to withdraw (art. 102); starting at once needs the consumer's express request and a confirmation on a durable medium (98.7-98.8), and a withdrawal then pays for the days used (108.4); digital-service conformity, including free export of the consumer's content after the end (119 ter) and rules for changing the service (126) [V S-L7]. The *withdrawal button* of Directive 2023/2673 applies from 19 June 2026; no Spanish transposition was found (OCU said on 19 June 2026 it was still missing) [I S-L8, S-L9]. The EU's ODR link is no longer needed: the platform closed on 20 July 2025 [I S-L11] | Paddle covers the checkout, refunds and withdrawals (its buyer terms: 14 days, a full refund unless the buyer started using it and agreed to that, S-L10); YoTech's terms and pricing page; a lawyer checks the fit |
+| 9 | Terms of service (Ley 7/1998) | transparent and accepted; for consumers no exclusion of liability for death or injury or of conformity remedies (TRLGDCU art. 86) [V S-L7]; for businesses a cap (for example 12 months' fees) and no indirect loss [I]; the lapse (read-only for 60 days, deletion after notice, export the whole time); the Data Act's switching terms | lawyer |
+| 10 | Data Act, chapter VI | applies to SaaS since 12 Sep 2025, with no small-company exemption for new contracts; at most 2 months' notice to switch, a 30-day transition, at least 30 days to take the data out; switching charges at cost until 12 Jan 2027, then none [V S-L12; I details]. Hersir's local data is always complete, and a restore gives back the cloud copy decrypted: say so in the terms and on an export page | in-house, in the terms |
+| 11 | Digital Services Act | a hosting service: points of contact, rules on content in the terms, a notice-and-action form, statements of reasons (arts. 11-12, 14, 16-18); a micro or small company is spared the transparency reports [V S-L14, S-L15; I articles] | in-house |
+| 12 | NIS2, European Accessibility Act | NIS2 covers "as a rule, medium-sized and large entities" [V S-L16]; the EAA spares micro-enterprises that provide services [I S-L17]. A file note, reviewed yearly | in-house |
+
+The price of a lawyer's pack in Spain: no published range was found [I].
+
+### 3.9 Question 8: The order, the cards, and what you do by hand
+
+**What you can use first** [I]:
+
+1. **Cloud Backup for your own computers**, with a plan given by hand (a comp entitlement), before any payment exists. It reuses 0.16.0's snapshot and restore almost whole, and it is the safety net under sync: a sync bug that damages data is undone from a cloud backup.
+2. **Multiple devices for your own computers.** The sync engine (card 6) needs no server and can be built at the same time as Cloud Backup; sync through the cloud follows.
+3. **Before the first customer**: payments and the account page (card 5), the legal pack, Zitadel Pro with the custom domain. Then sell Personal with Cloud Backup, with sync "coming to the same plan" (the plan's own advice: sell backup first, `PAID-FEATURES.md:196`).
+
+The cards are in [section 6](#6-proposed-cards); the contracts between them in [section 5.4](#54-contracts).
+
+**What you must do by hand** (no agent can: accounts, money, keys, signatures):
+
+| # | Where | What |
+|---|---|---|
+| 1 | GitHub | a private repository `Yotech-AI/hersir-cloud`, and a deploy key for it |
+| 2 | Hetzner | an account for NEXO IV GRUPO, S.L.; accept the AVV (DPA) in the console; a project; a CX23 server in Falkenstein or Nuremberg (order early: new servers have been scarce); an Object Storage bucket for customers' objects; an SSH key; S3 credentials into the server's secrets, never into the repository |
+| 3 | A second provider | a bucket at Scaleway or Backblaze B2 for the server's own Litestream replica |
+| 4 | Cloudflare DNS | records for `api.`, `account.` and `login.` on the domain you choose (question 10), DNS only (grey cloud); SPF, DKIM and DMARC for the sign-in and notice emails |
+| 5 | Zitadel Cloud | an EU-region instance; a project with two apps: *Hersir desktop* (native, PKCE, redirect `http://127.0.0.1/callback`) and *Hersir account* (web); Google and GitHub sign-in (their OAuth apps made at Google Cloud and GitHub); passkeys on; an SMTP sender; Pro and the custom domain `login.` before the first customer |
+| 6 | Keys | make the Ed25519 key that signs entitlements and the server's token key, offline; the private keys into the server's secrets and your password manager; the entitlement public key goes into Hersir's code by card 3 |
+| 7 | Monitoring | healthchecks.io checks; an uptime check and status page |
+| 8 | Paddle | a sandbox and a live account; business and identity checks; the domain review (the website with prices, features, terms naming NEXO IV GRUPO, S.L., refund and privacy pages); the product with a monthly and a yearly price excl. tax; an API key, a client-side token, the webhook destination and its secret; payment recovery and portal settings; payouts in EUR to the Spanish IBAN; ask for pricing under $10 |
+| 9 | Your asesor fiscal | confirm the VAT treatment of the sale to Paddle (art. 69 LIVA, the Modelo 303 box), Paddle's self-billing, that no OSS registration is needed, and ROI for EU suppliers |
+| 10 | A lawyer | the terms (business and consumer), the DPA review, the fit with Paddle, the withdrawal button |
+| 11 | The website (`gizai-website`) | the pricing page and the legal pages; the legal notice of item 1 in 3.8 |
+
+## 4. Options
+
+Three ways to build both features [I; sizes in agent-days, like `PAID-FEATURES.md`]:
+
+| | **A. End-to-end, a small server of our own** (recommended) | B. End-to-end, Cloudflare without a server | C. A readable master copy on the server (the 9 Oct choice) |
+|---|---|---|---|
+| What it is | computers chunk, encrypt and merge; one Hetzner server orders and stores ciphertext | the same protocol on Workers, one Durable Object per workspace, R2 and D1, all `jurisdiction: eu` | the server keeps each customer's database, applies every change with `gizai-core`, makes the daily snapshots and settles conflicts |
+| Server work | accounts, devices, plans, objects, snapshots, the transaction log, claims: about 8 to 10 days | the same in TypeScript: about 7 to 9 days | the same plus applying and migrating every customer's database and server-side snapshots: about 15 to 20 days |
+| App work | encryption, chunks, upload and restore (4 to 6); the sync engine (8 to 12); sync through the cloud (4 to 6); screens (4 to 6) | the same | no encryption, but the same sync engine on both ends |
+| Libraries | `chacha20poly1305`, `hkdf`, `hmac`, `ed25519-dalek`, `fastcdc` (all MIT or Apache-2.0); server: `axum`, `rusqlite`, `rusty-s3` (BSD-2), `jsonwebtoken` (MIT); Litestream (Apache-2.0) | Workers runtime, TypeScript, Cloudflare's SDKs | envelope encryption with per-customer keys; the same server crates plus `gizai-core` |
+| Risks | a lost recovery code with no computer left; Hetzner's capacity and 2026 price rises; you run a server | a US company in the data path (ciphertext only); lock-in; Rust on Workers is rough | plaintext of your customers' clients on one server; breaches reach their clients; every app release with a migration needs a server release first |
+| Monthly cost at 10 / 100 / 1,000 customers | about €14 / €14 / €71 | about €5 / €8 / €78 | as A, plus encryption keys and more compute |
+| Total | **about 30 to 40 agent-days** | about 30 to 40 | about 40 to 50 |
+
+**Recommended: A**, because it keeps the server small, schema-free and in one EU company, keeps your customers' clients unreadable to YoTech, and stays in Rust; B is the fallback if running a server becomes the bottleneck. C only makes sense when a web view or phone access to all data becomes the product.
+
+## 5. The design (option A)
+
+### 5.1 The screens
+
+A new Settings tab, **Hersir Cloud** (`#/settings/cloud`, after GitHub and Bitbucket in `SettingsPage.tsx:33-36`), and a *Restore from Hersir Cloud* choice on the first screen of a new install (`src/pages/OnboardingPage.tsx`). The local Backups section stays in General as it is.
+
+Signed out:
+
+```
+Hersir Cloud
+  Encrypted backups of your data, kept off your computer. Restore them on a new one.
+  Personal: €5 a month or €48 a year, excl. VAT. Hersir can't read what it stores.
+  [Sign in]  [Plans ↗]                        Signing in opens your browser.
+```
+
+After the first sign-in, before anything is uploaded (once per account):
+
+```
+Save your recovery code
+  Hersir encrypts your data on this computer before it leaves. Only your computers and this code
+  can read it: lose every computer and this code, and nobody can open your cloud backups, Hersir included.
+
+      HC-7K2Q-M4XD-9TRP-B6WN-3HFJ-Q8YC          (mono)
+  [Copy]  [Save as a file…]
+  Type its last group to show you have it:  [____]                 [Turn on Cloud Backup]
+```
+
+Signed in:
+
+```
+Hersir Cloud
+  Account        jeffrey@… · Personal, renews 9 Nov 2027              [Manage plan ↗]  [Sign out]
+  Storage        ▓▓▓▓░░░░░░░░░░░░  1.4 of 10 GB
+  Recovery code  Saved on 9 Nov 2026                                  [Show recovery code]
+
+Cloud Backup
+  Back up        (•) Daily   ( ) Only when I ask       [x] Also when I quit Hersir completely
+  Last backup    Today 09:02 · 38 MB sent · next tomorrow 09:02       [Back up now]
+  Backups        Today 09:02       Daily · this computer      1.2 GB  [Restore]
+                 Yesterday 18:40   On quit · Laptop           1.2 GB  [Restore]
+
+Your computers                                                          (Multiple devices)
+  Desktop · this computer      synced 1 minute ago
+  Laptop                       synced 2 hours ago
+  [x] Keep my clients, projects and cards in sync on my computers
+```
+
+A new computer (the first screen, or Settings → Hersir Cloud while signed out):
+
+```
+Restore from Hersir Cloud
+  1  Sign in              [Sign in]   opens your browser
+  2  Your recovery code   [HC-____-____-____-____-____-____]
+  3  Pick a backup        Today 09:02 · Desktop · 1.2 GB      [Restore]
+     Hersir restarts to finish, as a restore from a folder does.
+```
+
+Elsewhere, for Multiple devices: a card claimed by another computer shows "Running on Laptop" where a live run would show; a card made offline shows its number as "not synced yet"; an agent's form gets *Runs on*; a Team Lead chat on another computer says "The Team Lead works on Desktop. Chat there."; a computer on an older Hersir gets a band: "Update Hersir to go on syncing: Laptop uses a newer version."
+
+**How it fits the design system** (`design/README.md`) [V components; I use]: `FormSection` and `Field` as every Settings section; buttons `btn`, `btn primary`, `btn ghost`, `btn sm`; the radios and check of `BackupSettings.tsx`; its `backup-list` rows for the cloud list; its `ask` dialog for Restore's question; `gh-line` status lines with the step and `LoaderCircle`; `ok-banner` and `error-banner`. The recovery code and sizes in mono. Blue `accent` for actions; gold `needs` only for "Save your recovery code" and "Update Hersir", which need you; teal `live` never (no agent works here); `danger` for failures. Sentence case, buttons that say what happens. Each state in dark and light.
+
+### 5.2 The data
+
+**On the computer** (Cloud Backup): this computer's settings (added to `scope::THIS_COMPUTER`, so a restore keeps them): `cloud_account` (`{ id, email }`), `cloud_backup` (`{ on, every: "daily"|"manual", onQuit }`), `cloud_last_backup`, `cloud_last_error`. Keychain: `cloud/device` (the device token) and `cloud/key` (the account key). Multiple devices adds `sync_log`, `sync_clock` and `cloud_link` (3.7) and the synced column `agent_configs.home_device_id`, in migration `0022_sync.sql`.
+
+**On the server** (`hersir-cloud`, SQLite):
+
+```
+accounts(id, zitadel_sub UNIQUE, email, created_at)
+devices(id, account_id, name, platform, app_version, token_hash, created_at, last_seen_at, revoked_at)
+keys(account_id PRIMARY KEY, key_id, sealed_key, created_at)          -- AK sealed by the recovery code
+subscriptions(account_id, paddle_subscription_id, plan, status, current_period_end, updated_at)
+comps(account_id, plan, valid_until, note)                            -- plans given by hand
+objects(account_id, id, bytes, created_at, PRIMARY KEY(account_id, id))
+snapshots(account_id, name, made_at, device_id, reason, schema_version, app_version, bytes, manifest_id, created_at)
+snapshot_objects(account_id, snapshot, object_id)
+webhook_events(id PRIMARY KEY, received_at)
+-- Multiple devices
+workspaces(id, account_id, created_at)                                -- id = the app's orgs.id
+txs(workspace_id, seq, id UNIQUE, device_id, bytes, body BLOB, created_at, PRIMARY KEY(workspace_id, seq))
+claims(workspace_id, task_id, device_id, run_id, expires_at, PRIMARY KEY(workspace_id, task_id))
+```
+
+Object storage: `objects/<account id>/<object id>`; the bytes are `HC1` (3 bytes) ‖ a 24-byte nonce ‖ ciphertext and tag.
+
+### 5.3 What changes in which files
+
+| Where | What |
+|---|---|
+| new `crates/gizai-cloud-client` (no Tauri) | `api.rs` (HTTP with `ureq`, as `oauth.rs`); `keys.rs` (AK, HKDF, the recovery code with a check digit, sealing); `chunks.rs` (page chunks, FastCDC for big blobs, zstd, seal and open); `backup.rs` (upload a snapshot); `restore.rs` (download into a format-1 folder); `entitlement.rs` (Ed25519 check) |
+| `crates/gizai-agents/src/oauth.rs` | an entry point for a fixed issuer (OpenID discovery, a fixed client id) and an option to leave out `resource` |
+| `crates/gizai-core/src/backups.rs` | a page-for-page copy (rusqlite's `backup` feature) beside `VACUUM INTO`; the manifest stays format 1 |
+| `crates/gizai-core/src/scope.rs` | the cloud settings as this computer's |
+| `src-tauri/src/cloud.rs` (new), `lib.rs` | the commands, the schedule (on the ticks of `backups.rs`), On quit, the event `cloud-changed` |
+| `src/api.ts`, `src/types.ts`, `src/router.ts` | the commands and types; `cloud` in `SETTINGS_TABS` |
+| `src/components/CloudSettings.tsx` (new), `src/pages/SettingsPage.tsx`, `src/pages/OnboardingPage.tsx` | the tab and *Restore from Hersir Cloud* |
+| later: `crates/gizai-core/src/sync/` (new), `migrations/0022_sync.sql`, `src-tauri/src/sync.rs`, `workflow.rs`, `runs.rs` | the sync engine, its loop, the home device and claims |
+
+### 5.4 Contracts
+
+**The server's API** (cards 2, 3, 5 and 7). JSON over HTTPS, `https://api.hersir.dev/v1` (the plan's name); `Authorization: Bearer <access token>`; errors `{ "error": "<code>", "message": "<a sentence for people>" }` with 401 (signed out or removed), 402 (`plan_required`, `read_only`), 409 (`claimed`, `exists`), 413 (`quota`), 426 (`update_hersir`).
+
+| Call | Body → answer |
+|---|---|
+| `POST /v1/devices` (with the Zitadel token) | `{ device_id, name, platform, app_version }` → `{ account_id, device_token }` |
+| `POST /v1/token` (with the device token) | `{}` → `{ access_token, expires_at }` (15 minutes, Ed25519-signed by the server) |
+| `GET /v1/devices`, `DELETE /v1/devices/:id` | → `[{ id, name, platform, app_version, last_seen_at, this }]`; 204 |
+| `GET /v1/me/entitlements` | → `{ payload, sig }`; payload `{ v: 1, account, plan: "personal"\|"none", status: "active"\|"past_due"\|"lapsed"\|"none", features: ["backup","sync"], quota_bytes, used_bytes, valid_until, read_only_until, issued_at }` |
+| `GET /v1/keys`, `PUT /v1/keys` | → `{ key_id, sealed_key }` or 404; `{ key_id, sealed_key }` → 201, or 409 when one is set |
+| `POST /v1/objects/missing` | `{ ids: [hex64] }` → `{ missing: [hex64] }` |
+| `POST /v1/objects/upload` | `{ objects: [{ id, bytes }] }` → `{ urls: [{ id, url, expires_at }] }` (a presigned PUT with its length signed; 402, 413) |
+| `POST /v1/objects/download` | `{ ids }` → `{ urls: [{ id, url, expires_at }] }` (allowed while read-only) |
+| `POST /v1/snapshots` | `{ name, made_at, device_id, reason, schema_version, app_version, manifest_id, object_ids, bytes }` → 201 (every object must be there) |
+| `GET /v1/snapshots`, `DELETE /v1/snapshots/:name` | → `[{ name, made_at, device_id, device_name, reason, schema_version, app_version, bytes, manifest_id }]`, newest first; 204 |
+| later: `POST /v1/workspaces/:id/txs` | `{ txs: [{ id, device_id, body }] }` (body: base64 ciphertext of one transaction) → `{ acked: [{ id, seq }] }`; 426 when a newer client set the workspace's minimum |
+| later: `GET /v1/workspaces/:id/txs?after=<seq>&wait=30` | → `{ txs: [{ seq, id, device_id, body }], next }` (waits up to 30 seconds for new ones) |
+| later: `POST /v1/workspaces/:id/claims`, `PUT`/`DELETE /v1/workspaces/:id/claims/:task_id`, `GET /v1/workspaces/:id/claims` | `{ task_id, run_id, lease_ms }` → 201 `{ expires_at }` or 409 `{ device_id, device_name, expires_at }`; renew; release; `[{ task_id, device_id, device_name, expires_at }]` |
+
+**Hersir's commands for the Hersir Cloud tab** (cards 3 and 4), in `src/api.ts` with the Tauri command in brackets:
+
+```ts
+type CloudPlan = { name: "personal" | "none"; status: "active" | "past_due" | "lapsed" | "none";
+  validUntil: number | null; readOnlyUntil: number | null; quotaBytes: number; usedBytes: number };
+type CloudStep = "copying" | "chunking" | "uploading" | "registering" | "downloading" | "checking";
+type CloudStatus = {
+  signedIn: boolean; email: string | null; signingIn: boolean;
+  plan: CloudPlan | null;                       // from the signed entitlement; null while signed out
+  key: "missing" | "here" | "needed";           // missing: none made yet; needed: the account has one, this computer doesn't
+  recoverySavedAt: number | null;
+  backup: { on: boolean; every: "daily" | "manual"; onQuit: boolean;
+            running: { step: CloudStep; done: number; total: number } | null;
+            last: { at: number; name: string; sentBytes: number } | null; next: number | null;
+            lastError: { at: number; message: string } | null };
+};
+type CloudBackup = { name: string; madeAt: number; device: { id: string; name: string; this: boolean };
+  reason: "daily" | "manual" | "quit" | "before-restore"; bytes: number; restorable: boolean; problem: string | null };
+
+cloudStatus(): Promise<CloudStatus>                                   // cloud_status
+cloudSignIn(): Promise<CloudStatus>                                   // cloud_sign_in: opens the browser, waits up to 10 min
+cloudCancelSignIn(): Promise<void>                                    // cloud_cancel_sign_in
+cloudSignOut(): Promise<CloudStatus>                                  // cloud_sign_out
+cloudMakeKey(): Promise<{ recoveryCode: string }>                     // cloud_make_key: first computer only
+cloudConfirmRecovery(lastGroup: string): Promise<CloudStatus>         // cloud_confirm_recovery: turns Cloud Backup on
+cloudEnterRecovery(code: string): Promise<CloudStatus>                // cloud_enter_recovery: a computer whose key is "needed"
+cloudShowRecovery(): Promise<{ recoveryCode: string }>                // cloud_show_recovery
+cloudSaveSettings(s: { on?: boolean; every?: "daily" | "manual"; onQuit?: boolean }): Promise<CloudStatus>  // cloud_save_settings
+cloudBackUpNow(): Promise<CloudStatus>                                // cloud_back_up_now
+cloudListBackups(): Promise<CloudBackup[]>                            // cloud_list_backups
+cloudStartRestore(name: string): Promise<RestoreStatus>               // cloud_start_restore: then GA-218's restore, its events and Restart now
+cloudOpenAccount(): Promise<void>                                     // cloud_open_account: the account page in the browser
+onCloudChanged(f: (s: CloudStatus) => void): Promise<() => void>      // event "cloud-changed"
+```
+
+Refusals are sentences, as in the backups contract: "Sign in to Hersir Cloud first.", "That recovery code doesn't open this account's backups.", "Hersir Cloud is full: 10.0 of 10 GB.", "Your plan ended on 9 Dec 2026: backups can be restored until 7 Feb 2027.".
+
+**Hersir's commands for Multiple devices** (cards 7 and 8):
+
+```ts
+type SyncStatus = { on: boolean; lastSyncAt: number | null; toSend: number;
+  problem: null | { kind: "offline" | "update_hersir" | "plan" | "error"; message: string };
+  computers: { id: string; name: string; lastSeenAt: number | null; this: boolean }[] };
+syncStatus(): Promise<SyncStatus>               // sync_status
+syncSet(on: boolean): Promise<SyncStatus>       // sync_set
+onSyncChanged(f: (s: SyncStatus) => void)       // event "sync-changed"
+// on a card (types.ts Task): runningOn: { deviceId: string; deviceName: string } | null; numberSynced: boolean
+// on an agent (AgentConfig): homeDeviceId: string | null   (saved with the agent's form)
+```
+
+### 5.5 Security and privacy
+
+- Keys only in the keychain, wiped from memory after use (`zeroize`), never in errors or logs (as `oauth.rs` keeps tokens out of them). The recovery code is shown on request on a signed-in computer.
+- The server sees ciphertext, keyed object names, sizes, times and device names; snapshot manifests are encrypted. Logs hold ids and sizes, never content or email bodies.
+- Device tokens are random, stored hashed, revocable from the account page; access tokens last 15 minutes. Presigned URLs last minutes, with the length signed; computers never get delete URLs: only the server deletes, by its retention and quota rules.
+- The server: SSH keys only, a firewall (443, and 22 from your addresses), unattended security updates, secrets in systemd credentials, not in the repository. Cloudflare in DNS only.
+- A stolen laptop with a running Hersir has the key: remove it on the account page, then make a new recovery code. (Changing the account key itself is left for later.)
+
+### 5.6 How it is tested
+
+- **The client crate**: test vectors for HKDF and the recovery code; seal and open; restore(backup(db)) equals db; an unchanged database uploads no new chunks; an upload cut halfway resumes without sending a chunk twice; the entitlement signature (good, bad, expired). A fake server in the test (a small `axum` or `tiny_http` listener on 127.0.0.1) and the memory keychain.
+- **The app**: the commands under `scripts/ui-test.sh` with `GIZAI_FAKE_KEYCHAIN` and a `HERSIR_CLOUD_URL` pointing at the fake server; never a real account in tests.
+- **The server**: integration tests with an S3 fake, Paddle webhook fixtures from the sandbox (signature, retries, out-of-order events), retention and garbage collection with a fake clock, the quota, the lapse dates.
+- **Sync**: 3.7's property tests and fault injection, then two computers in real use.
+
+### 5.7 What is left out
+
+The phone chat; agents across devices; teams and SSO; a passphrase unlock, approval from another computer and passkey unlock (v2 candidates); changing the account key; server-side search or a web view of the data; a self-hosted server; bucket locks; packing chunks; Litestream on the desktop; sharing with clients.
+
+## 6. Proposed cards
+
+Eight cards: five for Cloud Backup (one is the design both features use), three for Multiple devices. Each is one pull request. **At the same time**: cards 1, 2, 3 and 6 can start together (2 and 3 meet at the contract in 5.4; 3 builds against a fake server); then 4 (after 1 and 3) and 5 (after 2); then 7 (after 2, 3 and 6); then 8 (after 1 and 7).
+
+### Cloud Backup
+
+**1. Design: Hersir Cloud in Settings, the recovery code, and a restore on a new computer**
+- Column: Design. Role: design. Builds on: none.
+- Builds: `design/hersir-cloud.md` and its screens for every state of 5.1: signed out, signing in, the recovery code, signed in, a backup running, a failure, the quota full, a lapsed plan, *Restore from Hersir Cloud* (first screen and Settings), the confirm and its steps; Multiple devices' parts (your computers, the sync switch and status, "Running on Laptop", "not synced yet", *Runs on*, the Team Lead note, the update band); the account page.
+- Acceptance:
+  - [ ] every state drawn, in dark and light, with the final texts
+  - [ ] only existing components and tokens (5.1); gold only where you are needed, no teal
+  - [ ] each screen names its component and the commands of 5.4 it shows
+
+**2. Hersir Cloud server: accounts, computers, plans and encrypted backup storage**
+- Column: To do. Role: backend. Builds on: none (your set-up, 3.9 items 1 to 6). New repository `hersir-cloud`.
+- Builds: Rust, `axum`, SQLite with Litestream, `rusty-s3` presigning for Hetzner Object Storage; the calls of 5.4 up to `/v1/snapshots` (Zitadel token check, device tokens, signed entitlements with comp plans from an admin command, keys, objects, snapshots); retention (all for 7 days, then the newest of each day to 90) and garbage collection; the quota; the lapse dates; a deploy script, systemd unit and Caddy file; healthchecks pings; a README with the protocol.
+- Acceptance:
+  - [ ] every call of 5.4 (Cloud Backup part) with its errors, covered by tests against an S3 fake
+  - [ ] a computer can't read another account's objects or snapshots; removed devices get 401
+  - [ ] retention and garbage collection keep every object a kept snapshot uses (fake-clock test)
+  - [ ] the entitlement verifies with the published public key
+  - [ ] deployed on the Hetzner server; a restore drill of its database from Litestream written down and done once
+
+**3. Cloud Backup in the app: sign in, encrypt, upload and restore**
+- Column: To do. Role: backend. Builds on: card 2's contract (can be built at the same time, against a fake server).
+- Builds: the crate `gizai-cloud-client` and `src-tauri/src/cloud.rs` of 5.3; sign-in through `oauth.rs`; the account key, recovery code and key id; the page-for-page copy, chunks, sealing and upload; daily, On quit and Back up now; *Restore from Hersir Cloud* into a format-1 folder and on through GA-218's restore; the commands and event of 5.4.
+- Acceptance:
+  - [ ] a backup made on one computer restores on a clean one (scratch data folders), with the device rule and this computer's settings kept
+  - [ ] the second daily backup of an unchanged database uploads nothing but the manifest
+  - [ ] a wrong recovery code is refused with a sentence; nothing unencrypted leaves the computer (a test reads what the fake server got)
+  - [ ] a lapsed plan stops uploads and still restores
+  - [ ] `cargo test --workspace`, `npm test`, `npm run build` pass on Linux, macOS and Windows CI
+
+**4. Settings → Hersir Cloud**
+- Column: To do. Role: frontend. Builds on: cards 1 and 3.
+- Builds: `CloudSettings.tsx`, the tab, *Restore from Hersir Cloud* on the first screen, every state of card 1's design, on the commands of 5.4.
+- Acceptance:
+  - [ ] each state of card 1 shows from the matching `CloudStatus` (component tests)
+  - [ ] the recovery code can't be skipped before the first backup
+  - [ ] restore shows GA-218's steps and Restart now; `scripts/ui-test.sh` covers sign-in to restore against the fake server
+
+**5. Paddle and the account page**
+- Column: To do. Role: backend. Builds on: card 2 (and card 1's account page). Needed before the first customer, not for your own use.
+- Builds: in `hersir-cloud`: the account pages (sign in with Zitadel; plan, storage, computers with Remove; Subscribe with Paddle's checkout; Manage plan with a portal link); Paddle webhooks to `subscriptions` and the entitlement; emails when a plan lapses, after 30 days and a week before deletion.
+- Acceptance:
+  - [ ] a sandbox subscription turns the plan on in the app within a minute; a cancelled one lapses at the period's end
+  - [ ] webhooks are checked by signature and handled once each, in any order
+  - [ ] removing a computer on the page signs it out
+
+### Multiple devices
+
+**6. Sync engine in the core**
+- Column: To do. Role: backend. Builds on: none (no network; can start with cards 2 and 3).
+- Builds: `crates/gizai-core/src/sync/` and `0022_sync.sql`: the table lists (synced, local, derived, with their device-only columns) and a test that every table is on one; the triggers and `sync_log`; the HLC; apply with last writer wins per field, row deletes, counters, the numbering rule and document conflicts; `agent_configs.home_device_id`; the property tests with faults of 3.7.
+- Acceptance:
+  - [ ] three replicas converge after random edits with drops, duplicates, reorders, a partition, a crash before an answer and a clock an hour behind
+  - [ ] no two live cards share a number; a provisional number settles the same way everywhere
+  - [ ] a transaction from a newer schema stops the apply; nothing in "never syncs" is ever captured
+  - [ ] the activity feed shows another computer's changes as its own lines
+
+**7. Sync through Hersir Cloud, with card claims**
+- Column: To do. Role: backend. Builds on: cards 2, 3 and 6.
+- Builds: on the server the workspace, transaction and claim calls of 5.4; in the app the sync loop (push, pull with wait, files by keyed hash, a new computer from the latest cloud backup and the log after it), the schema gate, the home device in the dispatcher and a claim before each start (10-minute lease, renewed); the commands and fields of 5.4.
+- Acceptance:
+  - [ ] two Hersirs (scratch data folders) against a local server converge after offline edits on both
+  - [ ] a card runs on one computer only: the second claim gets 409 and its board says where it runs
+  - [ ] a computer that dies mid-run frees the card when its lease runs out
+  - [ ] offline, a synced workspace starts no card by itself
+
+**8. Multiple devices on screen**
+- Column: To do. Role: frontend. Builds on: cards 1 and 7.
+- Builds: Your computers and the sync switch in Settings → Hersir Cloud; "Running on Laptop" on cards; "not synced yet" numbers; *Runs on* in the agent form; the Team Lead note; the update band; per card 1's design.
+- Acceptance:
+  - [ ] each state shows from `SyncStatus` and the card and agent fields (component tests)
+  - [ ] `scripts/ui-test.sh` covers turning sync on and a claimed card
+
+## 7. Open questions for Jefsev
+
+1. **Encryption**: end-to-end for both Cloud Backup and sync, as the plan said, instead of the 9 Oct readable master copy? *Recommended: yes* (3.2).
+2. **The key**: a recovery code only in v1 (no passphrase), approval from another computer later? *Recommended: yes.*
+3. **The server**: Hetzner in Germany, Rust, with SQLite and Litestream instead of the plan's Postgres? *Recommended: yes*; Cloudflare (option B) if you'd rather run no server.
+4. **The sign-in service**: Zitadel Cloud, EU region, Free for your own testing and Pro ($100 a month) with a custom domain before the first customer? *Recommended: yes*; Logto Cloud EU ($24 a month) only if a test shows it takes a changing loopback port and its DPA reads well.
+5. **No magic link at launch** (Zitadel has none): passkeys, Google, GitHub and a password? *Recommended: yes*, if its email-code sign-in can't stand alone.
+6. **Agents offline**: on a synced workspace, no automatic starts while Hersir Cloud can't be reached (Run by hand still works after a warning)? *Recommended: yes*; the alternative risks one card run twice.
+7. **The order**: sell Personal with Cloud Backup once cards 1 to 5 and the legal pack are done, with sync "coming to the same plan"? *Recommended: yes*, as the plan advises.
+8. **History**: every snapshot for 7 days, then one a day to 90 days, all inside the 10 GB? *Recommended: yes.*
+9. **Payments**: Paddle, with the yearly price pushed (16% fees on the monthly price, 7% on the yearly)? *Recommended: yes*, and ask Paddle for its pricing under $10.
+10. **The domain** for `api.`, `account.` and `login.`: the plan says `hersir.dev`. Do you own it? *Recommended: settle it before Zitadel's custom domain*, because passkeys stay bound to it.
+11. **The server's code**: a private repository at first, with the protocol published (P4)? *Recommended: yes.*
+12. **The Team Lead's chat on another computer**: read-only in v1? *Recommended: yes*; chatting from there is agents across devices.
+
+## 8. Changes proposed to `docs/PAID-FEATURES.md` (not made)
+
+1. **Line 22 and P1**: Personal now holds Cloud Backup and Multiple devices; the phone chat comes later.
+2. **Lines 78-87 (the rules)**: end-to-end for backups *and* Personal sync, confirmed; a random account key with a recovery code instead of "Argon2id from a passphrase"; objects named by a keyed hash; why (3.2), with C-413/23 P.
+3. **Line 108**: the server on Hetzner (Germany) with SQLite and Litestream instead of Postgres; Hetzner Object Storage, R2 as the alternative; Cloudflare for DNS only.
+4. **Line 110**: Zitadel Cloud (EU) as the sign-in service; passkeys, Google, GitHub, password (no magic link); Hersir Cloud's own device tokens after sign-in.
+5. **Line 113**: backups as a page-for-page copy cut into 256 KiB chunks, each compressed and encrypted; retention: every snapshot 7 days, daily to 90 days.
+6. **Line 121**: Cloud Backup's state as this computer's settings in `scope.rs`; `cloud_link` comes with sync.
+7. **Lines 128-139 (Phase 2)**: `changes` can't be the log sync reads (2.4): a trigger-written `sync_log`, a real HLC, numbers settled in the server's order, a home computer per agent and cloud claims, and the list of what never syncs.
+8. **Line 167 and P2**: Paddle chosen; today's fees (5% + $0.50; Stripe Managed Payments is sold through Link, LLC at 3.5% on top of Stripe's fees).
+9. **Line 171 and P3**: done: NEXO IV GRUPO, S.L. (Spain), trading as YoTech; VAT on the sale to Paddle under art. 69 LIVA, no OSS; the asesor confirms.
+10. **Lines 172-178**: the Spanish legal list of 3.8 (LSSI-CE, LOPDGDD, TRLGDCU, the DPA from the Commission's clauses, the Data Act, the DSA).
+11. **Line 187**: Hetzner's 2026 prices (CX23 €5.99, Object Storage €6.49 for 1 TB) and the cost table of 3.3.
+12. **Decisions**: add P10 (sign-in service), P11 (server stack) and P12 (agents offline on a synced workspace).
+13. **Phases 1 and 2's sizes**: replace with the eight cards of section 6 (about 30 to 40 agent-days together).
+
+## 9. Sources
+
+All read on 2026-11-09 by this card's research (the R&D Agent and its helpers), unless marked *search result only*.
+
+**Encryption and GDPR**
+- S-E1 Obsidian, Sync security: https://obsidian.md/help/sync/security
+- S-E2 Apple, Advanced Data Protection: https://support.apple.com/en-us/102651
+- S-E3 Bitwarden, log in with passkeys: https://bitwarden.com/help/login-with-passkeys/
+- S-E4 1Password, Secret Key security: https://support.1password.com/secret-key-security/
+- S-E5 Joplin, end-to-end encryption: https://joplinapp.org/help/apps/sync/e2ee
+- S-E6 Actual Budget, sync: https://actualbudget.org/docs/getting-started/sync/
+- S-E7 Standard Notes, encryption: https://standardnotes.com/help/security/encryption
+- S-E8 Ente, architecture: https://ente.com/architecture/
+- S-E9 Bitwarden, trusted devices: https://bitwarden.com/help/about-trusted-devices/
+- S-E15 chacha20poly1305 on crates.io: https://crates.io/api/v1/crates/chacha20poly1305
+- S-E16 RustCrypto chacha20poly1305 README (the NCC Group audit): https://github.com/RustCrypto/AEADs/tree/master/chacha20poly1305
+- S-E17 age on crates.io: https://crates.io/api/v1/crates/age
+- S-E18 RFC 9106 (Argon2): https://www.rfc-editor.org/rfc/rfc9106.html ; OWASP Password Storage Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html
+- S-E19 Court of Justice press release 107/25 (C-413/23 P, 4 Sep 2025): https://curia.europa.eu/site/upload/docs/application/pdf/2025-09/cp250107en.pdf
+- S-E20 EDPB, 8 July 2026: https://www.edpb.europa.eu/news/edpb-sheds-light-on-anonymisation-and-web-scraping-for-generative-ai-and-adopts-final-version_en
+- S-E21 AEPD breach guide (search result only): https://www.aepd.es/guias/guia-brechas-seguridad.pdf
+
+**The server**
+- S-S1 to S-S4 Hetzner Cloud: https://www.hetzner.com/cloud/cost-optimized/ , https://www.hetzner.com/cloud/regular-performance/ , https://www.hetzner.com/cloud/general-purpose/ , https://www.hetzner.com/cloud/
+- S-S5 Hetzner backups and snapshots: https://docs.hetzner.com/cloud/servers/backups-snapshots/overview/
+- S-S6 Hetzner Object Storage: https://www.hetzner.com/storage/object-storage/
+- S-S7 Hetzner data protection (AVV): https://docs.hetzner.com/general/company-and-policy/data-protection-at-hetzner/
+- S-S8 Hetzner price adjustments (404 today); secondary: https://northflank.com/blog/hetzner-cloud-server-price-increases , https://www.vincentschmalbach.com/hetzner-cheap-cloud-unavailable-price-increases/
+- S-S10 Cloudflare customer DPA: https://www.cloudflare.com/cloudflare-customer-dpa/
+- S-S11 the DPF appeal C-703/25 P (secondary): https://www.wilmerhale.com/en/insights/blogs/wilmerhale-privacy-and-cybersecurity-law/20251201-european-court-of-justice-to-review-challenge-to-eu-us-data-privacy-framework
+- S-S12 D1 data location: https://developers.cloudflare.com/d1/configuration/data-location/
+- S-S13 Durable Objects data location: https://developers.cloudflare.com/durable-objects/reference/data-location/
+- S-S14 R2 data location: https://developers.cloudflare.com/r2/reference/data-location/
+- S-S15 Workers pricing: https://developers.cloudflare.com/workers/platform/pricing/ ; R2 pricing: https://developers.cloudflare.com/r2/pricing/ ; D1 limits: https://developers.cloudflare.com/d1/platform/limits/
+- S-S16 workers-rs: https://github.com/cloudflare/workers-rs
+- S-S17 Scaleway pricing (403; search results only): https://www.scaleway.com/en/pricing/storage/
+- S-S18 Sentry pricing: https://sentry.io/pricing/
+- S-S19 healthchecks.io pricing: https://healthchecks.io/pricing/
+- S-S20 Backblaze B2 pricing: https://www.backblaze.com/cloud-storage/pricing
+
+**Accounts and sign-in**
+- S-A1 Zitadel pricing: https://zitadel.com/pricing
+- S-A2 Zitadel repository (licence): https://github.com/zitadel/zitadel
+- S-A3 Zitadel, how daily active users are counted: https://help.zitadel.com/how-is-daily-active-users-calculated
+- S-A4 Zitadel's loopback handling in source: https://raw.githubusercontent.com/zitadel/oidc/main/pkg/op/auth_request.go
+- S-A5 Ory pricing: https://www.ory.com/pricing
+- S-A6 Logto pricing: https://logto.io/pricing ; S-A7 Logto native clients in source: https://raw.githubusercontent.com/logto-io/logto/master/packages/core/src/oidc/utils.ts
+- S-A8 Hanko pricing: https://www.hanko.io/pricing
+- S-A9 Auth0 pricing: https://auth0.com/pricing
+- S-A10 Clerk pricing: https://clerk.com/pricing ; S-A11 WorkOS pricing: https://workos.com/pricing
+- S-A12 Kinde pricing: https://kinde.com/pricing/ ; FusionAuth pricing: https://fusionauth.io/pricing
+- S-A13 Rauthy: https://github.com/sebadob/rauthy ; S-A14 Pocket ID: https://github.com/pocket-id/pocket-id ; S-A15 Keycloak loopback ports: https://github.com/keycloak/keycloak/issues/39880
+- S-A16 search results only: Keycloak passkeys (keycloak.org/2025/09/passkeys-support-26-4), Logto data regions (blog.logto.io/data-region-resources), Supabase OAuth flows, Hanko discussion 860, Stytch data compliance, Descope multi-region
+- S-A18 RFC 8252: https://www.rfc-editor.org/rfc/rfc8252.html
+- S-A19 jsonwebtoken: https://crates.io/api/v1/crates/jsonwebtoken , https://docs.rs/crate/jsonwebtoken/latest
+
+**Payments and tax**
+- S-P1 Paddle pricing: https://www.paddle.com/pricing
+- S-P2 Paddle seller terms: https://www.paddle.com/legal/terms
+- S-P3 Paddle supported countries: https://www.paddle.com/help/start/intro-to-paddle/which-countries-are-supported-by-paddle ; acceptable use: https://www.paddle.com/help/start/intro-to-paddle/what-am-i-not-allowed-to-sell-on-paddle
+- S-P4 Paddle webhooks: https://developer.paddle.com/webhooks/overview
+- S-P5 Paddle domain review: https://www.paddle.com/help/start/account-verification/what-is-domain-verification
+- S-P6 Paddle payouts: https://www.paddle.com/help/manage/get-paid/when-and-how-do-i-get-paid , https://www.paddle.com/help/manage/get-paid/is-there-a-fee-taken-for-payouts
+- S-P7 Paddle payment recovery (search result only): https://developer.paddle.com/changelog/2025/default-dunning-payment-recovery/
+- S-P8 Stripe Managed Payments eligibility: https://docs.stripe.com/payments/managed-payments/eligibility
+- S-P9 Stripe Spain pricing: https://stripe.com/es/pricing
+- S-P10 Stripe Managed Payments: https://stripe.com/managed-payments
+- S-P11 how Managed Payments works: https://docs.stripe.com/payments/managed-payments/how-it-works , https://docs.stripe.com/payments/managed-payments
+- S-P12 "Sold through Link, LLC": https://support.stripe.com/questions/why-is-sold-through-link-llc-the-legal-entity-on-my-invoice-for-stripe-managed-payments-fees
+- S-P13 AEAT place-of-supply assistant (search result only): https://www2.agenciatributaria.gob.es/wlpl/AVAC-CALC/LocalizadorServicios2023?id=10.1.1.2
+- S-P14 Implementing Regulation 282/2011, Art. 9a (UK copy, as EUR-Lex didn't render): https://www.legislation.gov.uk/eur/2011/282/article/9a
+- Others: Polar https://polar.sh/resources/pricing , Creem https://www.creem.io/pricing , Dodo Payments https://dodopayments.com/pricing
+
+**Legal**
+- S-L1 LSSI-CE (BOE): https://www.boe.es/buscar/act.php?id=BOE-A-2002-13758
+- S-L2 LOPDGDD (BOE): https://www.boe.es/buscar/act.php?id=BOE-A-2018-16673
+- S-L3 AEPD FAQ on breach notification: https://www.aepd.es/preguntas-frecuentes/2-rgpd/11-brechas-de-datos-personales/FAQ-0233-a-quien-hay-que-notificar-las-brechas-de-datos-personales
+- S-L4 AEPD tools: https://www.aepd.es/guias-y-herramientas/herramientas
+- S-L5 AEPD contract guidelines (search result only): https://www.aepd.es/es/node/813
+- S-L6 European Commission, standard contractual clauses for controllers and processors: https://commission.europa.eu/publications/standard-contractual-clauses-controllers-and-processors-eueea_en
+- S-L7 TRLGDCU (BOE): https://www.boe.es/buscar/act.php?id=BOE-A-2007-20555
+- S-L8 Directive 2023/2673 (did not render): https://eur-lex.europa.eu/eli/dir/2023/2673/oj/eng
+- S-L9 OCU, 19 June 2026 (secondary): https://www.ocu.org/organizacion/prensa/notas-de-prensa/2026/normabotondesistimiento190626
+- S-L10 Paddle checkout buyer terms: https://www.paddle.com/legal/checkout-buyer-terms
+- S-L11 the ODR platform's closure (search result only): https://consumer-redress.ec.europa.eu/site-relocation_en
+- S-L12 the Data Act explained: https://digital-strategy.ec.europa.eu/en/policies/data-act-explained ; S-L13 Digital package FAQ: https://digital-strategy.ec.europa.eu/en/faqs/digital-package
+- S-L14 the DSA package: https://digital-strategy.ec.europa.eu/en/policies/digital-services-act-package ; S-L15 DSA Q&A: https://digital-strategy.ec.europa.eu/en/faqs/digital-services-act-questions-and-answers
+- S-L16 NIS2: https://digital-strategy.ec.europa.eu/en/policies/nis2-directive
+- S-L17 Ley 11/2023 (not read): https://www.boe.es/buscar/pdf/2023/BOE-A-2023-11022-consolidado.pdf
+- S-L18 the DPF appeal (search result only): https://eur-lex.europa.eu/eli/C/2025/6610/oj/eng ; S-L19 NIS2 in Spain (secondary): https://nisd2.eu/en/wiki/timelines-and-status/nis2-status-spain
+
+**Backup and sync engineering**
+- S-B1 sqlite3_rsync (page-level differences): https://sqlite.org/rsync.html
+- S-B2 restic design: https://raw.githubusercontent.com/restic/restic/master/doc/design.rst ; kopia architecture: https://kopia.io/docs/advanced/architecture/ ; rustic: https://github.com/rustic-rs/rustic
+- S-B3 Kulkarni and others, Logical Physical Clocks (HLC), 2014: https://cse.buffalo.edu/tech-reports/2014-04.pdf ; uhlc: https://crates.io/api/v1/crates/uhlc
+- S-B4 James Long, Using CRDTs in the wild (Actual Budget): https://archive.jlongster.com/using-crdts-in-the-wild
+- S-B5 cr-sqlite: https://github.com/vlcn-io/cr-sqlite ; Linear's sync engine talk: https://linear.app/now/scaling-the-linear-sync-engine ; SQLite Sync: https://github.com/sqliteai/sqlite-sync ; PowerSync service licence: https://raw.githubusercontent.com/powersync-ja/powersync-service/main/LICENSE
+- S-B6 proptest: https://crates.io/api/v1/crates/proptest
+- S-B7 toxiproxy: https://api.github.com/repos/Shopify/toxiproxy/releases/latest
+- S-B8 turmoil: https://crates.io/api/v1/crates/turmoil
+- S-B9 Linear's sync engine, reverse-engineered (secondary): https://github.com/wzhudev/reverse-linear-sync-engine
+- S-B10 fastcdc: https://crates.io/api/v1/crates/fastcdc ; rusty-s3: https://crates.io/api/v1/crates/rusty-s3 ; R2 presigned URLs: https://developers.cloudflare.com/r2/api/s3/presigned-urls/ ; R2 lifecycles: https://developers.cloudflare.com/r2/buckets/object-lifecycles/ ; Hetzner Object Storage actions: https://docs.hetzner.com/storage/object-storage/supported-actions/ ; S3 multipart limits: https://docs.aws.amazon.com/AmazonS3/latest/userguide/qfacts.html
+- S-B11 Litestream v0.5: https://fly.io/blog/litestream-v050-is-here/
+
+**In this repository** (read 2026-11-09): `docs/PAID-FEATURES.md`, `docs/research/paid-offering-2026-10.md`, `docs/backup-format.md`, `crates/gizai-core/src/{db,tasks,runs,scope,settings,columns,backups,restore,workflow}.rs`, `crates/gizai-core/migrations/`, `crates/gizai-agents/src/{oauth,secrets}.rs`, `src-tauri/src/{lib,backups}.rs`, `src/pages/SettingsPage.tsx`, `src/components/BackupSettings.tsx`, `design/README.md`; and `~/Herd/cordon/notes/E-sqlite-sync.md` (the 5 Oct sync research), `~/Herd/gizai-website/src/data/roadmap.ts:68-74` (the website's lines).
