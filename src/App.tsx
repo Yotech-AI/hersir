@@ -102,7 +102,7 @@ export default function App({ onboarding = false }: { onboarding?: boolean }) {
             await exitApp(0);
             return;
           }
-          const { appearanceProbe, changesProbe, chatArchiveProbe, chatProbe, closeSaveProbe, docProbe, dragProbe, editorProbe, memoryEmptyProbe, memoryProbe, pasteProbe, runProbe, screenshotsProbe, teamProbe, terminalProbe, usageProbe } = await import("./selftest");
+          const { appearanceProbe, changesProbe, chatArchiveProbe, chatPinsProbe, chatProbe, closeSaveProbe, docProbe, dragProbe, editorProbe, memoryEmptyProbe, memoryProbe, pasteProbe, runProbe, screenshotsProbe, teamProbe, terminalProbe, usageProbe } = await import("./selftest");
           // GA-122: GIZAI_SELFTEST_MODE=close-save:<step> on route doc/<id> or memory/<id> (scripts/close-save-test.sh): the
           // probe types in the editor and reports; the script quits Gizai from outside, so the page doesn't.
           if (i.selftest_mode?.startsWith("close-save:")) {
@@ -172,6 +172,12 @@ export default function App({ onboarding = false }: { onboarding?: boolean }) {
             chats = await chatArchiveProbe();
             if (!chats.ok) errors.push(`chat archive probe: ${JSON.stringify(chats)}`);
           }
+          // GA-257: GIZAI_SELFTEST_MODE=pins-a, then pins-b (a restart) on route chat (prep_chats' chats; see chatPinsProbe)
+          let pins: Awaited<ReturnType<typeof chatPinsProbe>> | undefined;
+          if (i.start_route === "chat" && (i.selftest_mode === "pins-a" || i.selftest_mode === "pins-b")) {
+            pins = await chatPinsProbe(i.selftest_mode === "pins-b" ? "b" : "a");
+            if (!pins.ok) errors.push(`chat pins probe: ${JSON.stringify(pins)}`);
+          }
           let appearance: Awaited<ReturnType<typeof appearanceProbe>> | undefined;
           if (i.start_route === "settings/appearance" && (i.selftest_mode === "appearance-set" || i.selftest_mode === "appearance-kept")) {
             appearance = await appearanceProbe(i.selftest_mode === "appearance-kept" ? "kept" : "set");
@@ -200,7 +206,7 @@ export default function App({ onboarding = false }: { onboarding?: boolean }) {
             paste = await pasteProbe();
             if (!paste.ok) errors.push(`paste probe: ${JSON.stringify(paste)}`);
           }
-          await selftestReport({ ready: true, errors, version: i.version, columns: team?.states.length, clients: clients?.length, projects: projects?.length, tasks: tasks?.length, drag, editor, doc, team: teamUi, run, chat, usage, chats, appearance, memory, changes, screenshots, terminal, paste });
+          await selftestReport({ ready: true, errors, version: i.version, columns: team?.states.length, clients: clients?.length, projects: projects?.length, tasks: tasks?.length, drag, editor, doc, team: teamUi, run, chat, usage, chats, pins, appearance, memory, changes, screenshots, terminal, paste });
           await exitApp(0);
         }
       })

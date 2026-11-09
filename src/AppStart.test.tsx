@@ -43,7 +43,7 @@ const fakeSelftest = () => {
     h.log.push(`${name} ${JSON.stringify(args.filter((a) => typeof a === "string" || Array.isArray(a)))}`);
     return { ok: true, moved: true, saved: true, editor_closed: true };
   };
-  return Object.fromEntries(["runSteps", "appearanceProbe", "changesProbe", "chatArchiveProbe", "chatProbe", "closeSaveProbe", "docProbe", "dragProbe",
+  return Object.fromEntries(["runSteps", "appearanceProbe", "changesProbe", "chatArchiveProbe", "chatPinsProbe", "chatProbe", "closeSaveProbe", "docProbe", "dragProbe",
     "editorProbe", "memoryEmptyProbe", "memoryProbe", "pasteProbe", "runProbe", "screenshotsProbe", "teamProbe", "terminalProbe", "usageProbe"].map((n) => [n, probe(n)]));
 };
 vi.mock("./lib/appearance", () => ({ appearanceOf: (spec: string) => ({ spec }), setAppearance: (a: unknown) => { h.log.push(`setAppearance ${JSON.stringify(a)}`); }, toggleDensity: () => {}, toggleTheme: () => {} }));
@@ -192,6 +192,8 @@ describe("a test run", () => {
     ["chat", "chat", "chatProbe []"],
     ["usage", "", "usageProbe []"],
     ["chat", "archive", "chatArchiveProbe []"],
+    ["chat", "pins-a", 'chatPinsProbe ["a"]'],
+    ["chat", "pins-b", 'chatPinsProbe ["b"]'],
     ["settings/appearance", "appearance-set", 'appearanceProbe ["set"]'],
     ["settings/appearance", "appearance-kept", 'appearanceProbe ["kept"]'],
     ["memory/n1", "memory:a1", 'memoryProbe ["n1","a1"]'],
