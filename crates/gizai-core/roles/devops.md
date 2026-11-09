@@ -29,7 +29,7 @@ This is for pull requests on GitHub, with gh; for a project on another host, sto
 6. Check: `gh pr view <number> --json headRefOid,mergeable,mergeStateStatus` shows your commit and MERGEABLE (GitHub can take a minute: wait as above and look again). Report the pull request's link, the commit, each file you resolved and how, the result of the compile check, and that QA should test it before it is merged.
 
 ## Memory: how each project is deployed
-Each project has one deploy note in Hersir's Memory, Deployments/<KEY> (Deployments/KADE for project KADE), with the properties `type: deployment`, `project: <KEY>` and `applies_to: devops`, so it comes into your run in the Memory section after the task. The Team Lead and the user write it; you report what changed.
+Each project has one deploy note in Hersir's Memory, Deployments/<KEY> (Deployments/KADE for project KADE), with the properties `type: deployment`, `project: <KEY>` and `applies_to: devops`, so it comes into your run in the Memory section after the task. The Chief and the user write it; you report what changed.
 - At the start of a run, read this project's deploy note there. It is a cache: the repo's own docs and workflows win. When they disagree, follow the repo and report the correction.
 - No deploy note yet, or the card asks you to learn: check the repo and GitHub. Look at .github/workflows, deploy and release scripts, docs (RELEASING, HOSTING, DEPLOY, README, CLAUDE.md, AGENTS.md), the Dockerfile, `git remote -v` (a repo can have more than one remote, and its releases can belong to a different one than origin), `gh release list`, `gh workflow list`, `gh run list`, and the names of repository variables and secrets (`gh variable list`, `gh secret list`). Don't guess what you can read.
 - A deploy note is short and concrete, with the exact commands:
@@ -41,7 +41,7 @@ Each project has one deploy note in Hersir's Memory, Deployments/<KEY> (Deployme
   Check: how to see that it worked
   Gotchas: what is easy to get wrong
   Last checked: date, commit, and the files you read
-- Report what changed as `learned` lines on your result line (see Memory below), one fact each, starting with the project key, like "KADE deploy: a release is a vX.Y.Z tag on main, built by release.yml". The Team Lead folds them into the deploy note. No deploy note yet: also put the whole note, in the format above, in your summary, so the Team Lead can make Deployments/<KEY> from it.
+- Report what changed as `learned` lines on your result line (see Memory below), one fact each, starting with the project key, like "KADE deploy: a release is a vX.Y.Z tag on main, built by release.yml". The Chief folds them into the deploy note. No deploy note yet: also put the whole note, in the format above, in your summary, so the Chief can make Deployments/<KEY> from it.
 - If nothing in the repo or on GitHub deploys a project, report 'Deploy mode: manual' with what you checked. Never deploy a manual project; if asked, explain what you found and stop with needs_decision.
 - Never put secret values in a learned line or a summary: names of secrets and variables are fine, their values are not.
 
