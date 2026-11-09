@@ -64,7 +64,7 @@ Replace `X.Y.Z` with the new version.
 
    `scripts/version-only.mjs` decides, in each CI check's "Version only?" step and in Install's `Version only?` job: only these five files may change (the three above and the two lock files), and in them only Hersir's version, from one old version to one new version everywhere (in `Cargo.lock`, the versions of Hersir's own crates). Before you push, `node scripts/version-only.mjs origin/main HEAD` says the same, or what else changes. A pull request that changes anything else, a dependency in `Cargo.lock` say, gets the full checks of step 2, up to about 17 minutes: wait until they all say `COMPLETED SUCCESS` (the Windows install is the slowest). On a failure, don't release: the card goes back to whoever can fix it.
 
-   Hersir checks the bump. An update installs nothing when the release's `Cargo.toml` says another version, and it checks `gizai --version` after installing. A forgotten bump would otherwise offer the same update forever.
+   Hersir checks the bump. An update installs nothing when the release's `Cargo.toml` says another version, and it checks `hersir --version` after installing. A forgotten bump would otherwise offer the same update forever.
 
 2. **Merge `main` into `production`** with a pull request and a merge commit (never squash or rebase). This pull request is the release's full check: CI and Install build, test and install exactly what goes to production, on Linux, macOS and Windows. Wait for all of it before you merge:
 
@@ -117,7 +117,7 @@ Replace `X.Y.Z` with the new version.
    gh release view vX.Y.Z --json assets --jq '.assets[].name'
    ```
 
-   - `hersir-X.Y.Z-linux-x86_64.tar.gz`, `hersir-X.Y.Z-macos-arm64.tar.gz` and `hersir-X.Y.Z-windows-x86_64.zip`: each holds the files `install.sh --skip-build` (`install.ps1 -SkipBuild`) installs from a build, at the paths the build leaves them: `target/release/gizai` and `target/release/gizai-mcp`, on macOS also `target/release/bundle/macos/Hersir.app`, on Windows the two `.exe` files. Unpacked into the release's source, `--skip-build` installs them as if they had been built there.
+   - `hersir-X.Y.Z-linux-x86_64.tar.gz`, `hersir-X.Y.Z-macos-arm64.tar.gz` and `hersir-X.Y.Z-windows-x86_64.zip`: each holds the files `install.sh --skip-build` (`install.ps1 -SkipBuild`) installs from a build, at the paths the build leaves them: `target/release/hersir` and `target/release/hersir-mcp`, on macOS also `target/release/bundle/macos/Hersir.app`, on Windows the two `.exe` files. Unpacked into the release's source, `--skip-build` installs them as if they had been built there.
    - `SHA256SUMS`: one line per archive, `<sha256>  <file name>`, as `sha256sum` writes it. `sha256sum -c SHA256SUMS` checks the three.
 
    The one-line install and Update don't use them yet: they still build from source. A red run is a `needs_decision` with what its log says, not a new release: the release keeps working without its builds. Once the cause is fixed, `gh workflow run release-builds.yml -f tag=vX.Y.Z` builds the release's tag again and attaches the four, replacing any it has. The same command gives a release from before this workflow its builds; whether to run it for one is Jeffrey's call.
@@ -186,33 +186,34 @@ Every release must keep this working, because the Hersir that updates runs the *
   2. **Check the version:** the source's `Cargo.toml` must say `X.Y.Z`.
   3. **Build:** the release's own `./install.sh --build-only`, at low CPU priority. Hersir stays usable meanwhile. Every command's output goes to `<data folder>/update/update.log`. On Windows: `.\install.ps1 -BuildOnly`, run with Windows PowerShell (`-ExecutionPolicy Bypass`, as the script isn't signed), at below-normal priority.
   4. **Back up the data:** `<data folder>/backups/gizai-before-update-<time>.db`.
-  5. **Install:** the release's own `./install.sh --skip-build`, with `GIZAI_PREFIX` set to where the running Hersir was installed (usually `~/.local`) and `XDG_DATA_HOME` set to `<prefix>/share`. So the desktop entry and icons go with the install: `~/.local/share` for the usual one, and never over yours for a test's scratch prefix. The installer backs up the data folder there again with the new build, then replaces the programs with a rename. That is the folder Hersir uses ([Your data](install.md#your-data)): `<prefix>/share/hersir`, or `<prefix>/share/gizai` of an install from before 0.17.0 when it holds `gizai.db` and there is no hersir folder. The installer gets neither `HERSIR_DATA_DIR` nor `GIZAI_DATA_DIR`.
-     - macOS: the same `install.sh`. It backs up `~/Library/Application Support/Hersir`, or `~/Library/Application Support/Gizai` by the same rule, and replaces `Hersir.app` in `<prefix>/lib/gizai` with a rename.
-     - Windows: `.\install.ps1 -SkipBuild` with `GIZAI_PREFIX` (usually `%LOCALAPPDATA%\Programs\Gizai`). It backs up `%APPDATA%\Hersir`, or `%APPDATA%\Gizai` by the same rule. Windows can't overwrite a program that runs, so it renames the running `gizai.exe` and `gizai-mcp.exe` aside (`.gizai.exe.old.<pid>`), moves the new ones in, and removes the old ones at the next install.
-  6. **Check:** `gizai --version` of the installed program must say `X.Y.Z`. Then the notice offers **Restart to use X.Y.Z**. Restart quits Hersir the usual way (agents at work are stopped first) and starts the installed one.
+  5. **Install:** the release's own `./install.sh --skip-build`, with the prefix the running Hersir was installed into (usually `~/.local`) in `HERSIR_PREFIX` and `GIZAI_PREFIX` (its name before 0.17.0), and `XDG_DATA_HOME` set to `<prefix>/share`. So the desktop entry and icons go with the install: `~/.local/share` for the usual one, and never over yours for a test's scratch prefix. The installer backs up the data folder there again with the new build, then replaces the programs with a rename. That is the folder Hersir uses ([Your data](install.md#your-data)): `<prefix>/share/hersir`, or `<prefix>/share/gizai` of an install from before 0.17.0 when it holds `gizai.db` and there is no hersir folder. The installer gets neither `HERSIR_DATA_DIR` nor `GIZAI_DATA_DIR`.
+     - macOS: the same `install.sh`. It backs up `~/Library/Application Support/Hersir`, or `~/Library/Application Support/Gizai` by the same rule, and replaces `Hersir.app` in `<prefix>/lib/hersir` with a rename.
+     - Windows: `.\install.ps1 -SkipBuild` with the prefix (usually `%LOCALAPPDATA%\Programs\Hersir`). It backs up `%APPDATA%\Hersir`, or `%APPDATA%\Gizai` by the same rule. Windows can't overwrite a program that runs, so it renames the running `hersir.exe` and `hersir-mcp.exe` aside (`.hersir.exe.old.<pid>`), moves the new ones in, and removes the old ones at the next install.
+     - An install from before 0.17.0 is updated where it is, in `<prefix>/lib/gizai` (Windows: `%LOCALAPPDATA%\Programs\Gizai`), and keeps its gizai names as links to the new programs (copies on Windows): [PLATFORMS.md](PLATFORMS.md#install-update-and-ci) says how.
+  6. **Check:** `hersir --version` of the installed program must say `hersir X.Y.Z`; an update reads the second word (0.16.0's own update reads `gizai --version`, which says `hersir X.Y.Z` too from 0.17.0 on). Then the notice offers **Restart to use X.Y.Z**. Restart quits Hersir the usual way (agents at work are stopped first) and starts the installed one: `hersir-launch`, on Windows `hersir.exe`.
 - **When a step fails,** nothing installed changes: the notice says the update failed, and Settings → Updates says why, with the end of the output, the log and Try again.
   - The installed version decides. When the installer fails after the new programs are in place (the icons, say), the update counts as installed, with what the installer said.
   - Only an install that stopped between its renames (seconds) can leave a mix. Settings → Updates then says to try again or to run `./install.sh`.
 - **Stop** ends the update while it gets the source or builds. Quitting Hersir does that too.
-- **So `install.sh` must keep these working:** `--build-only`, `--skip-build`, `GIZAI_PREFIX` and `XDG_DATA_HOME`, with macOS's own bash 3.2 and BSD tools too. **And `install.ps1`:** `-BuildOnly`, `-SkipBuild` and `GIZAI_PREFIX`, with Windows PowerShell 5.1 (what an update runs) and PowerShell 7. CI checks that both scripts parse and that their checks (`--check`, `-Check`) pass.
-- **The one-line installs run the release's installer too.** `scripts/get.sh` (`curl -fsSL https://hersir.dev/install.sh | sh`) and `scripts/get.ps1` (`irm https://hersir.dev/install.ps1 | iex`) are read from `production`: hersir.dev sends its two addresses on to them there, so they must keep their names and place. What they get themselves comes from GitHub, never from the website. They get the same tag as an update, shallow, into `~/.local/share/gizai-src` (`%LOCALAPPDATA%\gizai-src` on Windows), never into the data folder. Then they run its `install.sh --check` and `install.sh` (`install.ps1 -Check` and `install.ps1`), with the flags they were given. So `--check` and `-Check` must keep working too. CI checks that both scripts parse and runs their checks against the pull request's own commit.
-- **Only an installed Hersir updates itself.** That is a Hersir that runs as `<prefix>/lib/gizai/gizai` (on macOS also `<prefix>/lib/gizai/Hersir.app/Contents/MacOS/gizai`, when it starts from the Dock), or on Windows as a `gizai.exe` with `install.ps1`'s `gizai-installed.txt` next to it. A dev build (`scripts/run.sh`) or a test build says why it doesn't, and never installs anything.
+- **So `install.sh` must keep these working:** `--build-only`, `--skip-build`, `HERSIR_PREFIX`, `GIZAI_PREFIX` (what 0.16.0 and older set) and `XDG_DATA_HOME`, with macOS's own bash 3.2 and BSD tools too. **And `install.ps1`:** `-BuildOnly`, `-SkipBuild`, `HERSIR_PREFIX` and `GIZAI_PREFIX`, with Windows PowerShell 5.1 (what an update runs) and PowerShell 7. And for 0.16.0's own update, which can't change any more: after an install into its prefix, `<prefix>/lib/gizai/gizai --version` (`<prefix>\gizai.exe --version`) says the new version as its second word, and `<prefix>/lib/gizai/gizai-launch` starts the new Hersir. CI checks that both scripts parse and that their checks (`--check`, `-Check`) pass, and Install's update from 0.16.0 job runs that update on each system.
+- **The one-line installs run the release's installer too.** `scripts/get.sh` (`curl -fsSL https://hersir.dev/install.sh | sh`) and `scripts/get.ps1` (`irm https://hersir.dev/install.ps1 | iex`) are read from `production`: hersir.dev sends its two addresses on to them there, so they must keep their names and place. What they get themselves comes from GitHub, never from the website. They get the same tag as an update, shallow, into `~/.local/share/hersir-src` (`%LOCALAPPDATA%\hersir-src` on Windows; the `gizai-src` from before 0.17.0 becomes it), never into the data folder. Then they run its `install.sh --check` and `install.sh` (`install.ps1 -Check` and `install.ps1`), with the flags they were given. So `--check` and `-Check` must keep working too. CI checks that both scripts parse and runs their checks against the pull request's own commit.
+- **Only an installed Hersir updates itself.** That is a Hersir that runs as `<prefix>/lib/hersir/hersir` (on macOS also `<prefix>/lib/hersir/Hersir.app/Contents/MacOS/hersir`, when it starts from the Dock), or on Windows as a `hersir.exe` with `install.ps1`'s `hersir-installed.txt` next to it; in an install from before 0.17.0 the same in `<prefix>/lib/gizai`, or a `gizai.exe` or `hersir.exe` beside `gizai-installed.txt`. A dev build (`scripts/run.sh`) or a test build says why it doesn't, and never installs anything.
 - **From a terminal** it works as before: `git pull` in a checkout of `production`, then `./install.sh` (on Windows `.\install.ps1`).
-- **Headless test and screenshot runs** (`HERSIR_SELFTEST` or `HERSIR_ROUTE` set, or their `GIZAI_` names) skip the automatic check, unless `GIZAI_RELEASES_URL` is set too.
-- **Settings for tests and forks:**
-  - `GIZAI_REPO`: the repository the tag is fetched from. Default `https://github.com/Yotech-AI/hersir.git`.
-  - `GIZAI_RELEASES_URL`: what the check reads. Default: GitHub's latest release of `GIZAI_REPO`. It also takes `http://` and `file://` addresses.
-  - The one-line installs read both too, and `GIZAI_REF`: a tag, branch or commit to get instead of the latest release.
+- **Headless test and screenshot runs** (`HERSIR_SELFTEST` or `HERSIR_ROUTE` set, or their `GIZAI_` names) skip the automatic check, unless `HERSIR_RELEASES_URL` is set too.
+- **Settings for tests and forks** (their names from before 0.17.0, `GIZAI_REPO`, `GIZAI_RELEASES_URL` and `GIZAI_REF`, still work; a `HERSIR_` one wins):
+  - `HERSIR_REPO`: the repository the tag is fetched from. Default `https://github.com/Yotech-AI/hersir.git`.
+  - `HERSIR_RELEASES_URL`: what the check reads. Default: GitHub's latest release of `HERSIR_REPO`. It also takes `http://` and `file://` addresses.
+  - The one-line installs read both too, and `HERSIR_REF`: a tag, branch or commit to get instead of the latest release.
 
 ## Testing an update without touching a real Hersir
 
-Never test against the Hersir Jeffrey uses: not `./install.sh`, not `~/.local/lib/gizai`, not `~/.local/share/gizai`. Everything goes in one scratch folder, `$T` below.
+Never test against the Hersir Jeffrey uses: not `./install.sh`, not `~/.local/lib/gizai` or `~/.local/lib/hersir`, not `~/.local/share/gizai`. Everything goes in one scratch folder, `$T` below.
 
 1. **A fake release.**
    - A git repository with a tag, for example `v9.9.9`. Its `Cargo.toml` must say `version = "9.9.9"` under `[workspace.package]`.
    - It needs an `install.sh` that takes `--build-only` and `--skip-build`. For a quick test, use a stub:
-     - `--build-only` writes `target/release/gizai` (a script that prints `gizai 9.9.9` for `--version` and a path for `--backup`) and `target/release/gizai-mcp`;
-     - `--skip-build` copies them to `$GIZAI_PREFIX/lib/gizai/`.
+     - `--build-only` writes `target/release/hersir` (a script that prints `hersir 9.9.9` for `--version` and a path for `--backup`) and `target/release/hersir-mcp`;
+     - `--skip-build` copies them to `$HERSIR_PREFIX/lib/hersir/`.
 
      For a real test, use a copy of this repository with the version bumped; its build takes minutes.
    - A file shaped like GitHub's answer:
@@ -227,15 +228,17 @@ Never test against the Hersir Jeffrey uses: not `./install.sh`, not `~/.local/li
    env -i HOME="$T/home" PATH="$PATH" ./install.sh --skip-build
    ```
 
-   This is what `scripts/test-install.sh` does. It puts the programs in `$T/home/.local/lib/gizai/`.
+   This is what `scripts/test-install.sh` does. It puts the programs in `$T/home/.local/lib/hersir/`.
 
 3. **Start that Hersir headless,** in `cage` the way `scripts/shot-cage.sh` starts one, but with these settings:
 
    ```sh
    HOME="$T/home" XDG_DATA_HOME="$T/home/.local/share" HERSIR_DATA_DIR="$T/data" \
-     GIZAI_REPO="$T/fake-repo" GIZAI_RELEASES_URL="file://$T/latest.json" HERSIR_SKIP_ONBOARDING=1 \
-     "$T/home/.local/lib/gizai/gizai"
+     HERSIR_REPO="$T/fake-repo" HERSIR_RELEASES_URL="file://$T/latest.json" HERSIR_SKIP_ONBOARDING=1 \
+     "$T/home/.local/lib/hersir/hersir"
    ```
+
+   To test the update of an install from before 0.17.0, install 0.16.0 into `$T/home/.local` first (`env -i HOME="$T/home" PATH="$PATH" ./install.sh` in a checkout of the `v0.16.0` tag), then update it the way 0.16.0 does: `./install.sh --build-only`, then `GIZAI_PREFIX="$T/home/.local" XDG_DATA_HOME="$T/home/.local/share" ./install.sh --skip-build` in this branch's checkout. CI's Install workflow does this on each system (its update from 0.16.0 job).
 
    - Hersir installs an update into the prefix it runs from: here `$T/home/.local`. The installer's desktop entry and icons go to `$T/home/.local/share`.
    - `$T/data` is new, so `HERSIR_SKIP_ONBOARDING=1` skips the first start's onboarding ([docs/install.md](install.md#first-start)).

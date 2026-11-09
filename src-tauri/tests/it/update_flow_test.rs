@@ -239,7 +239,7 @@ async fn without_a_releases_url_the_check_says_what_to_set() {
     let st = update::check(&s.st).await;
     let p = st.problem.expect("a problem");
     assert!(p.what.contains("doesn't know where"), "{p:?}");
-    assert!(p.fix.unwrap().contains("GIZAI_RELEASES_URL"));
+    assert!(p.fix.unwrap().contains("HERSIR_RELEASES_URL"));
 }
 
 #[tokio::test]
@@ -350,6 +350,94 @@ async fn an_update_builds_in_the_background_backs_up_installs_and_offers_a_resta
     assert_eq!(restart.get_program(), "sh");
     assert_eq!(args.last().map(String::as_str), Some(s.prefix.join("lib/gizai/gizai-launch").display().to_string().as_str()), "{args:?}");
     assert!(args.contains(&std::process::id().to_string()), "it waits for this process: {args:?}");
+}
+
+/// GA-248: a release's install.sh from 0.17.0 on: --build-only makes target/release/hersir (a stub that says it is
+/// 9.9.9), --skip-build installs it the way install.sh does: into <prefix>/lib/gizai when an install from before 0.17.0
+/// is there (lib/gizai/gizai), with gizai and gizai-launch as links to hersir and hersir-launch, else into
+/// <prefix>/lib/hersir. The prefix comes as HERSIR_PREFIX (GIZAI_PREFIX before 0.17.0).
+const HERSIR_INSTALL_SH: &str = r#"set -e
+case "$1" in
+  --build-only)
+    mkdir -p target/release
+    printf '#!/bin/sh\n[ "$1" = --version ] && echo "hersir 9.9.9"\nexit 0\n' > target/release/hersir
+    printf '#!/bin/sh\nexit 0\n' > target/release/hersir-mcp
+    chmod 755 target/release/hersir target/release/hersir-mcp
+    echo "Built hersir 9.9.9"
+    ;;
+  --skip-build)
+    P="$HERSIR_PREFIX"
+    if [ -e "$P/lib/gizai/gizai" ] || [ -L "$P/lib/gizai/gizai" ]; then L="$P/lib/gizai" OLD=1; else L="$P/lib/hersir" OLD=0; fi
+    mkdir -p "$L"
+    cp target/release/hersir "$L/.hersir.new.$$" && mv -f "$L/.hersir.new.$$" "$L/hersir"
+    printf '#!/bin/sh\nexec "$(dirname "$0")/hersir" "$@"\n' > "$L/.launch.new.$$" && chmod 755 "$L/.launch.new.$$" && mv -f "$L/.launch.new.$$" "$L/hersir-launch"
+    if [ "$OLD" = 1 ]; then ln -sfn hersir "$L/gizai"; ln -sfn hersir-launch "$L/gizai-launch"; fi
+    echo "Done: hersir 9.9.9"
+    ;;
+esac
+"#;
+
+/// GA-248: the scratch with the release's install.sh from 0.17.0 on, and Hersir (this version) installed in `lib`:
+/// lib/hersir, Hersir's own layout, or lib/gizai, an install from before 0.17.0 that 0.17.0 updated where it is (gizai
+/// and gizai-launch are links to hersir and hersir-launch there). The Hersir that runs is <lib>/hersir, as the
+/// launcher starts it.
+fn hersir_scratch(lib: &str) -> (Scratch, PathBuf) {
+    let s = scratch("9.9.9");
+    let repo = s.t.join("fake-repo");
+    std::fs::write(repo.join("install.sh"), HERSIR_INSTALL_SH).unwrap();
+    git(&repo, &["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-am", "release 9.9.9, with the hersir names"]);
+    git(&repo, &["tag", "-f", "v9.9.9"]);
+    std::fs::remove_dir_all(s.prefix.join("lib/gizai")).unwrap();
+    let lib = s.prefix.join(lib);
+    write_script(&lib.join("hersir"), &format!("#!/bin/sh\n[ \"$1\" = --version ] && echo 'hersir {VERSION}'\nexit 0\n"));
+    write_script(&lib.join("hersir-launch"), "#!/bin/sh\nexec \"$(dirname \"$0\")/hersir\" \"$@\"\n");
+    if lib.ends_with("lib/gizai") {
+        std::os::unix::fs::symlink("hersir", lib.join("gizai")).unwrap();
+        std::os::unix::fs::symlink("hersir-launch", lib.join("gizai-launch")).unwrap();
+    }
+    s.st.updates.set_exe(Some(lib.join("hersir")));
+    (s, lib)
+}
+
+fn says(program: &Path) -> String {
+    String::from_utf8(Command::new(program).arg("--version").output().unwrap().stdout).unwrap().trim().to_string()
+}
+
+#[tokio::test]
+async fn the_next_update_works_from_hersirs_own_layout_and_restarts_its_launcher() {
+    let (s, lib) = hersir_scratch("lib/hersir");
+    let st = update::check(&s.st).await;
+    assert_eq!(st.install_to.as_deref(), Some(s.prefix.display().to_string().as_str()), "{st:?}");
+    assert_eq!(st.available.map(|r| r.version).as_deref(), Some("9.9.9"));
+    update::start(&s.st, "9.9.9").unwrap();
+    let done = wait_for_update(&s.st);
+    let job = done.job.clone().unwrap();
+    assert_eq!(job.step, "installed", "{job:?}");
+    assert_eq!(done.installed.as_deref(), Some("9.9.9"), "it reads lib/hersir/hersir --version");
+    assert_eq!(says(&lib.join("hersir")), "hersir 9.9.9");
+    assert!(!s.prefix.join("lib/gizai").exists(), "a new install gets no gizai names");
+    let restart = update::restart_command(&s.st).unwrap();
+    let args: Vec<String> = restart.get_args().map(|a| a.to_string_lossy().to_string()).collect();
+    assert_eq!(args.last().map(String::as_str), Some(lib.join("hersir-launch").display().to_string().as_str()), "{args:?}");
+}
+
+#[tokio::test]
+async fn the_next_update_works_from_an_install_from_before_0_17_0_and_restarts_hersir_launch_there() {
+    let (s, lib) = hersir_scratch("lib/gizai");
+    let st = update::check(&s.st).await;
+    assert_eq!(st.install_to.as_deref(), Some(s.prefix.display().to_string().as_str()), "{st:?}");
+    update::start(&s.st, "9.9.9").unwrap();
+    let done = wait_for_update(&s.st);
+    let job = done.job.clone().unwrap();
+    assert_eq!(job.step, "installed", "{job:?}");
+    assert_eq!(done.installed.as_deref(), Some("9.9.9"));
+    for program in ["hersir", "gizai", "hersir-launch", "gizai-launch"] {
+        assert_eq!(says(&lib.join(program)), "hersir 9.9.9", "{program} starts the new Hersir");
+    }
+    assert!(!s.prefix.join("lib/hersir").exists(), "updated where it is");
+    let restart = update::restart_command(&s.st).unwrap();
+    let args: Vec<String> = restart.get_args().map(|a| a.to_string_lossy().to_string()).collect();
+    assert_eq!(args.last().map(String::as_str), Some(lib.join("hersir-launch").display().to_string().as_str()), "{args:?}");
 }
 
 #[tokio::test]

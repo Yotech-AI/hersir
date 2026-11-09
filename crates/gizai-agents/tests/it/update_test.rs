@@ -217,6 +217,73 @@ fn on_macos_hersir_app_started_from_the_dock_finds_its_install() {
     assert_eq!(up::install_prefix(Path::new("/repo/target/release/bundle/macos/Hersir.app/Contents/MacOS/gizai")), None, "a build's app");
 }
 
+// GA-248: a new install is <prefix>/lib/hersir/hersir; one from before 0.17.0 is updated where it is, so the Hersir
+// that runs there is <prefix>/lib/gizai/hersir (its gizai is a link to that now). Both find their prefix.
+#[test]
+fn hersirs_own_layout_and_an_install_from_before_0_17_0_both_have_an_install_to_update() {
+    assert_eq!(up::install_prefix(Path::new("/home/x/.local/lib/hersir/hersir")), Some(PathBuf::from("/home/x/.local")));
+    assert_eq!(up::install_prefix(Path::new("/home/x/.local/lib/gizai/hersir")), Some(PathBuf::from("/home/x/.local")), "updated in lib/gizai");
+    assert_eq!(up::install_prefix(Path::new("/home/x/.local/lib/gizai/gizai")), Some(PathBuf::from("/home/x/.local")), "0.16.0 itself");
+    for not in ["/repo/target/release/hersir", "/repo/target/debug/hersir", "/home/x/.local/lib/hersir/hersir-mcp",
+                "/home/x/.local/lib/hersir/hersir-launch", "/home/x/.local/lib/gizai/hersir-mcp", "/home/x/.local/lib/hersir/gizai",
+                "/home/x/.local/lib64/hersir/hersir", "/home/x/.local/lib/other/hersir", "/usr/bin/hersir", "hersir"] {
+        assert_eq!(up::install_prefix(Path::new(not)), None, "{not}");
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn on_macos_hersir_app_in_either_layout_finds_its_install() {
+    for lib in ["lib/hersir", "lib/gizai"] {
+        let app = PathBuf::from(format!("/Users/x/.local/{lib}/Hersir.app/Contents/MacOS/hersir"));
+        assert_eq!(up::install_prefix(&app), Some(PathBuf::from("/Users/x/.local")), "{lib}");
+        let mcp = PathBuf::from(format!("/Users/x/.local/{lib}/Hersir.app/Contents/MacOS/hersir-mcp"));
+        assert_eq!(up::install_prefix(&mcp), None, "{lib}");
+    }
+    assert_eq!(up::install_prefix(Path::new("/repo/target/release/bundle/macos/Hersir.app/Contents/MacOS/hersir")), None, "a build's app");
+}
+
+#[test]
+fn the_installed_program_is_hersir_or_in_an_install_from_before_0_17_0_its_gizai() {
+    let tmp = real_tempdir();
+    let prefix = tmp.path().join("prefix");
+    assert_eq!(up::installed_exe(&prefix), prefix.join("lib/hersir/hersir"), "nothing installed: Hersir's own layout");
+    assert_eq!(up::gizai_install(&prefix), None);
+    write_script(&prefix.join("lib/hersir/hersir"), "#!/bin/sh\n[ \"$1\" = --version ] && echo 'hersir 9.9.9'\n");
+    assert_eq!(up::installed_exe(&prefix), prefix.join("lib/hersir/hersir"));
+    assert_eq!(up::installed_version(&prefix).as_deref(), Some("9.9.9"), "hersir X.Y.Z gives X.Y.Z");
+
+    // 0.16.0's own install: lib/gizai/gizai is the program
+    let old = tmp.path().join("old");
+    write_script(&old.join("lib/gizai/gizai"), "#!/bin/sh\n[ \"$1\" = --version ] && echo 'gizai 0.16.0'\n");
+    assert_eq!(up::gizai_install(&old), Some(old.join("lib/gizai/gizai")));
+    assert_eq!(up::installed_exe(&old), old.join("lib/gizai/gizai"));
+    assert_eq!(up::installed_version(&old).as_deref(), Some("0.16.0"), "gizai X.Y.Z still gives X.Y.Z");
+
+    // the same install after an update to 0.17.0 or later: gizai is a link to hersir beside it
+    std::fs::remove_file(old.join("lib/gizai/gizai")).unwrap();
+    write_script(&old.join("lib/gizai/hersir"), "#!/bin/sh\n[ \"$1\" = --version ] && echo 'hersir 9.9.9'\n");
+    std::os::unix::fs::symlink("hersir", old.join("lib/gizai/gizai")).unwrap();
+    assert_eq!(up::installed_exe(&old), old.join("lib/gizai/gizai"));
+    assert_eq!(up::installed_version(&old).as_deref(), Some("9.9.9"));
+    // a dangling link still marks the install (its update is what puts hersir back)
+    std::fs::remove_file(old.join("lib/gizai/hersir")).unwrap();
+    assert_eq!(up::gizai_install(&old), Some(old.join("lib/gizai/gizai")));
+    assert_eq!(up::installed_version(&old), None);
+}
+
+#[test]
+fn a_restart_starts_the_launcher_of_the_layout_it_finds_and_0_16_0s_own_last() {
+    let tmp = real_tempdir();
+    let prefix = tmp.path().join("prefix");
+    let lib = prefix.join("lib/hersir");
+    assert_eq!(up::restart_programs(&prefix), vec![lib.join("hersir-launch"), lib.join("hersir")]);
+    write_script(&prefix.join("lib/gizai/gizai"), "#!/bin/sh\n");
+    let lib = prefix.join("lib/gizai");
+    assert_eq!(up::restart_programs(&prefix),
+               vec![lib.join("hersir-launch"), lib.join("hersir"), lib.join("gizai-launch"), lib.join("gizai")]);
+}
+
 #[test]
 fn the_installed_version_is_what_gizai_version_says() {
     let tmp = real_tempdir();

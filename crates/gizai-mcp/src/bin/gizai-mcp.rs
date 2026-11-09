@@ -1,8 +1,8 @@
-//! gizai-mcp: the stdio MCP server Claude Code starts for a chat turn. It only connects stdio to the running
-//! Gizai: dials the user-only socket in $HERSIR_SOCKET (a named pipe on Windows), sends the turn's token
-//! ($HERSIR_TOKEN) as its first line, then copies bytes both ways (each variable also works under its GIZAI_ name, as
-//! before 0.17.0). Gizai answers the MCP requests. It exits when Gizai closes the connection: normally after Claude
-//! Code closed stdin, otherwise (a refused token, Gizai quitting) with 1.
+//! hersir-mcp (built from this file, see Cargo.toml): the stdio MCP server Claude Code starts for a chat turn. It only
+//! connects stdio to the running Gizai: dials the user-only socket in $HERSIR_SOCKET (a named pipe on Windows), sends
+//! the turn's token ($HERSIR_TOKEN) as its first line, then copies bytes both ways (each variable also works under its
+//! GIZAI_ name, as before 0.17.0). Gizai answers the MCP requests. It exits when Gizai closes the connection: normally
+//! after Claude Code closed stdin, otherwise (a refused token, Gizai quitting) with 1.
 //!
 //! On Windows a named pipe can't be half-closed, so the shim can't tell Gizai it is done writing: when Claude Code
 //! closes stdin, the shim stops writing and passes on what Gizai still answers until Gizai closes the pipe or stays
@@ -21,7 +21,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 fn fail(msg: &str) -> ExitCode {
-    eprintln!("gizai-mcp: {msg}");
+    eprintln!("hersir-mcp: {msg}");
     ExitCode::from(1)
 }
 

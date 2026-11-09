@@ -217,10 +217,10 @@ describe("Release builds: the three systems and their archives (the contract)", 
 
   it("packs exactly the files --skip-build installs, at the paths the build leaves them", () => {
     const pack = stepRun("Pack (Linux, macOS)");
-    expect(pack).toContain("target/release/gizai target/release/gizai-mcp target/release/bundle/macos/Hersir.app\n");
-    expect(pack).toContain("-czf \"$out\" target/release/gizai target/release/gizai-mcp\n");
+    expect(pack).toContain("target/release/hersir target/release/hersir-mcp target/release/bundle/macos/Hersir.app\n");
+    expect(pack).toContain("-czf \"$out\" target/release/hersir target/release/hersir-mcp\n");
     const zip = stepRun("Pack (Windows)");
-    expect(zip).toContain("foreach ($p in @('gizai.exe', 'gizai-mcp.exe'))");
+    expect(zip).toContain("foreach ($p in @('hersir.exe', 'hersir-mcp.exe'))");
     expect(zip).toContain('"target/release/$p"');
   });
 
@@ -238,14 +238,14 @@ describe("Release builds: the three systems and their archives (the contract)", 
     const env = (name) => build.split(`- name: ${name}\n`)[1].split("        run: |")[0];
     expect(env("Check the archive (Linux, macOS)")).toContain(
       [
-        "          GIZAI_PREFIX: ${{ runner.temp }}/scratch",
+        "          HERSIR_PREFIX: ${{ runner.temp }}/scratch",
         "          XDG_DATA_HOME: ${{ runner.temp }}/scratch/share",
-        "          GIZAI_DATA_DIR: ${{ runner.temp }}/scratch/share/gizai",
+        "          HERSIR_DATA_DIR: ${{ runner.temp }}/scratch/share/hersir",
         "",
       ].join("\n"),
     );
     expect(env("Check the archive (Windows)")).toContain(
-      "          GIZAI_PREFIX: ${{ runner.temp }}\\scratch\n          GIZAI_DATA_DIR: ${{ runner.temp }}\\scratch-data\n",
+      "          HERSIR_PREFIX: ${{ runner.temp }}\\scratch\n          HERSIR_DATA_DIR: ${{ runner.temp }}\\scratch-data\n",
     );
     // the check unpacks into a fresh checkout of the same commit, without the build's target or node_modules
     expect(build).toContain(
@@ -253,13 +253,13 @@ describe("Release builds: the three systems and their archives (the contract)", 
     );
   });
 
-  it("on Windows reads the version from gizai-installed.txt, which install.ps1 -SkipBuild writes from the installed gizai.exe", () => {
+  it("on Windows reads the version from hersir-installed.txt, which install.ps1 -SkipBuild writes from the installed hersir.exe (GA-248)", () => {
     expect(stepRun("Check the archive (Windows)")).toContain(
-      "$got = Get-Content -LiteralPath (Join-Path $env:GIZAI_PREFIX 'gizai-installed.txt')\n",
+      "$got = Get-Content -LiteralPath (Join-Path $env:HERSIR_PREFIX 'hersir-installed.txt')\n",
     );
     const ps1 = read("install.ps1");
-    expect(ps1).toContain("$Marker = Join-Path $Prefix 'gizai-installed.txt'\n");
-    expect(ps1).toContain("$installed = Invoke-Gizai $Exe @('--version')\n");
+    expect(ps1).toContain("$Marker = Join-Path $Prefix 'hersir-installed.txt'\n");
+    expect(ps1).toContain("$installed = Invoke-Hersir $Exe @('--version')\n");
     expect(ps1).toContain("Set-Content -LiteralPath $Marker -Value $version -Encoding Ascii\n");
   });
 
@@ -405,20 +405,20 @@ describe.runIf(linux)("Release builds: the system packages on ubuntu-22.04, as i
 
 // Pack (Linux, macOS), then the check: the archive unpacked into a copy of the source (install.sh, tauri.conf.json and
 // the icons), installed with the real install.sh --skip-build into a scratch prefix, home and data folder. The build is
-// a stand-in: a gizai that says its version.
+// a stand-in: a hersir that says its version (GA-248: the programs are hersir and hersir-mcp).
 describe.runIf(linux)("Release builds: the Linux archive, and its check with install.sh --skip-build", () => {
   const pack = stepRun("Pack (Linux, macOS)");
   const check = stepRun("Check the archive (Linux, macOS)");
   const ARCHIVE = "hersir-1.2.3-linux-x86_64.tar.gz";
 
-  // A build in target/release whose gizai says gizai <says>, packed; and a fresh copy of the source to unpack it into.
-  function packed({ says = "1.2.3", files = ["gizai", "gizai-mcp"] } = {}) {
+  // A build in target/release whose hersir says hersir <says>, packed; and a fresh copy of the source to unpack it into.
+  function packed({ says = "1.2.3", files = ["hersir", "hersir-mcp"] } = {}) {
     const dir = folder("archive");
     const build = join(dir, "build");
     for (const f of files) {
       tool(join(build, "target", "release"), f, `#!/bin/sh\n[ "$1" = --version ] && echo "${f} ${says}"\nexit 0\n`);
     }
-    writeFileSync(join(build, "target", "release", "gizai.d"), "not in the archive\n");
+    writeFileSync(join(build, "target", "release", "hersir.d"), "not in the archive\n");
     const temp = join(dir, "runner-temp");
     mkdirSync(temp);
     const r = runStep(pack, build, { RUNNER_OS: "Linux", RUNNER_TEMP: temp, ARCHIVE });
@@ -435,16 +435,16 @@ describe.runIf(linux)("Release builds: the Linux archive, and its check with ins
       VERSION: version,
       RUNNER_TEMP: temp,
       HOME: join(temp, "home"),
-      GIZAI_PREFIX: join(temp, "scratch"),
+      HERSIR_PREFIX: join(temp, "scratch"),
       XDG_DATA_HOME: join(temp, "scratch", "share"),
-      GIZAI_DATA_DIR: join(temp, "scratch", "share", "gizai"),
+      HERSIR_DATA_DIR: join(temp, "scratch", "share", "hersir"),
     });
 
-  it("holds target/release/gizai and target/release/gizai-mcp and nothing else, owned by root", () => {
+  it("holds target/release/hersir and target/release/hersir-mcp and nothing else, owned by root", () => {
     const { pack: r, archive } = packed();
     expect(r.status, r.out).toBe(0);
     const list = spawnSync("tar", ["--numeric-owner", "-tzvf", archive], { encoding: "utf8" }).stdout.trim().split("\n");
-    expect(list.map((l) => l.split(/\s+/).at(-1))).toEqual(["target/release/gizai", "target/release/gizai-mcp"]);
+    expect(list.map((l) => l.split(/\s+/).at(-1))).toEqual(["target/release/hersir", "target/release/hersir-mcp"]);
     for (const line of list) expect(line).toMatch(/^-rwx\S+ 0\/0 /);
   });
 
@@ -452,23 +452,24 @@ describe.runIf(linux)("Release builds: the Linux archive, and its check with ins
     const build = packed();
     const r = checked(build);
     expect(r.status, r.out).toBe(0);
-    expect(r.out).toContain("gizai --version: gizai 1.2.3\n");
+    expect(r.out).toContain("hersir --version: hersir 1.2.3\n");
     const prefix = join(build.temp, "scratch");
-    expect(readdirSync(join(prefix, "lib", "gizai")).sort()).toEqual(["gizai", "gizai-launch", "gizai-mcp"]);
-    expect(existsSync(join(prefix, "bin", "gizai"))).toBe(true);
-    expect(existsSync(join(prefix, "share", "applications", "gizai.desktop"))).toBe(true);
+    expect(readdirSync(join(prefix, "lib", "hersir")).sort()).toEqual(["hersir", "hersir-launch", "hersir-mcp"]);
+    expect(existsSync(join(prefix, "bin", "hersir"))).toBe(true);
+    expect(existsSync(join(prefix, "share", "applications", "hersir.desktop"))).toBe(true);
+    expect(existsSync(join(prefix, "lib", "gizai")) || existsSync(join(prefix, "bin", "gizai"))).toBe(false);
     // nothing outside the scratch folders: the home it was given stays empty
     expect(readdirSync(build.temp).sort()).toEqual(["builds", "fresh", "scratch"]);
   });
 
-  it("fails when the installed gizai says another version", () => {
+  it("fails when the installed hersir says another version", () => {
     const r = checked(packed({ says: "1.2.2" }));
     expect(r.status).toBe(1);
-    expect(r.out).toContain("The installed gizai says gizai 1.2.2, not gizai 1.2.3.");
+    expect(r.out).toContain("The installed hersir says hersir 1.2.2, not hersir 1.2.3.");
   });
 
-  it("fails when the build has no gizai-mcp: the pack can't find it", () => {
-    const r = packed({ files: ["gizai"] }).pack;
+  it("fails when the build has no hersir-mcp: the pack can't find it", () => {
+    const r = packed({ files: ["hersir"] }).pack;
     expect(r.status).not.toBe(0);
   });
 });
