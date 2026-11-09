@@ -1611,7 +1611,7 @@ pub struct QuestionRun {
 }
 
 /// Whether the Team Lead can look at questions here (GA-70): it runs on a Claude Code CLI whose program is found, and the
-/// gizai-mcp helper is next to Gizai. Err says why not.
+/// hersir-mcp helper is next to Gizai. Err says why not.
 pub fn question_ready(st: &AppState, agent: &Member) -> Result<(), String> {
     let cli = crate::clis::of_agent(st, agent.adapter.as_deref())?;
     if cli.kind != "claude_code" {

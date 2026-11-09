@@ -1,5 +1,5 @@
 //! Gizai's MCP server for chat turns, on a user-only local socket: a unix socket on Linux and macOS, a named pipe on
-//! Windows. Claude Code starts the `gizai-mcp` shim, which connects here and sends the turn's token as its first line;
+//! Windows. Claude Code starts the `hersir-mcp` shim, which connects here and sends the turn's token as its first line;
 //! with a valid token the connection gets the Gizai tools, acting as the token's agent. No TCP port, no web server.
 //!
 //! The unix socket is 0600, in a folder of the user's (0700 when Gizai makes it), and serves only processes of the same

@@ -59,7 +59,7 @@ pub struct AppState {
     pub temp_base: PathBuf,
     /// Where the MCP server for chat turns listens (see `mcp::socket_path`).
     pub mcp_socket: PathBuf,
-    /// The `gizai-mcp` shim Claude Code starts in a chat turn (None: not found next to Gizai).
+    /// The `hersir-mcp` shim Claude Code starts in a chat turn (None: not found next to Gizai).
     pub mcp_shim: Option<PathBuf>,
     pub chat: Arc<chat::ChatManager>,
     /// The Team Lead's read-only copies of the projects' code (see `code`).
