@@ -7,5 +7,5 @@ contact_links:
     url: https://github.com/Yotech-AI/hersir/security/policy
     about: Report a security problem privately, never in an issue.
   - name: Docs
-    url: https://gizai.app/docs
+    url: https://hersir.dev/docs
     about: How to install Hersir, its settings and each feature.

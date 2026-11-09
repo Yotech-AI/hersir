@@ -3,6 +3,7 @@
 // console once. A few writes change the fixtures in memory, so a form's save shows until the page is reloaded.
 import { emit } from "@tauri-apps/api/event";
 import apiSource from "../api.ts?raw";
+import { PICK_TITLE } from "../lib/restore";
 import { screenshotPicture } from "./pictures";
 
 /** An answer for any arguments, or answers by one argument's value. */
@@ -11,15 +12,19 @@ export type Fixtures = { about?: string; writtenAt: number; commands: Record<str
 
 let commands: Record<string, unknown> = {};
 
+/** The folder Hersir makes inside a chosen one for backups (gizai-core's `backups::FOLDER_NAME`), as the fixtures name it. */
+let backupsFolderName = "";
+
 const isKeyed = (f: unknown): f is Keyed => !!f && typeof f === "object" && "$by" in f && "$answers" in f;
 
-/** Moves every time (a field whose name ends in "At", and `at`) by `delta`, so "2 h ago" in the fixtures stays 2 h ago. */
+/** Moves every time (a field whose name ends in "At", `at`, and a backup status's `next`) by `delta`, so "2 h ago" in the fixtures
+ *  stays 2 h ago. */
 function shiftTimes(v: unknown, delta: number): void {
   if (Array.isArray(v)) { v.forEach((x) => shiftTimes(x, delta)); return; }
   if (!v || typeof v !== "object") return;
   const o = v as Record<string, unknown>;
   for (const [k, x] of Object.entries(o)) {
-    if (typeof x === "number" && (k === "at" || k.endsWith("At")) && x > 0) o[k] = x + delta;
+    if (typeof x === "number" && (k === "at" || k === "next" || k.endsWith("At")) && x > 0) o[k] = x + delta;
     else shiftTimes(x, delta);
   }
 }
@@ -27,6 +32,9 @@ function shiftTimes(v: unknown, delta: number): void {
 export function loadFixtures(f: Fixtures) {
   commands = f.commands;
   shiftTimes(commands, Date.now() - f.writtenAt);
+  backupsFolderName = String((commands.backup_status as { folder?: string | null } | undefined)?.folder ?? "").split("/").pop() ?? "";
+  usbSnapshots = null;
+  restoreRun++;
   console.info(`Hersir in a browser: ${Object.keys(commands).length} commands answer from the fixtures (src/browser/fixtures.json).`);
 }
 
@@ -118,13 +126,198 @@ const WRITES: Record<string, (args: Row) => unknown> = {
     return view.found ? structuredClone(view.value) : empty("agent_mcp", view.why);
   },
   open_file: ({ id }) => { console.info(`Hersir in a browser: Open would show file ${id} in the system's image viewer.`); return null; },
+  // Settings → General → Backups (GA-217): the backend's refusals, the status with what changed, and backups-changed. There
+  // is no folder picker in a browser, so Browse… does nothing; Turn off does.
+  save_backup_settings: ({ settings }) => {
+    const st = backups();
+    const s = settings as Row;
+    if (!st) return empty("save_backup_settings", "save_backup_settings");
+    if (!(Number.isInteger(s.keep) && Number(s.keep) >= 1 && Number(s.keep) <= 100)) return Promise.reject(`Keep must be 1 to 100 snapshots, not ${s.keep}`);
+    const folder = typeof s.folder === "string" && s.folder.trim() ? s.folder.trim() : null;
+    Object.assign(st, { settings: { ...s, folder }, folder: folder && `${folder}/${backupsFolderName}`, folderProblem: null });
+    if (!folder) Object.assign(st, { last: null, lastError: null });
+    st.next = nextBackup(st);
+    return backupsChanged();
+  },
+  // a snapshot by hand: its steps a moment each, then it is the newest in the list
+  back_up_now: () => {
+    const st = backups();
+    if (!st) return empty("back_up_now", "back_up_now");
+    if (!st.folder) return Promise.reject("Choose a folder for backups first");
+    if (st.running) return Promise.reject("A backup is running already");
+    const steps = ["database", "files", "compress", "manifest", "keep"];
+    st.running = { reason: "manual", startedAt: Date.now(), step: steps[0] };
+    steps.slice(1).forEach((step, i) => setTimeout(() => { st.running = { ...(st.running as Row), step }; backupsChanged(); }, (i + 1) * BACKUP_STEP_MS));
+    setTimeout(() => {
+      const list = (commands.list_backups as Row[] | undefined) ?? [];
+      const mine = list.find((e) => e.thisComputer);
+      const madeAt = Date.now();
+      const name = String(mine?.name ?? "gizai-manual-00000000-000000-000-device").replace(/^gizai-[a-z-]+-\d{8}-\d{6}-\d{3}-/, `gizai-manual-${stamp(madeAt)}-`);
+      if (mine) list.unshift({ ...mine, name, reason: "manual", madeAt });
+      Object.assign(st, { running: null, lastError: null, last: { name, madeAt, bytes: Math.round(Number(mine?.dbBytes ?? 4_000_000) / 4) } });
+      st.next = nextBackup(st);
+      backupsChanged();
+    }, steps.length * BACKUP_STEP_MS);
+    return backupsChanged();
+  },
+  // Restore (GA-219, contract BR): the backend's refusals, its steps a moment each with restore-changed, then ready.
+  start_restore: ({ folder, name }) => {
+    const st = restoreNow();
+    if (!st) return empty("start_restore", "start_restore");
+    if (backups()?.running) return Promise.reject("A backup is running: restore once it is done");
+    if (["checking", "saving", "staging"].includes(String(st.state))) return Promise.reject("A restore is running already");
+    const onDisk = !inSettings(folder);
+    const snapshot = snapshotsIn(folder).find((e) => e.name === name) ?? null;
+    const mine = ++restoreRun;
+    const at = (i: number, f: () => void) => setTimeout(() => { if (mine === restoreRun) { f(); restoreChanged(); } }, i * BACKUP_STEP_MS);
+    const files = Number(snapshot?.filesCount ?? 0);
+    Object.assign(st, NO_RESTORE, { state: "checking", folder: backupsDir(folder), snapshot, step: "Checking the snapshot" });
+    at(1, () => { st.step = "Checking the database"; });
+    if (onDisk && snapshot?.reason === "manual") {
+      at(2, () => Object.assign(st, { state: "failed", step: null, error: `The snapshot's database file has changed since the snapshot was made: ${st.folder}/snapshots/${name}.db.zst doesn't match its manifest` }));
+      return restoreChanged();
+    }
+    at(2, () => { st.step = `Checking files (${files} of ${files})`; });
+    at(3, () => { Object.assign(st, { state: "saving", step: "Saving today's data" }); savingToday(true); });
+    at(4, () => { Object.assign(st, { state: "staging", step: "Copying the database", savedToday: savedToday(folder) }); savingToday(false); });
+    at(5, () => { st.step = `Copying files (${files} of ${files})`; });
+    at(6, () => Object.assign(st, { state: "ready", step: null }));
+    return restoreChanged();
+  },
+  cancel_restore: () => {
+    const st = restoreNow();
+    if (!st) return empty("cancel_restore", "cancel_restore");
+    restoreRun++;
+    if (st.state === "saving") savingToday(false);
+    Object.assign(st, NO_RESTORE);
+    return restoreChanged();
+  },
+  // The real one quits and starts again, and the start swaps the restore in. Here only the status changes: a reload would
+  // read the fixtures again.
+  restart_to_restore: () => {
+    const st = restoreNow();
+    if (st?.state !== "ready") return Promise.reject("No restore is ready: restore a snapshot first");
+    const { name: named = "", deviceName: from = "", madeAt = 0, reason } = (st.snapshot ?? {}) as { name?: string; deviceName?: string; madeAt?: number; reason?: string };
+    // the fixtures moved its time to now, not the time in its name
+    const name = named.replace(/\d{8}-\d{6}-\d{3}/, stamp(madeAt));
+    const opened = !(st.folder !== backups()?.folder && reason === "quit");
+    const message = opened
+      ? `Hersir restored ${name} from ${from}. Today's data was saved as ${st.savedToday} first. The agents are paused: start them again when you're ready.`
+      : `Hersir couldn't open the restored data of ${name}, so it started with today's data: the database disk image is malformed.`;
+    Object.assign(st, NO_RESTORE, { result: { ok: opened, at: Date.now(), snapshot: name, fromComputer: from, message } });
+    const settings = commands.get_settings as Row | undefined;
+    if (opened && settings) { settings.agentsPaused = true; changed("settings"); }
+    restoreChanged();
+    return null;
+  },
+  dismiss_restore_result: () => {
+    const st = restoreNow();
+    if (!st) return empty("dismiss_restore_result", "dismiss_restore_result");
+    st.result = null;
+    return restoreChanged();
+  },
 };
+
+/** How long each step of a browser-mode backup takes. */
+const BACKUP_STEP_MS = 900;
+
+/** backup_status's fixture, to change it in place. */
+const backups = () => commands.backup_status as Row | undefined;
+
+/** Says the backups' status changed, and answers it. */
+function backupsChanged() {
+  const st = structuredClone(backups());
+  void emit("backups-changed", st);
+  return st;
+}
+
+/** When the next scheduled backup is due, as gizai-core's `next_due`: a day or a week after the last, now without one. */
+function nextBackup(st: Row): number | null {
+  const s = st.settings as Row;
+  const every = s.every === "daily" ? 86_400_000 : s.every === "weekly" ? 7 * 86_400_000 : null;
+  if (!st.folder || every === null) return null;
+  const last = st.last as Row | null;
+  return last ? Number(last.madeAt) + every : Date.now();
+}
+
+/** restore_status's fixture, to change it in place. */
+const restoreNow = () => commands.restore_status as Row | undefined;
+
+/** A status with no restore running or ready (its result stays until it is dismissed). */
+const NO_RESTORE = { state: "none", folder: null, snapshot: null, step: null, error: null, savedToday: null };
+
+/** Which browser-mode restore runs now: one that was cancelled does nothing more. */
+let restoreRun = 0;
+
+/** Says the restore's status changed, and answers it. */
+function restoreChanged() {
+  const st = structuredClone(restoreNow());
+  void emit("restore-changed", st);
+  return st;
+}
+
+/** The other folder Restore from another folder… finds here, as there is no folder picker in a browser. */
+const USB_DISK = "/media/you/USB";
+
+/** What it holds, made once: work-laptop's backups, so another computer's. Its daily one restores. Two show what can go
+ *  wrong: the one made by hand is refused when it is checked, and the one made on quit can't be opened at the start. The
+ *  newer Hersir's can't be restored. */
+let usbSnapshots: Row[] | null = null;
+function usb(): Row[] {
+  if (usbSnapshots) return usbSnapshots;
+  const all = (commands.list_backups as Row[] | undefined) ?? [];
+  const newer = all.find((e) => !e.thisComputer);
+  const mine = all.find((e) => e.thisComputer);
+  if (!newer || !mine) return (usbSnapshots = structuredClone(all));
+  const tag = String(newer.name).split("-").pop();
+  const made = (reason: string, madeAt: number) => ({ ...mine, reason, madeAt, name: `gizai-${reason}-${stamp(madeAt)}-${tag}`, thisComputer: false, deviceId: newer.deviceId, deviceName: newer.deviceName });
+  const hour = 3_600_000, first = Number(mine.madeAt);
+  usbSnapshots = [made("daily", first - hour), made("manual", first - 20 * hour), made("quit", first - 30 * hour), structuredClone(newer)];
+  return usbSnapshots;
+}
+
+/** Whether `folder` is the one in Settings, as chosen or as the backups folder in use. */
+const inSettings = (folder: unknown) => folder == null || folder === (backups()?.settings as Row | undefined)?.folder || folder === backups()?.folder;
+
+/** The snapshots list_backups finds in `folder`. */
+const snapshotsIn = (folder: unknown): Row[] => (inSettings(folder) ? ((commands.list_backups as Row[] | undefined) ?? []) : usb());
+
+/** The backups folder `folder` stands for. */
+const backupsDir = (folder: unknown) => (inSettings(folder) ? backups()?.folder ?? null : `${folder}/${backupsFolderName}`);
+
+/** While today's data is saved, a backup runs: the backend's before-restore snapshot, in the section's Last and next too. */
+function savingToday(running: boolean) {
+  const st = backups();
+  if (!st) return;
+  st.running = running ? { reason: "before-restore", startedAt: Date.now(), step: "database" } : null;
+  backupsChanged();
+}
+
+/** The before-restore snapshot, made now: in the backups folder in Settings, or else the folder restored from. Its name. */
+function savedToday(from: unknown): string {
+  const list = backups()?.folder ? ((commands.list_backups as Row[] | undefined) ?? []) : snapshotsIn(from);
+  const mine = ((commands.list_backups as Row[] | undefined) ?? []).find((e) => e.thisComputer);
+  const madeAt = Date.now();
+  const name = `gizai-before-restore-${stamp(madeAt)}-${String(mine?.name ?? "device").split("-").pop()}`;
+  if (mine) list.unshift({ ...mine, name, reason: "before-restore", madeAt });
+  return name;
+}
+
+/** A snapshot name's time, local: "20261027-141506-330". */
+function stamp(ms: number): string {
+  const d = new Date(ms), p = (n: number, w = 2) => String(n).padStart(w, "0");
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}-${p(d.getMilliseconds(), 3)}`;
+}
 
 /** The answer to one command: a fixture, a write, a screenshot's picture, or empty. */
 export async function answer(cmd: string, args: Row): Promise<unknown> {
   if (cmd in WRITES) return WRITES[cmd](args);
   if (cmd === "screenshot_bytes") return picture(String(args.fileId));
   if (cmd === "list_tasks") return tasks(args.filter as Row | undefined);
+  // the folder in Settings: none once Backups is turned off
+  if (cmd === "list_backups" && args.folder == null && backups() && !backups()!.folder) return [];
+  if (cmd === "list_backups" && !inSettings(args.folder)) return structuredClone(usb());
+  if (cmd === "plugin:dialog|open" && (args.options as Row | undefined)?.title === PICK_TITLE) return USB_DISK;
   const f = fixture(cmd, args);
   return f.found ? structuredClone(f.value) : empty(cmd, f.why);
 }

@@ -10,9 +10,9 @@ import { useUpdate } from "../lib/useUpdate";
 import { useLiveRuns } from "../lib/useLiveRuns";
 import { useChatLive } from "./chat/useChat";
 
-/** Restart Gizai to use the version an update installed. With agents at work it asks once more first: quitting stops
- * them, as it always does. */
-export function RestartButton({ className, label }: { className: string; label: ReactNode }) {
+/** Restart Gizai to use the version an update installed, or with `restart` to swap in a restore that is ready. With agents
+ * at work it asks once more first: quitting stops them, as it always does. */
+export function RestartButton({ className, label, restart = restartGizai }: { className: string; label: ReactNode; restart?: () => Promise<void> }) {
   const runs = useLiveRuns();
   const chats = useChatLive();
   const [asking, setAsking] = useState(false);
@@ -24,15 +24,15 @@ export function RestartButton({ className, label }: { className: string; label: 
     const t = setTimeout(() => setAsking(false), 8000);
     return () => clearTimeout(t);
   }, [asking]);
-  const restart = () => {
+  const press = () => {
     if (working > 0 && !asking) { setAsking(true); return; }
     setBusy(true); setErr(null);
-    restartGizai().catch((e) => { setErr(String(e)); setBusy(false); });
+    restart().catch((e) => { setErr(String(e)); setBusy(false); });
   };
   const ask = `${working === 1 ? "An agent is" : `${working} agents are`} at work: restarting stops ${working === 1 ? "it" : "them"}. Restart anyway?`;
   return (
     <>
-      <button className={className} onClick={restart} disabled={busy}>
+      <button className={className} onClick={press} disabled={busy}>
         <RotateCw className="icon" /><span>{busy ? "Restarting…" : asking ? ask : label}</span>
       </button>
       {err && <div className="update-error" role="alert">{err}</div>}

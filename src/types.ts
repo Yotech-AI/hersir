@@ -566,12 +566,23 @@ export type BackupEntry = {
 };
 export type BackupStatus = {
   settings: BackupSettings;
-  folder: string | null;           // the backups folder in use (…/Gizai backups), null when none is set
+  folder: string | null;           // the backups folder in use (…/Hersir backups), null when none is set
   folderProblem: string | null;    // why it can't be used now: missing, not a folder, can't be written
   running: { reason: BackupReason; startedAt: number; step: string } | null;
   last: { name: string; madeAt: number; bytes: number } | null;   // this computer's newest good snapshot
   lastError: { at: number; message: string } | null;
   next: number | null;             // when the next scheduled snapshot is due, null when none is
+};
+
+// ---- restore (GA-218, contract BR): check a snapshot, save today's data, stage it, swap it in at the next start ----
+// docs/backup-format.md → Restore. `result` is how the last restore went at the start, kept until it is dismissed.
+export type RestoreStatus = {
+  state: "none" | "checking" | "saving" | "staging" | "ready" | "failed";
+  folder: string | null; snapshot: BackupEntry | null;
+  step: string | null;            // "Checking the database", "Saving today's data", "Copying files (120 of 300)"
+  error: string | null;           // why it failed (state failed)
+  savedToday: string | null;      // the before-restore snapshot's name, once it is made
+  result: { ok: boolean; at: number; snapshot: string; fromComputer: string; message: string } | null;   // after the restart
 };
 export type DayStat = { dayStart: number; succeeded: number; failed: number; other: number };
 

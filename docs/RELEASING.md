@@ -15,7 +15,7 @@ In short: a release is a GitHub Release with a version tag, `vX.Y.Z`, on the `pr
 
 - When `main` has something worth giving to the people who use Hersir: a finished card or a fix.
 - Only when `main` passes everything in CLAUDE.md (`cargo test --workspace`, `npm test`, `npm run build`, `scripts/ui-test.sh`) and builds with `npm run tauri build -- --no-bundle`. A release that doesn't build fails for everyone who presses Update. Their installed Hersir keeps working, but they're stuck on it.
-- Only when CI passes on Linux, macOS and Windows. Hersir runs on all three, and each one builds the release from source. CI (`.github/workflows/ci.yml`) runs on every pull request and every push to `main`. Its three checks show on the pull request: `ubuntu-24.04`, `macos-14` and `windows-latest`.
+- Only when CI passes on Linux, macOS and Windows. Hersir runs on all three, and each one builds the release from source. CI (`.github/workflows/ci.yml`) runs on every pull request and every push to `main`. Its three checks show on the pull request: `ubuntu-24.04`, `macos-15` and `windows-latest`.
 - Jeffrey decides when to release. An agent releases only when a card asks for it and names the version.
 
 ## Choosing the version
@@ -54,7 +54,7 @@ Replace `X.Y.Z` with the new version.
 
    The label keeps the bump and the release's pull request (step 2) out of the release's list of changes (`.github/release.yml`). gh refuses to open a pull request with a label the repository doesn't have: until Jeffrey has made `release` (by hand, once), open both without `--label release` and say so on the card.
 
-   A pull request that changes nothing but the version skips the build and the tests, so its checks pass within a minute or two: `ubuntu-24.04`, `macos-14` and `windows-latest` from CI, and from Install `Version only?` and the six installs (step 2 names them), which the bump starts as it changes `src-tauri/tauri.conf.json`. Merge it as soon as they report:
+   A pull request that changes nothing but the version skips the build and the tests, so its checks pass within a minute or two: `ubuntu-24.04`, `macos-15` and `windows-latest` from CI, and from Install `Version only?` and the six installs (step 2 names them), which the bump starts as it changes `src-tauri/tauri.conf.json`. Merge it as soon as they report:
 
    ```sh
    gh pr view <number> --json statusCheckRollup --jq '.statusCheckRollup[] | "\(.name): \(.status) \(.conclusion)"'
@@ -75,8 +75,8 @@ Replace `X.Y.Z` with the new version.
    ```
 
    That's ten checks:
-   - from CI, about 12 minutes: `ubuntu-24.04`, `macos-14` and `windows-latest`;
-   - from Install, which runs as the release changes `src-tauri/tauri.conf.json`: `Version only?`, then six installs through the one line, `install on ubuntu-24.04`, `install on fedora`, `install on archlinux`, `install on opensuse/tumbleweed`, `install on macos-14` and `install on windows-latest`. Each one builds Hersir in full, then again as an update, in 8 to 17 minutes (the Windows install is the slowest).
+   - from CI, about 12 minutes: `ubuntu-24.04`, `macos-15` and `windows-latest`;
+   - from Install, which runs as the release changes `src-tauri/tauri.conf.json`: `Version only?`, then six installs through the one line, `install on ubuntu-24.04`, `install on fedora`, `install on archlinux`, `install on opensuse/tumbleweed`, `install on macos-15` and `install on windows-latest`. Each one builds Hersir in full, then again as an update, in 8 to 17 minutes (the Windows install is the slowest).
 
    Each must say `COMPLETED SUCCESS`. A check that is still `IN_PROGRESS` needs a few more minutes. On a failure, don't release: the card goes back to whoever can fix it.
 
@@ -100,7 +100,7 @@ Replace `X.Y.Z` with the new version.
    curl -s https://api.github.com/repos/Yotech-AI/hersir/releases/latest | grep '"tag_name"'   # what Hersir reads: vX.Y.Z
    ```
 
-   Publishing the release also starts One-line install (`.github/workflows/one-line.yml`): gizai.app's own lines install the new release on Ubuntu 24.04, macOS 14 and Windows, then uninstall it. Its jobs take 7 to 12 minutes and must be green on all three:
+   Publishing the release also starts One-line install (`.github/workflows/one-line.yml`): hersir.dev's own lines install the new release on Ubuntu 24.04, macOS 15 and Windows, then uninstall it. Its jobs take 7 to 12 minutes and must be green on all three:
 
    ```sh
    gh run list --workflow one-line.yml --event release --limit 1 --json headBranch,status,conclusion,url   # vX.Y.Z, completed, success
@@ -134,7 +134,7 @@ Hersir 0.11.0 installs with one line on Linux, macOS and Windows, and is now ope
 
 ## What's new
 
-- **Install with one line.** `curl -fsSL https://gizai.app/install.sh | sh` on Linux and macOS, or `irm https://gizai.app/install.ps1 | iex` in PowerShell on Windows 11. Run it again to update.
+- **Install with one line.** `curl -fsSL https://hersir.dev/install.sh | sh` on Linux and macOS, or `irm https://hersir.dev/install.ps1 | iex` in PowerShell on Windows 11. Run it again to update.
 - **Apache-2.0.** Hersir's licence is now the Apache License 2.0. Releases before it stay under MIT.
 - **The Team Lead can update a linked folder with uncommitted changes:** after your yes, it puts them in git's stash first.
 - **The chat says when an answer is done** after your last Approve or Discard.
@@ -181,7 +181,7 @@ Every release must keep this working, because the Hersir that updates runs the *
   - Only an install that stopped between its renames (seconds) can leave a mix. Settings → Updates then says to try again or to run `./install.sh`.
 - **Stop** ends the update while it gets the source or builds. Quitting Hersir does that too.
 - **So `install.sh` must keep these working:** `--build-only`, `--skip-build`, `GIZAI_PREFIX` and `XDG_DATA_HOME`, with macOS's own bash 3.2 and BSD tools too. **And `install.ps1`:** `-BuildOnly`, `-SkipBuild` and `GIZAI_PREFIX`, with Windows PowerShell 5.1 (what an update runs) and PowerShell 7. CI checks that both scripts parse and that their checks (`--check`, `-Check`) pass.
-- **The one-line installs run the release's installer too.** `scripts/get.sh` (`curl -fsSL https://gizai.app/install.sh | sh`) and `scripts/get.ps1` (`irm https://gizai.app/install.ps1 | iex`) are read from `production`: gizai.app sends its two addresses on to them there, so they must keep their names and place. What they get themselves comes from GitHub, never from the website. They get the same tag as an update, shallow, into `~/.local/share/gizai-src` (`%LOCALAPPDATA%\gizai-src` on Windows), never into the data folder. Then they run its `install.sh --check` and `install.sh` (`install.ps1 -Check` and `install.ps1`), with the flags they were given. So `--check` and `-Check` must keep working too. CI checks that both scripts parse and runs their checks against the pull request's own commit.
+- **The one-line installs run the release's installer too.** `scripts/get.sh` (`curl -fsSL https://hersir.dev/install.sh | sh`) and `scripts/get.ps1` (`irm https://hersir.dev/install.ps1 | iex`) are read from `production`: hersir.dev sends its two addresses on to them there, so they must keep their names and place. What they get themselves comes from GitHub, never from the website. They get the same tag as an update, shallow, into `~/.local/share/gizai-src` (`%LOCALAPPDATA%\gizai-src` on Windows), never into the data folder. Then they run its `install.sh --check` and `install.sh` (`install.ps1 -Check` and `install.ps1`), with the flags they were given. So `--check` and `-Check` must keep working too. CI checks that both scripts parse and runs their checks against the pull request's own commit.
 - **Only an installed Hersir updates itself.** That is a Hersir that runs as `<prefix>/lib/gizai/gizai` (on macOS also `<prefix>/lib/gizai/Hersir.app/Contents/MacOS/gizai`, when it starts from the Dock), or on Windows as a `gizai.exe` with `install.ps1`'s `gizai-installed.txt` next to it. A dev build (`scripts/run.sh`) or a test build says why it doesn't, and never installs anything.
 - **From a terminal** it works as before: `git pull` in a checkout of `production`, then `./install.sh` (on Windows `.\install.ps1`).
 - **Headless test and screenshot runs** (`GIZAI_SELFTEST` or `GIZAI_ROUTE` set) skip the automatic check, unless `GIZAI_RELEASES_URL` is set too.

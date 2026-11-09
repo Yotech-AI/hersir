@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# The product tour's stills (GA-148, GA-149): Gizai's eight features in the website's order, scene by scene, in dark and
-# in light, each scene in a HEADLESS cage (never on your screen) on a fresh copy of fake data (.devdata/tour), made up
-# from start to end (crates/gizai-core/examples/prep_tour.rs). The tour video and the README's GIFs are made from these
-# stills in the website's repository, which has the Remotion project; this repository keeps only the capture, which
-# needs the app. The screen is 1600x1040 CSS pixels at scale 2, so 3200x2080 pixels, without the window's title bar:
-# the 13-inch MacBook Air's shape with room for the whole board (the video draws the stills at 80%, at 2560x1664).
+# The stills for the website's pictures of each feature (GA-148, GA-149, GA-245): ten scenes of Gizai's main features in
+# the website's order, in dark and in light, each scene in a HEADLESS cage (never on your screen) on a fresh copy of fake
+# data (.devdata/tour), made up from start to end (crates/gizai-core/examples/prep_tour.rs). The website's repository
+# makes its pictures from these stills, one per feature in the homepage's slider and above each docs feature page; this
+# repository keeps only the capture, which needs the app. The screen is 1600x1040 CSS pixels at scale 2, so 3200x2080
+# pixels, without the window's title bar: the 13-inch MacBook Air's shape with room for the whole board.
 # Each scene opens a page and clicks one element per step; every step has a still before its click and one after, and
 # <out>/<theme>/scenes.json lists the scenes in order with their steps, stills and the box of what each step clicked
 # (x, y, width and height in the stills' pixels). Nothing reads your ~/.claude or your Gizai's data: Gizai runs
@@ -153,7 +153,7 @@ scene() {
   for theme in $THEMES; do capture "$theme" "$folder" "$@" || fail=1; done
 }
 
-# The website's eight features, a few clicks each.
+# The website's eight features as the tour showed them, a few clicks each; then the Team page and Usage per project.
 scene 1 board "The board, and a quick look at a card's live run" board \
   "wait:7000" 'open-card@3000=[data-card="NWS-1"]'
 scene 2 chat "The Team Lead chat: a request, the cards it made, Approve" "chat/$THREAD" \
@@ -171,6 +171,13 @@ scene 7 tools "Tools per agent: an agent's form → Tools" "agent/$BACKEND" \
   "wait:1000" 'settings=.entity-head .actions .btn.ghost:text(Settings)' 'use-playwright=.drawer .ma-server label.check:text(playwright)'
 scene 8 inbox "The Inbox: a question, and Run this for me" board \
   "wait:1000" 'inbox=.side .nav-item:text(Inbox)' 'done-continue@2500=.run-for-me-card .btn.sm.primary'
+# Two stills of the Team page with nothing open over it: a click on the Organisation heading, which changes nothing, gives
+# the page from its top; then the Workflow section goes to the top (a click on the section itself, which does nothing)
+# and a click on its heading, which changes nothing either, gives the columns with their agents.
+scene 9 team "The Team page: the organisation chart and the workflow" team \
+  "wait:1500" 'organisation=.section-head h3:text(Organisation)' '.page > section:has(> .wf)' 'workflow=.section-head h3:text(Workflow)'
+scene 10 usage "Usage per project" usage \
+  "wait:1000" 'projects=.tabs .tab:text(Projects)'
 
 # --- scenes.json for each theme captured, and the stills' size checked ---
 for theme in $THEMES; do

@@ -10,7 +10,9 @@
 //!    reported, for Usage → Subscription;
 //!  - Memory: notes that link each other, enough for a graph;
 //!  - the Backend Agent's Tools: its allowed commands and an MCP server;
-//!  - the Inbox: the Backend Agent's question with commands to run for you, and a card waiting for your review.
+//!  - the Inbox: the Backend Agent's question with commands to run for you, and a card waiting for your review;
+//!  - the Team page: the five agents in the organisation chart and on the Workflow's columns;
+//!  - Usage → Projects: runs with tokens and a cost on the cards of all three projects.
 //! Prints the ids the scenes open, as shell assignments (NWS1=…).
 //! usage: cargo run -p gizai-core --example prep_tour -- <data dir> <home>
 use std::fs;
@@ -171,11 +173,11 @@ fn main() {
     add(&health, "Two-factor login for the patient portal", "Testing", &["backend"], 3, "");
     add(&health, "Patient messages: attach a photo", "To do", &["frontend"], 3, "");
     add(&health, "Waiting list for the dental clinic", "Backlog", &[], 4, "");
-    add(&health, "Lab results: download as PDF", "Done", &["backend"], 3, "");
+    let lab_pdf = add(&health, "Lab results: download as PDF", "Done", &["backend"], 3, "");
     add(&crm, "Import contacts from a CSV file", "To do", &["backend"], 3, "");
     add(&crm, "Deal pipeline: drag deals between stages", "In progress", &["frontend"], 3, "");
-    add(&crm, "Weekly sales report by email", "Deploy", &["backend"], 3, "");
-    add(&crm, "Log in with Google Workspace", "Done", &["backend"], 3, "");
+    let sales_report = add(&crm, "Weekly sales report by email", "Deploy", &["backend"], 3, "");
+    let google_login = add(&crm, "Log in with Google Workspace", "Done", &["backend"], 3, "");
     add(&crm, "Merge two duplicate contacts into one", "Backlog", &[], 4, "");
     // a card in Review that is yours to review: it waits in your Inbox
     let yours = add(&health, "Clinic opening hours on the contact page", "Review", &["frontend"], 4, "");
@@ -231,6 +233,25 @@ fn main() {
         "Passed. All three acceptance criteria hold: 60 requests went through, the 61st got 429 with Retry-After: 60, and a second IP address was not slowed down. 14 tests pass; pull request #42 is open.", 210_000);
     comments::add(&db, &qa, &nws2, "**QA passed.** All three acceptance criteria hold:\n\n- 60 requests in a minute went through\n- the 61st got 429 with `Retry-After: 60`\n- a second IP address was not slowed down\n\n14 tests pass. Pull request #42 is open for your review.", Some(&tested)).unwrap();
     tasks::move_to(&db, &qa, &nws2, &col("Review"), "").unwrap();
+
+    // Usage per project: runs on Lumen Health's and Orbit CRM's cards too, so every project has tokens and a cost this
+    // month. They are the Design and QA Agents' (the Backend Agent's page shows only its own runs), on cards no agent at
+    // work takes, and they leave the cards where they are.
+    let finished = |agent: &str, role: &str, task: &str, slug: &str, outcome: &str, summary: &str, cost: i64, input: i64, output: i64| {
+        let identifier = ident(task);
+        let key = identifier.split('-').next().unwrap();
+        let (at, branch) = (data.join("worktrees").join(key).join(&identifier).display().to_string(), format!("gizai/{}-{slug}", identifier.to_lowercase()));
+        let r = runs::create_with_trigger(&db, agent, task, role, "assigned", &ids::new_id(), &at, &at, &branch, "/dev/null").unwrap();
+        runs::finish(&db, &r, "succeeded", Some(&Outcome { outcome: outcome.into(), summary: summary.into(), issues: vec![] }), cost, input, output, None).unwrap();
+    };
+    finished(&design, "design", &yours, "clinic-opening-hours", "ready_for_testing",
+        "The opening hours sit beside the address on the contact page, a row per clinic, with today in bold.", 290_000, 36_000, 4_100);
+    finished(&qa, "qa", &lab_pdf, "lab-results-as-pdf", "qa_pass",
+        "Passed. The PDF has the clinic's letterhead, every result with its reference range, and opens on a phone.", 230_000, 48_000, 5_600);
+    finished(&design, "design", &sales_report, "weekly-sales-report", "ready_for_testing",
+        "The weekly email: the week's won deals at the top, then the pipeline per stage, readable in Outlook and on a phone.", 340_000, 44_000, 5_900);
+    finished(&qa, "qa", &google_login, "google-workspace-login", "qa_pass",
+        "Passed. Logging in with a Google Workspace account of orbit.example works; another domain gets a clear refusal.", 170_000, 39_000, 4_400);
 
     // the limits Claude Code and Codex reported (Usage → Subscription)
     let now = ids::now_ms();

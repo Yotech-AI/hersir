@@ -132,7 +132,7 @@ fn back_up_makes_a_snapshot_in_the_folder_in_settings_and_says_so_at_its_start_e
     let heard = listen(&mut st);
     let saved = app::save_settings(&st, settings(&usb)).unwrap();
     assert_eq!(saved.settings, settings(&usb));
-    assert_eq!(saved.folder.as_deref(), Some(usb.join("Gizai backups").to_string_lossy().as_ref()));
+    assert_eq!(saved.folder.as_deref(), Some(usb.join("Hersir backups").to_string_lossy().as_ref()));
     let got = heard.all();
     assert_eq!(got.len(), 1, "saving the settings says so");
     assert_eq!(got[0].settings.folder, saved.settings.folder);
@@ -140,7 +140,7 @@ fn back_up_makes_a_snapshot_in_the_folder_in_settings_and_says_so_at_its_start_e
 
     let sha = attach(&st, "plan.pdf", b"the plan");
     let made = app::back_up(&st, None, Reason::Manual).unwrap();
-    let dir = usb.join("Gizai backups");
+    let dir = usb.join("Hersir backups");
     assert_eq!(made.dir, dir);
     assert!(dir.join("gizai-backups.json").is_file() && dir.join("README.txt").is_file());
     assert_eq!(manifests(&usb), [format!("{}.json", made.manifest.name)]);
@@ -258,7 +258,7 @@ fn ga218s_before_restore_snapshot_goes_into_a_folder_of_its_own_and_keep_leaves_
     // no folder in Settings: before-restore needs none
     let made = app::back_up(&st, Some(&own), Reason::BeforeRestore).unwrap();
     assert!(made.manifest.name.starts_with("gizai-before-restore-"), "{}", made.manifest.name);
-    assert_eq!(made.dir, own.join("Gizai backups"));
+    assert_eq!(made.dir, own.join("Hersir backups"));
     app::save_settings(&st, BackupSettings { keep: 1, ..settings(&own) }).unwrap();
     app::back_up(&st, None, Reason::Manual).unwrap();
     app::back_up(&st, None, Reason::Manual).unwrap();
@@ -476,12 +476,12 @@ fn list_backups_lists_the_folder_in_settings_or_another_one_and_another_computer
     let elsewhere = tmp.path().join("old-disk");
     fs::create_dir_all(&elsewhere).unwrap();
     let old = app::back_up(&other, Some(&elsewhere), Reason::Weekly).unwrap().manifest;
-    for f in [elsewhere.clone(), elsewhere.join("Gizai backups")] {
+    for f in [elsewhere.clone(), elsewhere.join("Hersir backups")] {
         let l = app::list(&st, Some(f.to_string_lossy().into_owned())).unwrap();
         assert_eq!(l.iter().map(|e| (e.name.clone(), e.this_computer)).collect::<Vec<_>>(), [(old.name.clone(), false)]);
     }
     // a newer schema can't be restored here, and says why
-    let path = usb.join("Gizai backups/snapshots").join(format!("{}.json", theirs.name));
+    let path = usb.join("Hersir backups/snapshots").join(format!("{}.json", theirs.name));
     let mut v: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
     v["schema_version"] = serde_json::json!(99);
     fs::write(&path, serde_json::to_vec_pretty(&v).unwrap()).unwrap();
@@ -538,4 +538,80 @@ fn no_keychain_value_ends_up_in_the_folder() {
         let bytes = fs::read(&f).unwrap();
         assert!(!String::from_utf8_lossy(&bytes).contains(secret), "the keychain's value is in {}", f.display());
     }
+}
+
+// ---- an older Hersir's Gizai backups (GA-246) ----
+
+/// An older Hersir's backups folder in `chosen`: `Gizai backups` with the marker and its own README.txt, and one
+/// snapshot by `st` in it (made with that folder itself as the one chosen). Returns the folder and the snapshot's name.
+fn old_backups_folder(st: &AppState, chosen: &Path) -> (PathBuf, String) {
+    let old = chosen.join("Gizai backups");
+    fs::create_dir_all(&old).unwrap();
+    fs::write(old.join(core::MARKER), format!("{}\n", core::MARKER_JSON)).unwrap();
+    fs::write(old.join("README.txt"), "Gizai backups\n\nAn older Hersir's README.\n").unwrap();
+    let made = app::back_up(st, Some(&old), Reason::Daily).unwrap();
+    assert_eq!(made.dir, old);
+    (old, made.manifest.name)
+}
+
+fn names(list: Vec<core::BackupEntry>) -> Vec<String> {
+    list.into_iter().map(|e| e.name).collect()
+}
+
+#[test]
+fn a_folder_in_settings_with_an_older_hersirs_gizai_backups_goes_on_backing_up_there_and_lists_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (st, usb) = gizai(tmp.path());
+    let (old, first) = old_backups_folder(&st, &usb);
+    let saved = app::save_settings(&st, BackupSettings { on_quit: true, ..settings(&usb) }).unwrap();
+    assert_eq!(saved.folder.as_deref(), Some(old.to_string_lossy().as_ref()), "the status names Gizai backups");
+    assert_eq!(saved.folder_problem, None);
+    assert_eq!(saved.last.as_ref().map(|l| l.name.clone()), Some(first.clone()), "its snapshot counts as the last one");
+
+    // Back up now
+    app::back_up_now(&st).unwrap();
+    let now = until("Back up now made one", || {
+        let s = app::status(&st);
+        if s.running.is_none() { s.last.filter(|l| l.name != first) } else { None }
+    });
+    assert!(old.join("snapshots").join(format!("{}.json", now.name)).is_file(), "Back up now writes in Gizai backups");
+    // the schedule, a day later
+    let daily = app::check_schedule(&st, now.made_at + DAY).expect("due a day later").unwrap();
+    assert_eq!(daily.dir, old);
+    // On quit
+    st.backups.quit_completely();
+    let (waited, at_exit) = quit(&st, &usb);
+    assert!(waited);
+    let at_exit = at_exit.expect("Gizai exits");
+    assert!(at_exit.iter().any(|n| n.starts_with("gizai-quit-")), "{at_exit:?}");
+
+    let in_old = manifests(&usb);
+    assert_eq!(in_old.len(), 4, "{in_old:?}");
+    assert!(!usb.join("Hersir backups").exists(), "no Hersir backups is made");
+    assert_eq!(fs::read_dir(&usb).unwrap().count(), 1, "nothing beside Gizai backups");
+    assert_eq!(fs::read_to_string(old.join("README.txt")).unwrap(), "Gizai backups\n\nAn older Hersir's README.\n");
+    // list_backups: the folder in Settings, the chosen folder given, and Gizai backups itself
+    let listed = names(app::list(&st, None).unwrap());
+    assert_eq!(listed.len(), 4);
+    assert_eq!(listed.last(), Some(&first), "oldest last");
+    for f in [usb.clone(), old.clone()] {
+        assert_eq!(names(app::list(&st, Some(f.to_string_lossy().into_owned())).unwrap()), listed, "{}", f.display());
+    }
+}
+
+#[test]
+fn with_hersir_backups_beside_an_older_gizai_backups_the_app_uses_hersir_backups() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (st, usb) = gizai(tmp.path());
+    let (old, in_old) = old_backups_folder(&st, &usb);
+    let new = usb.join("Hersir backups");
+    fs::create_dir_all(&new).unwrap();
+    fs::write(new.join(core::MARKER), format!("{}\n", core::MARKER_JSON)).unwrap();
+    let saved = app::save_settings(&st, settings(&usb)).unwrap();
+    assert_eq!(saved.folder.as_deref(), Some(new.to_string_lossy().as_ref()));
+    assert_eq!(saved.last, None, "Gizai backups' snapshot isn't the last one: Hersir backups has none");
+    let made = app::back_up(&st, None, Reason::Manual).unwrap();
+    assert_eq!(made.dir, new);
+    assert_eq!(names(app::list(&st, None).unwrap()), [made.manifest.name.clone()]);
+    assert_eq!(names(app::list(&st, Some(old.to_string_lossy().into_owned())).unwrap()), [in_old]);
 }

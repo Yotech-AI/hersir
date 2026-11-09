@@ -511,9 +511,15 @@ with the outcome your work deserves.";
 /// `needs_decision` result line (`outcome::Outcome`). The card waits in the Inbox with each command and a copy button,
 /// and the user's Done, continue resumes this session. Told to every CLI in every mode, so it never says "commands"
 /// (another CLI's section names none) or "sleep" (named only for an agent that may run it).
+/// GA-236: the Inbox shows no folder, so a command starts with its own. And Gizai empties `.gizai-tmp` and the run's temp
+/// folder when a run starts, Done, continue's too (`worktree::prepare_temp`, `prepare_run_temp`), and when it ends, so
+/// output the agent must read afterwards goes elsewhere in the worktree.
 pub const RUN_FOR_ME: &str = "If the task can't be finished without a command you may not run (sudo, an install, one that is refused; \
 not a push of this branch), don't look for a way around it: finish what you can, then end with `needs_decision` and put each such \
 command, exactly as it is to be typed, in `run_for_me` on your result line, like `\"run_for_me\":[\"sudo pacman -S libayatana-appindicator\"]`. \
+The user pastes each one into a terminal that can be in any folder, so one that uses a relative path or a project's files starts with a \
+`cd` to the full path of its folder. Hersir empties `.gizai-tmp` and your temp folder when a run starts and when it ends, so output you \
+need to read afterwards goes to a file in your worktree outside `.gizai-tmp`, named by its full path and never committed. \
 The user runs them and continues this run, so you can check that they worked.";
 
 /// The waiting rule (see `rules_section`): ending the message ends the run, how to wait in the foreground, and what to do

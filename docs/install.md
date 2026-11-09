@@ -13,22 +13,23 @@ Hersir is early: its version is still 0.x. Every release is on [GitHub Releases]
 On Linux and macOS, in a terminal:
 
 ```sh
-curl -fsSL https://gizai.app/install.sh | sh
+curl -fsSL https://hersir.dev/install.sh | sh
 ```
 
 On Windows, in PowerShell:
 
 ```powershell
-irm https://gizai.app/install.ps1 | iex
+irm https://hersir.dev/install.ps1 | iex
 ```
 
 It gets the source of the latest release into `~/.local/share/gizai-src` (on Windows `%LOCALAPPDATA%\gizai-src`), or updates it there. Then it runs that release's install script: first its check, which names what is missing, then the build and the install. Run it again to update.
 
-- gizai.app sends the line on to [`scripts/get.sh`](https://github.com/Yotech-AI/hersir/blob/production/scripts/get.sh) (on Windows [`scripts/get.ps1`](https://github.com/Yotech-AI/hersir/blob/production/scripts/get.ps1)) on the `production` branch, where you can read it first. The source it gets comes from GitHub.
+- hersir.dev sends the line on to [`scripts/get.sh`](https://github.com/Yotech-AI/hersir/blob/production/scripts/get.sh) (on Windows [`scripts/get.ps1`](https://github.com/Yotech-AI/hersir/blob/production/scripts/get.ps1)) on the `production` branch, where you can read it first. The source it gets comes from GitHub.
+- Older install lines with gizai.app keep working.
 - Without git (on Linux and macOS also bash and curl), it says what to install first and does nothing else.
 - The source folder is the install's own: changes in it are replaced. Your data stays in [its own folder](#your-data).
 - `--uninstall --purge` (`-Uninstall -Purge` on Windows) deletes the source folder with your data.
-- CI proves the line: it installs, updates and uninstalls Hersir with it on Ubuntu 24.04, Fedora, Arch Linux, openSUSE Tumbleweed, macOS 14 on Apple silicon and Windows whenever an install script changes, and runs gizai.app's own lines on Ubuntu, macOS and Windows after each release and every week.
+- CI proves the line: it installs, updates and uninstalls Hersir with it on Ubuntu 24.04, Fedora, Arch Linux, openSUSE Tumbleweed, macOS 15 on Apple silicon and Windows whenever an install script changes, and runs hersir.dev's own lines on Ubuntu, macOS and Windows after each release and every week.
 
 The install script's options go after the line:
 
@@ -167,6 +168,13 @@ It cleans up after itself when it starts and once a day while it runs:
 - **Screenshots** of what agents built (`files/`): a card keeps its newest 3 sets, and all of them go 30 days after it reached Done or Cancelled (0 days keeps them). What you attached to a card is never removed.
 - **Stored files nothing uses any more** (`files/`): a file no attachment, screenshot or chat message names any more is removed, a day after it was last stored.
 - **Backups** (`backups/`): one before every update, install and database upgrade, and `gizai --backup` makes one when you ask. The newest 20 are kept. Their names use your local time, like `gizai-before-update-20261009-143502-123.db`.
+- **Backups in a folder you choose** (Settings → General → Backups): copies of the database and your stored files in a folder of your own, like a USB disk or a folder that Dropbox or Syncthing keeps, daily, weekly or when you ask. After each one, this computer's backups past Keep (10 by default) are removed; one made before a restore, and other computers' backups, never are. Keys and passwords are never in them, and they are not encrypted: a synced folder gets your data as it is ([Backups](settings.md#backups)).
+
+### Restore a backup
+
+Settings → General → Backups lists the backups in your folder, each with Restore. Restore says what will happen, saves today's data as a backup first, and checks and copies the backup. Then Restart now swaps it in: Hersir starts with your data as it was then. What changed since, also until the restart, is not kept. Keys and passwords stay as they are on this computer, and agents are paused afterwards. How it works: [Restore](settings.md#restore).
+
+On a new computer, install Hersir ([In one line](#in-one-line)) and plug in the USB disk, or let Dropbox or Syncthing bring the folder. Then go to Settings → General → Backups → Restore from another folder…, choose the `Hersir backups` folder or the folder it is in, and press Restore on a backup. The new computer keeps its own name and its own settings, such as its programs and the Editor's folders. Projects' linked folders and agents' folders come from the backup: change those that are elsewhere on this computer. Sign in again where Hersir asks: keys and passwords are never in a backup.
 
 ## No telemetry
 

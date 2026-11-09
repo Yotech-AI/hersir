@@ -1,5 +1,7 @@
 //! One git worktree per task, on its own branch, so agents never touch the main checkout.
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use serde::Serialize;
@@ -58,8 +60,31 @@ pub(crate) fn git(repo: &Path, args: &[&str]) -> Result<String, AgentError> {
     }
 }
 
+/// One lock per repository, for `one_at_a_time`.
+static REPOSITORIES: Mutex<BTreeMap<PathBuf, Arc<Mutex<()>>>> = Mutex::new(BTreeMap::new());
+
+/// Runs `work` under the lock of `repo`'s worktrees, for every git command that lists or changes them. Cards of one
+/// repository start side by side (GA-191), and those commands read every entry in `.git/worktrees`, so they fail on the
+/// half-made entry of a `git worktree add` that is still running: `failed to read .git/worktrees/…/commondir` (GA-242).
+/// Cards of other repositories don't wait.
+///
+/// The lock belongs to the repository's shared git folder (`copies::git_folder`), so every spelling of its path shares
+/// it, and so does a call from one of its worktrees (`copies::remove`'s list). It can't be taken twice: inside `work`,
+/// list with `list_worktrees`. It can wait for another card's whole checkout, so call it off the async threads.
+pub(crate) fn one_at_a_time<T>(repo: &Path, work: impl FnOnce() -> T) -> T {
+    let key = crate::copies::git_folder(repo).or_else(|| repo.canonicalize().ok()).unwrap_or_else(|| repo.to_path_buf());
+    let lock = REPOSITORIES.lock().unwrap_or_else(|e| e.into_inner()).entry(key).or_default().clone();
+    let _one = lock.lock().unwrap_or_else(|e| e.into_inner());
+    work()
+}
+
 /// (path, branch) for every worktree of the repo, its main checkout first.
 pub(crate) fn worktrees(repo: &Path) -> Result<Vec<(PathBuf, Option<String>)>, AgentError> {
+    one_at_a_time(repo, || list_worktrees(repo))
+}
+
+/// `worktrees`, for a caller that holds the repository's lock (`one_at_a_time`).
+fn list_worktrees(repo: &Path) -> Result<Vec<(PathBuf, Option<String>)>, AgentError> {
     let mut out = vec![];
     let mut cur: Option<PathBuf> = None;
     for line in git(repo, &["worktree", "list", "--porcelain"])?.lines() {
@@ -96,27 +121,30 @@ pub fn ensure(repo: &Path, base_dir: &Path, identifier: &str, title: &str, defau
     }
     let path = base_dir.join(identifier);
     let branch = branch_name(identifier, title);
-    let list = worktrees(repo)?;
+    // the list and the add under one hold, so two starts can't both decide on what they read before the other's add
+    one_at_a_time(repo, || {
+        let list = list_worktrees(repo)?;
 
-    if path.exists() {
-        return match list.iter().find(|(p, _)| same(p, &path)) {
-            Some((_, b)) => Ok(Worktree { path, branch: b.clone().unwrap_or(branch), created: false, reused: None }),
-            None => Err(AgentError::Git(format!("{} exists but is not a worktree of this repository", path.display()))),
-        };
-    }
-    std::fs::create_dir_all(base_dir)?;
-    let path_s = path.to_string_lossy().to_string();
-    let exists = git(repo, &["rev-parse", "--verify", "--quiet", &format!("refs/heads/{branch}")]).is_ok();
-    if exists {
-        if let Some((p, _)) = list.iter().find(|(_, b)| b.as_deref() == Some(branch.as_str())) {
-            return Err(AgentError::Git(format!("branch {branch} is already checked out at {}", p.display())));
+        if path.exists() {
+            return match list.iter().find(|(p, _)| same(p, &path)) {
+                Some((_, b)) => Ok(Worktree { path, branch: b.clone().unwrap_or(branch), created: false, reused: None }),
+                None => Err(AgentError::Git(format!("{} exists but is not a worktree of this repository", path.display()))),
+            };
         }
-        git(repo, &["worktree", "add", &path_s, &branch])?;
-    } else {
-        // --no-track: a branch started from a remote's main must not push to it
-        git(repo, &["worktree", "add", "--no-track", "-b", &branch, &path_s, default_branch])?;
-    }
-    Ok(Worktree { path, branch, created: true, reused: None })
+        std::fs::create_dir_all(base_dir)?;
+        let path_s = path.to_string_lossy().to_string();
+        let exists = git(repo, &["rev-parse", "--verify", "--quiet", &format!("refs/heads/{branch}")]).is_ok();
+        if exists {
+            if let Some((p, _)) = list.iter().find(|(_, b)| b.as_deref() == Some(branch.as_str())) {
+                return Err(AgentError::Git(format!("branch {branch} is already checked out at {}", p.display())));
+            }
+            git(repo, &["worktree", "add", &path_s, &branch])?;
+        } else {
+            // --no-track: a branch started from a remote's main must not push to it
+            git(repo, &["worktree", "add", "--no-track", "-b", &branch, &path_s, default_branch])?;
+        }
+        Ok(Worktree { path, branch, created: true, reused: None })
+    })
 }
 
 /// A card without a worktree takes over `from`, the worktree of a finished card, so its build stays warm. The folder
@@ -127,32 +155,37 @@ pub fn ensure(repo: &Path, base_dir: &Path, identifier: &str, title: &str, defau
 pub fn reuse(repo: &Path, from: &Path, base_dir: &Path, identifier: &str, title: &str, start: &str, keep: &[String]) -> Result<Worktree, AgentError> {
     let path = base_dir.join(identifier);
     let branch = branch_name(identifier, title);
-    if path.exists() {
-        return Err(AgentError::Git(format!("{} already exists", path.display())));
-    }
-    let list = worktrees(repo)?;
-    if let Some((p, _)) = list.iter().find(|(_, b)| b.as_deref() == Some(branch.as_str())) {
-        return Err(AgentError::Git(format!("branch {branch} is already checked out at {}", p.display())));
-    }
-    if !list.iter().any(|(p, _)| same(p, from)) {
-        return Err(AgentError::Git(format!("{} is not a worktree of this repository", from.display())));
-    }
-    if uncommitted(from)? > 0 {
-        return Err(AgentError::Git(format!("{} has uncommitted changes", from.display())));
-    }
-    let head = git(from, &["rev-parse", "HEAD"])?;
-    std::fs::create_dir_all(base_dir)?;
-    git(repo, &["worktree", "move", &from.to_string_lossy(), &path.to_string_lossy()])?;
-    let switched = if git(repo, &["rev-parse", "--verify", "--quiet", &format!("refs/heads/{branch}")]).is_ok() {
-        git(&path, &["checkout", "--quiet", &branch])
-    } else {
-        // --no-track: a branch started from a remote's main must not push to it
-        git(&path, &["checkout", "--quiet", "--no-track", "-b", &branch, start])
-    };
-    if let Err(e) = switched {
-        let _ = git(repo, &["worktree", "move", &path.to_string_lossy(), &from.to_string_lossy()]);
-        return Err(e);
-    }
+    // the list up to the branch switch under one hold, so two starts can't take over the same worktree
+    let head = one_at_a_time(repo, || {
+        if path.exists() {
+            return Err(AgentError::Git(format!("{} already exists", path.display())));
+        }
+        let list = list_worktrees(repo)?;
+        if let Some((p, _)) = list.iter().find(|(_, b)| b.as_deref() == Some(branch.as_str())) {
+            return Err(AgentError::Git(format!("branch {branch} is already checked out at {}", p.display())));
+        }
+        if !list.iter().any(|(p, _)| same(p, from)) {
+            return Err(AgentError::Git(format!("{} is not a worktree of this repository", from.display())));
+        }
+        if uncommitted(from)? > 0 {
+            return Err(AgentError::Git(format!("{} has uncommitted changes", from.display())));
+        }
+        let head = git(from, &["rev-parse", "HEAD"])?;
+        std::fs::create_dir_all(base_dir)?;
+        git(repo, &["worktree", "move", &from.to_string_lossy(), &path.to_string_lossy()])?;
+        let switched = if git(repo, &["rev-parse", "--verify", "--quiet", &format!("refs/heads/{branch}")]).is_ok() {
+            git(&path, &["checkout", "--quiet", &branch])
+        } else {
+            // --no-track: a branch started from a remote's main must not push to it
+            git(&path, &["checkout", "--quiet", "--no-track", "-b", &branch, start])
+        };
+        if let Err(e) = switched {
+            let _ = git(repo, &["worktree", "move", &path.to_string_lossy(), &from.to_string_lossy()]);
+            return Err(e);
+        }
+        Ok(head)
+    })?;
+    // outside the lock: emptying a big worktree takes a while, and it is this card's worktree now
     let mut args: Vec<String> = ["clean", "-d", "-x", "--force", "--quiet"].map(String::from).to_vec();
     for k in keep {
         let k = k.trim().trim_start_matches("./").trim_matches('/');
@@ -759,7 +792,7 @@ pub fn worktree_of(repo: &Path, branch: &str) -> Result<Option<PathBuf>, AgentEr
 /// Removes a worktree, never by force: git refuses one with uncommitted changes or untracked files, and says so. Its
 /// `.gizai-tmp` goes with it: `info/exclude` makes it ignored, not untracked (`exclude_temp`).
 pub fn remove_worktree(repo: &Path, path: &Path) -> Result<(), AgentError> {
-    git(repo, &["worktree", "remove", &path.to_string_lossy()]).map(|_| ())
+    one_at_a_time(repo, || git(repo, &["worktree", "remove", &path.to_string_lossy()])).map(|_| ())
 }
 
 /// Deletes a local branch (git refuses one that is checked out somewhere).

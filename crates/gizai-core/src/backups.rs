@@ -26,7 +26,10 @@ pub const MARKER: &str = "gizai-backups.json";
 /// …and what it says.
 pub const MARKER_JSON: &str = r#"{"format":"gizai-backups","format_version":1}"#;
 /// The backups folder Gizai makes inside a chosen folder that isn't one itself.
-pub const FOLDER_NAME: &str = "Gizai backups";
+pub const FOLDER_NAME: &str = "Hersir backups";
+/// The name an older Gizai gave it (before GA-246): one that holds `gizai-backups.json` is still used, as it is, while
+/// its chosen folder has no FOLDER_NAME.
+pub const OLD_FOLDER_NAME: &str = "Gizai backups";
 /// The format this Gizai writes and reads: the marker's and each manifest's `format_version`.
 pub const FORMAT_VERSION: i64 = 1;
 /// A manifest's `format`.
@@ -65,7 +68,7 @@ pub const LAST_ERROR_KEY: &str = "backup_last_error";
 const KEPT_REASONS: [&str; 4] = ["daily", "weekly", "manual", "quit"];
 
 /// The backups folder's README.txt.
-const README: &str = "Gizai backups
+const README: &str = "Hersir backups
 
 This folder holds snapshots of Hersir's data, made by Hersir on each computer that backs up here: its database and the
 files it stores (attachments and screenshots). Hersir makes them on a schedule, when you press Back up now, and when
@@ -404,9 +407,15 @@ pub fn set_last_error(db: &Db, error: Option<&LastError>) -> Result<()> {
 // ---- the folder ----
 
 /// The backups folder a chosen folder stands for: the folder itself when it holds `gizai-backups.json`, else its
-/// `Gizai backups` (made by the first snapshot). Settings' folder, `list`'s and a restore's are read the same way.
+/// `Hersir backups` (made by the first snapshot). A chosen folder without one whose `Gizai backups` holds
+/// `gizai-backups.json` (an older Gizai made it) goes on with that one, which is never renamed. Settings' folder,
+/// `list`'s and a restore's are read the same way.
 pub fn backups_dir(chosen: &Path) -> PathBuf {
-    if chosen.join(MARKER).is_file() { chosen.to_path_buf() } else { chosen.join(FOLDER_NAME) }
+    if chosen.join(MARKER).is_file() {
+        return chosen.to_path_buf();
+    }
+    let (dir, old) = (chosen.join(FOLDER_NAME), chosen.join(OLD_FOLDER_NAME));
+    if !dir.exists() && old.join(MARKER).is_file() { old } else { dir }
 }
 
 /// Why chosen folder `chosen` can't take snapshots now, in plain words; None when it can. It is missing (a USB disk that
@@ -515,7 +524,7 @@ fn write_new(path: &Path, bytes: &[u8], tag: &str) -> Result<()> {
 
 /// Renames a finished file into place. On Windows a few times over a second: a sync program or a virus scanner often
 /// holds a file that was just written for a moment.
-fn rename(from: &Path, to: &Path) -> io::Result<()> {
+pub(crate) fn rename(from: &Path, to: &Path) -> io::Result<()> {
     #[cfg(windows)]
     for _ in 0..5 {
         if fs::rename(from, to).is_ok() {
@@ -526,7 +535,7 @@ fn rename(from: &Path, to: &Path) -> io::Result<()> {
     fs::rename(from, to)
 }
 
-fn write_synced(path: &Path, bytes: &[u8]) -> io::Result<()> {
+pub(crate) fn write_synced(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let mut f = fs::File::create(path)?;
     f.write_all(bytes)?;
     f.sync_all()
@@ -777,19 +786,19 @@ fn copy_blob(src: &Path, dest: &Path, sha: &str, tag: &str, undo: &mut Unfinishe
 }
 
 /// Reads or writes through to `inner`, hashing (sha256) and counting what passes.
-struct Hashing<T> {
-    inner: T,
+pub(crate) struct Hashing<T> {
+    pub(crate) inner: T,
     hash: Sha256,
     bytes: u64,
 }
 
 impl<T> Hashing<T> {
-    fn new(inner: T) -> Self {
+    pub(crate) fn new(inner: T) -> Self {
         Hashing { inner, hash: Sha256::new(), bytes: 0 }
     }
 
     /// The sha256 of what passed (64 lowercase hex), and its size.
-    fn sum(self) -> (String, u64) {
+    pub(crate) fn sum(self) -> (String, u64) {
         (format!("{:x}", self.hash.finalize()), self.bytes)
     }
 }
@@ -817,7 +826,7 @@ impl<T: Write> Write for Hashing<T> {
 }
 
 /// `s` is `len` lowercase hex digits (a blob's name, its folder's).
-fn is_hex(s: &str, len: usize) -> bool {
+pub(crate) fn is_hex(s: &str, len: usize) -> bool {
     s.len() == len && s.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
@@ -827,7 +836,7 @@ fn age_ms(t: SystemTime, now_ms: i64) -> i64 {
 }
 
 /// The entries of folder `dir`: their names and paths (none when it can't be read).
-fn entries(dir: &Path) -> Vec<(String, PathBuf)> {
+pub(crate) fn entries(dir: &Path) -> Vec<(String, PathBuf)> {
     fs::read_dir(dir)
         .map(|rd| rd.flatten().map(|e| (e.file_name().to_string_lossy().into_owned(), e.path())).collect())
         .unwrap_or_default()

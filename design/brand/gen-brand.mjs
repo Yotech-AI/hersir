@@ -21,19 +21,31 @@ const INKS = {
 };
 const TILE = { top: "#1a2128", bottom: "#0b0e11" }; // the icon's iron tile, top to bottom, with a white edge at 8 %
 const n = (v) => +v.toFixed(2);
+const n3 = (v) => +v.toFixed(3);
 
-// Moves and scales absolute path data (M, L, C and Z only, so every number pair is a point): x by sx, y by sy.
-function move(d, dx, dy, sx = 1, sy = sx) {
+// Maps absolute path data (M, L, C and Z only, so every number pair is a point): x by fx, y by fy.
+function mapPoints(d, fx, fy, round = n) {
   let i = 0;
-  return d.replace(/-?\d*\.?\d+/g, (s) => String(n(i++ % 2 ? +s * sy + dy : +s * sx + dx)));
+  return d.replace(/-?\d*\.?\d+/g, (s) => String(round(i++ % 2 ? fy(+s) : fx(+s))));
 }
+// Moves and scales them: x by sx, y by sy.
+const move = (d, dx, dy, sx = 1, sy = sx) => mapPoints(d, (x) => x * sx + dx, (y) => y * sy + dy);
 
-// The mark on its 24 px grid: four strokes of 2 with round caps. The stems (x 6 and 18, y 3 to 21) are the longship's
-// stem and stern; the sheer and the keel leave them at y 8 and sag between them, to 11.6 and 15.6, like a hull.
-const MARK = "M6 3L6 21M18 3L18 21M6 8C6.8 10.8 8.2 11.6 12 11.6C15.8 11.6 17.2 10.8 18 8M6 8C6.4 13.6 8.2 15.6 12 15.6C15.8 15.6 17.6 13.6 18 8";
-// The mark, its grid scaled by sx and sy and moved to (dx, dy), its strokes `w` wide.
-const mark = (ink, dx, dy, sx, sy = sx, w = 2 * sx) =>
-  `<path fill="none" stroke="${ink}" stroke-width="${n(w)}" stroke-linecap="round" stroke-linejoin="round" d="${move(MARK, dx, dy, sx, sy)}"/>`;
+// The mark on its 24 px grid, one filled outline (GA-239): four strokes of 2 with round caps, merged and mirrored around
+// x 12, number for number. The stems (x 6 and 18, y 3 to 21) are the longship's stem and stern; the sheer and the keel
+// leave them at y 8 and sag between them, to 11.6 and 15.6, like a hull. As separate strokes the hull's caps touched the
+// stems' outer edges at y 8 and browsers painted them out of the line; merged, each outer edge is one straight line, from
+// cap to cap. The curves are cut short, the shape staying the same: each hull edge in 8 pieces from stem to middle, each
+// quarter of a cap in 4. Chromium's software renderer walks a curve in straight steps on quarter pixels and treats a too
+// flat step differently on the left and the right of a span, so long flat curves drew the hole's top tilted at 40 and 48 px.
+const MARK = "M5 3C5 2.862 5.028 2.731 5.079 2.611C5.129 2.491 5.203 2.383 5.293 2.293C5.384 2.202 5.491 2.129 5.611 2.079C5.731 2.028 5.862 2 6 2C6.138 2 6.269 2.028 6.389 2.079C6.509 2.129 6.616 2.202 6.707 2.293C6.797 2.383 6.871 2.491 6.921 2.611C6.972 2.731 7 2.862 7 3L7 7.857C7.064 8.07 7.136 8.282 7.217 8.488C7.299 8.694 7.394 8.893 7.505 9.08C7.616 9.267 7.745 9.443 7.896 9.6C8.047 9.757 8.22 9.896 8.421 10.011C8.659 10.147 8.934 10.252 9.231 10.333C9.529 10.413 9.846 10.47 10.167 10.51C10.489 10.549 10.814 10.572 11.126 10.584C11.436 10.597 11.734 10.6 12 10.6C12.266 10.6 12.564 10.597 12.874 10.584C13.186 10.572 13.511 10.549 13.833 10.51C14.154 10.47 14.471 10.413 14.769 10.333C15.066 10.252 15.341 10.147 15.579 10.011C15.78 9.896 15.953 9.757 16.104 9.6C16.255 9.443 16.384 9.267 16.495 9.08C16.606 8.893 16.701 8.694 16.783 8.488C16.864 8.282 16.936 8.07 17 7.857L17 3C17 2.862 17.028 2.731 17.079 2.611C17.129 2.491 17.203 2.383 17.293 2.293C17.384 2.202 17.491 2.129 17.611 2.079C17.731 2.028 17.862 2 18 2C18.138 2 18.269 2.028 18.389 2.079C18.509 2.129 18.616 2.202 18.707 2.293C18.797 2.383 18.871 2.491 18.921 2.611C18.972 2.731 19 2.862 19 3L19 21C19 21.138 18.972 21.269 18.921 21.389C18.871 21.509 18.797 21.617 18.707 21.707C18.616 21.798 18.509 21.871 18.389 21.921C18.269 21.972 18.138 22 18 22C17.862 22 17.731 21.972 17.611 21.921C17.491 21.871 17.384 21.798 17.293 21.707C17.203 21.617 17.129 21.509 17.079 21.389C17.028 21.269 17 21.138 17 21L17 14.593C16.84 14.785 16.672 14.959 16.496 15.119C16.321 15.279 16.138 15.423 15.949 15.553C15.76 15.683 15.565 15.799 15.364 15.901C15.162 16.004 14.954 16.093 14.743 16.171C14.531 16.249 14.314 16.314 14.093 16.369C13.871 16.424 13.645 16.468 13.416 16.502C13.186 16.536 12.953 16.561 12.717 16.577C12.48 16.593 12.241 16.6 12 16.6C11.759 16.6 11.52 16.593 11.283 16.577C11.047 16.561 10.814 16.536 10.584 16.502C10.355 16.468 10.129 16.424 9.907 16.369C9.686 16.314 9.469 16.249 9.257 16.171C9.046 16.093 8.838 16.004 8.636 15.901C8.435 15.799 8.24 15.683 8.051 15.553C7.862 15.423 7.679 15.279 7.504 15.119C7.328 14.959 7.16 14.785 7 14.593L7 21C7 21.138 6.972 21.269 6.921 21.389C6.871 21.509 6.797 21.617 6.707 21.707C6.616 21.798 6.509 21.871 6.389 21.921C6.269 21.972 6.138 22 6 22C5.862 22 5.731 21.972 5.611 21.921C5.491 21.871 5.384 21.798 5.293 21.707C5.203 21.617 5.129 21.509 5.079 21.389C5.028 21.269 5 21.138 5 21ZM7.748 11.914C7.828 12.122 7.917 12.325 8.018 12.521C8.119 12.716 8.231 12.904 8.357 13.081C8.484 13.257 8.624 13.423 8.781 13.575C8.939 13.727 9.112 13.864 9.305 13.984C9.503 14.107 9.713 14.207 9.931 14.288C10.149 14.369 10.376 14.43 10.606 14.477C10.836 14.523 11.07 14.554 11.304 14.573C11.538 14.592 11.771 14.6 12 14.6C12.229 14.6 12.462 14.592 12.696 14.573C12.93 14.554 13.164 14.523 13.394 14.477C13.624 14.43 13.851 14.369 14.069 14.288C14.287 14.207 14.497 14.107 14.695 13.984C14.888 13.864 15.061 13.727 15.219 13.575C15.376 13.423 15.516 13.257 15.643 13.081C15.769 12.904 15.881 12.716 15.982 12.521C16.083 12.325 16.172 12.122 16.252 11.914C16.094 11.989 15.931 12.056 15.763 12.116C15.594 12.176 15.423 12.229 15.248 12.275C15.073 12.321 14.894 12.361 14.714 12.396C14.534 12.43 14.353 12.459 14.169 12.483C13.986 12.507 13.802 12.526 13.619 12.542C13.435 12.557 13.251 12.569 13.069 12.577C12.887 12.586 12.706 12.592 12.527 12.595C12.349 12.599 12.172 12.6 12 12.6C11.828 12.6 11.651 12.599 11.473 12.595C11.294 12.592 11.113 12.586 10.931 12.577C10.749 12.569 10.565 12.557 10.381 12.542C10.198 12.526 10.014 12.507 9.831 12.483C9.647 12.459 9.466 12.43 9.286 12.396C9.106 12.361 8.927 12.321 8.752 12.275C8.577 12.229 8.406 12.176 8.237 12.116C8.069 12.056 7.906 11.989 7.748 11.914Z";
+// The mark, its grid scaled by s and moved to (dx, dy). Its pieces are short, so it keeps three decimals: at two, the curves
+// on the 24 grid turn wavy when it is shown large.
+const mark = (ink, dx, dy, s) => `<path fill="${ink}" d="${mapPoints(MARK, (x) => x * s + dx, (y) => y * s + dy, n3)}"/>`;
+// The mark as the 48 px cut draws it: at 1.5, but the space between the stems at 1.6, so the stems are 3 px on whole
+// pixels, 19 apart instead of 18.
+const stretch48 = (x) => (x <= 7 ? 1.5 * x + 0.5 : x >= 17 ? 1.5 * x + 1.5 : 1.6 * x - 0.2);
+const mark48 = (ink, dx, dy) => `<path fill="${ink}" d="${mapPoints(MARK, (x) => stretch48(x) + dx, (y) => 1.5 * y + dy, n3)}"/>`;
 // The 16 px cut, on the pixel grid: stems 2 px (x 4 and 12, y 2.5 to 13.5) and the hull filled, so it stays a boat.
 const CUT16 = {
   stems: "M4 2.5L4 13.5M12 2.5L12 13.5",
@@ -76,11 +88,11 @@ const gradient = (id) => `<defs><linearGradient id="${id}" x1="0" y1="0" x2="0" 
 const tile = (s, rx, id) => `${gradient(id)}\n<rect width="${s}" height="${s}" rx="${rx}" fill="url(#${id})"/>\n`
   + `<rect x="0.5" y="0.5" width="${s - 1}" height="${s - 1}" rx="${rx - 0.5}" fill="none" stroke="#ffffff" stroke-opacity="0.08"/>`;
 // The small icons on the pixel grid. 16: the 16 px cut on the whole tile. 32: the mark 1:1 on its 24 grid, 4 in. 48 (no
-// frame in Figma): the 32's drawing at 1.5, strokes 3, its stems 19 apart instead of 18 so they land on whole pixels.
+// frame in Figma): the 32's drawing at 1.5, its stems 19 apart instead of 18 so they land on whole pixels.
 const SMALL = {
   16: { rx: 3.5, body: () => cut16(AMBER.dark) },
   32: { rx: 7, body: () => mark(AMBER.dark, 4, 4, 1) },
-  48: { rx: 10.5, body: () => mark(AMBER.dark, 5, 6, 19 / 12, 1.5, 3) },
+  48: { rx: 10.5, body: () => mark48(AMBER.dark, 5, 6) },
 };
 const small = (s) => svg(s, s, `${tile(s, SMALL[s].rx, `hs-tile-${s}`)}\n${SMALL[s].body()}`);
 for (const s of [16, 32, 48]) files[`favicon-${s}.svg`] = small(s);
@@ -112,8 +124,8 @@ function macIcon() {
 files["app-icon-macos-1024.svg"] = svg(1024, 1024, macIcon());
 
 // The macOS menu bar's template image (src-tauri/icons/tray-template.png, 36 px for 18 pt): the mark in black on
-// transparent, drawn as the 48 px cut is, strokes 3 and its stems on whole pixels; macOS colours it for its look.
-files["tray-template.svg"] = svg(36, 36, mark("#000000", -1, 0, 19 / 12, 1.5, 3));
+// transparent, drawn as the 48 px cut is, its stems on whole pixels; macOS colours it for its look.
+files["tray-template.svg"] = svg(36, 36, mark48("#000000", -1, 0));
 
 for (const [name, body] of Object.entries(files)) writeFileSync(join(DIR, name), body);
 

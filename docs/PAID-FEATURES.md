@@ -66,7 +66,7 @@ Optional, your call: a **supporter licence** (€25–50 once, like Obsidian Cat
 
 ```
 Hersir desktop (Apache-2.0)                 Hersir Cloud (hosted, EU)
-├─ crates/gizai-cloud-client   ── HTTPS ──► api.gizai.app  (Rust, axum)
+├─ crates/gizai-cloud-client   ── HTTPS ──► api.hersir.dev  (Rust, axum)
 │   sign-in, keychain, snapshot,             ├─ accounts, devices, entitlements (signed)
 │   encrypt, upload, restore,                ├─ backups: encrypted blobs → object storage (EU)
 │   push/pull changes                        ├─ sync: encrypted change log, ordered per workspace
@@ -93,15 +93,17 @@ Effort is in agent-days, like the research's milestones. The server, payments an
 
 ### Phase 0: local snapshots (free, in the app): 2–3 days
 
-What it gives the user:
+Built (GA-216 to GA-219). What it gives the user:
 
-- Settings → Backups → *Save a snapshot to…*: a folder; weekly and on quit.
-- A snapshot is `gizai.db` copied with `VACUUM INTO` (consistent while the app runs), plus the files store, in one `.gizai-snapshot` archive.
-- *Restore from snapshot…* checks the archive and the schema version and swaps it in on the next start.
+- Settings → General → Backups: a folder you choose, such as a USB disk or a folder that Dropbox or Syncthing keeps; daily, weekly or only when you ask; on quit if you want; and Keep (10 by default).
+- The backups folder holds a snapshot per backup: `gizai.db` copied with `VACUUM INTO` (consistent while the app runs) and compressed, with a manifest, and the stored files once each, shared by all snapshots. [docs/backup-format.md](backup-format.md) describes the format, file by file.
+- Restore on each snapshot, and Restore from another folder… for a new computer: it checks the snapshot, saves today's data as a snapshot and swaps the restored data in at the next start. It keeps the computer's own identity and settings, and it pauses the agents.
 
-Why first: it is the backup format the paid service will upload. Users trust it because it works without an account. It also fixes a real gap today: there is no backup at all.
+Why first: it is the backup format the paid service will upload. Users trust it because it works without an account. It also fixes a real gap: until then there was no backup at all.
 
 ### Phase 1: Hersir Cloud account and encrypted backup (Personal): 10–15 days
+
+Hersir Cloud's snapshots use the format of [docs/backup-format.md](backup-format.md), so one restore reads both.
 
 **Server** (new private repository, Rust + axum + Postgres + EU object storage such as Cloudflare R2 EU or Backblaze B2 EU):
 
@@ -122,6 +124,8 @@ Why first: it is the backup format the paid service will upload. Users trust it 
 **Done when:** a backup made on one machine restores on a clean machine, and a lapsed plan stops uploads but not restores.
 
 ### Phase 2: sync between your own devices (Personal): 10–20 days
+
+A new device's first sync starts from a snapshot in the format of [docs/backup-format.md](backup-format.md), then asks for the changes after it.
 
 - The app already writes every change to `changes`, with a hybrid logical clock, the device and the schema version; `pushed_at` marks what was sent.
 - **Push:** unsent changes, encrypted per change, go to `POST /v1/workspaces/:id/changes`. The server only orders them by sequence.

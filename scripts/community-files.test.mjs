@@ -238,9 +238,9 @@ describe("the issue forms in .github/ISSUE_TEMPLATE", () => {
 
   it("the one-line install's check, as the install form gives it, is an option get.sh and get.ps1 take", () => {
     const check = field(form("install"), "check").attributes.description;
-    expect(check).toContain("curl -fsSL https://gizai.app/install.sh | sh -s -- --check");
+    expect(check).toContain("curl -fsSL https://hersir.dev/install.sh | sh -s -- --check");
     expect(read("scripts/get.sh")).toMatch(/--check\) check=1/);
-    expect(check).toContain("& ([scriptblock]::Create((irm https://gizai.app/install.ps1))) -Check");
+    expect(check).toContain("& ([scriptblock]::Create((irm https://hersir.dev/install.ps1))) -Check");
     expect(read("scripts/get.ps1")).toMatch(/param\(\s*\[switch\]\$Check/);
   });
 
@@ -253,7 +253,7 @@ describe("the issue forms in .github/ISSUE_TEMPLATE", () => {
       expect(isText(link.name) && isText(link.about)).toBe(true);
       expect(link.url).toMatch(/^https:\/\//);
     }
-    expect(config.contact_links.map((l) => l.url)).toEqual([`${REPO}/discussions/categories/q-a`, `${REPO}/security/policy`, "https://gizai.app/docs"]);
+    expect(config.contact_links.map((l) => l.url)).toEqual([`${REPO}/discussions/categories/q-a`, `${REPO}/security/policy`, "https://hersir.dev/docs"]);
   });
 });
 
@@ -266,13 +266,13 @@ describe("the README's first screen (the research's section 3.3)", () => {
     expect(lines.slice(8, 15)).toEqual([
       '<div align="center">',
       "",
-      "**Your agents build it. You review.**",
+      "**Your coding agents need a chief, not a babysitter.**",
       "",
       "A free, open-source desktop app where a team of AI coding agents works through your board in parallel, on Claude Code,",
       "Codex CLI or Gemini CLI. Made for freelancers and software companies with several clients and projects.",
       "",
     ]);
-    expect(lines[15]).toBe(`[Website](https://gizai.app) · [Install](#install) · [Docs](#documentation) · [Releases](${REPO}/releases) · [Licence](LICENSE)`);
+    expect(lines[15]).toBe(`[Website](https://hersir.dev) · [Install](#install) · [Docs](#documentation) · [Releases](${REPO}/releases) · [Licence](LICENSE)`);
   });
 
   it("What it is, Made for work with several clients and The team come before Features, and Install after", () => {
@@ -416,16 +416,22 @@ const NAMED_DOCS = git("ls-files", "README.md", "CLAUDE.md", "NOTICE", "CONTRIBU
   .stdout.split("\n").filter((p) => p && !DATED.test(p));
 // The one line for people who knew the old name, word for word.
 const OLD_NAME = "Hersir was called GizAi until version 0.14.";
+// The website's address before hersir.dev (GA-237), api.gizai.app too. ai.gizai.app is the app's identifier, not the
+// address; Gizai.app was the macOS app. docs/research and docs/superpowers are dated records, left as written.
+const OLD_ADDRESS = /(?<!\bai\.)\bgizai\.app\b/;
+const RECORDS = /^docs\/(research|superpowers)\//;
+// The one line that still gives the old address, word for word: the old install lines keep working.
+const OLDER_LINES = "- Older install lines with gizai.app keep working.";
 // The old name, spelled any way the docs had it: GizAi, Gizai, GizAI or Giz AI (Figma's file Giz-AI and giz.ai aren't it).
 const OLD = /Giz ?[Aa][Ii]/;
 // The old name the docs keep, in backticks or a code block, as the code has it (or Figma, for the app's variables, and
 // Homebrew, whose class for gizai.rb is Gizai): the data folders on macOS and Windows, the install folder on Windows
-// and the backups folder.
+// and the backups folder an older Hersir made, which is still found (GA-246; Hersir makes Hersir backups now).
 const KEPT = [
   { name: /Application Support\/Gizai/, code: ["src-tauri/src/lib.rs", 'join("Library/Application Support/Gizai")'] },
   { name: /APPDATA%\\Gizai/, code: ["src-tauri/src/lib.rs", '.join("Gizai")'] },
   { name: /Programs\\Gizai/, code: ["install.ps1", "Join-Path $env:LOCALAPPDATA 'Programs\\Gizai'"] },
-  { name: /Gizai backups/, code: ["crates/gizai-core/src/backups.rs", 'pub const FOLDER_NAME: &str = "Gizai backups";'] },
+  { name: /Gizai backups/, code: ["crates/gizai-core/src/backups.rs", 'pub const OLD_FOLDER_NAME: &str = "Gizai backups";'] },
   { name: /GizAi (colour|size)/ },
   { name: /class Gizai < Formula/ },
 ];
@@ -447,7 +453,7 @@ const QUOTES = ["Open Hersir", "Quit Hersir completely", "From Hersir's catalog"
 // The names the code keeps (the card's item 4), which the docs give as the code has them, and the forms they'd take
 // if a doc renamed them by mistake.
 const CODE_NAMES = ["gizai --version", "gizai-mcp", "gizai-launch", "~/.local/share/gizai", "GIZAI_DATA_DIR", "GIZAI_PREFIX", "GIZAI_RESULT", "ai.gizai.app", "mcp__gizai", ".gizai-tmp", "gizai-installed.txt", ".gizai-team.json", "gizai-backups.json"];
-const RENAMED = /\bhersir(-mcp|-launch|-src|-installed\.txt|-backups|\.db|\.desktop|\.exe)\b|\bHERSIR_|ai\.hersir|mcp__hersir|\.hersir-(tmp|team)|\bhersir:[a-z]|\/(share|lib|bin)\/hersir\b|`hersir[ `]|APPDATA%\\Hersir|Programs\\Hersir|Application Support\/Hersir|Hersir backups/;
+const RENAMED = /\bhersir(-mcp|-launch|-src|-installed\.txt|-backups|\.db|\.desktop|\.exe)\b|\bHERSIR_|ai\.hersir|mcp__hersir|\.hersir-(tmp|team)|\bhersir:[a-z]|\/(share|lib|bin)\/hersir\b|`hersir[ `]|APPDATA%\\Hersir|Programs\\Hersir|Application Support\/Hersir/;
 
 describe("one name: Hersir in the docs, and Gizai only in the names the code keeps (GA-234)", () => {
   it("the docs it covers include the README, NOTICE, the community files, every doc in docs/ and design's READMEs, but not the records of their day", () => {
@@ -499,20 +505,42 @@ describe("one name: Hersir in the docs, and Gizai only in the names the code kee
     }
   });
 
-  it("links go to github.com/Yotech-AI/hersir and gizai.app, none to Yotech-AI/gizai, hersir.ai or hersir.dev, and the install lines stay word for word", () => {
+  it("links go to github.com/Yotech-AI/hersir and hersir.dev, none to Yotech-AI/gizai, hersir.ai or gizai.app, and the install lines stay word for word", () => {
     const wrong = [];
     for (const doc of NAMED_DOCS) {
       read(doc).split("\n").forEach((line, i) => {
-        if (/Yotech-AI\/gizai(?![\w-])|\b[Hh]ersir\.(ai|dev)\b/.test(line)) wrong.push(`${doc}:${i + 1}: ${line.trim().slice(0, 120)}`);
+        const oldAddress = !RECORDS.test(doc) && OLD_ADDRESS.test(line) && line !== OLDER_LINES;
+        if (oldAddress || /Yotech-AI\/gizai(?![\w-])|\b[Hh]ersir\.ai\b/.test(line)) wrong.push(`${doc}:${i + 1}: ${line.trim().slice(0, 120)}`);
       });
     }
     expect(wrong).toEqual([]);
     expect(NAMED_DOCS.filter((doc) => read(doc).includes(`${REPO}/`)).length).toBeGreaterThan(10);
     for (const doc of ["README.md", "docs/install.md"]) {
-      expect(read(doc), doc).toContain("curl -fsSL https://gizai.app/install.sh | sh");
-      expect(read(doc), doc).toContain("irm https://gizai.app/install.ps1 | iex");
+      expect(read(doc), doc).toContain("curl -fsSL https://hersir.dev/install.sh | sh");
+      expect(read(doc), doc).toContain("irm https://hersir.dev/install.ps1 | iex");
     }
-    expect(read("README.md")).toContain("[Website](https://gizai.app)");
+    expect(read("README.md")).toContain("[Website](https://hersir.dev)");
+    expect(read("docs/PAID-FEATURES.md")).toContain("api.hersir.dev");
+  });
+
+  it("in the whole repository, the old address is only in the install doc's bullet and in the test that checks it", () => {
+    const hits = git("grep", "-F", "gizai.app", "--", ".", ":!docs/research", ":!docs/superpowers").stdout.split(/\r?\n/);
+    expect(hits.filter((hit) => OLD_ADDRESS.test(hit) && !hit.startsWith("scripts/community-files.test.mjs:"))).toEqual([`docs/install.md:${OLDER_LINES}`]);
+  });
+
+  it("the install doc says older lines keep working, right after the bullet on where the line goes", () => {
+    const lines = read("docs/install.md").split("\n");
+    const bullet = lines.indexOf(OLDER_LINES);
+    expect(bullet).toBeGreaterThan(0);
+    expect(lines[bullet - 1]).toMatch(/^- hersir\.dev sends the line on to /);
+  });
+
+  it("the app's identifier stays ai.gizai.app where the app and the installers use it", () => {
+    expect(JSON.parse(read("src-tauri/tauri.conf.json")).identifier).toBe("ai.gizai.app");
+    expect(read("src-tauri/src/lib.rs")).toContain('pub const APP_ID: &str = "ai.gizai.app";');
+    expect(read("install.ps1")).toContain("'ai.gizai.app')");
+    expect(read(".github/workflows/install.yml")).toContain('[ "$id" = ai.gizai.app ]');
+    expect(read(".github/workflows/install.yml")).toContain("if ($id -ne 'ai.gizai.app')");
   });
 
   it("commands, paths, variables and file names are the code's: the docs name gizai, GIZAI_*, ai.gizai.app and mcp__gizai, never a hersir in their place", () => {
