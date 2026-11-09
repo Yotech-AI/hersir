@@ -12,7 +12,7 @@ const at = (day: number, h: number, m = 0) => new Date(2026, 9, day, h, m).getTi
 
 const STATUS: BackupStatus = {
   settings: { folder: "/home/you/Dropbox", every: "daily", onQuit: false, keep: 10 },
-  folder: "/home/you/Dropbox/Gizai backups", folderProblem: null, running: null,
+  folder: "/home/you/Dropbox/Hersir backups", folderProblem: null, running: null,
   last: { name: "gizai-daily-20261027-110000-000-ce82a749", madeAt: at(27, 11), bytes: 1_153_434 },
   lastError: null, next: at(28, 11),
 };

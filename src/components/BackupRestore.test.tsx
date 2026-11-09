@@ -94,7 +94,7 @@ vi.mock("../api", async (orig) => {
       h.calls.start.push([folder, name]);
       if (bs().running) throw "A backup is running: restore once it is done";
       if (["checking", "saving", "staging"].includes(rs().state)) throw "A restore is running already";
-      Object.assign(rs(), { state: "checking", folder: `${folder}/Gizai backups`, snapshot: null, step: "Checking the snapshot", error: null, savedToday: null });
+      Object.assign(rs(), { state: "checking", folder: `${folder}/Hersir backups`, snapshot: null, step: "Checking the snapshot", error: null, savedToday: null });
       sendRestore();
       return structuredClone(rs());
     },
@@ -253,7 +253,7 @@ const USB: BackupEntry[] = [
 ];
 const STATUS: BackupStatus = {
   settings: { folder: "/home/you/Dropbox", every: "daily", onQuit: false, keep: 10 },
-  folder: "/home/you/Dropbox/Gizai backups", folderProblem: null, running: null,
+  folder: "/home/you/Dropbox/Hersir backups", folderProblem: null, running: null,
   last: { name: LIST[0]!.name, madeAt: at(27, 11), bytes: 1_153_434 }, lastError: null, next: at(28, 11),
 };
 const OFF: BackupStatus = { ...STATUS, settings: { ...STATUS.settings, folder: null }, folder: null, last: null, next: null };
@@ -483,7 +483,7 @@ describe("the confirm", () => {
     await rows(THIS_FOLDER)[1]!.restore!.onClick();
     await settle();
     expect(dialog().title).toBe("Restore this backup?");
-    expect(dialog().text).toBe(`By hand, yesterday 09:00, from this computer. Hersir first saves today's data as a backup in /home/you/Dropbox/Gizai backups. ${AFTER}`);
+    expect(dialog().text).toBe(`By hand, yesterday 09:00, from this computer. Hersir first saves today's data as a backup in /home/you/Dropbox/Hersir backups. ${AFTER}`);
     expect(dialog().buttons.map((b) => textOf(kids(b)))).toEqual(["Cancel", "Restore"]);
     expect(dialog().buttons.map((b) => b.props.className)).toEqual(["btn ghost", "btn primary"]);
   });
@@ -501,7 +501,7 @@ describe("the confirm", () => {
     await press("section", "Restore from another folder…");
     await rows(OTHER_FOLDER)[0]!.restore!.onClick();
     await settle();
-    expect(dialog().text).toContain("from work-laptop. Hersir first saves today's data as a backup in /home/you/Dropbox/Gizai backups. ");
+    expect(dialog().text).toContain("from work-laptop. Hersir first saves today's data as a backup in /home/you/Dropbox/Hersir backups. ");
   });
 
   it("with no backups folder in Settings, today's data goes to the folder restored from", async () => {
@@ -597,9 +597,9 @@ describe("while it runs", () => {
   it.each([
     "Made by a newer Hersir (backup format 2). Update Hersir first.",
     "Made by a newer Hersir (database version 99). Update Hersir first.",
-    "1 file of the snapshot is missing from /media/you/USB/Gizai backups/files",
-    "12 files of the snapshot are missing from /media/you/USB/Gizai backups/files",
-    "The snapshot's database file is missing: /media/you/USB/Gizai backups/snapshots/x.db.zst",
+    "1 file of the snapshot is missing from /media/you/USB/Hersir backups/files",
+    "12 files of the snapshot are missing from /media/you/USB/Hersir backups/files",
+    "The snapshot's database file is missing: /media/you/USB/Hersir backups/snapshots/x.db.zst",
     "Hersir can't save today's data first: no room. Choose a backups folder in Settings → General → Backups.",
   ])("a failure shows its reason: %s", async (why) => {
     await show();

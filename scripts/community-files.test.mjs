@@ -426,12 +426,12 @@ const OLDER_LINES = "- Older install lines with gizai.app keep working.";
 const OLD = /Giz ?[Aa][Ii]/;
 // The old name the docs keep, in backticks or a code block, as the code has it (or Figma, for the app's variables, and
 // Homebrew, whose class for gizai.rb is Gizai): the data folders on macOS and Windows, the install folder on Windows
-// and the backups folder.
+// and the backups folder an older Hersir made, which is still found (GA-246; Hersir makes Hersir backups now).
 const KEPT = [
   { name: /Application Support\/Gizai/, code: ["src-tauri/src/lib.rs", 'join("Library/Application Support/Gizai")'] },
   { name: /APPDATA%\\Gizai/, code: ["src-tauri/src/lib.rs", '.join("Gizai")'] },
   { name: /Programs\\Gizai/, code: ["install.ps1", "Join-Path $env:LOCALAPPDATA 'Programs\\Gizai'"] },
-  { name: /Gizai backups/, code: ["crates/gizai-core/src/backups.rs", 'pub const FOLDER_NAME: &str = "Gizai backups";'] },
+  { name: /Gizai backups/, code: ["crates/gizai-core/src/backups.rs", 'pub const OLD_FOLDER_NAME: &str = "Gizai backups";'] },
   { name: /GizAi (colour|size)/ },
   { name: /class Gizai < Formula/ },
 ];
@@ -453,7 +453,7 @@ const QUOTES = ["Open Hersir", "Quit Hersir completely", "From Hersir's catalog"
 // The names the code keeps (the card's item 4), which the docs give as the code has them, and the forms they'd take
 // if a doc renamed them by mistake.
 const CODE_NAMES = ["gizai --version", "gizai-mcp", "gizai-launch", "~/.local/share/gizai", "GIZAI_DATA_DIR", "GIZAI_PREFIX", "GIZAI_RESULT", "ai.gizai.app", "mcp__gizai", ".gizai-tmp", "gizai-installed.txt", ".gizai-team.json", "gizai-backups.json"];
-const RENAMED = /\bhersir(-mcp|-launch|-src|-installed\.txt|-backups|\.db|\.desktop|\.exe)\b|\bHERSIR_|ai\.hersir|mcp__hersir|\.hersir-(tmp|team)|\bhersir:[a-z]|\/(share|lib|bin)\/hersir\b|`hersir[ `]|APPDATA%\\Hersir|Programs\\Hersir|Application Support\/Hersir|Hersir backups/;
+const RENAMED = /\bhersir(-mcp|-launch|-src|-installed\.txt|-backups|\.db|\.desktop|\.exe)\b|\bHERSIR_|ai\.hersir|mcp__hersir|\.hersir-(tmp|team)|\bhersir:[a-z]|\/(share|lib|bin)\/hersir\b|`hersir[ `]|APPDATA%\\Hersir|Programs\\Hersir|Application Support\/Hersir/;
 
 describe("one name: Hersir in the docs, and Gizai only in the names the code keeps (GA-234)", () => {
   it("the docs it covers include the README, NOTICE, the community files, every doc in docs/ and design's READMEs, but not the records of their day", () => {

@@ -77,7 +77,7 @@ vi.mock("../api", async (orig) => {
       const folder = s.folder?.trim() || null;
       if (folder && folder !== st().settings.folder && folder.startsWith("/readonly")) throw `Hersir can't write in ${folder}: permission denied`;
       const moved = folder !== st().settings.folder;
-      Object.assign(st(), { settings: { ...s, folder }, folder: folder && `${folder}/Gizai backups`, folderProblem: null });
+      Object.assign(st(), { settings: { ...s, folder }, folder: folder && `${folder}/Hersir backups`, folderProblem: null });
       if (moved) Object.assign(st(), { last: null, lastError: null, next: folder && s.every !== "manual" ? NOW : null });
       if (s.every === "manual") st().next = null;
       send();
@@ -215,7 +215,7 @@ const LIST: BackupEntry[] = [
 ];
 const STATUS: BackupStatus = {
   settings: { folder: "/home/you/Dropbox", every: "daily", onQuit: false, keep: 10 },
-  folder: "/home/you/Dropbox/Gizai backups", folderProblem: null, running: null,
+  folder: "/home/you/Dropbox/Hersir backups", folderProblem: null, running: null,
   last: { name: LIST[0]!.name, madeAt: at(27, 11), bytes: 1_153_434 }, lastError: null, next: at(28, 11),
 };
 const OFF: BackupStatus = { ...STATUS, settings: { ...STATUS.settings, folder: null }, folder: null, last: null, next: null };
@@ -275,9 +275,9 @@ describe("the section (GA-217)", () => {
 });
 
 describe("Folder", () => {
-  it("shows the backups folder in use (…/Gizai backups), with Browse… and Turn off", async () => {
+  it("shows the backups folder in use (…/Hersir backups), with Browse… and Turn off", async () => {
     await show();
-    expect(fieldText("Folder")).toContain("/home/you/Dropbox/Gizai backups");
+    expect(fieldText("Folder")).toContain("/home/you/Dropbox/Hersir backups");
     expect(button("Browse…").disabled).toBeFalsy();
     expect(button("Turn off").disabled).toBe(false);
     expect(under("Folder")).toBe("");
@@ -296,7 +296,7 @@ describe("Folder", () => {
     await click("Browse…");
     expect(h.pickerOpts).toEqual([expect.objectContaining({ directory: true, multiple: false })]);
     expect(h.saves).toEqual([{ folder: "/media/you/USB", every: "daily", onQuit: false, keep: 10 }]);
-    expect(fieldText("Folder")).toContain("/media/you/USB/Gizai backups");
+    expect(fieldText("Folder")).toContain("/media/you/USB/Hersir backups");
     expect(button("Turn off").disabled).toBe(false);
     expect(button("Back up now").disabled).toBe(false);
     // the list is read again for the new folder, without a reload
@@ -311,7 +311,7 @@ describe("Folder", () => {
     await click("Browse…");
     expect(h.pickerOpts).toHaveLength(1);
     expect(h.saves).toEqual([]);
-    expect(fieldText("Folder")).toContain("/home/you/Dropbox/Gizai backups");
+    expect(fieldText("Folder")).toContain("/home/you/Dropbox/Hersir backups");
   });
 
   it("a folder the backend refuses shows why under Folder, and nothing is saved", async () => {
@@ -320,12 +320,12 @@ describe("Folder", () => {
     await click("Browse…");
     expect(under("Folder")).toBe("error: Hersir can't write in /readonly/disk: permission denied");
     expect(st().settings.folder).toBe("/home/you/Dropbox");
-    expect(fieldText("Folder")).toContain("/home/you/Dropbox/Gizai backups");
+    expect(fieldText("Folder")).toContain("/home/you/Dropbox/Hersir backups");
     // a good folder after it clears the refusal
     h.picked = "/media/you/USB";
     await click("Browse…");
     expect(under("Folder")).toBe("");
-    expect(fieldText("Folder")).toContain("/media/you/USB/Gizai backups");
+    expect(fieldText("Folder")).toContain("/media/you/USB/Hersir backups");
   });
 
   it("Turn off clears the folder at once (folder null): Not set, Back up now off, no next, no list", async () => {
@@ -348,10 +348,10 @@ describe("Folder", () => {
 
   it("a folder problem that comes in backups-changed shows without a reload", async () => {
     await show();
-    Object.assign(st(), { folderProblem: "Hersir can't write in /home/you/Dropbox/Gizai backups" });
+    Object.assign(st(), { folderProblem: "Hersir can't write in /home/you/Dropbox/Hersir backups" });
     send();
     await settle();
-    expect(under("Folder")).toBe("warn: Hersir can't write in /home/you/Dropbox/Gizai backups");
+    expect(under("Folder")).toBe("warn: Hersir can't write in /home/you/Dropbox/Hersir backups");
     expect(h.calls.status).toBe(1);
   });
 });
@@ -533,9 +533,9 @@ describe("Back up now", () => {
 
   it("a refusal shows why next to it, and the button is on again", async () => {
     await show();
-    h.nowRefusal = "Hersir can't write in /home/you/Dropbox/Gizai backups";
+    h.nowRefusal = "Hersir can't write in /home/you/Dropbox/Hersir backups";
     await click("Back up now");
-    expect(under("Last and next")).toBe("error: Hersir can't write in /home/you/Dropbox/Gizai backups");
+    expect(under("Last and next")).toBe("error: Hersir can't write in /home/you/Dropbox/Hersir backups");
     expect(button("Back up now").disabled).toBe(false);
   });
 
@@ -604,9 +604,9 @@ describe("the list", () => {
   });
 
   it("a list that can't be read says why while the folder is fine, and waits for the folder while it has a problem", async () => {
-    h.listRefusal = "/home/you/Dropbox/Gizai backups/gizai-backups.json: not JSON";
+    h.listRefusal = "/home/you/Dropbox/Hersir backups/gizai-backups.json: not JSON";
     await show();
-    expect(fieldText("Backups")).toBe("/home/you/Dropbox/Gizai backups/gizai-backups.json: not JSON");
+    expect(fieldText("Backups")).toBe("/home/you/Dropbox/Hersir backups/gizai-backups.json: not JSON");
     root = () => null;
     render();
     h.listRefusal = "No such file or directory (os error 2)";

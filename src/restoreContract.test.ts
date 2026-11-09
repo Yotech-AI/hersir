@@ -186,9 +186,9 @@ describe("the texts say Hersir", () => {
   it.each([["src/lib/restore.ts", restoreTs], ["src/components/RestoreNotice.tsx", noticeTsx], ["src/components/BackupSettings.tsx", sectionTsx]])("%s, its comments aside", (_, src) => {
     expect(noComments(src)).not.toMatch(/\bGiz[Aa][Ii]\b/);
   });
-  it("the docs' Restore parts, but for the backups folder's kept name", () => {
+  it("the docs' Restore parts, the backups folder's name too (GA-246)", () => {
     const parts = [section(settingsMd, "### Restore"), section(installMd, "### Restore a backup"), section(paidMd, "### Phase 0: local snapshots (free, in the app): 2–3 days")];
-    for (const part of parts) expect(part.replace(/Gizai backups/g, "")).not.toMatch(/\bGiz[Aa][Ii]\b/);
+    for (const part of parts) expect(part).not.toMatch(/\bGiz[Aa][Ii]\b/);
   });
 });
 

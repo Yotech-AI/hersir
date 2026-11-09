@@ -135,9 +135,9 @@ describe("the fakes' copies of the backend's texts are true", () => {
     const newer = fixtures.list_backups.find((e) => !e.restorable)!;
     expect(newer.problem).toBe(`A newer Hersir made it (${newer.appVersion}): update Hersir to restore it`);
   });
-  it("the backups folder's name, kept through the rename (GA-232)", () => {
+  it("the backups folder's name, Hersir backups since GA-246, as the fixtures and the fake have it", () => {
     const name = /pub const FOLDER_NAME: &str = "([^"]+)";/.exec(coreBackupsRs)?.[1] ?? "";
-    expect(name).not.toBe("");
+    expect(name).toBe("Hersir backups");
     expect(fixtures.backup_status.folder).toBe(`${fixtures.backup_status.settings.folder}/${name}`);
     expect(fakeTs).toContain(`\${folder}/${name}`);
   });
