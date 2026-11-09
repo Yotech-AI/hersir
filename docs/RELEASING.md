@@ -136,7 +136,7 @@ Hersir 0.11.0 installs with one line on Linux, macOS and Windows, and is now ope
 
 - **Install with one line.** `curl -fsSL https://hersir.dev/install.sh | sh` on Linux and macOS, or `irm https://hersir.dev/install.ps1 | iex` in PowerShell on Windows 11. Run it again to update.
 - **Apache-2.0.** Hersir's licence is now the Apache License 2.0. Releases before it stay under MIT.
-- **The Team Lead can update a linked folder with uncommitted changes:** after your yes, it puts them in git's stash first.
+- **The Chief can update a linked folder with uncommitted changes:** after your yes, it puts them in git's stash first.
 - **The chat says when an answer is done** after your last Approve or Discard.
 - **Fixed:** long card titles no longer run over the rows in the folder picker and the sidebar's Editor list, a folder you open again keeps its place, and the sidebar's + and caret are centred.
 
@@ -147,7 +147,7 @@ Hersir 0.11.0 installs with one line on Linux, macOS and Windows, and is now ope
 
 **Who writes them:**
 
-1. **The Team Lead drafts** the share line and "What's new" in the release card's description, from the cards in Done since the last release. It knows the board and writes for people.
+1. **The Chief drafts** the share line and "What's new" in the release card's description, from the cards in Done since the last release. It knows the board and writes for people.
 2. **Jeffrey edits them, or leaves them as they are, and starts the DevOps Agent.** Starting it is his OK to release, as always.
 3. **The DevOps Agent** copies the notes from the card into `<notes.md>` (step 3), outside the repository's files, adds the format's Update line and All changes heading when they're missing, and publishes. When the card has no "What's new", it writes one from the merged pull requests and stops with `needs_decision`, so no notes go out unread.
 

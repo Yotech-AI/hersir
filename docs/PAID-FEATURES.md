@@ -32,7 +32,7 @@ Plan, 2026-10-07. No code yet. The market research behind it, with sources and d
 Everything in the desktop app:
 
 - clients, projects, tasks, docs, files;
-- agents, the Team Lead chat, worktrees and gates;
+- agents, the Chief's chat, worktrees and gates;
 - the code editor, a card's changes and the terminal;
 - screenshots of what agents built, and the previews they're taken from;
 - local snapshots to any folder (including a Dropbox or Syncthing folder) and export.
