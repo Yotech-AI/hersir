@@ -17,7 +17,7 @@ Each feature's doc says which settings it uses: [Updates](install.md#updates), [
 
 ## Backups
 
-Settings → General → Backups copies your data to a folder you choose: a USB disk, or a folder that Dropbox or Syncthing keeps. Inside it Hersir makes a folder named `Gizai backups` and backs up there, unless the folder you chose is such a folder already (it holds `gizai-backups.json`). Each change saves at once; a value that can't be saved, like Keep 0, shows why under its field and nothing is saved.
+Settings → General → Backups copies your data to a folder you choose: a USB disk, or a folder that Dropbox or Syncthing keeps. Inside it Hersir makes a folder named `Hersir backups` and backs up there, unless the folder you chose is such a folder already (it holds `gizai-backups.json`). Each change saves at once; a value that can't be saved, like Keep 0, shows why under its field and nothing is saved.
 
 - **What a backup holds:** the database and the files Hersir stores (attachments and screenshots).
 - **What it never holds:** keys, passwords and sign-ins, which stay in your system's keychain; nor worktrees, run and chat logs, or the source of an update.
@@ -37,7 +37,7 @@ Back up now makes one at once, in the background, and shows its step while it ru
 
 ### Restore
 
-Each backup that can be restored has Restore, which can't be pressed while a backup or another restore runs. One that can't be restored, such as one a newer Hersir made or one with missing files, says why instead. Below the list, Restore from another folder… opens your system's folder picker and lists that folder's backups, other computers' too: a USB disk on a new computer, say. Choose the `Gizai backups` folder or the folder it is in.
+Each backup that can be restored has Restore, which can't be pressed while a backup or another restore runs. One that can't be restored, such as one a newer Hersir made or one with missing files, says why instead. Below the list, Restore from another folder… opens your system's folder picker and lists that folder's backups, other computers' too: a USB disk on a new computer, say. Choose the `Hersir backups` folder or the folder it is in.
 
 1. **The question.** Restore says which backup it is (why it was made, its time and its computer) and where today's data goes: the backups folder set above, or else the folder you restore from. Cancel changes nothing.
 2. **The steps.** Hersir checks the backup, saves today's data as a backup and copies what the restart needs, in the background, and shows each step here and in the sidebar. You can go on working. Cancel restore stops it. If something is wrong, such as a backup from a newer Hersir or a file that is missing or has changed, the reason shows and your data stays as it is.

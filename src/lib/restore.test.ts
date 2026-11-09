@@ -16,8 +16,8 @@ const result = (over: Partial<NonNullable<RestoreStatus["result"]>>) =>
 
 describe("the confirm's text", () => {
   it("this computer's backup: the card's text word for word", () => {
-    expect(confirmText(mine, "/home/you/Dropbox/Gizai backups", NOW)).toBe(
-      `Daily, today 11:00, from this computer. Hersir first saves today's data as a backup in /home/you/Dropbox/Gizai backups. ${AFTER}`);
+    expect(confirmText(mine, "/home/you/Dropbox/Hersir backups", NOW)).toBe(
+      `Daily, today 11:00, from this computer. Hersir first saves today's data as a backup in /home/you/Dropbox/Hersir backups. ${AFTER}`);
   });
   it("another computer's says which", () => {
     expect(confirmText({ ...mine, reason: "manual", madeAt: at(26, 9), thisComputer: false, deviceName: "work-laptop" }, "/media/usb", NOW)).toBe(
@@ -36,13 +36,13 @@ describe("the confirm's text", () => {
 
 describe("the folder today's data goes to, as save_today picks it", () => {
   it("the backups folder in Settings", () => {
-    expect(saveFolder({ folder: "/home/you/Dropbox/Gizai backups", folderProblem: null }, "/media/usb")).toBe("/home/you/Dropbox/Gizai backups");
+    expect(saveFolder({ folder: "/home/you/Dropbox/Hersir backups", folderProblem: null }, "/media/usb")).toBe("/home/you/Dropbox/Hersir backups");
   });
   it("the folder restored from when none is set", () => {
     expect(saveFolder({ folder: null, folderProblem: null }, "/media/usb")).toBe("/media/usb");
   });
   it("the folder restored from when the one in Settings can't be used now", () => {
-    expect(saveFolder({ folder: "/media/gone/Gizai backups", folderProblem: "The folder isn't there: is the disk plugged in?" }, "/media/usb")).toBe("/media/usb");
+    expect(saveFolder({ folder: "/media/gone/Hersir backups", folderProblem: "The folder isn't there: is the disk plugged in?" }, "/media/usb")).toBe("/media/usb");
   });
 });
 

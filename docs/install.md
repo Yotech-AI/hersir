@@ -174,7 +174,7 @@ It cleans up after itself when it starts and once a day while it runs:
 
 Settings → General → Backups lists the backups in your folder, each with Restore. Restore says what will happen, saves today's data as a backup first, and checks and copies the backup. Then Restart now swaps it in: Hersir starts with your data as it was then. What changed since, also until the restart, is not kept. Keys and passwords stay as they are on this computer, and agents are paused afterwards. How it works: [Restore](settings.md#restore).
 
-On a new computer, install Hersir ([In one line](#in-one-line)) and plug in the USB disk, or let Dropbox or Syncthing bring the folder. Then go to Settings → General → Backups → Restore from another folder…, choose the `Gizai backups` folder or the folder it is in, and press Restore on a backup. The new computer keeps its own name and its own settings, such as its programs and the Editor's folders. Projects' linked folders and agents' folders come from the backup: change those that are elsewhere on this computer. Sign in again where Hersir asks: keys and passwords are never in a backup.
+On a new computer, install Hersir ([In one line](#in-one-line)) and plug in the USB disk, or let Dropbox or Syncthing bring the folder. Then go to Settings → General → Backups → Restore from another folder…, choose the `Hersir backups` folder or the folder it is in, and press Restore on a backup. The new computer keeps its own name and its own settings, such as its programs and the Editor's folders. Projects' linked folders and agents' folders come from the backup: change those that are elsewhere on this computer. Sign in again where Hersir asks: keys and passwords are never in a backup.
 
 ## No telemetry
 

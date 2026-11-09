@@ -8,12 +8,13 @@ A snapshot holds only the database and the stored files it names (attachments an
 
 Settings → General → Backups names a folder: a USB disk, or a folder Dropbox or Syncthing keeps.
 
-- A folder that holds `gizai-backups.json` is a backups folder, and Hersir uses it as it is.
-- Any other folder gets a backups folder inside it, named `Gizai backups`. The first snapshot makes it.
-- A folder given to list the snapshots in, or to restore from, is read the same way: the folder itself when it holds `gizai-backups.json`, else its `Gizai backups`.
+- A folder that holds `gizai-backups.json` is a backups folder, and Hersir uses it as it is, whatever its name.
+- Any other folder gets a backups folder inside it, named `Hersir backups`. The first snapshot makes it.
+- An older Hersir named that folder `Gizai backups`. It is still found and used as it is, when it holds `gizai-backups.json` and the folder it is in has no `Hersir backups`: snapshots go on there, the list and a restore read it, and nothing is renamed or moved. When both are there, `Hersir backups` is used.
+- A folder given to list the snapshots in, or to restore from, is read the same way: the folder itself when it holds `gizai-backups.json`, else the backups folder inside it, as above.
 
 ```
-Gizai backups/
+Hersir backups/
   gizai-backups.json             {"format":"gizai-backups","format_version":1}
   README.txt                     what this folder is, and: Restore in Hersir: Settings → General → Backups.
   snapshots/
@@ -127,7 +128,7 @@ This computer's, kept in its database; a restore keeps them. Saving checks Keep 
 
 A restore (GA-218) brings a snapshot back as this computer's data. It never makes two computers share one device id, this computer's own settings stay this computer's, and Hersir notes which snapshot it came back from, so a sync knows where this computer's data starts. The same rules hold for sync across devices. Nothing in the OS keychain is restored or removed: the restored data asks for the keys this computer doesn't have, as a new install does.
 
-`start_restore(folder, name)` runs in the background, one restore at a time, and is refused while a backup or another restore runs. `folder` is read as for listing (the folder itself when it holds `gizai-backups.json`, else its `Gizai backups`). Each step goes out in `restore-changed` with the status (contract BR's `RestoreStatus`). A restore that is ready already gives way to a new one.
+`start_restore(folder, name)` runs in the background, one restore at a time, and is refused while a backup or another restore runs. `folder` is read as for listing (the folder itself when it holds `gizai-backups.json`, else the backups folder inside it, as [The backups folder](#the-backups-folder) says). Each step goes out in `restore-changed` with the status (contract BR's `RestoreStatus`). A restore that is ready already gives way to a new one.
 
 ### 1. The checks
 

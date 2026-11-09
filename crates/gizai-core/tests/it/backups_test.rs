@@ -165,15 +165,17 @@ fn counts(c: &Connection) -> Vec<(String, i64)> {
 // ---- the folder ----
 
 #[test]
-fn back_up_makes_a_gizai_backups_folder_in_the_chosen_folder_with_the_layout_of_format_1() {
+fn back_up_makes_a_hersir_backups_folder_in_the_chosen_folder_with_the_layout_of_format_1() {
     let d = data();
     let a = d.attach("plan.pdf", b"the plan");
     let shot = d.attach("shot.png", b"a screenshot");
     let usb = chosen(&d, "usb");
+    assert_eq!(b::FOLDER_NAME, "Hersir backups");
     let made = d.make(&usb, Reason::Manual, 10);
 
-    let dir = usb.join("Gizai backups");
+    let dir = usb.join("Hersir backups");
     assert_eq!(made.dir, dir);
+    assert!(!usb.join("Gizai backups").exists(), "no folder with the old name");
     assert_eq!(b::backups_dir(&usb), dir);
     let name = &made.manifest.name;
     let mut want = vec![
@@ -189,7 +191,9 @@ fn back_up_makes_a_gizai_backups_folder_in_the_chosen_folder_with_the_layout_of_
     assert_eq!(tree(&usb).len(), want.len(), "nothing else in the chosen folder");
     assert_eq!(fs::read_to_string(dir.join("gizai-backups.json")).unwrap().trim(), r#"{"format":"gizai-backups","format_version":1}"#);
     let readme = fs::read_to_string(dir.join("README.txt")).unwrap();
+    assert_eq!(readme.lines().next(), Some("Hersir backups"), "README.txt starts with the folder's name: {readme}");
     assert!(readme.contains("Restore in Hersir: Settings → General → Backups."), "{readme}");
+    assert!(!readme.contains("Gizai") && !readme.contains("GizAi"), "{readme}");
     assert_eq!(fs::read(dir.join("files").join(&a[..2]).join(&a)).unwrap(), b"the plan", "a blob is the file as it is");
     assert!(temp_copies(&d).is_empty(), "the temporary copy is gone: {:?}", temp_copies(&d));
 }
@@ -202,7 +206,8 @@ fn a_chosen_folder_that_holds_gizai_backups_json_is_the_backups_folder_itself() 
     // the user then chooses the backups folder itself (or a copy of it on another disk)
     let made2 = d.make(&made.dir, Reason::Manual, 10);
     assert_eq!(made2.dir, made.dir);
-    assert!(!made.dir.join("Gizai backups").exists(), "no Gizai backups inside a backups folder");
+    assert!(!made.dir.join("Hersir backups").exists(), "no Hersir backups inside a backups folder");
+    assert!(!made.dir.join("Gizai backups").exists());
     assert_eq!(manifests_in(&made.dir).len(), 2);
 
     // a folder with only the marker in it is one too
@@ -217,15 +222,149 @@ fn a_chosen_folder_that_holds_gizai_backups_json_is_the_backups_folder_itself() 
 
 #[test]
 fn a_backups_folder_a_newer_gizai_made_takes_no_snapshot_and_says_why() {
+    // in a Hersir backups, and in an older Hersir's Gizai backups, which is found as well (GA-246)
+    for name in ["Hersir backups", "Gizai backups"] {
+        let d = data();
+        let usb = chosen(&d, "usb");
+        fs::create_dir_all(usb.join(name)).unwrap();
+        fs::write(usb.join(name).join("gizai-backups.json"), r#"{"format":"gizai-backups","format_version":2}"#).unwrap();
+        let why = b::folder_problem(&usb).expect("a problem");
+        assert!(why.contains("newer Hersir"), "{name}: {why}");
+        let err = b::make(&d.dir, d.db.device_id(), &usb, Reason::Manual, 10, &mut |_| Ok(())).unwrap_err().to_string();
+        assert!(err.contains("newer Hersir"), "{name}: {err}");
+        assert!(!usb.join(name).join("snapshots").exists());
+        assert_eq!(fs::read_dir(&usb).unwrap().count(), 1, "{name}: no other folder is made beside it");
+    }
+}
+
+// ---- the old name: an older Hersir's Gizai backups (GA-246) ----
+
+/// An older Hersir's backups folder in chosen folder `chosen`: `Gizai backups` with the marker, its own README.txt and
+/// one snapshot by `d` in it. Returns that folder and the snapshot's name.
+fn old_backups_folder(d: &Data, chosen: &Path) -> (PathBuf, String) {
+    let old = chosen.join("Gizai backups");
+    fs::create_dir_all(&old).unwrap();
+    fs::write(old.join("gizai-backups.json"), format!("{}\n", b::MARKER_JSON)).unwrap();
+    fs::write(old.join("README.txt"), "Gizai backups\n\nAn older Hersir's README.\n").unwrap();
+    // made with the folder itself chosen, as an older Hersir would have made it
+    let made = d.make(&old, Reason::Daily, 10);
+    assert_eq!(made.dir, old);
+    (old, made.manifest.name)
+}
+
+#[test]
+fn an_older_hersirs_gizai_backups_with_its_marker_takes_the_next_snapshots_and_is_never_renamed() {
+    let d = data();
+    d.attach("a.txt", b"one");
+    let usb = chosen(&d, "usb");
+    let (old, first) = old_backups_folder(&d, &usb);
+    assert_eq!(b::backups_dir(&usb), old, "the chosen folder stands for its Gizai backups");
+    assert_eq!(b::folder_problem(&usb), None);
+
+    let made = d.make(&usb, Reason::Manual, 10);
+    assert_eq!(made.dir, old, "the snapshot goes into Gizai backups");
+    let second = made.manifest.name;
+    assert_eq!(manifests_in(&old), {
+        let mut v = vec![format!("{first}.json"), format!("{second}.json")];
+        v.sort();
+        v
+    });
+    assert!(!usb.join("Hersir backups").exists(), "no Hersir backups is made beside it");
+    assert_eq!(fs::read_dir(&usb).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect::<Vec<_>>(),
+               ["Gizai backups"], "nothing renamed or moved");
+    assert_eq!(fs::read_to_string(old.join("README.txt")).unwrap(), "Gizai backups\n\nAn older Hersir's README.\n", "its README is kept");
+    assert_eq!(fs::read_to_string(old.join("gizai-backups.json")).unwrap().trim(), b::MARKER_JSON);
+    assert!(old.join("snapshots").join(format!("{second}.db.zst")).is_file());
+
+    // list reads it, from the chosen folder or the folder itself; newest and Keep work in it
+    for from in [&usb, &old] {
+        let names: Vec<String> = b::list(from, d.db.device_id()).unwrap().into_iter().map(|e| e.name).collect();
+        assert_eq!(names, [second.clone(), first.clone()], "newest first, from {}", from.display());
+    }
+    assert_eq!(b::newest(&old, d.db.device_id(), ids::now_ms()).map(|l| l.name), Some(second.clone()));
+    let third = d.make(&usb, Reason::Manual, 1);
+    assert_eq!(third.dir, old);
+    assert_eq!(third.pruned.snapshots, 2, "Keep 1 removes the two older ones in Gizai backups");
+    assert_eq!(manifests_in(&old), [format!("{}.json", third.manifest.name)]);
+    assert!(!usb.join("Hersir backups").exists());
+}
+
+#[test]
+fn the_status_names_an_older_hersirs_gizai_backups_as_the_folder_in_use() {
+    let d = data();
+    let usb = chosen(&d, "dropbox");
+    let (old, _) = old_backups_folder(&d, &usb);
+    b::save_settings(&d.db, BackupSettings { folder: Some(usb.to_string_lossy().into()), ..Default::default() }).unwrap();
+    let made = d.make(&usb, Reason::Manual, 10).manifest;
+    let st = b::status(&d.db, None, ids::now_ms());
+    assert_eq!(st.folder.as_deref(), Some(old.to_string_lossy().as_ref()));
+    assert_eq!(st.folder_problem, None);
+    assert_eq!(st.last.map(|l| l.name), Some(made.name));
+}
+
+#[test]
+fn a_gizai_backups_without_the_marker_is_not_a_backups_folder_and_the_snapshot_makes_hersir_backups() {
     let d = data();
     let usb = chosen(&d, "usb");
-    fs::create_dir_all(usb.join("Gizai backups")).unwrap();
-    fs::write(usb.join("Gizai backups/gizai-backups.json"), r#"{"format":"gizai-backups","format_version":2}"#).unwrap();
-    let why = b::folder_problem(&usb).expect("a problem");
-    assert!(why.contains("newer Hersir"), "{why}");
-    let err = b::make(&d.dir, d.db.device_id(), &usb, Reason::Manual, 10, &mut |_| Ok(())).unwrap_err().to_string();
-    assert!(err.contains("newer Hersir"), "{err}");
-    assert!(!usb.join("Gizai backups/snapshots").exists());
+    let other = usb.join("Gizai backups");
+    fs::create_dir_all(&other).unwrap();
+    fs::write(other.join("notes.txt"), "someone's own folder").unwrap();
+    assert_eq!(b::backups_dir(&usb), usb.join("Hersir backups"));
+    let made = d.make(&usb, Reason::Manual, 10);
+    assert_eq!(made.dir, usb.join("Hersir backups"));
+    assert_eq!(tree(&other), ["notes.txt"], "the other folder is left as it is");
+}
+
+#[test]
+fn with_both_hersir_backups_and_an_older_gizai_backups_hersir_backups_is_used() {
+    let d = data();
+    let usb = chosen(&d, "usb");
+    let (old, in_old) = old_backups_folder(&d, &usb);
+    let new = usb.join("Hersir backups");
+    fs::create_dir_all(&new).unwrap();
+    fs::write(new.join("gizai-backups.json"), format!("{}\n", b::MARKER_JSON)).unwrap();
+    assert_eq!(b::backups_dir(&usb), new);
+
+    let made = d.make(&usb, Reason::Manual, 10);
+    assert_eq!(made.dir, new);
+    assert_eq!(manifests_in(&new), [format!("{}.json", made.manifest.name)]);
+    assert_eq!(manifests_in(&old), [format!("{in_old}.json")], "Gizai backups is left as it is");
+    let names: Vec<String> = b::list(&usb, d.db.device_id()).unwrap().into_iter().map(|e| e.name).collect();
+    assert_eq!(names, [made.manifest.name.clone()], "the list is Hersir backups'");
+    // the old folder chosen itself is still a backups folder
+    let names: Vec<String> = b::list(&old, d.db.device_id()).unwrap().into_iter().map(|e| e.name).collect();
+    assert_eq!(names, [in_old.clone()]);
+
+    // a Hersir backups the first snapshot made but hasn't finished (no marker yet) is used too
+    let d2 = data();
+    let usb2 = chosen(&d2, "usb2");
+    let (old2, _) = old_backups_folder(&d2, &usb2);
+    fs::create_dir_all(usb2.join("Hersir backups")).unwrap();
+    assert_eq!(b::backups_dir(&usb2), usb2.join("Hersir backups"));
+    let made2 = d2.make(&usb2, Reason::Manual, 10);
+    assert_eq!(made2.dir, usb2.join("Hersir backups"));
+    assert_eq!(manifests_in(&old2).len(), 1);
+}
+
+#[test]
+fn a_chosen_backups_folder_is_used_as_it_is_whatever_its_name_and_whatever_is_inside() {
+    let d = data();
+    for name in ["Gizai backups", "Hersir backups", "my snapshots"] {
+        let root = chosen(&d, &format!("disk-{}", name.replace(' ', "-")));
+        let dir = root.join(name);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("gizai-backups.json"), format!("{}\n", b::MARKER_JSON)).unwrap();
+        // a folder with either name inside it doesn't change that
+        fs::create_dir_all(dir.join("Hersir backups")).unwrap();
+        fs::create_dir_all(dir.join("Gizai backups")).unwrap();
+        fs::write(dir.join("Gizai backups/gizai-backups.json"), format!("{}\n", b::MARKER_JSON)).unwrap();
+        assert_eq!(b::backups_dir(&dir), dir, "{name}");
+        let made = d.make(&dir, Reason::Manual, 10);
+        assert_eq!(made.dir, dir, "{name}");
+        assert!(tree(&dir.join("Hersir backups")).is_empty() && tree(&dir.join("Gizai backups")) == ["gizai-backups.json"], "{name}");
+        let names: Vec<String> = b::list(&dir, d.db.device_id()).unwrap().into_iter().map(|e| e.name).collect();
+        assert_eq!(names, [made.manifest.name.clone()], "{name}");
+    }
 }
 
 // ---- the name and the manifest ----
@@ -481,7 +620,7 @@ fn a_snapshot_that_fails_at_any_step_leaves_no_manifest_no_part_file_and_no_temp
             if step == at { Err(Error::Invalid(format!("the disk is full at {}", step.as_str()))) } else { Ok(()) }
         }).unwrap_err();
         assert!(err.to_string().contains("the disk is full"), "{err}");
-        let dir = usb.join("Gizai backups");
+        let dir = usb.join("Hersir backups");
         assert!(manifests_in(&dir).is_empty(), "at {at:?}: {:?}", tree(&dir));
         assert!(parts_in(&dir).is_empty(), "at {at:?}: {:?}", parts_in(&dir));
         assert!(!tree(&dir.join("snapshots")).iter().any(|f| f.ends_with(".db.zst")), "at {at:?}: no database without its manifest");
@@ -623,7 +762,7 @@ fn keep_counts_a_snapshot_dated_after_now_as_the_oldest() {
     let d = data();
     let usb = chosen(&d, "usb");
     let ahead = d.make(&usb, Reason::Manual, 10).manifest.name;
-    edit_manifest(&usb.join("Gizai backups"), &ahead, |v| v["made_at"] = serde_json::json!(ids::now_ms() + 365 * DAY));
+    edit_manifest(&usb.join("Hersir backups"), &ahead, |v| v["made_at"] = serde_json::json!(ids::now_ms() + 365 * DAY));
     let made = d.make(&usb, Reason::Manual, 1);
     assert_eq!(made.pruned.snapshots, 1);
     let left = manifests_in(&made.dir);
@@ -655,11 +794,11 @@ fn list_shows_every_computers_snapshots_newest_first_and_whether_each_can_be_res
     assert_eq!((m.db_bytes, m.files_count, m.files_bytes, m.files_missing), (mine.db.db_bytes, 1, 3, 0));
     assert!(m.restorable && m.problem.is_none());
     // the other computer sees them the other way round; the backups folder itself lists the same
-    let theirs_view = b::list(&usb.join("Gizai backups"), other.db.device_id()).unwrap();
+    let theirs_view = b::list(&usb.join("Hersir backups"), other.db.device_id()).unwrap();
     assert_eq!(theirs_view.iter().filter(|e| e.this_computer).map(|e| e.name.clone()).collect::<Vec<_>>(), [theirs.name.clone()]);
 
     // a newer schema, a newer format, a missing database file, missing files
-    let dir = usb.join("Gizai backups");
+    let dir = usb.join("Hersir backups");
     edit_manifest(&dir, &newer.name, |v| v["schema_version"] = serde_json::json!(99));
     edit_manifest(&dir, &theirs.name, |v| v["format_version"] = serde_json::json!(2));
     let list = b::list(&usb, a.db.device_id()).unwrap();
@@ -851,7 +990,7 @@ fn the_status_says_why_the_folder_cant_be_used_and_shows_no_last_or_next_then() 
     let made = d.make(&usb, Reason::Manual, 10).manifest;
     let now = ids::now_ms();
     let st = b::status(&d.db, None, now);
-    assert_eq!(st.folder.as_deref(), Some(usb.join("Gizai backups").to_string_lossy().as_ref()));
+    assert_eq!(st.folder.as_deref(), Some(usb.join("Hersir backups").to_string_lossy().as_ref()));
     assert_eq!(st.folder_problem, None);
     assert_eq!(st.last.as_ref().map(|l| l.name.clone()), Some(made.name.clone()));
     assert_eq!(st.next, Some(made.made_at + DAY));
@@ -910,9 +1049,9 @@ fn no_keychain_value_worktree_log_code_copy_or_update_file_ends_up_in_the_folder
     let made = d.make(&usb, Reason::Manual, 10);
     let name = &made.manifest.name;
     for f in tree(&usb) {
-        let ok = f == "Gizai backups/gizai-backups.json" || f == "Gizai backups/README.txt"
-            || f == format!("Gizai backups/snapshots/{name}.json") || f == format!("Gizai backups/snapshots/{name}.db.zst")
-            || f.strip_prefix("Gizai backups/files/").is_some_and(|rest| rest.len() == 67 && rest.as_bytes()[2] == b'/');
+        let ok = f == "Hersir backups/gizai-backups.json" || f == "Hersir backups/README.txt"
+            || f == format!("Hersir backups/snapshots/{name}.json") || f == format!("Hersir backups/snapshots/{name}.db.zst")
+            || f.strip_prefix("Hersir backups/files/").is_some_and(|rest| rest.len() == 67 && rest.as_bytes()[2] == b'/');
         assert!(ok, "only the database and its blobs: {f}");
         let mut bytes = fs::read(usb.join(&f)).unwrap();
         if f.ends_with(".db.zst") {

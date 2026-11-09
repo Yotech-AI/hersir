@@ -30,10 +30,10 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe("the fixtures (fixtures.rs → fixtures.json)", () => {
-  it("backup_status: a folder in Dropbox (its Gizai backups folder in use), daily, Keep 10, not on quit, nothing running or failed", async () => {
+  it("backup_status: a folder in Dropbox (its Hersir backups folder in use), daily, Keep 10, not on quit, nothing running or failed", async () => {
     const s = await status();
     expect(s.settings).toEqual({ folder: "/home/you/Dropbox", every: "daily", onQuit: false, keep: 10 });
-    expect(s.folder).toBe("/home/you/Dropbox/Gizai backups");
+    expect(s.folder).toBe("/home/you/Dropbox/Hersir backups");
     expect([s.folderProblem, s.running, s.lastError]).toEqual([null, null, null]);
     expect(Object.keys(s).sort()).toEqual(["folder", "folderProblem", "last", "lastError", "next", "running", "settings"]);
   });
@@ -82,9 +82,9 @@ describe("the fixtures (fixtures.rs → fixtures.json)", () => {
     expect((await list()).filter((e) => e.thisComputer).map((e) => e.appVersion)).toEqual([app, app]);
   });
 
-  it("the texts it carries say Hersir; Gizai is left only in the backups folder's kept name", async () => {
+  it("the texts it carries say Hersir, the backups folder's name too (GA-246)", async () => {
     const texts = JSON.stringify([await status(), await list()]);
-    expect(texts.replace(/Gizai backups/g, "")).not.toMatch(/\bGiz[Aa][Ii]\b/);
+    expect(texts).not.toMatch(/\bGiz[Aa][Ii]\b/);
   });
 });
 
@@ -118,11 +118,11 @@ describe("the browser's answers to the section's writes", () => {
     await expect(answer("back_up_now", {})).rejects.toBe("Choose a folder for backups first");
   });
 
-  it("a folder set again backs up in its folder named as the fixtures name it (the backend's FOLDER_NAME, Gizai backups)", async () => {
+  it("a folder set again backs up in its folder named as the fixtures name it (the backend's FOLDER_NAME, Hersir backups)", async () => {
     const off = (await save({ folder: null }, (await status()).settings)) as BackupStatus;
     const out = (await save({ folder: " /media/you/USB " }, off.settings)) as BackupStatus;
     expect(out.settings.folder).toBe("/media/you/USB");
-    expect(out.folder).toBe("/media/you/USB/Gizai backups");
+    expect(out.folder).toBe("/media/you/USB/Hersir backups");
     expect([out.folderProblem, out.last]).toEqual([null, null]);
     // daily without a backup there yet: due now
     expect(out.next).toBe(Date.now());

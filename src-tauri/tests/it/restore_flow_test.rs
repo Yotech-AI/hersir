@@ -471,3 +471,54 @@ fn restart_to_restore_starts_the_same_gizai_again_without_an_update_and_restart_
     until("the program started after the process quit", || marker.exists().then_some(()));
     sh.wait().unwrap();
 }
+
+// ---- an older Hersir's Gizai backups (GA-246) ----
+
+#[test]
+fn a_restore_from_a_folder_with_an_older_hersirs_gizai_backups_reads_it_saves_todays_data_there_and_renames_nothing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (st, usb) = gizai(tmp.path());
+    // an older Hersir's backups folder, with its marker and README.txt, and a snapshot in it
+    let old = usb.join("Gizai backups");
+    fs::create_dir_all(&old).unwrap();
+    fs::write(old.join(core::MARKER), format!("{}\n", core::MARKER_JSON)).unwrap();
+    fs::write(old.join("README.txt"), "Gizai backups\n\nAn older Hersir's README.\n").unwrap();
+    let a = attach(&st, "a.txt", b"in the snapshot");
+    let snap = app::back_up(&st, Some(&old), Reason::Manual).unwrap().manifest;
+    let today = attach(&st, "b.txt", b"only today");
+    // Settings names the folder it is in: today's data is saved once, in Gizai backups
+    app::save_settings(&st, settings(&usb)).unwrap();
+
+    // a restore that is cancelled, given Gizai backups itself
+    restore::start(&st, &old.to_string_lossy(), &snap.name).unwrap();
+    assert_eq!(ended(&st).state, "ready");
+    restore::cancel(&st).unwrap();
+    nothing_staged(&st);
+    assert_eq!(before_restore(&usb).len(), 1);
+
+    // and one given the folder it is in
+    let started = restore::start(&st, &usb.to_string_lossy(), &snap.name).unwrap();
+    assert_eq!(started.folder.as_deref(), Some(old.to_string_lossy().as_ref()), "the status names Gizai backups");
+    let done = ended(&st);
+    assert_eq!(done.state, "ready", "{done:?}");
+    assert_eq!(done.error, None);
+    assert_eq!(done.folder.as_deref(), Some(old.to_string_lossy().as_ref()));
+    assert_eq!(done.snapshot.as_ref().map(|e| e.name.as_str()), Some(snap.name.as_str()));
+    let saved = before_restore(&usb);
+    assert_eq!(saved.len(), 2, "{saved:?}");
+    assert!(saved.iter().all(|n| old.join("snapshots").join(n).is_file()), "today's data is saved in Gizai backups");
+    assert!(!usb.join("Hersir backups").exists(), "no Hersir backups is made");
+    assert_eq!(fs::read_dir(&usb).unwrap().count(), 1, "nothing renamed or moved");
+    assert_eq!(fs::read_to_string(old.join("README.txt")).unwrap(), "Gizai backups\n\nAn older Hersir's README.\n");
+
+    // the restart has the snapshot's data
+    let data = st.data_dir.clone();
+    drop(st);
+    data_lock::released_blocking(&data);
+    let st = gizai_lib::test_state(tmp.path());
+    let result = restore::status(&st).result.expect("the result");
+    assert!(result.ok, "{result:?}");
+    assert_eq!(result.snapshot, snap.name);
+    assert_eq!(files_rows(&st), vec![a]);
+    assert!(!files_rows(&st).contains(&today));
+}

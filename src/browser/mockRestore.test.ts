@@ -86,7 +86,7 @@ describe("start_restore in the browser", () => {
       ["saving", "Saving today's data"], ["staging", "Copying the database"], ["staging", `Copying files (${n} of ${n})`], ["ready", null],
     ]);
     expect(await status()).toEqual(events().at(-1));
-    expect(events().at(-1)).toMatchObject({ folder: "/home/you/Dropbox/Gizai backups", snapshot: { name: e.name }, error: null, result: null });
+    expect(events().at(-1)).toMatchObject({ folder: "/home/you/Dropbox/Hersir backups", snapshot: { name: e.name }, error: null, result: null });
   });
 
   it("while today's data is saved a before-restore backup runs, and then is the newest row with savedToday's name", async () => {
@@ -107,7 +107,7 @@ describe("start_restore in the browser", () => {
   it("another computer's from the disk: its backups folder, and today's data goes to the folder in Settings", async () => {
     const before = await inSettings();
     const e = await usbReason("daily");
-    expect(await status()).toMatchObject({ state: "ready", folder: `${USB}/Gizai backups`, snapshot: { name: e.name, deviceName: "work-laptop" } });
+    expect(await status()).toMatchObject({ state: "ready", folder: `${USB}/Hersir backups`, snapshot: { name: e.name, deviceName: "work-laptop" } });
     expect(await inSettings()).toHaveLength(before.length + 1);
     expect(await onUsb()).toHaveLength(4);
   });
@@ -129,7 +129,7 @@ describe("start_restore in the browser", () => {
     const s = await status();
     expect(s.state).toBe("failed");
     expect(s.step).toBeNull();
-    expect(s.error).toMatch(/^The snapshot's database file has changed since the snapshot was made: \/media\/you\/USB\/Gizai backups\/snapshots\/.+\.db\.zst doesn't match its manifest$/);
+    expect(s.error).toMatch(/^The snapshot's database file has changed since the snapshot was made: \/media\/you\/USB\/Hersir backups\/snapshots\/.+\.db\.zst doesn't match its manifest$/);
     expect(await inSettings()).toHaveLength(before.length);
     expect((await backup()).running).toBeNull();
   });

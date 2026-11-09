@@ -18,7 +18,7 @@ const KEPT = [
   /Library\/Application Support\/Gizai/, // macOS's data folder (data folders stay)
   /\.join\("Gizai"\)/, // Windows's data folder under APPDATA
   /%APPDATA%\\Gizai/, // gizai --help names the data folders as they are
-  /"Gizai backups/, // the backups folder's name, and its README's first line that names it
+  /OLD_FOLDER_NAME: &str = "Gizai backups";/, // the backups folder an older Hersir made, still found (GA-246)
   /"Stopped because Gizai quit\."/, // what runs an older version's quit stopped say: the board check reads it as a quit
 ];
 
@@ -98,7 +98,8 @@ describe("the name in the backend's texts (GA-232)", () => {
     expect(read("crates/gizai-core/src/mcp_servers.rs")).toContain('pub const TAKEN: [&str; 2] = ["gizai", "chrome-devtools"];');
     expect(read("crates/gizai-agents/src/worktree.rs")).toContain('pub const TEMP_DIR: &str = ".gizai-tmp";');
     expect(read("crates/gizai-core/src/backups.rs")).toContain('pub const MARKER: &str = "gizai-backups.json";');
-    expect(read("crates/gizai-core/src/backups.rs")).toContain('pub const FOLDER_NAME: &str = "Gizai backups";');
+    expect(read("crates/gizai-core/src/backups.rs")).toContain('pub const FOLDER_NAME: &str = "Hersir backups";');
+    expect(read("crates/gizai-core/src/backups.rs")).toContain('pub const OLD_FOLDER_NAME: &str = "Gizai backups";');
     const templates = read("crates/gizai-core/src/templates.rs");
     expect(templates).toContain('pub const FORMAT: &str = "gizai-team";');
     expect(templates).toContain('pub const FILE_SUFFIX: &str = ".gizai-team.json";');
