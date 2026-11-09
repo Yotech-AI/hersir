@@ -173,7 +173,7 @@ If every customer filled the 10 GB quota, 1,000 customers would store about 15 T
 
 Out for EU data or for a desktop client: Clerk and WorkOS (no data residency on their price pages), Stytch (US servers only), Descope (Frankfurt only on unpublished plans), Supabase Auth (redirects must match exactly, so a changing port is probably refused), Hanko (above). Zitadel is the only one here that is not a US company, is a certified OIDC provider, and keeps EU data on every plan.
 
-#### Self-hosted, if the managed one goes away [V/I, S-A13 to S-A17]
+#### Self-hosted, if the managed one goes away [V/I, S-A2, S-A13 to S-A16]
 
 | Project | Licence | What it needs | Fit |
 |---|---|---|---|
