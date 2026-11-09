@@ -107,7 +107,11 @@ fn gemini_gets_web_fetch_only_when_on_and_nothing_else_from_the_web_switches() {
     assert_eq!(on.iter().filter(|a| *a == "--allowed-tools=web_fetch").count(), 1, "{on:?}");
     let search = args_of(Kind::Gemini, web(true, false, &[]));
     assert_eq!(search, off, "Gemini's web search is its own policy's: the switch changes nothing on its command line");
-    assert!(!on.iter().any(|a| a.contains("mcp") || a.contains("settings")), "no MCP servers or settings files for Gemini: {on:?}");
+    // GA-263: only the run's own MCP servers (none here: one empty name), and no extensions
+    let names = on.iter().position(|a| a == "--allowed-mcp-server-names").expect("--allowed-mcp-server-names");
+    assert_eq!(on[names + 1], "", "{on:?}");
+    let rest: Vec<&String> = on.iter().enumerate().filter(|(i, _)| *i != names).map(|(_, a)| a).collect();
+    assert!(!rest.iter().any(|a| a.contains("mcp") || a.contains("settings")), "no MCP servers or settings files for Gemini: {on:?}");
 }
 
 #[test]
