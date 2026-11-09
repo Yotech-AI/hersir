@@ -17,6 +17,7 @@ mod chat_archive_test;
 mod chat_files_test;
 mod chat_runs_on_test;
 mod chat_test;
+mod chief_test;
 mod cli_tools_test;
 mod clients_test;
 mod clis_test;

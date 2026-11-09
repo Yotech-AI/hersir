@@ -113,7 +113,7 @@ pub struct Project {
     pub worktree_install: bool,
     /// …and this command runs in it.
     pub worktree_setup: Option<String>,
-    /// Team Lead may merge (GA-86): the Team Lead's merge_pull_request may merge a pull request QA passed, once its checks
+    /// Chief may merge (GA-86): the Chief's merge_pull_request may merge a pull request QA passed, once its checks
     /// are green. Off by default; only a person sets it, in the app.
     #[serde(default)]
     pub lead_may_merge: bool,
@@ -161,7 +161,7 @@ pub struct ProjectInput {
     pub worktree_setup: Option<String>,
     /// Test runs at once (GA-212), 1 to 20; 0 removes it (no limit of its own); None keeps it (none for a new project).
     pub test_runs_at_once: Option<i64>,
-    /// Team Lead may merge; None keeps it (off for a new project). Only a person may give it (`projects::create`/`update`
+    /// Chief may merge; None keeps it (off for a new project). Only a person may give it (`projects::create`/`update`
     /// refuse it from an agent).
     pub lead_may_merge: Option<bool>,
     /// The project's screenshots (GA-182); None keeps them (the defaults for a new project).
@@ -226,7 +226,7 @@ pub struct Task {
     /// (`Run::run_for_me`); Done, continue resumes that run. Empty otherwise.
     #[serde(default)]
     pub run_for_me: Vec<String>,
-    /// GA-70: the card is on hold for a decision and its question is with the Team Lead, which answers it or asks you; it
+    /// GA-70: the card is on hold for a decision and its question is with the Chief, which answers it or asks you; it
     /// isn't in the Inbox meanwhile (`questions`).
     #[serde(default)]
     pub with_lead: bool,
@@ -374,7 +374,7 @@ pub struct AgentInput {
     pub instructions_md: Option<String>,
     pub permission_mode: String,
     pub allowed_tools: Vec<String>,
-    /// The Team Lead's old wake-up ("manual" | "on_assign" | "heartbeat"). Worker agents have none: the columns they are on
+    /// The Chief's old wake-up ("manual" | "on_assign" | "heartbeat"). Worker agents have none: the columns they are on
     /// decide when they start (`columns`), so it changes nothing for them.
     pub wakeup: String,
     pub heartbeat_minutes: Option<i64>,
@@ -386,17 +386,17 @@ pub struct AgentInput {
     pub effort: Option<String>,
     /// Cards it works on at once (1–10), each in its own worktree. None: 1 for a new agent, unchanged on update.
     pub max_runs: Option<i64>,
-    /// The Team Lead's board check: every this many minutes (5–1440), 0 = off. None: off for a new agent, unchanged on
+    /// The Chief's board check: every this many minutes (5–1440), 0 = off. None: off for a new agent, unchanged on
     /// update.
     pub board_check_minutes: Option<i64>,
     /// The folders besides its worktree its file tools may use (`folders`). None: none for a new agent, unchanged on
-    /// update. Only the agent form sets them: the Team Lead's tools always leave None.
+    /// update. Only the agent form sets them: the Chief's tools always leave None.
     pub folders: Option<Vec<crate::folders::Folder>>,
     /// Memory (GA-19): its runs get a Memory section and its `learned` lines are kept. None: on for a new agent,
     /// unchanged on update.
     pub use_memory: Option<bool>,
     /// Memory (GA-96): the id of the agent whose memory folder it shares (that agent's group's owner when it shares one
-    /// itself; never the Team Lead), or "" for its own folder. None: its own folder for a new agent, unchanged on update.
+    /// itself; never the Chief), or "" for its own folder. None: its own folder for a new agent, unchanged on update.
     pub shares_memory_with: Option<String>,
 }
 
@@ -444,7 +444,7 @@ pub struct Run {
     /// The tool calls its CLI refused because they needed an approval nobody could give (Claude Code reports them).
     pub refused: Vec<Refusal>,
     /// Gizai's own nudge: it continued, by itself, a run that ended without a result. Its `trigger` reads `result_nudge`
-    /// (GA-31; stored as `nudge` with this flag, see `runs::RESULT_NUDGE`). A person's or the Team Lead's Continue reads
+    /// (GA-31; stored as `nudge` with this flag, see `runs::RESULT_NUDGE`). A person's or the Chief's Continue reads
     /// `nudge`, and is not nudged.
     #[serde(default)]
     pub nudged: bool,
@@ -455,11 +455,11 @@ pub struct Run {
     /// Memory (GA-19): the notes its prompt was given, with their size and how much it showed; empty without memory.
     #[serde(default)]
     pub memory: Vec<crate::memory::Given>,
-    /// GA-70: it ended asking for a decision and the Team Lead took the question: what it did with it (looking at it,
+    /// GA-70: it ended asking for a decision and the Chief took the question: what it did with it (looking at it,
     /// answered, escalated to you) and what that cost. None when the question went to you directly.
     #[serde(default)]
     pub lead: Option<crate::questions::LeadAnswer>,
-    /// GA-70: a Team Lead's run on a question (trigger `question`, no card of its own): the card the question is on.
+    /// GA-70: a Chief's run on a question (trigger `question`, no card of its own): the card the question is on.
     #[serde(default)]
     pub question_task_id: Option<String>,
 }

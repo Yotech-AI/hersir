@@ -78,7 +78,7 @@ pub const START_FETCH_LIMIT: Duration = Duration::from_secs(60);
 /// Where a new card of `project` starts, as a ref of its repository `repo`: with a link (GitHub, Bitbucket or another git
 /// URL), the project's main branch from the remote that matches the link in any of its forms (`remote_for`; else from the
 /// link itself, `worktree::fetch_start`), fetched first within
-/// `fetch` (None: as last fetched); without a link, the local default branch. Card starts and the Team Lead's copies
+/// `fetch` (None: as last fetched); without a link, the local default branch. Card starts and the Chief's copies
 /// (`code`) both start here, so the two can't drift apart. Blocking.
 pub fn start_point(project: &Project, repo: &Path, fetch: Option<Duration>) -> Result<String, AgentError> {
     let Some(url) = project.repo_url.as_deref() else { return Ok(project.default_branch.clone()) };

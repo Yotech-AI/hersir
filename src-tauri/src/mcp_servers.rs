@@ -539,7 +539,7 @@ pub fn agent_view(st: &AppState, agent_id: &str) -> Result<AgentMcpView, String>
     Ok(AgentMcpView { disabled, warning, servers })
 }
 
-/// Saves the agent's switches (agent form → Tools). Only you: no Team Lead tool calls this.
+/// Saves the agent's switches (agent form → Tools). Only you: no Chief tool calls this.
 pub fn save_agent(st: &AppState, agent_id: &str, tools: AgentTools) -> Result<AgentMcpView, String> {
     core_mcp::set_agent_tools(&st.db, &st.you_id, agent_id, tools).map_err(|e| e.to_string())?;
     agent_view(st, agent_id)
@@ -791,7 +791,7 @@ pub fn saved_cli_tools(st: &AppState, agent_id: &str) -> Result<SavedCliTools, S
 }
 
 /// Saves the agent form's CLI tools (`save_cli_tools`) and its Take screenshots of what it built (GA-182), and returns
-/// them as saved. Only you: no Team Lead tool calls this.
+/// them as saved. Only you: no Chief tool calls this.
 pub fn save_cli_tools_input(st: &AppState, agent_id: &str, input: CliToolsInput) -> Result<SavedCliTools, String> {
     save_cli_tools(st, agent_id, input.tools)?;
     if let Some(on) = input.screenshots {
@@ -846,7 +846,7 @@ pub fn tools_view(st: &AppState, agent_id: Option<&str>, cli_id: &str) -> Result
 }
 
 /// Saves the agent's Web and Built-in tool switches (Slash commands and skills among them) and the browser's certificate
-/// option. Only you: no Team Lead tool calls this. A switch its CLI can't take is refused with why.
+/// option. Only you: no Chief tool calls this. A switch its CLI can't take is refused with why.
 pub fn save_cli_tools(st: &AppState, agent_id: &str, tools: core_mcp::CliTools) -> Result<core_mcp::CliTools, String> {
     use gizai_agents::tool_catalog;
     let agent = gizai_core::team::agent(&st.db, agent_id).map_err(|e| e.to_string())?;

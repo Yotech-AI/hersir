@@ -1,6 +1,6 @@
 //! Prepares a copy of the demo data for the UI chat test: points Claude Code at the fake chat Claude, and adds a second
 //! Claude Code account (the same fake, a scratch CLAUDE_CONFIG_DIR it only reads) and a Codex for Runs on. No agents:
-//! the probe sets up the Team Lead through the Chat page's setup panel.
+//! the probe sets up the Chief through the Chat page's setup panel.
 //! usage: cargo run -p gizai-core --example prep_chat -- <data dir> <fake claude>
 use gizai_core::{clis, db::Db, seed::ensure_seed, settings};
 

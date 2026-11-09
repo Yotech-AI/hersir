@@ -2,7 +2,7 @@
 //! kept notes in that CLI's own memory folder, `projects/<project folder>/memory/` in its account's folder
 //! (CLAUDE_CONFIG_DIR, else ~/.claude): a Markdown file per note and `MEMORY.md` as their index. Only agents on that
 //! account saw them, and Gizai didn't show them. When Gizai starts, each such file it hasn't imported yet becomes a note
-//! in the Team Lead's folder, `Team Lead/Imported/<project folder>/<file name>`, with where it came from in its
+//! in the Chief's folder, `Team Lead/Imported/<project folder>/<file name>`, with where it came from in its
 //! properties, and `Team Lead/Notes` gets an open thread to sort them with the user. They start there so no agent gets
 //! them before someone has read them. Only the folders of Gizai's own places come in (`places`): Claude Code keeps a
 //! folder per path it works in, so the others are the user's own sessions elsewhere; they are only counted. The files
@@ -114,7 +114,7 @@ pub fn claude_dirs(db: &Db, home: &str, inherited: &dyn Fn(&str) -> Option<Strin
 
 /// Gizai's places, the folders it starts Claude Code in, whose folders in an account's `projects/` are imported: each
 /// project's linked folder; each card's worktree (`<data dir>/worktrees/<KEY>/<card>`, of every card, and every folder
-/// there now); the Team Lead's code copies (`<data dir>/code/<KEY>`, of every project, and every folder there now) and
+/// there now); the Chief's code copies (`<data dir>/code/<KEY>`, of every project, and every folder there now) and
 /// its own working folder (`<data dir>/lead`). Claude Code keeps the memory of a run in a card's worktree in the folder
 /// of the project's linked folder, the repository the worktree belongs to.
 pub fn places(db: &Db, data_dir: &Path) -> Result<Vec<PathBuf>> {
@@ -199,7 +199,7 @@ fn fold(name: &str) -> String {
 /// Imports the Markdown files in `projects/*/memory/` of each account folder in `dirs` that weren't imported yet, except
 /// `MEMORY.md` (Claude Code's index of them) and the folders below, from the folders of Gizai's `places` only: the
 /// other folders are counted, never read. Each file becomes a note
-/// `Team Lead/Imported/<project folder>/<file name>` (` (2)` and on when two share that path), written by the Team Lead
+/// `Team Lead/Imported/<project folder>/<file name>` (` (2)` and on when two share that path), written by the Chief
 /// (by `you_id` when there is none): its text as it was, with where it came from at the top of its properties. A file
 /// with a secret in it, or that is no note (not text, too big, unreadable), is skipped: listed by its path, never its
 /// text, and tried again once it changed. What was imported and skipped, and how many other folders were left out, goes
@@ -485,7 +485,7 @@ with folder \"{folder}\" lists them.", if n == 1 { "" } else { "s" })
     }
     if r.left_out.folders > 0 {
         text.push_str(&format!("\n  - Left out, not read: {} of other paths, with {}. Claude Code keeps a folder per path it works in, and \
-only those of Hersir's places come in: a project's linked folder, a card's worktree, the Team Lead's code copies and its working folder.",
+only those of Hersir's places come in: a project's linked folder, a card's worktree, the Chief's code copies and its working folder.",
             count(r.left_out.folders, "folder"), count(r.left_out.notes, "note")));
     }
     // Agents made before this keep their own copy of their instructions, which may still say to keep notes there.

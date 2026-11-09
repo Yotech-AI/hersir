@@ -1,4 +1,4 @@
-//! Prepares a copy of the demo data for the UI Memory test (GA-68): a paused Backend Agent, Team Lead and Backend Agent 2 (agents
+//! Prepares a copy of the demo data for the UI Memory test (GA-68): a paused Backend Agent, Chief and Backend Agent 2 (agents
 //! paused in Settings too, Claude Code pointed at the fake), and notes that link each other: Decisions/Use SQLite links
 //! Workflows/Deploy steps (also its #Rollback heading), a note that doesn't exist yet (Backup plan), embeds
 //! Standards/Release checklist and names the card KADE-1; Lessons/Flaky tests names Deploy steps without a link (an
@@ -21,9 +21,9 @@ fn main() {
         team::set_agent_status(&db, &s.you_id, &id, "paused").unwrap();
         id
     };
-    // the Backend Agent first: Memory still puts the Team Lead first
+    // the Backend Agent first: Memory still puts the Chief first
     let backend = agent("Backend Agent", "backend", None);
-    let lead = agent("Team Lead", "lead", Some(true));
+    let lead = agent("Chief", "lead", Some(true));
     // a name that starts like the Backend Agent's: its folder is Agents/Backend Agent 2, which the Backend Agent's page never shows
     agent("Backend Agent 2", "backend", None);
     memory::ensure_lead_notes(&db, &lead, "Jeffrey").unwrap();

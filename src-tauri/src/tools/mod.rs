@@ -1,4 +1,4 @@
-//! The Team Lead's tools: Gizai's clients, projects, tasks, agents, docs, memory, files and inbox, served over MCP.
+//! The Chief's tools: Gizai's clients, projects, tasks, agents, docs, memory, files and inbox, served over MCP.
 //! Each tool takes human references (KADE-12, "Kade portal", "Backend Agent"), calls gizai-core as the agent
 //! (so activity shows who did it) and tells open screens what changed, exactly like the UI's commands.
 mod memory;
@@ -24,7 +24,7 @@ pub struct GizaiTools {
     pub check: Option<String>,
     /// The run the token was minted for: the chat answer (or board check) whose Claude Code makes the calls.
     pub run: Option<String>,
-    /// GA-70: the question (the run that asked) a Team Lead's run on a question was minted for: only the tools that
+    /// GA-70: the question (the run that asked) a Chief's run on a question was minted for: only the tools that
     /// read work there (`IN_A_QUESTION`).
     pub question: Option<String>,
 }
@@ -47,7 +47,7 @@ impl gizai_mcp::Tools for GizaiTools {
     }
 }
 
-/// Why a Team Lead's run on a question (GA-70) can't use a tool that changes something: Gizai does what its result line
+/// Why a Chief's run on a question (GA-70) can't use a tool that changes something: Gizai does what its result line
 /// says (answers on the card and continues the agent, or asks the user).
 const IN_A_QUESTION: &str = "{tool} can't be used while you look at an agent's question: you only look things up (memory, the card, \
     docs, your copies of the code). End with your GIZAI_RESULT line: Hersir answers on the card and continues the agent, or asks the user.";
@@ -80,7 +80,7 @@ pub async fn call_check(st: &AppState, actor: &str, run_id: &str, name: &str, ar
     call_scoped(st, actor, None, Some(run_id), None, name, args, false).await
 }
 
-/// Runs a call you approved (GA-102, `pending::approve`): exactly the stored call, as `actor` (the Team Lead) in its chat
+/// Runs a call you approved (GA-102, `pending::approve`): exactly the stored call, as `actor` (the Chief) in its chat
 /// `thread`, with every rule in force but the one that kept it for you (a tool from outside Gizai earlier in its answer).
 pub(crate) async fn call_approved(st: &AppState, actor: &str, thread: &str, name: &str, args: Value) -> Result<Value, String> {
     call_scoped(st, actor, Some(thread), None, None, name, args, true).await
@@ -355,7 +355,7 @@ const CLIENT_FIELDS: [(&str, &str, &str); 14] = [
 ];
 
 const AGENT_FIELDS: [(&str, &str, &str); 11] = [
-    ("board_check_minutes", "integer", "Only for the agent with Chat on (the Team Lead): check the board every this many minutes (5–1440); 0 = off"),
+    ("board_check_minutes", "integer", "Only for the agent with Chat on (the Chief): check the board every this many minutes (5–1440); 0 = off"),
     ("runs_on", "string", "The coding CLI it runs on, by name as Settings → Coding CLIs lists them (Claude Code, Codex, Gemini, a second account, …). Omit: Claude Code for a new agent, unchanged on update"),
     ("model", "string", "On Claude Code, a model it offers: an alias (default, opus, sonnet, haiku, fable) or its full id (claude-opus-5-5). On Codex or Gemini, that CLI's model name. Empty = the CLI's default"),
     ("effort", "string", "How hard the model thinks. Claude Code: low, medium, high, xhigh or max. Codex: minimal, low, medium, high or xhigh. Gemini takes none. Empty = the CLI's default; higher costs more"),
@@ -365,7 +365,7 @@ const AGENT_FIELDS: [(&str, &str, &str); 11] = [
     ("allowed_tools", "string[]", "Commands it may run without asking, each as Bash(…), like Bash(npm test:*). Omit on create for its role's list (builders: Hersir's default list plus git push, pull and fetch; QA also gh pr; DevOps its release commands); an empty list on update = Hersir's default list"),
     ("monthly_budget_usd", "number", "Monthly spending cap in dollars; empty = no cap"),
     ("title", "string", "Job title shown on the team page"),
-    ("shares_memory_with", "string", "Memory: the agent whose memory folder it shares, by name, like Backend Agent for Backend Agent 2 (their runs get that folder's notes and their learned lines go there). An agent that shares a folder itself stands for that folder's owner; never the Team Lead. \"none\" = its own folder. Joining moves its notes into that folder; leaving gives it a fresh Notes. Omit: its own folder for a new agent, unchanged on update"),
+    ("shares_memory_with", "string", "Memory: the agent whose memory folder it shares, by name, like Backend Agent for Backend Agent 2 (their runs get that folder's notes and their learned lines go there). An agent that shares a folder itself stands for that folder's owner; never the Chief. \"none\" = its own folder. Joining moves its notes into that folder; leaving gives it a fresh Notes. Omit: its own folder for a new agent, unchanged on update"),
 ];
 
 fn with<const N: usize>(head: &[(&'static str, &'static str, &'static str)], rest: [(&'static str, &'static str, &'static str); N]) -> Vec<(&'static str, &'static str, &'static str)> {
@@ -484,11 +484,11 @@ pub fn catalog() -> Vec<ToolDef> {
         tool("attach_file", "Copies a local file (absolute path, or ~/…) into Hersir and attaches it to one task, project or client.",
              &[("path", "string", "Absolute path of the file"), ("task", "string", "Task identifier"), ("project", "string", "Project key or name"), ("client", "string", "Client name")], &["path"]),
         tool("add_person", "Adds a person (a colleague or reviewer) to Hersir.", &[("name", "string", "Full name"), ("email", "string", "Email")], &["name"]),
-        tool("update_checkout", "Chat only, and only after the user said yes in this chat: updates a project's linked folder (the user's own checkout; new cards copy its vendor/ and node_modules/) to main as last fetched. A fast-forward, then composer install or npm ci where a lock file changed or a folder is missing; never the setup command. Changes nothing, and says why, with uncommitted changes unless stash is true, a merge or rebase in progress, a local main with its own commits, another branch unless switch is true, or a folder set to read in the Team Lead's folders. Answers at once; the result comes as a chat message.",
+        tool("update_checkout", "Chat only, and only after the user said yes in this chat: updates a project's linked folder (the user's own checkout; new cards copy its vendor/ and node_modules/) to main as last fetched. A fast-forward, then composer install or npm ci where a lock file changed or a folder is missing; never the setup command. Changes nothing, and says why, with uncommitted changes unless stash is true, a merge or rebase in progress, a local main with its own commits, another branch unless switch is true, or a folder set to read in the Chief's folders. Answers at once; the result comes as a chat message.",
              &[PROJECT, ("switch", "boolean", "When the folder is on another branch: switch it to the default branch first (that branch stays as it is). Only when the user agreed to the switch"),
                ("stash", "boolean", "When tracked files have uncommitted changes: put them in git's stash first (they stay there: git stash pop brings them back), then update. Only when the user agreed to the stash in this chat"),
                ("folder", "string", "The folder to update; only the project's linked folder is allowed (the default)")], &["project"]),
-        tool("merge_pull_request", "Merges a card's own pull request on GitHub with a merge commit, only when every rule holds: its project's Team Lead may merge switch is on (only the user sets it, in the app); the card is in Review with testing on; its latest QA verdict is qa_pass on the pull request's latest commit; GitHub can merge it; every check on it succeeded; no release card of the project is in Deploy. Otherwise it refuses with the reason and changes nothing: never work around a refusal. After a merge the card gets your comment and moves on to Deploy. Releases and deploys stay the user's.",
+        tool("merge_pull_request", "Merges a card's own pull request on GitHub with a merge commit, only when every rule holds: its project's Chief may merge switch is on (only the user sets it, in the app); the card is in Review with testing on; its latest QA verdict is qa_pass on the pull request's latest commit; GitHub can merge it; every check on it succeeded; no release card of the project is in Deploy. Otherwise it refuses with the reason and changes nothing: never work around a refusal. After a merge the card gets your comment and moves on to Deploy. Releases and deploys stay the user's.",
              &[TASK], &["task"]),
     ]
 }
