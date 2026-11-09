@@ -78,12 +78,18 @@ jobs:
         if: steps.version.outputs.only != 'true'
 
       # The install scripts parse, and their checks pass (--check and -Check install nothing). On macOS install.sh must
-      # work with the system's own bash, 3.2; install.ps1 with Windows PowerShell 5.1 (what an update runs) and 7.
+      # work with the system's own bash, 3.2; install.ps1 with Windows PowerShell 5.1 (what an update runs) and 7. On
+      # Linux the packages above bring libayatana-appindicator, so the check must not call the tray icon's library
+      # missing: it did when grep -q cut ldconfig's long list short (GA-248).
       - name: Check install.sh
         if: steps.version.outputs.only != 'true' && runner.os != 'Windows'
         run: |
           /bin/bash -n install.sh
-          /bin/bash ./install.sh --check
+          check="$(/bin/bash ./install.sh --check)"
+          printf '%s\n' "$check"
+          case "$check" in
+            *"Tray icon:"*) echo "install.sh --check says the tray icon's library is missing, though it is installed."; exit 1 ;;
+          esac
 
       - name: Check install.ps1 (PowerShell 7)
         if: steps.version.outputs.only != 'true' && runner.os == 'Windows'
@@ -107,17 +113,22 @@ jobs:
 
       # The one-line installs: get.sh passes sh -n, and get.ps1 parses in both PowerShells. Then each one's check runs
       # the way the one line runs it, get.sh from a pipe (dash on Linux, macOS's own sh) and get.ps1 from memory (as
-      # irm | iex does), into a scratch folder: first production from GitHub, then this pull request's own commit over
-      # it (GIZAI_REPO and GIZAI_REF), which the folder must hold at the end.
+      # irm | iex does), into a scratch folder: first production from GitHub, with the GIZAI_ names from before 0.17.0
+      # (GIZAI_REPO and GIZAI_REF), then this pull request's own commit over it with the HERSIR_ names, which win over
+      # the GIZAI_ ones still set. The source folder, hersir-src, must hold that commit at the end. The one from before
+      # 0.17.0, gizai-src, becomes hersir-src first, with its build in target/ (GA-248).
       - name: Check get.sh
         if: steps.version.outputs.only != 'true' && runner.os != 'Windows'
         env:
           XDG_DATA_HOME: ${{ runner.temp }}/get-sh
         run: |
           /bin/sh -n scripts/get.sh
+          mkdir -p "$XDG_DATA_HOME/gizai-src/target" && echo "a build" > "$XDG_DATA_HOME/gizai-src/target/kept"
           cat scripts/get.sh | GIZAI_REPO=https://github.com/Yotech-AI/hersir.git GIZAI_REF=production /bin/sh -s -- --check
-          cat scripts/get.sh | GIZAI_REPO="$GITHUB_WORKSPACE" GIZAI_REF=HEAD /bin/sh -s -- --check
-          test "$(git -C "$XDG_DATA_HOME/gizai-src" rev-parse HEAD)" = "$GITHUB_SHA"
+          test ! -e "$XDG_DATA_HOME/gizai-src" && test -f "$XDG_DATA_HOME/hersir-src/target/kept"
+          cat scripts/get.sh | GIZAI_REPO=https://github.com/Yotech-AI/hersir.git GIZAI_REF=production \
+            HERSIR_REPO="$GITHUB_WORKSPACE" HERSIR_REF=HEAD /bin/sh -s -- --check
+          test "$(git -C "$XDG_DATA_HOME/hersir-src" rev-parse HEAD)" = "$GITHUB_SHA"
 
       # get.ps1 runs from memory in a PowerShell of its own, which must go on after it: piped into iex, get.ps1 returns
       # rather than exit (which would close the window), with its result in $LASTEXITCODE. Run as a file, it exits
@@ -130,20 +141,25 @@ jobs:
           [System.Management.Automation.Language.Parser]::ParseFile("$PWD\scripts\get.ps1", [ref]$tokens, [ref]$errs) | Out-Null
           if ($errs) { $errs; exit 1 }
           $env:LOCALAPPDATA = "$env:RUNNER_TEMP\get-ps1-7"
+          New-Item -ItemType Directory -Force -Path "$env:LOCALAPPDATA\gizai-src\target" | Out-Null
+          Set-Content -LiteralPath "$env:LOCALAPPDATA\gizai-src\target\kept" -Value 'a build'
           $iex = "$env:RUNNER_TEMP\iex-get-ps1-7.ps1"
           Set-Content -LiteralPath $iex -Value '& ([scriptblock]::Create((Get-Content -LiteralPath scripts\get.ps1 -Raw))) -Check; "returned $LASTEXITCODE"'
-          foreach ($from in @('https://github.com/Yotech-AI/hersir.git', 'production'), @($env:GITHUB_WORKSPACE, 'HEAD')) {
-            $env:GIZAI_REPO = $from[0]; $env:GIZAI_REF = $from[1]
+          foreach ($from in @('GIZAI', 'https://github.com/Yotech-AI/hersir.git', 'production'), @('HERSIR', $env:GITHUB_WORKSPACE, 'HEAD')) {
+            Set-Item -Path "env:$($from[0])_REPO" -Value $from[1]; Set-Item -Path "env:$($from[0])_REF" -Value $from[2]
             pwsh -NoProfile -File $iex | Tee-Object -Variable out
             if (@($out)[-1] -ne 'returned 0') { "get.ps1 -Check didn't return 0 for $from"; exit 1 }
+            if ((Test-Path -LiteralPath "$env:LOCALAPPDATA\gizai-src") -or -not (Test-Path -LiteralPath "$env:LOCALAPPDATA\hersir-src\target\kept")) {
+              'gizai-src should have become hersir-src, with its target folder'; exit 1
+            }
           }
           pwsh -NoProfile -File scripts\get.ps1 -Check
           if ($LASTEXITCODE -ne 0) { "get.ps1 -Check as a file exited with $LASTEXITCODE, not 0"; exit 1 }
-          $env:GIZAI_REF = 'no-such-ref'
+          $env:HERSIR_REF = 'no-such-ref'
           pwsh -NoProfile -File scripts\get.ps1 -Check
           if ($LASTEXITCODE -ne 1) { "get.ps1 -Check as a file exited with $LASTEXITCODE for a ref that doesn't exist, not 1"; exit 1 }
-          $head = git -C "$env:LOCALAPPDATA\gizai-src" rev-parse HEAD
-          if ($head -ne $env:GITHUB_SHA) { "gizai-src is at $head, not at $env:GITHUB_SHA"; exit 1 }
+          $head = git -C "$env:LOCALAPPDATA\hersir-src" rev-parse HEAD
+          if ($head -ne $env:GITHUB_SHA) { "hersir-src is at $head, not at $env:GITHUB_SHA"; exit 1 }
 
       - name: Check get.ps1 (Windows PowerShell 5.1)
         if: steps.version.outputs.only != 'true' && runner.os == 'Windows'
@@ -153,20 +169,25 @@ jobs:
           [System.Management.Automation.Language.Parser]::ParseFile("$PWD\scripts\get.ps1", [ref]$tokens, [ref]$errs) | Out-Null
           if ($errs) { $errs; exit 1 }
           $env:LOCALAPPDATA = "$env:RUNNER_TEMP\get-ps1-5"
+          New-Item -ItemType Directory -Force -Path "$env:LOCALAPPDATA\gizai-src\target" | Out-Null
+          Set-Content -LiteralPath "$env:LOCALAPPDATA\gizai-src\target\kept" -Value 'a build'
           $iex = "$env:RUNNER_TEMP\iex-get-ps1-5.ps1"
           Set-Content -LiteralPath $iex -Value '& ([scriptblock]::Create((Get-Content -LiteralPath scripts\get.ps1 -Raw))) -Check; "returned $LASTEXITCODE"'
-          foreach ($from in @('https://github.com/Yotech-AI/hersir.git', 'production'), @($env:GITHUB_WORKSPACE, 'HEAD')) {
-            $env:GIZAI_REPO = $from[0]; $env:GIZAI_REF = $from[1]
+          foreach ($from in @('GIZAI', 'https://github.com/Yotech-AI/hersir.git', 'production'), @('HERSIR', $env:GITHUB_WORKSPACE, 'HEAD')) {
+            Set-Item -Path "env:$($from[0])_REPO" -Value $from[1]; Set-Item -Path "env:$($from[0])_REF" -Value $from[2]
             powershell -NoProfile -ExecutionPolicy Bypass -File $iex | Tee-Object -Variable out
             if (@($out)[-1] -ne 'returned 0') { "get.ps1 -Check didn't return 0 for $from"; exit 1 }
+            if ((Test-Path -LiteralPath "$env:LOCALAPPDATA\gizai-src") -or -not (Test-Path -LiteralPath "$env:LOCALAPPDATA\hersir-src\target\kept")) {
+              'gizai-src should have become hersir-src, with its target folder'; exit 1
+            }
           }
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts\get.ps1 -Check
           if ($LASTEXITCODE -ne 0) { "get.ps1 -Check as a file exited with $LASTEXITCODE, not 0"; exit 1 }
-          $env:GIZAI_REF = 'no-such-ref'
+          $env:HERSIR_REF = 'no-such-ref'
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts\get.ps1 -Check
           if ($LASTEXITCODE -ne 1) { "get.ps1 -Check as a file exited with $LASTEXITCODE for a ref that doesn't exist, not 1"; exit 1 }
-          $head = git -C "$env:LOCALAPPDATA\gizai-src" rev-parse HEAD
-          if ($head -ne $env:GITHUB_SHA) { "gizai-src is at $head, not at $env:GITHUB_SHA"; exit 1 }
+          $head = git -C "$env:LOCALAPPDATA\hersir-src" rev-parse HEAD
+          if ($head -ne $env:GITHUB_SHA) { "hersir-src is at $head, not at $env:GITHUB_SHA"; exit 1 }
 
       - run: npm ci
         if: steps.version.outputs.only != 'true'

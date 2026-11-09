@@ -1,12 +1,17 @@
-# Installs Gizai the way people do, into a scratch folder, on Linux (Ubuntu 24.04 itself, and Fedora, Arch Linux and
-# openSUSE Tumbleweed in containers), macOS (Apple silicon) and Windows. The first install is the one line at the pull
-# request's own commit, with a full build: scripts/get.sh piped into sh, or scripts/get.ps1 from memory in Windows
-# PowerShell 5.1. Then, over it, what Gizai's own update does: build only, then install. On macOS and Windows that
-# update goes over an install as Gizai made it before it was called Hersir (GA-233), with Gizai.app and Gizai.lnk,
-# which it must remove. Then the checks, and the one line's uninstall. On Linux the system packages come from the line
-# install.sh --check prints for that system, so each distribution's line is tried too.
+# Installs Hersir the way people do, into a scratch folder, on Linux (Ubuntu 24.04 itself, and Fedora, Arch Linux and
+# openSUSE Tumbleweed in containers), macOS (Apple silicon) and Windows. Two jobs on each system:
+# - install: the one line at the pull request's own commit, with a full build: scripts/get.sh piped into sh, or
+#   scripts/get.ps1 from memory in Windows PowerShell 5.1. A new install has the hersir names alone (GA-248). Then, over
+#   it, what Hersir's own update does: build only, then install. On macOS and Windows that update goes over an install
+#   with the app as it was named before it was called Hersir (GA-233), Gizai.app and Gizai.lnk, which it must remove.
+#   Then the checks, and the one line's uninstall.
+# - update from 0.16.0: Hersir 0.16.0, installed with its own installer, then updated with this commit's source the
+#   way 0.16.0's own update does it, which can't change any more (GA-248). It must pass 0.16.0's check and restart into
+#   the new Hersir, in 0.16.0's folders.
+# On Linux the system packages come from the line install.sh --check prints for that system, so each distribution's
+# line is tried too.
 # A release build takes a while, so it runs only on pull requests that change an installer, and by hand. A pull request
-# into main that only bumps Gizai's version passes without building or installing (the "Version only?" job).
+# into main that only bumps Hersir's version passes without building or installing (the "Version only?" job).
 # It signs, releases and uploads nothing.
 name: Install
 
@@ -122,7 +127,7 @@ jobs:
       - uses: actions/checkout@v4
         if: needs.version.outputs.only != 'true'
 
-      # The system packages Gizai's build needs, installed with the line install.sh --check prints for this system
+      # The system packages Hersir's build needs, installed with the line install.sh --check prints for this system
       # (deps_command), as someone would copy it: only made non-interactive (-y, --noconfirm or -n) and, where the job
       # runs as root, without sudo.
       - name: System packages, as install.sh --check names them
@@ -148,8 +153,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         if: needs.version.outputs.only != 'true'
 
-      # Everything the installs make goes into the runner's temp folder: the programs (GIZAI_PREFIX), the source folder
-      # the one line makes (XDG_DATA_HOME's gizai-src, on Windows LOCALAPPDATA's) and the data folder (GIZAI_DATA_DIR;
+      # Everything the installs make goes into the runner's temp folder: the programs (HERSIR_PREFIX), the source folder
+      # the one line makes (XDG_DATA_HOME's hersir-src, on Windows LOCALAPPDATA's) and the data folder (GIZAI_DATA_DIR;
       # on Linux $XDG_DATA_HOME/gizai, where it points too). From the shell's RUNNER_TEMP, which in a container is the
       # container's own path.
       - name: Scratch folders
@@ -157,7 +162,7 @@ jobs:
         shell: bash
         run: |
           {
-            echo "GIZAI_PREFIX=$RUNNER_TEMP/gizai"
+            echo "HERSIR_PREFIX=$RUNNER_TEMP/hersir"
             echo "XDG_DATA_HOME=$RUNNER_TEMP/share"
             echo "GIZAI_DATA_DIR=$RUNNER_TEMP/share/gizai"
           } >> "$GITHUB_ENV"
@@ -168,67 +173,72 @@ jobs:
         shell: powershell
         run: |
           $t = $env:RUNNER_TEMP
-          [IO.File]::AppendAllText($env:GITHUB_ENV, "GIZAI_PREFIX=$t\gizai`nGIZAI_DATA_DIR=$t\gizai-data`nLOCALAPPDATA=$t\localappdata`n")
+          [IO.File]::AppendAllText($env:GITHUB_ENV, "HERSIR_PREFIX=$t\hersir`nGIZAI_DATA_DIR=$t\hersir-data`nLOCALAPPDATA=$t\localappdata`n")
 
       # The one line as people run it, but from this pull request's commit: get.sh piped into sh (dash on Ubuntu,
-      # macOS's own sh). It gets the commit into $XDG_DATA_HOME/gizai-src and runs its install.sh --check, then
-      # install.sh, which builds Gizai and installs it.
+      # macOS's own sh). It gets the commit into $XDG_DATA_HOME/hersir-src and runs its install.sh --check, then
+      # install.sh, which builds Hersir and installs it.
       - name: The one line (get.sh)
         if: needs.version.outputs.only != 'true' && runner.os != 'Windows'
         shell: bash
-        run: cat scripts/get.sh | GIZAI_REPO="$GITHUB_WORKSPACE" GIZAI_REF=HEAD sh
+        run: cat scripts/get.sh | HERSIR_REPO="$GITHUB_WORKSPACE" HERSIR_REF=HEAD sh
 
-      # An install from before GA-233 has Gizai.app where Hersir.app is now: lib/gizai's links, gizai-launch and the
-      # link in ~/Applications go into it (an install into ~/.local makes that link; one into another prefix, as here,
-      # doesn't). The update over it must replace them all and remove Gizai.app.
+      # An install from before GA-233 has Gizai.app where Hersir.app is now: the links, hersir-launch and the link in
+      # ~/Applications go into it (an install into ~/.local makes that link; one into another prefix, as here, doesn't).
+      # The update over it must replace them all and remove Gizai.app.
       - name: Make it an install from before GA-233 (macOS)
         if: needs.version.outputs.only != 'true' && runner.os == 'macOS'
         shell: bash
         run: |
           set -eu
-          lib="$GIZAI_PREFIX/lib/gizai"
+          lib="$HERSIR_PREFIX/lib/hersir"
           mv "$lib/Hersir.app" "$lib/Gizai.app"
-          ln -sfn Gizai.app/Contents/MacOS/gizai "$lib/gizai"
-          ln -sfn Gizai.app/Contents/MacOS/gizai-mcp "$lib/gizai-mcp"
-          sed -i '' 's#/Hersir\.app/#/Gizai.app/#' "$lib/gizai-launch"
+          ln -sfn Gizai.app/Contents/MacOS/hersir "$lib/hersir"
+          ln -sfn Gizai.app/Contents/MacOS/hersir-mcp "$lib/hersir-mcp"
+          sed -i '' 's#/Hersir\.app/#/Gizai.app/#' "$lib/hersir-launch"
           mkdir -p "$HOME/Applications"
           ln -sfn "$lib/Gizai.app" "$HOME/Applications/Gizai.app"
-          "$GIZAI_PREFIX/bin/gizai" --version
+          "$HERSIR_PREFIX/bin/hersir" --version
 
-      # Over that install, what Gizai's own update does, in the source folder the one line made: build only, then
+      # Over that install, what Hersir's own update does, in the source folder the one line made: build only, then
       # install what was built. macOS's own bash 3.2, as on a Mac.
       - name: Update over it (install.sh --build-only, then --skip-build)
         if: needs.version.outputs.only != 'true' && runner.os != 'Windows'
         shell: bash
         run: |
-          cd "$XDG_DATA_HOME/gizai-src"
+          cd "$XDG_DATA_HOME/hersir-src"
           /bin/bash ./install.sh --build-only
           /bin/bash ./install.sh --skip-build
 
+      # A new install has the hersir names alone: no lib/gizai, no gizai command, no gizai desktop entry or icons.
       - name: What it installed (Linux)
         if: needs.version.outputs.only != 'true' && runner.os == 'Linux'
         shell: bash
         run: |
           fail() { echo "$*"; exit 1; }
-          lib="$GIZAI_PREFIX/lib/gizai"
+          lib="$HERSIR_PREFIX/lib/hersir"
           icons="$XDG_DATA_HOME/icons/hicolor"
-          for program in gizai gizai-mcp gizai-launch; do
+          entry="$XDG_DATA_HOME/applications/hersir.desktop"
+          for program in hersir hersir-mcp hersir-launch; do
             test -x "$lib/$program" || fail "$lib/$program is missing, or can't run."
           done
-          link="$(readlink "$GIZAI_PREFIX/bin/gizai")" || fail "$GIZAI_PREFIX/bin/gizai is missing, or isn't a link."
-          [ "$link" = "$lib/gizai-launch" ] || fail "$GIZAI_PREFIX/bin/gizai links to $link, not to $lib/gizai-launch."
-          grep -qFx "Exec=$lib/gizai-launch" "$XDG_DATA_HOME/applications/gizai.desktop" \
-            || fail "$XDG_DATA_HOME/applications/gizai.desktop has no line Exec=$lib/gizai-launch."
-          grep -qFx "Name=Hersir" "$XDG_DATA_HOME/applications/gizai.desktop" \
-            || fail "$XDG_DATA_HOME/applications/gizai.desktop has no line Name=Hersir."
-          for size in 32 64 128 256 512; do
-            test -s "$icons/${size}x${size}/apps/gizai.png" || fail "$icons/${size}x${size}/apps/gizai.png is missing."
+          link="$(readlink "$HERSIR_PREFIX/bin/hersir")" || fail "$HERSIR_PREFIX/bin/hersir is missing, or isn't a link."
+          [ "$link" = "$lib/hersir-launch" ] || fail "$HERSIR_PREFIX/bin/hersir links to $link, not to $lib/hersir-launch."
+          for line in "Exec=$lib/hersir-launch" "Name=Hersir" "Icon=hersir" "StartupWMClass=hersir"; do
+            grep -qFx "$line" "$entry" || fail "$entry has no line $line."
           done
-          test -s "$icons/scalable/apps/gizai.svg" || fail "$icons/scalable/apps/gizai.svg is missing."
-          want="gizai $(node -p 'require(process.argv[1]).version' "$GITHUB_WORKSPACE/src-tauri/tauri.conf.json")"
-          got="$("$GIZAI_PREFIX/bin/gizai" --version)" || fail "$GIZAI_PREFIX/bin/gizai --version failed: $got"
-          echo "gizai --version: $got"
-          [ "$got" = "$want" ] || fail "gizai --version says $got, and src-tauri/tauri.conf.json $want."
+          for size in 32 64 128 256 512; do
+            test -s "$icons/${size}x${size}/apps/hersir.png" || fail "$icons/${size}x${size}/apps/hersir.png is missing."
+          done
+          test -s "$icons/scalable/apps/hersir.svg" || fail "$icons/scalable/apps/hersir.svg is missing."
+          for path in "$HERSIR_PREFIX/lib/gizai" "$HERSIR_PREFIX/bin/gizai" "$XDG_DATA_HOME/applications/gizai.desktop" \
+            "$icons/scalable/apps/gizai.svg" "$icons"/{32x32,64x64,128x128,256x256,512x512}/apps/gizai.png; do
+            if [ -e "$path" ] || [ -L "$path" ]; then fail "A new install has $path, a name from before 0.17.0."; fi
+          done
+          want="hersir $(node -p 'require(process.argv[1]).version' "$GITHUB_WORKSPACE/src-tauri/tauri.conf.json")"
+          got="$("$HERSIR_PREFIX/bin/hersir" --version)" || fail "$HERSIR_PREFIX/bin/hersir --version failed: $got"
+          echo "hersir --version: $got"
+          [ "$got" = "$want" ] || fail "hersir --version says $got, and src-tauri/tauri.conf.json $want."
 
       - name: What it installed (macOS)
         if: needs.version.outputs.only != 'true' && runner.os == 'macOS'
@@ -236,24 +246,29 @@ jobs:
         run: |
           set -eu
           fail() { echo "$*"; exit 1; }
-          lib="$GIZAI_PREFIX/lib/gizai"
+          lib="$HERSIR_PREFIX/lib/hersir"
           app="$lib/Hersir.app"
-          test -x "$app/Contents/MacOS/gizai"
-          test -x "$app/Contents/MacOS/gizai-mcp"
+          test -x "$app/Contents/MacOS/hersir"
+          test -x "$app/Contents/MacOS/hersir-mcp"
           codesign --verify --deep --strict "$app"
-          "$GIZAI_PREFIX/bin/gizai" --version
-          "$lib/gizai" --version | grep -E '^gizai [0-9]+\.[0-9]+\.[0-9]+'
+          want="hersir $(node -p 'require(process.argv[1]).version' "$GITHUB_WORKSPACE/src-tauri/tauri.conf.json")"
+          got="$("$HERSIR_PREFIX/bin/hersir" --version)"
+          [ "$got" = "$want" ] || fail "hersir --version says $got, and src-tauri/tauri.conf.json $want."
+          "$lib/hersir" --version | grep -E '^hersir [0-9]+\.[0-9]+\.[0-9]+'
           name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$app/Contents/Info.plist")"
           [ "$name" = Hersir ] || fail "Hersir.app calls itself $name, not Hersir."
           id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")"
-          [ "$id" = ai.gizai.app ] || fail "Hersir.app's id is $id, not ai.gizai.app."
-          for program in gizai gizai-mcp; do
+          [ "$id" = dev.hersir.app ] || fail "Hersir.app's id is $id, not dev.hersir.app."
+          for program in hersir hersir-mcp; do
             link="$(readlink "$lib/$program")" || fail "$lib/$program isn't a link."
             [ "$link" = "Hersir.app/Contents/MacOS/$program" ] || fail "$lib/$program links to $link, not into Hersir.app."
           done
-          grep -qF "exec \"$app/Contents/MacOS/gizai\"" "$lib/gizai-launch" || fail "$lib/gizai-launch doesn't start Hersir.app."
+          grep -qF "exec \"$app/Contents/MacOS/hersir\"" "$lib/hersir-launch" || fail "$lib/hersir-launch doesn't start Hersir.app."
           if [ -e "$lib/Gizai.app" ] || [ -L "$lib/Gizai.app" ]; then fail "The update left $lib/Gizai.app."; fi
           if [ -L "$HOME/Applications/Gizai.app" ]; then fail "The update left the link $HOME/Applications/Gizai.app."; fi
+          for path in "$HERSIR_PREFIX/lib/gizai" "$HERSIR_PREFIX/bin/gizai"; do
+            if [ -e "$path" ] || [ -L "$path" ]; then fail "A new install has $path, a name from before 0.17.0."; fi
+          done
 
       # The one line's uninstall removes the programs, the command and, on Linux, the desktop entry and the icons. It
       # keeps the data folder: a file put there first must still be there.
@@ -268,31 +283,31 @@ jobs:
           # to Gizai.app
           if [ "$RUNNER_OS" = macOS ]; then
             mkdir -p "$HOME/Applications"
-            ln -sfn "$GIZAI_PREFIX/lib/gizai/Hersir.app" "$HOME/Applications/Hersir.app"
-            ln -sfn "$GIZAI_PREFIX/lib/gizai/Gizai.app" "$HOME/Applications/Gizai.app"
+            ln -sfn "$HERSIR_PREFIX/lib/hersir/Hersir.app" "$HOME/Applications/Hersir.app"
+            ln -sfn "$HERSIR_PREFIX/lib/gizai/Gizai.app" "$HOME/Applications/Gizai.app"
           fi
-          cat scripts/get.sh | GIZAI_REPO="$GITHUB_WORKSPACE" GIZAI_REF=HEAD sh -s -- --uninstall
+          cat scripts/get.sh | HERSIR_REPO="$GITHUB_WORKSPACE" HERSIR_REF=HEAD sh -s -- --uninstall
           icons="$XDG_DATA_HOME/icons/hicolor"
-          for path in "$GIZAI_PREFIX/lib/gizai" "$GIZAI_PREFIX/bin/gizai" "$XDG_DATA_HOME/applications/gizai.desktop" \
-            "$icons/scalable/apps/gizai.svg" "$icons"/{32x32,64x64,128x128,256x256,512x512}/apps/gizai.png \
+          for path in "$HERSIR_PREFIX/lib/hersir" "$HERSIR_PREFIX/bin/hersir" "$XDG_DATA_HOME/applications/hersir.desktop" \
+            "$icons/scalable/apps/hersir.svg" "$icons"/{32x32,64x64,128x128,256x256,512x512}/apps/hersir.png \
             "$HOME/Applications/Hersir.app" "$HOME/Applications/Gizai.app"; do
             if [ -e "$path" ] || [ -L "$path" ]; then fail "$path is still there after the uninstall."; fi
           done
           test -f "$GIZAI_DATA_DIR/keep.txt" || fail "The uninstall removed $GIZAI_DATA_DIR/keep.txt from the data folder."
 
       # The one line as people run it, but from this pull request's commit: get.ps1 from memory, as irm | iex runs it,
-      # in a Windows PowerShell 5.1 of its own. It gets the commit into $env:LOCALAPPDATA\gizai-src and runs its
-      # install.ps1 -Check, then install.ps1, which builds Gizai and installs it. Piped into iex, get.ps1 returns rather
-      # than exit, with its result in $LASTEXITCODE.
+      # in a Windows PowerShell 5.1 of its own. It gets the commit into $env:LOCALAPPDATA\hersir-src and runs its
+      # install.ps1 -Check, then install.ps1, which builds Hersir and installs it. Piped into iex, get.ps1 returns
+      # rather than exit, with its result in $LASTEXITCODE.
       - name: The one line (get.ps1)
         if: needs.version.outputs.only != 'true' && runner.os == 'Windows'
         shell: powershell
         run: |
-          $env:GIZAI_REPO = $env:GITHUB_WORKSPACE; $env:GIZAI_REF = 'HEAD'
+          $env:HERSIR_REPO = $env:GITHUB_WORKSPACE; $env:HERSIR_REF = 'HEAD'
           $iex = "$env:RUNNER_TEMP\iex-get-ps1.ps1"
           Set-Content -LiteralPath $iex -Value 'Get-Content -LiteralPath scripts\get.ps1 -Raw | Invoke-Expression; "returned $LASTEXITCODE"'
           powershell -NoProfile -ExecutionPolicy Bypass -File $iex | Tee-Object -Variable out
-          if (@($out)[-1] -ne 'returned 0') { "get.ps1 didn't install Gizai: it $(@($out)[-1])"; exit 1 }
+          if (@($out)[-1] -ne 'returned 0') { "get.ps1 didn't install Hersir: it $(@($out)[-1])"; exit 1 }
 
       # An install from before GA-233 has its Start menu shortcut as Gizai.lnk: the update over it must remove it.
       - name: Make it an install from before GA-233 (Windows)
@@ -302,32 +317,35 @@ jobs:
           $menu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
           Move-Item -LiteralPath (Join-Path $menu 'Hersir.lnk') -Destination (Join-Path $menu 'Gizai.lnk') -Force
 
-      # Over that install, what Gizai's own update does, in the source folder the one line made, with Windows
+      # Over that install, what Hersir's own update does, in the source folder the one line made, with Windows
       # PowerShell 5.1: build only, then install what was built.
       - name: Update over it (install.ps1 -BuildOnly, then -SkipBuild)
         if: needs.version.outputs.only != 'true' && runner.os == 'Windows'
         shell: powershell
         run: |
-          Set-Location -LiteralPath "$env:LOCALAPPDATA\gizai-src"
+          Set-Location -LiteralPath "$env:LOCALAPPDATA\hersir-src"
           foreach ($step in @('-BuildOnly', '-SkipBuild')) {
             powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 $step
             if ($LASTEXITCODE -ne 0) { "install.ps1 $step failed"; exit 1 }
           }
 
-      # The Start menu shortcut, Hersir.lnk, must carry Gizai's AppUserModelID, without which Windows shows none of its
-      # notifications. The update removed Gizai.lnk.
+      # The Start menu shortcut, Hersir.lnk, must carry Hersir's AppUserModelID, without which Windows shows none of its
+      # notifications. The update removed Gizai.lnk. A new install has the hersir names alone.
       - name: What it installed (Windows)
         if: needs.version.outputs.only != 'true' && runner.os == 'Windows'
         shell: powershell
         run: |
-          $marker = Get-Content -LiteralPath "$env:GIZAI_PREFIX\gizai-installed.txt"
+          $marker = Get-Content -LiteralPath "$env:HERSIR_PREFIX\hersir-installed.txt"
           "installed: $marker"
-          if ("$marker" -notmatch '^gizai \d+\.\d+\.\d+') { 'gizai-installed.txt should say the version'; exit 1 }
-          if (-not (Test-Path -LiteralPath "$env:GIZAI_PREFIX\gizai-mcp.exe")) { 'gizai-mcp.exe is missing'; exit 1 }
+          if ("$marker" -notmatch '^hersir \d+\.\d+\.\d+') { 'hersir-installed.txt should say the version'; exit 1 }
+          if (-not (Test-Path -LiteralPath "$env:HERSIR_PREFIX\hersir-mcp.exe")) { 'hersir-mcp.exe is missing'; exit 1 }
+          foreach ($file in @('gizai.exe', 'gizai-mcp.exe', 'gizai-installed.txt')) {
+            if (Test-Path -LiteralPath "$env:HERSIR_PREFIX\$file") { "a new install has $file, a name from before 0.17.0"; exit 1 }
+          }
           $menu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
           $id = (New-Object -ComObject Shell.Application).NameSpace($menu).ParseName('Hersir.lnk').ExtendedProperty('System.AppUserModel.ID')
           "shortcut app id: $id"
-          if ($id -ne 'ai.gizai.app') { 'the Start menu shortcut Hersir.lnk should carry ai.gizai.app'; exit 1 }
+          if ($id -ne 'dev.hersir.app') { 'the Start menu shortcut Hersir.lnk should carry dev.hersir.app'; exit 1 }
           if (Test-Path -LiteralPath (Join-Path $menu 'Gizai.lnk')) { 'the update should have removed Gizai.lnk'; exit 1 }
 
       # The one line's uninstall, with its option as people give it one: & ([scriptblock]::Create(...)) -Uninstall. It
@@ -341,15 +359,308 @@ jobs:
           Set-Content -LiteralPath "$env:GIZAI_DATA_DIR\keep.txt" -Value 'The uninstall keeps this.'
           $menu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
           Copy-Item -LiteralPath (Join-Path $menu 'Hersir.lnk') -Destination (Join-Path $menu 'Gizai.lnk') -Force
-          $env:GIZAI_REPO = $env:GITHUB_WORKSPACE; $env:GIZAI_REF = 'HEAD'
+          $env:HERSIR_REPO = $env:GITHUB_WORKSPACE; $env:HERSIR_REF = 'HEAD'
           $iex = "$env:RUNNER_TEMP\iex-get-ps1-uninstall.ps1"
           Set-Content -LiteralPath $iex -Value '& ([scriptblock]::Create((Get-Content -LiteralPath scripts\get.ps1 -Raw))) -Uninstall; "returned $LASTEXITCODE"'
           powershell -NoProfile -ExecutionPolicy Bypass -File $iex | Tee-Object -Variable out
           if (@($out)[-1] -ne 'returned 0') { "get.ps1 -Uninstall failed: it $(@($out)[-1])"; exit 1 }
-          foreach ($file in @('gizai.exe', 'gizai-mcp.exe', 'gizai-installed.txt')) {
-            if (Test-Path -LiteralPath "$env:GIZAI_PREFIX\$file") { "$file should be gone"; exit 1 }
+          foreach ($file in @('hersir.exe', 'hersir-mcp.exe', 'hersir-installed.txt')) {
+            if (Test-Path -LiteralPath "$env:HERSIR_PREFIX\$file") { "$file should be gone"; exit 1 }
           }
           foreach ($link in @('Hersir.lnk', 'Gizai.lnk')) {
             if (Test-Path -LiteralPath (Join-Path $menu $link)) { "the Start menu shortcut $link should be gone"; exit 1 }
           }
           if (-not (Test-Path -LiteralPath "$env:GIZAI_DATA_DIR\keep.txt")) { 'the uninstall removed keep.txt from the data folder'; exit 1 }
+
+  # Hersir 0.16.0, installed with its own installer from its tag, then updated with this commit's source the way
+  # 0.16.0's own update does it (crates/gizai-agents/src/update.rs at v0.16.0), which can't change any more:
+  # 1. it gets the new source into the folder it built the last update in (here 0.16.0's own, with its target/),
+  #    without the files git doesn't keep there but target/, and checks the version in its Cargo.toml;
+  # 2. it builds: install.sh --build-only (Windows: install.ps1 -BuildOnly), without GIZAI_REPO, GIZAI_BRANCH,
+  #    GIZAI_PREFIX and GIZAI_DATA_DIR, with CARGO_TARGET_DIR in the source;
+  # 3. it installs: install.sh --skip-build (Windows: install.ps1 -SkipBuild) with GIZAI_PREFIX, the only name 0.16.0
+  #    knows, set to its prefix, and on Linux and macOS XDG_DATA_HOME=<prefix>/share;
+  # 4. it checks <prefix>/lib/gizai/gizai --version (Windows: <prefix>\gizai.exe), whose second word must be the new
+  #    version;
+  # 5. it restarts <prefix>/lib/gizai/gizai-launch, else <prefix>/lib/gizai/gizai (Windows: <prefix>\gizai.exe).
+  # The version stays 0.16.0 until the release's bump, so the checks read whole lines: "hersir 0.16.0" is the new
+  # build, "gizai 0.16.0" the old one. Then: both commands start the new Hersir, the app launcher (the Start menu) has
+  # one Hersir, the data folder is as it was, and the uninstall removes both layouts and keeps the data folder.
+  update:
+    name: update from 0.16.0 on ${{ matrix.system }}
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        # As for install above.
+        include:
+          - system: ubuntu-24.04
+            runner: ubuntu-24.04
+            refresh: sudo apt-get update
+          - system: fedora
+            runner: ubuntu-24.04
+            container: fedora:latest
+            refresh: dnf -y makecache
+            start: dnf -y install --allowerasing git curl bash
+          - system: archlinux
+            runner: ubuntu-24.04
+            container: archlinux:latest
+            refresh: pacman -Syu --noconfirm
+            start: pacman -S --needed --noconfirm git curl bash
+          - system: opensuse/tumbleweed
+            runner: ubuntu-24.04
+            container: opensuse/tumbleweed:latest
+            refresh: zypper -n refresh && zypper -n dup
+            start: zypper -n install git curl bash gawk
+          - system: macos-15
+            runner: macos-15
+          - system: windows-latest
+            runner: windows-latest
+    runs-on: ${{ matrix.runner }}
+    container: ${{ needs.version.outputs.only != 'true' && matrix.container || '' }}
+    # Two builds: 0.16.0's, then this commit's over it.
+    timeout-minutes: 120
+    env:
+      OLD: v0.16.0
+      OLD_REPO: https://github.com/Yotech-AI/hersir.git
+    steps:
+      - name: Keep LF line endings
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
+
+      - name: The container's PATH
+        if: needs.version.outputs.only != 'true' && matrix.container
+        shell: sh
+        run: echo "$PATH" >> "$GITHUB_PATH"
+
+      - name: Package lists, and git, curl and bash
+        if: needs.version.outputs.only != 'true' && runner.os == 'Linux'
+        shell: sh
+        run: |
+          set -eux
+          ${{ matrix.refresh }}
+          ${{ matrix.start }}
+          if [ -n "${{ matrix.container }}" ]; then git config --global --add safe.directory "$GITHUB_WORKSPACE"; fi
+
+      - uses: actions/checkout@v4
+        if: needs.version.outputs.only != 'true'
+
+      - name: System packages, as install.sh --check names them
+        if: needs.version.outputs.only != 'true' && runner.os == 'Linux'
+        shell: bash
+        run: |
+          check="$(bash ./install.sh --check 2>&1)" || true
+          printf '%s\n' "$check"
+          line="$(printf '%s\n' "$check" | sed -n '/^Install them with:$/{n;s/^ *//;p;q;}')"
+          if [ -z "$line" ]; then echo "install.sh --check named no system packages to install."; exit 1; fi
+          cmd="$(printf '%s\n' "$line" | sed -e 's/apt install /apt install -y /g' -e 's/pacman -S /pacman -S --noconfirm /g' \
+            -e 's/dnf install /dnf install -y /g' -e 's/dnf group install /dnf group install -y /g' -e 's/zypper in /zypper -n in /g')"
+          if [ "$(id -u)" = 0 ]; then cmd="$(printf '%s\n' "$cmd" | sed 's/sudo //g')"; fi
+          printf '\ninstall.sh --check says: %s\nRunning: %s\n' "$line" "$cmd"
+          eval "$cmd" || { echo "The package line install.sh --check prints failed."; exit 1; }
+
+      - uses: actions/setup-node@v4
+        if: needs.version.outputs.only != 'true'
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: needs.version.outputs.only != 'true'
+
+      # Linux and macOS: the prefix, with XDG_DATA_HOME as 0.16.0's update sets it, <prefix>/share, so 0.16.0's install
+      # and the update put the desktop entry in the same place. The data folder is 0.16.0's usual one: on Linux
+      # $XDG_DATA_HOME/gizai, on macOS ~/Library/Application Support/Gizai (the runner's own). The source folder plays
+      # the update's (0.16.0 keeps it in <data folder>/update/source; where it is makes no difference to the installer).
+      - name: Scratch folders
+        if: needs.version.outputs.only != 'true' && runner.os != 'Windows'
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = macOS ]; then data="$HOME/Library/Application Support/Gizai"; else data="$RUNNER_TEMP/local/share/gizai"; fi
+          {
+            echo "OLD_PREFIX=$RUNNER_TEMP/local"
+            echo "XDG_DATA_HOME=$RUNNER_TEMP/local/share"
+            echo "OLD_DATA=$data"
+            echo "UPDATE_SOURCE=$RUNNER_TEMP/source"
+          } >> "$GITHUB_ENV"
+
+      # Windows: LOCALAPPDATA in the runner's temp folder, so 0.16.0 installs into its usual folder there,
+      # %LOCALAPPDATA%\Programs\Gizai. The data folder is 0.16.0's usual one, %APPDATA%\Gizai (the runner's own).
+      - name: Scratch folders (Windows)
+        if: needs.version.outputs.only != 'true' && runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $t = $env:RUNNER_TEMP
+          [IO.File]::AppendAllText($env:GITHUB_ENV, "LOCALAPPDATA=$t\localappdata`nOLD_PREFIX=$t\localappdata\Programs\Gizai`nOLD_DATA=$env:APPDATA\Gizai`nUPDATE_SOURCE=$t\source`n")
+
+      # Something in the data folder, and its files' checksums: the update must leave them as they are.
+      - name: A data folder
+        if: needs.version.outputs.only != 'true'
+        shell: bash
+        run: |
+          mkdir -p "$OLD_DATA/notes"
+          echo "Made before 0.16.0 was installed." > "$OLD_DATA/keep.txt"
+          echo "So was this." > "$OLD_DATA/notes/also.txt"
+          (cd "$OLD_DATA" && find . -type f | LC_ALL=C sort | while IFS= read -r f; do cksum "$f"; done) > "$RUNNER_TEMP/data-before.txt"
+          cat "$RUNNER_TEMP/data-before.txt"
+
+      - name: Install 0.16.0 (install.sh)
+        if: needs.version.outputs.only != 'true' && runner.os != 'Windows'
+        shell: bash
+        run: |
+          fail() { echo "$*"; exit 1; }
+          git clone --quiet --depth 1 --branch "$OLD" "$OLD_REPO" "$UPDATE_SOURCE"
+          cd "$UPDATE_SOURCE"
+          GIZAI_PREFIX="$OLD_PREFIX" /bin/bash ./install.sh
+          got="$("$OLD_PREFIX/bin/gizai" --version)"
+          [ "$got" = "gizai ${OLD#v}" ] || fail "0.16.0's install says $got."
+          test -x "$OLD_PREFIX/lib/gizai/gizai-launch" || fail "0.16.0 installed no lib/gizai/gizai-launch."
+
+      - name: Install 0.16.0 (install.ps1)
+        if: needs.version.outputs.only != 'true' && runner.os == 'Windows'
+        shell: powershell
+        run: |
+          git clone --quiet --depth 1 --branch $env:OLD $env:OLD_REPO $env:UPDATE_SOURCE
+          if ($LASTEXITCODE -ne 0) { 'Could not get 0.16.0'; exit 1 }
+          powershell -NoProfile -ExecutionPolicy Bypass -File "$env:UPDATE_SOURCE\install.ps1"
+          if ($LASTEXITCODE -ne 0) { "0.16.0's install.ps1 failed"; exit 1 }
+          foreach ($file in @('gizai.exe', 'gizai-mcp.exe', 'gizai-installed.txt')) {
+            if (-not (Test-Path -LiteralPath "$env:OLD_PREFIX\$file")) { "0.16.0 installed no $file in $env:OLD_PREFIX"; exit 1 }
+          }
+          $menu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
+          $id = (New-Object -ComObject Shell.Application).NameSpace($menu).ParseName('Hersir.lnk').ExtendedProperty('System.AppUserModel.ID')
+          "0.16.0's shortcut app id: $id"
+
+      # Steps 1 to 3, as 0.16.0 runs them.
+      - name: Update it as 0.16.0 does (install.sh --build-only, then --skip-build)
+        if: needs.version.outputs.only != 'true' && runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -eu
+          fail() { echo "$*"; exit 1; }
+          cd "$UPDATE_SOURCE"
+          git fetch --quiet --depth 1 --no-tags --force -- "$GITHUB_WORKSPACE" HEAD
+          git checkout --quiet --force --detach FETCH_HEAD
+          git clean -ffdxq --exclude=/target/
+          version="$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"$/\1/p' Cargo.toml)"
+          [ "$version" = "$(node -p 'require("./src-tauri/tauri.conf.json").version')" ] || fail "Cargo.toml says $version."
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          clean="env -u GIZAI_REPO -u GIZAI_BRANCH -u GIZAI_PREFIX -u GIZAI_DATA_DIR CARGO_TARGET_DIR=$PWD/target TAURI_TELEMETRY_DISABLED=1"
+          $clean bash ./install.sh --build-only
+          $clean GIZAI_PREFIX="$OLD_PREFIX" XDG_DATA_HOME="$OLD_PREFIX/share" bash ./install.sh --skip-build
+
+      - name: Update it as 0.16.0 does (install.ps1 -BuildOnly, then -SkipBuild)
+        if: needs.version.outputs.only != 'true' && runner.os == 'Windows'
+        shell: powershell
+        run: |
+          Set-Location -LiteralPath $env:UPDATE_SOURCE
+          foreach ($git in @(@('fetch', '--quiet', '--depth', '1', '--no-tags', '--force', $env:GITHUB_WORKSPACE, 'HEAD'),
+              @('checkout', '--quiet', '--force', '--detach', 'FETCH_HEAD'), @('clean', '-ffdxq', '--exclude=/target/'))) {
+            git @git
+            if ($LASTEXITCODE -ne 0) { "git $($git -join ' ') failed"; exit 1 }
+          }
+          $version = node -p "require('./src-tauri/tauri.conf.json').version"
+          [IO.File]::AppendAllText($env:GITHUB_ENV, "VERSION=$version`n")
+          foreach ($name in @('GIZAI_REPO', 'GIZAI_BRANCH', 'GIZAI_PREFIX', 'GIZAI_DATA_DIR')) { Remove-Item -Path "env:$name" -ErrorAction SilentlyContinue }
+          $env:CARGO_TARGET_DIR = "$env:UPDATE_SOURCE\target"; $env:TAURI_TELEMETRY_DISABLED = '1'
+          powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\install.ps1 -BuildOnly
+          if ($LASTEXITCODE -ne 0) { 'install.ps1 -BuildOnly failed'; exit 1 }
+          $env:GIZAI_PREFIX = $env:OLD_PREFIX
+          powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\install.ps1 -SkipBuild
+          if ($LASTEXITCODE -ne 0) { 'install.ps1 -SkipBuild failed'; exit 1 }
+
+      # Steps 4 and 5, then both commands, the app launcher's entry, the data folder and the uninstall.
+      - name: What the update left (Linux, macOS)
+        if: needs.version.outputs.only != 'true' && runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -u
+          fail() { echo "$*"; exit 1; }
+          want="hersir $VERSION"
+          lib="$OLD_PREFIX/lib/gizai"
+          for program in "$lib/gizai" "$lib/gizai-launch" "$lib/hersir" "$lib/hersir-launch" "$OLD_PREFIX/bin/gizai" "$OLD_PREFIX/bin/hersir"; do
+            got="$("$program" --version)" || fail "$program --version failed: $got"
+            echo "$program --version: $got"
+            [ "$got" = "$want" ] || fail "$program says $got, not $want: it doesn't start the new Hersir."
+          done
+          for program in hersir-mcp gizai-mcp; do test -x "$lib/$program" || fail "$lib/$program is missing, or can't run."; done
+          if [ -e "$OLD_PREFIX/lib/hersir" ]; then fail "The update made $OLD_PREFIX/lib/hersir: 0.16.0's install is to stay in $lib."; fi
+          if [ "$RUNNER_OS" = Linux ]; then
+            apps="$XDG_DATA_HOME/applications" icons="$XDG_DATA_HOME/icons/hicolor"
+            grep -qFx "Exec=$lib/hersir-launch" "$apps/hersir.desktop" || fail "$apps/hersir.desktop doesn't start $lib/hersir-launch."
+            test -s "$icons/scalable/apps/hersir.svg" || fail "$icons/scalable/apps/hersir.svg is missing."
+            for path in "$apps/gizai.desktop" "$icons/scalable/apps/gizai.svg" "$icons"/{32x32,64x64,128x128,256x256,512x512}/apps/gizai.png; do
+              if [ -e "$path" ]; then fail "The update left $path: the app launcher would show two Hersirs."; fi
+            done
+            ls "$apps"
+          else
+            app="$lib/Hersir.app"
+            id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")"
+            [ "$id" = dev.hersir.app ] || fail "Hersir.app's id is $id, not dev.hersir.app."
+            test -x "$app/Contents/MacOS/hersir" || fail "Hersir.app has no Contents/MacOS/hersir."
+            codesign --verify --deep --strict "$app"
+            if [ -e "$lib/Gizai.app" ]; then fail "The update left $lib/Gizai.app."; fi
+          fi
+          (cd "$OLD_DATA" && find . -type f | LC_ALL=C sort | while IFS= read -r f; do cksum "$f"; done) > "$RUNNER_TEMP/data-after.txt"
+          diff "$RUNNER_TEMP/data-before.txt" "$RUNNER_TEMP/data-after.txt" || fail "The update changed the data folder $OLD_DATA."
+
+      - name: What the update left (Windows)
+        if: needs.version.outputs.only != 'true' && runner.os == 'Windows'
+        shell: powershell
+        run: |
+          # hersir.exe is a window app: Start-Process waits for it, with its output in a file.
+          function Get-Said([string]$Exe) {
+            $out = "$env:RUNNER_TEMP\said.txt"
+            $p = Start-Process -FilePath $Exe -ArgumentList '--version' -NoNewWindow -Wait -PassThru -RedirectStandardOutput $out
+            if ($p.ExitCode -ne 0) { return "exit code $($p.ExitCode)" }
+            "$(Get-Content -LiteralPath $out -Raw)".Trim()
+          }
+          $want = "hersir $env:VERSION"
+          foreach ($exe in @('gizai.exe', 'hersir.exe')) {
+            $got = Get-Said "$env:OLD_PREFIX\$exe"
+            "$exe --version: $got"
+            if ($got -ne $want) { "$exe says $got, not ${want}: it doesn't start the new Hersir"; exit 1 }
+          }
+          foreach ($file in @('hersir-mcp.exe', 'gizai-mcp.exe', 'hersir-installed.txt', 'gizai-installed.txt')) {
+            if (-not (Test-Path -LiteralPath "$env:OLD_PREFIX\$file")) { "$file is missing in $env:OLD_PREFIX"; exit 1 }
+          }
+          if (Test-Path -LiteralPath "$env:LOCALAPPDATA\Programs\Hersir") { "The update made $env:LOCALAPPDATA\Programs\Hersir: 0.16.0's install is to stay where it is"; exit 1 }
+          $menu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
+          $id = (New-Object -ComObject Shell.Application).NameSpace($menu).ParseName('Hersir.lnk').ExtendedProperty('System.AppUserModel.ID')
+          $target = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $menu 'Hersir.lnk')).TargetPath
+          "shortcut: $target, app id $id"
+          if ($id -ne 'dev.hersir.app') { 'the Start menu shortcut Hersir.lnk should carry dev.hersir.app'; exit 1 }
+          if ($target -ne "$env:OLD_PREFIX\hersir.exe") { "the Start menu shortcut Hersir.lnk should start $env:OLD_PREFIX\hersir.exe"; exit 1 }
+          if (Test-Path -LiteralPath (Join-Path $menu 'Gizai.lnk')) { 'the Start menu has a Gizai.lnk too'; exit 1 }
+
+      - name: The data folder is as it was (Windows)
+        if: needs.version.outputs.only != 'true' && runner.os == 'Windows'
+        shell: bash
+        run: |
+          (cd "$OLD_DATA" && find . -type f | LC_ALL=C sort | while IFS= read -r f; do cksum "$f"; done) > "$RUNNER_TEMP/data-after.txt"
+          diff "$RUNNER_TEMP/data-before.txt" "$RUNNER_TEMP/data-after.txt" || { echo "The update changed the data folder $OLD_DATA."; exit 1; }
+
+      # This commit's uninstall removes both layouts, lib/gizai with its gizai names too, and keeps the data folder.
+      - name: Uninstall (install.sh --uninstall)
+        if: needs.version.outputs.only != 'true' && runner.os != 'Windows'
+        shell: bash
+        run: |
+          fail() { echo "$*"; exit 1; }
+          HERSIR_PREFIX="$OLD_PREFIX" bash "$GITHUB_WORKSPACE/install.sh" --uninstall
+          for path in "$OLD_PREFIX/lib/gizai" "$OLD_PREFIX/lib/hersir" "$OLD_PREFIX/bin/gizai" "$OLD_PREFIX/bin/hersir" \
+            "$XDG_DATA_HOME/applications/hersir.desktop" "$XDG_DATA_HOME/applications/gizai.desktop"; do
+            if [ -e "$path" ] || [ -L "$path" ]; then fail "$path is still there after the uninstall."; fi
+          done
+          test -f "$OLD_DATA/keep.txt" || fail "The uninstall removed keep.txt from the data folder."
+
+      - name: Uninstall (install.ps1 -Uninstall)
+        if: needs.version.outputs.only != 'true' && runner.os == 'Windows'
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File "$env:GITHUB_WORKSPACE\install.ps1" -Uninstall
+          if ($LASTEXITCODE -ne 0) { 'install.ps1 -Uninstall failed'; exit 1 }
+          foreach ($file in @('hersir.exe', 'hersir-mcp.exe', 'hersir-installed.txt', 'gizai.exe', 'gizai-mcp.exe', 'gizai-installed.txt')) {
+            if (Test-Path -LiteralPath "$env:OLD_PREFIX\$file") { "$file should be gone"; exit 1 }
+          }
+          $menu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
+          if (Test-Path -LiteralPath (Join-Path $menu 'Hersir.lnk')) { 'the Start menu shortcut Hersir.lnk should be gone'; exit 1 }
+          if (-not (Test-Path -LiteralPath "$env:OLD_DATA\keep.txt")) { 'the uninstall removed keep.txt from the data folder'; exit 1 }
