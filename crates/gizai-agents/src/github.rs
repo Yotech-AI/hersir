@@ -64,7 +64,7 @@ pub const FIELDS: &str = "number,url,state,isDraft,headRefName,headRefOid,mergeC
 pub const REPO_LIMIT: u32 = 100;
 const LIMIT: Duration = Duration::from_secs(60);
 
-/// What the Team Lead's merge_pull_request (GA-86) checks before a merge, as `gh pr view --json` gives it.
+/// What the Chief's merge_pull_request (GA-86) checks before a merge, as `gh pr view --json` gives it.
 #[derive(Debug, Clone, PartialEq, Default, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct PullDetails {

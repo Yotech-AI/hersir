@@ -101,7 +101,7 @@ pub struct LimitAgent {
     pub role_key: String,
     /// active or paused
     pub status: String,
-    /// The Team Lead (the team's lead, or the agent with Chat on).
+    /// The Chief (the team's lead, or the agent with Chat on).
     pub is_lead: bool,
 }
 
@@ -121,9 +121,9 @@ pub struct CliLimits {
     /// Its limits: the ones it always has first (Claude Code: session, weekly, Fable; Codex: its two windows), each with
     /// its newest reading or none, then any other it reported. Empty when Gizai can't read them.
     pub limits: Vec<Limit>,
-    /// The agents that run on it (their Runs on), the Team Lead first.
+    /// The agents that run on it (their Runs on), the Chief first.
     pub agents: Vec<LimitAgent>,
-    /// The Team Lead's chat and board checks run on it (the Team Lead's Runs on), for chats without their own Runs on.
+    /// The Chief's chat and board checks run on it (the Chief's Runs on), for chats without their own Runs on.
     pub lead_chat: bool,
     /// Chats whose own Runs on is this CLI (Chat → Runs on, under the text box).
     pub chats: i64,

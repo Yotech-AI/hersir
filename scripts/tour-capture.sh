@@ -172,7 +172,7 @@ scene() {
 # The website's eight features as the tour showed them, a few clicks each; then the Team page and Usage per project.
 scene 1 board "The board, and a quick look at a card's live run" board \
   "wait:7000" 'open-card@3000=[data-card="NWS-1"]'
-scene 2 chat "The Team Lead chat: a request, the cards it made, Approve" "chat/$THREAD" \
+scene 2 chat "The Chief's chat: a request, the cards it made, Approve" "chat/$THREAD" \
   "wait:1500" 'approve@2500=.pending-actions .pa-card .pa-actions .btn.primary'
 scene 3 clis "Bring your own CLI: Claude Code and Codex in Settings → Coding CLIs, then Usage → Subscription" settings/appearance \
   "wait:1000" 'agents-tab=.tabs[aria-label="Settings"] .tab:text(Agents and runs)' 'usage=.side .nav-item:text(Usage)'

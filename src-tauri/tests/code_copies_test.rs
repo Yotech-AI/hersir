@@ -490,7 +490,7 @@ async fn update_checkout_leaves_the_linked_folder_alone_when_the_team_leads_fold
     // the linked folder set to read: refused, and nothing starts
     set_folders(&herd, "read");
     let e = tools::call_in(&st, &lead, Some(&thread), "update_checkout", json!({"project": "KADE"})).await.unwrap_err();
-    assert!(e.contains("is set to read in the Team Lead's folders") && e.contains("nothing changed"), "{e}");
+    assert!(e.contains("is set to read in the Chief's folders") && e.contains("nothing changed"), "{e}");
     tokio::time::sleep(Duration::from_millis(500)).await;
     assert_eq!(git_out(&herd, &["rev-parse", "HEAD"]), before, "the folder stays as it was");
     assert!(chat::messages(&st.db, &thread).unwrap().iter().all(|m| m.role != "system"), "no update ran");
@@ -641,7 +641,7 @@ async fn update_checkout_with_stash_stashes_nothing_when_something_else_is_in_th
     set_folders("read");
     let before = now();
     let e = tools::call_in(&st, &lead, Some(&thread), "update_checkout", json!({"project": "KADE", "stash": true})).await.unwrap_err();
-    assert!(e.contains("is set to read in the Team Lead's folders") && e.contains("nothing changed"), "{e}");
+    assert!(e.contains("is set to read in the Chief's folders") && e.contains("nothing changed"), "{e}");
     tokio::time::sleep(Duration::from_millis(500)).await;
     assert_eq!((now(), stashes(&herd).len()), (before, 0), "nothing stashed, nothing changed");
 

@@ -159,11 +159,11 @@ describe("the scenes: the website's eight in their order, as in round 2, then th
     ]);
   });
 
-  it("scenes 1 to 4 and 6 to 8 keep their titles, routes and every step as before GA-245 (scene 5 changed in GA-250, below)", () => {
+  it("scenes 1 to 4 and 6 to 8 keep their titles, routes and every step as before GA-245 (scene 2 names the Chief since GA-255; scene 5 changed in GA-250, below)", () => {
     expect(list.slice(0, 8).filter((s) => s.n !== 5).map(({ n, name, title, route, steps }) => ({ n, name, title, route, steps }))).toEqual([
       { n: 1, name: "board", title: "The board, and a quick look at a card's live run", route: "board",
         steps: ["wait:7000", 'open-card@3000=[data-card="NWS-1"]'] },
-      { n: 2, name: "chat", title: "The Team Lead chat: a request, the cards it made, Approve", route: '"chat/$THREAD"',
+      { n: 2, name: "chat", title: "The Chief's chat: a request, the cards it made, Approve", route: '"chat/$THREAD"',
         steps: ["wait:1500", "approve@2500=.pending-actions .pa-card .pa-actions .btn.primary"] },
       { n: 3, name: "clis", title: "Bring your own CLI: Claude Code and Codex in Settings → Coding CLIs, then Usage → Subscription",
         route: "settings/appearance", steps: ["wait:1000", 'agents-tab=.tabs[aria-label="Settings"] .tab:text(Agents and runs)', "usage=.side .nav-item:text(Usage)"] },
@@ -470,6 +470,13 @@ describe("the capture uses made-up data only", () => {
     expect(prep).toMatch(/ensure_seed\(&db, "Alex Morgan"\)/);
     // no demo data from elsewhere: the old README GIF's data maker is gone
     expect(existsSync(join(ROOT, "crates/gizai-core/examples/prep_readme.rs"))).toBe(false);
+  });
+
+  // GA-255: the website's stills show the lead agent as the Chief.
+  it("prep_tour names the lead agent Chief, with Chat on, and no agent Team Lead", () => {
+    const prep = read("crates/gizai-core/examples/prep_tour.rs");
+    expect(prep).toContain('let lead = agent("Chief", "lead", "", true);');
+    expect(prep).not.toContain("Team Lead");
   });
 
   it("Gizai runs in the cage with a fake home, its data, cache and config in it, and only the fakes' bin on its PATH", () => {

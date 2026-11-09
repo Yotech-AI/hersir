@@ -75,7 +75,7 @@ fn kept_text(name: &str) -> String {
 }
 
 /// GA-154: the last note once nothing waits any more and the Team Lead isn't answering, word for word (the card's text).
-const DONE: &str = "Nothing else waits for your OK. The Team Lead's answer above is done: send a message to go on.";
+const DONE: &str = "Nothing else waits for your OK. The Chief's answer above is done: send a message to go on.";
 
 /// "Save the note X" → "save the note X", as the notes say it after "Approved: ".
 fn lower_first(s: &str) -> String {
@@ -184,7 +184,7 @@ async fn a_memory_write_after_an_outside_tool_waits_with_its_path_and_new_text_a
     // the chat waits for you in the Inbox
     let item = t.inbox_item(&thread).expect("in the Inbox");
     assert_eq!((item.notice.title.as_str(), item.notice.body.as_str(), item.notice.route.as_str()),
-               ("The Team Lead waits for your OK: Read the release notes in Otus and remember when they go out", "1 action to approve or discard",
+               ("The Chief waits for your OK: Read the release notes in Otus and remember when they go out", "1 action to approve or discard",
                 format!("#/chat/{thread}").as_str()));
     assert_eq!(chat::get_thread(&t.st.db, &thread).unwrap().pending_actions, 1);
 
@@ -242,7 +242,7 @@ async fn approving_a_note_write_after_the_note_changed_fails_with_its_usual_mess
     let id2 = t.keep(&thread, "memory_write", unversioned.clone()).await;
     assert_eq!(t.waiting(&thread), [id2.clone()], "the newer write for the same note replaced the older one");
     assert_eq!(gizai_core::pending::get(&t.st.db, &id).unwrap().status, "replaced");
-    assert_eq!(pending::approve(&t.st, &id).await.unwrap_err(), "It no longer waits: a newer call of the Team Lead's took its place.");
+    assert_eq!(pending::approve(&t.st, &id).await.unwrap_err(), "It no longer waits: a newer call of the Chief's took its place.");
     let w = t.view(&thread, &id2);
     assert_eq!(w["preview"]["warning"], "Standards/Rust style exists and the call gives no version, so approving fails and nothing is saved.");
     let usual = t.call(Some(&t.thread("Update it")), "memory_write", unversioned).await.unwrap_err();
@@ -255,7 +255,7 @@ async fn approving_a_note_write_after_the_note_changed_fails_with_its_usual_mess
     assert!(t.view(&thread, &id3)["preview"]["warning"].is_null(), "version 1 is current");
     t.write_note("Standards/Rust style", "Use thiserror and anyhow.", Some(1));
     let w = t.view(&thread, &id3);
-    assert_eq!(w["preview"]["warning"], "Standards/Rust style changed since the Team Lead read it (version 1; it is at version 2 now), so \
+    assert_eq!(w["preview"]["warning"], "Standards/Rust style changed since the Chief read it (version 1; it is at version 2 now), so \
         approving fails and nothing is saved.");
     // its usual message: what the same call gets in an answer without an outside tool
     let usual = t.call(Some(&t.thread("Update it")), "memory_write", stale).await.unwrap_err();
@@ -747,9 +747,9 @@ async fn the_same_call_made_and_run_in_a_later_answer_clears_the_one_that_waits_
     assert_eq!(after.body_md.matches("- Fridays.").count(), 1);
     assert!(t.waiting(&thread).is_empty(), "no longer waiting");
     let last = t.notes(&thread).pop().unwrap();
-    assert_eq!(last.0, "No longer waiting for your OK: add to the note Team Lead/Notes. The Team Lead made the same call itself in a later answer.");
+    assert_eq!(last.0, "No longer waiting for your OK: add to the note Team Lead/Notes. The Chief made the same call itself in a later answer.");
     assert_eq!(last.1["kind"], "pending_gone");
-    assert_eq!(pending::approve(&st, &id).await.unwrap_err(), "It no longer waits: a newer call of the Team Lead's took its place.");
+    assert_eq!(pending::approve(&st, &id).await.unwrap_err(), "It no longer waits: a newer call of the Chief's took its place.");
     assert_eq!(t.note("Team Lead/Notes").unwrap().current_version, after.current_version, "saved once");
 }
 
@@ -1025,11 +1025,12 @@ async fn two_decisions_in_a_chat_that_end_together_give_one_closing_note_after_b
 #[test]
 fn the_approve_paragraph_in_the_docs_says_a_last_note_says_the_answer_is_done() {
     let docs = include_str!("../../../docs/agent-tools.md");
-    let sentence = "When nothing waits any more and the Team Lead isn't answering, a last note says so: \"Nothing else waits for your OK. \
-                    The Team Lead's answer above is done: send a message to go on.\"";
+    // GA-256: the docs say Chief (the app's own text follows on the Rust texts' card)
+    let sentence = "When nothing waits any more and the Chief isn't answering, a last note says so: \"Nothing else waits for your OK. \
+                    The Chief's answer above is done: send a message to go on.\"";
     let approve = docs.lines().find(|l| l.trim_start().starts_with("**Approve** runs exactly that call")).expect("the Approve paragraph");
     // right after the sentence about the note that says what happened
-    assert!(approve.contains(&format!("\"Discarded: `<what>`.\", and the Team Lead's next answer in that chat starts with what you decided, in square \
+    assert!(approve.contains(&format!("\"Discarded: `<what>`.\", and the Chief's next answer in that chat starts with what you decided, in square \
                                        brackets. {sentence}")), "{approve}");
     assert_eq!(docs.matches(sentence).count(), 1);
 }
@@ -1065,9 +1066,9 @@ fn update_checkout_takes_stash_in_the_cards_words() {
     assert!(tool.description.contains("Changes nothing, and says why, with uncommitted changes unless stash is true, a merge or rebase in progress"),
             "{}", tool.description);
     assert_eq!(tool.input_schema["required"], json!(["project"]), "stash is optional");
-    let lead = include_str!("../../../docs/features/team-lead.md");
+    let lead = include_str!("../../../docs/features/chief.md");
     assert!(lead.contains("After your yes it updates the folder:\n\n- with uncommitted changes in tracked files, only if you agreed: put them \
-                           in git's stash first (git stash pop brings them back);\n- a fast-forward to main"), "the first bullet in docs/features/team-lead.md");
+                           in git's stash first (git stash pop brings them back);\n- a fast-forward to main"), "the first bullet in docs/features/chief.md");
     let docs = include_str!("../../../docs/agent-tools.md");
     assert!(docs.contains("- `update_checkout`: the project, the folder, and whether it stashes first;"), "docs/agent-tools.md");
 }

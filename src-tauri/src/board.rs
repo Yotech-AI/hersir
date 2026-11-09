@@ -1,5 +1,5 @@
-//! The Team Lead's board check on its heartbeat. Once a minute (`lib.rs`), when its interval has passed, Gizai looks
-//! at the board in code (`gizai_core::board::check`); only findings the Team Lead hasn't seen yet start the model, in
+//! The Chief's board check on its heartbeat. Once a minute (`lib.rs`), when its interval has passed, Gizai looks
+//! at the board in code (`gizai_core::board::check`); only findings the Chief hasn't seen yet start the model, in
 //! a check run of its own (`chat::start_check`). Nothing new: nothing starts and nothing is spent.
 use gizai_core::board::{self as core_board, Context, Finding};
 use gizai_core::{ids, runs as core_runs, settings, team};
@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 use crate::AppState;
 use crate::chat::{self, CheckSummary};
 
-/// What the check knows beyond the database: the agents' paused pulls, Settings, the Team Lead.
+/// What the check knows beyond the database: the agents' paused pulls, Settings, the Chief.
 pub fn context(st: &AppState, now: i64) -> Context {
     let lead = team::chat_agent(&st.db).ok().flatten().map(|m| m.actor_id);
     let s = crate::runs::get_settings(st);
@@ -87,7 +87,7 @@ pub fn check_prompt(st: &AppState, all: &[Finding], new: &[Finding]) -> String {
     )
 }
 
-/// Why a check may not run now: the Team Lead is paused or over its budget, agents are paused in Settings, Gizai is
+/// Why a check may not run now: the Chief is paused or over its budget, agents are paused in Settings, Gizai is
 /// quitting, or a check is still running.
 fn blocked(st: &AppState, agent: &team::Member) -> Option<String> {
     if agent.status != "active" {
@@ -111,7 +111,7 @@ fn blocked(st: &AppState, agent: &team::Member) -> Option<String> {
     None
 }
 
-/// One beat: when the Team Lead's check is on, not paused after failures and its interval has passed, Gizai looks at the
+/// One beat: when the Chief's check is on, not paused after failures and its interval has passed, Gizai looks at the
 /// board, and new findings start one check run. Returns its handle when one started. The look at the board reads the
 /// database (and finding the CLI can start your login shell), so it runs on a thread that may wait, not on the async
 /// runtime's (GA-191).
@@ -138,6 +138,6 @@ fn tick_now(st: &AppState, now: i64) -> Option<tokio::task::JoinHandle<CheckSumm
     let prompt = check_prompt(st, &all, &new);
     match chat::start_check(st, agent, prompt, core_board::seen_of(&all)) {
         Ok(done) => Some(done),
-        Err(e) => { eprintln!("gizai: the Team Lead's board check couldn't start: {e}"); None }
+        Err(e) => { eprintln!("gizai: the Chief's board check couldn't start: {e}"); None }
     }
 }

@@ -1,6 +1,6 @@
 //! The fixtures of the browser mode (GA-185): GizAi's screens in a plain browser, answered by a fake backend (Tauri's
 //! mockIPC, `src/browser/`), from the demo data and what this adds to it:
-//! - the Team Lead, Frontend Agent, Backend Agent and QA Agent; the Frontend and QA Agents have the hidden browser and
+//! - the Chief, Frontend Agent, Backend Agent and QA Agent; the Frontend and QA Agents have the hidden browser and
 //!   Take screenshots on, the Backend Agent neither;
 //! - Groene Fiets webshop linked to GitHub, with a Preview command and the default screenshot sizes; Kade portal has no
 //!   Preview command;
@@ -350,7 +350,7 @@ fn main() {
             name: name.into(), role_key: role.into(), instructions_md: Some(seed::role_template(role)), allowed_tools: seed::role_tools(role),
             permission_mode: "acceptEdits".into(), chat_enabled: (role == "lead").then_some(true), max_runs: Some(1), ..Default::default()
         }).unwrap();
-        (add("Team Lead", "lead"), add("Frontend Agent", "frontend"), add("Backend Agent", "backend"), add("QA Agent", "qa"))
+        (add("Chief", "lead"), add("Frontend Agent", "frontend"), add("Backend Agent", "backend"), add("QA Agent", "qa"))
     });
     at(&db, now - 4 * DAY - HOUR, || {
         for a in [&fe, &qa] {
@@ -684,7 +684,7 @@ fn main() {
     std::fs::write(out, serde_json::to_string_pretty(&file).unwrap() + "\n").unwrap();
     let ident = |id: &str| tasks::get(&db, id).unwrap().identifier;
     println!("fixtures written to {}", out.display());
-    println!("Frontend Agent {fe}\nBackend Agent {be}\nQA Agent {qa}\nTeam Lead {lead}");
+    println!("Frontend Agent {fe}\nBackend Agent {be}\nQA Agent {qa}\nChief {lead}");
     for (id, what) in [(&gfw2, "Review, six runs with the Screenshots section, PR #41"), (&kade2, "Testing, one set of 2"),
                        (&kade3, "Review, PR #17, no screenshots"), (&kade1, "no preview: Kade portal has no Preview command"),
                        (&gfw1, "the Backend Agent's: no browser"), (&gfw3, "its own Screenshots switch off"), (&gfw5, "To do, the Frontend Agent's, no run yet")] {

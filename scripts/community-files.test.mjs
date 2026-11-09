@@ -263,13 +263,14 @@ describe("the README's first screen (the research's section 3.3)", () => {
   const section = (title) => readme.split(`\n## ${title}\n`)[1].split("\n## ")[0];
 
   it("under the logo: the headline, who it's for, and the links with the Website first", () => {
+    // GA-256: the paragraph under the headline leads with the Chief
     expect(lines.slice(8, 15)).toEqual([
       '<div align="center">',
       "",
       "**Your coding agents need a chief, not a babysitter.**",
       "",
-      "A free, open-source desktop app where a team of AI coding agents works through your board in parallel, on Claude Code,",
-      "Codex CLI or Gemini CLI. Made for freelancers and software companies with several clients and projects.",
+      "Talk to one Chief instead of juggling a dozen agent chats. Tell it what you need, for any client or codebase: it turns that into cards on your board, starts the agents, answers their questions and puts only tested work in your review.",
+      "Free and open source, on Claude Code, Codex CLI or Gemini CLI. Made for freelancers and software companies with several clients and projects.",
       "",
     ]);
     expect(lines[15]).toBe(`[Website](https://hersir.dev) · [Install](#install) · [Docs](#documentation) · [Releases](${REPO}/releases) · [Licence](LICENSE)`);
@@ -284,7 +285,7 @@ describe("the README's first screen (the research's section 3.3)", () => {
     ]);
     const team = section("The team");
     expect(team).toMatch(/A new install starts with five agents\./);
-    for (const agent of ["**Team Lead:**", "**Backend and Frontend Agents**", "**QA Agent**", "**DevOps Agent**", "**Design Agent**", "**R&D Agent**"]) expect(team).toContain(agent);
+    for (const agent of ["**Chief:**", "**Backend and Frontend Agents**", "**QA Agent**", "**DevOps Agent**", "**Design Agent**", "**R&D Agent**"]) expect(team).toContain(agent);
   });
 
   it("Features keeps its eight lines, each with its Read more, and the third names Codex CLI and Gemini CLI", () => {
@@ -404,7 +405,7 @@ describe("docs/RELEASING.md", () => {
     expect(bullets.length).toBeGreaterThan(0);
     expect(bullets.length).toBeLessThanOrEqual(6);
     expect(sample).toMatch(/\*\*Update:\*\* .+\n\n## All changes\n$/);
-    expect(notes).toMatch(/\*\*Who writes them:\*\*[\s\S]*The Team Lead drafts[\s\S]*starts the DevOps Agent[\s\S]*The DevOps Agent[\s\S]*needs_decision/);
+    expect(notes).toMatch(/\*\*Who writes them:\*\*[\s\S]*The Chief drafts[\s\S]*starts the DevOps Agent[\s\S]*The DevOps Agent[\s\S]*needs_decision/);
   });
 });
 
