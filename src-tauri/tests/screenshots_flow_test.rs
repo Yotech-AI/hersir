@@ -53,6 +53,7 @@ if (mode === 'shots') {
 const info = {
   pid: process.pid, child: child.pid, port: process.env.PORT ?? null, previewPort: process.env.GIZAI_PREVIEW_PORT ?? null,
   url: process.env.GIZAI_PREVIEW_URL ?? null, dir: process.env.GIZAI_PREVIEW_DIR ?? null, claudecode: process.env.CLAUDECODE ?? null,
+  hersirPort: process.env.HERSIR_PREVIEW_PORT ?? null, hersirUrl: process.env.HERSIR_PREVIEW_URL ?? null, hersirDir: process.env.HERSIR_PREVIEW_DIR ?? null,
   cwd: process.cwd(),
 };
 const file = path.join(infoDir, 'preview-' + port + '.json');
@@ -330,7 +331,7 @@ impl T {
         assert_eq!(s.status, "succeeded", "{why}: {:?}", s.error);
         assert!(!g.prompt.contains("## Screenshots"), "{why}: {}", g.prompt);
         assert!(!g.prompt.contains("127.0.0.1:"), "{why}: {}", g.prompt);
-        for k in ["GIZAI_PREVIEW_PORT", "GIZAI_PREVIEW_URL", "GIZAI_PREVIEW_DIR"] {
+        for k in ["GIZAI_PREVIEW_PORT", "GIZAI_PREVIEW_URL", "GIZAI_PREVIEW_DIR", "HERSIR_PREVIEW_PORT", "HERSIR_PREVIEW_URL", "HERSIR_PREVIEW_DIR"] {
             assert!(!g.env.contains_key(k), "{why}: {k} in {:?}", g.env);
         }
         assert!(!g.shot, "{why}: the fake saved no screenshots");
@@ -390,6 +391,10 @@ async fn a_run_with_the_browser_and_a_preview_command_gets_its_preview_and_its_s
     assert_eq!(g.env.get("GIZAI_PREVIEW_PORT"), Some(&port.to_string()));
     assert_eq!(g.env.get("GIZAI_PREVIEW_URL"), Some(&url));
     assert_eq!(g.env.get("GIZAI_PREVIEW_DIR").map(PathBuf::from), Some(preview_dir.clone()));
+    // GA-249: and under their HERSIR_ names, the same
+    assert_eq!(g.env.get("HERSIR_PREVIEW_PORT"), Some(&port.to_string()));
+    assert_eq!(g.env.get("HERSIR_PREVIEW_URL"), Some(&url));
+    assert_eq!(g.env.get("HERSIR_PREVIEW_DIR").map(PathBuf::from), Some(preview_dir.clone()));
     match std::env::var("PORT") {
         Err(_) => assert!(!g.env.contains_key("PORT"), "the agent gets no PORT: {:?}", g.env),
         Ok(own) => assert_eq!(g.env.get("PORT"), Some(&own), "only the PORT this test process has"),
@@ -405,6 +410,8 @@ async fn a_run_with_the_browser_and_a_preview_command_gets_its_preview_and_its_s
     assert_eq!(info["previewPort"], port.to_string());
     assert_eq!(info["url"], url);
     assert_eq!(info["dir"].as_str().map(PathBuf::from), Some(preview_dir.clone()));
+    // GA-249: the three HERSIR_PREVIEW_* too
+    assert_eq!((&info["hersirPort"], &info["hersirUrl"], &info["hersirDir"]), (&info["previewPort"], &info["url"], &info["dir"]), "{info}");
     assert_eq!(std::fs::canonicalize(info["cwd"].as_str().unwrap()).unwrap(), std::fs::canonicalize(&g.wt).unwrap());
     assert!(info["claudecode"].is_null(), "{info}");
     // its output went to .gizai-tmp/preview/preview.log, there while the run lived

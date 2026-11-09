@@ -6,8 +6,10 @@
 #   macOS: a link to Hersir.app in ~/Applications, so Hersir starts from Finder and the Dock
 # An install from before 0.17.0, in ~/.local/lib/gizai, is updated where it is: it gets the hersir names beside its
 # gizai ones, which keep working (the gizai command too).
-# Your data lives in ~/.local/share/gizai (macOS: ~/Library/Application Support/Gizai) and is never touched by install
-# or uninstall (unless --purge). On Windows, use install.ps1 (see the README).
+# Your data lives in ~/.local/share/hersir (macOS: ~/Library/Application Support/Hersir), or in the gizai folder of an
+# install from before 0.17.0 (~/.local/share/gizai, ~/Library/Application Support/Gizai) when it holds gizai.db and
+# there is no hersir folder: the folder Hersir uses. An install backs it up first and names it; only --uninstall --purge
+# deletes it. On Windows, use install.ps1 (see the README).
 #
 # Usage:
 #   ./install.sh                 from a checkout: check, build and install
@@ -18,8 +20,8 @@
 #   ./install.sh --skip-build    install the programs already built in target/release
 #   ./install.sh --uninstall     remove Hersir, also an install from before 0.17.0 (add --purge to delete your data too)
 # Environment: HERSIR_REPO (the git URL to clone), HERSIR_BRANCH (default production: the released code; main is
-# development), HERSIR_PREFIX (default ~/.local), GIZAI_DATA_DIR (macOS: the data folder, if not the usual one). Their
-# names from before 0.17.0, GIZAI_REPO, GIZAI_BRANCH and GIZAI_PREFIX, still work; a HERSIR_ one wins.
+# development), HERSIR_PREFIX (default ~/.local), HERSIR_DATA_DIR, else GIZAI_DATA_DIR (macOS: another data folder).
+# Their names from before 0.17.0, GIZAI_REPO, GIZAI_BRANCH and GIZAI_PREFIX, still work; a HERSIR_ one wins.
 # It runs with macOS's own bash 3.2 and BSD tools too: no newer bash features or GNU-only options.
 set -euo pipefail
 
@@ -37,7 +39,10 @@ if [ -e "$OLD_LIB/gizai" ] || [ -L "$OLD_LIB/gizai" ]; then OLD_LAYOUT=1 LIB="$O
 BIN="$PREFIX/bin"
 APPS="$SHARE/applications"
 ICONS="$SHARE/icons/hicolor"
-DATA="$SHARE/gizai"
+# The data folder Hersir uses, which is what an install backs up and --purge deletes (GA-249): $1, the hersir folder,
+# when it exists, else $2, the gizai one from before 0.17.0, when it holds gizai.db, else $1. Nothing is moved.
+data_folder() { if [ ! -e "$1" ] && [ -f "$2/gizai.db" ]; then DATA="$2"; else DATA="$1"; fi; }
+data_folder "$SHARE/hersir" "$SHARE/gizai"
 SRC_CLONE="$SHARE/hersir-src"
 # The source copy from before 0.17.0: an install removes it, unless it runs from it.
 OLD_SRC_CLONE="$SHARE/gizai-src"
@@ -45,7 +50,9 @@ OS="$(uname -s)"
 if [ "$OS" = Darwin ]; then
   # macOS keeps an app's data in ~/Library/Application Support, and apps in ~/Applications. The app was Gizai.app
   # before it was called Hersir (GA-233): an install or uninstall removes that one too, with the link to it it made.
-  DATA="${GIZAI_DATA_DIR:-$HOME/Library/Application Support/Gizai}"
+  # HERSIR_DATA_DIR wins over GIZAI_DATA_DIR, its name before 0.17.0, which still works alone.
+  data_folder "$HOME/Library/Application Support/Hersir" "$HOME/Library/Application Support/Gizai"
+  DATA="${HERSIR_DATA_DIR:-${GIZAI_DATA_DIR:-$DATA}}"
   APP_LINK="$HOME/Applications/Hersir.app"
   OLD_APP_LINK="$HOME/Applications/Gizai.app"
   LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
@@ -59,7 +66,7 @@ for arg in "$@"; do
     --skip-build) SKIP_BUILD=1 ;;
     --uninstall) UNINSTALL=1 ;;
     --purge) PURGE=1 ;;
-    -h|--help) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $arg (see --help)" >&2; exit 2 ;;
   esac
 done
@@ -265,6 +272,8 @@ fi
 # Before replacing a Hersir you use, snapshot its data (the new build opens it, and may upgrade it, on its next start).
 if [ -f "$DATA/gizai.db" ]; then
   step "Backing up your data"
+  # The folder goes to the new build under both its names: a HERSIR_DATA_DIR of your own, which the build reads first and
+  # this script reads only on macOS, can't send the backup elsewhere.
   if snap="$(HERSIR_DATA_DIR="$DATA" GIZAI_DATA_DIR="$DATA" "$SRC/target/release/hersir" --backup before-install 2>&1)"; then
     say "Backed up your data to $snap"
   else

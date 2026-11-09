@@ -28,13 +28,15 @@ fn folder() -> (tempfile::TempDir, PathBuf) {
     (tmp, dir)
 }
 
-/// What the app gives `Terminals::open`: `program` in `dir`, with Gizai's environment plus two GIZAI_* variables of
-/// Gizai's own that the shell must not get.
+/// What the app gives `Terminals::open`: `program` in `dir`, with Gizai's environment plus two GIZAI_* and two HERSIR_*
+/// variables of Hersir's own that the shell must not get (GA-249).
 fn start(dir: &Path, folder_name: &str, name: Option<&str>, program: (PathBuf, Vec<OsString>)) -> Start {
     let path = std::env::var_os("PATH").unwrap_or_default();
     let own = std::env::vars_os().chain([
         (OsString::from("GIZAI_DATA_DIR"), OsString::from("/gizai/data")),
         (OsString::from("GIZAI_TEST_SECRET"), OsString::from("s3cret")),
+        (OsString::from("HERSIR_DATA_DIR"), OsString::from("/hersir/data")),
+        (OsString::from("HERSIR_TEST_SECRET"), OsString::from("s3cret")),
     ]);
     Start { folder: dir.display().to_string(), folder_path: dir.display().to_string(), folder_name: folder_name.into(), task_id: None,
             program: program.0, args: program.1, env: terminal::environment(own, &path, "9.9.9"), cols: 80, rows: 24,
@@ -217,18 +219,21 @@ fn the_sender_sends_the_first_message_at_once_and_each_next_one_8_ms_after_the_l
 }
 
 #[test]
-fn the_environment_has_term_colorterm_term_program_and_the_path_runs_get_and_no_gizai_variable() {
-    let own = [("PATH", "/usr/bin"), ("GIZAI_DATA_DIR", "/d"), ("gizai_dev", "1"), ("TERM", "dumb"), ("HOME", "/home/me"), ("NOT_GIZAI_X", "kept")]
+fn the_environment_has_term_colorterm_term_program_and_the_path_runs_get_and_no_hersir_or_gizai_variable() {
+    let own = [("PATH", "/usr/bin"), ("GIZAI_DATA_DIR", "/d"), ("gizai_dev", "1"), ("TERM", "dumb"), ("HOME", "/home/me"), ("NOT_GIZAI_X", "kept"),
+        ("HERSIR_DATA_DIR", "/h"), ("hersir_dev", "1"), ("NOT_HERSIR_X", "kept too"), ("TERM_PROGRAM", "gizai")]
         .map(|(k, v)| (OsString::from(k), OsString::from(v)));
     let env = terminal::environment(own, OsStr::new("/login/bin:/usr/bin"), "1.2.3");
     let get = |k: &str| env.iter().filter(|(n, _)| n == k).map(|(_, v)| v.to_string_lossy().into_owned()).collect::<Vec<_>>();
     assert_eq!(get("TERM"), ["xterm-256color"]);
     assert_eq!(get("COLORTERM"), ["truecolor"]);
-    assert_eq!(get("TERM_PROGRAM"), ["gizai"]);
+    assert_eq!(get("TERM_PROGRAM"), ["hersir"], "GA-249");
     assert_eq!(get("TERM_PROGRAM_VERSION"), ["1.2.3"]);
     assert_eq!(get("PATH"), ["/login/bin:/usr/bin"], "the PATH runs get");
     assert_eq!((get("HOME"), get("NOT_GIZAI_X")), (vec!["/home/me".to_string()], vec!["kept".to_string()]), "the rest of Gizai's environment");
+    assert_eq!(get("NOT_HERSIR_X"), ["kept too"]);
     assert!(!env.iter().any(|(k, _)| k.to_string_lossy().to_ascii_uppercase().starts_with("GIZAI_")), "{env:?}");
+    assert!(!env.iter().any(|(k, _)| k.to_string_lossy().to_ascii_uppercase().starts_with("HERSIR_")), "{env:?}");
     // macOS: LANG when no locale variable is set, and only then
     if cfg!(target_os = "macos") {
         assert_eq!(get("LANG"), ["en_US.UTF-8"]);
@@ -329,16 +334,18 @@ fn a_shell_echoes_what_it_is_sent_starts_in_its_folder_and_follows_a_resize() {
 
 #[cfg(unix)]
 #[test]
-fn the_shell_has_term_colorterm_and_term_program_set_and_no_gizai_variable() {
+fn the_shell_has_term_colorterm_and_term_program_set_and_no_hersir_or_gizai_variable() {
     let (_tmp, dir) = folder();
     let terms = Arc::new(Terminals::default());
     let s = terms.open(start(&dir, "kade", None, test_shell()), Told::default().changed()).unwrap();
     let screen = Screen::default();
     screen.attach(&terms, &s.id, true);
     terms.input(&s.id, "printf 'vars=%s,%s,%s,%s\\n' \"$TERM\" \"$COLORTERM\" \"$TERM_PROGRAM\" \"$TERM_PROGRAM_VERSION\"\n", false).unwrap();
-    screen.shows("vars=xterm-256color,truecolor,gizai,9.9.9");
+    screen.shows("vars=xterm-256color,truecolor,hersir,9.9.9");
     terms.input(&s.id, "echo gizai-vars=$(env | grep -ci '^gizai_')\n", false).unwrap();
     screen.shows("gizai-vars=0");
+    terms.input(&s.id, "echo hersir-vars=$(env | grep -ci '^hersir_')\n", false).unwrap();
+    screen.shows("hersir-vars=0");
     terms.close(&s.id).unwrap();
 }
 

@@ -153,11 +153,12 @@ impl Slice {
     /// through your user's systemd (`systemctl --user set-property --runtime`, which lasts until you log out; Gizai sets
     /// them at each start), then a first scope in it (`systemd-run --user --scope`) that says where the slice's cgroup
     /// is, and the kernel's memory.max there. Err says why it can't be: no systemd (another init system, a container), no
-    /// user session, no cgroup v2, the memory controller off, or `GIZAI_RUNS_SLICE=off` (a test of Gizai without it).
+    /// user session, no cgroup v2, the memory controller off, or `HERSIR_RUNS_SLICE=off` (or `GIZAI_RUNS_SLICE=off`: a
+    /// test of Hersir without it).
     /// Linux only; elsewhere always Err.
     pub fn set_up(name: &str, max: u64) -> Result<Slice, String> {
-        if std::env::var_os("GIZAI_RUNS_SLICE").is_some_and(|v| v == "off") {
-            return Err("GIZAI_RUNS_SLICE is off".into());
+        if crate::env::var_os("HERSIR_RUNS_SLICE").is_some_and(|v| v == "off") {
+            return Err("HERSIR_RUNS_SLICE is off".into());
         }
         #[cfg(target_os = "linux")]
         {
@@ -389,9 +390,9 @@ impl Scope {
 /// the slice `name` (it crashed, or was killed), as `Slice::end_leftovers` does, without setting the slice up. It is
 /// looked for where your user's systemd keeps it (`user@<uid>.service/gizai.slice/gizai-runs.slice/<name>`); a slice
 /// that isn't there has nothing in it. Another data folder's slice has another name, and is never touched. Nothing
-/// with `GIZAI_RUNS_SLICE=off`, and nothing outside Linux.
+/// with `HERSIR_RUNS_SLICE=off` (or `GIZAI_RUNS_SLICE=off`), and nothing outside Linux.
 pub fn end_leftovers_in(name: &str) -> Vec<Leftover> {
-    if std::env::var_os("GIZAI_RUNS_SLICE").is_some_and(|v| v == "off") {
+    if crate::env::var_os("HERSIR_RUNS_SLICE").is_some_and(|v| v == "off") {
         return vec![];
     }
     #[cfg(target_os = "linux")]

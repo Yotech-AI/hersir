@@ -3,7 +3,9 @@
 #   Start menu\Programs\Hersir.lnk    the shortcut that starts Hersir and lets Windows show its notifications
 # An install from before 0.17.0, %LOCALAPPDATA%\Programs\Gizai with gizai.exe, is updated where it is: it gets the
 # hersir names beside its gizai ones, which keep working.
-# Your data lives in %APPDATA%\Gizai and is never touched by install or uninstall (unless -Purge).
+# Your data lives in %APPDATA%\Hersir, or in %APPDATA%\Gizai of an install from before 0.17.0 when it holds gizai.db and
+# there is no %APPDATA%\Hersir: the folder Hersir uses. An install backs it up first and names it; only -Uninstall -Purge
+# deletes it.
 # Hersir runs the coding CLIs installed on Windows itself; it never uses WSL.
 #
 # Usage, in PowerShell (Windows PowerShell 5.1 or PowerShell 7):
@@ -15,8 +17,9 @@
 # When PowerShell won't run scripts: powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
 # Run outside a checkout, it clones (or updates) the source into %LOCALAPPDATA%\hersir-src first.
 # Environment: HERSIR_REPO (the git URL to clone), HERSIR_BRANCH (default production: the released code; main is
-# development), HERSIR_PREFIX (default %LOCALAPPDATA%\Programs\Hersir), GIZAI_DATA_DIR (default %APPDATA%\Gizai). Their
-# names from before 0.17.0, GIZAI_REPO, GIZAI_BRANCH and GIZAI_PREFIX, still work; a HERSIR_ one wins.
+# development), HERSIR_PREFIX (default %LOCALAPPDATA%\Programs\Hersir), HERSIR_DATA_DIR, else GIZAI_DATA_DIR (another
+# data folder). Their names from before 0.17.0, GIZAI_REPO, GIZAI_BRANCH and GIZAI_PREFIX, still work; a HERSIR_ one
+# wins.
 [CmdletBinding()]
 param(
   [switch]$Check,
@@ -69,7 +72,7 @@ function Invoke-Hersir([string]$Exe, [string[]]$Arguments) {
 }
 
 if ($Help) {
-  Get-Content -LiteralPath $PSCommandPath -TotalCount 19 | ForEach-Object { $_ -replace '^# ?', '' }
+  Get-Content -LiteralPath $PSCommandPath -TotalCount 22 | ForEach-Object { $_ -replace '^# ?', '' }
   exit 0
 }
 if ($BuildOnly -and $SkipBuild) {
@@ -103,7 +106,14 @@ $GivenPrefix = Get-Setting 'PREFIX'
 # Without one given: the usual folder of an install from before 0.17.0 when there is one, else Hersir's.
 $Prefix = if ($GivenPrefix) { Full $GivenPrefix } elseif (Test-OldInstall $OldPrefix) { $OldPrefix } else { $NewPrefix }
 $OldLayout = Test-OldInstall $Prefix
-$Data = if ($env:GIZAI_DATA_DIR) { $env:GIZAI_DATA_DIR } else { Join-Path $env:APPDATA 'Gizai' }
+# The data folder Hersir uses, which is what an install backs up and -Purge deletes (GA-249): HERSIR_DATA_DIR, else
+# GIZAI_DATA_DIR (its name before 0.17.0), else %APPDATA%\Hersir when it exists, else %APPDATA%\Gizai from before 0.17.0
+# when it holds gizai.db, else %APPDATA%\Hersir. Nothing is moved.
+$Data = if ($env:HERSIR_DATA_DIR) { $env:HERSIR_DATA_DIR } elseif ($env:GIZAI_DATA_DIR) { $env:GIZAI_DATA_DIR } else {
+  $newData = Join-Path $env:APPDATA 'Hersir'
+  $oldData = Join-Path $env:APPDATA 'Gizai'
+  if (-not (Test-Path -LiteralPath $newData) -and (Test-Path -LiteralPath (Join-Path $oldData 'gizai.db') -PathType Leaf)) { $oldData } else { $newData }
+}
 $Data = Full $Data
 $SrcClone = Join-Path $env:LOCALAPPDATA 'hersir-src'
 # The source copy from before 0.17.0: an install removes it, unless it runs from it.

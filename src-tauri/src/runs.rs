@@ -903,14 +903,15 @@ async fn open_worktree(st: &AppState, project: &Project, task: &Task, repo: &Pat
 
 fn open_worktree_now(st: &AppState, project: &Project, task: &Task, repo: &Path, start: &str) -> Result<worktree::Worktree, StartError> {
     let base_dir = st.data_dir.join("worktrees").join(&project.key);
-    let has_own = base_dir.join(&task.identifier).exists()
-        || worktree::worktree_of(repo, &worktree::branch_name(&task.identifier, &task.title)).ok().flatten().is_some();
+    // the card's own branch when it has one (a gizai/ one from before 0.17.0 stays), else a new hersir/ one (GA-249)
+    let branch = worktree::card_branch(task.branch.as_deref(), &task.identifier, &task.title);
+    let has_own = base_dir.join(&task.identifier).exists() || worktree::worktree_of(repo, &branch).ok().flatten().is_some();
     let taken = if has_own { None } else {
         crate::worktrees::take_over(st, project, task, repo, &base_dir, start, crate::worktrees::BUILD_LIMIT)
     };
     let wt = match taken {
         Some(w) => w,
-        None => worktree::ensure(repo, &base_dir, &task.identifier, &task.title, start).map_err(|e| StartError::Card(e.to_string()))?,
+        None => worktree::ensure_on(repo, &base_dir, &task.identifier, &branch, start).map_err(|e| StartError::Card(e.to_string()))?,
     };
     if wt.created {
         worktree::mark_unprepared(&wt.path, wt.reused.as_ref().map(|r| r.head.as_str())).map_err(|e| StartError::Card(e.to_string()))?;
@@ -1340,7 +1341,7 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
     };
     // GA-202: the CLI and everything it starts run in the slice of the agent runs, under their memory limit (Linux).
     let mut exec = process::Exec { slice: st.run_memory.slice(), ..agent_cli::task_exec(&spec, &run) };
-    // GA-182: the agent's own commands find the preview (GIZAI_PREVIEW_PORT, _URL and _DIR; not PORT)
+    // GA-182: the agent's own commands find the preview (HERSIR_PREVIEW_PORT, _URL and _DIR, and the GIZAI_ ones; not PORT)
     if let Some(s) = &shots {
         exec.env.extend(s.env.iter().cloned());
     }

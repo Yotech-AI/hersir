@@ -627,10 +627,10 @@ pub fn record_states(st: &AppState, agent_id: &str, states: &[gizai_agents::stre
 
 // ---- the built-in browser (Chrome DevTools MCP) ----
 
-/// The npx that starts the browser's server: `GIZAI_NPX` when set (tests point it at a fake), else the one on your login
-/// shell's PATH.
+/// The npx that starts the browser's server: `HERSIR_NPX` (or `GIZAI_NPX`) when set (tests point it at a fake), else
+/// the one on your login shell's PATH.
 fn npx(path: &std::ffi::OsStr) -> Result<String, String> {
-    if let Some(p) = std::env::var("GIZAI_NPX").ok().filter(|p| !p.trim().is_empty()) {
+    if let Some(p) = gizai_agents::env::var("HERSIR_NPX").filter(|p| !p.trim().is_empty()) {
         return Ok(p);
     }
     browser::on_path("npx", path).map(|p| p.display().to_string())

@@ -425,9 +425,10 @@ pub fn build(dir: &Path, path: Option<&OsStr>, log: &Log, stop: &Stop) -> Result
 /// Installs what `build` made into `prefix` with the release's installer, `install.sh --skip-build`. Its desktop entry
 /// and icons go under the prefix too (`<prefix>/share`: ~/.local/share for the usual install), so an install anywhere
 /// else, a test's scratch folder, never changes the launcher entry you use. The installer backs up the data folder
-/// there (`<prefix>/share/gizai`) with the new build first, and installs nothing when it can't.
+/// there (`<prefix>/share/hersir`, or `<prefix>/share/gizai` from before 0.17.0 when it holds gizai.db and there is no
+/// hersir one: the rule Hersir's own data folder follows) with the new build first, and installs nothing when it can't.
 /// On Windows `install.ps1 -SkipBuild` gets the prefix only: XDG_DATA_HOME means nothing there, and the data folder
-/// install.ps1 backs up is `%APPDATA%\Gizai`.
+/// install.ps1 backs up is `%APPDATA%\Hersir`, or `%APPDATA%\Gizai` by the same rule.
 /// The prefix goes under both its names, HERSIR_PREFIX and GIZAI_PREFIX (its name before 0.17.0), as Hersir sets each
 /// of its variables for other programs (GA-248).
 pub fn install(dir: &Path, prefix: &Path, path: Option<&OsStr>, log: &Log, stop: &Stop) -> Result<(), UpdateFailed> {

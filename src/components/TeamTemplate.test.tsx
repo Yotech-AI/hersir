@@ -159,10 +159,21 @@ describe("Export's question", () => {
 });
 
 describe("file names", () => {
-  it("offers <team name>.gizai-team.json", () => {
-    expect(templateFileName("Software team")).toBe("Software team.gizai-team.json");
-    expect(templateFileName("Web/App: v2")).toBe("Web-App- v2.gizai-team.json");
-    expect(templateFileName("   ")).toBe("Team.gizai-team.json");
+  it("offers <team name>.hersir-team.json (GA-249; .gizai-team.json before 0.17.0)", () => {
+    expect(templateFileName("Software team")).toBe("Software team.hersir-team.json");
+    expect(templateFileName("Web/App: v2")).toBe("Web-App- v2.hersir-team.json");
+    expect(templateFileName("   ")).toBe("Team.hersir-team.json");
+  });
+
+  it("New team's file picker offers both <team>.hersir-team.json and an older <team>.gizai-team.json (GA-249)", () => {
+    const page = readFileSync(new URL("../pages/TeamPage.tsx", import.meta.url), "utf8");
+    const picker = page.slice(page.indexOf("const pickFile = async () => {"), page.indexOf("const source = sourceOf(start);"));
+    expect(picker).toContain('title: "Start from a template file"');
+    // the filter is the extension both names end in, so neither file is hidden
+    const extensions = JSON.parse(picker.match(/extensions: (\[[^\]]*\])/)![1]) as string[];
+    expect(extensions).toEqual(["json"]);
+    for (const name of [templateFileName("Software team"), "Software team.gizai-team.json"])
+      expect(extensions.some((e) => name.endsWith(`.${e}`)), name).toBe(true);
   });
 
   it("shows a saved path's file name", () => {

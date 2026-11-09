@@ -20,7 +20,7 @@ fn creates_then_reuses_a_worktree_and_rejects_non_repos() {
     let base = tmp.path().join("wt");
     let a = worktree::ensure(&repo, &base, "KADE-41", "Export invoices as CSV!", "main").unwrap();
     assert!(a.created && a.path.join(".git").exists());
-    assert_eq!(a.branch, "gizai/kade-41-export-invoices-as-csv");
+    assert_eq!(a.branch, "hersir/kade-41-export-invoices-as-csv", "GA-249: a new card's branch starts with hersir/");
     let b = worktree::ensure(&repo, &base, "KADE-41", "Export invoices as CSV!", "main").unwrap();
     assert!(!b.created);
     assert_eq!(b.branch, a.branch);
@@ -37,7 +37,48 @@ fn reuses_an_existing_branch_after_the_worktree_was_removed() {
     git(&repo, &["worktree", "remove", "--force", a.path.to_str().unwrap()]);
     let b = worktree::ensure(&repo, &base, "GFW-7", "Mollie webhook", "main").unwrap();
     assert!(b.created);
-    assert_eq!(b.branch, "gizai/gfw-7-mollie-webhook");
+    assert_eq!(b.branch, "hersir/gfw-7-mollie-webhook");
+}
+
+#[test]
+fn a_new_cards_branch_is_hersir_and_a_card_keeps_the_branch_it_has() {
+    assert_eq!(worktree::branch_name("GA-249", "Hersir everywhere (2 of 2)"), "hersir/ga-249-hersir-everywhere-2-of-2");
+    assert_eq!(worktree::branch_name("GA-7", "!!!"), "hersir/ga-7");
+    // no branch yet (or an empty one): a new hersir/ one
+    assert_eq!(worktree::card_branch(None, "KADE-41", "Export invoices"), "hersir/kade-41-export-invoices");
+    assert_eq!(worktree::card_branch(Some(" "), "KADE-41", "Export invoices"), "hersir/kade-41-export-invoices");
+    // the branch it has, from before 0.17.0 too, also after its title changed
+    assert_eq!(worktree::card_branch(Some("gizai/kade-41-export-invoices"), "KADE-41", "Export invoices as CSV"), "gizai/kade-41-export-invoices");
+    assert_eq!(worktree::card_branch(Some("hersir/kade-41-old-title"), "KADE-41", "New title"), "hersir/kade-41-old-title");
+    assert_eq!(worktree::card_branch(Some("feature/by-hand"), "KADE-41", "x"), "feature/by-hand");
+}
+
+#[test]
+fn a_card_with_a_gizai_branch_from_before_0_17_keeps_it_after_its_worktree_was_removed_and_its_title_changed() {
+    let tmp = real_tempdir();
+    let repo = repo(tmp.path());
+    let base = tmp.path().join("wt");
+    // the card's worktree as 0.16.0 made it: on gizai/<id>-<slug>, with a commit of its own
+    let old = "gizai/gfw-7-mollie-webhook";
+    git(&repo, &["worktree", "add", "-q", "-b", old, base.join("GFW-7").to_str().unwrap(), "main"]);
+    commit_file(&base.join("GFW-7"), "webhook.php", "<?php\n");
+    let work = rev(&repo, old);
+
+    // its worktree is there: ensure_on reuses it, on its branch
+    let branch = worktree::card_branch(Some(old), "GFW-7", "Mollie webhook");
+    let a = worktree::ensure_on(&repo, &base, "GFW-7", &branch, "main").unwrap();
+    assert!(!a.created);
+    assert_eq!((a.path.clone(), a.branch.as_str()), (base.join("GFW-7"), old));
+
+    // removed, and the card's title changed since: made again on the same gizai/ branch, with its work
+    git(&repo, &["worktree", "remove", "--force", a.path.to_str().unwrap()]);
+    let branch = worktree::card_branch(Some(old), "GFW-7", "Mollie webhooks and refunds");
+    let b = worktree::ensure_on(&repo, &base, "GFW-7", &branch, "main").unwrap();
+    assert!(b.created);
+    assert_eq!(b.branch, old);
+    assert_eq!(rev(&b.path, "HEAD"), work, "its own commits, not a new branch off main");
+    assert!(b.path.join("webhook.php").is_file());
+    assert!(!has_branch(&repo, "hersir/gfw-7-mollie-webhooks-and-refunds") && !has_branch(&repo, "hersir/gfw-7-mollie-webhook"), "no hersir/ branch made");
 }
 
 #[test]
@@ -259,7 +300,7 @@ fn a_new_card_takes_over_a_finished_cards_worktree_on_its_own_clean_branch() {
     let b = worktree::reuse(&repo, &a.path, &base, "KADE-2", "Next card", "main", &keep).unwrap();
 
     assert_eq!(b.path, base.join("KADE-2"));
-    assert_eq!(b.branch, "gizai/kade-2-next-card");
+    assert_eq!(b.branch, "hersir/kade-2-next-card");
     assert!(b.created, "a taken-over worktree counts as new for the card: it is prepared");
     assert_eq!(b.reused, Some(worktree::Reused { from: a.path.clone(), head: old_head }));
     assert!(!a.path.exists(), "the finished card's folder moved");
@@ -283,11 +324,25 @@ fn a_new_card_takes_over_a_finished_cards_worktree_on_its_own_clean_branch() {
 fn a_card_that_already_has_a_branch_takes_over_on_that_branch() {
     let tmp = real_tempdir();
     let (repo, base, a) = finished_card_worktree(tmp.path());
-    git(&repo, &["branch", "gizai/kade-2-next-card", "main"]);
+    git(&repo, &["branch", "hersir/kade-2-next-card", "main"]);
     commit_file(&repo, "main-only.txt", "x\n");
     let b = worktree::reuse(&repo, &a.path, &base, "KADE-2", "Next card", "main", &[]).unwrap();
-    assert_eq!(rev(&b.path, "HEAD"), rev(&repo, "gizai/kade-2-next-card"), "its own branch as it was, not main");
+    assert_eq!(rev(&b.path, "HEAD"), rev(&repo, "hersir/kade-2-next-card"), "its own branch as it was, not main");
     assert!(!b.path.join("target").exists(), "nothing kept when the keep list is empty");
+}
+
+#[test]
+fn a_card_with_a_gizai_branch_from_before_0_17_takes_over_on_that_branch() {
+    let tmp = real_tempdir();
+    let (repo, base, a) = finished_card_worktree(tmp.path());
+    git(&repo, &["branch", "gizai/kade-2-next-card", "main"]);
+    commit_file(&repo, "main-only.txt", "x\n");
+    // as worktrees::take_over does it: on the card's own branch (worktree::card_branch), its title changed since
+    let branch = worktree::card_branch(Some("gizai/kade-2-next-card"), "KADE-2", "Next card, renamed");
+    let b = worktree::reuse_on(&repo, &a.path, &base, "KADE-2", &branch, "main", &[]).unwrap();
+    assert_eq!(b.branch, "gizai/kade-2-next-card");
+    assert_eq!(rev(&b.path, "HEAD"), rev(&repo, "gizai/kade-2-next-card"), "its own branch as it was, not main");
+    assert!(!has_branch(&repo, "hersir/kade-2-next-card-renamed") && !has_branch(&repo, "hersir/kade-2-next-card"));
 }
 
 #[test]
@@ -673,7 +728,7 @@ fn one_card_started_from_several_threads_gets_one_worktree() {
         // an existing one
         let again = start();
         assert!(again.iter().all(|w| !w.created), "{again:?}");
-        assert!(first.iter().chain(&again).all(|w| w.path == base.join("KADE-1") && w.branch == "gizai/kade-1-one-card"), "{first:?} {again:?}");
+        assert!(first.iter().chain(&again).all(|w| w.path == base.join("KADE-1") && w.branch == "hersir/kade-1-one-card"), "{first:?} {again:?}");
     });
 }
 
@@ -693,7 +748,7 @@ fn one_card_takes_over_a_finished_worktree_and_the_others_get_their_own() {
         assert_eq!(cards.iter().filter(|w| w.reused.is_some()).count(), 1, "{cards:?}");
         for (i, w) in cards.iter().enumerate() {
             assert_eq!(w.path, base.join(format!("CARD-{i}")));
-            assert_eq!(w.branch, format!("gizai/card-{i}-side-by-side"));
+            assert_eq!(w.branch, format!("hersir/card-{i}-side-by-side"));
             assert_eq!(rev(&w.path, "HEAD"), rev(&repo, "main"));
         }
         assert!(!a.path.exists(), "the finished card's folder moved");
