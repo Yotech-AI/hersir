@@ -265,13 +265,14 @@ jobs:
           if ("$got" -ne "gizai $env:VERSION") { "The installed gizai.exe says $got, not gizai $env:VERSION."; exit 1 }
 
       # The archive as the run's artifact, by its own name: for SHA256SUMS and the release, or for QA on a pull request.
-      # Stored as it is: it is compressed already.
+      # Stored as it is: it is compressed already. A run that is run again replaces it.
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.version.outputs.archive }}
           path: ${{ runner.temp }}/builds/${{ steps.version.outputs.archive }}
           if-no-files-found: error
           compression-level: 0
+          overwrite: true
 
   # SHA256SUMS, once all three archives are there and are the same version (the release's, for a release): one line per
   # archive, as sha256sum writes it, checked with sha256sum -c. Kept as the run's artifact too.
@@ -309,6 +310,7 @@ jobs:
           name: SHA256SUMS
           path: builds/SHA256SUMS
           if-no-files-found: error
+          overwrite: true
 
   # The only job whose token may write, and it never runs for a pull request: it attaches the three archives to the
   # release, then SHA256SUMS (replacing any the release has), and checks that the release has all four.
