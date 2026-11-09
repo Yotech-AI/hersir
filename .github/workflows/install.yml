@@ -83,8 +83,8 @@ jobs:
             container: opensuse/tumbleweed:latest
             refresh: zypper -n refresh && zypper -n dup
             start: zypper -n install git curl bash gawk
-          - system: macos-14
-            runner: macos-14
+          - system: macos-15
+            runner: macos-15
           - system: windows-latest
             runner: windows-latest
     runs-on: ${{ matrix.runner }}

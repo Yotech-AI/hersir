@@ -222,7 +222,7 @@ describe("install.yml: when it runs, and a version bump", () => {
   it("runs the install on the six systems, Fedora, Arch and Tumbleweed in containers", () => {
     const text = read(".github/workflows/install.yml");
     expect(text).toContain("name: install on ${{ matrix.system }}");
-    for (const system of ["ubuntu-24.04", "fedora", "archlinux", "opensuse/tumbleweed", "macos-14", "windows-latest"]) {
+    for (const system of ["ubuntu-24.04", "fedora", "archlinux", "opensuse/tumbleweed", "macos-15", "windows-latest"]) {
       expect(text).toContain(`          - system: ${system}\n`);
     }
     for (const image of ["fedora:latest", "archlinux:latest", "opensuse/tumbleweed:latest"]) {
@@ -249,7 +249,7 @@ function matrix() {
 describe("install.yml: what a container gets before the package line", () => {
   it("installs git, curl and bash to start, and on Tumbleweed gawk, which git needs, instead of busybox's awk", () => {
     const m = matrix();
-    expect(Object.keys(m)).toEqual(["ubuntu-24.04", "fedora", "archlinux", "opensuse/tumbleweed", "macos-14", "windows-latest"]);
+    expect(Object.keys(m)).toEqual(["ubuntu-24.04", "fedora", "archlinux", "opensuse/tumbleweed", "macos-15", "windows-latest"]);
     expect(m["ubuntu-24.04"].start).toBeUndefined();
     expect(m.fedora.start).toBe("dnf -y install --allowerasing git curl bash");
     expect(m.archlinux.start).toBe("pacman -S --needed --noconfirm git curl bash");
@@ -416,13 +416,60 @@ describe("one-line.yml: when it runs", () => {
     expect(on).toContain("  pull_request:\n    paths:\n      - .github/workflows/one-line.yml\n");
   });
 
-  it("runs on ubuntu-24.04, macos-14 and windows-latest, with nothing from the checkout", () => {
-    expect(text).toContain("os: [ubuntu-24.04, macos-14, windows-latest]");
+  it("runs on ubuntu-24.04, macos-15 and windows-latest, with nothing from the checkout", () => {
+    expect(text).toContain("os: [ubuntu-24.04, macos-15, windows-latest]");
     expect(text).not.toContain("actions/checkout");
   });
 
   it("on Windows runs hersir.dev's own lines, to install and to uninstall", () => {
     expect(text).toContain("Invoke-Line 'irm https://hersir.dev/install.ps1 | iex'");
     expect(text).toContain("Invoke-Line '& ([scriptblock]::Create((irm https://hersir.dev/install.ps1))) -Uninstall'");
+  });
+});
+
+// GA-244: GitHub retired the macOS image before 15 on 2 Nov 2026, and a job that asks for it stops before any step. The
+// macOS jobs run on macos-15, by that name (macos-latest moves whenever GitHub moves it), and the docs name those checks.
+// (The old name is left out on purpose: the card's own search for it must find only lead_merge_test.rs's test data.)
+describe("the runners: macos-15, as GitHub retired the image before it", () => {
+  const workflows = ["ci.yml", "install.yml", "one-line.yml"].map((f) => `.github/workflows/${f}`);
+  const docs = ["docs/RELEASING.md", "docs/PLATFORMS.md", "docs/install.md"];
+  // each macOS version a file names, as "macos-15" or "macOS 15"
+  const versions = (text) => [...text.matchAll(/\bmacos[- ](\d+)\b/gi)].map((m) => m[1]);
+
+  it("CI's job is named after its runner, so its checks are ubuntu-24.04, macos-15 and windows-latest", () => {
+    const text = read(".github/workflows/ci.yml");
+    expect(text).toContain("    name: ${{ matrix.os }}\n");
+    expect(text).toContain("        os: [ubuntu-24.04, macos-15, windows-latest]\n    runs-on: ${{ matrix.os }}\n");
+  });
+
+  it("Install's macOS system runs on macos-15 itself, so its check is install on macos-15", () => {
+    expect(read(".github/workflows/install.yml")).toContain("    runs-on: ${{ matrix.runner }}\n");
+    expect(matrix()["macos-15"]).toEqual({ runner: "macos-15" });
+  });
+
+  it("no workflow asks for another macOS image or macos-latest", () => {
+    for (const workflow of workflows) {
+      const text = read(workflow);
+      expect(versions(text).every((v) => v === "15"), workflow).toBe(true);
+      expect(text, workflow).not.toContain("macos-latest");
+    }
+    expect(workflows.flatMap((w) => versions(read(w)))).toHaveLength(4);
+  });
+
+  it("RELEASING.md names the checks as the workflows make them", () => {
+    const releasing = read("docs/RELEASING.md");
+    // when to release, a version bump's checks, and the release's checks from CI
+    expect(releasing.split("`ubuntu-24.04`, `macos-15` and `windows-latest`").length - 1).toBe(3);
+    for (const system of Object.keys(matrix())) expect(releasing).toContain(`\`install on ${system}\``);
+  });
+
+  it("the docs name macOS 15 and no other macOS version", () => {
+    expect(docs.map((doc) => versions(read(doc)))).toEqual([Array(5).fill("15"), Array(3).fill("15"), ["15"]]);
+    expect(read("docs/RELEASING.md")).toContain("on Ubuntu 24.04, macOS 15 and Windows, then uninstall it");
+    const platforms = read("docs/PLATFORMS.md");
+    expect(platforms).toContain("| macOS 15 (Apple Silicon) | Windows (latest) |");
+    expect(platforms).toContain("on macOS 15 (Apple silicon) and on Windows, it installs Hersir");
+    expect(platforms).toContain("as people run them, on Ubuntu 24.04, macOS 15 and Windows");
+    expect(read("docs/install.md")).toContain("openSUSE Tumbleweed, macOS 15 on Apple silicon and Windows");
   });
 });
