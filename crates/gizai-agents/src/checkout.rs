@@ -159,7 +159,7 @@ fn sentence(parts: &[String]) -> String {
     }
 }
 
-/// Uncommitted files as the Team Lead's sentences name them: "a, b"; after ten, "and 5 more".
+/// Uncommitted files as the Chief's sentences name them: "a, b"; after ten, "and 5 more".
 fn files_said(files: &[String]) -> String {
     if files.len() > 10 {
         format!("{} and {} more", files[..10].join(", "), files.len() - 10)
@@ -174,7 +174,7 @@ pub fn stash_said(files: &[String]) -> String {
     format!("put the uncommitted changes in {} in git's stash", files_said(files))
 }
 
-/// Why `check` changes nothing, as it found it. `said` words it for the Team Lead (`plan`); the Editor words it its own
+/// Why `check` changes nothing, as it found it. `said` words it for the Chief (`plan`); the Editor words it its own
 /// way (`behind`).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Refusal {
@@ -272,7 +272,7 @@ pub fn check(dir: &Path, repo: &Path, default_branch: &str, main: &str, switch: 
     Ok(Plan { stash: changed, on, switch: switching, default_branch: default_branch.to_string(), from, to, commits, install })
 }
 
-/// `check`, refused in a sentence for the Team Lead (`Refusal::said`): `update_checkout`'s plan.
+/// `check`, refused in a sentence for the Chief (`Refusal::said`): `update_checkout`'s plan.
 pub fn plan(dir: &Path, repo: &Path, default_branch: &str, main: &str, switch: bool, stash: bool) -> Result<Plan, String> {
     check(dir, repo, default_branch, main, switch, stash).map_err(|r| r.said(dir, default_branch, main))
 }

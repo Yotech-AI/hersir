@@ -1,7 +1,7 @@
 //! MCP servers (Settings → MCP servers): one list for all agents, each switched on per agent with a switch per tool
 //! (`AgentTools`, in the agent's `mcp_extra_json`). A server is a command (stdio) or an address (http, sse). Its
 //! environment values, header values and sign-in tokens are secrets: they live in the OS keychain, and this list keeps
-//! only their names. Only you change any of it, in Settings and the agent form: the Team Lead's tools can't.
+//! only their names. Only you change any of it, in Settings and the agent form: the Chief's tools can't.
 use std::collections::BTreeMap;
 
 use rusqlite::OptionalExtension;
@@ -186,7 +186,7 @@ pub fn agent_screenshots(db: &Db, agent_id: &str) -> Result<Option<bool>> {
     })
 }
 
-/// Saves the agent's Take screenshots of what it built (agent form → Tools; never the Team Lead), keeping its other
+/// Saves the agent's Take screenshots of what it built (agent form → Tools; never the Chief), keeping its other
 /// switches.
 pub fn set_agent_screenshots(db: &Db, actor: &str, agent_id: &str, on: bool) -> Result<()> {
     write_extra(db, actor, agent_id, "screenshots", Value::Bool(on), serde_json::json!({"screenshots": on}))
@@ -445,7 +445,7 @@ fn write_extra(db: &Db, actor: &str, agent_id: &str, key: &str, value: Value, ch
     })
 }
 
-/// Saves the agent's tool settings (agent form → Tools; never the Team Lead). Servers that aren't in the list (or the
+/// Saves the agent's tool settings (agent form → Tools; never the Chief). Servers that aren't in the list (or the
 /// built-in browser) are dropped; an agent on Codex, Gemini or another CLI can't have one on (`mcp_not_on`).
 pub fn set_agent_tools(db: &Db, actor: &str, agent_id: &str, tools: AgentTools) -> Result<AgentTools> {
     let servers = list(db)?;
@@ -485,7 +485,7 @@ pub fn valid_tool_name(n: &str) -> bool {
     !n.is_empty() && n.len() <= 64 && !n.starts_with("mcp__") && n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
-/// Saves the agent's CLI tools (agent form → Tools → Web and Built-in tools; never the Team Lead). Domains and names are
+/// Saves the agent's CLI tools (agent form → Tools → Web and Built-in tools; never the Chief). Domains and names are
 /// cleaned; one that can't be used is refused with why.
 pub fn set_cli_tools(db: &Db, actor: &str, agent_id: &str, tools: CliTools) -> Result<CliTools> {
     let mut clean = CliTools { web_search: tools.web_search, web_fetch: tools.web_fetch, insecure_certs: tools.insecure_certs,

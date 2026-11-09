@@ -1,10 +1,10 @@
 //! Pending actions (GA-102): what a chat answer couldn't do after a tool from outside Gizai (`tools::NOT_AFTER_OUTSIDE`)
 //! waits under that answer until you approve it with one click or discard it. Approve runs exactly the stored call, as the
-//! Team Lead in its chat, with every other rule still in force (`tools::call_approved`), and only once; Discard runs
-//! nothing. Either way a note of Gizai's in the chat says what happened, and the Team Lead hears it at the start of its
-//! next answer there (`for_turn`). A decision doesn't start an answer, so once nothing waits and the Team Lead isn't
+//! Chief in its chat, with every other rule still in force (`tools::call_approved`), and only once; Discard runs
+//! nothing. Either way a note of Gizai's in the chat says what happened, and the Chief hears it at the start of its
+//! next answer there (`for_turn`). A decision doesn't start an answer, so once nothing waits and the Chief isn't
 //! answering, a last note says its answer is done (GA-154, `ANSWER_DONE`). Only you decide: the UI's commands come here,
-//! and no tool of the Team Lead's lists, approves or discards a pending action. A board check never makes one: it uses no
+//! and no tool of the Chief's lists, approves or discards a pending action. A board check never makes one: it uses no
 //! tool from outside Gizai.
 use std::sync::Mutex;
 
@@ -31,7 +31,7 @@ fn changed(st: &AppState) {
     (st.notify)(Note::RowsChanged("chat_threads"));
 }
 
-/// Keeps the call `tool` (with `args`) that the Team Lead `actor` made in the chat `thread_id` and that was refused because
+/// Keeps the call `tool` (with `args`) that the Chief `actor` made in the chat `thread_id` and that was refused because
 /// that answer used `outside`, a tool from outside Gizai. `run_id`: the answer's run (else the answer under way in the chat,
 /// if any). A newer memory_write or memory_append for the same note replaces the older one.
 pub(crate) fn keep(st: &AppState, actor: &str, thread_id: &str, run_id: Option<&str>, tool: &str, args: &Map<String, Value>, outside: &str)
@@ -47,10 +47,10 @@ pub(crate) fn keep(st: &AppState, actor: &str, thread_id: &str, run_id: Option<&
     Ok(a)
 }
 
-/// The Team Lead made `tool` with `args` itself in the chat `thread_id` (it ran): the same call that still waits there no
+/// The Chief made `tool` with `args` itself in the chat `thread_id` (it ran): the same call that still waits there no
 /// longer does, so Approve can't make it twice, and the chat says so. Nothing happens when none waits.
 pub(crate) fn made(st: &AppState, thread_id: &str, tool: &str, args: &Map<String, Value>) {
-    const WHY: &str = "The Team Lead made the same call itself in a later answer.";
+    const WHY: &str = "The Chief made the same call itself in a later answer.";
     let gone = match core::made(&st.db, thread_id, tool, &Value::Object(args.clone()), WHY) {
         Ok(g) => g,
         Err(e) => return eprintln!("gizai: clearing a call that waited for approval failed: {e}"),
@@ -91,15 +91,15 @@ fn note(st: &AppState, a: &PendingAction, text: &str) {
 }
 
 /// The last note after your decisions in a chat, so it doesn't look stuck: approving doesn't start a new answer.
-pub const ANSWER_DONE: &str = "Nothing else waits for your OK. The Team Lead's answer above is done: send a message to go on.";
+pub const ANSWER_DONE: &str = "Nothing else waits for your OK. The Chief's answer above is done: send a message to go on.";
 
 /// Held from a decision's end until its notes are in the chat: of two decisions in a chat that end together, only the
 /// later one finds that nothing waits any more, so the chat gets one `ANSWER_DONE`.
 static ENDING: Mutex<()> = Mutex::new(());
 
 /// You decided on `a`: its note in the chat, then `ANSWER_DONE` when no call of the chat waits any more (of an earlier
-/// answer neither) and the Team Lead isn't answering there. That one is for you only: it isn't a decision note, so the
-/// Team Lead's next answer (`for_turn`) and a hand-over leave it out.
+/// answer neither) and the Chief isn't answering there. That one is for you only: it isn't a decision note, so the
+/// Chief's next answer (`for_turn`) and a hand-over leave it out.
 fn decided(st: &AppState, a: &PendingAction, text: &str) {
     note(st, a, text);
     if crate::chat::answering(st, &a.thread_id) || !core::waiting(&st.db, &a.thread_id).is_ok_and(|w| w.is_empty()) {
@@ -108,9 +108,9 @@ fn decided(st: &AppState, a: &PendingAction, text: &str) {
     crate::chat::note(st, &a.thread_id, ANSWER_DONE, json!({"kind": "pending_done", "run": a.run_id}));
 }
 
-/// Approve: runs exactly the stored call, once (a second approval is refused, `core::claim`), as the Team Lead in its chat
+/// Approve: runs exactly the stored call, once (a second approval is refused, `core::claim`), as the Chief in its chat
 /// with every rule but the outside one in force. "Approved: <what>. <what happened>" or "… It failed: <its error>" goes
-/// into the chat as a note of Gizai's, and to the Team Lead in its next answer.
+/// into the chat as a note of Gizai's, and to the Chief in its next answer.
 pub async fn approve(st: &AppState, id: &str) -> Result<PendingAction, String> {
     let a = core::claim(&st.db, &st.you_id, id).map_err(|e| e.to_string())?;
     changed(st);
@@ -148,7 +148,7 @@ pub async fn approve_all(st: &AppState, ids: &[String]) -> Result<Vec<PendingAct
     Ok(done)
 }
 
-/// Discard: nothing runs. "Discarded: <what>." goes into the chat, and to the Team Lead in its next answer.
+/// Discard: nothing runs. "Discarded: <what>." goes into the chat, and to the Chief in its next answer.
 pub fn discard(st: &AppState, id: &str) -> Result<PendingAction, String> {
     let a = core::get(&st.db, id).map_err(|e| e.to_string())?;
     let text = format!("Discarded: {}.", lower_first(&preview::preview(st, &a.actor_id, &a.thread_id, &a.tool, &a.args).line));
@@ -162,7 +162,7 @@ pub fn discard(st: &AppState, id: &str) -> Result<PendingAction, String> {
     Ok(a)
 }
 
-/// What the Team Lead hears at the start of its next answer in a chat: what you decided since on its calls that waited.
+/// What the Chief hears at the start of its next answer in a chat: what you decided since on its calls that waited.
 #[derive(Debug, Clone, Default)]
 pub struct ForTurn {
     /// The line the answer's prompt starts with (empty: none), in square brackets like Gizai's other lines there.
@@ -171,7 +171,7 @@ pub struct ForTurn {
     pub ids: Vec<String>,
 }
 
-/// The decisions in the chat the Team Lead hasn't heard yet, for its next answer.
+/// The decisions in the chat the Chief hasn't heard yet, for its next answer.
 pub fn for_turn(st: &AppState, thread_id: &str) -> ForTurn {
     let decided = core::untold(&st.db, thread_id).unwrap_or_default();
     if decided.is_empty() {
@@ -189,10 +189,10 @@ pub fn for_turn(st: &AppState, thread_id: &str) -> ForTurn {
     }
 }
 
-/// The answer started with these decisions: the Team Lead has heard them.
+/// The answer started with these decisions: the Chief has heard them.
 pub fn told(st: &AppState, ids: &[String]) {
     if let Err(e) = core::mark_told(&st.db, ids) {
-        eprintln!("gizai: noting that the Team Lead heard the decisions failed: {e}");
+        eprintln!("gizai: noting that the Chief heard the decisions failed: {e}");
     }
 }
 
@@ -200,7 +200,7 @@ pub fn told(st: &AppState, ids: &[String]) {
 pub const INTERRUPTED: &str = "Hersir closed while it ran, so it may or may not have happened: check before you ask for it again.";
 
 /// At start-up: a call approved and still running when Gizai closed counts as failed, so it never runs twice, and its
-/// chat (and the Team Lead's next answer there) says it may or may not have happened. Calls that wait stay waiting.
+/// chat (and the Chief's next answer there) says it may or may not have happened. Calls that wait stay waiting.
 pub fn at_start(st: &AppState) {
     let running = match core::running(&st.db) {
         Ok(r) => r,
