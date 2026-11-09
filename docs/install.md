@@ -170,6 +170,12 @@ It cleans up after itself when it starts and once a day while it runs:
 - **Backups** (`backups/`): one before every update, install and database upgrade, and `gizai --backup` makes one when you ask. The newest 20 are kept. Their names use your local time, like `gizai-before-update-20261009-143502-123.db`.
 - **Backups in a folder you choose** (Settings → General → Backups): copies of the database and your stored files in a folder of your own, like a USB disk or a folder that Dropbox or Syncthing keeps, daily, weekly or when you ask. After each one, this computer's backups past Keep (10 by default) are removed; one made before a restore, and other computers' backups, never are. Keys and passwords are never in them, and they are not encrypted: a synced folder gets your data as it is ([Backups](settings.md#backups)).
 
+### Restore a backup
+
+Settings → General → Backups lists the backups in your folder, each with Restore. Restore says what will happen, saves today's data as a backup first, and checks and copies the backup. Then Restart now swaps it in: Hersir starts with your data as it was then. What changed since, also until the restart, is not kept. Keys and passwords stay as they are on this computer, and agents are paused afterwards. How it works: [Restore](settings.md#restore).
+
+On a new computer, install Hersir ([In one line](#in-one-line)) and plug in the USB disk, or let Dropbox or Syncthing bring the folder. Then go to Settings → General → Backups → Restore from another folder…, choose the `Gizai backups` folder or the folder it is in, and press Restore on a backup. The new computer keeps its own name and its own settings, such as its programs and the Editor's folders. Projects' linked folders and agents' folders come from the backup: change those that are elsewhere on this computer. Sign in again where Hersir asks: keys and passwords are never in a backup.
+
 ## No telemetry
 
 Hersir doesn't report on you or your work. Its release check only asks GitHub for the latest release, and sends nothing about you ([Updates](#updates)).

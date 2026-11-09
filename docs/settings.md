@@ -1,12 +1,12 @@
 # Settings
 
-Where each setting lives, what a backup holds, how Hersir looks, what the screenshot settings do, and what happens when you close its window.
+Where each setting lives, what a backup holds and how to restore one, how Hersir looks, what the screenshot settings do, and what happens when you close its window.
 
 ## The tabs
 
 | Tab | What it holds |
 |---|---|
-| General | Quit, Updates, the Editor's folders, Data: where Hersir keeps your data, and the worktrees of finished cards; and Backups: a folder for copies of your data, how often, how many to keep, Back up now and the backups there |
+| General | Quit, Updates, the Editor's folders, Data: where Hersir keeps your data, and the worktrees of finished cards; and Backups: a folder for copies of your data, how often, how many to keep, Back up now, the backups there and Restore |
 | Appearance | The font, text sizes, theme, density and the mountains |
 | Notifications | A switch for each kind of notification |
 | Agents and runs | Coding CLIs; Runs: limits, runs at once, memory for agent runs, Pause all agents, memory and Ask the Team Lead first; and Screenshots: what Hersir keeps of agents' screenshots, and the previews' ports |
@@ -21,7 +21,7 @@ Settings → General → Backups copies your data to a folder you choose: a USB 
 
 - **What a backup holds:** the database and the files Hersir stores (attachments and screenshots).
 - **What it never holds:** keys, passwords and sign-ins, which stay in your system's keychain; nor worktrees, run and chat logs, or the source of an update.
-- **What it never does:** change your data, or remove another computer's backups or one made before a restore. This version makes and lists backups; it can't restore one yet.
+- **What it never does:** change your data, unless you restore a backup ([Restore](#restore)), or remove another computer's backups or one made before a restore.
 - **Not encrypted:** whoever can open the folder can read the data in it. A folder that Dropbox, Syncthing or another service keeps gets your data unencrypted, on every device it syncs to (and on Dropbox's servers). Choose such a folder only if you trust it with your data.
 - **Several computers can share one folder.** Each adds and removes only its own backups, and the stored files are shared by all of them. The list shows another computer's backups with "from" and its name ("from another computer" when it has none).
 - **The format**, file by file, is in [docs/backup-format.md](backup-format.md).
@@ -33,7 +33,18 @@ Settings → General → Backups copies your data to a folder you choose: a USB 
 | Also when I quit Hersir completely | off | on or off | Quit Hersir completely backs up first and waits for it, usually a few seconds and at most 5 minutes. Closing the window, logging out and shutting down don't back up. |
 | Keep | 10 | 1 to 100 | How many of this computer's backups stay in the folder: after each backup, older ones are removed. One made before a restore is never removed, and neither are other computers' backups. |
 
-Back up now makes one at once, in the background, and shows its step while it runs. It can't be pressed without a folder or while a backup runs. Above it the section shows the last backup with its size (its database file, compressed), when the next one is due, and a backup that failed, in red with its time and why. The list shows each backup in the folder, newest first: its time, why it was made (Daily, Weekly, By hand, On quit or Before a restore), its size (the database and its files), the computer it came from when it is another one, and why one can't be restored.
+Back up now makes one at once, in the background, and shows its step while it runs. It can't be pressed without a folder or while a backup runs. Above it the section shows the last backup with its size (its database file, compressed), when the next one is due, and a backup that failed, in red with its time and why. The list shows each backup in the folder, newest first: its time, why it was made (Daily, Weekly, By hand, On quit or Before a restore), its size (the database and its files), the computer it came from when it is another one, and Restore, or why one can't be restored.
+
+### Restore
+
+Each backup that can be restored has Restore, which can't be pressed while a backup or another restore runs. One that can't be restored, such as one a newer Hersir made or one with missing files, says why instead. Below the list, Restore from another folder… opens your system's folder picker and lists that folder's backups, other computers' too: a USB disk on a new computer, say. Choose the `Gizai backups` folder or the folder it is in.
+
+1. **The question.** Restore says which backup it is (why it was made, its time and its computer) and where today's data goes: the backups folder set above, or else the folder you restore from. Cancel changes nothing.
+2. **The steps.** Hersir checks the backup, saves today's data as a backup and copies what the restart needs, in the background, and shows each step here and in the sidebar. You can go on working. Cancel restore stops it. If something is wrong, such as a backup from a newer Hersir or a file that is missing or has changed, the reason shows and your data stays as it is.
+3. **Ready.** "Restore ready" and the backup's time show here and above Company in the sidebar, with Restart now and Cancel restore. Until the restart today's data keeps working, but what you change is not kept. Restart now stops agents at work first, and asks once more when there are any. Cancel restore removes what was copied, and the next start is a normal one; the backup of today's data stays in its folder.
+4. **After the restart.** Hersir shows your data as it was then, and a notice here and in the sidebar says how it went, until Dismiss. Agents are paused: resume them in Settings → Agents and runs. If the restore failed, the notice says why, and Hersir started with today's data.
+
+A restore never touches keys and passwords: they stay as they are on this computer, in your system's keychain. This computer also keeps its own identity and its own settings, such as its programs, the Editor's folders, these backup settings and Runs at once. Everything else comes from the backup, also projects' linked folders and agents' folders: on a new computer, change those that are elsewhere there. [docs/backup-format.md](backup-format.md#restore) has it step by step.
 
 ## Appearance
 

@@ -1,22 +1,58 @@
 // Settings → General → Backups (GA-217, on GA-216's contract BK): the folder (Browse… or Turn off), When, Keep, Back up now
 // with the step of the snapshot that runs, the last and next backup, and the snapshots in the folder. Each change saves at
 // once, as the Editor's folders do; a refusal shows its reason under its field and nothing else is saved. `backups-changed`
-// keeps it up to date while a snapshot runs, ends or fails. Restoring comes with GA-219.
-import { useEffect, useRef, useState } from "react";
+// keeps it up to date while a snapshot runs, ends or fails.
+//
+// Restore (GA-219, on GA-218's contract BR): each snapshot that can be restored has Restore, in this list and in the list of
+// another folder (Restore from another folder…). The confirm says what will happen; then the steps, a failure with its
+// reason, or Restart now and Cancel restore show here. `restore-changed` keeps it up to date; the sidebar shows the same
+// (RestoreNotice). After the restart, how it went shows at the top until Dismiss.
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { CircleX, DatabaseBackup, FolderOpen, LoaderCircle } from "lucide-react";
-import { backUpNow, backupStatus, listBackups, onBackupsChanged, saveBackupSettings } from "../api";
+import { ArchiveRestore, CircleCheck, CircleX, DatabaseBackup, FolderOpen, LoaderCircle, X } from "lucide-react";
+import { backUpNow, backupStatus, cancelRestore, dismissRestoreResult, listBackups, onBackupsChanged, restartToRestore, saveBackupSettings, startRestore } from "../api";
 import { backupWhen, canBackUp, entryProblem, entrySize, EVERY, fromText, keepOf, KEEP_MAX, KEEP_MIN, lastErrorText, lastText, nextText,
   NO_FOLDER, reasonText, stepText } from "../lib/backups";
 import { fullWhen } from "../lib/limits";
+import { confirmText, failedText, isRestoring, PICK_TITLE, readyText, restoreStep, resultText, saveFolder } from "../lib/restore";
+import { useRestore } from "../lib/useRestore";
 import type { BackupEntry, BackupSettings as Settings, BackupStatus } from "../types";
 import { Field, FormSection } from "./Form";
+import { RestartButton } from "./UpdateNotice";
 
 /** How long Keep waits after you type before it is saved. */
 const TYPING_MS = 600;
 
-/** The fields a refusal shows under: Folder, When (also On quit), Keep, and Back up now's. */
-type Errs = Partial<Record<"folder" | "when" | "keep" | "now", string | null>>;
+/** The fields a refusal shows under: Folder, When (also On quit), Keep, Back up now's, Restore's, and the other folder's picker. */
+type Errs = Partial<Record<"folder" | "when" | "keep" | "now" | "restore" | "other", string | null>>;
+
+/** Restore's question: what will happen, then Restore or Cancel. Escape and a click beside it cancel; focus starts on Cancel
+ *  and stays in the dialog. */
+function RestoreConfirm({ text, onRestore, onCancel }: { text: string; onRestore: () => void; onCancel: () => void }) {
+  const box = useRef<HTMLDivElement>(null);
+  const cancel = useRef<HTMLButtonElement>(null);
+  useEffect(() => { cancel.current?.focus(); }, []);
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onCancel(); return; }
+    if (e.key !== "Tab" || !box.current) return;
+    const all = [...box.current.querySelectorAll<HTMLElement>("button")];
+    const first = all[0], last = all[all.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+  };
+  return (
+    <div className="ask-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
+      <div ref={box} className="ask bk-ask" role="alertdialog" aria-modal="true" aria-labelledby="restore-ask-q" aria-describedby="restore-ask-why" onKeyDown={onKey}>
+        <h2 id="restore-ask-q">Restore this backup?</h2>
+        <p id="restore-ask-why">{text}</p>
+        <div className="ask-actions">
+          <button ref={cancel} type="button" className="btn ghost" onClick={onCancel}>Cancel</button>
+          <button type="button" className="btn primary" onClick={onRestore}>Restore</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function BackupSettings() {
   const [s, setS] = useState<BackupStatus | null>(null);
@@ -34,6 +70,15 @@ export function BackupSettings() {
   const events = useRef(0);
   const queue = useRef(Promise.resolve());
   const keepSent = useRef<string | null>(null);
+  const restore = useRestore();
+  // The snapshot Restore asks about, and the folder it is in.
+  const [asking, setAsking] = useState<{ entry: BackupEntry; folder: string } | null>(null);
+  // Restore from another folder…: the folder picked, how many times one was (picked again, it is read again) and its snapshots.
+  const [other, setOther] = useState<string | null>(null);
+  const [otherPicks, setOtherPicks] = useState(0);
+  const [otherList, setOtherList] = useState<BackupEntry[] | null>(null);
+  const [otherErr, setOtherErr] = useState<string | null>(null);
+  const restorePanel = useRef<HTMLDivElement>(null);
 
   const take = (x: BackupStatus | null | undefined, eventsBefore: number) => {
     if (!alive.current || !x || events.current !== eventsBefore) return;
@@ -66,6 +111,19 @@ export function BackupSettings() {
     listBackups(null).then((l) => { if (live) { setList(l ?? []); setListErr(null); } }).catch((e) => { if (live) setListErr(String(e)); });
     return () => { live = false; };
   }, [listKey]);
+
+  // The other folder's snapshots, read again when one is made: today's data may be saved there.
+  const otherKey = other === null ? null : JSON.stringify([other, otherPicks, !!s?.running, s?.last?.name ?? null, restore?.savedToday ?? null]);
+  useEffect(() => {
+    if (other === null) return;
+    let live = true;
+    listBackups(other).then((l) => { if (live) { setOtherList(l ?? []); setOtherErr(null); } }).catch((e) => { if (live) { setOtherList(null); setOtherErr(String(e)); } });
+    return () => { live = false; };
+  }, [otherKey]);
+
+  // A restore's steps and notice show above the list: in sight when it starts, however long the list is.
+  const showsRestore = isRestoring(restore) || restore?.state === "ready" || restore?.state === "failed" || !!errs.restore;
+  useEffect(() => { if (showsRestore) restorePanel.current?.scrollIntoView({ block: "nearest" }); }, [showsRestore]);
 
   /** Saves the settings as they are now with `change`, one save after the other. A refusal shows under `field`, and the
    *  settings stay as they were. */
@@ -129,9 +187,55 @@ export function BackupSettings() {
       .finally(() => { if (alive.current) setStarting(false); });
   };
   const next = nextText(s, now);
+  const restoring = isRestoring(restore);
+  const refusal = (e: unknown) => { if (alive.current) setErr("restore", String(e)); };
+  const pickOther = async () => {
+    setErr("other", null);
+    try {
+      const dir = await open({ directory: true, multiple: false, title: PICK_TITLE });
+      if (typeof dir === "string") { setOther(dir); setOtherPicks((n) => n + 1); setOtherList(null); setOtherErr(null); }
+    } catch (e) { setErr("other", String(e)); }
+  };
+  const startIt = (a: { entry: BackupEntry; folder: string }) => {
+    setAsking(null);
+    setErr("restore", null);
+    startRestore(a.folder, a.entry.name).catch(refusal);
+  };
+  const cancelIt = () => { setErr("restore", null); cancelRestore().catch(refusal); };
+  /** The snapshots in `folder`, each with Restore or why it can't be restored. */
+  const listOf = (l: BackupEntry[], folder: string, label: string) => (
+    <ul className="backup-list" aria-label={label}>
+      {l.map((e) => {
+        const from = fromText(e);
+        const problem = entryProblem(e);
+        const when = backupWhen(e.madeAt, now);
+        return (
+          <li key={e.name}>
+            <div className="bk-row">
+              <span className="bk-when" title={fullWhen(e.madeAt)}>{when}</span>
+              <span className="bk-what">{reasonText(e.reason)}{from && <span className="faint"> · {from}</span>}</span>
+              <span className="bk-size mono">{entrySize(e)}</span>
+              <span className="bk-do">
+                {!problem && <button type="button" className="btn sm" aria-label={`Restore the backup of ${when}`} disabled={restoring || !!s.running}
+                  onClick={() => setAsking({ entry: e, folder })}><ArchiveRestore className="icon" />Restore</button>}
+              </span>
+            </div>
+            {problem && <span className="warn">{problem}</span>}
+          </li>
+        );
+      })}
+    </ul>
+  );
 
   return (
     <FormSection title="Backups" text="Copies of your data in a folder you choose: a USB disk, or a folder that Dropbox or Syncthing keeps. A backup holds the database and your files, never keys or passwords: those stay in your system's keychain.">
+      {restore?.result && (
+        <div className={`restore-note bk-result ${restore.result.ok ? "ok" : "failed"}`} role={restore.result.ok ? "status" : "alert"}>
+          {restore.result.ok ? <CircleCheck className="icon" /> : <CircleX className="icon" />}
+          <span>{resultText(restore.result, now)}</span>
+          <button type="button" className="btn sm ghost" onClick={() => { setErr("restore", null); dismissRestoreResult().catch(refusal); }}>Dismiss</button>
+        </div>
+      )}
       <Field label="Folder" wide error={errs.folder} warn={s.folderProblem}>
         {s.folder ? <span className="mono bk-folder">{s.folder}</span> : <span className="faint">{NO_FOLDER}</span>}
         <div className="bk-actions">
@@ -165,31 +269,62 @@ export function BackupSettings() {
           {s.running && <span className="gh-line bk-step" role="status"><LoaderCircle className="icon spin" /><span>{stepText(s.running.step)}</span></span>}
         </div>
       </Field>
+      {showsRestore && (
+        <Field label="Restore" wide error={errs.restore}>
+          <div className="bk-restore" ref={restorePanel}>
+            {restore && restoring && (
+              <div className="bk-actions">
+                <span className="gh-line bk-step" role="status"><LoaderCircle className="icon spin" /><span>{restoreStep(restore)}</span></span>
+                <button type="button" className="btn sm ghost" onClick={cancelIt}>Cancel restore</button>
+              </div>
+            )}
+            {restore?.state === "failed" && (
+              <div className="bk-actions">
+                <div className="gh-line failed" role="alert"><CircleX className="icon" /><span className="bk-error">{failedText(restore.error)}</span></div>
+                <button type="button" className="btn sm ghost" onClick={cancelIt}>Dismiss</button>
+              </div>
+            )}
+            {restore?.state === "ready" && (
+              <>
+                <span className="bk-ready" role="status">{readyText(restore, now)}</span>
+                <div className="bk-actions">
+                  <RestartButton className="btn primary" label="Restart now" restart={restartToRestore} />
+                  <button type="button" className="btn ghost" onClick={cancelIt}>Cancel restore</button>
+                </div>
+              </>
+            )}
+          </div>
+        </Field>
+      )}
       <Field label="Backups" wide hint={list && list.length > 0 ? "Newest first, from every computer that backs up to this folder." : undefined}>
         {!s.settings.folder ? <span className="faint">Choose a folder to see its backups.</span>
           // a folder that can't be found can't be listed either: its warning under Folder says why
           : listErr ? (s.folderProblem ? <span className="faint">They show once the folder can be used again.</span> : <span className="warn">{listErr}</span>)
           : !list ? <span className="faint">Reading the folder…</span>
           : list.length === 0 ? <span className="faint">No backups in this folder yet.</span>
-          : (
-            <ul className="backup-list" aria-label="Backups in this folder">
-              {list.map((e) => {
-                const from = fromText(e);
-                const problem = entryProblem(e);
-                return (
-                  <li key={e.name}>
-                    <div className="bk-row">
-                      <span className="bk-when" title={fullWhen(e.madeAt)}>{backupWhen(e.madeAt, now)}</span>
-                      <span className="bk-what">{reasonText(e.reason)}{from && <span className="faint"> · {from}</span>}</span>
-                      <span className="bk-size mono">{entrySize(e)}</span>
-                    </div>
-                    {problem && <span className="warn">{problem}</span>}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+          : listOf(list, s.settings.folder, "Backups in this folder")}
       </Field>
+      <div className="bk-other">
+        <div className="bk-actions">
+          <button type="button" className="btn sm" onClick={pickOther}><FolderOpen className="icon" />Restore from another folder…</button>
+        </div>
+        {errs.other && <span className="error">{errs.other}</span>}
+        {other !== null && (
+          <>
+            <div className="bk-other-head">
+              <span className="mono bk-folder">{other}</span>
+              <button type="button" className="btn ghost sm icon-only" aria-label="Close this folder's backups" title="Close" onClick={() => setOther(null)}><X className="icon" /></button>
+            </div>
+            {otherErr ? <span className="warn">{otherErr}</span>
+              : !otherList ? <span className="faint">Reading the folder…</span>
+              : otherList.length === 0 ? <span className="faint">No backups in this folder.</span>
+              : listOf(otherList, other, "Backups in the other folder")}
+          </>
+        )}
+      </div>
+      {asking && (
+        <RestoreConfirm text={confirmText(asking.entry, saveFolder(s, asking.folder), now)} onRestore={() => startIt(asking)} onCancel={() => setAsking(null)} />
+      )}
     </FormSection>
   );
 }
