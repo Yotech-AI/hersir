@@ -62,7 +62,7 @@ pub struct AppState {
     /// The `hersir-mcp` shim Claude Code starts in a chat turn (None: not found next to Gizai).
     pub mcp_shim: Option<PathBuf>,
     pub chat: Arc<chat::ChatManager>,
-    /// The Team Lead's read-only copies of the projects' code (see `code`).
+    /// The Chief's read-only copies of the projects' code (see `code`).
     pub code: Arc<code::Copies>,
     /// Pull requests being opened or checked on GitHub (see `pulls`).
     pub pulls: Arc<pulls::PullChecks>,
@@ -286,6 +286,12 @@ fn open_data(dir: PathBuf, notify: Arc<dyn Fn(runs::Note) + Send + Sync>, defaul
     }.map_err(|e| e.to_string())?;
     // A script on a new, empty data folder (GIZAI_SKIP_ONBOARDING=1) starts as if the onboarding was skipped.
     onboarding::skip_at_start(&db);
+    // GA-255, once: a lead agent still named as a new install named it before is named Chief now.
+    match gizai_core::seed::old_lead_to_chief(&db, &seed.you_id) {
+        Ok(0) => {}
+        Ok(n) => eprintln!("gizai: named {n} lead agents Chief (they had the old default name)"),
+        Err(e) => eprintln!("gizai: naming the lead agent Chief failed: {e}"),
+    }
     // Memory (GA-96): a group of agents sharing one folder whose owner was removed goes on with its next agent.
     if let Err(e) = gizai_core::memory::ensure_groups(&db, &seed.you_id) {
         eprintln!("gizai: handing shared memory folders on failed: {e}");
@@ -324,9 +330,9 @@ fn open_data(dir: PathBuf, notify: Arc<dyn Fn(runs::Note) + Send + Sync>, defaul
         }
     }
     let _ = gizai_core::runs::recover_interrupted(&db);
-    // Questions that waited for the Team Lead (GA-70): its run on them is gone, so they go to you.
+    // Questions that waited for the Chief (GA-70): its run on them is gone, so they go to you.
     if let Err(e) = gizai_core::questions::recover(&db) {
-        eprintln!("gizai: sending the questions that waited for the Team Lead to the Inbox failed: {e}");
+        eprintln!("gizai: sending the questions that waited for the Chief to the Inbox failed: {e}");
     }
     // Messages queued in a chat wait for Send now: the answer they waited for is gone.
     let _ = gizai_core::chat::hold_all_queues(&db);
@@ -345,7 +351,7 @@ fn open_data(dir: PathBuf, notify: Arc<dyn Fn(runs::Note) + Send + Sync>, defaul
                   desktop: notifications::Desktop::silent(), inbox: Arc::new(notifications::Watch::default()),
                   terminals: Arc::new(gizai_agents::terminal::Terminals::default()), streams: Arc::new(stream::Streams::default()),
                   backups: Arc::new(backups::Backups::default()), restores: Arc::new(restore::Restores::default()) };
-    // GA-102: the Team Lead's calls that wait for your approval stay waiting; one approved while Gizai closed counts as
+    // GA-102: the Chief's calls that wait for your approval stay waiting; one approved while Gizai closed counts as
     // failed, so it never runs twice, and its chat says so.
     pending::at_start(&st);
     timed.part("the calls that wait for approval");
@@ -644,7 +650,7 @@ pub fn run() {
                     }
                 });
             }
-            // The Team Lead's copies of the projects' code: the missing ones are made now, so the first answer rarely
+            // The Chief's copies of the projects' code: the missing ones are made now, so the first answer rarely
             // waits for them, and copies that no longer belong go.
             {
                 let st = state.clone();
@@ -717,7 +723,7 @@ pub fn run() {
                 });
             }
             // Once a minute the agents take cards that had to wait (the run limit was full, Gizai just started), and the
-            // Team Lead checks the board when its interval has passed; only new findings start it. The cards start on
+            // Chief checks the board when its interval has passed; only new findings start it. The cards start on
             // their own (GA-191): the board check doesn't wait for a card's fetch and install.
             tauri::async_runtime::spawn(async move {
                 let mut tick = tokio::time::interval(std::time::Duration::from_secs(60));

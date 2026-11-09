@@ -35,7 +35,7 @@ fn row(r: &rusqlite::Row) -> rusqlite::Result<Run> {
 }
 
 /// The trigger a run reports (`Run::trigger`): Gizai's nudge is stored as `nudge` with `nudged` set, and reported as
-/// `result_nudge` (`RESULT_NUDGE`), apart from a Continue. Older nudges (GA-54) read the same way. The Team Lead's run on
+/// `result_nudge` (`RESULT_NUDGE`), apart from a Continue. Older nudges (GA-54) read the same way. The Chief's run on
 /// a question (GA-70) is stored as `approval`, which nothing else uses, and reported as `question`.
 pub(crate) fn reported_trigger(stored: String, nudged: bool) -> String {
     if nudged && stored == "nudge" {
@@ -75,7 +75,7 @@ pub const RESULT_NUDGE: &str = "result_nudge";
 /// Gizai's nudge (GA-54): a run that continues, by itself, a run that ended without a result, in the same session.
 /// Recorded like `create_with_trigger` with trigger `nudge` and marked `nudged`, so it is never nudged in turn: when it
 /// ends without a result too, the card goes on hold (`workflow::apply_outcome`). It reads as trigger `result_nudge`
-/// (`RESULT_NUDGE`); a person's or the Team Lead's Continue reads as `nudge`.
+/// (`RESULT_NUDGE`); a person's or the Chief's Continue reads as `nudge`.
 #[allow(clippy::too_many_arguments)]
 pub fn create_nudge(db: &Db, agent_id: &str, task_id: &str, role_key: &str, session_id: &str, cwd: &str, worktree: &str, branch: &str,
                     log_path: &str) -> Result<String> {
@@ -121,7 +121,7 @@ fn create_run(db: &Db, agent_id: &str, task_id: &str, role_key: &str, trigger: &
     })
 }
 
-/// Records a queued chat turn of the Team Lead: no task, the thread instead. It runs on the agent's own CLI.
+/// Records a queued chat turn of the Chief: no task, the thread instead. It runs on the agent's own CLI.
 pub fn create_chat(db: &Db, agent_id: &str, thread_id: &str, session_id: &str, cwd: &str, log_path: &str) -> Result<String> {
     create_chat_on(db, agent_id, thread_id, None, session_id, cwd, log_path)
 }
@@ -352,7 +352,7 @@ pub fn last_qa_issues(db: &Db, task_id: &str) -> Result<Vec<String>> {
 }
 
 /// At start-up: runs left queued or running by a previous Gizai can't be followed any more. Marks them
-/// failed ("interrupted") and releases their claims. A chat answer and a Team Lead's run on a question get no outcome
+/// failed ("interrupted") and releases their claims. A chat answer and a Chief's run on a question get no outcome
 /// (they have none), and a chat a note that it was interrupted. Returns how many there were.
 pub fn recover_interrupted(db: &Db) -> Result<usize> {
     db.write(None, |w| {
@@ -361,7 +361,7 @@ pub fn recover_interrupted(db: &Db) -> Result<usize> {
             st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?.collect::<rusqlite::Result<Vec<_>>>()?
         };
         for (id, trigger, thread) in &runs {
-            // A Team Lead's run on a question keeps its outcome_json (the question it was on): `questions::recover`
+            // A Chief's run on a question keeps its outcome_json (the question it was on): `questions::recover`
             // sends that question to you next.
             if trigger != "chat" && trigger != crate::questions::STORED_TRIGGER {
                 finish_in(w, id, "failed", None, 0, 0, 0, Some("interrupted"))?;

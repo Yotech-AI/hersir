@@ -1,10 +1,10 @@
-//! Agents ask the Team Lead before a person (GA-70), the app's half. When a task agent's question went to the Team Lead
-//! (`gizai_core::questions::hand_over_in`, `GateResult::lead`), the Team Lead's run on it (`chat::question_once`) reads
+//! Agents ask the Chief before a person (GA-70), the app's half. When a task agent's question went to the Chief
+//! (`gizai_core::questions::hand_over_in`, `GateResult::lead`), the Chief's run on it (`chat::question_once`) reads
 //! it, looks in memory and ends with a result line. Gizai then does what that line says: an answer goes on the card as the
-//! Team Lead's comment and continues the agent's session (Continue with a message, GA-31), and is kept in memory, linked
+//! Chief's comment and continues the agent's session (Continue with a message, GA-31), and is kept in memory, linked
 //! to the card; an escalation puts a comment "Needs <you>: why, the options, my advice" on the card, which lands in the
 //! Inbox. An error, a timeout, a run without its result line, and an answer the agent can't be continued with all go to
-//! you too. When you answer a question the Team Lead escalated, the Team Lead keeps your answer in memory as the agent
+//! you too. When you answer a question the Chief escalated, the Chief keeps your answer in memory as the agent
 //! starts again (`learn`).
 use std::time::{Duration, Instant};
 
@@ -24,13 +24,13 @@ const COMMENT_CHARS: usize = 800;
 /// The last this many comments go into the prompt.
 const COMMENTS: usize = 8;
 
-/// How a question the Team Lead took ended (`take`).
+/// How a question the Chief took ended (`take`).
 #[derive(Debug)]
 pub struct Settled {
-    /// answered, escalated, dropped (the card moved on before the Team Lead was done) or skipped (the Team Lead can't
+    /// answered, escalated, dropped (the card moved on before the Chief was done) or skipped (the Chief can't
     /// run here: the question went to you as before, without a comment).
     pub state: String,
-    /// The Team Lead's run on the question, when it started.
+    /// The Chief's run on the question, when it started.
     pub run_id: Option<String>,
     /// Escalated: why.
     pub reason: Option<String>,
@@ -38,16 +38,16 @@ pub struct Settled {
     pub continued: Option<(String, tokio::task::JoinHandle<RunSummary>)>,
 }
 
-/// What the Team Lead's result line says about a question.
+/// What the Chief's result line says about a question.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Verdict {
-    /// The answer for the agent, and where to keep it in memory when the Team Lead names a note (a shared one) and a line.
+    /// The answer for the agent, and where to keep it in memory when the Chief names a note (a shared one) and a line.
     Answered { answer: String, path: Option<String>, text: Option<String> },
-    /// The user decides: why, the options and the Team Lead's advice.
+    /// The user decides: why, the options and the Chief's advice.
     Escalated { reason: String, options: Vec<String>, advice: String },
 }
 
-/// The last `GIZAI_RESULT:` line of the Team Lead's message: `answered` with a non-empty `answer` (and an optional
+/// The last `GIZAI_RESULT:` line of the Chief's message: `answered` with a non-empty `answer` (and an optional
 /// `memory` object with `path` and `text`), or `escalated` (`reason`, `options`, `advice`; a `needs_decision` line counts
 /// as escalated, its summary as the reason). None: no such line, a line that isn't JSON, another outcome, or an answer
 /// without text.
@@ -92,7 +92,7 @@ fn quote(text: &str) -> String {
     text.trim().lines().map(|l| format!("> {l}")).collect::<Vec<_>>().join("\n")
 }
 
-/// The message of the Team Lead's run on the question: who asks what, on which card, the card's description and
+/// The message of the Chief's run on the question: who asks what, on which card, the card's description and
 /// acceptance criteria, and its last comments.
 pub fn prompt(st: &AppState, q: &Question) -> String {
     let you = you(st);
@@ -121,7 +121,7 @@ pub fn prompt(st: &AppState, q: &Question) -> String {
     p
 }
 
-/// The comment of an escalation: "Needs <you>: why", the options and the Team Lead's advice.
+/// The comment of an escalation: "Needs <you>: why", the options and the Chief's advice.
 fn escalation_comment(you: &str, reason: &str, options: &[String], advice: &str) -> String {
     let mut c = format!("Needs {you}: {}", reason.trim());
     if !options.is_empty() {
@@ -134,7 +134,7 @@ fn escalation_comment(you: &str, reason: &str, options: &[String], advice: &str)
     c
 }
 
-/// Starts the Team Lead's work on the question the run `asked_run_id` ended with (`settle`), in the background; `take`
+/// Starts the Chief's work on the question the run `asked_run_id` ended with (`settle`), in the background; `take`
 /// gives its end.
 pub fn start(st: &AppState, asked_run_id: &str, lead_id: &str) {
     let (st2, asked, lead) = (st.clone(), asked_run_id.to_string(), lead_id.to_string());
@@ -152,13 +152,13 @@ pub fn start(st: &AppState, asked_run_id: &str, lead_id: &str) {
     settled.insert(asked_run_id.to_string(), (Instant::now(), handle));
 }
 
-/// The end of the Team Lead's work on the question the run `asked_run_id` ended with, once (tests, and anything that
-/// waits for it). None when the Team Lead didn't take that question, or its end was taken already.
+/// The end of the Chief's work on the question the run `asked_run_id` ended with, once (tests, and anything that
+/// waits for it). None when the Chief didn't take that question, or its end was taken already.
 pub fn take(st: &AppState, asked_run_id: &str) -> Option<tokio::task::JoinHandle<Settled>> {
     st.chat.settled.lock().unwrap().remove(asked_run_id).map(|(_, h)| h)
 }
 
-/// The Team Lead's work on a question, from its run to what Gizai does with the result.
+/// The Chief's work on a question, from its run to what Gizai does with the result.
 async fn settle(st: &AppState, asked: &str, lead_id: &str) -> Settled {
     let you = you(st);
     let escalated = |run_id: Option<String>, reason: String, comment: String| {
@@ -169,7 +169,7 @@ async fn settle(st: &AppState, asked: &str, lead_id: &str) -> Settled {
         let state = if done.unwrap_or(false) { "escalated" } else { "dropped" };
         Settled { state: state.into(), run_id, reason: Some(reason), continued: None }
     };
-    // The reasons follow "Team Lead escalated to you: " on the card; the comments are the Team Lead's own.
+    // The reasons follow "Chief escalated to you: " on the card; the comments are the Chief's own.
     let (q, lead) = match (questions::question(&st.db, asked), team::agent(&st.db, lead_id)) {
         (Ok(q), Ok(lead)) => (q, lead),
         (Err(e), _) | (_, Err(e)) => {
@@ -179,7 +179,7 @@ async fn settle(st: &AppState, asked: &str, lead_id: &str) -> Settled {
     };
     // It can't run here at all (no MCP helper, not on a Claude Code it finds): the question goes to you as before.
     if let Err(why) = crate::chat::question_ready(st, &lead) {
-        eprintln!("gizai: the Team Lead can't look at the question of run {asked}, so it goes to the Inbox: {why}");
+        eprintln!("gizai: the Chief can't look at the question of run {asked}, so it goes to the Inbox: {why}");
         if let Err(e) = questions::skip(&st.db, asked, &why) {
             eprintln!("gizai: sending the question of run {asked} to the Inbox failed: {e}");
         }
@@ -220,14 +220,14 @@ async fn settle(st: &AppState, asked: &str, lead_id: &str) -> Settled {
                     let _ = questions::noted(&st.db, asked, &saved.path);
                     (st.notify)(Note::RowsChanged("docs"));
                 }
-                Err(e) => eprintln!("gizai: keeping the Team Lead's answer to run {asked} in memory failed: {e}"),
+                Err(e) => eprintln!("gizai: keeping the Chief's answer to run {asked} in memory failed: {e}"),
             }
             let mut tries = 0;
             loop {
                 match crate::runs::continue_for_question(st, asked, lead_id, &answer).await {
                     Ok((id, done)) => {
                         if let Err(e) = questions::answered(&st.db, asked) {
-                            eprintln!("gizai: recording the Team Lead's answer to run {asked} failed: {e}");
+                            eprintln!("gizai: recording the Chief's answer to run {asked} failed: {e}");
                         }
                         return Settled { state: "answered".into(), run_id, reason: None, continued: Some((id, done)) };
                     }
@@ -252,8 +252,8 @@ async fn settle(st: &AppState, asked: &str, lead_id: &str) -> Settled {
     }
 }
 
-/// A run `new_run_id` starts on the card after its last question went to you from the Team Lead: what people wrote on
-/// the card since is kept in memory as the Team Lead's (`questions::learn_from_person`), linked to the card.
+/// A run `new_run_id` starts on the card after its last question went to you from the Chief: what people wrote on
+/// the card since is kept in memory as the Chief's (`questions::learn_from_person`), linked to the card.
 pub fn learn(st: &AppState, task_id: &str, new_run_id: &str) {
     match questions::learn_from_person(&st.db, task_id, new_run_id, &crate::tools::ymd(ids::now_ms())) {
         Ok(Some(_)) => (st.notify)(Note::RowsChanged("docs")),

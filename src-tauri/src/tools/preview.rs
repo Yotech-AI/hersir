@@ -51,7 +51,7 @@ fn card(t: &gizai_core::model::Task) -> String {
     format!("{} {}", t.identifier, short(&t.title, 60))
 }
 
-/// The pending call `tool` with `args`, as the Team Lead `actor` in the chat `thread` would make it.
+/// The pending call `tool` with `args`, as the Chief `actor` in the chat `thread` would make it.
 pub(crate) fn preview(st: &crate::AppState, actor: &str, thread: &str, tool: &str, args: &Value) -> Preview {
     let a = Args(args.as_object().cloned().unwrap_or_default());
     let cx = Cx { st, actor, thread: Some(thread), check: None, from: None };
@@ -83,7 +83,7 @@ fn plain_fields(args: &Map<String, Value>) -> Vec<Field> {
     })).collect()
 }
 
-/// The note `r` (path, title or id) as the Team Lead sees it, if it exists.
+/// The note `r` (path, title or id) as the Chief sees it, if it exists.
 fn note(cx: &Cx, r: &str) -> Option<memory::Note> {
     let who = super::memory::who(cx).ok()?;
     memory::get(cx.db(), &who, r).ok()
@@ -125,7 +125,7 @@ fn memory_write(cx: &Cx, a: &Args) -> Result<Preview, String> {
         Some(n) => {
             let warning = match version {
                 None | Some(0) => Some(format!("{} exists and the call gives no version, so approving fails and nothing is saved.", n.path)),
-                Some(v) if v != n.current_version => Some(format!("{} changed since the Team Lead read it (version {v}; it is at version {} now), \
+                Some(v) if v != n.current_version => Some(format!("{} changed since the Chief read it (version {v}; it is at version {} now), \
                                                                     so approving fails and nothing is saved.", n.path, n.current_version)),
                 _ => None,
             };

@@ -20,6 +20,7 @@ mod changes_flow_test;
 mod chat_files_flow_test;
 mod chat_flow_test;
 mod chat_limits_test;
+mod chief_flow_test;
 mod claude_memory_switch_test;
 mod cli_run_flow_test;
 mod commands_off_main_thread_test;
