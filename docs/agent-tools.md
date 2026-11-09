@@ -151,7 +151,7 @@ Every git command Hersir runs in a project's repository or a card's worktree sta
 - git hands the settings on to the git commands it starts itself, like a worktree add's checkout (`post-checkout`) and a push's `pre-push`. gh gets them in its environment (`GIT_CONFIG_COUNT`) for the git it starts in the repository.
 - They hold for that one command only. The repository's config stays as it is, so your own `git commit` there still runs its hooks, and so does the remote's own `pre-receive`.
 
-Before, a hook or a `core.fsmonitor` program in a repository's `.git/config` ran as you whenever Hersir committed, fetched or pushed there, outside any agent's allowed commands.
+Before, the repository's hooks (in `.git/hooks`, or where its `core.hooksPath` points) and a `core.fsmonitor` program set in its `.git/config` ran as you whenever Hersir committed, stashed, fetched, pushed or made a worktree there, outside any agent's allowed commands.
 
 ### What Codex may write
 
