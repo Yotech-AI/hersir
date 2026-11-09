@@ -483,7 +483,8 @@ pub(crate) async fn update_task(cx: &Cx<'_>, a: &Args) -> Result<Value, String> 
             patch.hold_reason = Some(waiting_for_ok(&tool));
             patch.hold_kind = Some(HOLD_WAITING_FOR_OK.into());
             held_after = Some(tool);
-        } else if steering {
+        } else if steering && t.archived_at.is_none() {
+            // (an archived card is read-only: the write below says so, and nothing waits for an Approve that would fail)
             return Err(cx.keep("update_task", a, &tool));
         }
     }
