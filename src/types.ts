@@ -566,7 +566,7 @@ export type BackupEntry = {
 };
 export type BackupStatus = {
   settings: BackupSettings;
-  folder: string | null;           // the backups folder in use (…/Gizai backups), null when none is set
+  folder: string | null;           // the backups folder in use (…/Hersir backups), null when none is set
   folderProblem: string | null;    // why it can't be used now: missing, not a folder, can't be written
   running: { reason: BackupReason; startedAt: number; step: string } | null;
   last: { name: string; madeAt: number; bytes: number } | null;   // this computer's newest good snapshot

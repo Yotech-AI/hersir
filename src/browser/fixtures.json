@@ -1474,7 +1474,7 @@
     },
     "ask_lead_enabled": true,
     "backup_status": {
-      "folder": "/home/you/Dropbox/Gizai backups",
+      "folder": "/home/you/Dropbox/Hersir backups",
       "folderProblem": null,
       "last": {
         "bytes": 1153434,
