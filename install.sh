@@ -167,7 +167,9 @@ else
   say "Claude Code: not found. Hersir's agents and chat run it; install it from https://docs.claude.com/en/docs/claude-code and log in."
 fi
 # The tray icon loads libayatana-appindicator (or the older libappindicator) when Hersir starts; Hersir works without it.
-if have ldconfig && ! ldconfig -p 2>/dev/null | grep -qE 'lib(ayatana-)?appindicator3\.so\.1'; then
+# grep reads ldconfig's whole list: grep -q would stop at the first match, ldconfig would get SIGPIPE, and with pipefail
+# the check would fail although the library is there.
+if have ldconfig && ! ldconfig -p 2>/dev/null | grep -E 'lib(ayatana-)?appindicator3\.so\.1' >/dev/null; then
   say "Tray icon: libayatana-appindicator is missing, so Hersir will have no tray icon (Arch and Omarchy: sudo pacman -S libayatana-appindicator; Debian and Ubuntu: sudo apt install libayatana-appindicator3-1)."
 fi
 if [ "$OS" = Darwin ] && [ "$(uname -m)" != arm64 ]; then
@@ -329,7 +331,7 @@ cat > "$new_launch" <<LAUNCH
 #!/bin/sh
 # Starts Hersir with your login shell's PATH, so its agents find claude, git, npm and cargo even when
 # Hersir is started from the app launcher. On machines without an NVIDIA GPU, WebKitGTK needs Mesa's EGL.
-if ! lspci 2>/dev/null | grep -qi nvidia && [ -f /usr/share/glvnd/egl_vendor.d/50_mesa.json ]; then
+if ! lspci 2>/dev/null | grep -i nvidia >/dev/null && [ -f /usr/share/glvnd/egl_vendor.d/50_mesa.json ]; then
   export __EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json
 fi
 if command -v bash >/dev/null 2>&1; then
