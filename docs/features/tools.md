@@ -33,7 +33,7 @@ Agents can use outside services through MCP servers, like Otus OS. Settings → 
 - It needs Node 20.19 or newer with npx, and Google Chrome or Chromium (never Brave). The form says what is missing.
 - Hersir installs none of it: `npx` fetches the pinned server, and the server starts the browser.
 
-MCP servers and the browser work on Claude Code. Codex and Gemini agents show them disabled, with why.
+MCP servers and the browser work on Claude Code. Codex and Gemini agents show them disabled, with why. A Gemini run starts no MCP server at all, not even one from your own Gemini settings.
 
 ## Built-in tools
 
@@ -111,6 +111,17 @@ Claude Code reports every tool call it refused, with the reason. Hersir saves th
 - the Chief's `get_task` and `get_agent` return them for each run.
 
 Codex and Gemini don't report refusals, so their runs list none.
+
+## A repository's own settings
+
+A repository's own files and git settings never start a program outside an agent's allowed commands or its sandbox.
+
+- **Hersir's own git runs no hooks.** When Hersir commits (Commit… on your card), stashes, fetches, pushes or makes and removes a worktree, git runs none of the repository's hooks and no `core.fsmonitor` program. Hersir changes no setting in the repository: your own `git commit` there still runs its hooks.
+- **Codex writes only what a commit writes.** Besides the worktree, its folders and the temp folder, a Codex run may write `objects`, `refs`, `logs` and its own `worktrees/<name>` in the repository's git folder. Never the git folder's `config`, `hooks` or `info`, or another worktree's folder. Its agent can still `git add`, `git commit`, `git push` and `git fetch`.
+- **No Gemini run in a worktree with a `.gemini` folder.** Gemini would load the settings in it, which can start MCP servers, hooks and other programs. The card goes on hold, blocked, with what to do: remove the folder from the branch, or run the card on Claude Code or Codex.
+- **Gemini gets no extensions and no MCP server but its own.** Not even one from your own Gemini settings.
+
+[docs/agent-tools.md](../agent-tools.md#a-repositorys-own-settings) has the details.
 
 ## Safety
 

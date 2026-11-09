@@ -135,9 +135,51 @@ Only what a per-run switch can give, checked against the installed CLIs' own fil
 | --- | --- | --- |
 | Web search | `-c web_search="live"` (and `"disabled"` while off) | On in every run: its own read-only policy allows `google_web_search`, and Hersir has no checked per-run switch to turn it off |
 | Fetching pages | No such tool (disabled) | `--allowed-tools=web_fetch` (any page) |
-| The browser and MCP servers | Disabled: Codex takes servers per run (`-c mcp_servers.<name>…`), but whether a headless `codex exec` may call their tools hasn't been tried | Disabled: Gemini takes servers only from its settings files |
+| The browser and MCP servers | Disabled: Codex takes servers per run (`-c mcp_servers.<name>…`), but whether a headless `codex exec` may call their tools hasn't been tried | Disabled: Gemini takes servers only from its settings files, and a run starts none of them (`--allowed-mcp-server-names`, below) |
 | Built-in tools | The catalog: commands and `apply_patch` through the sandbox, `update_plan`, `view_image` | The catalog: file tools, `run_shell_command` through Allowed commands, `write_todos` |
 | Slash commands and skills | Disabled: Hersir has no checked per-run switch for them | Disabled: Hersir has no checked per-run switch for its custom commands and skills (`activate_skill`), and never writes in `~/.gemini` |
+
+## A repository's own settings
+
+A repository's own files and git settings never start a program outside an agent's allowed commands or outside its sandbox (GA-263, from the security audit of 9 Nov 2026). Hersir changes no setting in a repository to get there.
+
+### Hersir's own git runs no hooks
+
+Every git command Hersir runs in a project's repository or a card's worktree starts with `-c core.hooksPath=/dev/null -c core.fsmonitor=false` (`worktree::git_command`, the one way Hersir starts git there):
+
+- None of the repository's hooks run, and no file system monitor program, when Hersir commits (Commit… on your card), stashes (a worktree removed in Settings), fetches, pushes, makes, moves or removes a worktree, or updates your checkout. The Changes view, the Editor and the project form's checks read git the same way, as git status can start an fsmonitor.
+- git hands the settings on to the git commands it starts itself, like a worktree add's checkout (`post-checkout`) and a push's `pre-push`. gh gets them in its environment (`GIT_CONFIG_COUNT`) for the git it starts in the repository.
+- They hold for that one command only. The repository's config stays as it is, so your own `git commit` there still runs its hooks, and so does the remote's own `pre-receive`.
+
+Before, a hook or a `core.fsmonitor` program in a repository's `.git/config` ran as you whenever Hersir committed, fetched or pushed there, outside any agent's allowed commands.
+
+### What Codex may write
+
+A Codex run in its sandbox (workspace-write, the default) may write the worktree, the agent's read and change folders, the run's temp folder and, in the repository's git folder, only what a commit writes (`worktree::commit_dirs`):
+
+- `objects`, `refs` and `logs`;
+- the worktree's own folder, `worktrees/<name>` (its index, `HEAD` and `FETCH_HEAD`);
+- `reftable`, only in a repository that keeps its refs there (`git clone --ref-format=reftable`).
+
+Never the git folder itself, its `config`, `hooks` or `info`, or another worktree's folder. So an agent can't add a hook or a setting that your own git would run later.
+
+Checked in Codex 0.163.0's own sandbox (`codex sandbox`, no model call): `codex exec` turns Hersir's flags into exactly these writable roots, plus the worktree, `/tmp` and the temp folder. In them `git add`, `git commit`, `git push` and `git fetch` work, and writing `config`, `hooks`, `info`, `packed-refs` or the main `HEAD` is refused.
+
+- Codex keeps `worktrees/<name>` read-only under a writable folder around it, like the whole git folder Hersir gave it before (it protects the folder a worktree's `.git` points at), but not when `worktrees/<name>` is a writable root itself. So that root is what lets a Codex 0.163.0 run `git add` at all.
+- A commit also deletes a ref, which wants `packed-refs.lock` in the git folder: git prints `error: Unable to create '…/packed-refs.lock'`, and the commit stays (exit 0).
+- `git push -u` pushes, but can't write the branch's upstream into `config`: git prints `unable to write upstream branch configuration` (exit 0).
+- With rerere on in your git config (`rerere.enabled`), every commit makes the git folder's `rr-cache`, which the sandbox refuses. So the run's own git goes without rerere (`rerere.enabled=false`, with the run's other git settings in `GIT_CONFIG_COUNT`). A writable `rr-cache` would let an agent leave a conflict resolution that `rerere.autoupdate` applies in your own merges.
+
+Read-only runs write nothing, and Full access runs without a sandbox, as before.
+
+### Gemini and a `.gemini` folder
+
+Checked with Gemini CLI 0.65.0:
+
+- **`--skip-trust` stays.** Folder trust is on unless your Gemini settings turn it off, and a headless run in a folder you haven't trusted stops at once (`FatalUntrustedWorkspaceError`). A trusted folder, by that flag or with folder trust off, loads the worktree's `.gemini/`: `settings.json` with MCP servers, hooks and tool commands, and its custom commands, skills and policies.
+- **So no Gemini run starts in a worktree with a `.gemini`** (a folder, or a file or link by that name), checked after its preparation at every start and Continue. The card goes on hold, blocked, as the agent: "This repository has a .gemini folder, whose settings could start programs outside the agent's allowed commands: remove it from the branch, or run the card on Claude Code or Codex." Claude Code and Codex runs don't read `.gemini`.
+- **No extensions:** every run gets `--extensions none`.
+- **No MCP server but the run's own:** every run gets `--allowed-mcp-server-names` with the names of its own servers, and none from your Gemini settings. Gemini runs have no servers of their own yet, so the list is one empty name (`--allowed-mcp-server-names ""`): Gemini allows every server for an empty list, and no server for a name no server has.
 
 ## Safety rules
 
