@@ -26,7 +26,7 @@ describe("the backups folder's name (GA-246)", () => {
     // in backup-format.md: the one note, which says it is still found and used, and that Hersir backups wins
     const note = read("docs/backup-format.md").split("\n").filter((l) => l.includes(OLD));
     expect(note).toHaveLength(1);
-    expect(note[0]).toMatch(/^- An older Hersir named that folder `Gizai backups`\. It is still found and used/);
+    expect(note[0].startsWith(`- An older Hersir named that folder \`${OLD}\`. It is still found and used`), note[0]).toBe(true);
     expect(note[0]).toContain("holds `gizai-backups.json`");
     expect(note[0]).toContain("nothing is renamed or moved");
     expect(note[0]).toContain("When both are there, `Hersir backups` is used.");
