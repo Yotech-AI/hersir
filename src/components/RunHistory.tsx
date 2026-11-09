@@ -79,7 +79,7 @@ function RunRow({ r }: { r: Run }) {
             <dt>Tool calls</dt><dd>{events ? toolCalls(events) : "…"}</dd>
             <dt>Tokens</dt><dd>{formatTokens(r.inputTokens)} in, {formatTokens(r.outputTokens)} out</dd>
             <dt>Cost</dt><dd>{formatCost(r.costUsdMicros)}</dd>
-            {r.lead?.runId && <><dt>Team Lead's look</dt><dd>{formatCost(r.lead.costUsdMicros)}, on the Team Lead's budget{r.lead.note && !r.lead.learned ? ` · answer kept in ${r.lead.note}` : ""}</dd></>}
+            {r.lead?.runId && <><dt>Chief's look</dt><dd>{formatCost(r.lead.costUsdMicros)}, on the Chief's budget{r.lead.note && !r.lead.learned ? ` · answer kept in ${r.lead.note}` : ""}</dd></>}
             {r.branch && <><dt>Branch</dt><dd className="mono">{r.branch}</dd></>}
             {r.baseSha && <><dt>Started at commit</dt><dd className="mono">{r.baseSha.slice(0, 9)}</dd></>}
             {r.headSha && <><dt>Ended at commit</dt><dd className="mono">{r.headSha.slice(0, 9)}</dd></>}

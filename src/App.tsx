@@ -73,7 +73,7 @@ export default function App({ onboarding = false }: { onboarding?: boolean }) {
         // Dev hook for headless screenshots: GIZAI_SELFTEST_MODE=open:<drawer kind> opens that drawer.
         const kind = i.selftest_mode?.startsWith("open:") ? i.selftest_mode.slice(5) : null;
         if (kind === "task" || kind === "project" || kind === "client" || kind === "person") setDrawer({ kind });
-        if (kind === "agent-lead") setDrawer({ kind: "agent", preset: { name: "Team Lead", role: "lead", chat: true } });
+        if (kind === "agent-lead") setDrawer({ kind: "agent", preset: { name: "Chief", role: "lead", chat: true } });
         if (i.selftest_mode === "theme:light") document.documentElement.dataset.theme = "light";
         // GIZAI_SELFTEST_MODE=appearance:chat=20,ui=16.5,docs=20,font=inter,theme=light[;<step>…]: Settings → Appearance for
         // this start only (not kept), then the steps, as below.

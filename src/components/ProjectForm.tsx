@@ -171,8 +171,8 @@ export function ProjectDrawer({ id, onClose }: { id?: string; onClose: () => voi
             <input id="p-url" className="input mono" placeholder="https://github.com/owner/name or https://bitbucket.org/workspace/name" value={v.repoUrl ?? ""}
               onChange={(e) => { setUrlTouched(true); set("repoUrl", e.target.value); }} /></Field>
           <Field label="Main branch" htmlFor="p-branch" hint="New task branches start here"><input id="p-branch" className="input mono" value={v.defaultBranch ?? "main"} onChange={(e) => set("defaultBranch", e.target.value)} /></Field>
-          <Field label="Merging" wide hint="On GitHub only. The Team Lead merges a card in Review with a merge commit once QA passed its latest commit and every check succeeded, in chat and in its board checks. Releases and deploys stay yours.">
-            <label className="check"><input type="checkbox" checked={v.leadMayMerge ?? false} onChange={(e) => set("leadMayMerge", e.target.checked)} />Team Lead may merge</label>
+          <Field label="Merging" wide hint="On GitHub only. The Chief merges a card in Review with a merge commit once QA passed its latest commit and every check succeeded, in chat and in its board checks. Releases and deploys stay yours.">
+            <label className="check"><input type="checkbox" checked={v.leadMayMerge ?? false} onChange={(e) => set("leadMayMerge", e.target.checked)} />Chief may merge</label>
           </Field>
         </FormSection>
         <FormSection title="New worktrees" text="Each card gets its own git worktree. Before the agent starts in a new one, Hersir copies these paths, installs what is still missing, then runs the setup command.">

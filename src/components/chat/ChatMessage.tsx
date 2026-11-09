@@ -80,8 +80,9 @@ export const MessageGroup = memo(function MessageGroup({ g, agentRole, live, not
   if (g.side === "system") {
     const m = g.items[0];
     const bad = m.meta?.kind === "limit" || (m.meta?.kind === "pending" && m.meta.status === "failed")
-      // "Hersir's tools didn't connect" since the rename (GA-232); a chat from before it keeps "Gizai's"
-      || (m.bodyMd ?? "").startsWith("The Team Lead couldn't") || /^(Hersir|Gizai)'s tools didn't/.test(m.bodyMd ?? "");
+      // "Hersir's tools didn't connect" since the rename (GA-232); a chat from before it keeps "Gizai's". Likewise "The Chief
+      // couldn't" since GA-254, and "The Team Lead couldn't" before it.
+      || /^The (Chief|Team Lead) couldn't/.test(m.bodyMd ?? "") || /^(Hersir|Gizai)'s tools didn't/.test(m.bodyMd ?? "");
     const actions = noteActions?.(m);
     const note = <div className={`chat-note${bad ? " bad" : ""}${actions ? " has-actions" : ""}`} role={bad ? "alert" : undefined}>{bad ? <CircleAlert className="icon sm" /> : <Info className="icon sm" />}<span>{m.bodyMd}</span></div>;
     return actions ? <>{note}<div className="chat-note-actions">{actions}</div></> : note;
@@ -96,7 +97,7 @@ export const MessageGroup = memo(function MessageGroup({ g, agentRole, live, not
   }
   return (
     <div className="chat-group agent">
-      <div className="chat-head"><Avatar name={g.author ?? "Team Lead"} kind="agent" role={agentRole} /><b>{g.author ?? "Team Lead"}</b><span className="faint">{relTime(g.at)}</span></div>
+      <div className="chat-head"><Avatar name={g.author ?? "Chief"} kind="agent" role={agentRole} /><b>{g.author ?? "Chief"}</b><span className="faint">{relTime(g.at)}</span></div>
       <div className="chat-body">
         {g.items.map((m) => m.role === "tool" ? <ToolCard key={m.id} m={m} /> : <div key={m.id} className="chat-msg agent"><MarkdownView md={m.bodyMd ?? ""} /></div>)}
         {live}

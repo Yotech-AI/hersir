@@ -35,7 +35,7 @@ export function ruleSentence(r: RuleLike, team: TeamLike): string {
 /** The roles the agent form offers (any other key is allowed via "Other"). */
 export const ROLES = ["lead", "frontend", "backend", "design", "qa", "devops"];
 
-const ROLE_LABELS: Record<string, string> = { lead: "Team Lead", qa: "QA", devops: "DevOps" };
+const ROLE_LABELS: Record<string, string> = { lead: "Chief", qa: "QA", devops: "DevOps" };
 export function roleLabel(role: string): string {
   return ROLE_LABELS[role] ?? (role ? role[0].toUpperCase() + role.slice(1) : role);
 }

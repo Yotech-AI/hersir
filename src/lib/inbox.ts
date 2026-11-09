@@ -27,15 +27,15 @@ export function inboxCount(tasks: Card[], threads: Chat[], youId: string): numbe
 export function chatLabel(t: Chat): string | null {
   if (hasPending(t)) return "Approval";
   if (!t.kind) return null;
-  if (!t.waiting) return "Team Lead";
+  if (!t.waiting) return "Chief";
   return t.kind === "approval" ? "Approval" : "Question";
 }
 
 /** What the label says when you point at it. */
 export function chatLabelTitle(t: Chat): string {
   const n = t.pendingActions ?? 0;
-  if (n > 0) return n === 1 ? "A call of the Team Lead's waits for your approval here" : `${n} calls of the Team Lead's wait for your approval here`;
-  return t.waiting ? "The Team Lead asks you this" : "The Team Lead started this chat";
+  if (n > 0) return n === 1 ? "A call of the Chief's waits for your approval here" : `${n} calls of the Chief's wait for your approval here`;
+  return t.waiting ? "The Chief asks you this" : "The Chief started this chat";
 }
 
 /** The Inbox: open cards on hold (an agent or a gate needs a person), except a card whose question is with the Team Lead
