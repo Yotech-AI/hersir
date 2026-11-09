@@ -10,7 +10,9 @@
 # (x, y, width and height in the stills' pixels). Nothing reads your ~/.claude or your Gizai's data: Gizai runs
 # in a fake home in .devdata/tour, with its data, cache and config in it, so every path it shows reads ~/…; its projects'
 # folders are in the fake ~/Projects, its only Editor folder; and Claude Code and Codex are fakes in its ~/.local/bin
-# (scripts/tour/fake-claude.sh and fake-codex.sh).
+# (scripts/tour/fake-claude.sh and fake-codex.sh). One folder there is real (GA-250): ~/Projects/hersir is a copy of
+# Hersir's own front end (public, Apache-2.0) at this checkout's HEAD, the only real code in the fake home, for the Editor
+# scene's code and its Terminal's build.
 # Needs the release build (made when it is missing or stale), cage, grim, wlr-randr and ffmpeg.
 # usage: scripts/tour-capture.sh [--out <folder>] [dark|light|both] [scene number…]
 #   scripts/tour-capture.sh                       every scene, in both themes, into .devdata/tour/capture (git ignores it)
@@ -58,6 +60,18 @@ prepare() {
   cp scripts/tour/fake-codex.sh "$FAKE_HOME/.local/bin/codex" && chmod +x "$FAKE_HOME/.local/bin/codex"
   (source scripts/env.sh &&
     cargo run -q -p gizai-core --example prep_tour -- "$DATA" "$FAKE_HOME" > "$T/ids.sh") || return 1
+  # ~/Projects/hersir, the Editor scene's folder: Hersir's own front end (public, Apache-2.0), the only real code in the
+  # fake home. The files its build needs as they are at this checkout's HEAD (git archive: nothing uncommitted comes
+  # along), one commit on main by the tour's made-up owner, never your git identity or config, and no remote. Its
+  # node_modules is a folder of links to this checkout's, so `npx vite build` needs no network and Vite's temp files stay
+  # in the copy. A folder only, not a project: the sidebar's projects and the cards stay the made-up ones.
+  local fe=$FAKE_HOME/Projects/hersir
+  mkdir -p "$fe/node_modules" &&
+    git archive HEAD index.html package.json tsconfig.json vite.config.ts src .gitignore | tar -x -C "$fe" &&
+    ln -s "$GZ"/node_modules/* "$GZ/node_modules/.bin" "$fe/node_modules/" &&
+    (cd "$fe" && export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 \
+      GIT_AUTHOR_NAME="Alex Morgan" GIT_AUTHOR_EMAIL=alex@studio.example GIT_COMMITTER_NAME="Alex Morgan" GIT_COMMITTER_EMAIL=alex@studio.example &&
+      git init -q -b main && git add -A && git commit -q -m "Hersir's front end") || return 1
   # the terminals' shell in the fake home: a short prompt, and git without a pager
   printf '%s\n' "PS1='\\[\\e[1;34m\\]\\w\\[\\e[0m\\] \\$ '" 'export GIT_PAGER=cat' > "$FAKE_HOME/.bashrc"
   printf '%s\n' '[ -f ~/.bashrc ] && . ~/.bashrc' > "$FAKE_HOME/.bash_profile"
@@ -162,9 +176,16 @@ scene 3 clis "Bring your own CLI: Claude Code and Codex in Settings → Coding C
   "wait:1000" 'agents-tab=.tabs[aria-label="Settings"] .tab:text(Agents and runs)' 'usage=.side .nav-item:text(Usage)'
 scene 4 review "Tested before you see it: a card in Review with its pull request and QA's result" board \
   "wait:2000" 'open-card=[data-card="NWS-2"]' 'scroll:.tabs button.tab:text(Runs)' 'runs=.tabs button.tab:text(Runs)'
-scene 5 editor "The Editor and Terminal: a project opens in the Editor, then its Terminal" board \
+# The Editor on ~/Projects/hersir, Hersir's own front end: src and src/components open in the tree, then RunForMe.tsx in its
+# tab (open-file, the website's Editor). Then a terminal in that folder (the Terminal button), on its own page, runs
+# `npx vite build` (not npm run build, whose first line shows the package's name and whose tsc -b prints nothing for a
+# long while); once the build is done, a click on the page's folder, which changes nothing, gives the website's Terminal.
+scene 5 editor "The Editor and Terminal: Hersir's own RunForMe.tsx in the Editor, then npx vite build on the Terminal page" board \
   "wait:1500" 'open-folder=.side [aria-label="Editor"] button.nav-item:text(Open a folder)' \
-  'open-project@2000=.ed-picker .opt[title="~/Projects/northwind-shop"]' 'terminal@2500=.btn.term-btn'
+  'open-project@2000=.ed-picker .opt[title="~/Projects/hersir"]' '.ed-row[data-path="src"]' '.ed-row[data-path="src/components"]' \
+  'open-file@2500=.ed-row[data-path="src/components/RunForMe.tsx"]' \
+  '.btn.term-btn' "wait:1500" '.term-panel .acts .btn[title$="on its own page"]' "wait:2000" \
+  "term:npx vite build" "wait:8000" 'build=.term-page .term-where .path'
 scene 6 memory "Memory: a note with its links, then the graph" "memory/$NOTE" \
   "wait:1000" 'open-link=.mem-note .note-view a.wikilink:text(Deploy steps)' 'graph@4000=.seg.mem-views button:text(Graph)'
 scene 7 tools "Tools per agent: an agent's form → Tools" "agent/$BACKEND" \
