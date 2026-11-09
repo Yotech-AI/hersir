@@ -1,7 +1,7 @@
-//! Pending actions (GA-102): calls of the Team Lead's tools that act, refused in a chat answer because that answer used a
+//! Pending actions (GA-102): calls of the Chief's tools that act, refused in a chat answer because that answer used a
 //! tool from outside Gizai. Each waits in its chat until you approve it (the app runs exactly that call, every other rule
-//! still in force) or discard it; the Team Lead hears the decision in its next answer. Only you decide: the app's Team
-//! Lead tools never read this table. This is only the record; running a call is the app's.
+//! still in force) or discard it; the Chief hears the decision in its next answer. Only you decide: the app's
+//! Chief tools never read this table. This is only the record; running a call is the app's.
 use rusqlite::OptionalExtension;
 use serde::Serialize;
 use serde_json::Value;
@@ -20,7 +20,7 @@ pub struct PendingAction {
     pub thread_id: String,
     /// The chat answer that tried it; None for a call no answer made.
     pub run_id: Option<String>,
-    /// The Team Lead: the call runs as it.
+    /// The Chief: the call runs as it.
     pub actor_id: String,
     pub tool: String,
     /// Its arguments, exactly as called.
@@ -119,12 +119,12 @@ fn not_waiting(a: &PendingAction) -> Error {
         "running" => "It is being approved already.".into(),
         "approved" | "failed" => "It was approved already, so it doesn't run again.".into(),
         "discarded" => "It was discarded already.".into(),
-        "replaced" => "It no longer waits: a newer call of the Team Lead's took its place.".into(),
+        "replaced" => "It no longer waits: a newer call of the Chief's took its place.".into(),
         other => format!("It is {other}."),
     })
 }
 
-/// The Team Lead made `tool` with `args` itself in the chat (in a later answer without a tool from outside Gizai, say
+/// The Chief made `tool` with `args` itself in the chat (in a later answer without a tool from outside Gizai, say
 /// after you said yes in a message): the same call that still waits there no longer does, so approving it can't make
 /// it twice. Those calls are replaced, with `why`; returns them (none: nothing changed, and nothing was written).
 pub fn made(db: &Db, thread_id: &str, tool: &str, args: &Value, why: &str) -> Result<Vec<PendingAction>> {
@@ -182,7 +182,7 @@ pub fn finish(db: &Db, id: &str, ok: bool, result_md: &str) -> Result<PendingAct
     })
 }
 
-/// Discard: nothing runs. `what_md` says what was discarded, for the chat and the Team Lead.
+/// Discard: nothing runs. `what_md` says what was discarded, for the chat and the Chief.
 pub fn discard(db: &Db, you: &str, id: &str, what_md: &str) -> Result<PendingAction> {
     db.write(Some(you), |w| {
         let c = w.conn();
@@ -198,7 +198,7 @@ pub fn discard(db: &Db, you: &str, id: &str, what_md: &str) -> Result<PendingAct
     })
 }
 
-/// The chat's decisions the Team Lead hasn't heard yet (approved, failed or discarded), in the order they were made.
+/// The chat's decisions the Chief hasn't heard yet (approved, failed or discarded), in the order they were made.
 pub fn untold(db: &Db, thread_id: &str) -> Result<Vec<PendingAction>> {
     db.read(|c| {
         let mut st = c.prepare(&format!("SELECT {COLS} FROM pending_actions WHERE thread_id=?1 AND status IN ('approved', 'failed', 'discarded')
@@ -207,7 +207,7 @@ pub fn untold(db: &Db, thread_id: &str) -> Result<Vec<PendingAction>> {
     })
 }
 
-/// The Team Lead heard these decisions (an answer started with them).
+/// The Chief heard these decisions (an answer started with them).
 pub fn mark_told(db: &Db, ids: &[String]) -> Result<()> {
     if ids.is_empty() {
         return Ok(());
@@ -222,7 +222,7 @@ pub fn mark_told(db: &Db, ids: &[String]) -> Result<()> {
 }
 
 /// The calls approved and not finished, in every chat: at start-up, those Gizai closed under (the app finishes them as
-/// failed, so none runs twice and the Team Lead hears of them).
+/// failed, so none runs twice and the Chief hears of them).
 pub fn running(db: &Db) -> Result<Vec<PendingAction>> {
     db.read(|c| {
         let mut st = c.prepare(&format!("SELECT {COLS} FROM pending_actions WHERE status='running' ORDER BY rowid"))?;

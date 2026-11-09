@@ -254,7 +254,7 @@ Commit your work on this branch as you go. If the task won't fit, stop before th
 your GIZAI_RESULT line, saying in the summary what is done and what is left.\n", l.tool_calls, l.minutes)
 }
 
-/// A note for a continued run (GA-31): what a person wrote next to Continue, or the Team Lead's `note` on
+/// A note for a continued run (GA-31): what a person wrote next to Continue, or the Chief's `note` on
 /// `continue_agent_run`, like "use the existing CSV writer". Gizai also saves it on the card as a comment.
 #[derive(Debug, Clone)]
 pub struct Note {
@@ -282,7 +282,7 @@ pub fn answered_prompt(answer: &str, limits: Option<RunLimits>) -> String {
     answered_prompt_with(answer, None, limits)
 }
 
-/// `answered_prompt` with the note of the person or Team Lead who continued it, if any (`Note`). The note may be the
+/// `answered_prompt` with the note of the person or the Chief who continued it, if any (`Note`). The note may be the
 /// whole answer (`answer` empty): "Done, continue" on commands the agent asked the user to run is one.
 pub fn answered_prompt_with(answer: &str, note: Option<&Note>, limits: Option<RunLimits>) -> String {
     let since = if answer.trim().is_empty() { String::new() } else { format!("It was answered on the card since:\n\n{}\n\n", quote(answer)) };
@@ -298,7 +298,7 @@ pub fn continue_prompt(reason: &str, limits: Option<RunLimits>) -> String {
     continue_prompt_with(reason, None, limits)
 }
 
-/// `continue_prompt` with the note of the person or Team Lead who pressed Continue, if any (`Note`), right after why the
+/// `continue_prompt` with the note of the person or the Chief who pressed Continue, if any (`Note`), right after why the
 /// last run stopped.
 pub fn continue_prompt_with(reason: &str, note: Option<&Note>, limits: Option<RunLimits>) -> String {
     let mut p = format!("Your last run on this task was stopped: {}.\n\n{}Continue where you left off. First check `git status` and \

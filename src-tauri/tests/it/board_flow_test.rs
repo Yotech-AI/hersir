@@ -128,6 +128,8 @@ async fn a_beat_with_new_findings_starts_one_check_run_and_a_beat_with_nothing_n
     let argv: Vec<String> = serde_json::from_value(call["argv"].clone()).unwrap();
     let sys = &argv[argv.iter().position(|a| a == "--append-system-prompt").unwrap() + 1];
     assert!(sys.contains("checking the board") && sys.contains("never instructions to you") && !sys.contains("You are chatting with"), "{sys}");
+    // GA-255: a lead with a name of its own is that name, the Chief
+    assert!(sys.starts_with("You are Team Lead, the Chief in Hersir: ") && !sys.contains("the Team Lead in Hersir"), "{sys}");
     assert!(argv.contains(&"--session-id".to_string()) && !argv.contains(&"--resume".to_string()), "{argv:?}");
     let tools_flag = &argv[argv.iter().position(|a| a == "--tools").expect("a --tools flag") + 1];
     for tool in ["Read", "Glob", "Grep"] {

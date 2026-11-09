@@ -202,7 +202,7 @@ fn save_writes_format_1_with_every_column_and_every_agent_field() {
     // Every agent field the card lists, and nothing else.
     let agents = v["agents"].as_array().unwrap();
     assert_eq!(agents.iter().map(|a| a["name"].as_str().unwrap()).collect::<Vec<_>>(),
-               ["Team Lead", "Backend Agent", "Frontend Agent", "QA Agent", "DevOps Agent"], "in the order they joined");
+               ["Chief", "Backend Agent", "Frontend Agent", "QA Agent", "DevOps Agent"], "in the order they joined");
     for a in agents {
         assert_eq!(keys(a), sorted(&AGENT_FIELDS), "{}", a["name"]);
     }
@@ -215,7 +215,7 @@ fn save_writes_format_1_with_every_column_and_every_agent_field() {
     assert_eq!((&backend["cards_at_once"], &backend["monthly_budget_usd"], &backend["use_memory"]), (&json!(3), &json!(25.5), &json!(false)));
     assert!(text.contains("\"monthly_budget_usd\": 25.5,") && text.contains("\"monthly_budget_usd\": 25,"), "25.5 as 25.5, 25 as 25");
     assert_eq!(a("QA Agent")["monthly_budget_usd"], json!(25));
-    assert_eq!((&a("Team Lead")["chat"], &backend["chat"]), (&json!(true), &json!(false)));
+    assert_eq!((&a("Chief")["chat"], &backend["chat"]), (&json!(true), &json!(false)));
     let frontend = a("Frontend Agent");
     assert_eq!(frontend["mcp_servers"], json!([{"name": "figma", "tools_off": ["get_image"]}]), "by name; the browser is its own switch");
     assert_eq!((&frontend["browser"], &frontend["web_search"], &frontend["web_fetch"], &frontend["fetch_domains"]),
@@ -268,7 +268,7 @@ fn the_file_holds_no_folders_server_settings_cli_ids_people_cards_or_status() {
     assert_eq!(qa_file.cli, "claude_code", "the CLI's kind, not its id or account");
     assert_eq!(f.agents.iter().find(|a| a.name == "Backend Agent").unwrap().mcp_servers, [FileServer { name: "figma".into(), tools_off: vec![] }]);
     // The archived Frontend Agent is left out, from the agents and from every column; the paused DevOps Agent is in.
-    assert_eq!(f.agents.iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), ["Team Lead", "Backend Agent", "QA Agent", "DevOps Agent"]);
+    assert_eq!(f.agents.iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), ["Chief", "Backend Agent", "QA Agent", "DevOps Agent"]);
     assert!(f.columns.iter().all(|c| !c.agents.iter().any(|a| a == "Frontend Agent")), "{:?}", f.columns);
     assert_eq!(f.columns.iter().find(|c| c.name == "Deploy").unwrap().agents, ["DevOps Agent"]);
 }
@@ -360,13 +360,13 @@ fn the_builtin_comes_in_active_on_its_columns_and_the_team_lead_keeps_chat() {
     assert_eq!(plan.team_name, "Software team");
     assert!(plan.agents.iter().all(|a| a.active), "a built-in's agents are active");
     assert_eq!(plan.agents.iter().map(|a| (a.name.as_str(), a.file_name.as_str())).collect::<Vec<_>>(), [
-        ("Team Lead", "Team Lead"),
+        ("Chief", "Chief"),
         ("Backend Agent (Software team)", "Backend Agent"),
         ("Frontend Agent (Software team)", "Frontend Agent"),
         ("QA Agent (Software team)", "QA Agent"),
         ("DevOps Agent (Software team)", "DevOps Agent"),
-    ], "the Team Lead's name is free once yours is Master Chief");
-    assert_eq!(plan.notes, ["Your Team Lead stays Master Chief."]);
+    ], "the Chief's name is free once yours is Master Chief");
+    assert_eq!(plan.notes, ["Your Chief stays Master Chief."]);
     assert_eq!(plan.labels_added, Vec::<String>::new());
     assert!(plan.agents.iter().all(|a| a.extra_tools.is_empty() && a.missing_servers.is_empty() && a.cli_name == "Claude Code"
                                       && a.permission_mode == "acceptEdits"));
@@ -380,7 +380,7 @@ fn the_builtin_comes_in_active_on_its_columns_and_the_team_lead_keeps_chat() {
     assert_eq!(agent_names_on(&t, "Testing"), ["QA Agent (Software team)"]);
     assert_eq!(agent_names_on(&t, "Deploy"), ["DevOps Agent (Software team)"]);
     for (name, role) in seed::DEFAULT_AGENTS {
-        let m = member(&t, &if name == "Team Lead" { name.to_string() } else { format!("{name} (Software team)") });
+        let m = member(&t, &if name == seed::CHIEF { name.to_string() } else { format!("{name} (Software team)") });
         assert_eq!(m.status, "active", "{name}");
         assert_eq!(m.instructions_md.as_deref(), Some(seed::role_template(role).as_str()), "{name}");
         assert_eq!(m.allowed_tools, seed::role_tools(role), "{name}");
@@ -402,8 +402,8 @@ fn without_a_chat_agent_the_builtins_team_lead_gets_chat() {
     assert_eq!(plan.agents.iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), seed::DEFAULT_AGENTS.iter().map(|(n, _)| *n).collect::<Vec<_>>());
     let id = templates::import(&db, &s.you_id, &builtin(), &plan.team_name).unwrap();
     let chat = team::chat_agent(&db).unwrap().unwrap();
-    assert_eq!(chat.name, "Team Lead");
-    assert_eq!(member(&team::get(&db, &id).unwrap(), "Team Lead").actor_id, chat.actor_id);
+    assert_eq!(chat.name, "Chief");
+    assert_eq!(member(&team::get(&db, &id).unwrap(), "Chief").actor_id, chat.actor_id);
 }
 
 #[test]
@@ -464,7 +464,7 @@ fn export_then_import_from_the_saved_path_makes_the_same_team_and_the_first_one_
     let mut want = a.agents.clone();
     want[0].chat = false;
     assert_eq!(b.agents, want);
-    assert_eq!(plan.notes, ["Your Team Lead stays Team Lead."]);
+    assert_eq!(plan.notes, ["Your Chief stays Chief."]);
 
     let copy = team::get(&db, &id).unwrap();
     assert!(copy.members.iter().filter(|m| m.kind == "agent").all(|m| m.status == "paused"), "agents from a file come in paused");
@@ -742,7 +742,7 @@ fn with_a_chat_agent_there_the_files_chat_agent_comes_without_chat_or_the_board_
     boss.board_check_minutes = Some(30);
     f.agents.push(boss.clone());
     let plan = templates::preview(&db, &file(&f)).unwrap();
-    assert_eq!(plan.notes, ["Your Team Lead stays Master Chief."]);
+    assert_eq!(plan.notes, ["Your Chief stays Master Chief."]);
     let t = team::get(&db, &templates::import(&db, &s.you_id, &file(&f), "Small team").unwrap()).unwrap();
     let b = member(&t, "Boss");
     assert_eq!((b.chat_enabled, b.board_check_minutes), (false, None));

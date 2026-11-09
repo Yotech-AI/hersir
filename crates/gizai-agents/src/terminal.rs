@@ -1,6 +1,6 @@
 //! Terminals (GA-133): your shell in a pseudo-terminal, as many as you open, kept in memory while Gizai runs and never
 //! written anywhere: no file, database row, log, Memory note or card gets what a terminal shows or is sent
-//! (docs/research/terminal.md §3.2, §5.5 and §5.6). Gizai's window is their only user; no agent or Team Lead tool
+//! (docs/research/terminal.md §3.2, §5.5 and §5.6). Gizai's window is their only user; no agent or Chief tool
 //! reaches them. The app checks the folder first (src-tauri/src/terminal.rs).
 //! - A terminal is portable-pty's pseudo-terminal (ConPTY on Windows) with a shell in it (`os::user_shell`), started in
 //!   an Editor folder with the environment it is given (`environment`).

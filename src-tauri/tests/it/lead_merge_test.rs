@@ -266,7 +266,7 @@ async fn a_pull_request_that_meets_every_rule_is_merged_with_a_merge_commit_and_
     let shown = t.shown.lock().unwrap().clone();
     assert_eq!(shown.len(), 1, "{shown:?}");
     assert_eq!((shown[0].title.as_str(), shown[0].body.as_str(), shown[0].route.clone()),
-               ("The Team Lead merged KADE-1's pull request #7", "Export invoices as CSV", format!("#/task/{}", t.task)));
+               ("The Chief merged KADE-1's pull request #7", "Export invoices as CSV", format!("#/task/{}", t.task)));
     assert_eq!(shown[0].kind, notifications::Kind::LeadMerged);
     // merged: a second call is refused (not in Review) and merges nothing more
     let e = t.merge().await.unwrap_err();
@@ -284,7 +284,7 @@ async fn the_merge_notifies_once_the_inboxs_own_merged_and_waits_for_deploy_noti
     assert_eq!(t.task().state_name, "Deploy");
     assert!(notifications::look(&t.st).is_empty(), "the Inbox's deploy notice doesn't come as well");
     let titles: Vec<String> = t.shown.lock().unwrap().iter().map(|n| n.title.clone()).collect();
-    assert_eq!(titles, ["The Team Lead merged KADE-1's pull request #7"]);
+    assert_eq!(titles, ["The Chief merged KADE-1's pull request #7"]);
 }
 
 #[tokio::test]
@@ -331,7 +331,7 @@ async fn refused_when_the_projects_team_lead_may_merge_switch_is_off() {
     let t = setup().await;
     t.set_switch(false);
     let e = t.merge().await.unwrap_err();
-    t.refused(&e, "KADE doesn't let you merge: its Team Lead may merge switch is off", "Review");
+    t.refused(&e, "KADE doesn't let you merge: its Chief may merge switch is off", "Review");
     assert!(t.gh_calls().is_empty(), "gh never asked");
 }
 
@@ -656,9 +656,9 @@ async fn the_switch_is_off_by_default_and_only_a_person_sets_it_update_project_c
     for (k, v) in [("lead_may_merge", json!(true)), ("team_lead_may_merge", json!(true)), ("leadMayMerge", json!(true)), ("may_merge", json!(true)),
                    ("lead_may_merge", json!(false))] {
         let e = tools::call(&st, &lead, "update_project", json!({"project": "KADE", k: v})).await.unwrap_err();
-        assert!(e.contains("Team Lead may merge can't be switched from chat") && e.contains("Nothing changed"), "{k}: {e}");
+        assert!(e.contains("Chief may merge can't be switched from chat") && e.contains("Nothing changed"), "{k}: {e}");
         let e = tools::call(&st, &lead, "create_project", json!({"name": "Shop", "key": "SHOP", k: v})).await.unwrap_err();
-        assert!(e.contains("Team Lead may merge can't be switched from chat"), "{k}: {e}");
+        assert!(e.contains("Chief may merge can't be switched from chat"), "{k}: {e}");
     }
     assert!(!projects::get(&st.db, &id).unwrap().lead_may_merge);
     assert!(projects::list(&st.db).unwrap().iter().all(|p| p.key != "SHOP"), "no project made");
@@ -692,7 +692,7 @@ async fn the_switch_is_off_by_default_and_only_a_person_sets_it_update_project_c
 #[test]
 fn the_lead_role_template_and_the_tool_describe_the_rules() {
     let lead = gizai_core::seed::role_template("lead");
-    for part in ["merge_pull_request", "Team Lead may merge", "In a board check, merge each card in Review that it allows",
+    for part in ["merge_pull_request", "Chief may merge", "In a board check, merge each card in Review that it allows",
                  "Never work around a refusal", "Releases and deploys stay the user's"] {
         assert!(lead.contains(part), "{part:?} in the lead's template");
     }
@@ -723,7 +723,7 @@ async fn kept_merge(t: &T) -> (String, String) {
 }
 
 /// GA-154: the last note once nothing waits for your OK any more in the chat and the Team Lead isn't answering there.
-const DONE: &str = "Nothing else waits for your OK. The Team Lead's answer above is done: send a message to go on.";
+const DONE: &str = "Nothing else waits for your OK. The Chief's answer above is done: send a message to go on.";
 
 /// Gizai's notes in a chat.
 fn chat_notes(t: &T, thread: &str) -> Vec<String> {
@@ -778,7 +778,7 @@ async fn approving_a_kept_merge_with_the_projects_switch_off_is_refused_and_merg
     assert_eq!(a.status, "failed");
     let said = a.result_md.unwrap();
     assert!(said.starts_with("Approved: merge KADE-1's pull request. It failed: ")
-            && said.contains("KADE doesn't let you merge: its Team Lead may merge switch is off"), "{said}");
+            && said.contains("KADE doesn't let you merge: its Chief may merge switch is off"), "{said}");
     assert_eq!(chat_notes(&t, &thread), [said.as_str(), DONE], "then the closing note (GA-154)");
     assert!(!t.gh_calls().iter().any(|c| c.starts_with("pr merge")), "{:?}", t.gh_calls());
     assert_eq!(t.task().state_name, "Review");

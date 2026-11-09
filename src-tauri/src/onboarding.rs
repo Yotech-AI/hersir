@@ -1,6 +1,6 @@
 //! First start (GA-162): the onboarding a new install shows. It asks your name and your team's name, which coding CLIs
 //! to use (Settings → Coding CLIs: `find_clis`, `save_clis`) and whether to import MCP servers (`scan_claude_code_mcp`,
-//! `import_mcp_servers`), then opens the Team Lead's welcome chat. The rest is `gizai_core::onboarding`.
+//! `import_mcp_servers`), then opens the Chief's welcome chat. The rest is `gizai_core::onboarding`.
 use gizai_core::onboarding::{self as core_onboarding, OnboardingInput};
 
 use crate::AppState;
@@ -39,9 +39,9 @@ pub(crate) fn skip_at_start(db: &gizai_core::db::Db) {
 }
 
 /// Finish: saves your name, the team's and the agents' coding CLI (`gizai_core::onboarding::finish`), then, when the
-/// Team Lead can answer, starts a new chat with the welcome message (`gizai_core::onboarding::WELCOME`) as yours and the
-/// Team Lead's answer to it. Returns that chat's id, and a handle that resolves when the answer has ended. None when the
-/// Team Lead can't answer (`lead_can_chat`), or its chat couldn't start (why goes to stderr): the names and the CLI are
+/// Chief can answer, starts a new chat with the welcome message (`gizai_core::onboarding::WELCOME`) as yours and the
+/// Chief's answer to it. Returns that chat's id, and a handle that resolves when the answer has ended. None when the
+/// Chief can't answer (`lead_can_chat`), or its chat couldn't start (why goes to stderr): the names and the CLI are
 /// saved all the same.
 pub async fn finish(st: &AppState, input: OnboardingInput) -> Result<Option<(String, tokio::task::JoinHandle<TurnSummary>)>, String> {
     let st2 = st.clone();
@@ -58,13 +58,13 @@ pub async fn finish(st: &AppState, input: OnboardingInput) -> Result<Option<(Str
     match crate::chat::send(st, None, core_onboarding::WELCOME.to_string(), None).await {
         Ok(started) => Ok(Some(started)),
         Err(e) => {
-            eprintln!("gizai: the welcome chat with the Team Lead could not start: {e}");
+            eprintln!("gizai: the welcome chat with the Chief could not start: {e}");
             Ok(None)
         }
     }
 }
 
-/// Whether the Team Lead can answer in a new chat: an agent has Chat on, and the coding CLI it runs on is one the chat
+/// Whether the Chief can answer in a new chat: an agent has Chat on, and the coding CLI it runs on is one the chat
 /// offers without a problem (`chat::clis`: a Claude Code CLI whose program is found).
 fn lead_can_chat(st: &AppState) -> bool {
     let Ok(Some(lead)) = gizai_core::team::chat_agent(&st.db) else {

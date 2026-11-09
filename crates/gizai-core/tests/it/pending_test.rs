@@ -121,8 +121,8 @@ fn a_newer_write_for_the_same_note_replaces_the_older_one_and_every_other_call_s
     // another chat's call for that note is its own
     assert_eq!(t.status(&same_elsewhere.id), "pending");
     // a replaced call can't be approved or discarded
-    assert_eq!(err(pending::claim(&t.db, &t.you, &first.id)), "It no longer waits: a newer call of the Team Lead's took its place.");
-    assert_eq!(err(pending::discard(&t.db, &t.you, &first.id, "x")), "It no longer waits: a newer call of the Team Lead's took its place.");
+    assert_eq!(err(pending::claim(&t.db, &t.you, &first.id)), "It no longer waits: a newer call of the Chief's took its place.");
+    assert_eq!(err(pending::discard(&t.db, &t.you, &first.id, "x")), "It no longer waits: a newer call of the Chief's took its place.");
 }
 
 #[test]

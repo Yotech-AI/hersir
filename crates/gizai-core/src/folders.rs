@@ -1,12 +1,12 @@
 //! An agent's folders (agent form → Permissions → Folders): folders besides its card's worktree that its file tools may
 //! read ("read") or read and change ("change"). They limit the file tools, not the commands an agent may run. Only you
-//! change the list, in the form: the Team Lead's `create_agent` and `update_agent` leave it alone.
+//! change the list, in the form: the Chief's `create_agent` and `update_agent` leave it alone.
 //! - Refused, with a reason: `/`, your home folder and the folders above it, Gizai's data folder, and the folders that
 //!   hold keys or logins (`~/.ssh`, `~/.gnupg`, `~/.config`, …), with what is inside them and the folders above them.
 //! - A "read and change" folder that is a project's main checkout (or holds one, or is inside one) gets a warning:
 //!   agents normally never touch it.
 //! - At run time a missing folder, or one refused by then (say through a link), is skipped with a note (`for_run`).
-//! - The Team Lead only reads its folders in chat. "Read and change" lets it update one with `update_checkout` after
+//! - The Chief only reads its folders in chat. "Read and change" lets it update one with `update_checkout` after
 //!   you said yes in the chat (`may_update`).
 //! - On Windows the same with its paths: `C:\` is the whole disk, `~\` your profile folder, either slash separates
 //!   folders, and names are compared in any case.
@@ -341,7 +341,7 @@ pub fn for_run(list: &[Folder], places: &Places) -> (Vec<Folder>, Vec<String>) {
     (out, notes)
 }
 
-/// Whether the Team Lead may update `folder` (a project's linked folder) with `update_checkout`, after you said yes in
+/// Whether the Chief may update `folder` (a project's linked folder) with `update_checkout`, after you said yes in
 /// the chat. Not when the closest folder of its list that holds it is set to read; yes when that one is set to read and
 /// change, and when no folder of its list holds it.
 pub fn may_update(list: &[Folder], folder: &Path, places: &Places) -> std::result::Result<(), String> {
@@ -353,7 +353,7 @@ pub fn may_update(list: &[Folder], folder: &Path, places: &Places) -> std::resul
         .max_by_key(|(p, _)| p.components().count());
     match closest {
         Some((p, f)) if !f.change() => Err(format!(
-            "{} is set to read in the Team Lead's folders (Team page → Team Lead → Folders): only read and change lets update_checkout update it, so nothing changed",
+            "{} is set to read in the Chief's folders (Team page → Chief → Folders): only read and change lets update_checkout update it, so nothing changed",
             places.show(&p))),
         _ => Ok(()),
     }
