@@ -208,6 +208,11 @@ fn continue_run(cx: &Cx, a: &Args) -> Result<Preview, String> {
     if note.is_none() {
         fields.push(field("Note", "none"));
     }
+    // A Continue takes the card's hold off (GA-261: GA-101's too, which only your Approve or you on the card may do).
+    if let Some(h) = &t.hold {
+        let now = t.hold_reason.as_deref().filter(|r| !r.trim().is_empty()).map(|r| format!("{h}: {r}")).unwrap_or_else(|| h.clone());
+        fields.push(change("Hold", now, "none: it comes off hold"));
+    }
     Ok(Preview { line, fields, text: note, warning, ..Default::default() })
 }
 

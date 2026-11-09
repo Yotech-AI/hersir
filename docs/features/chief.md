@@ -37,12 +37,22 @@ On a new install, the first start ends in a welcome chat: the Chief welcomes you
 
 ## Approve with one click
 
-After an answer used a tool from outside Hersir (an MCP server, the web, the browser), its calls that start or continue runs, change agents or columns, attach a file, update a linked folder, save to memory or merge a pull request aren't run. They wait under that answer instead:
+Once a chat used a tool from outside Hersir (an MCP server, the web, the browser), what that tool returned stays in the chat's session and could steer the Chief. So the chat keeps a mark: for the rest of the chat, also in later messages, in a new session and after a restart of Hersir, what the Chief does there waits for your Approve. The chat says so once, when it is marked: "This chat used `<tool>`, a tool from outside Hersir: from now on, what the Chief does here waits for your Approve.", with the tool in words, like search on the otus server or fetching a web page. A new chat starts unmarked.
 
-- each with a line about what it does and a preview: a note's new text and what changes, the card and agent, the settings that change, the file and where it goes;
-- each with **Approve** and **Discard**, and **Approve all** when there are several.
+The Chief's calls that wait start or continue runs, change agents or columns, attach a file, update a linked folder, save to memory, merge a pull request, comment on a card, change a card's description, acceptance criteria, assignee or the cards it builds on (in a column that isn't Auto; in an Auto column the card waits on hold instead, [below](#cards-that-wait-for-your-ok)), or change a project's repository, folder, main branch or goal. A change to a project's name, colour, status, client or Test runs at once applies at once. Each call that waits shows under the answer that tried it:
 
-Approve runs exactly that call once, with every other rule in force; Discard runs nothing. The chat notes what happened and the Chief hears it in its next answer. Approving doesn't start a new answer: once nothing waits and the Chief isn't answering, a last note says its answer is done, so send a message to go on. Until you decide, the chat waits for you at the top of [the Inbox](inbox.md), also after a restart.
+- with a line about what it does and a preview: a note's new text and what changes, the card and agent, the settings that change, the file and where it goes, the comment's text, and each field of a card or project that changes, old and new;
+- with **Approve** and **Discard**, and **Approve all** when there are several.
+
+Approve runs exactly that call once, with every other rule in force; it isn't kept again, and a card it changes doesn't go on hold. Discard runs nothing. The chat notes what happened and the Chief hears it in its next answer. Approving doesn't start a new answer: once nothing waits and the Chief isn't answering, a last note says its answer is done, so send a message to go on. Until you decide, the chat waits for you at the top of [the Inbox](inbox.md), also after a restart.
+
+Tools that only read never wait, and a chat that never used a tool from outside Hersir works as before.
+
+### Cards that wait for your OK
+
+In a marked chat, a card the Chief puts in an Auto column (its agents pick it up by themselves), or whose description, acceptance criteria, assignee or cards it builds on it changes there, is saved on hold: "Waiting for your OK: the Chief put this card here after using `<tool>`, a tool from outside Hersir. Check it, then take it off hold." No agent starts it.
+
+Only you take that hold off: **Clear hold** on the card (or Continue, or a move by hand into To do or In progress), or **Approve** on a call of the Chief's that waited for you and takes it off, like a Continue (its preview says so). The Chief can't, from a chat or a board check: taking the hold off (`update_task` with `clear_hold`), putting another hold in its place, Continue and Run on that card are refused with "Only the user takes this hold off, on the card: it waits for their OK after a tool from outside Hersir." A board check leaves such a card alone. Other holds come off as before, from a chat and from a board check.
 
 The rules behind it: [docs/agent-tools.md](../agent-tools.md#safety-rules).
 
@@ -62,7 +72,7 @@ With more than one team, each with its own board ([Several teams](board.md#sever
 
 - `add_column`, `set_column` and `create_agent` take `team`. With more than one team, a call without it is refused with the teams' names: "Name the team: My team or Research team."
 - `get_workflow` takes `team` for one team's columns; without it, each team's columns come under its name. `list_agents` takes `team` for one team's agents, and with more than one team says each agent's team.
-- `create_project` takes `team` (the first team when left out). `update_project` with `team` moves the project and all its cards, as the project form does, with the same refusal while one of its cards has a run live or starting. A board check never moves a project, and neither does an answer after a tool from outside Hersir.
+- `create_project` takes `team` (the first team when left out). `update_project` with `team` moves the project and all its cards, as the project form does, with the same refusal while one of its cards has a run live or starting. A board check never moves a project, and neither does a chat that used a tool from outside Hersir.
 - `get_project` and `list_projects` show each project's team.
 
 ## The board check
