@@ -1,8 +1,8 @@
 //! gizai-mcp: the stdio MCP server Claude Code starts for a chat turn. It only connects stdio to the running
-//! Gizai: dials the user-only socket in $GIZAI_SOCKET (a named pipe on Windows), sends the turn's token
-//! ($GIZAI_TOKEN) as its first line, then copies bytes both ways. Gizai answers the MCP requests. It exits when
-//! Gizai closes the connection: normally after Claude Code closed stdin, otherwise (a refused token, Gizai
-//! quitting) with 1.
+//! Gizai: dials the user-only socket in $HERSIR_SOCKET (a named pipe on Windows), sends the turn's token
+//! ($HERSIR_TOKEN) as its first line, then copies bytes both ways (each variable also works under its GIZAI_ name, as
+//! before 0.17.0). Gizai answers the MCP requests. It exits when Gizai closes the connection: normally after Claude
+//! Code closed stdin, otherwise (a refused token, Gizai quitting) with 1.
 //!
 //! On Windows a named pipe can't be half-closed, so the shim can't tell Gizai it is done writing: when Claude Code
 //! closes stdin, the shim stops writing and passes on what Gizai still answers until Gizai closes the pipe or stays
@@ -25,9 +25,14 @@ fn fail(msg: &str) -> ExitCode {
     ExitCode::from(1)
 }
 
+/// `HERSIR_<name>` when it is set and not empty, else `GIZAI_<name>`: Hersir sets both (GA-249).
+fn var(name: &str) -> Option<std::ffi::OsString> {
+    std::env::var_os(format!("HERSIR_{name}")).filter(|v| !v.is_empty()).or_else(|| std::env::var_os(format!("GIZAI_{name}")))
+}
+
 fn main() -> ExitCode {
-    let (Some(socket), Some(token)) = (std::env::var_os("GIZAI_SOCKET"), std::env::var("GIZAI_TOKEN").ok()) else {
-        return fail("GIZAI_SOCKET and GIZAI_TOKEN must be set (Hersir sets them for each chat turn)");
+    let (Some(socket), Some(token)) = (var("SOCKET"), var("TOKEN").and_then(|t| t.into_string().ok())) else {
+        return fail("HERSIR_SOCKET and HERSIR_TOKEN (or GIZAI_SOCKET and GIZAI_TOKEN) must be set (Hersir sets them for each chat turn)");
     };
     run(&socket, &token)
 }

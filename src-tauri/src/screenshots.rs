@@ -41,7 +41,7 @@ impl Drop for PortLease {
 pub(crate) struct RunShots {
     /// The section for its prompt.
     pub section: Screenshots,
-    /// The environment its agent's own commands get (`GIZAI_PREVIEW_*`), once it has a port.
+    /// The environment its agent's own commands get (`HERSIR_PREVIEW_*` and `GIZAI_PREVIEW_*`), once it has a port.
     pub env: Vec<(String, String)>,
     /// What its output says at its start: why its preview didn't start.
     pub note: Option<String>,

@@ -89,9 +89,9 @@ fn gtk_own() -> Option<RequestTargets> {
     })
 }
 
-/// Whether this is a self-test run: GIZAI_SELFTEST is set (scripts/smoke-cage.sh), as `app_info` reads it.
+/// Whether this is a self-test run: HERSIR_SELFTEST is set (scripts/smoke-cage.sh), as `app_info` reads it.
 fn selftest_run() -> bool {
-    static SELFTEST: LazyLock<bool> = LazyLock::new(|| std::env::var("GIZAI_SELFTEST").is_ok());
+    static SELFTEST: LazyLock<bool> = LazyLock::new(|| gizai_agents::env::var("HERSIR_SELFTEST").is_some());
     *SELFTEST
 }
 

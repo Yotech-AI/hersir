@@ -1159,6 +1159,13 @@ fn lead_dirs(st: &AppState, agent: &Member, copies: &[String]) -> Vec<String> {
     dirs
 }
 
+/// What Hersir's MCP shim gets for one turn: the socket and the turn's token, each under its HERSIR_ and its GIZAI_ name
+/// (GA-249: the shim reads either, the HERSIR_ one first).
+fn shim_env(st: &AppState, token: &str) -> serde_json::Value {
+    let socket = st.mcp_socket.display().to_string();
+    json!({"HERSIR_SOCKET": socket, "GIZAI_SOCKET": socket, "HERSIR_TOKEN": token, "GIZAI_TOKEN": token})
+}
+
 /// One `claude -p` run for a turn on the plan's CLI: resuming the thread's session, or `fresh` in a new one. `add_dirs`:
 /// the folders the Team Lead may read (its copies of the code); its own folders from the agent form are added here.
 /// `caps`: the limits the answer started with.
@@ -1197,7 +1204,7 @@ async fn attempt_once(st: &AppState, thread: &ChatThread, plan: &Plan, prompt: &
     }
     let claude_code = crate::mcp_servers::claude_code_names(st, &servers);
     let gizai = json!({"type": "stdio", "command": shim.display().to_string(), "args": [],
-        "env": {"GIZAI_SOCKET": st.mcp_socket.display().to_string(), "GIZAI_TOKEN": token}});
+        "env": shim_env(st, &token)});
     let config = gizai_agents::mcp_run::config(vec![("gizai".into(), gizai)], &servers);
     let (mcp_allowed, mcp_refused) = gizai_agents::mcp_run::permissions(&servers);
     let cleanup = |token: &str| {
@@ -1224,7 +1231,7 @@ async fn attempt_once(st: &AppState, thread: &ChatThread, plan: &Plan, prompt: &
         model: agent.model.clone(),
         max_budget_usd: settings.max_run_usd, resume, mcp_config: Some(config_path.clone()), partial_messages: true, restricted: true,
         tools: Some(tools), permission_prompts_none: true, add_dirs: lead_dirs(st, agent, add_dirs),
-        no_session_persistence: std::env::var("GIZAI_CHAT_NO_PERSIST").is_ok_and(|v| v == "1"),
+        no_session_persistence: gizai_agents::env::var("HERSIR_CHAT_NO_PERSIST").is_some_and(|v| v == "1"),
         // The Team Lead's memory is Gizai's (its Memory block and tools), not Claude Code's own.
         disable_hooks: true, disable_skills: true, disable_auto_memory: true, effort: agent.effort.clone(), disallowed_tools: mcp_refused,
     };
@@ -1477,7 +1484,7 @@ async fn check_once(st: &AppState, agent: &Member, prompt: &str, saw: &[gizai_co
     // Only Gizai's server (not the Team Lead's own MCP servers or its web tools) and Read, Glob and Grep: a check uses no
     // tool from outside Gizai, so nothing marks it the way a chat answer is (`mark_outside`, `tools::NOT_AFTER_OUTSIDE`).
     let config = json!({"mcpServers": {"gizai": {"type": "stdio", "command": shim.display().to_string(), "args": [],
-        "env": {"GIZAI_SOCKET": st.mcp_socket.display().to_string(), "GIZAI_TOKEN": token}}}});
+        "env": shim_env(st, &token)}}});
     let cleanup = |token: &str| {
         let _ = tokens::revoke(&st.db, token);
         let _ = std::fs::remove_file(&config_path);
@@ -1685,7 +1692,7 @@ async fn question_process(st: &AppState, agent: &Member, asked_run_id: &str, pro
     };
     let config_path = st.data_dir.join("chat").join(format!("{run_id}.mcp.json"));
     let config = json!({"mcpServers": {"gizai": {"type": "stdio", "command": shim.display().to_string(), "args": [],
-        "env": {"GIZAI_SOCKET": st.mcp_socket.display().to_string(), "GIZAI_TOKEN": token}}}});
+        "env": shim_env(st, &token)}}});
     let cleanup = |token: &str| {
         let _ = tokens::revoke(&st.db, token);
         let _ = std::fs::remove_file(&config_path);

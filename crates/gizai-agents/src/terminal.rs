@@ -116,22 +116,22 @@ pub type Output = Box<dyn FnMut(Vec<u8>) -> bool + Send>;
 /// Told the whole list after an open, a rename, a close, a shell's end and a change of `busy`.
 pub type Changed = Arc<dyn Fn(Vec<TerminalSession>) + Send + Sync>;
 
-/// The environment of a terminal's shell: `own` (Gizai's) with `path` as PATH (the PATH runs get), TERM=xterm-256color,
-/// COLORTERM=truecolor, TERM_PROGRAM=gizai and TERM_PROGRAM_VERSION=`version`, and without the GIZAI_* variables, which
-/// are meant for Gizai itself (GIZAI_DATA_DIR). On macOS also LANG=en_US.UTF-8 when none of LANG, LC_ALL and LC_CTYPE
-/// is set: an app started from the Dock has none, and programs then print ? for anything outside ASCII.
+/// The environment of a terminal's shell: `own` (Hersir's) with `path` as PATH (the PATH runs get), TERM=xterm-256color,
+/// COLORTERM=truecolor, TERM_PROGRAM=hersir and TERM_PROGRAM_VERSION=`version`, and without the HERSIR_* and GIZAI_*
+/// variables, which are meant for Hersir itself (HERSIR_DATA_DIR). On macOS also LANG=en_US.UTF-8 when none of LANG,
+/// LC_ALL and LC_CTYPE is set: an app started from the Dock has none, and programs then print ? for anything outside ASCII.
 pub fn environment(own: impl IntoIterator<Item = (OsString, OsString)>, path: &OsStr, version: &str) -> Vec<(OsString, OsString)> {
     let mut set: Vec<(&str, OsString)> = vec![
         ("TERM", "xterm-256color".into()),
         ("COLORTERM", "truecolor".into()),
-        ("TERM_PROGRAM", "gizai".into()),
+        ("TERM_PROGRAM", "hersir".into()),
         ("TERM_PROGRAM_VERSION", version.into()),
     ];
     if !path.is_empty() {
         set.push(("PATH", path.to_os_string()));
     }
     let mut env: Vec<(OsString, OsString)> = own.into_iter()
-        .filter(|(k, _)| !k.to_string_lossy().to_ascii_uppercase().starts_with("GIZAI_") && !set.iter().any(|(s, _)| same_key(k, s)))
+        .filter(|(k, _)| !crate::env::is_own(k) && !set.iter().any(|(s, _)| same_key(k, s)))
         .collect();
     let has_locale = ["LANG", "LC_ALL", "LC_CTYPE"].iter().any(|l| env.iter().any(|(k, v)| same_key(k, l) && !v.is_empty()));
     if cfg!(target_os = "macos") && !has_locale {

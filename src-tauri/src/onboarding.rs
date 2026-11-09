@@ -7,9 +7,9 @@ use crate::AppState;
 use crate::chat::TurnSummary;
 use crate::runs::Note;
 
-/// Set to 1 for Gizai to start as if the onboarding was skipped: the scripts that start it on a new, empty data folder
-/// (`scripts/smoke-cage.sh`, `run.sh` and the others), so they never stop at it.
-pub const SKIP_ENV: &str = "GIZAI_SKIP_ONBOARDING";
+/// Set to 1 for Hersir to start as if the onboarding was skipped: the scripts that start it on a new, empty data folder
+/// (`scripts/smoke-cage.sh`, `run.sh` and the others), so they never stop at it. GIZAI_SKIP_ONBOARDING still works.
+pub const SKIP_ENV: &str = "HERSIR_SKIP_ONBOARDING";
 
 /// Whether the onboarding waits: on a new install, until it is finished or skipped. One that can't be read doesn't wait:
 /// the seed made a working app already.
@@ -28,9 +28,10 @@ pub fn skip(st: &AppState) -> Result<(), String> {
     Ok(())
 }
 
-/// When Gizai starts (`open_state`) with `GIZAI_SKIP_ONBOARDING=1`: the onboarding is skipped, as `skip` does.
+/// When Hersir starts (`open_state`) with `HERSIR_SKIP_ONBOARDING=1` (or `GIZAI_SKIP_ONBOARDING=1`): the onboarding is
+/// skipped, as `skip` does.
 pub(crate) fn skip_at_start(db: &gizai_core::db::Db) {
-    if std::env::var(SKIP_ENV).is_ok_and(|v| v.trim() == "1")
+    if gizai_agents::env::var(SKIP_ENV).is_some_and(|v| v.trim() == "1")
         && let Err(e) = core_onboarding::skip(db)
     {
         eprintln!("gizai: skipping the first start's onboarding ({SKIP_ENV}=1) failed: {e}");

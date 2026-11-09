@@ -121,7 +121,7 @@ pub struct Project {
     #[serde(default)]
     pub screenshots: crate::screenshots::ProjectScreenshots,
     /// The Preview command Gizai runs with bash -c in a card's worktree before an agent that takes screenshots starts, on
-    /// a port it picked (GIZAI_PREVIEW_PORT); None: no preview, so no screenshots.
+    /// a port it picked (HERSIR_PREVIEW_PORT); None: no preview, so no screenshots.
     #[serde(default)]
     pub preview_command: Option<String>,
     /// Start time: how long Gizai waits for the preview's port to answer before the agent starts anyway, in seconds.
