@@ -4,7 +4,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::net::UnixListener;
 use std::process::{Command, Stdio};
 
-const SHIM: &str = env!("CARGO_BIN_EXE_gizai-mcp");
+const SHIM: &str = env!("CARGO_BIN_EXE_hersir-mcp");
 
 #[test]
 fn pipes_stdio_to_the_socket_after_saying_hello() {
@@ -54,7 +54,7 @@ fn says_why_when_gizai_is_not_running() {
         .stdin(Stdio::null()).output().unwrap();
     assert_eq!(out.status.code(), Some(1));
     let err = String::from_utf8_lossy(&out.stderr);
-    assert!(err.starts_with("gizai-mcp:"), "{err}");
+    assert!(err.starts_with("hersir-mcp:"), "{err}");
     assert!(err.contains("Hersir"), "{err}");
 }
 

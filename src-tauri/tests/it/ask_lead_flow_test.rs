@@ -485,7 +485,7 @@ async fn without_the_mcp_helper_the_question_goes_to_you_as_before_without_a_com
     let asked = t.run().await;
     let s = t.settled(&asked.id).await;
     assert_eq!(s.state, "skipped");
-    assert!(s.reason.as_deref().unwrap().contains("gizai-mcp helper is missing"), "{:?}", s.reason);
+    assert!(s.reason.as_deref().unwrap().contains("hersir-mcp helper is missing"), "{:?}", s.reason);
     let card = t.card();
     assert_eq!((card.hold.as_deref(), card.hold_reason.as_deref(), card.with_lead), (Some("needs_decision"), Some(QUESTION), false));
     assert!(t.in_inbox());

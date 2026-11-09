@@ -8,6 +8,7 @@
 
 mod after_result_flow_test;
 mod agent_runs_test;
+mod app_id_test;
 mod app_state_test;
 mod archive_flow_test;
 mod ask_lead_flow_test;
