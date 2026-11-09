@@ -150,7 +150,7 @@ describe("the feature doc is docs/features/chief.md", () => {
 
   it("no file links to it or to its anchors any more, but for design/ (the website's card) and the historical notes", () => {
     const found = git("grep", "-n", "-e", "team-lead" + "\\.md", "-e", "\\.md#[a-z0-9-]*team-lead", "--", ".", ":!design", ":!docs/research", ":!docs/superpowers",
-      ":!docs/HANDOFF-*", ":!docs/MORNING-*", ":!docs/v0.*", ":!docs/OPEN-ITEMS.md");
+      ":!docs/HANDOFF-*", ":!docs/MORNING-*", ":!docs/v0.*", ":!docs/OPEN-ITEMS.md", ":!scripts/chief-docs.test.mjs");
     expect(found.stdout).toBe("");
   });
 
