@@ -151,7 +151,7 @@ export const removeBranch = (teamId: string, key: string) => invoke<T.Branch[]>(
 // Team templates (GA-226, contract TT): the screens pick a path with the dialog's open or save, these read or write the file.
 /** Export's check: each place in the team's template that looks private, with the agent it is in. Writes nothing. */
 export const checkTeamExport = (teamId: string) => invoke<T.TemplateWarning[]>("check_team_export", { teamId });
-/** Writes the team to `path` as a template, format 1 (`<team name>.gizai-team.json`). */
+/** Writes the team to `path` as a template, format 1 (`<team name>.hersir-team.json`). */
 export const saveTeamTemplate = (teamId: string, path: string) => invoke<void>("save_team_template", { teamId, path });
 /** The built-in templates. */
 export const teamTemplates = () => invoke<{ key: string; name: string; description: string }[]>("team_templates");
@@ -317,7 +317,7 @@ export const startByHand = (taskId: string) => invoke<T.HandCard>("start_by_hand
 export const handCard = (taskId: string) => invoke<T.HandCard>("hand_card", { taskId });
 /** Commits every change in the card's worktree with this message. */
 export const handCommit = (taskId: string, message: string) => invoke<T.Commit>("hand_commit", { taskId, message });
-/** Pushes the card's branch like Gizai's push after a run; resolves with what it did ("Pushed gizai/ga-123-… (2 commits)."). */
+/** Pushes the card's branch like Gizai's push after a run; resolves with what it did ("Pushed hersir/ga-123-… (2 commits)."). */
 export const handPush = (taskId: string) => invoke<string>("hand_push", { taskId });
 /** Refuses uncommitted changes; pushes, moves the card to Testing (Review with its Testing switch off) and takes the pin off.
  *  Resolves with the column's name. */

@@ -1,4 +1,5 @@
-//! Team templates (GA-226): a team's setup saved as a file, `<team name>.gizai-team.json`, and a new team made from one
+//! Team templates (GA-226): a team's setup saved as a file, `<team name>.hersir-team.json` (`.gizai-team.json` before
+//! 0.17.0, still read), and a new team made from one
 //! or from a built-in template. The file is format 1, described field by field in `docs/team-template-format.md`.
 //! - Export (`export`, `check_export`, `save`): the team's columns, agents (their settings, instructions and allowed
 //!   commands), labels and branches. Never people, an agent's folders, MCP server settings, a CLI's id or account, the
@@ -25,12 +26,16 @@ use crate::model::AgentInput;
 use crate::team::{self, Branch};
 use crate::{Error, Result, columns, ids, memory, seed, sortkey, util};
 
-/// A template file's `format`.
-pub const FORMAT: &str = "gizai-team";
+/// A template file's `format`, as Export writes it (GA-249).
+pub const FORMAT: &str = "hersir-team";
+/// The `format` of a template written before 0.17.0: the same format 1, still read.
+pub const OLD_FORMAT: &str = "gizai-team";
 /// The format this Gizai writes, and the newest it reads.
 pub const FORMAT_VERSION: i64 = 1;
-/// A template file's name ends in this: `<team name>.gizai-team.json`.
-pub const FILE_SUFFIX: &str = ".gizai-team.json";
+/// A template file's name ends in this: `<team name>.hersir-team.json`.
+pub const FILE_SUFFIX: &str = ".hersir-team.json";
+/// A template file's name before 0.17.0: `<team name>.gizai-team.json`.
+pub const OLD_FILE_SUFFIX: &str = ".gizai-team.json";
 /// The most agents and columns a template may have.
 pub const MAX_AGENTS: usize = 50;
 pub const MAX_COLUMNS: usize = 30;
@@ -51,7 +56,7 @@ pub const NEVER_TAKEN: [&str; 3] = ["bypassPermissions", "danger-full-access", "
 /// A team template, format 1: the file, field by field (`docs/team-template-format.md`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TemplateFile {
-    /// Always `gizai-team`.
+    /// `hersir-team` (`FORMAT`), or `gizai-team` (`OLD_FORMAT`) in a file from before 0.17.0.
     pub format: String,
     /// 1. A file with a higher one is refused (`NEWER`).
     pub format_version: i64,
@@ -733,11 +738,11 @@ fn read_file(path: &Path) -> Result<String> {
     String::from_utf8(bytes).map_err(|_| Error::Invalid("This file isn't JSON: it isn't UTF-8 text.".into()))
 }
 
-/// The file's text as a template: JSON, of format gizai-team, version 1.
+/// The file's text as a template: JSON, of format hersir-team (or gizai-team, from before 0.17.0), version 1.
 fn parse(text: &str) -> Result<TemplateFile> {
     let text = text.strip_prefix('\u{feff}').unwrap_or(text);
     let mut v: Value = serde_json::from_str(text).map_err(|e| Error::Invalid(format!("This file isn't JSON: {e}.")))?;
-    if v.get("format").and_then(Value::as_str) != Some(FORMAT) {
+    if !v.get("format").and_then(Value::as_str).is_some_and(|f| f == FORMAT || f == OLD_FORMAT) {
         return Err(Error::Invalid("This file isn't a Hersir team template.".into()));
     }
     match v.get("format_version").and_then(Value::as_f64) {

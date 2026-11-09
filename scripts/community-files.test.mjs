@@ -362,7 +362,7 @@ describe("the community files", () => {
     expect(headings).toEqual(expect.arrayContaining(["set-up", "never-test-against-your-own-hersir", "pull-requests", "licence"]));
     expect(contributing).toMatch(/source scripts\/env\.sh[\s\S]*cargo test --workspace && npm test/);
     expect(contributing).toMatch(/scripts\/ui-test\.sh/);
-    expect(contributing).toMatch(/GIZAI_DATA_DIR/);
+    expect(contributing).toMatch(/HERSIR_DATA_DIR/); // GA-249: the variable's hersir name
     expect(contributing).toMatch(/Open them into `main`/);
     expect(contributing).toMatch(/Apache License 2\.0[\s\S]*no CLA/);
     for (const script of contributing.match(/scripts\/[a-z-]+\.sh/g)) expect(existsSync(join(ROOT, script))).toBe(true);
@@ -452,9 +452,11 @@ function codeParts(md) {
 // the doc that quotes it shows up here).
 const QUOTES = ["Open Hersir", "Quit Hersir completely", "From Hersir's catalog", "a tool from outside Hersir", "because Hersir quit", "Hersir can't find what", "Hersir pushed", "Hersir kept", "no Hersir data", "This Hersir runs from", "From Hersir card"];
 // The names the code keeps (the card's item 4), which the docs give as the code has them, and the forms they'd take
-// if a doc renamed them by mistake.
-const CODE_NAMES = ["gizai --version", "gizai-mcp", "gizai-launch", "~/.local/share/gizai", "GIZAI_DATA_DIR", "GIZAI_PREFIX", "GIZAI_RESULT", "ai.gizai.app", "mcp__gizai", ".gizai-tmp", "gizai-installed.txt", ".gizai-team.json", "gizai-backups.json"];
-const RENAMED = /\bhersir(-mcp|-launch|-src|-installed\.txt|-backups|\.db|\.desktop|\.exe)\b|\bHERSIR_|ai\.hersir|mcp__hersir|\.hersir-(tmp|team)|\bhersir:[a-z]|\/(share|lib|bin)\/hersir\b|`hersir[ `]|APPDATA%\\Hersir|Programs\\Hersir|Application Support\/Hersir/;
+// if a doc renamed them by mistake. GA-249 gave the data folders, the variables Hersir reads and sets, and the team
+// template file their hersir names (the gizai ones still work, and the docs name both); the installers' and the
+// updater's variables, GIZAI_RESULT and the files inside the data folder keep theirs. The keychain's service is `hersir`.
+const CODE_NAMES = ["gizai --version", "gizai-mcp", "gizai-launch", "~/.local/share/gizai", "~/.local/share/hersir", "GIZAI_DATA_DIR", "HERSIR_DATA_DIR", "GIZAI_PREFIX", "GIZAI_RESULT", "ai.gizai.app", "mcp__gizai", ".gizai-tmp", "gizai-installed.txt", ".gizai-team.json", ".hersir-team.json", "gizai-backups.json"];
+const RENAMED = /\bhersir(-mcp|-launch|-src|-installed\.txt|-backups|\.db|\.lock|\.desktop|\.exe)\b|\bHERSIR_(RESULT|PREFIX|REPO|REF|BRANCH|RELEASES_URL)\b|ai\.hersir|mcp__hersir|\.hersir-tmp|\bhersir:[a-z]|\/(lib|bin)\/hersir\b|(?<!(service|under) )`hersir[ `]|Programs\\Hersir/;
 
 describe("one name: Hersir in the docs, and Gizai only in the names the code keeps (GA-234)", () => {
   it("the docs it covers include the README, NOTICE, the community files, every doc in docs/ and design's READMEs, but not the records of their day", () => {
@@ -579,7 +581,11 @@ describe("one name: Hersir in the docs, and Gizai only in the names the code kee
     expect(read("install.sh")).toMatch(/^StartupWMClass=gizai$/m);
     expect(read("src-tauri/src/lib.rs")).toContain('join("Library/Application Support/Gizai")');
     expect(read("src-tauri/src/lib.rs")).toMatch(/\.join\("Gizai"\)/);
-    expect(read("crates/gizai-agents/src/secrets.rs")).toContain('pub const SERVICE: &str = "gizai";');
+    // GA-249: the data folders and the keychain service are Hersir's for a new install; the gizai ones are still found
+    expect(read("src-tauri/src/lib.rs")).toContain('join("Library/Application Support/Hersir")');
+    expect(read("src-tauri/src/lib.rs")).toMatch(/\.join\("Hersir"\)/);
+    expect(read("crates/gizai-agents/src/secrets.rs")).toContain('pub const SERVICE: &str = "hersir";');
+    expect(read("crates/gizai-agents/src/secrets.rs")).toContain('pub const OLD_SERVICE: &str = "gizai";');
   });
 });
 

@@ -19,9 +19,9 @@ Hersir builds no tools and installs no servers: a server's command is what you e
 
 ### Secrets stay in the keychain
 
-Environment values, header values and sign-in tokens live in the OS keychain (Secret Service, through the `keyring` crate), under `mcp/<server id>/…`. The settings table keeps only their names. Once saved, a value is never shown again: the form says it is saved and lets you type a new one. A value is kept under its line's name, so a line you rename needs its value typed again (the old name's value goes when you save). Values never go into logs, run output, error messages or the Chief's tools. A run gets them only in its own MCP config file, readable by you alone (0600) and deleted when the run ends.
+Environment values, header values and sign-in tokens live in the OS keychain (Secret Service, through the `keyring` crate), under `mcp/<server id>/…` in the service `hersir`. One saved under `gizai` by Hersir before 0.17.0 is still found, and then saved under `hersir` too; the `gizai` one stays for an older Hersir, and removing a value removes both. The settings table keeps only their names. Once saved, a value is never shown again: the form says it is saved and lets you type a new one. A value is kept under its line's name, so a line you rename needs its value typed again (the old name's value goes when you save). Values never go into logs, run output, error messages or the Chief's tools. A run gets them only in its own MCP config file, readable by you alone (0600) and deleted when the run ends.
 
-Headless tests and QA runs use a file instead of the keychain: `GIZAI_FAKE_KEYCHAIN=/path/to/file.json`.
+Headless tests and QA runs use a file instead of the keychain: `HERSIR_FAKE_KEYCHAIN=/path/to/file.json` (`GIZAI_FAKE_KEYCHAIN` still works).
 
 ### List tools
 

@@ -6,13 +6,13 @@ The code is `gizai_core::templates`; the app's commands are in `src-tauri/src/co
 
 ## The file
 
-A template is a JSON file in UTF-8, named `<team name>.gizai-team.json`, like `Software team.gizai-team.json`. Hersir writes it indented, with its fields in the order below. It reads a file of at most 2 MB, with or without a byte order mark.
+A template is a JSON file in UTF-8, named `<team name>.hersir-team.json`, like `Software team.hersir-team.json`. Hersir before 0.17.0 named it `<team name>.gizai-team.json`, with `"format": "gizai-team"`: the same format 1, which New team still reads (the file picker shows every `.json` file). Hersir writes it indented, with its fields in the order below. It reads a file of at most 2 MB, with or without a byte order mark.
 
 **Never in the file:** people (you, your reviewers), an agent's folders, MCP server settings (commands, addresses, environment and header values, keys and sign-ins), a CLI's id, program or account, the agents' status, clients, projects, cards, memory notes, runs and spend. Archived agents are left out; paused ones go in as they are.
 
 ```json
 {
-  "format": "gizai-team",
+  "format": "hersir-team",
   "format_version": 1,
   "app_version": "0.13.0",
   "name": "Software team",
@@ -43,7 +43,7 @@ Names link the file together: a column's `next` and `agents`, and an agent's `sh
 
 | Field | What it holds |
 |---|---|
-| `format` | always `"gizai-team"` |
+| `format` | `"hersir-team"` (Hersir before 0.17.0 wrote `"gizai-team"`, which is still read) |
 | `format_version` | `1`. A Hersir that reads a higher one refuses the file: "This template needs a newer version of the app." |
 | `app_version` | the Hersir version that wrote it, like `"0.13.0"` |
 | `name` | the team's name |
@@ -125,7 +125,7 @@ It is made when it is asked for, from the seed (`seed::DEFAULT_COLUMNS`, `DEFAUL
 
 It refuses a template a team can't be made from, saying why:
 
-- the file can't be read, isn't JSON (in UTF-8), or its `format` isn't `gizai-team`;
+- the file can't be read, isn't JSON (in UTF-8), or its `format` is neither `hersir-team` nor `gizai-team`;
 - its `format_version` is above 1: "This template needs a newer version of the app."
 - the file is over 2 MB, it has no name or no columns, more than 50 agents or 30 columns, or an agent's instructions are over 100,000 characters;
 - a column's `kind` is unknown, or a column or agent has no name;

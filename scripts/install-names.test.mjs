@@ -6,6 +6,10 @@
 // install.sh allows. Linux only: on a Mac the real lsregister would register the scratch app. The 0.14.0 install is
 // made by git's v0.14.0 tag, when the checkout has it (CI's shallow checkout hasn't); install.yml does the update over
 // a Gizai install on macOS and Windows in CI.
+// GA-249: the data folder install.sh backs up, names and purges is the one Hersir uses: the hersir folder when it exists,
+// else a gizai folder of an install from before 0.17.0 that holds gizai.db, else the hersir folder. On macOS
+// HERSIR_DATA_DIR wins over GIZAI_DATA_DIR; on Linux the script reads neither, and the backup gets its folder under both
+// names. The stand-in build backs up the folder the real one would: HERSIR_DATA_DIR, else GIZAI_DATA_DIR.
 import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -41,7 +45,8 @@ let n = 0;
 const next = (what) => join(scratch, `${what}-${++n}`);
 
 // A source folder as the update gets it, from this checkout or from a tag, built: gizai says it is `version` and backs
-// up the data as the real one does; on macOS the app bundle too, named after productName as Tauri names it.
+// up the data as the real one does, from HERSIR_DATA_DIR, else GIZAI_DATA_DIR; with BACKUP_ENV set, it notes both there.
+// On macOS the app bundle too, named after productName as Tauri names it.
 function source(ref, version, os) {
   const dir = next("src");
   const icons = ref ? git("ls-tree", "-r", "--name-only", ref, "src-tauri/icons").stdout.toString() : git("ls-files", "src-tauri/icons").stdout.toString();
@@ -50,7 +55,9 @@ function source(ref, version, os) {
     "#!/bin/sh",
     'case "$1" in',
     `  --version) echo "gizai ${version}" ;;`,
-    `  --backup) b="$GIZAI_DATA_DIR/backups/gizai-before-install-${version}.db"; mkdir -p "\${b%/*}" && cp "$GIZAI_DATA_DIR/gizai.db" "$b" && echo "$b" ;;`,
+    '  --backup) d="${HERSIR_DATA_DIR:-$GIZAI_DATA_DIR}"',
+    '    if [ -n "${BACKUP_ENV:-}" ]; then printf "HERSIR_DATA_DIR=%s\\nGIZAI_DATA_DIR=%s\\n" "${HERSIR_DATA_DIR-}" "${GIZAI_DATA_DIR-}" > "$BACKUP_ENV"; fi',
+    `    b="$d/backups/gizai-before-install-${version}.db"; mkdir -p "\${b%/*}" && cp "$d/gizai.db" "$b" && echo "$b" ;;`,
     "esac",
     "",
   ].join("\n");
@@ -81,7 +88,11 @@ function tools(os) {
 // install.sh from `src`, for the user whose home is `home`. GIZAI_REPO is a folder that isn't there, so an install
 // that didn't take `src` as its source fails at once instead of cloning from GitHub.
 function install(src, home, os, ...args) {
-  const env = { HOME: home, USER: "gizai", PATH: `${tools(os)}:${process.env.PATH}`, GIZAI_REPO: join(scratch, "no-such-repo") };
+  return installWith({}, src, home, os, ...args);
+}
+// The same, with `more` in its environment.
+function installWith(more, src, home, os, ...args) {
+  const env = { HOME: home, USER: "gizai", PATH: `${tools(os)}:${process.env.PATH}`, GIZAI_REPO: join(scratch, "no-such-repo"), ...more };
   const r = spawnSync("bash", [join(src, "install.sh"), ...args], { cwd: home, env, encoding: "utf8" });
   return { code: r.status, out: `${r.stdout}${r.stderr}` };
 }
@@ -110,7 +121,8 @@ describe.runIf(linux)("install.sh on Linux: the launcher shows Hersir", () => {
     expect(readlinkSync(join(home, ".local/bin/gizai"))).toBe(join(lib, "gizai-launch"));
     expect(gizaiVersion(home)).toBe("gizai 0.15.0");
     expect(r.out).toContain("Start Hersir from your app launcher, or run: gizai");
-    expect(r.out).toContain(`Your data: ${join(home, ".local/share/gizai")}`);
+    // a new install's data folder is hersir's (GA-249)
+    expect(r.out).toContain(`Your data: ${join(home, ".local/share/hersir")}`);
   });
 
   it.runIf(hasOld)("an install over an installed 0.14.0 (Gizai in the launcher) makes it Hersir, with its data backed up and kept; the uninstall keeps the data", () => {
@@ -160,7 +172,8 @@ describe.runIf(linux)("install.sh on macOS (with stand-ins): the app is Hersir.a
     expect(readdirSync(lib).filter((f) => f.startsWith("."))).toEqual([]);
     expect(gizaiVersion(home)).toBe("gizai 0.15.0");
     expect(r.out).toContain("Start Hersir from Applications in your home folder (Finder: Go > Home), and keep it in the Dock. Or run: gizai");
-    expect(r.out).toContain(`Your data: ${appSupport(home)}`);
+    // a new install's data folder is Hersir's (GA-249)
+    expect(r.out).toContain(`Your data: ${join(home, "Library/Application Support/Hersir")}`);
   });
 
   it.runIf(hasOld)("an install over an installed 0.14.0 leaves no Gizai.app and no ~/Applications/Gizai.app link, with the data backed up and kept", () => {
@@ -222,5 +235,234 @@ describe.runIf(linux)("install.sh on macOS (with stand-ins): the app is Hersir.a
     const p = install(src, home, "Darwin", "--uninstall", "--purge");
     expect(p.code, p.out).toBe(0);
     expect(existsSync(appSupport(home))).toBe(false);
+  });
+});
+
+// GA-249: the backup an install of 0.17.0 makes, in the data folder `data`.
+const backupIn = (data) => join(data, "backups/gizai-before-install-0.17.0.db");
+// Each folder's own files, sorted.
+const files = (dir) => readdirSync(dir).sort();
+
+describe.runIf(linux)("install.sh on Linux: the data folder is the one Hersir uses (GA-249)", () => {
+  const share = (home) => join(home, ".local/share");
+
+  it("a new install's data folder is ~/.local/share/hersir: nothing to back up, and the install, the uninstall and the purge name it", () => {
+    const home = newHome();
+    const [hersir, gizai] = [join(share(home), "hersir"), join(share(home), "gizai")];
+    const src = source(null, "0.17.0", "Linux");
+    const r = install(src, home, "Linux", "--skip-build");
+    expect(r.code, r.out).toBe(0);
+    expect(r.out).not.toContain("Backing up your data");
+    expect(r.out).toContain(`Your data: ${hersir}\n`);
+    expect(there(gizai)).toBe(false);
+    const u = install(src, home, "Linux", "--uninstall");
+    expect(u.code, u.out).toBe(0);
+    expect(u.out).toContain(`Your data stays in ${hersir} (run with --uninstall --purge to delete it).`);
+    // the data Hersir made there since
+    write(join(hersir, "gizai.db"), "the 0.17.0 data");
+    const p = install(src, home, "Linux", "--uninstall", "--purge");
+    expect(p.code, p.out).toBe(0);
+    expect(p.out).toContain(`Deleted your data (${hersir})`);
+    expect(there(hersir)).toBe(false);
+  });
+
+  it("a gizai folder that holds gizai.db, with no hersir folder, is used where it is: backed up, named, kept and purged, and nothing moves", () => {
+    const home = newHome();
+    const [hersir, gizai] = [join(share(home), "hersir"), join(share(home), "gizai")];
+    write(join(gizai, "gizai.db"), "the 0.16.0 data");
+    write(join(gizai, "settings.json"), '{"theme": "dark"}\n');
+    const src = source(null, "0.17.0", "Linux");
+    const r = install(src, home, "Linux", "--skip-build");
+    expect(r.code, r.out).toBe(0);
+    expect(r.out).toContain(`Backed up your data to ${backupIn(gizai)}`);
+    expect(readFileSync(backupIn(gizai), "utf8")).toBe("the 0.16.0 data");
+    expect(r.out).toContain(`Your data: ${gizai}\n`);
+    expect(files(gizai)).toEqual(["backups", "gizai.db", "settings.json"]);
+    expect(readFileSync(join(gizai, "gizai.db"), "utf8")).toBe("the 0.16.0 data");
+    expect(there(hersir)).toBe(false);
+
+    const u = install(src, home, "Linux", "--uninstall");
+    expect(u.code, u.out).toBe(0);
+    expect(u.out).toContain(`Your data stays in ${gizai} (run with --uninstall --purge to delete it).`);
+    expect(readFileSync(join(gizai, "gizai.db"), "utf8")).toBe("the 0.16.0 data");
+    const p = install(src, home, "Linux", "--uninstall", "--purge");
+    expect(p.code, p.out).toBe(0);
+    expect(p.out).toContain(`Deleted your data (${gizai})`);
+    expect(there(gizai)).toBe(false);
+    expect(there(hersir)).toBe(false);
+  });
+
+  it("the hersir folder wins when it exists, also beside a gizai folder with gizai.db: it is backed up, named and purged, and the gizai one is left as it is", () => {
+    for (const withDb of [true, false]) {
+      const home = newHome();
+      const [hersir, gizai] = [join(share(home), "hersir"), join(share(home), "gizai")];
+      write(join(gizai, "gizai.db"), "the 0.16.0 data");
+      if (withDb) write(join(hersir, "gizai.db"), "the 0.17.0 data");
+      else mkdirSync(hersir, { recursive: true });
+      const src = source(null, "0.17.0", "Linux");
+      const r = install(src, home, "Linux", "--skip-build");
+      expect(r.code, r.out).toBe(0);
+      if (withDb) expect(readFileSync(backupIn(hersir), "utf8")).toBe("the 0.17.0 data");
+      else expect(r.out, "an empty hersir folder has nothing to back up").not.toContain("Backing up your data");
+      expect(r.out).toContain(`Your data: ${hersir}\n`);
+      expect(files(gizai), "the gizai folder isn't backed up").toEqual(["gizai.db"]);
+
+      const p = install(src, home, "Linux", "--uninstall", "--purge");
+      expect(p.code, p.out).toBe(0);
+      expect(p.out).toContain(`Deleted your data (${hersir})`);
+      expect(there(hersir)).toBe(false);
+      expect(files(gizai)).toEqual(["gizai.db"]);
+      expect(readFileSync(join(gizai, "gizai.db"), "utf8")).toBe("the 0.16.0 data");
+    }
+  });
+
+  it("a gizai folder without gizai.db isn't Hersir's data: the data folder is the hersir one, and a purge leaves the gizai one", () => {
+    const home = newHome();
+    const [hersir, gizai] = [join(share(home), "hersir"), join(share(home), "gizai")];
+    write(join(gizai, "settings.json"), "{}\n");
+    const src = source(null, "0.17.0", "Linux");
+    const r = install(src, home, "Linux", "--skip-build");
+    expect(r.code, r.out).toBe(0);
+    expect(r.out).not.toContain("Backing up your data");
+    expect(r.out).toContain(`Your data: ${hersir}\n`);
+    const p = install(src, home, "Linux", "--uninstall", "--purge");
+    expect(p.code, p.out).toBe(0);
+    expect(p.out).toContain(`Deleted your data (${hersir})`);
+    expect(files(gizai)).toEqual(["settings.json"]);
+  });
+
+  it("HERSIR_DATA_DIR or GIZAI_DATA_DIR in the environment can't send the backup elsewhere: the new build gets the folder by the rule under both names", () => {
+    const home = newHome();
+    const gizai = join(share(home), "gizai");
+    const [h, g] = [join(home, "elsewhere-hersir"), join(home, "elsewhere-gizai")];
+    write(join(gizai, "gizai.db"), "the data");
+    write(join(h, "gizai.db"), "other data");
+    write(join(g, "gizai.db"), "more other data");
+    const seen = join(home, "backup-env.txt");
+    const src = source(null, "0.17.0", "Linux");
+    const r = installWith({ HERSIR_DATA_DIR: h, GIZAI_DATA_DIR: g, BACKUP_ENV: seen }, src, home, "Linux", "--skip-build");
+    expect(r.code, r.out).toBe(0);
+    expect(readFileSync(seen, "utf8")).toBe(`HERSIR_DATA_DIR=${gizai}\nGIZAI_DATA_DIR=${gizai}\n`);
+    expect(readFileSync(backupIn(gizai), "utf8")).toBe("the data");
+    expect(r.out).toContain(`Your data: ${gizai}\n`);
+    expect(files(h)).toEqual(["gizai.db"]);
+    expect(files(g)).toEqual(["gizai.db"]);
+
+    // install.sh reads neither on Linux: the purge deletes the folder by the rule, not theirs
+    const p = installWith({ HERSIR_DATA_DIR: h, GIZAI_DATA_DIR: g }, src, home, "Linux", "--uninstall", "--purge");
+    expect(p.code, p.out).toBe(0);
+    expect(there(gizai)).toBe(false);
+    expect(readFileSync(join(h, "gizai.db"), "utf8")).toBe("other data");
+    expect(readFileSync(join(g, "gizai.db"), "utf8")).toBe("more other data");
+  });
+
+  it("the update's install (GIZAI_PREFIX, XDG_DATA_HOME under the prefix) backs up the data folder there by the same rule", () => {
+    for (const hersirThere of [false, true]) {
+      const home = newHome();
+      const prefix = join(home, "prefix");
+      const [hersir, gizai] = [join(prefix, "share/hersir"), join(prefix, "share/gizai")];
+      write(join(gizai, "gizai.db"), "the 0.16.0 data");
+      if (hersirThere) write(join(hersir, "gizai.db"), "the 0.17.0 data");
+      const r = installWith({ GIZAI_PREFIX: prefix, XDG_DATA_HOME: join(prefix, "share") }, source(null, "0.17.0", "Linux"), home, "Linux", "--skip-build");
+      expect(r.code, r.out).toBe(0);
+      const used = hersirThere ? hersir : gizai;
+      expect(readFileSync(backupIn(used), "utf8")).toBe(hersirThere ? "the 0.17.0 data" : "the 0.16.0 data");
+      expect(r.out).toContain(`Your data: ${used}\n`);
+      if (hersirThere) expect(files(gizai)).toEqual(["gizai.db"]);
+      else expect(there(hersir)).toBe(false);
+      expect(there(join(share(home), "hersir")) || there(join(share(home), "gizai"))).toBe(false);
+    }
+  });
+});
+
+describe.runIf(linux)("install.sh on macOS (with stand-ins): the data folder is the one Hersir uses (GA-249)", () => {
+  const support = (home, name) => join(home, "Library/Application Support", name);
+
+  it("Gizai with gizai.db and no Hersir folder is used where it is; a Hersir folder wins once it exists; the purge deletes the one used", () => {
+    const home = newHome();
+    const [hersir, gizai] = [support(home, "Hersir"), support(home, "Gizai")];
+    write(join(gizai, "gizai.db"), "the 0.16.0 data");
+    const src = source(null, "0.17.0", "Darwin");
+    const r = install(src, home, "Darwin", "--skip-build");
+    expect(r.code, r.out).toBe(0);
+    expect(readFileSync(backupIn(gizai), "utf8")).toBe("the 0.16.0 data");
+    expect(r.out).toContain(`Your data: ${gizai}\n`);
+    expect(there(hersir)).toBe(false);
+
+    write(join(hersir, "gizai.db"), "the 0.17.0 data");
+    const again = install(src, home, "Darwin", "--skip-build");
+    expect(again.code, again.out).toBe(0);
+    expect(readFileSync(backupIn(hersir), "utf8")).toBe("the 0.17.0 data");
+    expect(again.out).toContain(`Your data: ${hersir}\n`);
+
+    const p = install(src, home, "Darwin", "--uninstall", "--purge");
+    expect(p.code, p.out).toBe(0);
+    expect(p.out).toContain(`Deleted your data (${hersir})`);
+    expect(there(hersir)).toBe(false);
+    expect(readFileSync(join(gizai, "gizai.db"), "utf8")).toBe("the 0.16.0 data");
+  });
+
+  it("HERSIR_DATA_DIR wins over GIZAI_DATA_DIR, which still works alone, and an empty one gives way: that folder is backed up, named, kept and purged", () => {
+    const home = newHome();
+    const [h, g, usual] = [join(home, "hersir-data"), join(home, "gizai-data"), support(home, "Hersir")];
+    const held = { [h]: "data in HERSIR_DATA_DIR", [g]: "data in GIZAI_DATA_DIR", [usual]: "the usual data" };
+    for (const [dir, text] of Object.entries(held)) write(join(dir, "gizai.db"), text);
+    const seen = join(home, "backup-env.txt");
+    const src = source(null, "0.17.0", "Darwin");
+    const cases = [
+      [{ HERSIR_DATA_DIR: h, GIZAI_DATA_DIR: g }, h],
+      [{ GIZAI_DATA_DIR: g }, g],
+      [{ HERSIR_DATA_DIR: "", GIZAI_DATA_DIR: g }, g],
+      [{ HERSIR_DATA_DIR: h }, h],
+      [{}, usual],
+    ];
+    for (const [more, used] of cases) {
+      for (const dir of Object.keys(held)) rmSync(join(dir, "backups"), { recursive: true, force: true });
+      const r = installWith({ ...more, BACKUP_ENV: seen }, src, home, "Darwin", "--skip-build");
+      expect(r.code, r.out).toBe(0);
+      expect(r.out, JSON.stringify(more)).toContain(`Your data: ${used}\n`);
+      expect(readFileSync(seen, "utf8"), JSON.stringify(more)).toBe(`HERSIR_DATA_DIR=${used}\nGIZAI_DATA_DIR=${used}\n`);
+      expect(readFileSync(backupIn(used), "utf8")).toBe(held[used]);
+      for (const other of Object.keys(held).filter((d) => d !== used)) expect(files(other), `${JSON.stringify(more)}: ${other}`).toEqual(["gizai.db"]);
+      const u = installWith(more, src, home, "Darwin", "--uninstall");
+      expect(u.code, u.out).toBe(0);
+      expect(u.out).toContain(`Your data stays in ${used} (run with --uninstall --purge to delete it).`);
+    }
+
+    const p = installWith({ HERSIR_DATA_DIR: h, GIZAI_DATA_DIR: g }, src, home, "Darwin", "--uninstall", "--purge");
+    expect(p.code, p.out).toBe(0);
+    expect(p.out).toContain(`Deleted your data (${h})`);
+    expect(there(h)).toBe(false);
+    expect(readFileSync(join(g, "gizai.db"), "utf8")).toBe(held[g]);
+    expect(readFileSync(join(usual, "gizai.db"), "utf8")).toBe(held[usual]);
+  });
+});
+
+describe("the installers' help is their whole header, which names the data folder (GA-249)", () => {
+  // the header: the comment lines at the top, after install.sh's #! line
+  const header = (path) => {
+    const lines = readFileSync(join(ROOT, path), "utf8").split(/\r?\n/);
+    const from = lines[0].startsWith("#!") ? 1 : 0;
+    const to = lines.findIndex((l, i) => i >= from && !l.startsWith("#"));
+    return { lines, from, to };
+  };
+
+  it.runIf(linux)("install.sh --help prints its header, from the first line to the last, and nothing after it", () => {
+    const { lines, from, to } = header("install.sh");
+    const r = install(source(null, "0.17.0", "Linux"), newHome(), "Linux", "--help");
+    expect(r.code, r.out).toBe(0);
+    expect(r.out).toBe(lines.slice(from, to).map((l) => l.replace(/^# ?/, "")).join("\n") + "\n");
+    expect(r.out).toContain("only --uninstall --purge\ndeletes it.");
+    expect(r.out).toContain("HERSIR_DATA_DIR, else GIZAI_DATA_DIR (macOS: another data folder)");
+  });
+
+  it("install.ps1 -Help prints its header, all of it and nothing after it", () => {
+    const { lines, to } = header("install.ps1");
+    const count = Number(readFileSync(join(ROOT, "install.ps1"), "utf8").match(/Get-Content -LiteralPath \$PSCommandPath -TotalCount (\d+)/)[1]);
+    expect(count).toBe(to);
+    const text = lines.slice(0, count).join("\n");
+    expect(text).toContain("# Your data lives in %APPDATA%\\Hersir, or in %APPDATA%\\Gizai of an install from before 0.17.0 when it holds gizai.db");
+    expect(text).toContain("only -Uninstall -Purge\n# deletes it.");
+    expect(text).toContain("HERSIR_DATA_DIR, else GIZAI_DATA_DIR (another\n# data folder).");
   });
 });

@@ -20,6 +20,7 @@ mod fake_stream_test;
 mod folders_cli_test;
 mod folders_cli_windows_test;
 mod github_test;
+mod keychain_test;
 mod mcp_cleanup_test;
 mod mcp_client_test;
 mod mcp_import_test;

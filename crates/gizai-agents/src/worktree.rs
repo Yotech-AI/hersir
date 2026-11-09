@@ -106,21 +106,36 @@ pub(crate) fn same(a: &Path, b: &Path) -> bool {
     }
 }
 
-/// The branch a card works on: `gizai/<identifier>-<slug of its title>`.
+/// The branch a new card works on: `hersir/<identifier>-<slug of its title>` (GA-249; `gizai/…` before 0.17.0).
 pub fn branch_name(identifier: &str, title: &str) -> String {
     let s = slug(title, 40);
-    if s.is_empty() { format!("gizai/{}", identifier.to_lowercase()) } else { format!("gizai/{}-{s}", identifier.to_lowercase()) }
+    if s.is_empty() { format!("hersir/{}", identifier.to_lowercase()) } else { format!("hersir/{}-{s}", identifier.to_lowercase()) }
 }
 
-/// The task's worktree at `base_dir/<identifier>` on branch `gizai/<identifier>-<slug>`: reused when it
-/// already exists, else created (on the existing branch if there is one, or a new branch off `default_branch`).
+/// The branch a card works on: the one it has (`has`, the card's branch), else a new one (`branch_name`). So a card
+/// keeps its branch, a `gizai/` one from before 0.17.0 too, also after its worktree was removed or its title changed.
+pub fn card_branch(has: Option<&str>, identifier: &str, title: &str) -> String {
+    match has.map(str::trim).filter(|b| !b.is_empty()) {
+        Some(b) => b.to_string(),
+        None => branch_name(identifier, title),
+    }
+}
+
+/// The task's worktree at `base_dir/<identifier>` on branch `hersir/<identifier>-<slug>` (`branch_name`): `ensure_on`
+/// that branch.
 pub fn ensure(repo: &Path, base_dir: &Path, identifier: &str, title: &str, default_branch: &str) -> Result<Worktree, AgentError> {
+    ensure_on(repo, base_dir, identifier, &branch_name(identifier, title), default_branch)
+}
+
+/// The card's worktree at `base_dir/<identifier>` on `branch` (`card_branch`): reused when it already exists, else
+/// created (on the existing branch if there is one, or a new branch off `default_branch`).
+pub fn ensure_on(repo: &Path, base_dir: &Path, identifier: &str, branch: &str, default_branch: &str) -> Result<Worktree, AgentError> {
     match git(repo, &["rev-parse", "--is-inside-work-tree"]) {
         Ok(s) if s == "true" => {}
         _ => return Err(AgentError::NotGitRepo(repo.to_path_buf())),
     }
     let path = base_dir.join(identifier);
-    let branch = branch_name(identifier, title);
+    let branch = branch.to_string();
     // the list and the add under one hold, so two starts can't both decide on what they read before the other's add
     one_at_a_time(repo, || {
         let list = list_worktrees(repo)?;
@@ -152,9 +167,15 @@ pub fn ensure(repo: &Path, base_dir: &Path, identifier: &str, title: &str, defau
 /// Then nothing of the finished card is left (`git clean -dx`: untracked and ignored files go) except the paths in
 /// `keep`, relative to the worktree: the copied folders and the installed dependencies, such as node_modules/ and
 /// target/. Refuses a worktree with uncommitted changes or untracked files, and puts it back when switching fails.
+/// On a new card's branch (`branch_name`); `reuse_on` takes the card's own.
 pub fn reuse(repo: &Path, from: &Path, base_dir: &Path, identifier: &str, title: &str, start: &str, keep: &[String]) -> Result<Worktree, AgentError> {
+    reuse_on(repo, from, base_dir, identifier, &branch_name(identifier, title), start, keep)
+}
+
+/// `reuse` onto `branch` (`card_branch`: the card's own branch, else a new one).
+pub fn reuse_on(repo: &Path, from: &Path, base_dir: &Path, identifier: &str, branch: &str, start: &str, keep: &[String]) -> Result<Worktree, AgentError> {
     let path = base_dir.join(identifier);
-    let branch = branch_name(identifier, title);
+    let branch = branch.to_string();
     // the list up to the branch switch under one hold, so two starts can't take over the same worktree
     let head = one_at_a_time(repo, || {
         if path.exists() {

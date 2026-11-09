@@ -22,8 +22,8 @@
 //! --repo <dir>: links KADE to the git repository <dir>, made (main, one empty commit) when it isn't there, so Run starts.
 //! --editor <dir>: makes <dir>/big (once): a git repository of 20,000 small files in 200 folders and big.ts of 5,000
 //!   lines. Then <dir> is the Editor folder, so big is one of the Editor's folders. Checked as the app checks it, with
-//!   HOME and XDG_DATA_HOME, so give prep_perf the ones the app runs with: a folder in Gizai's data folders (the data
-//!   dir, $XDG_DATA_HOME/gizai, ~/.local/share/gizai) is refused, and prep_perf stops with why.
+//!   HOME and XDG_DATA_HOME, so give prep_perf the ones the app runs with: a folder in Hersir's data folders (the data
+//!   dir, $XDG_DATA_HOME/hersir or …/gizai, ~/.local/share/hersir or …/gizai) is refused, and prep_perf stops with why.
 //! On a data dir it made before, or a copy of one, it makes nothing again: it does --repo and --editor and prints the ids.
 //! Prints one line, progress goes to stderr: card=<KADE-1> run=<its 5,000-event run> chat=<the 1,000-message chat>
 //! note=<Projects/Kade portal> lead=<the Chief> folder=<the Editor's id of <dir>/big, or -> file=big.ts

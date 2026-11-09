@@ -37,6 +37,7 @@ mod unsaved;
 pub mod update;
 pub mod worktrees;
 
+use gizai_agents::env;
 use gizai_core::db::Db;
 use serde::Serialize;
 use std::path::PathBuf;
@@ -75,7 +76,7 @@ pub struct AppState {
     pub updates: Arc<update::Updates>,
     /// Held while this Gizai runs: one Gizai per data folder (see `lock_data_dir`).
     pub _lock: Arc<std::fs::File>,
-    /// Where MCP servers' secrets live: the OS keychain, or a file standing in for it (GIZAI_FAKE_KEYCHAIN) in tests.
+    /// Where MCP servers' secrets live: the OS keychain, or a file standing in for it (HERSIR_FAKE_KEYCHAIN) in tests.
     pub keychain: Arc<dyn gizai_agents::secrets::Keychain>,
     /// MCP servers' sign-ins in that keychain, refreshed one at a time per server.
     pub tokens: Arc<gizai_agents::oauth::TokenStore>,
@@ -103,7 +104,7 @@ pub struct AppInfo {
     pub selftest: bool,
     pub you_id: String,
     pub start_route: Option<String>,
-    /// Which extra self-test to run (GIZAI_SELFTEST_MODE), e.g. "run".
+    /// Which extra self-test to run (HERSIR_SELFTEST_MODE), e.g. "run".
     pub selftest_mode: Option<String>,
     /// Set when this Gizai runs on data other than the usual folder (a dev build, a test): see `data_label`.
     pub data_label: Option<String>,
@@ -115,22 +116,22 @@ async fn app_info(st: tauri::State<'_, AppState>) -> Result<AppInfo, String> {
     Ok(AppInfo {
         version: env!("CARGO_PKG_VERSION").into(),
         data_dir: st.data_dir.display().to_string(),
-        selftest: std::env::var("GIZAI_SELFTEST").is_ok(),
+        selftest: env::var("HERSIR_SELFTEST").is_some(),
         you_id: st.you_id.clone(),
-        start_route: std::env::var("GIZAI_ROUTE").ok().filter(|r| !r.is_empty()),
-        selftest_mode: std::env::var("GIZAI_SELFTEST_MODE").ok().filter(|m| !m.is_empty()),
+        start_route: env::var("HERSIR_ROUTE").filter(|r| !r.is_empty()),
+        selftest_mode: env::var("HERSIR_SELFTEST_MODE").filter(|m| !m.is_empty()),
         data_label: data_label(&st.data_dir),
     })
 }
 
-/// Writes the UI's self-test report (used by scripts/smoke-cage.sh). No-op unless GIZAI_SELFTEST is set. The file is
+/// Writes the UI's self-test report (used by scripts/smoke-cage.sh). No-op unless HERSIR_SELFTEST is set. The file is
 /// written off the main thread.
 #[tauri::command]
 async fn selftest_report(json: String) -> Result<(), String> {
-    match std::env::var("GIZAI_SELFTEST") {
-        Ok(path) => tauri::async_runtime::spawn_blocking(move || std::fs::write(path, json)).await.map_err(|e| e.to_string())?
+    match env::var("HERSIR_SELFTEST") {
+        Some(path) => tauri::async_runtime::spawn_blocking(move || std::fs::write(path, json)).await.map_err(|e| e.to_string())?
             .map_err(|e| e.to_string()),
-        Err(_) => Ok(()),
+        None => Ok(()),
     }
 }
 
@@ -150,30 +151,44 @@ fn exit_app(app: AppHandle, code: i32) {
 /// shortcut and notifications carry.
 pub const APP_ID: &str = "ai.gizai.app";
 
-/// The data folder: GIZAI_DATA_DIR, else the usual one.
+/// The data folder: HERSIR_DATA_DIR, else GIZAI_DATA_DIR, else the usual one.
 pub fn data_dir() -> PathBuf {
-    match std::env::var("GIZAI_DATA_DIR") {
-        Ok(d) if !d.is_empty() => d.into(),
+    match env::var("HERSIR_DATA_DIR") {
+        Some(d) if !d.is_empty() => d.into(),
         _ => default_data_dir(),
     }
 }
 
-/// The data of the Gizai you use: `$XDG_DATA_HOME/gizai`, else `~/.local/share/gizai`. On macOS `~/Library/Application
-/// Support/Gizai`, on Windows `%APPDATA%\Gizai`.
+/// The data of the Hersir you use (GA-249): the `hersir` folder when it exists, else the `gizai` folder of a version
+/// before 0.17.0 when it holds Hersir's data (its gizai.db), else a new `hersir` folder (`data_dir_names`). Nothing is
+/// moved or copied: an install whose data is in the gizai folder keeps it there.
 pub fn default_data_dir() -> PathBuf {
+    let [new, old] = data_dir_names();
+    if !new.exists() && old.join("gizai.db").is_file() { old } else { new }
+}
+
+/// The usual data folder's two names, Hersir's and the one before 0.17.0: `$XDG_DATA_HOME/hersir` and `…/gizai`, else
+/// `~/.local/share/hersir` and `…/gizai`. On macOS `~/Library/Application Support/Hersir` and `…/Gizai`, on Windows
+/// `%APPDATA%\Hersir` and `%APPDATA%\Gizai`.
+pub fn data_dir_names() -> [PathBuf; 2] {
     #[cfg(target_os = "macos")]
-    return PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".into())).join("Library/Application Support/Gizai");
+    {
+        let home = PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".into()));
+        return [home.join("Library/Application Support/Hersir"), home.join("Library/Application Support/Gizai")];
+    }
     // Windows has no HOME: APPDATA is <your profile>\AppData\Roaming
     #[cfg(windows)]
-    return std::env::var_os("APPDATA").filter(|a| !a.is_empty()).map(PathBuf::from)
-        .unwrap_or_else(|| std::env::home_dir().unwrap_or_else(|| ".".into()).join("AppData").join("Roaming"))
-        .join("Gizai");
+    {
+        let base = std::env::var_os("APPDATA").filter(|a| !a.is_empty()).map(PathBuf::from)
+            .unwrap_or_else(|| std::env::home_dir().unwrap_or_else(|| ".".into()).join("AppData").join("Roaming"));
+        return [base.join("Hersir"), base.join("Gizai")];
+    }
     #[cfg(not(any(target_os = "macos", windows)))]
     {
         let base = std::env::var("XDG_DATA_HOME")
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".into())).join(".local/share"));
-        base.join("gizai")
+        [base.join("hersir"), base.join("gizai")]
     }
 }
 
@@ -258,7 +273,7 @@ pub fn housekeeping(db: &Db, dir: &std::path::Path) {
 /// Opens (and on first start seeds) the database in `dir`. Runs a previous Gizai left behind are marked interrupted.
 /// A first start is a new install: it gets the five default agents, on Codex when only Codex is installed
 /// (`gizai_core::seed::ensure_seed_with_agents`), and the onboarding waits (`onboarding`), unless
-/// GIZAI_SKIP_ONBOARDING=1.
+/// HERSIR_SKIP_ONBOARDING=1.
 pub fn open_state(dir: PathBuf, notify: Arc<dyn Fn(runs::Note) + Send + Sync>) -> Result<AppState, String> {
     open_data(dir, notify, true)
 }
@@ -282,7 +297,7 @@ fn open_data(dir: PathBuf, notify: Arc<dyn Fn(runs::Note) + Send + Sync>, defaul
     } else {
         gizai_core::seed::ensure_seed(&db, &display_name())
     }.map_err(|e| e.to_string())?;
-    // A script on a new, empty data folder (GIZAI_SKIP_ONBOARDING=1) starts as if the onboarding was skipped.
+    // A script on a new, empty data folder (HERSIR_SKIP_ONBOARDING=1) starts as if the onboarding was skipped.
     onboarding::skip_at_start(&db);
     // GA-255, once: a lead agent still named as a new install named it before is named Chief now.
     match gizai_core::seed::old_lead_to_chief(&db, &seed.you_id) {
@@ -516,7 +531,7 @@ pub fn test_state(dir: &std::path::Path) -> AppState {
         st.mcp_socket = mcp::socket_path(&st.data_dir);
     }
     // Never the real keychain in tests: one in memory, unless the test names a file for it.
-    if std::env::var_os("GIZAI_FAKE_KEYCHAIN").is_none() {
+    if env::var_os("HERSIR_FAKE_KEYCHAIN").is_none() {
         st.keychain = Arc::new(gizai_agents::secrets::MemoryKeychain::default());
         st.tokens = Arc::new(gizai_agents::oauth::TokenStore::new(st.keychain.clone()));
     }
@@ -572,7 +587,7 @@ pub fn run() {
         .build());
     // macOS and Windows: the plugin keys the instance by the app's identifier, not by the data folder, so with it a second
     // Gizai on any data would only bring the first one's window forward and quit. Only the Gizai on the usual data uses
-    // it; one on other data (GIZAI_DATA_DIR: a dev build, a test) runs next to it, and a second one on that same data
+    // it; one on other data (HERSIR_DATA_DIR: a dev build, a test) runs next to it, and a second one on that same data
     // stops at the data folder's lock ("Gizai is already running with the data in …").
     #[cfg(not(target_os = "linux"))]
     let builder = match data_label(&dir) {
@@ -589,9 +604,9 @@ pub fn run() {
             app.exit(0);
         }
     });
-    // The benchmark harness (GA-188, scripts/perf.sh): in a perf run (GIZAI_SELFTEST_MODE=perf:…) the page counts its
+    // The benchmark harness (GA-188, scripts/perf.sh): in a perf run (HERSIR_SELFTEST_MODE=perf:…) the page counts its
     // backend calls from the first one (src/lib/perf.ts). The init script runs before any of the page's own scripts.
-    let perf_run = std::env::var("GIZAI_SELFTEST_MODE").is_ok_and(|m| m.starts_with("perf:"));
+    let perf_run = env::var("HERSIR_SELFTEST_MODE").is_some_and(|m| m.starts_with("perf:"));
     let builder = if perf_run {
         builder.plugin(tauri::plugin::Builder::<_, ()>::new("gizai-perf").js_init_script("window.__GIZAI_PERF__ = true;").build())
     } else {
@@ -607,7 +622,7 @@ pub fn run() {
                 let _ = w.set_title(&format!("Hersir ({label} data)"));
             }
             // Headless test and screenshot runs.
-            let test_run = ["GIZAI_SELFTEST", "GIZAI_ROUTE"].iter().any(|v| std::env::var_os(v).is_some());
+            let test_run = ["HERSIR_SELFTEST", "HERSIR_ROUTE"].iter().any(|v| env::var_os(v).is_some());
             let mut state = match open_state(dir.clone(), ui_notifier(app.handle().clone())) {
                 Ok(s) => s,
                 Err(e) => {
