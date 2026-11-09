@@ -34,7 +34,7 @@ body:
       label: The part of Hersir
       options:
         - Board
-        - Team Lead
+        - Chief
         - CLIs
         - Testing
         - Editor and Terminal

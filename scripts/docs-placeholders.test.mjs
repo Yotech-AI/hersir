@@ -46,7 +46,7 @@ describe("no <word> outside code in the docs", () => {
     expect(vanishing("One<br>two, and <kbd>Ctrl</kbd>")).toEqual([]);
   });
   it("it covers docs/*.md and docs/features/*.md", () => {
-    for (const doc of ["docs/memory.md", "docs/settings.md", "docs/agent-tools.md", "docs/features/testing.md", "docs/features/team-lead.md"]) expect(DOCS).toContain(doc);
+    for (const doc of ["docs/memory.md", "docs/settings.md", "docs/agent-tools.md", "docs/features/testing.md", "docs/features/chief.md"]) expect(DOCS).toContain(doc);
   });
   it.each(DOCS)("%s", (doc) => {
     expect(vanishing(read(doc))).toEqual([]);
@@ -56,7 +56,7 @@ describe("no <word> outside code in the docs", () => {
 describe("the lines that had one show their word, in code", () => {
   it.each([
     ["docs/features/testing.md", '"Hersir pushed <code>&lt;branch&gt;</code> (3 commits)"'],
-    ["docs/features/team-lead.md", '"Needs <code>&lt;you&gt;</code>: why, the options, my advice"'],
+    ["docs/features/chief.md", '"Needs <code>&lt;you&gt;</code>: why, the options, my advice"'],
     ["docs/memory.md", '"Needs <code>&lt;you&gt;</code>: why"'],
     ["docs/memory.md", '" (<code>&lt;agent name&gt;</code>)" added'],
     ["docs/settings.md", "once set, Follow <code>&lt;project&gt;</code> under it goes back to that."],
