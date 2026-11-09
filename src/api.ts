@@ -407,6 +407,12 @@ export const onRowsChanged = (cb: (table: string) => void): Promise<UnlistenFn> 
 export const listChatThreads = (limit?: number) => invoke<T.ChatThread[]>("list_chat_threads", { limit: limit ?? null });
 /** One chat, also one older than those in Recent (opened from the Archive). */
 export const getChatThread = (threadId: string) => invoke<T.ChatThread>("get_chat_thread", { threadId });
+/** Chat → Pinned (GA-257): the pinned chats, the most recently pinned first, also those older than the ones in Recent. */
+export const pinnedChats = () => invoke<T.ChatThread[]>("pinned_chats");
+/** Pin to the top: the chat shows under Pinned, at the top, until it is unpinned. */
+export const pinChat = (threadId: string) => invoke<void>("pin_chat", { threadId });
+/** Unpin: the chat leaves Pinned, and is in Recent again when it is one of the 30 newest. */
+export const unpinChat = (threadId: string) => invoke<void>("unpin_chat", { threadId });
 /** Chat → Archive: the chats whose title or messages (yours and the Team Lead's) hold `query`, newest first; all for "". */
 export const searchChatThreads = (query: string) => invoke<T.ChatHit[]>("search_chat_threads", { query });
 export const chatMessages = (threadId: string) => invoke<T.ChatMessage[]>("chat_messages", { threadId });
