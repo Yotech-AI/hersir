@@ -8,9 +8,9 @@
 // these tests read the script, and run its argument handling on Linux. The last two parts (from tour-renders.test.mjs,
 // GA-149, and GA-241) check that the tour's video and GIFs left this repository and its README.
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -143,14 +143,14 @@ describe("the scenes: the website's eight in their order, as in round 2, then th
     }
   });
 
-  it("the named clicks are round 2's fifteen steps, then GA-245's three", () => {
+  it("the named clicks are round 2's, with scene 5's open-file and build in place of terminal (GA-250), then GA-245's three", () => {
     const named = list.map((s) => [s.folder, s.steps.filter((st) => /^[a-z-]+(@\d+)?=/.test(st)).map((st) => st.split(/[@=]/)[0])]);
     expect(named).toEqual([
       ["01-board", ["open-card"]],
       ["02-chat", ["approve"]],
       ["03-clis", ["agents-tab", "usage"]],
       ["04-review", ["open-card", "runs"]],
-      ["05-editor", ["open-folder", "open-project", "terminal"]],
+      ["05-editor", ["open-folder", "open-project", "open-file", "build"]],
       ["06-memory", ["open-link", "graph"]],
       ["07-tools", ["settings", "use-playwright"]],
       ["08-inbox", ["inbox", "done-continue"]],
@@ -159,8 +159,8 @@ describe("the scenes: the website's eight in their order, as in round 2, then th
     ]);
   });
 
-  it("scenes 1 to 8 keep their titles, routes and every step as before GA-245 (scene 2 names the Chief since GA-255)", () => {
-    expect(list.slice(0, 8).map(({ n, name, title, route, steps }) => ({ n, name, title, route, steps }))).toEqual([
+  it("scenes 1 to 4 and 6 to 8 keep their titles, routes and every step as before GA-245 (scene 2 names the Chief since GA-255; scene 5 changed in GA-250, below)", () => {
+    expect(list.slice(0, 8).filter((s) => s.n !== 5).map(({ n, name, title, route, steps }) => ({ n, name, title, route, steps }))).toEqual([
       { n: 1, name: "board", title: "The board, and a quick look at a card's live run", route: "board",
         steps: ["wait:7000", 'open-card@3000=[data-card="NWS-1"]'] },
       { n: 2, name: "chat", title: "The Chief's chat: a request, the cards it made, Approve", route: '"chat/$THREAD"',
@@ -169,9 +169,6 @@ describe("the scenes: the website's eight in their order, as in round 2, then th
         route: "settings/appearance", steps: ["wait:1000", 'agents-tab=.tabs[aria-label="Settings"] .tab:text(Agents and runs)', "usage=.side .nav-item:text(Usage)"] },
       { n: 4, name: "review", title: "Tested before you see it: a card in Review with its pull request and QA's result", route: "board",
         steps: ["wait:2000", 'open-card=[data-card="NWS-2"]', "scroll:.tabs button.tab:text(Runs)", "runs=.tabs button.tab:text(Runs)"] },
-      { n: 5, name: "editor", title: "The Editor and Terminal: a project opens in the Editor, then its Terminal", route: "board",
-        steps: ["wait:1500", 'open-folder=.side [aria-label="Editor"] button.nav-item:text(Open a folder)',
-          'open-project@2000=.ed-picker .opt[title="~/Projects/northwind-shop"]', "terminal@2500=.btn.term-btn"] },
       { n: 6, name: "memory", title: "Memory: a note with its links, then the graph", route: '"memory/$NOTE"',
         steps: ["wait:1000", "open-link=.mem-note .note-view a.wikilink:text(Deploy steps)", "graph@4000=.seg.mem-views button:text(Graph)"] },
       { n: 7, name: "tools", title: "Tools per agent: an agent's form → Tools", route: '"agent/$BACKEND"',
@@ -186,11 +183,25 @@ describe("the scenes: the website's eight in their order, as in round 2, then th
     expect(review.steps).toEqual(["wait:2000", 'open-card=[data-card="NWS-2"]', "scroll:.tabs button.tab:text(Runs)", "runs=.tabs button.tab:text(Runs)"]);
   });
 
-  it("the Editor and Terminal is one short scene: open a folder, pick a project in ~/Projects, then its Terminal", () => {
+  it("the Editor and Terminal is one scene (GA-250): ~/Projects/hersir, RunForMe.tsx open, then npx vite build on the Terminal page", () => {
     const editor = list.find((s) => s.folder === "05-editor");
-    expect(editor.steps.slice(1).map((s) => s.split(/[@=]/)[0])).toEqual(["open-folder", "open-project", "terminal"]);
-    expect(editor.steps[2]).toMatch(/title="~\/Projects\/[a-z-]+"/);
-    expect(editor.steps[3]).toMatch(/term-btn/);
+    expect(editor).toMatchObject({ n: 5, name: "editor", route: "board",
+      title: "The Editor and Terminal: Hersir's own RunForMe.tsx in the Editor, then npx vite build on the Terminal page" });
+    expect(editor.steps).toEqual([
+      "wait:1500",
+      'open-folder=.side [aria-label="Editor"] button.nav-item:text(Open a folder)',
+      'open-project@2000=.ed-picker .opt[title="~/Projects/hersir"]',
+      '.ed-row[data-path="src"]',
+      '.ed-row[data-path="src/components"]',
+      'open-file@2500=.ed-row[data-path="src/components/RunForMe.tsx"]',
+      ".btn.term-btn",
+      "wait:1500",
+      '.term-panel .acts .btn[title$="on its own page"]',
+      "wait:2000",
+      "term:npx vite build",
+      "wait:8000",
+      "build=.term-page .term-where .path",
+    ]);
     expect(list.some((s) => /terminal/.test(s.name))).toBe(false);
   });
 
@@ -291,6 +302,146 @@ describe("GA-245: stills of the Team page and of Usage per project, for the webs
       for (const r of runs) expect(["Done", "Deploy", "Review"]).toContain(cards[r.card].column);
       expect(closure).toContain('runs::finish(&db, &r, "succeeded"');
       expect(closure).not.toMatch(/move_to|tasks::|comments::|inbox/);
+    });
+  });
+});
+
+describe("GA-250: the Editor shows Hersir's own RunForMe.tsx, and the Terminal builds Hersir's front end", () => {
+  const editor = scenes().find((s) => s.folder === "05-editor");
+  const selftest = read("src", "selftest.ts");
+  const STEP_NAME = new RegExp(selftest.match(/^const STEP_NAME = \/(.+)\/;$/m)[1]);
+  const prepare = sh.slice(sh.indexOf("prepare() {"), sh.indexOf("\n}\n", sh.indexOf("prepare() {")));
+  /** prepare()'s lines that make ~/Projects/hersir, from `local fe=` to their `|| return 1`. */
+  const hersir = prepare.slice(prepare.indexOf("  local fe=$FAKE_HOME/Projects/hersir"),
+    prepare.indexOf("|| return 1", prepare.indexOf("local fe=")) + "|| return 1".length);
+  /** The files of Hersir's front end that the copy takes, as prepare() names them for git archive. */
+  const FRONT_END = ["index.html", "package.json", "tsconfig.json", "vite.config.ts", "src", ".gitignore"];
+
+  it("only open-file and build give stills: the tree's two folders, the Terminal button and Own page are bare clicks", () => {
+    expect(editor.steps.filter((s) => STEP_NAME.test(s)).map((s) => s.match(STEP_NAME)[1])).toEqual(["open-folder", "open-project", "open-file", "build"]);
+    const at = (step) => editor.steps.indexOf(step);
+    // the tree opens src, then src/components, before the click on the file
+    expect(at('.ed-row[data-path="src"]')).toBeLessThan(at('.ed-row[data-path="src/components"]'));
+    expect(at('.ed-row[data-path="src/components"]')).toBeLessThan(at('open-file@2500=.ed-row[data-path="src/components/RunForMe.tsx"]'));
+    // the terminal opens after open-file's still, so nothing is over the code; the build is typed on the Terminal page
+    expect(at('open-file@2500=.ed-row[data-path="src/components/RunForMe.tsx"]')).toBeLessThan(at(".btn.term-btn"));
+    expect(at(".btn.term-btn")).toBeLessThan(at('.term-panel .acts .btn[title$="on its own page"]'));
+    expect(at('.term-panel .acts .btn[title$="on its own page"]')).toBeLessThan(at("term:npx vite build"));
+    // build is the last step, after a wait for the build to end
+    expect(editor.steps.at(-1)).toBe("build=.term-page .term-where .path");
+    expect(editor.steps.at(-2)).toMatch(/^wait:\d+$/);
+    // npx vite build, never npm run build (its first line shows the package's old name, and tsc -b waits without output)
+    expect(editor.steps.filter((s) => s.startsWith("term:"))).toEqual(["term:npx vite build"]);
+    expect(sh).not.toMatch(/term:npm /);
+  });
+
+  it("its selectors are the app's: the tree's rows, the Terminal button, the panel's Own page and the Terminal page's folder", () => {
+    expect(read("src", "components", "editor", "FileTree.tsx")).toMatch(/<div className=\{`ed-row\$\{[^}]*\}`\} role="treeitem" data-path=\{entry\.path\}/);
+    const panel = read("src", "components", "editor", "TerminalPanel.tsx");
+    expect(panel).toContain('<button className="btn ghost sm term-btn"');
+    expect(panel).toContain('className="term-panel"');
+    expect(panel).toMatch(/<span className="acts">\s*<button className="btn ghost sm" title=\{`Open \$\{s\?\.name \?\? name\} on its own page`\}/);
+    const page = read("src", "pages", "TerminalPage.tsx");
+    expect(page).toContain('<div className="term-page">');
+    expect(page).toMatch(/<div className="term-where">\s*<span className="path" title=\{s\.folderPath\}>\{s\.folderPath\}<\/span>/);
+    // term:<command> types it and Enter in the newest terminal
+    expect(selftest).toContain('if (step.startsWith("term:")) {');
+  });
+
+  it("RunForMe.tsx is tracked, fits on one screen of the Editor, and names no real user, folder or the old name", () => {
+    expect(tracked("src/components/RunForMe.tsx")).toEqual(["src/components/RunForMe.tsx"]);
+    const file = read("src", "components", "RunForMe.tsx");
+    // the still shows 45 lines under the tab at 1600 × 1040; the whole file is on screen
+    expect(file.split("\n").length).toBeLessThanOrEqual(45);
+    expect(file).toMatch(/export function RunForMe\(/);
+    expect(file).toContain("useState");
+    expect(file).not.toMatch(/gizai|jefsev|jeffrey|sevinga|yotech|kade|groene fiets|\bHerd\b|\/home\/|\/Users\/|~\//i);
+  });
+
+  it("the copy takes index.html, package.json, tsconfig.json, vite.config.ts, src and .gitignore, as git has them at HEAD", () => {
+    expect(hersir).toContain(`git archive HEAD ${FRONT_END.join(" ")} | tar -x -C "$fe"`);
+    // git archive stops on a path git doesn't have: every one is tracked
+    for (const path of FRONT_END) expect(tracked(path).length).toBeGreaterThan(0);
+    // its build writes to the copy's own dist/, which its .gitignore leaves out, as it does its node_modules
+    expect(read("vite.config.ts")).toMatch(/outDir: "dist"/);
+    expect(read(".gitignore").split("\n")).toEqual(expect.arrayContaining(["node_modules/", "dist/"]));
+    expect(JSON.parse(read("package.json")).license).toBe("Apache-2.0");
+  });
+
+  it("npm stays offline in the fake home: no update notice under the build", () => {
+    expect(prepare).toContain(`printf '%s\\n' 'offline=true' 'update-notifier=false' > "$FAKE_HOME/.npmrc"`);
+  });
+
+  it("the headers of tour-capture.sh and prep_tour.rs say ~/Projects/hersir is Hersir's own front end, the only real code", () => {
+    expect(header).toMatch(/~\/Projects\/hersir is a copy of Hersir's own front end \(public, Apache-2\.0\)/);
+    expect(header).toMatch(/the only real code in the fake home/);
+    const prep = read("crates/gizai-core/examples/prep_tour.rs").split("\n").filter((l) => l.startsWith("//!")).map((l) => l.replace(/^\/\/! ?/, "")).join(" ");
+    expect(prep).toMatch(/<home>\/Projects\/hersir, which scripts\/tour-capture\.sh adds after this \(GA-250\): a copy of Hersir's own front end \(public, Apache-2\.0\), the only real code in the fake home/);
+    expect(prep).toMatch(/It is a folder only, not a project/);
+  });
+
+  // prepare()'s own lines, run by bash in a throwaway repository with a home whose git config has someone else's identity
+  describe.runIf(process.platform === "linux")("~/Projects/hersir as prepare() makes it", () => {
+    const clean = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_")));
+    const MACHINE = { GIT_AUTHOR_NAME: "Machine Owner", GIT_AUTHOR_EMAIL: "owner@machine.example",
+      GIT_COMMITTER_NAME: "Machine Owner", GIT_COMMITTER_EMAIL: "owner@machine.example" };
+    const run = (cmd, args, cwd, env = {}) => {
+      const r = spawnSync(cmd, args, { cwd, encoding: "utf8", env: { ...clean, ...env } });
+      if (r.status !== 0) throw new Error(`${cmd} ${args.join(" ")}: ${r.stderr}`);
+      return r.stdout;
+    };
+    const write = (root, path, text) => {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      writeFileSync(join(root, path), text);
+    };
+
+    it("one commit on main by the tour's made-up owner, no remote, HEAD's files only, and node_modules linked", () => {
+      const tmp = realpathSync(mkdtempSync(join(tmpdir(), "tour-hersir-")));
+      try {
+        // the checkout: Hersir's front end committed, then a change not committed and a file git doesn't know
+        const gz = join(tmp, "checkout");
+        const committed = "export function RunForMe() { return null; }\n";
+        for (const [path, text] of [["index.html", "<div id=root></div>\n"], ["package.json", '{"name":"x"}\n'], ["tsconfig.json", "{}\n"],
+          ["vite.config.ts", "export default {};\n"], ["src/main.tsx", "import './components/RunForMe';\n"],
+          ["src/components/RunForMe.tsx", committed], [".gitignore", "node_modules/\ndist/\n"], ["README.md", "not part of the copy\n"],
+          ["node_modules/.bin/vite", "#!/bin/sh\n"], ["node_modules/vite/package.json", '{"name":"vite"}\n']]) write(gz, path, text);
+        run("git", ["init", "-q", "-b", "trunk"], gz, { GIT_CONFIG_GLOBAL: "/dev/null" });
+        run("git", ["add", "-A"], gz, { GIT_CONFIG_GLOBAL: "/dev/null" });
+        run("git", ["commit", "-q", "-m", "the checkout"], gz, { GIT_CONFIG_GLOBAL: "/dev/null", ...MACHINE });
+        write(gz, "src/components/RunForMe.tsx", committed + "// not committed\n");
+        write(gz, "src/untracked.ts", "export {};\n");
+        // the machine's own git: an identity, another first branch, and signing that fails, all of which the copy ignores
+        const home = join(tmp, "machine-home");
+        write(home, ".gitconfig", "[user]\n\tname = Machine Owner\n\temail = owner@machine.example\n[init]\n\tdefaultBranch = trunk\n" +
+          "[commit]\n\tgpgsign = true\n[gpg]\n\tprogram = false\n");
+        const fake = join(tmp, "fake-home");
+        mkdirSync(join(fake, "Projects"), { recursive: true });
+        const r = spawnSync("bash", ["-c", `set -uo pipefail\nmake() {\n${hersir}\n}\nmake`], { cwd: gz, encoding: "utf8",
+          env: { ...clean, ...MACHINE, HOME: home, GZ: gz, FAKE_HOME: fake } });
+        expect(r.stderr).toBe("");
+        expect(r.status).toBe(0);
+
+        const fe = join(fake, "Projects", "hersir");
+        expect(run("git", ["rev-list", "--count", "--all"], fe).trim()).toBe("1");
+        expect(run("git", ["branch", "--format=%(refname:short)"], fe).trim()).toBe("main");
+        expect(run("git", ["remote"], fe)).toBe("");
+        expect(run("git", ["log", "-1", "--format=%an <%ae>|%cn <%ce>|%G?"], fe).trim()).toBe("Alex Morgan <alex@studio.example>|Alex Morgan <alex@studio.example>|N");
+        // HEAD's front-end files: no README, no file git doesn't know, and RunForMe.tsx as committed
+        expect(run("git", ["ls-files"], fe).split("\n").filter(Boolean).sort()).toEqual(
+          [".gitignore", "index.html", "package.json", "src/components/RunForMe.tsx", "src/main.tsx", "tsconfig.json", "vite.config.ts"]);
+        expect(readFileSync(join(fe, "src", "components", "RunForMe.tsx"), "utf8")).toBe(committed);
+        expect(existsSync(join(fe, "src", "untracked.ts"))).toBe(false);
+        // node_modules: a folder of its own, with links to the checkout's packages and .bin
+        expect(lstatSync(join(fe, "node_modules")).isDirectory()).toBe(true);
+        expect(readlinkSync(join(fe, "node_modules", "vite"))).toBe(join(gz, "node_modules", "vite"));
+        expect(readlinkSync(join(fe, "node_modules", ".bin"))).toBe(join(gz, "node_modules", ".bin"));
+        // nothing for git to commit afterwards: node_modules is ignored
+        expect(run("git", ["status", "--porcelain"], fe)).toBe("");
+        // the checkout stays as it was
+        expect(run("git", ["status", "--porcelain"], gz)).toBe(" M src/components/RunForMe.tsx\n?? src/untracked.ts\n");
+      } finally {
+        rmSync(tmp, { recursive: true, force: true });
+      }
     });
   });
 });

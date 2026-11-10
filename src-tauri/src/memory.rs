@@ -15,14 +15,14 @@ fn you(st: &AppState) -> String {
         .unwrap_or_else(|| "the user".into())
 }
 
-/// The Chief's Memory block for a chat answer or a board check: `Team Lead/Notes` (made the first time) and its other
+/// The Chief's Memory block for a chat answer or a board check: `Chief/Notes` (made the first time) and its other
 /// notes in full, then the paths of the rest. Empty when memory is off (Settings → Runs, or its agent form).
 pub fn lead_block(st: &AppState, agent: &Member) -> String {
     if !memory::agent_uses(&st.db, &agent.actor_id) {
         return String::new();
     }
     if let Err(e) = memory::ensure_lead_notes(&st.db, &agent.actor_id, &you(st)) {
-        eprintln!("gizai: making Team Lead/Notes failed: {e}");
+        eprintln!("gizai: making Chief/Notes failed: {e}");
     }
     match memory::prompt_block(&st.db, &Who::Lead(agent.actor_id.clone()), &Context::default()) {
         Ok(b) => b.text,
@@ -50,7 +50,7 @@ pub fn run_block(st: &AppState, agent: &Member, role: &str, project: &Project) -
         }
     };
     if lead && let Err(e) = memory::ensure_lead_notes(&st.db, &agent.actor_id, &you(st)) {
-        eprintln!("gizai: making Team Lead/Notes failed: {e}");
+        eprintln!("gizai: making Chief/Notes failed: {e}");
     }
     let cx = Context { role: role.to_string(), project: Some((project.key.clone(), project.name.clone())), client: project.client_name.clone() };
     memory::prompt_block(&st.db, &who, &cx).unwrap_or_else(|e| {
@@ -61,8 +61,8 @@ pub fn run_block(st: &AppState, agent: &Member, role: &str, project: &Project) -
 
 /// Claude Code's own memory notes into Gizai's memory, once per file (GA-85): the Markdown files in `projects/*/memory/`
 /// of every Claude Code account in Settings → Coding CLIs (its CLAUDE_CONFIG_DIR, else Gizai's, else ~/.claude) become
-/// notes in `Team Lead/Imported/`, from the folders of Gizai's own places only (`memory_import::places`: the projects'
-/// linked folders, the cards' worktrees, the Chief's code copies and working folder), and `Team Lead/Notes` gets an
+/// notes in `Chief/Imported/`, from the folders of Gizai's own places only (`memory_import::places`: the projects'
+/// linked folders, the cards' worktrees, the Chief's code copies and working folder), and `Chief/Notes` gets an
 /// open thread to sort them. When Gizai starts, after the migrations; your home folder is $HOME (your profile folder on
 /// Windows).
 pub fn import_claude(st: &AppState) -> Report {
@@ -75,7 +75,7 @@ pub fn import_claude(st: &AppState) -> Report {
     match done {
         Ok(r) => {
             if !r.imported.is_empty() || !r.skipped.is_empty() {
-                eprintln!("gizai: {} notes came from Claude Code's own memory into Team Lead/Imported/ ({} files could not; {} folders of other \
+                eprintln!("gizai: {} notes came from Claude Code's own memory into Chief/Imported/ ({} files could not; {} folders of other \
 paths, with {} notes, were left out)", r.imported.len(), r.skipped.len(), r.left_out.folders, r.left_out.notes);
                 (st.notify)(crate::runs::Note::RowsChanged("docs"));
             }

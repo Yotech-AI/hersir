@@ -567,9 +567,10 @@ fn a_snapshot_with_an_older_schema_is_upgraded_at_the_start_with_the_upgrades_co
     let usb = chosen(&d, "usb");
     let dir = b::backups_dir(&usb);
     let m = d.snapshot(&usb, Reason::Manual);
-    // the database as the Gizai before migration 21 made it
+    // the database as the Gizai before migration 22 made it
     repack(&dir, &m.name, |c| {
-        c.execute_batch(&format!("DROP TABLE task_builds_on; PRAGMA user_version = {};", db::SCHEMA_VERSION - 1)).unwrap();
+        c.execute_batch(&format!("ALTER TABLE tasks DROP COLUMN hold_kind; ALTER TABLE chat_threads DROP COLUMN outside_tool; PRAGMA user_version = {};",
+                                 db::SCHEMA_VERSION - 1)).unwrap();
     });
     let older = b::read_manifest(&dir, &m.name).unwrap();
     assert_eq!(older.schema_version, db::SCHEMA_VERSION - 1);
@@ -579,7 +580,7 @@ fn a_snapshot_with_an_older_schema_is_upgraded_at_the_start_with_the_upgrades_co
     assert_eq!(d.files_rows(), vec![a]);
     let (version, table): (i64, i64) = d.db.read(|c| {
         Ok((c.query_row("PRAGMA user_version", [], |r| r.get(0))?,
-            c.query_row("SELECT count(*) FROM sqlite_schema WHERE name = 'task_builds_on'", [], |r| r.get(0))?))
+            c.query_row("SELECT count(*) FROM pragma_table_info('chat_threads') WHERE name = 'outside_tool'", [], |r| r.get(0))?))
     }).unwrap();
     assert_eq!((version, table), (db::SCHEMA_VERSION, 1), "upgraded");
     let copies = backups_named(&d, &format!("gizai-before-v{}-", db::SCHEMA_VERSION));
@@ -596,7 +597,7 @@ fn a_restored_database_that_cant_be_opened_goes_to_restore_failed_and_gizai_star
     let usb = chosen(&d, "usb");
     let dir = b::backups_dir(&usb);
     let m = d.snapshot(&usb, Reason::Manual);
-    // it says the version before 21 but has 21's table: the upgrade fails
+    // it says the version before 22 but has 22's columns: the upgrade fails
     repack(&dir, &m.name, |c| c.execute_batch(&format!("PRAGMA user_version = {};", db::SCHEMA_VERSION - 1)).unwrap());
     d.attach("b.txt", b"only today");
     d.set("agents_paused", json!(false));

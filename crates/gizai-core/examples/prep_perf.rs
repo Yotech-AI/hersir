@@ -338,7 +338,7 @@ fn cards(db: &Db, s: &SeedIds, a: &Agents, sanne: &str) -> String {
         let open = matches!(st.category.as_str(), "ready" | "in_progress" | "testing");
         let hold = (open && pick(6, k, 12) == 0).then(|| if k % 3 == 0 { ("blocked", BLOCKED) } else { ("needs_decision", HOLDS[k % HOLDS.len()]) });
         if st.id != team.states[0].id {
-            tasks::move_to_held(db, &s.you_id, &id, &st.id, "", hold).unwrap();
+            tasks::move_to_held(db, &s.you_id, &id, &st.id, "", hold.map(Into::into)).unwrap();
         }
     }
     let kade1 = tasks::get(db, &tasks::id_of(db, "KADE-1").unwrap()).unwrap();

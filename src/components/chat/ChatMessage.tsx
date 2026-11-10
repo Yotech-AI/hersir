@@ -97,7 +97,7 @@ export const MessageGroup = memo(function MessageGroup({ g, agentRole, live, not
   }
   return (
     <div className="chat-group agent">
-      <div className="chat-head"><Avatar name={g.author ?? "Team Lead"} kind="agent" role={agentRole} /><b>{g.author ?? "Team Lead"}</b><span className="faint">{relTime(g.at)}</span></div>
+      <div className="chat-head"><Avatar name={g.author ?? "Chief"} kind="agent" role={agentRole} /><b>{g.author ?? "Chief"}</b><span className="faint">{relTime(g.at)}</span></div>
       <div className="chat-body">
         {g.items.map((m) => m.role === "tool" ? <ToolCard key={m.id} m={m} /> : <div key={m.id} className="chat-msg agent"><MarkdownView md={m.bodyMd ?? ""} /></div>)}
         {live}

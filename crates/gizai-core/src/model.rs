@@ -184,6 +184,11 @@ pub struct Label {
     pub color: Option<String>,
 }
 
+/// GA-261: the kind of GA-101's hold (`Task::hold_kind`): after a tool from outside Hersir, the Chief put the card where
+/// an agent would start it, or changed it there, and it waits on hold `needs_decision` for your OK. Only you take it off:
+/// on the card, or by approving the Chief's call that waited for you.
+pub const HOLD_WAITING_FOR_OK: &str = "waiting_for_ok";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Task {
@@ -208,6 +213,10 @@ pub struct Task {
     /// When the current hold was set; None without a hold. A new hold has a new time, also after a cleared one.
     #[serde(default)]
     pub hold_at: Option<i64>,
+    /// GA-261: which hold it is, when that matters: `HOLD_WAITING_FOR_OK` for GA-101's, which only you take off. It comes
+    /// off with the hold, and stays when another hold replaces it (a run that was under way asks a question).
+    #[serde(default)]
+    pub hold_kind: Option<String>,
     pub bounce_count: i64,
     pub fail_count: i64,
     pub sort_key: String,
@@ -258,6 +267,14 @@ pub struct TaskInput {
     pub testing: Option<bool>,
 }
 
+impl Task {
+    /// GA-261: the card is on GA-101's hold (`HOLD_WAITING_FOR_OK`): it waits for your OK after a tool from outside Hersir,
+    /// and only you take it off.
+    pub fn waits_for_your_ok(&self) -> bool {
+        self.hold.is_some() && self.hold_kind.as_deref() == Some(HOLD_WAITING_FOR_OK)
+    }
+}
+
 /// Every field is optional; for optional columns an empty string clears the value.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -271,6 +288,10 @@ pub struct TaskPatch {
     pub due_on: Option<String>,
     pub hold: Option<String>,
     pub hold_reason: Option<String>,
+    /// GA-261: the kind of the hold this patch puts on the card (`HOLD_WAITING_FOR_OK`); left out, a new hold keeps the
+    /// card's kind, and taking the hold off takes it off too. Only Hersir's own code sets it, never a patch from the window.
+    #[serde(skip_deserializing, skip_serializing_if = "Option::is_none")]
+    pub hold_kind: Option<String>,
     /// The Testing switch.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub testing: Option<bool>,
@@ -327,7 +348,7 @@ pub struct Doc {
     /// `doc` (a project's), or `memory` for a memory note (`memory`).
     #[serde(default)]
     pub kind: String,
-    /// A memory note's folder and title, like `Team Lead/Notes`.
+    /// A memory note's folder and title, like `Chief/Notes`.
     #[serde(default)]
     pub path: Option<String>,
 }

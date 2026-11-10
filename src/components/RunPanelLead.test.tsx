@@ -1,5 +1,5 @@
-// GA-70 QA on the card's Run panel: while an agent's question is with the Team Lead, the panel says so (the Team Lead
-// answers and the agent carries on, or it asks you) instead of "This card is on hold … Clear the hold"; once the Team Lead
+// GA-70 QA on the card's Run panel: while an agent's question is with the Chief, the panel says so (the Chief
+// answers and the agent carries on, or it asks you) instead of "This card is on hold … Clear the hold"; once the Chief
 // escalated, it is the usual hold with its reason. Rendered to HTML on the server with the data handed in (as in
 // RunForMe.test).
 import { describe, expect, it, vi } from "vitest";
@@ -26,18 +26,18 @@ const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/&#x27;/g, 
   .replace(/&gt;/g, ">").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
 const panel = (t: Task, runs: Run[]) => { data.runs = runs; return text(renderToStaticMarkup(<RunPanel task={t} team={team} />)); };
 
-describe("the Run panel of a card whose question is with the Team Lead (GA-70)", () => {
-  it("says the Team Lead is looking at the question, not that the card is on hold for you", () => {
+describe("the Run panel of a card whose question is with the Chief (GA-70)", () => {
+  it("says the Chief is looking at the question, not that the card is on hold for you", () => {
     const t = panel(task({ holdReason: "CSV or JSON for the export?", withLead: true }), [asking({ state: "asking", costUsdMicros: 0 })]);
-    expect(t).toContain("Backend Agent 2 asked a question, and the Team Lead is looking at it: it answers and the agent carries on, or it asks you in the Inbox.");
-    expect(t).toContain("With the Team Lead");
+    expect(t).toContain("Backend Agent 2 asked a question, and the Chief is looking at it: it answers and the agent carries on, or it asks you in the Inbox.");
+    expect(t).toContain("With the Chief");
     expect(t).not.toContain("This card is on hold");
     expect(t).not.toContain("Clear the hold to run an agent.");
   });
-  it("is the usual hold, with the Team Lead's reason, once it asked you", () => {
-    const t = panel(task({ holdReason: "Team Lead escalated to you: the client pays per export", withLead: false }),
+  it("is the usual hold, with the Chief's reason, once it asked you", () => {
+    const t = panel(task({ holdReason: "Chief escalated to you: the client pays per export", withLead: false }),
       [asking({ state: "escalated", reason: "the client pays per export", costUsdMicros: 30_000 })]);
-    expect(t).toContain("This card is on hold (Team Lead escalated to you: the client pays per export). Clear the hold to run an agent.");
-    expect(t).not.toContain("the Team Lead is looking at it");
+    expect(t).toContain("This card is on hold (Chief escalated to you: the client pays per export). Clear the hold to run an agent.");
+    expect(t).not.toContain("the Chief is looking at it");
   });
 });

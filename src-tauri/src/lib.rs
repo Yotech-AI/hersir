@@ -307,6 +307,16 @@ fn open_data(dir: PathBuf, notify: Arc<dyn Fn(runs::Note) + Send + Sync>, defaul
         Ok(n) => eprintln!("gizai: named {n} lead agents Chief (they had the old default name)"),
         Err(e) => eprintln!("gizai: naming the lead agent Chief failed: {e}"),
     }
+    // Memory (GA-258), once: the Chief's notes move from Team Lead/ to Chief/ and the links to them follow, after a backup
+    // of the database (backups/gizai-before-chief-folder-<time>.db). When it fails, nothing moves: the next start tries again.
+    match gizai_core::memory::lead_folder_to_chief(&db, &seed.you_id, || backup_data_dir(&dir, "before-chief-folder").map(|_| ())) {
+        Ok(Some(m)) if m.moved + m.relinked + m.instructions > 0 => {
+            eprintln!("gizai: moved {} of the Chief's notes from Team Lead/ to Chief/ ({} with a new name, as Chief/ had their name already); \
+                       rewrote the links in {} notes and docs, and Team Lead/ in {} agents' instructions", m.moved, m.renamed.len(), m.relinked, m.instructions);
+        }
+        Ok(_) => {}
+        Err(e) => eprintln!("gizai: moving the Chief's notes from Team Lead/ to Chief/ failed, so they stay where they are: {e}"),
+    }
     // Memory (GA-96): a group of agents sharing one folder whose owner was removed goes on with its next agent.
     if let Err(e) = gizai_core::memory::ensure_groups(&db, &seed.you_id) {
         eprintln!("gizai: handing shared memory folders on failed: {e}");
@@ -781,7 +791,8 @@ pub fn run() {
             commands::continue_after_run_for_me, commands::stop_run,
             commands::list_runs, commands::run_events, commands::run_commits, commands::live_runs, commands::suggest_agent, commands::get_agent, commands::claude_models, commands::list_clis, commands::save_clis, commands::find_clis, commands::agent_stats, commands::agent_runs, commands::agent_next_task,
             commands::usage_summary, commands::subscription_limits,
-            commands::list_chat_threads, commands::get_chat_thread, commands::search_chat_threads, commands::chat_messages, commands::send_chat, commands::stop_chat, commands::chat_live, commands::chat_agent,
+            commands::list_chat_threads, commands::get_chat_thread, commands::pinned_chats, commands::pin_chat, commands::unpin_chat,
+            commands::search_chat_threads, commands::chat_messages, commands::send_chat, commands::stop_chat, commands::chat_live, commands::chat_agent,
             commands::dismiss_chat, commands::chat_queue, commands::edit_queued_chat, commands::remove_queued_chat, commands::send_chat_queue,
             commands::check_files, commands::item_id,
             commands::set_chat_cli, commands::answer_chat_on, commands::chat_clis,

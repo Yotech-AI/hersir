@@ -17,11 +17,13 @@ That form is the only way to report a security problem. Never report one in a pu
 - The socket or named pipe of the Chief's tools ([Linux, macOS and Windows](docs/PLATFORMS.md#every-linux-only-spot)).
 - Keys and tokens: a sign-in, key or token that leaves your keychain, or reaches a run or a file it shouldn't ([Your keys stay yours](docs/features/cli.md#your-keys-stay-yours)).
 - The install scripts, the one-line installs and updates ([How Hersir updates itself](docs/RELEASING.md#how-hersir-updates-itself)).
+- The release signature check: a release that the one-line install or Update installs or offers without a `hersir-X.Y.Z.sig` that checks against the keys in [`release-signers`](release-signers), over its version, its tag's commit and its `SHA256SUMS`, or a way to sign a release without those keys ([Making a release](docs/RELEASING.md#making-a-release), step 5).
 
 ## What doesn't count
 
 - Problems in Claude Code, Codex CLI or Gemini CLI themselves: report those to Anthropic, OpenAI or Google, as each CLI's own security policy says ([Claude Code](https://github.com/anthropics/claude-code/security/policy), [Codex CLI](https://github.com/openai/codex/security/policy), [Gemini CLI](https://github.com/google-gemini/gemini-cli/security/policy)).
 - An agent doing what you allowed it to do, like running a command on its allowed list or changing a folder you gave it.
+- What a command that runs code does. `npm`, `npx`, `node`, `php`, `composer`, `cargo`, `pytest` and `./vendor/bin/*` run the project's scripts, tests and builds, which can read and change anything your user can, Hersir's data and your keys included: Claude Code only checks the command line. Give such commands only to agents on repositories you trust. A sandbox for runs comes later ([Commands that run code](docs/features/tools.md#commands-that-run-code)).
 
 ## What to send
 

@@ -14,7 +14,7 @@ const COLS: &str = "t.id, t.identifier, t.project_id, p.name, p.color, t.title, 
     CASE WHEN t.hold IS NOT NULL THEN (SELECT json_extract(r.outcome_json, '$.run_for_me') FROM runs r
       WHERE r.task_id = t.id AND r.deleted_at IS NULL ORDER BY r.created_at DESC, r.id DESC LIMIT 1) END,
     {with_lead},
-    EXISTS (SELECT 1 FROM actors pa WHERE pa.id = t.pinned_actor_id AND pa.kind = 'person'), t.screenshots, {waits_for}
+    EXISTS (SELECT 1 FROM actors pa WHERE pa.id = t.pinned_actor_id AND pa.kind = 'person'), t.screenshots, {waits_for}, t.hold_kind
   FROM tasks t JOIN workflow_states s ON s.id = t.state_id
   LEFT JOIN projects p ON p.id = t.project_id
   LEFT JOIN actors a ON a.id = t.assignee_actor_id";
@@ -46,7 +46,8 @@ fn row(r: &Row) -> rusqlite::Result<Task> {
         id: r.get(0)?, identifier: r.get(1)?, project_id: r.get(2)?, project_name: r.get(3)?, project_color: r.get(4)?,
         title: r.get(5)?, description_md: r.get(6)?, acceptance_md: r.get(7)?, state_id: r.get(8)?, state_name: r.get(9)?,
         state_category: r.get(10)?, priority: r.get(11)?, assignee_id: r.get(12)?, assignee_name: r.get(13)?,
-        assignee_kind: r.get(14)?, labels: vec![], hold: r.get(15)?, hold_reason: r.get(16)?, hold_at: r.get(28)?, bounce_count: r.get(17)?,
+        assignee_kind: r.get(14)?, labels: vec![], hold: r.get(15)?, hold_reason: r.get(16)?, hold_at: r.get(28)?, hold_kind: r.get(34)?,
+        bounce_count: r.get(17)?,
         fail_count: r.get(18)?, sort_key: r.get(19)?, branch: r.get(20)?, created_at: r.get(21)?, updated_at: r.get(22)?,
         pr_url: r.get(23)?, pr_state: r.get(24)?, testing: r.get::<_, i64>(25)? != 0, archived_at: r.get(26)?, archived_by: r.get(27)?,
         run_for_me: crate::runs::commands_of(r.get(29)?),
@@ -256,16 +257,32 @@ pub fn create(db: &Db, actor: &str, input: TaskInput) -> Result<String> {
     create_held(db, actor, input, None)
 }
 
+/// A hold a card gets in the same write as another change (GA-101): which hold, why, and its kind (GA-261,
+/// `model::HOLD_WAITING_FOR_OK`; None for any other hold).
+#[derive(Debug, Clone, Copy)]
+pub struct NewHold<'a> {
+    pub hold: &'a str,
+    pub reason: &'a str,
+    pub kind: Option<&'a str>,
+}
+
+impl<'a> From<(&'a str, &'a str)> for NewHold<'a> {
+    /// The hold and its reason, of no kind of its own.
+    fn from((hold, reason): (&'a str, &'a str)) -> Self {
+        NewHold { hold, reason, kind: None }
+    }
+}
+
 /// `create`, with the card on hold from the start when `hold` (the hold and its reason) is given: in the same write, so no
 /// agent picks it up first (GA-101).
 pub fn create_held(db: &Db, actor: &str, input: TaskInput, hold: Option<(&str, &str)>) -> Result<String> {
-    create_with(db, actor, input, hold, &[])
+    create_with(db, actor, input, hold.map(NewHold::from), &[])
 }
 
 /// `create_held`, building on the cards `builds_on` (their ids, GA-228) from the start: in the same write, so no agent
 /// takes it before it waits for them. Refused as `builds_on::set_in` says (more than 20 cards, a card of another
-/// organisation), and then no card is made.
-pub fn create_with(db: &Db, actor: &str, input: TaskInput, hold: Option<(&str, &str)>, builds_on: &[String]) -> Result<String> {
+/// organisation), and then no card is made. `hold` may name its kind (GA-261).
+pub fn create_with(db: &Db, actor: &str, input: TaskInput, hold: Option<NewHold>, builds_on: &[String]) -> Result<String> {
     let title = input.title.trim().to_string();
     if title.is_empty() {
         return Err(Error::Invalid("task title is required".into()));
@@ -308,8 +325,8 @@ pub fn create_with(db: &Db, actor: &str, input: TaskInput, hold: Option<(&str, &
         if !builds_on.is_empty() {
             crate::builds_on::set_in(w, &id, builds_on)?;
         }
-        if let Some((hold, reason)) = hold {
-            crate::workflow::set_hold(w, &id, hold, reason)?;
+        if let Some(h) = hold {
+            crate::workflow::set_hold_as(w, &id, h.hold, h.reason, h.kind)?;
         }
         Ok(id)
     })
@@ -406,6 +423,8 @@ fn update_in(w: &Writer, actor: &str, id: &str, patch: &TaskPatch) -> Result<()>
                 cols.push(("hold_reason", V::Null));
                 cols.push(("fail_count", V::Integer(0)));
                 cols.push(("hold_at", V::Null));
+                // GA-261: its kind comes off with it
+                cols.push(("hold_kind", V::Null));
             } else {
                 // a comment after this answers it (the Chief's board check)
                 cols.push(("hold_at", V::Integer(ids::now_ms())));
@@ -415,6 +434,10 @@ fn update_in(w: &Writer, actor: &str, id: &str, patch: &TaskPatch) -> Result<()>
             if patch.hold.as_deref() != Some("") {
                 cols.push(("hold_reason", opt(r)));
             }
+        }
+        // GA-261: the kind of the hold it puts on (GA-101's); left out, the card keeps its own
+        if let Some(k) = patch.hold_kind.as_ref().filter(|_| patch.hold.as_deref() != Some("")) {
+            cols.push(("hold_kind", opt(k)));
         }
         if cols.is_empty() {
             return not_archived(c, id).and_then(|_| {
@@ -443,9 +466,9 @@ pub fn move_to(db: &Db, actor: &str, id: &str, state_id: &str, sort_key: &str) -
     move_to_held(db, actor, id, state_id, sort_key, None)
 }
 
-/// `move_to`, and then on hold when `hold` (the hold and its reason) is given: in the same write, so no agent picks the
-/// card up first (GA-101).
-pub fn move_to_held(db: &Db, actor: &str, id: &str, state_id: &str, sort_key: &str, hold: Option<(&str, &str)>) -> Result<()> {
+/// `move_to`, and then on hold when `hold` (the hold and its reason, and its kind, GA-261) is given: in the same write, so
+/// no agent picks the card up first (GA-101).
+pub fn move_to_held(db: &Db, actor: &str, id: &str, state_id: &str, sort_key: &str, hold: Option<NewHold>) -> Result<()> {
     db.write(Some(actor), |w| {
         move_in(w, actor, id, state_id, Some(sort_key))?;
         let c = w.conn();
@@ -453,12 +476,12 @@ pub fn move_to_held(db: &Db, actor: &str, id: &str, state_id: &str, sort_key: &s
         let (category, held): (String, bool) = c.query_row(
             "SELECT state_category, hold IS NOT NULL FROM tasks WHERE id=?1", [id], |r| Ok((r.get(0)?, r.get(1)?)))?;
         if person && held && matches!(category.as_str(), "ready" | "in_progress") {
-            c.execute("UPDATE tasks SET hold=NULL, hold_reason=NULL, hold_at=NULL, fail_count=0, updated_at=?2, version=version+1 WHERE id=?1",
+            c.execute("UPDATE tasks SET hold=NULL, hold_reason=NULL, hold_at=NULL, hold_kind=NULL, fail_count=0, updated_at=?2, version=version+1 WHERE id=?1",
                       rusqlite::params![id, ids::now_ms()])?;
             w.update("tasks", id, serde_json::json!({"hold": null, "released": "moved by hand"}))?;
         }
-        if let Some((hold, reason)) = hold {
-            crate::workflow::set_hold(w, id, hold, reason)?;
+        if let Some(h) = hold {
+            crate::workflow::set_hold_as(w, id, h.hold, h.reason, h.kind)?;
         }
         Ok(())
     })

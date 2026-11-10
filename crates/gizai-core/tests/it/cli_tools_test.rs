@@ -35,14 +35,14 @@ fn everything_is_off_for_a_new_agent_and_when_the_json_is_unreadable() {
 fn the_web_and_built_in_switches_are_saved_cleaned_next_to_the_mcp_switches_and_each_leaves_the_other_alone() {
     let (db, you, _, id) = setup();
     let otus = m::save(&db, McpServer { name: "otus".into(), transport: "stdio".into(), command: "/opt/otus/otus-mcp".into(), ..Default::default() }).unwrap();
-    let mcp = vec![AgentServer { server_id: otus.id.clone(), on: true, tools_off: strs(&["delete_note"]) },
-                   AgentServer { server_id: m::BROWSER.into(), on: true, tools_off: vec![] }];
+    let mcp = vec![AgentServer { server_id: otus.id.clone(), on: true, tools_off: strs(&["delete_note"]), trusted: false },
+                   AgentServer { server_id: m::BROWSER.into(), on: true, tools_off: vec![], trusted: false }];
     m::set_agent_tools(&db, &you, &id, AgentTools { mcp: mcp.clone() }).unwrap();
 
     let saved = m::set_cli_tools(&db, &you, &id, CliTools {
         web_search: true, web_fetch: true, insecure_certs: true,
         fetch_domains: strs(&[" https://Docs.rs/ ", "docs.rs", "*.laravel.com", "", "http://kade.test"]),
-        builtin: strs(&["FancyNewTool", " FancyNewTool ", "AnotherTool", ""]), slash_commands: true,
+        builtin: strs(&["FancyNewTool", " FancyNewTool ", "AnotherTool", ""]), slash_commands: true, web_trusted: false,
     }).unwrap();
     assert_eq!(saved.fetch_domains, ["docs.rs", "*.laravel.com", "kade.test"], "lower case, no scheme or slash, each once");
     assert_eq!(saved.builtin, ["AnotherTool", "FancyNewTool"]);
@@ -110,10 +110,10 @@ fn the_browser_is_a_switch_of_its_own_and_no_mcp_server_can_take_its_name() {
     assert!(m::TAKEN.contains(&m::BROWSER));
     assert!(m::save(&db, McpServer { name: "chrome-devtools".into(), transport: "stdio".into(), command: "/opt/x".into(), ..Default::default() }).is_err());
     let kept = m::set_agent_tools(&db, &you, &id, AgentTools { mcp: vec![
-        AgentServer { server_id: m::BROWSER.into(), on: true, tools_off: strs(&["evaluate_script", " "]) },
-        AgentServer { server_id: "no-such-server".into(), on: true, tools_off: vec![] },
+        AgentServer { server_id: m::BROWSER.into(), on: true, tools_off: strs(&["evaluate_script", " "]), trusted: false },
+        AgentServer { server_id: "no-such-server".into(), on: true, tools_off: vec![], trusted: false },
     ] }).unwrap();
-    assert_eq!(kept.mcp, [AgentServer { server_id: m::BROWSER.into(), on: true, tools_off: strs(&["evaluate_script"]) }], "the browser is known; a server not in the list is dropped");
+    assert_eq!(kept.mcp, [AgentServer { server_id: m::BROWSER.into(), on: true, tools_off: strs(&["evaluate_script"]), trusted: false }], "the browser is known; a server not in the list is dropped");
 }
 
 #[test]
@@ -124,7 +124,7 @@ fn an_agent_on_codex_or_gemini_cant_have_the_browser_on_and_says_why() {
         clis.push(gizai_core::clis::Cli { name: format!("My {kind}"), kind: kind.into(), command: kind.into(), ..Default::default() });
         let cli = gizai_core::clis::save(&db, clis).unwrap().into_iter().find(|c| c.kind == kind).unwrap();
         let id = team::add_agent(&db, &you, &team_id, AgentInput { name: format!("{kind} agent"), role_key: "frontend".into(), adapter: cli.id.clone(), ..Default::default() }).unwrap();
-        let e = m::set_agent_tools(&db, &you, &id, AgentTools { mcp: vec![AgentServer { server_id: m::BROWSER.into(), on: true, tools_off: vec![] }] }).unwrap_err().to_string();
+        let e = m::set_agent_tools(&db, &you, &id, AgentTools { mcp: vec![AgentServer { server_id: m::BROWSER.into(), on: true, tools_off: vec![], trusted: false }] }).unwrap_err().to_string();
         assert!(e.contains("browser") && e.contains(&cli.name), "{kind}: {e}");
         assert!(!m::agent_tools(&db, &id).unwrap().browser_on());
         let why = m::mcp_not_on(kind).unwrap();

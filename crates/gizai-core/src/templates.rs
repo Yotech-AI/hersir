@@ -316,7 +316,8 @@ fn export_in(c: &Connection, team_id: &str) -> Result<TemplateFile> {
         FileAgent {
             name: name.clone(), role: m.role_key.clone(), title: m.title.clone(), cli, model: m.model.clone(), effort: m.effort.clone(),
             permission_mode: Some(m.permission_mode.clone().unwrap_or_default()), instructions_md: m.instructions_md.clone(),
-            allowed_tools: m.allowed_tools.clone(), cards_at_once: m.max_runs, monthly_budget_usd: m.budget_usd_micros.map(|b| b as f64 / 1e6),
+            // GA-262: as its runs get them: an entry saved before each had to be one rule is left out, as importing refuses it.
+            allowed_tools: m.allowed_tools.iter().filter(|t| team::one_rule(t)).cloned().collect(), cards_at_once: m.max_runs, monthly_budget_usd: m.budget_usd_micros.map(|b| b as f64 / 1e6),
             chat: m.chat_enabled, board_check_minutes: m.board_check_minutes, use_memory: m.use_memory,
             shares_memory_with: m.shares_memory_with.as_deref().filter(|o| *o != m.actor_id).and_then(name_of),
             web_search: m.cli_tools.web_search, web_fetch: m.cli_tools.web_fetch, fetch_domains: m.cli_tools.fetch_domains.clone(),
@@ -784,8 +785,8 @@ fn thousands(n: usize) -> String {
 
 /// Refuses a template a team can't be made from, saying why: no columns, more than 50 agents or 30 columns,
 /// instructions over 100,000 characters, an unknown kind, two columns or agents with one name (ignoring case), a next
-/// column or a column's agent that isn't in it, agents or Auto on a backlog, review, done or cancelled column, and an Auto
-/// column without a next one.
+/// column or a column's agent that isn't in it, agents or Auto on a backlog, review, done or cancelled column, an Auto
+/// column without a next one, and an allowed command that isn't one rule (GA-262, `team::one_rule`).
 fn check(f: &TemplateFile) -> Result<()> {
     let no = |why: String| Err(Error::Invalid(why));
     if f.name.trim().is_empty() {
@@ -830,6 +831,9 @@ fn check(f: &TemplateFile) -> Result<()> {
         let role = team::role_key(&a.role);
         if role.is_empty() || role.len() > 32 {
             return no(format!("{} has no role: give it one of at most 32 characters, like backend or qa.", a.name.trim()));
+        }
+        if let Some(t) = a.allowed_tools.iter().map(|t| t.trim()).find(|t| !t.is_empty() && !team::one_rule(t)) {
+            return no(format!("{}'s allowed commands: {}", a.name.trim(), team::not_one_rule(t)));
         }
     }
     for c in &f.columns {
@@ -1081,7 +1085,7 @@ fn plan(f: &TemplateFile, builtin: bool, name: Option<&str>, here: &Here) -> Res
                 Some(id) if !servers.iter().any(|o| o.server_id == id) => {
                     let mut off = tidy(&s.tools_off);
                     off.sort();
-                    servers.push(AgentServer { server_id: id, on: true, tools_off: off });
+                    servers.push(AgentServer { server_id: id, on: true, tools_off: off, trusted: false });
                 }
                 Some(_) => {}
                 None if !missing.iter().any(|m| m.eq_ignore_ascii_case(n)) => missing.push(n.to_string()),
@@ -1089,7 +1093,7 @@ fn plan(f: &TemplateFile, builtin: bool, name: Option<&str>, here: &Here) -> Res
             }
         }
         if a.browser && !servers.iter().any(|o| o.server_id == mcp_servers::BROWSER) {
-            servers.push(AgentServer { server_id: mcp_servers::BROWSER.into(), on: true, tools_off: vec![] });
+            servers.push(AgentServer { server_id: mcp_servers::BROWSER.into(), on: true, tools_off: vec![], trusted: false });
         }
         if !servers.is_empty() && mcp_servers::mcp_not_on(&cli.kind).is_some() {
             notes.push(format!("MCP servers and the browser work on Claude Code for now: {name} runs on {}, so they stay off.", cli.name));
@@ -1160,7 +1164,7 @@ fn plan(f: &TemplateFile, builtin: bool, name: Option<&str>, here: &Here) -> Res
         builtin_tools.sort();
         let cli_tools = CliTools {
             web_search: a.web_search, web_fetch, fetch_domains: domains, insecure_certs: a.insecure_certs, builtin: builtin_tools,
-            slash_commands: a.slash_commands,
+            slash_commands: a.slash_commands, web_trusted: false,
         };
         let screenshots = a.screenshots.unwrap_or_else(|| mcp_servers::screenshots_default(&role));
         let mut extra = serde_json::Map::new();
@@ -1191,7 +1195,7 @@ fn plan(f: &TemplateFile, builtin: bool, name: Option<&str>, here: &Here) -> Res
     }
 
     // Memory folders: an agent shares the folder of the agent it names, as long as both are in the template and neither is
-    // the Chief (which keeps its notes in Team Lead/); a chain ends at its first agent with a folder of its own.
+    // the Chief (which keeps its notes in Chief/); a chain ends at its first agent with a folder of its own.
     let lead: Vec<bool> = agents.iter().map(|a| a.input.role_key == "lead" || a.input.chat_enabled == Some(true)).collect();
     let mut shares: Vec<Option<usize>> = vec![None; f.agents.len()];
     for (i, a) in f.agents.iter().enumerate() {
@@ -1199,8 +1203,8 @@ fn plan(f: &TemplateFile, builtin: bool, name: Option<&str>, here: &Here) -> Res
         match agent_index(target) {
             None => notes.push(format!("{target} isn't in this team template: {} gets its own memory folder.", names[i])),
             Some(j) if j == i => {}
-            Some(_) if lead[i] => notes.push(format!("{} is the Chief, which keeps its notes in Team Lead/: it shares no memory folder.", names[i])),
-            Some(j) if lead[j] => notes.push(format!("{} is the Chief, which keeps its notes in Team Lead/: {} gets its own memory folder.",
+            Some(_) if lead[i] => notes.push(format!("{} is the Chief, which keeps its notes in Chief/: it shares no memory folder.", names[i])),
+            Some(j) if lead[j] => notes.push(format!("{} is the Chief, which keeps its notes in Chief/: {} gets its own memory folder.",
                                                      names[j], names[i])),
             Some(j) => shares[i] = Some(j),
         }

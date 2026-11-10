@@ -35,11 +35,11 @@ describe("chats with calls that wait for your approval", () => {
     expect(chatLabel(chat({ pendingActions: 1 }))).toBe("Approval");
     expect(chatLabel(chat({ kind: "question", waiting: true, pendingActions: 1 }))).toBe("Approval");
     expect(chatLabel(chat({ kind: "question", waiting: true }))).toBe("Question");
-    expect(chatLabel(chat({ kind: "question", waiting: false }))).toBe("Team Lead");
+    expect(chatLabel(chat({ kind: "question", waiting: false }))).toBe("Chief");
     expect(chatLabel(chat({}))).toBeNull();
-    expect(chatLabelTitle(chat({ pendingActions: 1 }))).toBe("A call of the Team Lead's waits for your approval here");
-    expect(chatLabelTitle(chat({ pendingActions: 3 }))).toBe("3 calls of the Team Lead's wait for your approval here");
-    expect(chatLabelTitle(chat({ kind: "question", waiting: true }))).toBe("The Team Lead asks you this");
-    expect(chatLabelTitle(chat({ kind: "question", waiting: false }))).toBe("The Team Lead started this chat");
+    expect(chatLabelTitle(chat({ pendingActions: 1 }))).toBe("A call of the Chief's waits for your approval here");
+    expect(chatLabelTitle(chat({ pendingActions: 3 }))).toBe("3 calls of the Chief's wait for your approval here");
+    expect(chatLabelTitle(chat({ kind: "question", waiting: true }))).toBe("The Chief asks you this");
+    expect(chatLabelTitle(chat({ kind: "question", waiting: false }))).toBe("The Chief started this chat");
   });
 });

@@ -354,7 +354,7 @@ fn main() {
     });
     at(&db, now - 4 * DAY - HOUR, || {
         for a in [&fe, &qa] {
-            mcp_servers::set_agent_tools(&db, &you, a, AgentTools { mcp: vec![AgentServer { server_id: mcp_servers::BROWSER.into(), on: true, tools_off: vec![] }] })
+            mcp_servers::set_agent_tools(&db, &you, a, AgentTools { mcp: vec![AgentServer { server_id: mcp_servers::BROWSER.into(), on: true, tools_off: vec![], trusted: false }] })
                 .unwrap();
             mcp_servers::set_agent_screenshots(&db, &you, a, true).unwrap();
         }

@@ -41,7 +41,7 @@ describe("Show changes in the Runs tab", () => {
     loaded.push(null, [commit(1), commit(2)], null);
     const html = renderToStaticMarkup(<RunHistory runs={[run("01HZRUN0000000000000000001")]} />);
     expect(showChanges(html)).toEqual(["#/task/t1/changes/run/01HZRUN0000000000000000001"]);
-    expect(text(html)).toContain("Backend Agent · backend · Manual · 2 commits Show changes");
+    expect(text(html)).toContain("Backend Agent · Backend · Manual · 2 commits Show changes");
     // a link beside the row's button, not inside it
     expect(html).toMatch(/<div class="panel-row run-line"><button class="run-open" aria-expanded="false">(?:(?!<\/button>).)*<\/button><a class="btn ghost sm"/);
   });

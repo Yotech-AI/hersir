@@ -78,7 +78,7 @@ Names link the file together: a column's `next` and `agents`, and an agent's `sh
 | `effort` | its effort level (Claude Code's `--effort`, Codex's reasoning effort), or `null` |
 | `permission_mode` | its permission mode, like `acceptEdits` (Claude Code), `workspace-write` (Codex) or `auto_edit` (Gemini); `""` for an Other CLI |
 | `instructions_md` | its instructions, at most 100,000 characters |
-| `allowed_tools` | its allowed commands, like `Bash(git status:*)` |
+| `allowed_tools` | its allowed commands, like `Bash(git status:*)`, each one rule (one command per entry). Export leaves out one saved before Hersir checked that, as runs do. |
 | `cards_at_once` | the cards it works on at once, 1 to 10 |
 | `monthly_budget_usd` | its monthly budget in dollars (`25` or `25.5`), or `null` for none |
 | `chat` | it answers on the Chat page (the Chief) |
@@ -132,7 +132,8 @@ It refuses a template a team can't be made from, saying why:
 - two columns or two agents have the same name (ignoring case);
 - a `next` or a column's agent isn't in the file, or a column goes next to itself;
 - a backlog, review, done or cancelled column has agents or is Auto;
-- an Auto column has no `next`.
+- an Auto column has no `next`;
+- an agent's allowed command isn't one rule (GA-262): "Backend Agent's allowed commands: `Bash(ls:*) Bash(*)` isn't one rule: write each command as its own entry, like Bash(npm test:*)."
 
 Otherwise its plan (`TemplatePlan`) says what the new team gets:
 
@@ -144,7 +145,7 @@ Otherwise its plan (`TemplatePlan`) says what the new team gets:
 - **The allowed commands** are kept. `extraTools` lists the ones that aren't in the role's default list (`seed::role_tools`).
 - **MCP servers** are matched by name to Settings → MCP, ignoring case. A match is switched on for the agent, with its tools switched off as the file has them. One that isn't there is in `missingServers` and stays off. An agent that doesn't run on Claude Code gets no MCP servers and no browser, noted, as the agent form allows them on Claude Code only.
 - **Chat:** at most one agent has it, on Claude Code. When an agent already has Chat, the file's Chat agent comes without Chat and without the board check, noted: "Your Chief stays Master Chief." The same goes, with a note, for a second Chat agent in the file and for one that doesn't run on Claude Code.
-- **Shares memory with:** a name that isn't in the file gives the agent its own folder, noted. So do a Chief on either side (it keeps its notes in Team Lead/) and a circle. A chain ends at its first agent with a folder of its own.
+- **Shares memory with:** a name that isn't in the file gives the agent its own folder, noted. So do a Chief on either side (it keeps its notes in Chief/) and a circle. A chain ends at its first agent with a folder of its own.
 - **Labels** that aren't there yet (ignoring case) are added and listed in `labelsAdded`; the ones there keep their colour. A label of over 40 characters isn't added, and one without a hex colour is added without one, noted.
 - **Active:** agents from a file come in paused (`active` false); a built-in's are active.
 - Other settings out of range are noted and set: cards at once to 1 to 10, a board check outside 5 to 1440 minutes off, a negative budget none, a fetch domain or tool name that can't be used left out (with no fetch domain left, fetching pages is off).

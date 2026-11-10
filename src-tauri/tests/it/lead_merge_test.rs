@@ -542,18 +542,29 @@ async fn refused_when_the_card_is_on_hold() {
 // ---- chat answers and board checks ----
 
 #[tokio::test]
-async fn refused_after_an_outside_tool_in_the_same_chat_answer_and_allowed_in_the_next_message() {
+async fn refused_after_an_outside_tool_in_the_same_chat_answer_and_kept_in_the_next_message_too() {
     let t = setup().await;
     assert!(tools::NOT_AFTER_OUTSIDE.contains(&"merge_pull_request"));
     let thread = gizai_core::chat::create_thread(&t.st.db, &t.st.you_id, &t.lead, "Merge KADE-1").unwrap();
     gizai_core::chat::add_message(&t.st.db, gizai_core::chat::NewMessage { thread_id: thread.clone(), role: "user".into(),
         author_id: Some(t.st.you_id.clone()), body_md: Some("Look it up in Otus, then merge KADE-1".into()), ..Default::default() }).unwrap();
     gizai_lib::chat::mark_outside(&t.st, &thread, "mcp__otus__search");
+    let kept = "merge_pull_request wasn't run: this chat used mcp__otus__search, a tool from outside Hersir. Hersir keeps the call \
+        for the user to approve with one click. Tell them in a sentence what it does.";
     let e = tools::call_in(&t.st, &t.lead, Some(&thread), "merge_pull_request", json!({"task": "KADE-1"})).await.unwrap_err();
     // GA-102: not run, but kept for you to approve with one click
-    assert_eq!(e, "merge_pull_request wasn't run: this answer used mcp__otus__search, a tool from outside Hersir. Hersir keeps the call \
-        for the user to approve with one click. Tell them in a sentence what it does.");
+    assert_eq!(e, kept);
     assert_eq!(gizai_lib::pending::list(&t.st, &thread).unwrap().iter().map(|p| p.action.tool.as_str()).collect::<Vec<_>>(), ["merge_pull_request"]);
+    // GA-261: the next message in that chat ("ok, merge it", no outside tool) is kept too, not run: the chat stays marked
+    gizai_core::chat::add_message(&t.st.db, gizai_core::chat::NewMessage { thread_id: thread.clone(), role: "user".into(),
+        author_id: Some(t.st.you_id.clone()), body_md: Some("ok, merge it".into()), ..Default::default() }).unwrap();
+    let e = tools::call_in(&t.st, &t.lead, Some(&thread), "merge_pull_request", json!({"task": "KADE-1"})).await.unwrap_err();
+    assert_eq!(e, kept);
+    assert_eq!(gizai_lib::pending::list(&t.st, &thread).unwrap().len(), 1, "the same call that waits already: kept once");
+    // and another acting call there waits too
+    let e = tools::call_in(&t.st, &t.lead, Some(&thread), "comment_on_task", json!({"task": "KADE-1", "body_md": "Merging."})).await.unwrap_err();
+    assert!(e.starts_with("comment_on_task wasn't run: this chat used mcp__otus__search"), "{e}");
+    assert_eq!(gizai_lib::pending::list(&t.st, &thread).unwrap().len(), 2);
     assert!(t.gh_calls().is_empty(), "gh never asked: {:?}", t.gh_calls());
     assert_eq!(t.task().state_name, "Review");
     assert!(t.lead_comments().is_empty());
@@ -727,7 +738,9 @@ const DONE: &str = "Nothing else waits for your OK. The Chief's answer above is 
 
 /// Gizai's notes in a chat.
 fn chat_notes(t: &T, thread: &str) -> Vec<String> {
-    gizai_core::chat::messages(&t.st.db, thread).unwrap().into_iter().filter(|m| m.role == "system").map(|m| m.body_md.unwrap_or_default()).collect()
+    // GA-261: the line a chat gets once when a tool from outside Hersir marks it is checked in outside_chat_mark_test
+    gizai_core::chat::messages(&t.st.db, thread).unwrap().into_iter().filter(|m| m.role == "system" && m.meta.as_ref().is_none_or(|x| x["kind"] != "outside"))
+        .map(|m| m.body_md.unwrap_or_default()).collect()
 }
 
 /// The refusal a merge of KADE-1 gets in a chat answer without an outside tool, as things are now.

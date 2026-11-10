@@ -5,7 +5,7 @@ import { emit } from "@tauri-apps/api/event";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
 import type { Terminal } from "@xterm/xterm";
-import { appInfo, archiveTask, chatMessages, checkTeamExport, editorFolders, getTask, getTeam as teamById, listChatThreads, listDocs, listLabels, listProjects, listTasks, listTeams, previewTeamTemplate, readClipboardText, selftestPaste, setAgentStatus, terminalClose, terminalInput, terminalList, terminalOpen } from "./api";
+import { appInfo, archiveTask, chatMessages, checkTeamExport, editorFolders, getTask, getTeam as teamById, listChatThreads, listDocs, listLabels, listProjects, listTasks, listTeams, pinnedChats, previewTeamTemplate, readClipboardText, selftestPaste, setAgentStatus, terminalClose, terminalInput, terminalList, terminalOpen } from "./api";
 import { isMac } from "./lib/keys";
 import { periodDays } from "./lib/usage";
 import { getAppearance, resetAppearance, setAppearance } from "./lib/appearance";
@@ -17,6 +17,7 @@ import { boardDrawn, perfCalls, perfCount, perfFirst, perfFrames, perfHeard, per
 import { graphProbe } from "./components/memory/GraphCanvas";
 import { TerminalView } from "./components/terminal/TerminalView";
 import { boardOrder } from "./lib/columns";
+import { roleLabel } from "./lib/agents";
 import { pickTeam } from "./lib/team";
 import { PAUSED_LINE, kindWord } from "./components/TeamTemplate";
 import type { FolderMain, Team, TemplatePlan } from "./types";
@@ -648,7 +649,7 @@ export async function runProbe(taskId: string, api: {
 }
 
 /** Chat page against the fake Claude Code: the setup panel opens the agent form with Chat on, saving it
- * makes the Team Lead, then a message streams an answer whose tool card links the task it created. */
+ * makes the Chief, then a message streams an answer whose tool card links the task it created. */
 export async function chatProbe(listTitles: () => Promise<string[]>) {
   const setup = await waitFor(() => document.querySelector(".chat-setup .btn.primary") as HTMLButtonElement | null, 6000);
   if (!setup) return { ok: false, error: "no setup panel" };
@@ -660,7 +661,7 @@ export async function chatProbe(listTitles: () => Promise<string[]>) {
   const chatOn = !!(dialog.querySelector("#a-chat") as HTMLInputElement | null)?.checked;
   await waitFor(() => (dialog.querySelector(".cm-content")?.textContent ?? "").includes("Chat page") || null, 3000);
   buttonByText(dialog, "Add agent")?.click();
-  const agentPage = !!(await waitFor(() => (document.querySelector(".entity-head h1")?.textContent ?? "") === "Team Lead" || null, 4000));
+  const agentPage = !!(await waitFor(() => (document.querySelector(".entity-head h1")?.textContent ?? "") === "Chief" || null, 4000));
   window.location.hash = "#/chat";
   // GA-41: the text box is a Markdown editor without a toolbar.
   const box = await waitFor(composer, 4000);
@@ -673,7 +674,7 @@ export async function chatProbe(listTitles: () => Promise<string[]>) {
   const made = (await listTitles()).includes("Chat probe task");
   const thread = window.location.hash.startsWith("#/chat/");
   const listed = !!document.querySelector(".chat-threads .th.on");
-  const first = onTeam && name === "Team Lead" && chatOn && agentPage && !!card && reply && made && thread && listed;
+  const first = onTeam && name === "Chief" && chatOn && agentPage && !!card && reply && made && thread && listed;
   const layout = await composerLayoutProbe();
   const runsOn = await runsOnAndQueueProbe();
   const linksAndFiles = await chatPickerAndFilesProbe();
@@ -1023,8 +1024,8 @@ export async function usageProbe() {
     && asOf(subscription.claude2[0]) && asOf(subscription.claude2[1])
     && same(subscription.codex.map((r) => r.slice(0, 2)), [["5-hour limit", "24%"], ["Weekly limit", "41%"]]) && asOf(subscription.codex[0])
     && subscription.gemini.includes("Hersir can't read Gemini's limits yet.") && subscription.gemini_tables === 0
-    && same(subscription.agents, [["Backend Agent (paused)"], ["Team Lead (paused)"], ["Codex Agent (paused)"], []])
-    && subscription.chats.includes("The Team Lead's chat runs here.")
+    && same(subscription.agents, [["Backend Agent (paused)"], ["Chief (paused)"], ["Codex Agent (paused)"], []])
+    && subscription.chats.includes("The Chief's chat runs here.")
     && same(subscription.states, [["limit-ok", "limit-near", "limit-unread"], ["limit-reached", "limit-ok", "limit-unread"], ["limit-ok", "limit-ok"], []])
     && subscription.clipped.length === 0 && subscription.foot.includes("it never asks Anthropic or OpenAI");
 
@@ -1053,7 +1054,7 @@ export async function usageProbe() {
   const agentsTotal = total("Usage per agent");
   const agentsOk = same(agents, [
     ["Backend Agent", "2 runs", "16K", "3.4K", "$0.57", "95%"],
-    ["Team Lead", "1 chat turn", "2K", "100", "$0.03", "5%"],
+    ["Chief", "1 chat turn", "2K", "100", "$0.03", "5%"],
     ["Codex Agent", "1 run", "5K", "500", "Unknown", "0%"],
   ]) && same(agentsTotal, wantTotal);
   await tab("Projects");
@@ -1134,7 +1135,8 @@ export async function chatArchiveProbe() {
   if (scroller) scroller.scrollTop = scroller.scrollHeight;
   await sleep(100);
   const atEnd = !!scroller && scroller.scrollTop > 0 && inSight();
-  const lastRowAbove = (q(".chat-threads-list a.th:last-child")?.getBoundingClientRect().bottom ?? 1e9) <= (button?.getBoundingClientRect().top ?? 0) + 0.5;
+  // GA-257: each chat on the left is a .th-row, its link with its pin button beside it
+  const lastRowAbove = (q(".chat-threads-list > .th-row:last-child")?.getBoundingClientRect().bottom ?? 1e9) <= (button?.getBoundingClientRect().top ?? 0) + 0.5;
   const buttonOk = !!button && textOf(button) === "Archive" && button.getAttribute("href") === "#/chats" && !!button.querySelector("svg.lucide-history")
     && !button.classList.contains("on") && !scroller?.contains(button);
 
@@ -1167,7 +1169,7 @@ export async function chatArchiveProbe() {
   const hit = rows()[0];
   const found = { titles: rowTitles(), who: textOf(hit?.querySelector(".snippet .who")), snippet: textOf(hit?.querySelector(".snippet")),
     marks: textsOf(".snippet mark", hit ?? document) };
-  const hitOk = flamingo && found.titles.length === 1 && found.who === "Team Lead:" && found.snippet === "Team Lead: The old flamingo plan is in the docs."
+  const hitOk = flamingo && found.titles.length === 1 && found.who === "Chief:" && found.snippet === "Chief: The old flamingo plan is in the docs."
     && JSON.stringify(found.marks) === JSON.stringify(["flamingo"]);
   const percent = await find("0%", () => JSON.stringify(rowTitles()) === JSON.stringify(["Chat 34"]));
   await sleep(400);
@@ -1188,6 +1190,193 @@ export async function chatArchiveProbe() {
     button_ok: buttonOk, opened, all: all.length, all_ok: allOk, row_ok: rowOk, crumbs, focused, focused_el: focusedEl, highlighted,
     chat_nav_on: chatNavOn, recent_stays: recentStays, search_on_top: searchOnTop, found, hit_ok: hitOk, percent_ok: percentOk, no_match: none,
     opened_chat: openedChat, chat_crumbs: chatCrumbs, not_in_recent: notInRecent };
+}
+
+/** GA-257, against prep_chats' 36 chats ("Which database?", a Team Lead question, then "Chat 1" … "Chat 35", the oldest last),
+ * in two starts on the same data. (a) Nothing pinned: no Pinned heading, and each chat on the left has a pin button, "Pin to
+ * the top" (label and tooltip), beside its link (a click on the button's spot reaches the button), hidden until the row is
+ * pointed at or focused. A click pins Chat 3; the focused button of "Which database?" pressed pins it, the focus going
+ * along; the top bar's pin pins Chat 5; the Archive's pins Chat 34 and Chat 35 (older than the 30 newest) and unpins Chat
+ * 34; in a search, Chat 35 is unpinned and pinned again, the search staying as it was; Chat 3's Unpin on the left puts it
+ * back in Recent at its place. Each time the list changes at once, the chat isn't opened (the address stays), Pinned is
+ * above Recent with the newest pin first, a pinned chat isn't under Recent again, its button says Unpin, and the backend
+ * has the same pins. (b) After a restart: Pinned still has Chat 35, Chat 5 and "Which database?" with their label and time;
+ * Chat 35 opened from Pinned and unpinned in its top bar leaves Pinned and isn't in Recent, and stays open. */
+export async function chatPinsProbe(stage: "a" | "b") {
+  const NEWEST = ["Which database?", ...Array.from({ length: 29 }, (_, i) => `Chat ${i + 1}`)];
+  const titleOf = (r: Element | null | undefined) => textOf(r?.querySelector("a.th .ellipsis"));
+  /** The rows under heading `name` on the left, up to the next heading. */
+  const part = (name: "Pinned" | "Recent") => {
+    const out: HTMLElement[] = [];
+    let on = false;
+    for (const el of [...(q(".chat-threads-list")?.children ?? [])]) {
+      if (el.classList.contains("nav-label")) { on = textOf(el) === name; continue; }
+      if (on && el.classList.contains("th-row")) out.push(el as HTMLElement);
+    }
+    return out;
+  };
+  const titles = (name: "Pinned" | "Recent") => part(name).map(titleOf);
+  const row = (name: "Pinned" | "Recent", title: string) => part(name).find((r) => titleOf(r) === title);
+  const pinIn = (r: Element | null | undefined) => r?.querySelector<HTMLButtonElement>(":scope > button.pin-btn") ?? null;
+  const label = (b: HTMLButtonElement | null) => (b ? `${b.getAttribute("aria-label")}|${b.title}` : null);
+  const headings = () => textsOf(".chat-threads-list > .nav-label");
+  const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+  const opacity = (b: Element | null) => (b ? Number(getComputedStyle(b).opacity) : -1);
+  /** A click at the middle of `b` reaches `b` (it lies on top of the chat's link there). */
+  const onTop = (b: Element | null) => {
+    if (!b) return false;
+    const r = b.getBoundingClientRect(), at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return r.width > 0 && !!at && (at === b || b.contains(at));
+  };
+  /** Presses `b` as a mouse does at its middle (pointer, mouse and click events); a key's press is a click on the focused button. */
+  const press = (b: HTMLButtonElement, how: "mouse" | "key") => {
+    if (how === "key") {
+      b.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", keyCode: 13, bubbles: true, cancelable: true }));
+      b.click();
+      b.dispatchEvent(new KeyboardEvent("keyup", { key: "Enter", code: "Enter", keyCode: 13, bubbles: true, cancelable: true }));
+      return;
+    }
+    const r = b.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+    const init = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, button: 0 };
+    b.dispatchEvent(pe("pointerdown", x, y));
+    b.dispatchEvent(new MouseEvent("mousedown", { ...init, buttons: 1 }));
+    b.dispatchEvent(pe("pointerup", x, y));
+    b.dispatchEvent(new MouseEvent("mouseup", init));
+    b.dispatchEvent(new MouseEvent("click", init));
+  };
+  /** Presses `b` and waits until `done`: how long the list took (ms), whether the address stayed, and the backend's pins. */
+  const step = async (b: HTMLButtonElement | null, how: "mouse" | "key", done: () => boolean) => {
+    if (!b) return { pressed: false, ms: -1, stayed: false, at_once: false, backend: [] as string[], shown: [] as string[] };
+    const hash = location.hash, t0 = performance.now();
+    press(b, how);
+    const changed = await waitFor(() => (done() ? true : null), 3000);
+    const ms = Math.round(performance.now() - t0);
+    await sleep(500); // the backend's notice (chat_pins) reloads the list: it must stay as it is
+    const backend = (await pinnedChats()).map((t) => t.title);
+    return { pressed: true, ms, stayed: location.hash === hash, at_once: !!changed && ms < 300 && done(), backend, shown: titles("Pinned") };
+  };
+  const stepOk = (s: Awaited<ReturnType<typeof step>>, pinned: string[]) => s.pressed && s.stayed && s.at_once && same(s.backend, pinned) && same(s.shown, pinned);
+  /** Pinned above Recent, the pinned chats not again under Recent, which is the 30 newest without them. */
+  const listOk = (pinned: string[]) => {
+    const h = headings();
+    return same(titles("Pinned"), pinned) && (pinned.length ? same(h, ["Pinned", "Recent"]) : same(h, ["Recent"]))
+      && same(titles("Recent"), NEWEST.filter((t) => !pinned.includes(t)))
+      && part("Pinned").every((r) => r.classList.contains("pinned") && label(pinIn(r)) === "Unpin|Unpin" && opacity(pinIn(r)) === 1 && !!textOf(r.querySelector(".when")))
+      && part("Recent").every((r) => !r.classList.contains("pinned") && label(pinIn(r)) === "Pin to the top|Pin to the top");
+  };
+  /** The stylesheet shows a row's pin when the row is pointed at (a pointer can't be moved in the cage). */
+  const hoverRule = [...document.styleSheets].flatMap((sh) => { try { return [...sh.cssRules]; } catch { return []; } })
+    .some((r) => r instanceof CSSStyleRule && r.selectorText.split(",").map((s) => s.trim()).includes(".th-row:hover > .pin-btn") && r.style.opacity === "1");
+  const focusRule = [...document.styleSheets].flatMap((sh) => { try { return [...sh.cssRules]; } catch { return []; } })
+    .some((r) => r instanceof CSSStyleRule && r.selectorText.split(",").map((s) => s.trim()).includes(".th-row:focus-within > .pin-btn") && r.style.opacity === "1");
+  const noHover = matchMedia("(hover: none)").matches;
+  const crumbsPin = () => q<HTMLButtonElement>(".topbar .crumbs button.pin-btn");
+
+  if (!(await waitFor(() => (part("Recent").length > 0 ? true : null), 6000))) return { ok: false, error: "Recent shows no chats", page: textOf(q(".main")).slice(0, 300) };
+
+  if (stage === "b") {
+    const kept = ["Chat 35", "Chat 5", "Which database?"];
+    await waitFor(() => (titles("Pinned").length ? true : null), 3000);
+    const keptOk = listOk(kept) && textOf(row("Pinned", "Which database?")?.querySelector(".badge")) === "Question" && !titles("Recent").includes("Chat 35");
+    const shown = { pinned: titles("Pinned"), recent: titles("Recent").length, headings: headings() };
+    // Chat 35, older than the 30 newest, opened from Pinned: its title in the crumbs, Unpin in the top bar
+    row("Pinned", "Chat 35")?.querySelector<HTMLAnchorElement>("a.th")?.click();
+    const opened = !!(await waitFor(() => (location.hash.startsWith("#/chat/") && textOf(q(".topbar .crumbs")).includes("Chat 35") && crumbsPin() ? true : null), 5000));
+    const onOk = !!row("Pinned", "Chat 35")?.querySelector('a.th.on[aria-current="page"]');
+    const topLabel = label(crumbsPin());
+    const unpin = await step(crumbsPin(), "mouse", () => !titles("Pinned").includes("Chat 35"));
+    const after = { pinned: titles("Pinned"), in_recent: titles("Recent").includes("Chat 35"), crumbs: textOf(q(".topbar .crumbs")), top: label(crumbsPin()) };
+    const unpinOk = stepOk(unpin, ["Chat 5", "Which database?"]) && listOk(["Chat 5", "Which database?"]) && !after.in_recent
+      && after.crumbs === "Chat/Chat 35" && after.top === "Pin to the top|Pin to the top";
+    const ok = keptOk && opened && onOk && topLabel === "Unpin|Unpin" && unpinOk && hoverRule;
+    return { ok, stage, kept_ok: keptOk, shown, opened, on_ok: onOk, top_label: topLabel, unpin, after, unpin_ok: unpinOk, hover_rule: hoverRule };
+  }
+
+  // (a) nothing pinned yet
+  const startOk = listOk([]) && part("Recent").length === 30 && !headings().includes("Pinned");
+  const recentRows = part("Recent");
+  const buttonsBeside = recentRows.every((r) => { const b = pinIn(r), a = r.querySelector("a.th"); return !!b && !!a && !a.contains(b) && !b.closest("a"); });
+  const chat3 = row("Recent", "Chat 3");
+  chat3?.scrollIntoView({ block: "center" });
+  await sleep(200);
+  const onTopOk = onTop(pinIn(chat3));
+  // hidden until pointed at or focused (always shown where the screen has no pointer that hovers)
+  const hiddenOk = noHover ? opacity(pinIn(recentRows[5])) === 1 : opacity(pinIn(recentRows[5])) === 0;
+
+  // 1. a click on Chat 3's pin
+  const s1 = await step(pinIn(chat3), "mouse", () => same(titles("Pinned"), ["Chat 3"]));
+  const ok1 = stepOk(s1, ["Chat 3"]) && listOk(["Chat 3"]) && location.hash === "#/chat" && !q(".chat-threads-list a.th.on[href^='#/chat/']");
+
+  // 2. the keyboard: Which database?'s pin focused (shown then) and pressed; the focus goes along to its button under Pinned
+  const wd = row("Recent", "Which database?");
+  const wdPin = pinIn(wd);
+  wdPin?.focus();
+  await sleep(250);
+  // where the cage's window has no focus (document.hasFocus()), WebKit matches no :focus, so the stylesheet's rule is read
+  const focusShown = document.activeElement === wdPin && (opacity(wdPin) === 1 || (!document.hasFocus() && focusRule));
+  const focusState = { active: document.activeElement === wdPin, opacity: opacity(wdPin), has_focus: document.hasFocus(),
+    focus: wdPin?.matches(":focus") ?? null, visible: wdPin?.matches(":focus-visible") ?? null, within: wd?.matches(":focus-within") ?? null };
+  const s2 = await step(wdPin, "key", () => same(titles("Pinned"), ["Which database?", "Chat 3"]));
+  await nextFrame(); await nextFrame();
+  const focusFollows = document.activeElement === pinIn(row("Pinned", "Which database?"));
+  const ok2 = stepOk(s2, ["Which database?", "Chat 3"]) && listOk(["Which database?", "Chat 3"]) && focusShown && focusFollows
+    && textOf(row("Pinned", "Which database?")?.querySelector(".badge")) === "Question";
+
+  // 3. the top bar: Chat 5 opened, its pin after the title
+  row("Recent", "Chat 5")?.querySelector<HTMLAnchorElement>("a.th")?.click();
+  const opened5 = !!(await waitFor(() => (location.hash.startsWith("#/chat/") && textOf(q(".topbar .crumbs")) === "Chat/Chat 5" && crumbsPin() ? true : null), 5000));
+  const top5 = { label: label(crumbsPin()), shown: opacity(crumbsPin()) === 1, on_top: onTop(crumbsPin()),
+    after_title: crumbsPin()?.previousElementSibling?.classList.contains("ellipsis") ?? false };
+  const s3 = await step(crumbsPin(), "mouse", () => same(titles("Pinned"), ["Chat 5", "Which database?", "Chat 3"]));
+  const ok3 = opened5 && top5.label === "Pin to the top|Pin to the top" && top5.shown && top5.on_top && top5.after_title
+    && stepOk(s3, ["Chat 5", "Which database?", "Chat 3"]) && listOk(["Chat 5", "Which database?", "Chat 3"])
+    && label(crumbsPin()) === "Unpin|Unpin" && !!row("Pinned", "Chat 5")?.querySelector('a.th.on[aria-current="page"]')
+    && textOf(q(".topbar .crumbs")) === "Chat/Chat 5";
+
+  // 4. the Archive: every row has its pin; Chat 34 and Chat 35, older than the 30 newest, pinned there, Chat 34 unpinned
+  q<HTMLAnchorElement>(".chat-threads-foot a.th")?.click();
+  const items = () => [...document.querySelectorAll<HTMLElement>(".archive-item")];
+  const item = (title: string) => items().find((r) => textOf(r.querySelector(".archive-row .title")) === title);
+  const archiveOpen = !!(await waitFor(() => (location.hash === "#/chats" && items().length === 36 ? true : null), 5000));
+  const archiveLabels = items().every((r) => label(pinIn(r)) === (["Chat 5", "Which database?", "Chat 3"].includes(textOf(r.querySelector(".title"))) ? "Unpin|Unpin" : "Pin to the top|Pin to the top")
+    && !r.querySelector(".archive-row")?.contains(pinIn(r)));
+  item("Chat 34")?.scrollIntoView({ block: "center" });
+  await sleep(200);
+  const archiveOnTop = onTop(pinIn(item("Chat 34")));
+  const s4 = await step(pinIn(item("Chat 34")), "mouse", () => titles("Pinned")[0] === "Chat 34");
+  const s5 = await step(pinIn(item("Chat 35")), "mouse", () => titles("Pinned")[0] === "Chat 35");
+  const five = ["Chat 35", "Chat 34", "Chat 5", "Which database?", "Chat 3"];
+  const ok45 = archiveOpen && archiveLabels && archiveOnTop && stepOk(s4, ["Chat 34", "Chat 5", "Which database?", "Chat 3"]) && stepOk(s5, five) && listOk(five)
+    && label(pinIn(item("Chat 35"))) === "Unpin|Unpin" && items().length === 36;
+  const s6 = await step(pinIn(item("Chat 34")), "mouse", () => !titles("Pinned").includes("Chat 34"));
+  const four = ["Chat 35", "Chat 5", "Which database?", "Chat 3"];
+  const ok6 = stepOk(s6, four) && listOk(four) && !titles("Recent").includes("Chat 34") && !!item("Chat 34") && label(pinIn(item("Chat 34"))) === "Pin to the top|Pin to the top";
+
+  // 5. in a search: Chat 35 unpinned and pinned again, the search as it was
+  const search = q<HTMLInputElement>(".chat-archive input.archive-search");
+  if (search) typeInto(search, "flamingo");
+  const found = !!(await waitFor(() => (items().length === 1 && item("Chat 35") ? true : null), 4000));
+  const s7 = await step(pinIn(item("Chat 35")), "mouse", () => !titles("Pinned").includes("Chat 35"));
+  const stays = items().length === 1 && !!item("Chat 35") && label(pinIn(item("Chat 35"))) === "Pin to the top|Pin to the top" && search?.value === "flamingo";
+  const s8 = await step(pinIn(item("Chat 35")), "mouse", () => titles("Pinned")[0] === "Chat 35");
+  const ok78 = found && stepOk(s7, ["Chat 5", "Which database?", "Chat 3"]) && stays && stepOk(s8, four) && items().length === 1
+    && JSON.stringify(textsOf(".archive-item mark")) === JSON.stringify(["flamingo"]);
+
+  // 6. Chat 3 unpinned on the left, by the keyboard: back in Recent at its place, the focus going along
+  const c3pin = pinIn(row("Pinned", "Chat 3"));
+  c3pin?.focus();
+  const s9 = await step(c3pin, "key", () => !titles("Pinned").includes("Chat 3"));
+  await nextFrame(); await nextFrame();
+  const three = ["Chat 35", "Chat 5", "Which database?"];
+  const backAt = titles("Recent").slice(0, 3);
+  const ok9 = stepOk(s9, three) && listOk(three) && same(backAt, ["Chat 1", "Chat 2", "Chat 3"]) && titles("Recent").length === 28
+    && document.activeElement === pinIn(row("Recent", "Chat 3")) && location.hash === "#/chats";
+
+  const ok = startOk && buttonsBeside && onTopOk && hiddenOk && ok1 && ok2 && ok3 && ok45 && ok6 && ok78 && ok9 && hoverRule;
+  return { ok, stage, start_ok: startOk, buttons_beside: buttonsBeside, on_top: onTopOk, hidden_ok: hiddenOk, no_hover: noHover, hover_rule: hoverRule, focus_rule: focusRule,
+    s1, ok1, focus_shown: focusShown, focus_state: focusState, focus_follows: focusFollows, s2, ok2, opened5, top5, s3, ok3, archive_open: archiveOpen, archive_labels: archiveLabels,
+    archive_on_top: archiveOnTop, s4, s5, ok45, s6, ok6, found, stays, s7, s8, ok78, back_at: backAt, s9, ok9,
+    pinned: titles("Pinned"), recent: titles("Recent").length, active: `${document.activeElement?.tagName} ${document.activeElement?.className} ${document.activeElement?.getAttribute("data-pin")}` };
 }
 
 // ---------- GA-42: Settings → Appearance ----------
@@ -1543,23 +1732,23 @@ async function appearanceKeptProbe() {
 
 // ---------- GA-68: the Memory page ----------
 /** GA-68 on the demo data (no agents, no notes), route memory/shared: the sidebar's Memory has Shared notes (0) and Set up
- *  the Team Lead; the page says what memory is, and its tree has only the shared folders. Set up the Team Lead opens the
- *  agent form on the Team page with the Team Lead's name. */
+ *  the Chief; the page says what memory is, and its tree has only the shared folders. Set up the Chief opens the
+ *  agent form on the Team page with the Chief's name (GA-254). */
 export async function memoryEmptyProbe() {
   const items = () => [...document.querySelectorAll('.side .nav-section[aria-label="Memory"] .nav-item')]
     .map((e) => `${e.tagName.toLowerCase()}:${textOf(e)}:${e.getAttribute("href") ?? ""}`);
   await waitFor(() => (items().length === 2 ? true : null), 6000);
   const nav = items();
-  const navOk = JSON.stringify(nav) === JSON.stringify(["a:Shared notes0:#/memory/shared", "button:Set up the Team Lead:"]);
+  const navOk = JSON.stringify(nav) === JSON.stringify(["a:Shared notes0:#/memory/shared", "button:Set up the Chief:"]);
   const empty = await waitFor(() => q(".mem-empty"), 5000);
   const emptyText = textOf(empty);
-  const emptyOk = textOf(empty?.querySelector("b")) === "No notes yet" && emptyText.includes("Memory is what the Team Lead and the agents keep for later")
+  const emptyOk = textOf(empty?.querySelector("b")) === "No notes yet" && emptyText.includes("Memory is what the Chief and the agents keep for later")
     && !!buttonByText(empty ?? document, "New note");
   const top = [...document.querySelectorAll(".mem-tree > [role=treeitem]")].map((e) => e.getAttribute("aria-label"));
   const topOk = JSON.stringify(top) === JSON.stringify(["Clients", "Decisions", "Dependencies", "Deployments", "Lessons", "Projects", "Standards", "Workflows"]);
   const crumbs = textOf(q(".topbar .crumbs"));
   [...document.querySelectorAll<HTMLButtonElement>('.side .nav-section[aria-label="Memory"] button.nav-item')][0]?.click();
-  const setUp = !!(await waitFor(() => (location.hash === "#/team" && q<HTMLInputElement>(".drawer #a-name")?.value === "Team Lead" ? true : null), 5000));
+  const setUp = !!(await waitFor(() => (location.hash === "#/team" && q<HTMLInputElement>(".drawer #a-name")?.value === "Chief" ? true : null), 5000));
   return { ok: navOk && emptyOk && topOk && crumbs === "Memory/Shared notes" && setUp, nav_ok: navOk, nav, empty_ok: emptyOk, top_ok: topOk, top, crumbs, set_up: setUp };
 }
 
@@ -1586,7 +1775,7 @@ const mouse = (el: Element, type: "mouseover" | "mouseout") => el.dispatchEvent(
  *  the link finds it; in the new note's editor [[ lists notes, [[Note# their headings, and Ctrl+click opens a link.
  *  KADE-1 opens the card. The agent's page shows only its folder, also when searching (Backend Agent 2's folder starts
  *  the same), and Recently changed says the agent wrote its KADE note in a run on KADE-1. The Team Lead's page searches
- *  every note (path:"Team Lead" only its own), the shared page lists none of the agents' or the Team Lead's. The Memory page's
+ *  every note (path:"Chief" only its own, GA-258), the shared page lists none of the agents' or the Team Lead's. The Memory page's
  *  prefs are put back at the end. */
 export async function memoryProbe(noteId: string, agentId: string) {
   // GA-69: MODE=memory:graph-a|graph-b|graph-c <agent id> <note id> runs the graph's probe on prep_graph's notes instead.
@@ -1601,7 +1790,7 @@ export async function memoryProbe(noteId: string, agentId: string) {
     await waitFor(() => (nav().length === 3 && nav()[0]?.count === "8" ? true : null), 6000);
     out.nav = nav();
     const navOk = JSON.stringify(nav().map((n, i) => (i === 2 ? { ...n, href: "" } : n))) === JSON.stringify([
-      { name: "Team Lead", count: "8", href: "#/memory" }, { name: "Backend Agent", count: "2", href: `#/memory/agent/${agentId}` },
+      { name: "Chief", count: "8", href: "#/memory" }, { name: "Backend Agent", count: "2", href: `#/memory/agent/${agentId}` },
       { name: "Backend Agent 2", count: "1", href: "" }]) && (nav()[2]?.href ?? "").startsWith("#/memory/agent/");
     const agentsFirst = textOf(q('.side .nav-section[aria-label="Memory"]')?.previousElementSibling?.querySelector(".nav-label")) === "Agents";
 
@@ -1825,12 +2014,12 @@ export async function memoryProbe(noteId: string, agentId: string) {
     buttonByText(q(".mem-recent") ?? document, "Agents")?.click();
     await sleep(200);
     out.recent = { everyone, agents: textsOf(".mem-change") };
-    // by agents: the Backend Agent's KADE note (in a run) and Notes, Backend Agent 2's and the Team Lead's (each made its own)
+    // by agents: the Backend Agent's KADE note (in a run) and Notes, Backend Agent 2's and the Chief's in Chief/ (each made its own)
     const byAgents = textsOf(".mem-change");
     const recentOk = everyone === 9 && byAgents.length === 4 && byAgents.some((t) => t.startsWith("KADEAgents/Backend AgentBackend Agent in a run on KADE-1"))
-      && byAgents.some((t) => t.startsWith("NotesAgents/Backend AgentBackend Agent")) && byAgents.some((t) => t.startsWith("NotesTeam LeadTeam Lead"));
+      && byAgents.some((t) => t.startsWith("NotesAgents/Backend AgentBackend Agent")) && byAgents.some((t) => t.startsWith("NotesChiefChief"));
 
-    // The Team Lead's page searches every note: both agents' notes say "learned"; path:"Team Lead" keeps to its folder.
+    // The Team Lead's page searches every note: both agents' notes say "learned"; path:"Chief" keeps to its folder.
     // The shared notes' page lists no agent's or Team Lead note: they all say "data", as Use SQLite does.
     const searchFor = async (text: string, done: () => boolean) => {
       const box = q<HTMLInputElement>('input[aria-label="Search notes"]');
@@ -1840,13 +2029,13 @@ export async function memoryProbe(noteId: string, agentId: string) {
       return { hits: hitPaths(), count: resultsCount() };
     };
     const leadLearned = await searchFor("learned", () => hitPaths().length >= 3);
-    const leadPath = await searchFor('path:"Team Lead" data', () => hitPaths().length === 1 && hitPaths()[0] === "Team Lead/Notes");
+    const leadPath = await searchFor('path:"Chief" data', () => hitPaths().length === 1 && hitPaths()[0] === "Chief/Notes");
     const leadData = await searchFor("data", () => hitPaths().length >= 5);
     out.lead_search = { learned: leadLearned, team_lead: leadPath, data: leadData };
     const leadSearchOk = JSON.stringify(sorted(leadLearned.hits)) === JSON.stringify(["Agents/Backend Agent 2/Notes", "Agents/Backend Agent/KADE", "Agents/Backend Agent/Notes"])
       && leadLearned.count === "3 notes"
-      && JSON.stringify(leadPath.hits) === JSON.stringify(["Team Lead/Notes"]) && leadPath.count === "1 note"
-      && ["Decisions/Use SQLite", "Team Lead/Notes", "Agents/Backend Agent/KADE", "Agents/Backend Agent/Notes", "Agents/Backend Agent 2/Notes"].every((p) => leadData.hits.includes(p));
+      && JSON.stringify(leadPath.hits) === JSON.stringify(["Chief/Notes"]) && leadPath.count === "1 note"
+      && ["Decisions/Use SQLite", "Chief/Notes", "Agents/Backend Agent/KADE", "Agents/Backend Agent/Notes", "Agents/Backend Agent 2/Notes"].every((p) => leadData.hits.includes(p));
     const typed = q<HTMLInputElement>('input[aria-label="Search notes"]');
     if (typed) typeInto(typed, "");
     location.hash = "#/memory/shared";
@@ -1855,7 +2044,7 @@ export async function memoryProbe(noteId: string, agentId: string) {
     const sharedData = await searchFor("data", () => hitPaths().includes("Decisions/Use SQLite"));
     const sharedOnly = await searchFor("learned", () => textOf(q(".mem-results")).includes("No note matches"));
     out.shared_search = { data: sharedData, learned: { ...sharedOnly, text: textOf(q(".mem-results")).slice(0, 40) } };
-    const sharedSearchOk = sharedData.hits.includes("Decisions/Use SQLite") && sharedData.hits.every((p) => !p.startsWith("Agents/") && !p.startsWith("Team Lead/"))
+    const sharedSearchOk = sharedData.hits.includes("Decisions/Use SQLite") && sharedData.hits.every((p) => !p.startsWith("Agents/") && !p.startsWith("Chief/"))
       && sharedData.count === `${sharedData.hits.length} ${sharedData.hits.length === 1 ? "note" : "notes"}`
       && sharedOnly.hits.length === 0 && textOf(q(".mem-results")).includes("No note matches");
     const typed2 = q<HTMLInputElement>('input[aria-label="Search notes"]');
@@ -2224,8 +2413,8 @@ async function graphPartB() {
     && JSON.stringify(out.checks) === JSON.stringify(["Tags", "Orphans", "Existing notes only", "Cards", "Projects", "Clients", "Agents", "People", "Arrows"])
     && JSON.stringify(out.sliders) === JSON.stringify(["Text fade threshold", "Node size", "Link thickness", "Centre force", "Repel force", "Link force", "Link distance"])
     && !!buttonByText(p, "Animate") && !!p.querySelector('input[aria-label="Search the graph"]') && unnamed === 0;
-  // One group per top folder that has notes: the Team Lead's first, Agents last; each its own colour.
-  const groupsOk = JSON.stringify(out.groups) === JSON.stringify(['path:"Team Lead/"', "path:Clients/", "path:Decisions/", "path:Dependencies/", "path:Deployments/",
+  // One group per top folder that has notes: the Chief's first, Agents last; each its own colour.
+  const groupsOk = JSON.stringify(out.groups) === JSON.stringify(["path:Chief/", "path:Clients/", "path:Decisions/", "path:Dependencies/", "path:Deployments/",
     "path:Lessons/", "path:Projects/", "path:Standards/", "path:Workflows/", "path:Agents/"]) && new Set(swatches).size === swatches.length;
 
   // Filters.
@@ -4553,7 +4742,7 @@ async function perfLead(o: PerfResult, ids: PerfIds) {
   await nextFrame();
   const sent = performance.now();
   enter(c);
-  if (!(await waitFor(() => document.querySelector(".chat-working"), 20000))) throw new Error("the Team Lead did not start answering");
+  if (!(await waitFor(() => document.querySelector(".chat-working"), 20000))) throw new Error("the Chief did not start answering");
   const from = performance.now();
   o.numbers.answer_start_ms = ms(from - sent);
   const f = await perfFrames(120000, undefined, () => !document.querySelector(".chat-working"));
@@ -4768,7 +4957,7 @@ async function templatesSteps(dir: string, dialog: { asked: { cmd: string; optio
   const swShown = await checkShown();
   const software: Record<string, unknown> = {
     shown: swShown, description: swDescription, name: nameField()?.value, plan_name: swPlan.teamName, plan_columns: swPlan.columns.length,
-    plan_agents: swPlan.agents.length, rows_match: same(rowsShown(), planRows(swPlan)), rows: rowsShown().length,
+    plan_agents: swPlan.agents.length, first_role: swPlan.agents[0]?.role, rows_match: same(rowsShown(), planRows(swPlan)), rows: rowsShown().length,
     cards: textsOf(".tt-agent .h b"), heading: (drawer()?.textContent ?? "").includes("Commands beyond"), paused_line: !!q(".tt-paused"),
     props: textsOf(".tt-agent:first-child .tt-props dd"), subtitle: textOf(q(".drawer-head p", drawer()!)), on: createBtn()?.disabled === false,
   };
@@ -4800,7 +4989,7 @@ async function templatesSteps(dir: string, dialog: { asked: { cmd: string; optio
     return {
       name: textOf(c?.querySelector(".h b")) === a.name,
       file_name: a.fileName === a.name || textsOf(".h .faint", c ?? document).includes(`${a.fileName} in the file`),
-      props: same(textsOf(".tt-props dd", c ?? document), [a.role, a.cliName, a.model ?? "The CLI's default", a.effort ?? "The CLI's default", a.permissionMode || "None"]),
+      props: same(textsOf(".tt-props dd", c ?? document), [roleLabel(a.role), a.cliName, a.model ?? "The CLI's default", a.effort ?? "The CLI's default", a.permissionMode || "None"]),
       extra: a.extraTools.length ? textOf(extra?.querySelector("h4")) === "Commands beyond its role's usual ones" && same(textsOf("li", extra ?? document), a.extraTools) : !extra,
       missing: same(textsOf(".tt-missing", c ?? document), a.missingServers.map((s) => `Needs MCP server ${s}: add it in Settings → MCP to switch it on.`)),
     };
@@ -4923,8 +5112,8 @@ async function templatesSteps(dir: string, dialog: { asked: { cmd: string; optio
   const e = out.empty as { focus: boolean; subtitle: string; group: boolean; starts: string[]; notes: string[]; empty_on: boolean; off_without_name: boolean; no_check: boolean;
     made: { on: boolean; closed: boolean; shown: boolean; picked: boolean; name: string; columns: unknown; agents: number | null } };
   const ep = out.export_plain as { warnings: number; question: boolean; asked?: string; default_path?: unknown; filters?: unknown; toast: boolean; file: { columns: string[]; agents: number } | string };
-  const sw = software as { shown: boolean; description: string; name?: string; plan_name: string; plan_columns: number; plan_agents: number; rows_match: boolean;
-    rows: number; cards: string[]; heading: boolean; paused_line: boolean; on: boolean; made: { on: boolean; closed: boolean; shown: boolean; name: string; agents: unknown[][] | null; columns: string[] | null } };
+  const sw = software as { shown: boolean; description: string; name?: string; plan_name: string; plan_columns: number; plan_agents: number; first_role?: string; rows_match: boolean;
+    rows: number; cards: string[]; props: string[]; heading: boolean; paused_line: boolean; on: boolean; made: { on: boolean; closed: boolean; shown: boolean; name: string; agents: unknown[][] | null; columns: string[] | null } };
   const f = file as { asked?: string; filters?: { extensions?: string[] }[]; multiple?: boolean; directory?: boolean; shown: boolean; picked: string; name?: string; plan_name: string;
     rows_match: boolean; agents: Record<string, boolean>[]; paused_line: boolean; paused_above: boolean; extra_colours: string[] | null; banner_colours: string[] | null;
     labels: string; plan_labels: string[]; notes: string[]; plan_notes: string[]; plan_has: Record<string, boolean | number>;
@@ -4947,6 +5136,8 @@ async function templatesSteps(dir: string, dialog: { asked: { cmd: string; optio
     software_check: sw.shown && sw.description === "The five agents a new install gets, and the seven usual columns." && sw.name === sw.plan_name
       && sw.plan_name.startsWith("Software team") && sw.plan_columns === 7 && sw.plan_agents === 5 && sw.rows === 7 && sw.rows_match && sw.cards.length === 5
       && !sw.heading && !sw.paused_line && sw.on,
+    // GA-254: the first agent, the lead, reads Role Chief, not its key lead
+    software_chief: sw.first_role === "lead" && sw.props[0] === "Chief",
     software_made: sw.made.on && sw.made.closed && sw.made.shown && sw.made.name === "Probe software team" && sw.made.agents?.length === 5
       && !!sw.made.agents?.every((a) => a[2] === "active") && sw.made.columns?.length === 7,
     file_dialog: f.asked === "open" && same(f.filters?.[0]?.extensions, ["json"]) && f.multiple === false && f.directory === false,

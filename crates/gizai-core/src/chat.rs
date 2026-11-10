@@ -2,7 +2,7 @@
 //! and the messages that wait while the Chief answers (the queue). A turn's process, stream and tools live in the app;
 //! this is only the record, and the hand-over a new session gets.
 use rusqlite::OptionalExtension;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use serde::Serialize;
 use serde_json::Value;
 
@@ -310,6 +310,71 @@ pub fn get_thread(db: &Db, id: &str) -> Result<ChatThread> {
         let t = c.query_row(&format!("SELECT {THREAD_COLS} FROM chat_threads WHERE id=?1 AND deleted_at IS NULL"), [id], thread_row)
             .optional()?.ok_or_else(|| Error::NotFound(format!("chat {id}")))?;
         Ok(with_tasks(c, vec![t])?.remove(0))
+    })
+}
+
+/// GA-261: the first tool from outside Hersir the chat used (an MCP server of the Chief's own, the web, the browser), like
+/// `mcp__otus__search`, if any (`mark_outside`): from then on what the Chief does there waits for your Approve. A new chat
+/// has none, and a chat that has one keeps it.
+pub fn outside_tool(db: &Db, thread_id: &str) -> Result<Option<String>> {
+    db.read(|c| Ok(c.query_row("SELECT outside_tool FROM chat_threads WHERE id=?1", [thread_id], |r| r.get::<_, Option<String>>(0))
+        .optional()?.flatten()))
+}
+
+/// GA-261: the chat used `tool`, a tool from outside Hersir: it is marked for good, with the first such tool it used. True
+/// when this marked it (it wasn't marked before).
+pub fn mark_outside(db: &Db, thread_id: &str, tool: &str) -> Result<bool> {
+    db.write(None, |w| {
+        let n = w.conn().execute("UPDATE chat_threads SET outside_tool=?2 WHERE id=?1 AND outside_tool IS NULL", rusqlite::params![thread_id, tool])?;
+        if n > 0 {
+            w.update("chat_threads", thread_id, serde_json::json!({"outsideTool": tool}))?;
+        }
+        Ok(n > 0)
+    })
+}
+
+/// Chat → Pinned (GA-257): the setting that holds the pinned chats' ids, the most recently pinned first. A setting, so pins
+/// need no change to the schema, and they are in backups with the rest of the database.
+pub const PINS: &str = "chat_pins";
+
+/// Of `ids`, those of the chats that exist.
+fn existing(c: &rusqlite::Connection, ids: &[String]) -> Result<HashSet<String>> {
+    let mut st = c.prepare_cached("SELECT id FROM chat_threads WHERE deleted_at IS NULL AND id IN (SELECT value FROM json_each(?1))")?;
+    Ok(st.query_map([serde_json::to_string(ids)?], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?)
+}
+
+/// Chat → Pinned: the pinned chats, the most recently pinned first, also those older than the ones in Recent. A pin of a
+/// chat that no longer exists is left out.
+pub fn pinned_threads(db: &Db) -> Result<Vec<ChatThread>> {
+    db.read(|c| {
+        let pins: Vec<String> = crate::settings::get_in(c, PINS)?.unwrap_or_default();
+        if pins.is_empty() {
+            return Ok(vec![]);
+        }
+        let mut st = c.prepare(&format!(
+            "SELECT {THREAD_COLS} FROM chat_threads WHERE deleted_at IS NULL AND id IN (SELECT value FROM json_each(?1))"))?;
+        let mut found = st.query_map([serde_json::to_string(&pins)?], thread_row)?.collect::<rusqlite::Result<Vec<_>>>()?;
+        found.sort_by_key(|t| pins.iter().position(|id| *id == t.id));
+        with_tasks(c, found)
+    })
+}
+
+/// Pin to the top (`pinned`) or Unpin on a chat: a chat pinned now goes to the top of Pinned. Pins of chats that no longer
+/// exist drop out; pinning a chat that doesn't exist fails. Returns the pinned chats' ids, the newest pin first.
+pub fn set_pinned(db: &Db, thread_id: &str, pinned: bool) -> Result<Vec<String>> {
+    db.write(None, |w| {
+        let mut pins: Vec<String> = crate::settings::get_in(w.conn(), PINS)?.unwrap_or_default();
+        pins.retain(|id| id != thread_id);
+        if pinned {
+            pins.insert(0, thread_id.to_string());
+        }
+        let exists = existing(w.conn(), &pins)?;
+        if pinned && !exists.contains(thread_id) {
+            return Err(Error::NotFound(format!("chat {thread_id}")));
+        }
+        pins.retain(|id| exists.contains(id));
+        crate::settings::set_in(w, PINS, &pins)?;
+        Ok(pins)
     })
 }
 

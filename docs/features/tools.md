@@ -14,6 +14,7 @@ Agents can use outside services through MCP servers, like Otus OS. Settings → 
 
 - Add a server by hand (a command, or an address), or **Import from Claude Code**, which reads the servers your Claude Code accounts already have: read only, with the values going into the keychain.
 - **List tools** shows what each tool does, its parameters and its risk, before you switch anything on.
+- A tool whose name isn't a plain tool name (letters, digits, `_` and `-`, at most 64 characters, not starting with `mcp__`) is never allowed: it shows as "left out: its name isn't a plain tool name".
 - A server that asks for it gets **Sign in**: Hersir signs in as a device of its own, in your default browser.
 - Environment values, headers and sign-in tokens stay in the OS keychain, never in Hersir's database.
 
@@ -33,7 +34,7 @@ Agents can use outside services through MCP servers, like Otus OS. Settings → 
 - It needs Node 20.19 or newer with npx, and Google Chrome or Chromium (never Brave). The form says what is missing.
 - Hersir installs none of it: `npx` fetches the pinned server, and the server starts the browser.
 
-MCP servers and the browser work on Claude Code. Codex and Gemini agents show them disabled, with why.
+MCP servers and the browser work on Claude Code. Codex and Gemini agents show them disabled, with why. A Gemini run starts no MCP server at all, not even one from your own Gemini settings.
 
 ## Built-in tools
 
@@ -55,6 +56,16 @@ A new agent starts with its role's allowed commands.
 - DevOps gets a list of its own for releases.
 
 An agent without a list runs with Hersir's default list. An agent with its own list needs `Bash(sleep:*)` added to it to wait between checks.
+
+Each entry is one rule: a tool name, optionally with one `( … )` after it, like `Bash(npm test:*)`. Claude Code reads rules separated by spaces or commas, so `Bash(ls:*) Bash(*)` on one line would be two rules, the second any command. Saving refuses such an entry: "`<entry>` isn't one rule: write each command as its own entry, like Bash(npm test:*)." One saved before Hersir checked this is left out of runs (the run log says so), and the agent form shows it with that sentence.
+
+The Chief can't give an agent a shell, an interpreter or a program by its path, like `Bash(bash:*)`, `Bash(sh -c:*)`, `Bash(python3:*)`, `Bash(env:*)`, `Bash(sudo:*)` or `Bash(/bin/sh:*)`, unless the agent has that entry already or its role's list has it. Only you add one, in the agent form.
+
+### Commands that run code
+
+`npm`, `npx`, `node`, `php`, `composer`, `cargo`, `pytest` and `./vendor/bin/*` are on the lists, and they run code: the project's scripts, tests and builds. That code can read and change anything your user can, Hersir's data, other runs' settings and your keys (like `~/.ssh`) included. Claude Code only checks the command line, not what the command then does.
+
+Give such commands only to agents on repositories you trust. A sandbox for runs comes later.
 
 ## Folders
 
@@ -86,7 +97,7 @@ Every task prompt, new or continued, ends with "How this run works": nobody can 
 
 For Claude Code in acceptEdits mode (the default), checked against Claude Code 2.1.289:
 
-- commands and file tools reach only the worktree, the agent's folders and the run's temp folder: `ls /tmp`, `ls ..`, a redirect to `/tmp` and the Write tool on `/tmp` are refused, also for an allowed command;
+- the command lines and file tools it allows reach only the worktree, the agent's folders and the run's temp folder: `ls /tmp`, `ls ..`, a redirect to `/tmp` and the Write tool on `/tmp` are refused, also for an allowed command. That is the command line only: a command that runs code, like `npm test`, runs the project's scripts, which can read and change anything your user can ([Commands that run code](#commands-that-run-code));
 - `$(…)`, backticks, variables such as `$TMPDIR` and heredocs with an unquoted delimiter (`<<EOF`) are refused;
 - pipes, `2>&1`, `&&` and `;` between allowed commands work, and so does a redirect to a file in the worktree.
 
@@ -112,9 +123,22 @@ Claude Code reports every tool call it refused, with the reason. Hersir saves th
 
 Codex and Gemini don't report refusals, so their runs list none.
 
+## A repository's own settings
+
+A repository's own files and git settings never start a program outside an agent's allowed commands or its sandbox.
+
+- **Hersir's own git runs no hooks.** When Hersir commits (Commit… on your card), stashes, fetches, pushes or makes and removes a worktree, git runs none of the repository's hooks and no `core.fsmonitor` program. Hersir changes no setting in the repository: your own `git commit` there still runs its hooks.
+- **Codex writes only what a commit writes.** Besides the worktree, its folders and the temp folder, a Codex run may write `objects`, `refs`, `logs` and its own `worktrees/<name>` in the repository's git folder. Never the git folder's `config`, `hooks` or `info`, or another worktree's folder. Its agent can still `git add`, `git commit`, `git push` and `git fetch`.
+- **No Gemini run in a worktree with a `.gemini` folder.** Gemini would load the settings in it, which can start MCP servers, hooks and other programs. The card goes on hold, blocked, with what to do: remove the folder from the branch, or run the card on Claude Code or Codex.
+- **Gemini gets no extensions and no MCP server but its own.** Not even one from your own Gemini settings.
+
+[docs/agent-tools.md](../agent-tools.md#a-repositorys-own-settings) has the details.
+
 ## Safety
 
-After a chat answer used an outside tool (an MCP server, the web, the browser), the Chief's calls that start runs, change agents or columns, save to memory or merge wait under that answer for your Approve, each with a preview. See [Approve with one click](chief.md#approve-with-one-click).
+Once a chat used an outside tool (an MCP server, the web, the browser), for the rest of that chat the Chief's calls that start runs, change agents or columns, save to memory, merge, comment, change a card's text or a project's repository, folder, branch or goal wait under its answer for your Approve, each with a preview. See [Approve with one click](chief.md#approve-with-one-click).
+
+In the Chief's form, each MCP server, the browser and Web have **After the Chief uses it:** with **Ask for my OK** (the default) or **Allow**. A source on Allow doesn't mark the chat, so what the Chief does after using it runs without your OK. See [Sources you trust](chief.md#sources-you-trust).
 
 ## Read more
 

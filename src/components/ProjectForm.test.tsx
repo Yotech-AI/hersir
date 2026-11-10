@@ -31,10 +31,10 @@ describe("New worktrees", () => {
     expect([v.worktreeCopy, v.worktreeInstall, v.worktreeSetup]).toEqual([[".env", "vendor/"], false, "php artisan migrate"]);
   });
 
-  it("GA-86: shows Team Lead may merge off for a new project, and keeps a project's own switch", () => {
+  it("GA-86: shows Chief may merge off for a new project, and keeps a project's own switch", () => {
     const html = renderToStaticMarkup(<ProjectDrawer onClose={() => {}} />);
     expect(html).toContain("Merging");
-    expect(html).toMatch(/<input type="checkbox"\/>Team Lead may merge/);
+    expect(html).toMatch(/<input type="checkbox"\/>Chief may merge/);
     expect(html).toContain("Releases and deploys stay yours");
     expect(toProjectInput(null).leadMayMerge).toBe(false);
     const p = { id: "p1", number: "P-1", key: "SHOP", name: "Shop", status: "active", defaultBranch: "main", openTasks: 0, doneTasks: 0, updatedAt: 0,

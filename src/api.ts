@@ -92,7 +92,7 @@ export const saveDoc = (id: string, bodyMd: string, baseVersion: number) => invo
 export const renameDoc = (id: string, title: string) => invoke<void>("rename_doc", { id, title });
 export const docVersions = (id: string) => invoke<T.DocVersion[]>("doc_versions", { id });
 export const docVersionBody = (id: string, version: number) => invoke<string>("doc_version_body", { id, version });
-/** An agent's own notes in Memory (the Team Lead's Team Lead/Notes is made the first time); null when it has none. */
+/** An agent's own notes in Memory (the Chief's Chief/Notes is made the first time); null when it has none. */
 export const agentNotes = (agentId: string) => invoke<T.MemoryNote | null>("agent_notes", { agentId });
 /** The Memory page (GA-68), as you: every note by path, with their text when `text`. */
 export const memoryNotes = (text = false) => invoke<T.MemoryNote[]>("memory_notes", { text });
@@ -407,6 +407,12 @@ export const onRowsChanged = (cb: (table: string) => void): Promise<UnlistenFn> 
 export const listChatThreads = (limit?: number) => invoke<T.ChatThread[]>("list_chat_threads", { limit: limit ?? null });
 /** One chat, also one older than those in Recent (opened from the Archive). */
 export const getChatThread = (threadId: string) => invoke<T.ChatThread>("get_chat_thread", { threadId });
+/** Chat → Pinned (GA-257): the pinned chats, the most recently pinned first, also those older than the ones in Recent. */
+export const pinnedChats = () => invoke<T.ChatThread[]>("pinned_chats");
+/** Pin to the top: the chat shows under Pinned, at the top, until it is unpinned. */
+export const pinChat = (threadId: string) => invoke<void>("pin_chat", { threadId });
+/** Unpin: the chat leaves Pinned, and is in Recent again when it is one of the 30 newest. */
+export const unpinChat = (threadId: string) => invoke<void>("unpin_chat", { threadId });
 /** Chat → Archive: the chats whose title or messages (yours and the Team Lead's) hold `query`, newest first; all for "". */
 export const searchChatThreads = (query: string) => invoke<T.ChatHit[]>("search_chat_threads", { query });
 export const chatMessages = (threadId: string) => invoke<T.ChatMessage[]>("chat_messages", { threadId });

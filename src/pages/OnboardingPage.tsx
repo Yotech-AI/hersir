@@ -22,12 +22,12 @@ import "../styles/onboarding.css";
 
 const TITLES = ["Welcome to Hersir", "Coding CLIs", "MCP servers", "You're all set"];
 const LEADS = [
-  "Four short steps, then your Team Lead says hello. First, you and your team.",
+  "Four short steps, then your Chief says hello. First, you and your team.",
   "Your agents work through the coding CLIs on this computer, with your own logins.",
   "Bring the MCP servers your Claude Code has. Each stays off until you switch it on for an agent.",
-  "Here's what you set up. Your Team Lead is ready to say hello.",
+  "Here's what you set up. Your Chief is ready to say hello.",
 ];
-const NO_CLAUDE_CODE = "Claude Code isn't installed yet. The Team Lead's chat needs it.";
+const NO_CLAUDE_CODE = "Claude Code isn't installed yet. The Chief's chat needs it.";
 
 /** What a button started and waits for: the other buttons wait too. */
 type Busy = "next" | "look" | "skip" | "finish";
@@ -255,7 +255,7 @@ export function OnboardingPage({ onDone }: { onDone: (to: Route | null, note?: s
         ) : (
           <button type="button" className="btn primary" disabled={!!busy} onClick={next}>
             {claude ? <MessagesSquare className="icon" /> : <ListTodo className="icon" />}
-            {busy === "finish" ? "Opening…" : claude ? "Open the Team Lead chat" : "Open the board"}
+            {busy === "finish" ? "Opening…" : claude ? "Open the Chief's chat" : "Open the board"}
           </button>
         )}
       </div>
@@ -287,7 +287,7 @@ function YouAndTeam({ you, team, errors, agents, youRef, teamRef, onYou, onTeam 
           <input id="onb-you" ref={youRef} className="input" value={you} spellCheck={false} autoComplete="off" aria-invalid={errors.you ? true : undefined}
             aria-describedby={errors.you ? "onb-you-error" : "onb-you-hint"} onChange={(e) => onYou(e.target.value)} />
           {errors.you ? <span className="error" id="onb-you-error">{errors.you}</span>
-            : <span className="hint" id="onb-you-hint">From your login name. The Team Lead calls you by it.</span>}
+            : <span className="hint" id="onb-you-hint">From your login name. The Chief calls you by it.</span>}
         </div>
         <div className="field">
           <label htmlFor="onb-team">Team name</label>
@@ -361,7 +361,7 @@ function CodingClis({ loaded, failed, rows, unticked, claude, agentsKey, looking
           </div>
         </div>
       )}
-      {claude && <p className="onb-info"><Info className="icon" />The Team Lead's chat needs Claude Code, whichever CLI your agents use.</p>}
+      {claude && <p className="onb-info"><Info className="icon" />The Chief's chat needs Claude Code, whichever CLI your agents use.</p>}
     </>
   );
 }
