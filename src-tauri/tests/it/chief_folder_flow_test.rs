@@ -125,3 +125,35 @@ async fn when_the_backup_cant_be_made_the_notes_stay_in_team_lead_and_the_next_s
     assert_eq!(row(&st.db, &rust).1, "Use thiserror. Ask the Chief: [[Chief/Notes]], ![[Chief/Ideas]].");
     assert_eq!(backups(&data).len(), 1);
 }
+
+#[tokio::test]
+async fn after_the_move_the_chiefs_tools_with_an_old_team_lead_path_find_the_notes_in_chief() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    let (lead, _, ideas, _) = old_data(&data);
+    data_lock::released(&data).await;
+    let st = open(&data);
+    assert_eq!(row(&st.db, &ideas).0, "Chief/Ideas");
+    let call = |name: &'static str, args: serde_json::Value| {
+        let (st, lead) = (&st, &lead);
+        async move { gizai_lib::tools::call_in(st, lead, None, name, args).await.unwrap_or_else(|e| panic!("{name}: {e}")) }
+    };
+    // memory_list with the old folder lists the Chief's notes
+    let listed = call("memory_list", serde_json::json!({"folder": "Team Lead"})).await;
+    let paths: Vec<&str> = listed["notes"].as_array().unwrap().iter().map(|n| n["path"].as_str().unwrap()).collect();
+    assert_eq!(paths, ["Chief/Ideas", "Chief/Notes"], "{listed}");
+    // memory_read by its old path reads the moved note, with the notes that link to it
+    let read = call("memory_read", serde_json::json!({"note": "Team Lead/Ideas"})).await;
+    assert_eq!(read["note"]["path"], "Chief/Ideas", "{read}");
+    let from: Vec<&str> = read["note"]["linked_from"].as_array().unwrap().iter().map(|p| p.as_str().unwrap()).collect();
+    assert!(from.contains(&"Chief/Notes") && from.contains(&"Standards/Rust style"), "{read}");
+    // memory_search with path:"Team Lead" keeps to Chief/
+    let found = call("memory_search", serde_json::json!({"query": "path:\"Team Lead\" ideas"})).await;
+    let hits: Vec<&str> = found["notes"].as_array().unwrap().iter().map(|n| n["path"].as_str().unwrap()).collect();
+    assert!(!hits.is_empty() && hits.iter().all(|p| p.starts_with("Chief/")), "{found}");
+    // memory_append to Team Lead/Notes, as the Chief's old instructions said, adds to Chief/Notes
+    let appended = call("memory_append", serde_json::json!({"note": "Team Lead/Notes", "heading": "Open threads", "text": "- KADE waits."})).await;
+    assert_eq!(appended["note"]["path"], "Chief/Notes", "{appended}");
+    let paths: Vec<String> = memory::list(&st.db, &Who::Person(st.you_id.clone())).unwrap().into_iter().map(|n| n.path).collect();
+    assert!(paths.iter().all(|p| !p.starts_with("Team Lead/")), "no note was made in Team Lead/: {paths:?}");
+}
