@@ -80,8 +80,8 @@ export const MessageGroup = memo(function MessageGroup({ g, agentRole, live, not
   if (g.side === "system") {
     const m = g.items[0];
     const bad = m.meta?.kind === "limit" || (m.meta?.kind === "pending" && m.meta.status === "failed")
-      // "Hersir's tools didn't connect" since the rename (GA-232); a chat from before it keeps "Gizai's". Likewise "The Chief
-      // couldn't" since GA-254, and "The Team Lead couldn't" before it.
+      // "The Chief couldn't" since GA-255 and "Hersir's tools didn't connect" since the rename (GA-232); a chat from before
+      // them keeps "The Team Lead couldn't" and "Gizai's"
       || /^The (Chief|Team Lead) couldn't/.test(m.bodyMd ?? "") || /^(Hersir|Gizai)'s tools didn't/.test(m.bodyMd ?? "");
     const actions = noteActions?.(m);
     const note = <div className={`chat-note${bad ? " bad" : ""}${actions ? " has-actions" : ""}`} role={bad ? "alert" : undefined}>{bad ? <CircleAlert className="icon sm" /> : <Info className="icon sm" />}<span>{m.bodyMd}</span></div>;

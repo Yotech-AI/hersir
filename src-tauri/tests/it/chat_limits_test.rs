@@ -49,15 +49,15 @@ printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"te
 printf '{"type":"result","subtype":"success","is_error":false,"result":"Done after %s tool calls.","total_cost_usd":0.01,"num_turns":2,"session_id":"%s","usage":{"input_tokens":1000,"output_tokens":100}}\n' "$calls" "$sid"
 "##;
 
-/// The shim binary: target/debug/gizai-mcp (built by `cargo test --workspace`; built here when missing).
+/// The shim binary: target/debug/hersir-mcp, which the crate gizai-mcp builds (built by `cargo test --workspace`; built here when missing).
 fn shim() -> PathBuf {
     static BUILT: std::sync::Once = std::sync::Once::new();
-    let path = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/debug/gizai-mcp"));
+    let path = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/debug/hersir-mcp"));
     BUILT.call_once(|| {
         let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
         let ok = std::process::Command::new(cargo).args(["build", "-q", "-p", "gizai-mcp"])
             .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/..")).status().map(|s| s.success()).unwrap_or(false);
-        assert!(ok && path.is_file(), "could not build gizai-mcp");
+        assert!(ok && path.is_file(), "could not build hersir-mcp (the crate gizai-mcp)");
     });
     path
 }
@@ -228,7 +228,7 @@ async fn a_chat_answer_stops_at_the_tool_calls_in_settings_and_the_chat_says_so_
     let (thread, s) = t.answer(None, "FAKE_CALLS=61 sort the memory").await;
     assert_eq!(s.status, "timed_out", "{s:?}");
     assert_eq!(s.error.as_deref(), Some(tool_limit(15, 60).as_str()));
-    assert_eq!(t.notes(&thread), [format!("The Team Lead couldn't answer: {}", tool_limit(15, 60))]);
+    assert_eq!(t.notes(&thread), [format!("The Chief couldn't answer: {}", tool_limit(15, 60))]);
 
     // 20 tool calls and 30 minutes: 20 calls are fine, the 21st stops the answer
     t.chat_limits(30, 20);
@@ -239,7 +239,7 @@ async fn a_chat_answer_stops_at_the_tool_calls_in_settings_and_the_chat_says_so_
     assert_eq!(again, thread);
     assert_eq!(s.status, "timed_out", "{s:?}");
     assert_eq!(s.error.as_deref(), Some(tool_limit(30, 20).as_str()));
-    assert_eq!(t.notes(&thread), [format!("The Team Lead couldn't answer: {}", tool_limit(30, 20))]);
+    assert_eq!(t.notes(&thread), [format!("The Chief couldn't answer: {}", tool_limit(30, 20))]);
     // the run says the same
     let run = core_runs::get(&t.st.db, &s.run_id).unwrap();
     assert_eq!((run.trigger.as_str(), run.status.as_str(), run.error.as_deref()), ("chat", "timed_out", Some(tool_limit(30, 20).as_str())));
@@ -262,7 +262,7 @@ async fn a_chat_answer_stops_at_the_time_limit_when_that_comes_first_and_says_so
     assert_eq!(s.status, "timed_out", "{s:?}");
     let why = "it stopped at the time limit (0 min or 500 tool calls per chat answer, Settings → Runs)";
     assert_eq!(s.error.as_deref(), Some(why));
-    assert_eq!(t.notes(&thread), [format!("The Team Lead couldn't answer: {why}")]);
+    assert_eq!(t.notes(&thread), [format!("The Chief couldn't answer: {why}")]);
 }
 
 #[tokio::test]

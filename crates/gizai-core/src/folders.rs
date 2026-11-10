@@ -1,12 +1,12 @@
 //! An agent's folders (agent form → Permissions → Folders): folders besides its card's worktree that its file tools may
 //! read ("read") or read and change ("change"). They limit the file tools, not the commands an agent may run. Only you
-//! change the list, in the form: the Team Lead's `create_agent` and `update_agent` leave it alone.
+//! change the list, in the form: the Chief's `create_agent` and `update_agent` leave it alone.
 //! - Refused, with a reason: `/`, your home folder and the folders above it, Gizai's data folder, and the folders that
 //!   hold keys or logins (`~/.ssh`, `~/.gnupg`, `~/.config`, …), with what is inside them and the folders above them.
 //! - A "read and change" folder that is a project's main checkout (or holds one, or is inside one) gets a warning:
 //!   agents normally never touch it.
 //! - At run time a missing folder, or one refused by then (say through a link), is skipped with a note (`for_run`).
-//! - The Team Lead only reads its folders in chat. "Read and change" lets it update one with `update_checkout` after
+//! - The Chief only reads its folders in chat. "Read and change" lets it update one with `update_checkout` after
 //!   you said yes in the chat (`may_update`).
 //! - On Windows the same with its paths: `C:\` is the whole disk, `~\` your profile folder, either slash separates
 //!   folders, and names are compared in any case.
@@ -77,16 +77,17 @@ const FULL_PATH: &str = if cfg!(windows) { r"give the full path, like ~\Herd\sha
 pub struct Places {
     /// Your home folder.
     pub home: PathBuf,
-    /// Gizai's data folders: this Gizai's, and the installed one's.
+    /// Hersir's data folders: this Hersir's, and the installed one's (by both names).
     pub data: Vec<PathBuf>,
     /// The projects' main checkouts: (project name, folder).
     pub checkouts: Vec<(String, PathBuf)>,
 }
 
 impl Places {
-    /// Your home folder ($HOME; on Windows your profile folder, %USERPROFILE%), Gizai's data folders (the database's
-    /// folder, and where the installed Gizai keeps its data: `$XDG_DATA_HOME/gizai` or `~/.local/share/gizai`, on macOS
-    /// also `~/Library/Application Support/Gizai`, on Windows `%APPDATA%\Gizai`) and the projects' main checkouts.
+    /// Your home folder ($HOME; on Windows your profile folder, %USERPROFILE%), Hersir's data folders (the database's
+    /// folder, and where the installed Hersir keeps its data: `$XDG_DATA_HOME/hersir` or `~/.local/share/hersir`, on macOS
+    /// also `~/Library/Application Support/Hersir`, on Windows `%APPDATA%\Hersir`, and each one's gizai name from before
+    /// 0.17.0, GA-249) and the projects' main checkouts.
     pub fn of(db: &Db) -> Places {
         let checkouts = crate::projects::list(db).unwrap_or_default().into_iter()
             .filter_map(|p| Some((p.name, PathBuf::from(p.repo_path.filter(|r| !r.trim().is_empty())?))))
@@ -101,16 +102,16 @@ impl Places {
         let home = home.filter(|h| h.is_absolute()).unwrap_or_default();
         let mut data: Vec<PathBuf> = db.dir().map(Path::to_path_buf).into_iter().collect();
         if let Some(x) = std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).filter(|x| x.is_absolute()) {
-            data.push(x.join("gizai"));
+            data.extend([x.join("hersir"), x.join("gizai")]);
         }
         if !cfg!(windows) && !home.as_os_str().is_empty() {
-            data.push(home.join(".local/share/gizai"));
+            data.extend([home.join(".local/share/hersir"), home.join(".local/share/gizai")]);
         }
         if cfg!(target_os = "macos") && !home.as_os_str().is_empty() {
-            data.push(home.join("Library/Application Support/Gizai"));
+            data.extend([home.join("Library/Application Support/Hersir"), home.join("Library/Application Support/Gizai")]);
         }
-        if cfg!(windows) {
-            data.extend(std::env::var_os("APPDATA").map(PathBuf::from).filter(|a| a.is_absolute()).map(|a| a.join("Gizai")));
+        if cfg!(windows) && let Some(a) = std::env::var_os("APPDATA").map(PathBuf::from).filter(|a| a.is_absolute()) {
+            data.extend([a.join("Hersir"), a.join("Gizai")]);
         }
         Places { home, data, checkouts: vec![] }
     }
@@ -340,7 +341,7 @@ pub fn for_run(list: &[Folder], places: &Places) -> (Vec<Folder>, Vec<String>) {
     (out, notes)
 }
 
-/// Whether the Team Lead may update `folder` (a project's linked folder) with `update_checkout`, after you said yes in
+/// Whether the Chief may update `folder` (a project's linked folder) with `update_checkout`, after you said yes in
 /// the chat. Not when the closest folder of its list that holds it is set to read; yes when that one is set to read and
 /// change, and when no folder of its list holds it.
 pub fn may_update(list: &[Folder], folder: &Path, places: &Places) -> std::result::Result<(), String> {
@@ -352,7 +353,7 @@ pub fn may_update(list: &[Folder], folder: &Path, places: &Places) -> std::resul
         .max_by_key(|(p, _)| p.components().count());
     match closest {
         Some((p, f)) if !f.change() => Err(format!(
-            "{} is set to read in the Team Lead's folders (Team page → Team Lead → Folders): only read and change lets update_checkout update it, so nothing changed",
+            "{} is set to read in the Chief's folders (Team page → Chief → Folders): only read and change lets update_checkout update it, so nothing changed",
             places.show(&p))),
         _ => Ok(()),
     }

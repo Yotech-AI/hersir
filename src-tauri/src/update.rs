@@ -6,9 +6,9 @@
 //!   the background while Gizai stays usable. Then it backs up your data, installs the release with its own
 //!   install.sh, and offers a restart. A step that fails leaves the installed Gizai as it was and says why; the log in
 //!   <data folder>/update has everything.
-//! - Only a Gizai that install.sh installed (<prefix>/lib/gizai/gizai) updates itself, or on Windows one that
-//!   install.ps1 installed (<prefix>\gizai.exe). A dev or test build that runs from anywhere else never installs over
-//!   anything.
+//! - Only a Hersir that install.sh installed (<prefix>/lib/hersir/hersir, or <prefix>/lib/gizai for an install from
+//!   before 0.17.0) updates itself, or on Windows one that install.ps1 installed (<prefix>\hersir.exe, or gizai.exe). A
+//!   dev or test build that runs from anywhere else never installs over anything.
 //!
 //! Usable without a Tauri app (tests): the UI hears about changes through `AppState::notify`.
 use std::io::Write;
@@ -45,18 +45,21 @@ const LAST_CHECK: &str = "update_last_check";
 /// Where releases and their source come from.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Source {
-    /// The git repository a release's tag is fetched from: GIZAI_REPO, else Gizai's own.
+    /// The git repository a release's tag is fetched from: HERSIR_REPO, else Hersir's own.
     pub repo: String,
-    /// What the release check reads: GIZAI_RELEASES_URL, else GitHub's latest release of `repo`. None: `repo` isn't on
+    /// What the release check reads: HERSIR_RELEASES_URL, else GitHub's latest release of `repo`. None: `repo` isn't on
     /// GitHub and no URL was given.
     pub releases_url: Option<String>,
 }
 
 impl Source {
-    /// From GIZAI_REPO and GIZAI_RELEASES_URL (as install.sh reads GIZAI_REPO).
+    /// From HERSIR_REPO and HERSIR_RELEASES_URL (as install.sh reads HERSIR_REPO), or their names from before 0.17.0,
+    /// GIZAI_REPO and GIZAI_RELEASES_URL.
     pub fn from_env() -> Source {
-        let var = |name: &str| std::env::var(name).ok().map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
-        Source::new(&var("GIZAI_REPO").unwrap_or_else(|| up::REPO.to_string()), var("GIZAI_RELEASES_URL"))
+        let var = |name: &str| {
+            gizai_agents::os::hersir_var(name).map(|v| v.to_string_lossy().trim().to_string()).filter(|v| !v.is_empty())
+        };
+        Source::new(&var("REPO").unwrap_or_else(|| up::REPO.to_string()), var("RELEASES_URL"))
     }
 
     pub fn new(repo: &str, releases_url: Option<String>) -> Source {
@@ -106,7 +109,7 @@ impl Updates {
         self.lock().source = source;
     }
 
-    /// For tests: the program that runs (an update installs into its prefix, `<prefix>/lib/gizai/gizai`).
+    /// For tests: the program that runs (an update installs into its prefix, `<prefix>/lib/hersir/hersir`).
     pub fn set_exe(&self, exe: Option<PathBuf>) {
         self.lock().exe = exe;
     }
@@ -265,9 +268,9 @@ pub async fn check(st: &AppState) -> UpdateStatus {
     changed(st);
     let found = tokio::task::spawn_blocking(move || {
         let latest = match url {
-            Some(url) => up::latest_release(&url, &format!("gizai/{VERSION}"), CHECK_LIMIT),
+            Some(url) => up::latest_release(&url, &format!("hersir/{VERSION}"), CHECK_LIMIT),
             None => Err(Problem::new("Hersir doesn't know where this repository keeps its releases",
-                                     "Set GIZAI_RELEASES_URL, or GIZAI_REPO to a repository on GitHub.")),
+                                     "Set HERSIR_RELEASES_URL, or HERSIR_REPO to a repository on GitHub.")),
         };
         // a release that is installed already only needs a restart
         let installed = match (&latest, &prefix) {
@@ -496,7 +499,7 @@ pub fn on_exit(st: &AppState) {
 
 /// The restart after an update: a small shell in a session of its own waits until this Gizai has quit (at most ten
 /// minutes), then starts the installed one with its launcher. The caller quits Gizai the usual way next, which stops
-/// agents at work first. On Windows a hidden PowerShell, detached from Gizai, does the same with `<prefix>\gizai.exe`.
+/// agents at work first. On Windows a hidden PowerShell, detached from Gizai, does the same with `<prefix>\hersir.exe`.
 pub fn restart_command(st: &AppState) -> Result<std::process::Command, String> {
     let inner = st.updates.lock();
     let ready = inner.job.as_ref().is_some_and(|j| j.status.step == "installed")
@@ -523,24 +526,13 @@ pub fn start_again_command(st: &AppState) -> Result<std::process::Command, Strin
     Ok(start_after_quit(&program))
 }
 
-/// The installed Gizai a restart starts: its launcher (`<prefix>/lib/gizai/gizai-launch`, else `<prefix>/lib/gizai/gizai`),
-/// on Windows `<prefix>\gizai.exe`.
+/// The installed Hersir a restart starts: its launcher (`<prefix>/lib/hersir/hersir-launch`, else
+/// `<prefix>/lib/hersir/hersir`; in an install from before 0.17.0 those in `<prefix>/lib/gizai`), on Windows
+/// `<prefix>\hersir.exe` (else `gizai.exe`). See `up::restart_programs`.
 fn installed_program(inner: &Inner) -> Result<PathBuf, String> {
-    #[cfg(unix)]
-    {
-        let lib = install_prefix(inner)?.join("lib/gizai");
-        [lib.join("gizai-launch"), lib.join("gizai")].into_iter().find(|p| gizai_agents::os::executable(p))
-            .ok_or_else(|| format!("No Hersir is installed in {}", lib.display()))
-    }
-    #[cfg(windows)]
-    {
-        let prefix = install_prefix(inner)?;
-        let exe = prefix.join("gizai.exe");
-        if !gizai_agents::os::executable(&exe) {
-            return Err(format!("No Hersir is installed in {}", prefix.display()));
-        }
-        Ok(exe)
-    }
+    let prefix = install_prefix(inner)?;
+    up::restart_programs(&prefix).into_iter().find(|p| gizai_agents::os::executable(p))
+        .ok_or_else(|| format!("No Hersir is installed in {}", prefix.display()))
 }
 
 /// A small shell in a session of its own that waits until this Gizai has quit (at most ten minutes), then starts
@@ -567,7 +559,7 @@ while [ "$i" -lt 3000 ] && kill -0 "$1" 2>/dev/null; do
 done
 [ "$i" -lt 3000 ] && exec "$2""#;
         let mut cmd = std::process::Command::new("sh");
-        cmd.args(["-c", WAIT_THEN_START, "gizai-restart"]).arg(std::process::id().to_string()).arg(program)
+        cmd.args(["-c", WAIT_THEN_START, "hersir-restart"]).arg(std::process::id().to_string()).arg(program)
             .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
         // SAFETY: setsid(2) is a plain syscall, safe to make between fork and exec.
         unsafe {

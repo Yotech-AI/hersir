@@ -8,6 +8,7 @@
 
 mod after_result_flow_test;
 mod agent_runs_test;
+mod app_id_test;
 mod app_state_test;
 mod archive_flow_test;
 mod ask_lead_flow_test;
@@ -19,6 +20,7 @@ mod changes_flow_test;
 mod chat_files_flow_test;
 mod chat_flow_test;
 mod chat_limits_test;
+mod chief_flow_test;
 mod claude_memory_switch_test;
 mod cli_run_flow_test;
 mod commands_off_main_thread_test;

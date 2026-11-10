@@ -20,7 +20,8 @@ use serde::{Deserialize, Serialize};
 use crate::connection::{self, Problem};
 use crate::os::{self, End, Tree};
 
-/// Gizai's own repository: its releases and their source (GIZAI_REPO changes it, as it does for install.sh).
+/// Hersir's own repository: its releases and their source (HERSIR_REPO, or GIZAI_REPO from before 0.17.0, changes it, as
+/// it does for install.sh).
 pub const REPO: &str = "https://github.com/Yotech-AI/hersir.git";
 
 /// How long getting a release's source may take.
@@ -171,49 +172,85 @@ fn curl_problem(said: &str, url: &str, limit: Duration) -> Problem {
     }
 }
 
-/// The prefix the installer installed the Gizai at `exe` into. None for a Gizai that runs from anywhere else (a build in
-/// a checkout's target/, a test build): an update never installs there. The layouts:
-/// - Linux (install.sh): `<prefix>/lib/gizai/gizai`.
-/// - macOS (install.sh): the same, a link into `<prefix>/lib/gizai/Hersir.app`; started from the Dock or Finder Gizai is
-///   `<prefix>/lib/gizai/Hersir.app/Contents/MacOS/gizai`. `exe` is resolved first (std's `current_exe` doesn't follow
-///   links on macOS), and both give `<prefix>`.
-/// - Windows (install.ps1): `<prefix>\gizai.exe`, in a folder that holds install.ps1's marker `gizai-installed.txt` (a
-///   build in target\release has none).
+/// The prefix the installer installed the Hersir at `exe` into. None for a Hersir that runs from anywhere else (a build
+/// in a checkout's target/, a test build): an update never installs there. The layouts:
+/// - Linux (install.sh): `<prefix>/lib/hersir/hersir`. An install from before 0.17.0 (GA-248) is updated where it is:
+///   `<prefix>/lib/gizai/hersir`, with `<prefix>/lib/gizai/gizai` (a link to it now, the program itself before).
+/// - macOS (install.sh): the same, links into `<lib>/Hersir.app`; started from the Dock or Finder Hersir is
+///   `<lib>/Hersir.app/Contents/MacOS/hersir` (`gizai` before 0.17.0). `exe` is resolved first (std's `current_exe`
+///   doesn't follow links on macOS), and both give `<prefix>`.
+/// - Windows (install.ps1): `<prefix>\hersir.exe`, in a folder that holds install.ps1's marker `hersir-installed.txt` (a
+///   build in target\release has none). An install from before 0.17.0 has `gizai.exe` and `gizai-installed.txt`
+///   there too.
 pub fn install_prefix(exe: &Path) -> Option<PathBuf> {
     #[cfg(windows)]
     {
         let dir = exe.parent()?;
-        let installed = exe.file_name()?.eq_ignore_ascii_case("gizai.exe") && dir.join("gizai-installed.txt").is_file();
-        installed.then(|| dir.to_path_buf())
+        let name = exe.file_name()?.to_string_lossy().to_ascii_lowercase();
+        let marked = ["hersir-installed.txt", "gizai-installed.txt"].iter().any(|m| dir.join(m).is_file());
+        (matches!(name.as_str(), "hersir.exe" | "gizai.exe") && marked).then(|| dir.to_path_buf())
     }
     #[cfg(not(windows))]
     {
         #[cfg(target_os = "macos")]
         let exe = &mac_exe(exe);
-        let lib_gizai = exe.parent()?;
-        let lib = lib_gizai.parent()?;
-        let named = exe.file_name()? == "gizai" && lib_gizai.file_name()? == "gizai" && lib.file_name()? == "lib";
-        named.then(|| lib.parent().map(Path::to_path_buf)).flatten()
+        let dir = exe.parent()?;
+        let lib = dir.parent()?;
+        let names = (dir.file_name()?.to_str()?, exe.file_name()?.to_str()?);
+        let installed = matches!(names, ("hersir", "hersir") | ("gizai", "hersir") | ("gizai", "gizai")) && lib.file_name()? == "lib";
+        installed.then(|| lib.parent().map(Path::to_path_buf)).flatten()
     }
 }
 
-/// macOS: `exe` with its links resolved, and Hersir.app's own binary (`<dir>/Hersir.app/Contents/MacOS/gizai`) taken as
-/// the `<dir>/gizai` that install.sh links to it.
+/// macOS: `exe` with its links resolved, and Hersir.app's own program (`<dir>/Hersir.app/Contents/MacOS/hersir`, `gizai`
+/// before 0.17.0) taken as the `<dir>/hersir` (`<dir>/gizai`) that install.sh links to it.
 #[cfg(target_os = "macos")]
 fn mac_exe(exe: &Path) -> PathBuf {
     let exe = exe.canonicalize().unwrap_or_else(|_| exe.to_path_buf());
-    let in_app = exe.file_name().is_some_and(|n| n == "gizai") && exe.parent().is_some_and(|d| d.ends_with("Hersir.app/Contents/MacOS"));
-    let link = exe.ancestors().nth(3).filter(|_| in_app).map(|app| app.with_file_name("gizai"));
+    let name = exe.file_name().filter(|n| *n == "hersir" || *n == "gizai").map(|n| n.to_os_string());
+    let in_app = exe.parent().is_some_and(|d| d.ends_with("Hersir.app/Contents/MacOS"));
+    let link = exe.ancestors().nth(3).filter(|_| in_app).zip(name).map(|(app, n)| app.with_file_name(n));
     link.unwrap_or(exe)
 }
 
-/// The Gizai binary installed into `prefix`: `<prefix>/lib/gizai/gizai` (on macOS a link into Hersir.app, which
-/// install.sh keeps), on Windows `<prefix>\gizai.exe`.
-pub fn installed_exe(prefix: &Path) -> PathBuf {
-    if cfg!(windows) { prefix.join("gizai.exe") } else { prefix.join("lib/gizai/gizai") }
+/// The program of an install from before Hersir 0.17.0 in `prefix`, when there is one: `<prefix>/lib/gizai/gizai`, on
+/// Windows `<prefix>\gizai.exe` beside `gizai-installed.txt`. The installers update such an install where it is, and keep
+/// that program there as a link to the new Hersir (on Windows a copy), as 0.16.0's own update checks it (GA-248).
+pub fn gizai_install(prefix: &Path) -> Option<PathBuf> {
+    if cfg!(windows) {
+        let exe = prefix.join("gizai.exe");
+        (exe.is_file() && prefix.join("gizai-installed.txt").is_file()).then_some(exe)
+    } else {
+        let exe = prefix.join("lib/gizai/gizai");
+        exe.symlink_metadata().is_ok().then_some(exe)
+    }
 }
 
-/// The version the Gizai installed into `prefix` says it is: "gizai 0.1.6" from `gizai --version` gives "0.1.6".
+/// The Hersir installed into `prefix`, by the rule the installers follow: in an install from before 0.17.0 its gizai
+/// program (`gizai_install`), else `<prefix>/lib/hersir/hersir` (on macOS a link into Hersir.app), on Windows
+/// `<prefix>\hersir.exe`.
+pub fn installed_exe(prefix: &Path) -> PathBuf {
+    gizai_install(prefix).unwrap_or_else(|| if cfg!(windows) { prefix.join("hersir.exe") } else { prefix.join("lib/hersir/hersir") })
+}
+
+/// What a restart after an update starts in `prefix`: the first of these that is there. On Linux and macOS the launcher,
+/// else the program, in the install's lib folder: `<prefix>/lib/hersir`, or `<prefix>/lib/gizai` for an install from
+/// before 0.17.0, where 0.16.0's own `gizai-launch` and `gizai` come last. On Windows `<prefix>\hersir.exe`, else
+/// `<prefix>\gizai.exe`.
+pub fn restart_programs(prefix: &Path) -> Vec<PathBuf> {
+    if cfg!(windows) {
+        vec![prefix.join("hersir.exe"), prefix.join("gizai.exe")]
+    } else if gizai_install(prefix).is_some() {
+        let lib = prefix.join("lib/gizai");
+        ["hersir-launch", "hersir", "gizai-launch", "gizai"].iter().map(|n| lib.join(n)).collect()
+    } else {
+        let lib = prefix.join("lib/hersir");
+        ["hersir-launch", "hersir"].iter().map(|n| lib.join(n)).collect()
+    }
+}
+
+/// The version the Hersir installed into `prefix` says it is: "hersir 0.17.0" from `hersir --version` gives "0.17.0"
+/// ("gizai 0.16.0" from a Hersir before 0.17.0 gives "0.16.0").
 pub fn installed_version(prefix: &Path) -> Option<String> {
     let mut cmd = os::command(installed_exe(prefix));
     cmd.arg("--version");
@@ -388,13 +425,16 @@ pub fn build(dir: &Path, path: Option<&OsStr>, log: &Log, stop: &Stop) -> Result
 /// Installs what `build` made into `prefix` with the release's installer, `install.sh --skip-build`. Its desktop entry
 /// and icons go under the prefix too (`<prefix>/share`: ~/.local/share for the usual install), so an install anywhere
 /// else, a test's scratch folder, never changes the launcher entry you use. The installer backs up the data folder
-/// there (`<prefix>/share/gizai`) with the new build first, and installs nothing when it can't.
+/// there (`<prefix>/share/hersir`, or `<prefix>/share/gizai` from before 0.17.0 when it holds gizai.db and there is no
+/// hersir one: the rule Hersir's own data folder follows) with the new build first, and installs nothing when it can't.
 /// On Windows `install.ps1 -SkipBuild` gets the prefix only: XDG_DATA_HOME means nothing there, and the data folder
-/// install.ps1 backs up is `%APPDATA%\Gizai`.
+/// install.ps1 backs up is `%APPDATA%\Hersir`, or `%APPDATA%\Gizai` by the same rule.
+/// The prefix goes under both its names, HERSIR_PREFIX and GIZAI_PREFIX (its name before 0.17.0), as Hersir sets each
+/// of its variables for other programs (GA-248).
 pub fn install(dir: &Path, prefix: &Path, path: Option<&OsStr>, log: &Log, stop: &Stop) -> Result<(), UpdateFailed> {
     let mut cmd = installer(dir, path)?;
     let (arg, shown) = STEPS[1];
-    cmd.arg(arg).env("GIZAI_PREFIX", prefix);
+    cmd.arg(arg).env("HERSIR_PREFIX", prefix).env("GIZAI_PREFIX", prefix);
     #[cfg(not(windows))]
     cmd.env("XDG_DATA_HOME", prefix.join("share"));
     run(shown, cmd, log, INSTALL_LIMIT, stop, false).map(|_| ())
@@ -402,7 +442,8 @@ pub fn install(dir: &Path, prefix: &Path, path: Option<&OsStr>, log: &Log, stop:
 
 /// The release's installer, run in its source, building into the source's own target/: install.sh with bash, on
 /// Windows install.ps1 with Windows PowerShell (`-ExecutionPolicy Bypass`, as the release's own script isn't signed;
-/// `-NonInteractive`, so a question fails instead of waiting).
+/// `-NonInteractive`, so a question fails instead of waiting). It inherits none of the installer's own variables, by
+/// either name (HERSIR_ and, from before 0.17.0, GIZAI_): `install` gives it the prefix.
 fn installer(dir: &Path, path: Option<&OsStr>) -> Result<Command, UpdateFailed> {
     let script = dir.join(INSTALLER);
     if !script.is_file() {
@@ -416,6 +457,7 @@ fn installer(dir: &Path, path: Option<&OsStr>) -> Result<Command, UpdateFailed> 
     cmd.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"]);
     cmd.arg(script).current_dir(dir)
         .env("CARGO_TARGET_DIR", dir.join("target")).env("TAURI_TELEMETRY_DISABLED", "1")
+        .env_remove("HERSIR_REPO").env_remove("HERSIR_BRANCH").env_remove("HERSIR_PREFIX").env_remove("HERSIR_DATA_DIR")
         .env_remove("GIZAI_REPO").env_remove("GIZAI_BRANCH").env_remove("GIZAI_PREFIX").env_remove("GIZAI_DATA_DIR");
     if let Some(p) = path {
         cmd.env("PATH", p);

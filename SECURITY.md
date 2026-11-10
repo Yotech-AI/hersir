@@ -13,8 +13,8 @@ That form is the only way to report a security problem. Never report one in a pu
 ## What counts
 
 - An agent getting past what you allowed it: its commands, folders or tools ([Tools per agent](docs/features/tools.md), and the [safety rules](docs/agent-tools.md#safety-rules) in depth).
-- The Team Lead's approval step: a call that should wait for your Approve and runs without it ([Approve with one click](docs/features/team-lead.md#approve-with-one-click)).
-- The socket or named pipe of the Team Lead's tools ([Linux, macOS and Windows](docs/PLATFORMS.md#every-linux-only-spot)).
+- The Chief's approval step: a call that should wait for your Approve and runs without it ([Approve with one click](docs/features/chief.md#approve-with-one-click)).
+- The socket or named pipe of the Chief's tools ([Linux, macOS and Windows](docs/PLATFORMS.md#every-linux-only-spot)).
 - Keys and tokens: a sign-in, key or token that leaves your keychain, or reaches a run or a file it shouldn't ([Your keys stay yours](docs/features/cli.md#your-keys-stay-yours)).
 - The install scripts, the one-line installs and updates ([How Hersir updates itself](docs/RELEASING.md#how-hersir-updates-itself)).
 
@@ -22,6 +22,7 @@ That form is the only way to report a security problem. Never report one in a pu
 
 - Problems in Claude Code, Codex CLI or Gemini CLI themselves: report those to Anthropic, OpenAI or Google, as each CLI's own security policy says ([Claude Code](https://github.com/anthropics/claude-code/security/policy), [Codex CLI](https://github.com/openai/codex/security/policy), [Gemini CLI](https://github.com/google-gemini/gemini-cli/security/policy)).
 - An agent doing what you allowed it to do, like running a command on its allowed list or changing a folder you gave it.
+- What a command that runs code does. `npm`, `npx`, `node`, `php`, `composer`, `cargo`, `pytest` and `./vendor/bin/*` run the project's scripts, tests and builds, which can read and change anything your user can, Hersir's data and your keys included: Claude Code only checks the command line. Give such commands only to agents on repositories you trust. A sandbox for runs comes later ([Commands that run code](docs/features/tools.md#commands-that-run-code)).
 
 ## What to send
 

@@ -29,10 +29,10 @@ const FAKE_MCP_CHAT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../crates/giza
 const OTUS_SECRET: &str = "otus-secret-value-123";
 const LINEAR_SECRET: &str = "Bearer linear-secret-value-456";
 
-/// The shim binary: target/debug/gizai-mcp (built here when missing).
+/// The shim binary: target/debug/hersir-mcp, which the crate gizai-mcp builds (built here when missing).
 fn shim() -> PathBuf {
     static BUILT: std::sync::Once = std::sync::Once::new();
-    let path = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/debug/gizai-mcp"));
+    let path = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/debug/hersir-mcp"));
     BUILT.call_once(|| {
         if path.is_file() {
             return;
@@ -40,7 +40,7 @@ fn shim() -> PathBuf {
         let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
         let ok = std::process::Command::new(cargo).args(["build", "-q", "-p", "gizai-mcp"])
             .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/..")).status().map(|s| s.success()).unwrap_or(false);
-        assert!(ok && path.is_file(), "could not build gizai-mcp");
+        assert!(ok && path.is_file(), "could not build hersir-mcp (the crate gizai-mcp)");
     });
     path
 }
@@ -808,7 +808,7 @@ async fn a_board_check_gets_no_tool_from_outside_gizai_even_with_the_team_leads_
 
 // ---- GA-101: a card the Team Lead puts where an agent would start it waits on hold for your OK ----
 
-const WAITING: &str = "Waiting for your OK: the Team Lead put this card here after using mcp__otus__search, a tool from outside Hersir. \
+const WAITING: &str = "Waiting for your OK: the Chief put this card here after using mcp__otus__search, a tool from outside Hersir. \
     Check it, then take it off hold.";
 
 /// Design and Research: Auto work columns the Backend Agent is on (next: Testing). Manual: a work column it is on that

@@ -200,9 +200,9 @@ export function ProjectDrawer({ id, onClose }: { id?: string; onClose: () => voi
             <label className="check"><input id="p-shots" type="checkbox" checked={shots.on} onChange={(e) => setShots({ on: e.target.checked })} />Take screenshots of this project’s screens</label>
           </Field>
           <Field label="Preview command" htmlFor="p-preview" wide
-            hint="Empty by default: no preview, so no screenshots. Runs with bash -c in the card’s worktree when a run starts whose agent takes screenshots, on a free port in GIZAI_PREVIEW_PORT (and PORT), with GIZAI_PREVIEW_DIR for a throwaway database. Serve demo data, never your .env database. Hersir ends it with the run.">
+            hint="Empty by default: no preview, so no screenshots. Runs with bash -c in the card’s worktree when a run starts whose agent takes screenshots, on a free port in HERSIR_PREVIEW_PORT (and PORT), with HERSIR_PREVIEW_DIR for a throwaway database. The GIZAI_PREVIEW_* names are set too. Serve demo data, never your .env database. Hersir ends it with the run.">
             <input id="p-preview" className="input mono" spellCheck={false} autoComplete="off" value={v.previewCommand ?? ""} onChange={(e) => set("previewCommand", e.target.value)}
-              placeholder={'npx astro dev --host 127.0.0.1 --port "$GIZAI_PREVIEW_PORT" --ignore-lock'} />
+              placeholder={'npx astro dev --host 127.0.0.1 --port "$HERSIR_PREVIEW_PORT" --ignore-lock'} />
           </Field>
           <Field label="Start time (seconds)" htmlFor="p-start" hint="10 to 600; 120 by default. The agent starts once the page answers, or after this long without it.">
             <input id="p-start" className="input" type="number" min={START_SECS.low} max={START_SECS.high} step={1} value={shownNumber(v.previewStartSecs)}

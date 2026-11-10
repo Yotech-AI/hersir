@@ -539,7 +539,7 @@ pub fn agent_view(st: &AppState, agent_id: &str) -> Result<AgentMcpView, String>
     Ok(AgentMcpView { disabled, warning, servers })
 }
 
-/// Saves the agent's switches (agent form → Tools). Only you: no Team Lead tool calls this.
+/// Saves the agent's switches (agent form → Tools). Only you: no Chief tool calls this.
 pub fn save_agent(st: &AppState, agent_id: &str, tools: AgentTools) -> Result<AgentMcpView, String> {
     core_mcp::set_agent_tools(&st.db, &st.you_id, agent_id, tools).map_err(|e| e.to_string())?;
     agent_view(st, agent_id)
@@ -559,15 +559,15 @@ pub fn for_run(st: &AppState, agent: &Member, min_valid: Duration) -> (Vec<RunSe
     }
     let servers = core_mcp::list(&st.db).unwrap_or_default();
     let lists = core_mcp::tool_lists(&st.db).unwrap_or_default();
-    let known = |id: &str| lists.get(id).map(|c| c.tools.iter().filter_map(|v| v.get("name").and_then(|n| n.as_str()).map(str::to_string)).collect())
-        .unwrap_or_default();
     for a in on {
         // The built-in browser: always hidden with a throwaway profile, its options checked (`browser_target`). On Windows
         // its entry starts npx by name through cmd (`browser::entry`).
         if a.server_id == core_mcp::BROWSER {
             match browser_target(st, agent.cli_tools.insecure_certs) {
-                Ok(t) => out.push(RunServer { name: core_mcp::BROWSER.into(), entry: browser::entry(&t.command, &t.args, &t.env),
-                                              tools_off: a.tools_off.clone(), known_tools: known(core_mcp::BROWSER) }),
+                Ok(t) => {
+                    let (known_tools, tools_off) = tools_for_run(lists.get(core_mcp::BROWSER), &a.tools_off);
+                    out.push(RunServer { name: core_mcp::BROWSER.into(), entry: browser::entry(&t.command, &t.args, &t.env), tools_off, known_tools })
+                }
                 Err(e) => notes.push(format!("Left out the browser ({}): {e}. Settings → MCP servers says what it needs.", core_mcp::BROWSER)),
             }
             continue;
@@ -601,10 +601,21 @@ pub fn for_run(st: &AppState, agent: &Member, min_valid: Duration) -> (Vec<RunSe
             out.push(RunServer { name: s.name.clone(), entry, tools_off: vec![], known_tools: vec![] });
             continue;
         }
-        let known_tools = cached.map(|c| c.tools.iter().filter_map(|v| v.get("name").and_then(|n| n.as_str()).map(str::to_string)).collect()).unwrap_or_default();
-        out.push(RunServer { name: s.name.clone(), entry, tools_off: a.tools_off.clone(), known_tools });
+        let (known_tools, tools_off) = tools_for_run(cached, &a.tools_off);
+        out.push(RunServer { name: s.name.clone(), entry, tools_off, known_tools });
     }
     (out, notes)
+}
+
+/// A server's tools for a run, from its cached `tools/list` answer, and its tools off: the agent's (`off`), and GA-262 each
+/// tool whose name isn't a plain tool name (`core_mcp::valid_tool_name`). Such a tool is never allowed and never named in
+/// a rule, as Claude Code would read `mcp__<server>__x Bash` as two rules, the second any command: it is left out of the
+/// tools, and counting it as off makes the run allow the server's other tools by name, never the whole server
+/// (`mcp_run::permissions`, which names no tool like it either).
+fn tools_for_run(cached: Option<&core_mcp::ToolList>, off: &[String]) -> (Vec<String>, Vec<String>) {
+    let names = cached.map(|c| c.tools.iter().filter_map(|v| v.get("name").and_then(|n| n.as_str()).map(str::to_string)).collect::<Vec<_>>());
+    let (known, left_out): (Vec<String>, Vec<String>) = names.unwrap_or_default().into_iter().partition(|n| core_mcp::valid_tool_name(n));
+    (known, off.iter().cloned().chain(left_out).collect())
 }
 
 /// The names of the run's servers that Claude Code signs in to: when the run's init line says one needs sign-in, the run
@@ -627,10 +638,10 @@ pub fn record_states(st: &AppState, agent_id: &str, states: &[gizai_agents::stre
 
 // ---- the built-in browser (Chrome DevTools MCP) ----
 
-/// The npx that starts the browser's server: `GIZAI_NPX` when set (tests point it at a fake), else the one on your login
-/// shell's PATH.
+/// The npx that starts the browser's server: `HERSIR_NPX` (or `GIZAI_NPX`) when set (tests point it at a fake), else
+/// the one on your login shell's PATH.
 fn npx(path: &std::ffi::OsStr) -> Result<String, String> {
-    if let Some(p) = std::env::var("GIZAI_NPX").ok().filter(|p| !p.trim().is_empty()) {
+    if let Some(p) = gizai_agents::env::var("HERSIR_NPX").filter(|p| !p.trim().is_empty()) {
         return Ok(p);
     }
     browser::on_path("npx", path).map(|p| p.display().to_string())
@@ -791,7 +802,7 @@ pub fn saved_cli_tools(st: &AppState, agent_id: &str) -> Result<SavedCliTools, S
 }
 
 /// Saves the agent form's CLI tools (`save_cli_tools`) and its Take screenshots of what it built (GA-182), and returns
-/// them as saved. Only you: no Team Lead tool calls this.
+/// them as saved. Only you: no Chief tool calls this.
 pub fn save_cli_tools_input(st: &AppState, agent_id: &str, input: CliToolsInput) -> Result<SavedCliTools, String> {
     save_cli_tools(st, agent_id, input.tools)?;
     if let Some(on) = input.screenshots {
@@ -846,7 +857,7 @@ pub fn tools_view(st: &AppState, agent_id: Option<&str>, cli_id: &str) -> Result
 }
 
 /// Saves the agent's Web and Built-in tool switches (Slash commands and skills among them) and the browser's certificate
-/// option. Only you: no Team Lead tool calls this. A switch its CLI can't take is refused with why.
+/// option. Only you: no Chief tool calls this. A switch its CLI can't take is refused with why.
 pub fn save_cli_tools(st: &AppState, agent_id: &str, tools: core_mcp::CliTools) -> Result<core_mcp::CliTools, String> {
     use gizai_agents::tool_catalog;
     let agent = gizai_core::team::agent(&st.db, agent_id).map_err(|e| e.to_string())?;

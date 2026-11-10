@@ -54,7 +54,7 @@ fn in_a_self_test_run_it_runs_only_the_two_paste_commands() {
     }
 }
 
-/// A test can't set GIZAI_SELFTEST for the command (the tests here share one process), so this reads its source: the
+/// A test can't set HERSIR_SELFTEST (or GIZAI_SELFTEST) for the command (the tests here share one process), so this reads its source: the
 /// first thing `selftest_paste` does is ask `paste_command` whether this is a self-test run, before it touches the
 /// clipboard or the web view.
 #[test]
@@ -64,5 +64,8 @@ fn selftest_paste_asks_paste_command_first_whether_this_is_a_self_test_run() {
     let first = src[at..].lines().nth(1).expect("its first line").trim();
     assert_eq!(first, "let command = paste_command(selftest_run(), command.as_deref())?;");
     let run = src.find("fn selftest_run()").expect("selftest_run");
-    assert!(src[run..].lines().take(4).any(|l| l.contains(r#"std::env::var("GIZAI_SELFTEST").is_ok()"#)), "selftest_run reads GIZAI_SELFTEST");
+    // GA-249: HERSIR_SELFTEST, else GIZAI_SELFTEST (gizai_agents::env), as app_info reads it
+    assert!(src[run..].lines().take(4).any(|l| l.contains(r#"gizai_agents::env::var("HERSIR_SELFTEST").is_some()"#)), "selftest_run reads HERSIR_SELFTEST");
+    let lib = include_str!("../../src/lib.rs");
+    assert!(lib.contains(r#"selftest: env::var("HERSIR_SELFTEST").is_some(),"#), "app_info reads it the same way");
 }

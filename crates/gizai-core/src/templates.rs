@@ -1,4 +1,5 @@
-//! Team templates (GA-226): a team's setup saved as a file, `<team name>.gizai-team.json`, and a new team made from one
+//! Team templates (GA-226): a team's setup saved as a file, `<team name>.hersir-team.json` (`.gizai-team.json` before
+//! 0.17.0, still read), and a new team made from one
 //! or from a built-in template. The file is format 1, described field by field in `docs/team-template-format.md`.
 //! - Export (`export`, `check_export`, `save`): the team's columns, agents (their settings, instructions and allowed
 //!   commands), labels and branches. Never people, an agent's folders, MCP server settings, a CLI's id or account, the
@@ -25,12 +26,16 @@ use crate::model::AgentInput;
 use crate::team::{self, Branch};
 use crate::{Error, Result, columns, ids, memory, seed, sortkey, util};
 
-/// A template file's `format`.
-pub const FORMAT: &str = "gizai-team";
+/// A template file's `format`, as Export writes it (GA-249).
+pub const FORMAT: &str = "hersir-team";
+/// The `format` of a template written before 0.17.0: the same format 1, still read.
+pub const OLD_FORMAT: &str = "gizai-team";
 /// The format this Gizai writes, and the newest it reads.
 pub const FORMAT_VERSION: i64 = 1;
-/// A template file's name ends in this: `<team name>.gizai-team.json`.
-pub const FILE_SUFFIX: &str = ".gizai-team.json";
+/// A template file's name ends in this: `<team name>.hersir-team.json`.
+pub const FILE_SUFFIX: &str = ".hersir-team.json";
+/// A template file's name before 0.17.0: `<team name>.gizai-team.json`.
+pub const OLD_FILE_SUFFIX: &str = ".gizai-team.json";
 /// The most agents and columns a template may have.
 pub const MAX_AGENTS: usize = 50;
 pub const MAX_COLUMNS: usize = 30;
@@ -51,7 +56,7 @@ pub const NEVER_TAKEN: [&str; 3] = ["bypassPermissions", "danger-full-access", "
 /// A team template, format 1: the file, field by field (`docs/team-template-format.md`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TemplateFile {
-    /// Always `gizai-team`.
+    /// `hersir-team` (`FORMAT`), or `gizai-team` (`OLD_FORMAT`) in a file from before 0.17.0.
     pub format: String,
     /// 1. A file with a higher one is refused (`NEWER`).
     pub format_version: i64,
@@ -311,7 +316,8 @@ fn export_in(c: &Connection, team_id: &str) -> Result<TemplateFile> {
         FileAgent {
             name: name.clone(), role: m.role_key.clone(), title: m.title.clone(), cli, model: m.model.clone(), effort: m.effort.clone(),
             permission_mode: Some(m.permission_mode.clone().unwrap_or_default()), instructions_md: m.instructions_md.clone(),
-            allowed_tools: m.allowed_tools.clone(), cards_at_once: m.max_runs, monthly_budget_usd: m.budget_usd_micros.map(|b| b as f64 / 1e6),
+            // GA-262: as its runs get them: an entry saved before each had to be one rule is left out, as importing refuses it.
+            allowed_tools: m.allowed_tools.iter().filter(|t| team::one_rule(t)).cloned().collect(), cards_at_once: m.max_runs, monthly_budget_usd: m.budget_usd_micros.map(|b| b as f64 / 1e6),
             chat: m.chat_enabled, board_check_minutes: m.board_check_minutes, use_memory: m.use_memory,
             shares_memory_with: m.shares_memory_with.as_deref().filter(|o| *o != m.actor_id).and_then(name_of),
             web_search: m.cli_tools.web_search, web_fetch: m.cli_tools.web_fetch, fetch_domains: m.cli_tools.fetch_domains.clone(),
@@ -733,11 +739,11 @@ fn read_file(path: &Path) -> Result<String> {
     String::from_utf8(bytes).map_err(|_| Error::Invalid("This file isn't JSON: it isn't UTF-8 text.".into()))
 }
 
-/// The file's text as a template: JSON, of format gizai-team, version 1.
+/// The file's text as a template: JSON, of format hersir-team (or gizai-team, from before 0.17.0), version 1.
 fn parse(text: &str) -> Result<TemplateFile> {
     let text = text.strip_prefix('\u{feff}').unwrap_or(text);
     let mut v: Value = serde_json::from_str(text).map_err(|e| Error::Invalid(format!("This file isn't JSON: {e}.")))?;
-    if v.get("format").and_then(Value::as_str) != Some(FORMAT) {
+    if !v.get("format").and_then(Value::as_str).is_some_and(|f| f == FORMAT || f == OLD_FORMAT) {
         return Err(Error::Invalid("This file isn't a Hersir team template.".into()));
     }
     match v.get("format_version").and_then(Value::as_f64) {
@@ -779,8 +785,8 @@ fn thousands(n: usize) -> String {
 
 /// Refuses a template a team can't be made from, saying why: no columns, more than 50 agents or 30 columns,
 /// instructions over 100,000 characters, an unknown kind, two columns or agents with one name (ignoring case), a next
-/// column or a column's agent that isn't in it, agents or Auto on a backlog, review, done or cancelled column, and an Auto
-/// column without a next one.
+/// column or a column's agent that isn't in it, agents or Auto on a backlog, review, done or cancelled column, an Auto
+/// column without a next one, and an allowed command that isn't one rule (GA-262, `team::one_rule`).
 fn check(f: &TemplateFile) -> Result<()> {
     let no = |why: String| Err(Error::Invalid(why));
     if f.name.trim().is_empty() {
@@ -825,6 +831,9 @@ fn check(f: &TemplateFile) -> Result<()> {
         let role = team::role_key(&a.role);
         if role.is_empty() || role.len() > 32 {
             return no(format!("{} has no role: give it one of at most 32 characters, like backend or qa.", a.name.trim()));
+        }
+        if let Some(t) = a.allowed_tools.iter().map(|t| t.trim()).find(|t| !t.is_empty() && !team::one_rule(t)) {
+            return no(format!("{}'s allowed commands: {}", a.name.trim(), team::not_one_rule(t)));
         }
     }
     for c in &f.columns {
@@ -1091,12 +1100,12 @@ fn plan(f: &TemplateFile, builtin: bool, name: Option<&str>, here: &Here) -> Res
             servers.clear();
         }
 
-        // Chat: at most one agent has it, on Claude Code, and the Team Lead you have keeps it.
+        // Chat: at most one agent has it, on Claude Code, and the Chief you have keeps it.
         let mut chat = a.chat;
         let mut board_check = a.board_check_minutes.filter(|m| *m != 0);
         if chat {
             let why = if let Some(lead) = &here.chat {
-                Some(format!("Your Team Lead stays {lead}."))
+                Some(format!("Your Chief stays {lead}."))
             } else if chat_given {
                 Some(format!("Only one agent has Chat: {name} comes without it."))
             } else if cli.kind != "claude_code" {
@@ -1186,7 +1195,7 @@ fn plan(f: &TemplateFile, builtin: bool, name: Option<&str>, here: &Here) -> Res
     }
 
     // Memory folders: an agent shares the folder of the agent it names, as long as both are in the template and neither is
-    // a Team Lead (which keeps its notes in Team Lead/); a chain ends at its first agent with a folder of its own.
+    // the Chief (which keeps its notes in Team Lead/); a chain ends at its first agent with a folder of its own.
     let lead: Vec<bool> = agents.iter().map(|a| a.input.role_key == "lead" || a.input.chat_enabled == Some(true)).collect();
     let mut shares: Vec<Option<usize>> = vec![None; f.agents.len()];
     for (i, a) in f.agents.iter().enumerate() {
@@ -1194,8 +1203,8 @@ fn plan(f: &TemplateFile, builtin: bool, name: Option<&str>, here: &Here) -> Res
         match agent_index(target) {
             None => notes.push(format!("{target} isn't in this team template: {} gets its own memory folder.", names[i])),
             Some(j) if j == i => {}
-            Some(_) if lead[i] => notes.push(format!("{} is a Team Lead, which keeps its notes in Team Lead/: it shares no memory folder.", names[i])),
-            Some(j) if lead[j] => notes.push(format!("{} is a Team Lead, which keeps its notes in Team Lead/: {} gets its own memory folder.",
+            Some(_) if lead[i] => notes.push(format!("{} is the Chief, which keeps its notes in Team Lead/: it shares no memory folder.", names[i])),
+            Some(j) if lead[j] => notes.push(format!("{} is the Chief, which keeps its notes in Team Lead/: {} gets its own memory folder.",
                                                      names[j], names[i])),
             Some(j) => shares[i] = Some(j),
         }

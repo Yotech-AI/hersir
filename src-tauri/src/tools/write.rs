@@ -16,7 +16,7 @@ fn task_json(t: &Task) -> Value {
 }
 
 /// The result of a change to a card. `held_after`: the tool from outside Gizai after which the change put the card on
-/// hold (GA-101); the result says so, for the Team Lead to tell the user.
+/// hold (GA-101); the result says so, for the Chief to tell the user.
 fn task_done(cx: &Cx, id: &str, what: &str, held_after: Option<&str>) -> Result<Value, String> {
     let t = tasks::get(cx.db(), id).map_err(err)?;
     cx.changed("tasks");
@@ -38,10 +38,10 @@ fn task_done(cx: &Cx, id: &str, what: &str, held_after: Option<&str>) -> Result<
     Ok(v)
 }
 
-/// GA-101: why a card waits on hold `needs_decision` when the Team Lead put it where an agent would start it, or changed it
+/// GA-101: why a card waits on hold `needs_decision` when the Chief put it where an agent would start it, or changed it
 /// there, after using `tool`, a tool from outside Gizai.
 fn waiting_for_ok(tool: &str) -> String {
-    format!("Waiting for your OK: the Team Lead put this card here after using {tool}, a tool from outside Hersir. Check it, then take it off hold.")
+    format!("Waiting for your OK: the Chief put this card here after using {tool}, a tool from outside Hersir. Check it, then take it off hold.")
 }
 
 /// An Auto column: its agents pick its cards up by themselves (`workflow::waiting_for`).
@@ -98,7 +98,7 @@ fn repository_arg(a: &Args) -> &'static str {
 
 // ---- guards: what the chat may not do, whatever it is asked ----
 
-/// The Team Lead reads text other people and agents wrote, so it can't hand an agent unlimited powers: no
+/// The Chief reads text other people and agents wrote, so it can't hand an agent unlimited powers: no
 /// bypassPermissions, no "any command" (bare Bash). People set those in the agent form.
 fn guard_agent_powers(a: &Args) -> Result<(), String> {
     // Claude Code's bypassPermissions, Codex without its sandbox, Gemini's yolo: each lets an agent run anything.
@@ -106,6 +106,11 @@ fn guard_agent_powers(a: &Args) -> Result<(), String> {
         return Err(format!("{m} can't be set from chat: it lets an agent run anything. Set it yourself in the agent form if you really want it."));
     }
     let allowed = a.list("allowed_tools").unwrap_or_default();
+    // GA-262: each entry one rule, as the agent form saves them: Claude Code would read `Bash(ls:*) Bash(*)` or `Bash(a) b`
+    // as two. One without a `)`, like `Bash(git status:*`, is no command at all, and the check below says so.
+    if let Some(t) = allowed.iter().find(|t| t.contains(')') && !team::one_rule(t)) {
+        return Err(team::not_one_rule(t));
+    }
     for t in &allowed {
         let t = t.trim().to_lowercase().replace(' ', "");
         if t == "bash" || t == "bash(*)" || t == "bash(:*)" || t == "bash(*:*)" {
@@ -141,11 +146,11 @@ fn guard_agent_powers(a: &Args) -> Result<(), String> {
     Ok(())
 }
 
-/// Team Lead may merge (GA-86) is the user's switch, set in the app: create_project and update_project never set it.
+/// Chief may merge (GA-86) is the user's switch, set in the app: create_project and update_project never set it.
 fn guard_lead_may_merge(a: &Args) -> Result<(), String> {
     for k in ["lead_may_merge", "team_lead_may_merge", "leadMayMerge", "may_merge"] {
         if a.0.get(k).is_some_and(|v| !v.is_null()) {
-            return Err("Team Lead may merge can't be switched from chat: only the user switches it, in the app (the project page → Edit). \
+            return Err("Chief may merge can't be switched from chat: only the user switches it, in the app (the project page → Edit). \
                         Nothing changed.".into());
         }
     }
@@ -157,8 +162,60 @@ fn is_command(t: &str) -> bool {
     t.trim().strip_prefix("Bash(").and_then(|r| r.strip_suffix(')')).is_some_and(|inner| !inner.trim().is_empty())
 }
 
+/// GA-262: commands that run any other command: shells, interpreters, and commands that run the command after them, or run
+/// it as another user. The chat gives an agent none of these (`guard_commands`).
+const RUNS_ANY_COMMAND: &[&str] = &[
+    "bash", "sh", "zsh", "fish", "dash", "ksh", "csh", "tcsh", "pwsh", "powershell", "cmd", "busybox",
+    "env", "sudo", "doas", "su", "pkexec", "run0", "runas", "eval", "exec", "command", "builtin", "source", ".",
+    "xargs", "nohup", "timeout", "nice", "time", "setsid", "stdbuf", "watch",
+    "python", "python3", "perl", "ruby", "deno", "bun", "osascript",
+];
+
+/// The command a `Bash(…)` entry lets an agent run: its first word, without the `:*` of a prefix rule (`Bash(npm test:*)`
+/// → npm, `Bash(bash:*)` → bash).
+fn command_word(entry: &str) -> Option<&str> {
+    let inner = entry.trim().strip_prefix("Bash(")?.strip_suffix(')')?.trim();
+    inner.strip_suffix(":*").unwrap_or(inner).split_whitespace().next()
+}
+
+/// GA-262: why the chat can't give an agent the command `entry`; None when it can. Its command (`command_word`) is one of
+/// `RUNS_ANY_COMMAND`, a wildcard or a path. A name with quotes, `$`, `=` or the like could be one of those spelled
+/// another way, so it counts too, and so do capitals, `.exe` and a version (`BASH`, `bash.exe`, `python3.12`).
+fn runs_any_command(entry: &str) -> Option<String> {
+    let word = command_word(entry)?;
+    if word.contains(['/', '\\']) {
+        return Some(format!("it runs {word} by its path"));
+    }
+    if word.contains(['*', '?']) {
+        return Some(format!("{word} is a wildcard, which matches any command"));
+    }
+    if !word.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '+')) {
+        return Some(format!("{word} isn't a plain command name"));
+    }
+    let name = word.to_ascii_lowercase();
+    let name = name.strip_suffix(".exe").unwrap_or(&name);
+    let unversioned = name.trim_end_matches(|c: char| c.is_ascii_digit() || c == '.');
+    (RUNS_ANY_COMMAND.contains(&name) || RUNS_ANY_COMMAND.contains(&unversioned)).then(|| format!("{word} can run any command"))
+}
+
+/// GA-262: the Chief reads text other people and agents wrote, so it gives an agent no shell or interpreter
+/// (`runs_any_command`), unless the entry is in `kept`: the agent's own list or its role's default list. Only the user
+/// adds one, in the agent form.
+fn guard_commands(a: &Args, kept: &[String]) -> Result<(), String> {
+    for t in a.list("allowed_tools").unwrap_or_default() {
+        if kept.iter().any(|k| k.trim() == t) {
+            continue;
+        }
+        if let Some(why) = runs_any_command(&t) {
+            return Err(format!("{t} can't be given from chat: {why}. Only the user can add it, in the agent form (Permissions → Allowed \
+                                commands). Nothing changed."));
+        }
+    }
+    Ok(())
+}
+
 /// A repository path from chat must be a git repository (it has a .git folder or file), and never `/`, your
-/// home folder or a folder above it: agents work there and the Team Lead may read it.
+/// home folder or a folder above it: agents work there and the Chief may read it.
 fn checked_repo(raw: &str) -> Result<String, String> {
     let bad = || format!("{raw} is not a git repository: give the folder that holds the project's .git");
     let p = std::path::Path::new(raw).canonicalize().map_err(|_| bad())?;
@@ -485,6 +542,8 @@ fn shares_memory_with(cx: &Cx<'_>, a: &Args) -> Result<Option<String>, String> {
 
 pub(crate) async fn create_agent(cx: &Cx<'_>, a: &Args) -> Result<Value, String> {
     guard_agent_powers(a)?;
+    // GA-262: no shell or interpreter, unless its role's default list has it.
+    guard_commands(a, &gizai_core::seed::role_tools(&team::role_key(&a.opt("role").unwrap_or_default())))?;
     // GA-225: the team it joins; with more than one team it must be named.
     let team_id = resolve::team_arg(cx, a)?.id;
     let shares = shares_memory_with(cx, a)?;
@@ -510,6 +569,12 @@ pub(crate) async fn create_agent(cx: &Cx<'_>, a: &Args) -> Result<Value, String>
 pub(crate) async fn update_agent(cx: &Cx<'_>, a: &Args) -> Result<Value, String> {
     guard_agent_powers(a)?;
     let m = resolve::agent(cx, &a.req("agent")?)?;
+    // GA-262: no shell or interpreter it doesn't have already (without a list of its own it runs with Hersir's default
+    // list), unless its role's default list has it: its role now or the one given.
+    let mut kept = if m.allowed_tools.is_empty() { gizai_core::seed::DEFAULT_TOOLS.map(String::from).to_vec() } else { m.allowed_tools.clone() };
+    kept.extend(gizai_core::seed::role_tools(&m.role_key));
+    kept.extend(a.opt("role").map(|r| gizai_core::seed::role_tools(&team::role_key(&r))).unwrap_or_default());
+    guard_commands(a, &kept)?;
     let shares = shares_memory_with(cx, a)?;
     // Moved to another kind of CLI: its model, effort and permission mode don't carry over unless given (the CLI's defaults).
     let kind_now = crate::clis::of_agent(cx.st, m.adapter.as_deref()).map(|c| c.kind).unwrap_or_default();
@@ -649,7 +714,7 @@ pub(crate) async fn start_run(cx: &Cx<'_>, a: &Args) -> Result<Value, String> {
 
 /// Continue on the card's latest run, like the Continue button (`runs::continue_run`); a run that ended asking for a
 /// decision continues too, with what was written on the card since (`runs::continue_answered`). A `note` goes to the
-/// agent with it and on the card as the Team Lead's comment (`runs::continue_answered_with_note`, GA-31).
+/// agent with it and on the card as the Chief's comment (`runs::continue_answered_with_note`, GA-31).
 pub(crate) async fn continue_run(cx: &Cx<'_>, a: &Args) -> Result<Value, String> {
     let t = resolve::task(cx, &a.req("task")?)?;
     let last = gizai_core::runs::list_for_task(cx.db(), &t.id).map_err(err)?.into_iter().next()
@@ -667,7 +732,7 @@ pub(crate) async fn continue_run(cx: &Cx<'_>, a: &Args) -> Result<Value, String>
               "link": link("task", &t.id, &format!("{} {}", t.identifier, short(&t.title, 60)))}))
 }
 
-// ---- chats the Team Lead starts ----
+// ---- chats the Chief starts ----
 
 /// Asks the user in a chat that waits at the top of their Inbox (`chat::start_lead_chat`): one waiting chat per card.
 pub(crate) fn start_chat(cx: &Cx, a: &Args) -> Result<Value, String> {
@@ -760,8 +825,8 @@ pub(crate) async fn attach_file(cx: &Cx<'_>, a: &Args) -> Result<Value, String> 
     Ok(json!({"ok": true, "file": {"id": f.id, "name": f.name, "size_bytes": f.size_bytes}, "link": l}))
 }
 
-/// Spec §8: the Team Lead attaches only a file the user named in this chat, one the user added to a message in this chat
-/// (its copy in the Team Lead's folder, `chat::lead_file_path`), or one inside its copies of the projects' code (`code`),
+/// Spec §8: the Chief attaches only a file the user named in this chat, one the user added to a message in this chat
+/// (its copy in the Chief's folder, `chat::lead_file_path`), or one inside its copies of the projects' code (`code`),
 /// never something it found elsewhere on the disk (keys, credentials). The copies hold only tracked files, so a
 /// repository's .env isn't among them.
 fn allowed_attachment(cx: &Cx, raw: &str, path: &std::path::Path) -> Result<(), String> {
@@ -806,7 +871,7 @@ pub(crate) async fn update_checkout(cx: &Cx<'_>, a: &Args) -> Result<Value, Stri
             return Err(format!("update_checkout only updates {}'s linked folder ({linked}); {f} isn't it, so nothing changed", p.key));
         }
     }
-    // Not a folder that the Team Lead's own folders (agent form → Folders) set to read.
+    // Not a folder that the Chief's own folders (agent form → Folders) set to read.
     crate::folders::lead_may_update(cx.st, std::path::Path::new(&linked))?;
     let will = crate::code::start_update(cx.st, thread, &p, a.flag("switch").unwrap_or(false), a.flag("stash").unwrap_or(false)).await?;
     Ok(json!({"ok": true, "done": "started", "folder": linked, "will": will,

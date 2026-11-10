@@ -15,7 +15,7 @@
 # usage: scripts/quit-test.sh (build first: npm run tauri build -- --no-bundle)
 set -uo pipefail
 cd "$(dirname "$0")/.."
-GZ=$PWD; DEV=$GZ/.devdata; BIN=$GZ/target/release/gizai; Q=$DEV/quittest
+GZ=$PWD; DEV=$GZ/.devdata; BIN=$GZ/target/release/hersir; Q=$DEV/quittest
 [ -x "$BIN" ] || { echo "QUIT FAIL: no $BIN (build first)"; exit 1; }
 rm -rf "$Q"; mkdir -p "$Q" "$Q/claude" "$DEV/run" "$DEV/xdg"; chmod 700 "$DEV/run"
 FAKE=$GZ/crates/gizai-agents/tests/fake-claude.sh

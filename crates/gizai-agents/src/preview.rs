@@ -2,9 +2,9 @@
 //! the project's Preview command in its worktree on a port it picked, and ends it with the run (docs/research/
 //! screenshots.md §3.5). It runs as the setup command does (`prepare`): with `bash -c` (Git Bash on Windows), stdin
 //! closed, in a tree of its own (`os::spawn_tree`), here with its output in `.gizai-tmp/preview/preview.log` and without
-//! `CLAUDECODE` in its environment (Astro detaches its server when it sees Claude Code). It gets `GIZAI_PREVIEW_PORT`,
-//! `PORT` (the same), `GIZAI_PREVIEW_URL` and `GIZAI_PREVIEW_DIR`; the agent's own commands get the three
-//! `GIZAI_PREVIEW_*` too (`agent_env`), not `PORT`.
+//! `CLAUDECODE` in its environment (Astro detaches its server when it sees Claude Code). It gets `HERSIR_PREVIEW_PORT`,
+//! `PORT` (the same), `HERSIR_PREVIEW_URL` and `HERSIR_PREVIEW_DIR`, and the three under their names from before
+//! 0.17.0, `GIZAI_PREVIEW_*` (GA-249); the agent's own commands get the six `*_PREVIEW_*` too (`agent_env`), not `PORT`.
 use std::ffi::OsStr;
 use std::net::{Ipv4Addr, SocketAddr, TcpListener};
 use std::path::{Path, PathBuf};
@@ -15,7 +15,7 @@ use crate::os::{self, End, Tree};
 use crate::run_memory::{Leftover, Scope, Slice};
 
 /// The preview's folder in the worktree's `.gizai-tmp`: its log, and room for a throwaway database
-/// (`GIZAI_PREVIEW_DIR`).
+/// (`HERSIR_PREVIEW_DIR`).
 pub const DIR: &str = "preview";
 /// Its output, in that folder.
 pub const LOG: &str = "preview.log";
@@ -44,12 +44,17 @@ pub fn log_path(worktree: &Path) -> PathBuf {
 }
 
 /// What the agent's own commands get, so a project script it runs (to load the demo data again) finds the preview:
-/// `GIZAI_PREVIEW_PORT`, `GIZAI_PREVIEW_URL` and `GIZAI_PREVIEW_DIR`. Not `PORT`: that one is the preview command's.
+/// `HERSIR_PREVIEW_PORT`, `HERSIR_PREVIEW_URL` and `HERSIR_PREVIEW_DIR`, then the same under their `GIZAI_` names, which
+/// a project's scripts from before 0.17.0 read. Not `PORT`: that one is the preview command's.
 pub fn agent_env(port: u16, worktree: &Path) -> Vec<(String, String)> {
+    let (port, address, folder) = (port.to_string(), url(port), dir(worktree).display().to_string());
     vec![
-        ("GIZAI_PREVIEW_PORT".into(), port.to_string()),
-        ("GIZAI_PREVIEW_URL".into(), url(port)),
-        ("GIZAI_PREVIEW_DIR".into(), dir(worktree).display().to_string()),
+        ("HERSIR_PREVIEW_PORT".into(), port.clone()),
+        ("HERSIR_PREVIEW_URL".into(), address.clone()),
+        ("HERSIR_PREVIEW_DIR".into(), folder.clone()),
+        ("GIZAI_PREVIEW_PORT".into(), port),
+        ("GIZAI_PREVIEW_URL".into(), address),
+        ("GIZAI_PREVIEW_DIR".into(), folder),
     ]
 }
 
@@ -89,7 +94,7 @@ pub struct Preview {
     tree: Tree,
     /// Linux, in the slice of the agent runs: its scope, where what it starts in a group of its own runs too (GA-211).
     scope: Option<Scope>,
-    /// The port it was given (`GIZAI_PREVIEW_PORT`).
+    /// The port it was given (`HERSIR_PREVIEW_PORT`).
     pub port: u16,
     /// Its output: `<worktree>/.gizai-tmp/preview/preview.log`.
     pub log: PathBuf,

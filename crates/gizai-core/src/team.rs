@@ -41,7 +41,7 @@ pub struct Member {
     pub effort: Option<String>,
     /// Cards it works on at once.
     pub max_runs: i64,
-    /// The Team Lead checks the board this often (minutes); None = off.
+    /// The Chief checks the board this often (minutes); None = off.
     pub board_check_minutes: Option<i64>,
     /// When it last looked at the board.
     pub board_checked_at: Option<i64>,
@@ -173,7 +173,7 @@ pub fn get(db: &Db, id: &str) -> Result<Team> {
 }
 
 /// `get` without each agent's instructions (`instructions_md` None), for the window (GA-191): only an agent's page and
-/// form show them, and they ask `agent`. The agents' and the Team Lead's tools keep `get`'s full rows.
+/// form show them, and they ask `agent`. The agents' and the Chief's tools keep `get`'s full rows.
 pub fn get_lean(db: &Db, id: &str) -> Result<Team> {
     db.read(|c| team_in(c, id, false))
 }
@@ -232,7 +232,7 @@ pub fn add_branch(db: &Db, actor: &str, team_id: &str, name: &str) -> Result<Vec
         return Err(Error::Invalid("give the branch a name (at most 32 characters), like Docs or Security".into()));
     }
     if ["lead", "reviewer"].contains(&key.as_str()) {
-        return Err(Error::Invalid(format!("{name} is taken: the Team Lead and the reviewer sit above the branches")));
+        return Err(Error::Invalid(format!("{name} is taken: the Chief and the reviewer sit above the branches")));
     }
     db.write(Some(actor), |w| {
         let mut branches = branches_in(w.conn(), team_id)?;
@@ -280,6 +280,22 @@ pub const EFFORTS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
 /// "Front End " → "front-end"
 pub fn role_key(raw: &str) -> String {
     raw.trim().to_lowercase().split_whitespace().collect::<Vec<_>>().join("-")
+}
+
+/// GA-262: an allowed command is one rule: a tool name (letters, digits, `_` and `-`), optionally followed by one `( … )`
+/// with no `(`, `)` or `,` inside, and nothing after it. Claude Code reads `--allowedTools` as rules separated by spaces or
+/// commas outside parentheses, so `Bash(ls:*) Bash(*)` saved as one entry would reach it as two rules, the second any
+/// command.
+pub fn one_rule(entry: &str) -> bool {
+    let t = entry.trim();
+    let (name, rest) = t.split_at(t.find('(').unwrap_or(t.len()));
+    let name_ok = !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+    name_ok && (rest.is_empty() || rest.strip_prefix('(').and_then(|r| r.strip_suffix(')')).is_some_and(|inner| !inner.contains(['(', ')', ','])))
+}
+
+/// Why `entry` is refused, or left out of runs, when it isn't one rule (`one_rule`).
+pub fn not_one_rule(entry: &str) -> String {
+    format!("{} isn't one rule: write each command as its own entry, like Bash(npm test:*).", entry.trim())
 }
 
 struct CleanAgent {
@@ -347,6 +363,10 @@ fn clean_agent_on(cli: crate::clis::Cli, i: &AgentInput, places: Option<&crate::
         return Err(Error::Invalid("an agent works on between 1 and 10 cards at once".into()));
     }
     let tools: Vec<String> = i.allowed_tools.iter().map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect();
+    // GA-262: each entry one rule, from the agent form, chat and a team template alike.
+    if let Some(t) = tools.iter().find(|t| !one_rule(t)) {
+        return Err(Error::Invalid(not_one_rule(t)));
+    }
     let folders_json = match (&i.folders, places) {
         (Some(list), Some(places)) => Some(serde_json::to_string(&crate::folders::clean(list, places)?)?),
         _ => None,
@@ -404,7 +424,7 @@ fn insert_agent(w: &crate::db::Writer, actor: &str, team_id: &str, a: &CleanAgen
     if let Some(with) = input.shares_memory_with.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         crate::memory::set_shares_in(w, actor, &id, Some(with))?;
     }
-    // Its own memory folder, Agents/<name>/, with a Notes note, unless it shares one (the Team Lead's Team Lead/Notes is
+    // Its own memory folder, Agents/<name>/, with a Notes note, unless it shares one (the Chief's Team Lead/Notes is
     // made on first use).
     crate::memory::ensure_agent_notes_in(w, &id)?;
     Ok(id)
@@ -500,7 +520,7 @@ pub fn update_agent(db: &Db, actor: &str, actor_id: &str, input: AgentInput) -> 
             Some(false) => { c.execute("UPDATE agent_configs SET chat_enabled=0 WHERE actor_id=?1", [actor_id])?; }
             None => {}
         }
-        // Memory (GA-96): the folder it shares, else its own; the Team Lead keeps its notes in Team Lead/, so an agent that
+        // Memory (GA-96): the folder it shares, else its own; the Chief keeps its notes in Team Lead/, so an agent that
         // became it shares no folder and a group it owned goes on with its next agent.
         if let Some(with) = input.shares_memory_with.as_deref().map(str::trim) {
             crate::memory::set_shares_in(w, actor, actor_id, Some(with).filter(|s| !s.is_empty()))?;

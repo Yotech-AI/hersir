@@ -22,7 +22,7 @@ use crate::AppState;
 /// Per-run limits Gizai enforces itself (Claude Code has no turn cap in print mode); Settings → Runs changes them.
 pub const DEFAULT_MAX_RUN_MINUTES: u64 = 90;
 pub const DEFAULT_MAX_RUN_TOOL_CALLS: u32 = 200;
-/// The same per answer of the Team Lead (a chat answer, a board check, its look at an agent's question), which is short
+/// The same per answer of the Chief (a chat answer, a board check, its look at an agent's question), which is short
 /// work; Settings → Runs changes them too (Minutes and Tool calls per chat answer).
 pub const DEFAULT_MAX_CHAT_MINUTES: u64 = 15;
 pub const DEFAULT_MAX_CHAT_TOOL_CALLS: u32 = 60;
@@ -251,7 +251,7 @@ pub struct Settings {
     /// …or after this many tool calls.
     #[serde(default = "default_tool_calls")]
     pub max_run_tool_calls: u32,
-    /// Gizai stops an answer of the Team Lead (a chat answer, a board check, its look at an agent's question) after this
+    /// Gizai stops an answer of the Chief (a chat answer, a board check, its look at an agent's question) after this
     /// long…
     #[serde(default = "default_chat_minutes")]
     pub max_chat_minutes: u64,
@@ -495,7 +495,7 @@ pub fn starting(st: &AppState) -> Vec<String> {
     st.runs.starting.lock().unwrap().keys().cloned().collect()
 }
 
-/// GA-225: saves project `id` from the app (the project form, the Team Lead's update_project). When `input` moves it to
+/// GA-225: saves project `id` from the app (the project form, the Chief's update_project). When `input` moves it to
 /// another team, its cards are held while it moves, as a start by hand holds its card, so no run starts on one of them
 /// meanwhile; a card with a run live or starting refuses the move, and nothing changes (`projects::update_with`). True
 /// when it moved.
@@ -696,7 +696,7 @@ struct Resume {
     note: Option<ContinueNote>,
 }
 
-/// A note for a continued run (GA-31): from you (the text box next to Continue, or Done, continue) or from the Team Lead
+/// A note for a continued run (GA-31): from you (the text box next to Continue, or Done, continue) or from the Chief
 /// (`continue_agent_run`'s `note`).
 struct ContinueNote {
     /// Who wrote it: the comment's author.
@@ -739,13 +739,13 @@ pub async fn continue_with_note(st: &AppState, run_id: &str, note: Option<String
     continue_inner(st, run_id, bin_override, false, note).await
 }
 
-/// The Team Lead's Continue after an answer (`continue_agent_run`): also a run that ended asking for a decision
+/// The Chief's Continue after an answer (`continue_agent_run`): also a run that ended asking for a decision
 /// (`needs_decision`) resumes, told what was written on the card since it ended.
 pub async fn continue_answered(st: &AppState, run_id: &str) -> Result<(String, tokio::task::JoinHandle<RunSummary>), String> {
     continue_inner(st, run_id, None, true, None).await
 }
 
-/// `continue_answered` with the Team Lead's note (`continue_agent_run`'s `note`), from `lead`: saved on the card as its
+/// `continue_answered` with the Chief's note (`continue_agent_run`'s `note`), from `lead`: saved on the card as its
 /// comment and told to the agent like a person's note. On a run that asked for a decision, the note counts as an answer
 /// written on the card.
 pub async fn continue_answered_with_note(st: &AppState, run_id: &str, lead: &str, note: Option<String>)
@@ -755,7 +755,7 @@ pub async fn continue_answered_with_note(st: &AppState, run_id: &str, lead: &str
 }
 
 /// "Run this for me", Done, continue (GA-31): you ran the commands the card's latest run asked you to run (`run_for_me`
-/// on its `needs_decision` result). That run continues, like the Team Lead's Continue after an answer, with your note that
+/// on its `needs_decision` result). That run continues, like the Chief's Continue after an answer, with your note that
 /// the commands were run (saved on the card as your comment), so the agent checks that they worked and carries on. A
 /// hold on the card is cleared.
 pub async fn continue_after_run_for_me(st: &AppState, task_id: &str) -> Result<(String, tokio::task::JoinHandle<RunSummary>), String> {
@@ -774,8 +774,8 @@ pub fn ran_for_me_note(commands: &[String]) -> String {
     format!("Done: I ran {what} you asked me to run.\n\n```sh\n{}\n```\n\nCheck that {worked}, then carry on.", commands.join("\n"))
 }
 
-/// The Team Lead answered the question the run `run_id` ended with (GA-70, `ask_lead`): that run continues with the answer
-/// as the Team Lead's note, like `continue_answered_with_note`. The error says whether the start only has to wait (true:
+/// The Chief answered the question the run `run_id` ended with (GA-70, `ask_lead`): that run continues with the answer
+/// as the Chief's note, like `continue_answered_with_note`. The error says whether the start only has to wait (true:
 /// "Runs at once" is full, the agent is paused or over its budget, the card's run is starting) or can't work (false).
 pub(crate) async fn continue_for_question(st: &AppState, run_id: &str, lead: &str, answer: &str)
     -> Result<(String, tokio::task::JoinHandle<RunSummary>), (bool, String)> {
@@ -807,7 +807,7 @@ async fn continue_with(st: &AppState, run_id: &str, bin_override: Option<String>
     }
     let answer = if asked {
         let since = run.ended_at.unwrap_or(run.created_at);
-        // The Team Lead's comment that asked you (GA-70) is told to the agent with the rest, but it is no answer.
+        // The Chief's comment that asked you (GA-70) is told to the agent with the rest, but it is no answer.
         let asking = run.lead.as_ref().and_then(|l| l.comment_id.clone());
         let said: Vec<(bool, String)> = comments::list(&st.db, &task_id).unwrap_or_default().into_iter()
             .filter(|c| c.created_at > since && c.run_id.as_deref() != Some(run_id))
@@ -903,14 +903,15 @@ async fn open_worktree(st: &AppState, project: &Project, task: &Task, repo: &Pat
 
 fn open_worktree_now(st: &AppState, project: &Project, task: &Task, repo: &Path, start: &str) -> Result<worktree::Worktree, StartError> {
     let base_dir = st.data_dir.join("worktrees").join(&project.key);
-    let has_own = base_dir.join(&task.identifier).exists()
-        || worktree::worktree_of(repo, &worktree::branch_name(&task.identifier, &task.title)).ok().flatten().is_some();
+    // the card's own branch when it has one (a gizai/ one from before 0.17.0 stays), else a new hersir/ one (GA-249)
+    let branch = worktree::card_branch(task.branch.as_deref(), &task.identifier, &task.title);
+    let has_own = base_dir.join(&task.identifier).exists() || worktree::worktree_of(repo, &branch).ok().flatten().is_some();
     let taken = if has_own { None } else {
         crate::worktrees::take_over(st, project, task, repo, &base_dir, start, crate::worktrees::BUILD_LIMIT)
     };
     let wt = match taken {
         Some(w) => w,
-        None => worktree::ensure(repo, &base_dir, &task.identifier, &task.title, start).map_err(|e| StartError::Card(e.to_string()))?,
+        None => worktree::ensure_on(repo, &base_dir, &task.identifier, &branch, start).map_err(|e| StartError::Card(e.to_string()))?,
     };
     if wt.created {
         worktree::mark_unprepared(&wt.path, wt.reused.as_ref().map(|r| r.head.as_str())).map_err(|e| StartError::Card(e.to_string()))?;
@@ -1049,7 +1050,7 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
             return Err(StartError::Other(format!("{} is archived: restore it first", t.identifier)));
         }
         // GA-228: nor while it builds on a card that isn't merged yet. It only waits: the queue takes it once that card
-        // is merged (Run, Continue and the Team Lead's start_agent_run and continue_agent_run say so).
+        // is merged (Run, Continue and the Chief's start_agent_run and continue_agent_run say so).
         if !t.waits_for.is_empty() {
             return Err(StartError::Wait(builds_on::waits_message(&t.identifier, &t.waits_for)));
         }
@@ -1128,6 +1129,13 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
     if let Some(todo) = worktree::unprepared(&wt.path) {
         prepare_worktree(st, Some(&agent_id), &task, &project, Path::new(&repo), &wt, todo).await?;
     }
+    // GA-263: Gemini loads the worktree's .gemini/ (settings that start MCP servers, hooks and other programs), and runs
+    // headless only with --skip-trust: in a worktree with one it doesn't start, and the card goes on hold "blocked", as
+    // the agent. Checked after the preparation, which may copy files in, at every start, Continue too.
+    if spec.kind == Kind::Gemini && agent_cli::gemini_folder(&wt.path) {
+        hold_card(st, &agent_id, task_id, agent_cli::GEMINI_FOLDER);
+        return Err(StartError::Held(agent_cli::GEMINI_FOLDER.into()));
+    }
     let behind = if project.repo_url.is_none() || wt.created { 0 } else {
         let (dir, from) = (wt.path.clone(), start.clone());
         tokio::task::spawn_blocking(move || worktree::behind(&dir, &from).unwrap_or(0)).await.unwrap_or(0)
@@ -1151,7 +1159,7 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
         None => log_dir.join(format!("{session}.jsonl")),
     };
     let wt_path = wt.path.to_string_lossy().to_string();
-    // A Continue (a person's, the Team Lead's, Done, continue) is recorded as `nudge`. Gizai's own nudge is too, marked
+    // A Continue (a person's, the Chief's, Done, continue) is recorded as `nudge`. Gizai's own nudge is too, marked
     // nudged (`create_nudge`), and reads as `result_nudge`.
     let db_trigger = if resume.is_some() { "nudge" } else { trigger };
     let log = log_path.to_string_lossy();
@@ -1168,7 +1176,7 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
             Err(e) => eprintln!("gizai: saving the note for run {run_id} as a comment failed: {e}"),
         }
     }
-    // GA-70: the card's last question went to you from the Team Lead, and you answered on the card: the Team Lead keeps
+    // GA-70: the card's last question went to you from the Chief, and you answered on the card: the Chief keeps
     // your answer in memory, linked to the card.
     crate::ask_lead::learn(st, task_id, &run_id);
 
@@ -1244,6 +1252,13 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
         notes.push(format!("Left out of {}'s allowed commands: {}. Web search, fetching pages and the CLI's other tools come only from \
                             their switches (agent form → Tools).", agent.name, by_switch.join(", ")));
     }
+    // GA-262: an entry saved before each had to be one rule, like `Bash(ls:*) Bash(*)`, never reaches the CLI: it would read
+    // it as more than one rule.
+    let (allowed_tools, not_one): (Vec<String>, Vec<String>) = allowed_tools.into_iter().partition(|t| team::one_rule(t));
+    for t in &not_one {
+        notes.push(format!("Left out of {}'s allowed commands: {} Fix it in the agent form (Permissions → Allowed commands).", agent.name,
+                           team::not_one_rule(t)));
+    }
     let permission_mode = agent.permission_mode.clone().unwrap_or_default();
     // "How this run works" ends every task prompt, new and continued.
     let rules = prompt::RunRules {
@@ -1259,6 +1274,8 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
     let mut browser_in_run = false;
     // The servers Claude Code signs in to: a needs-auth in the init line then says to sign Claude Code in, not Gizai.
     let mut claude_code_signs_in: Vec<String> = vec![];
+    // The names of the run's own MCP servers: Gemini starts no other (GA-263), and has none for now.
+    let mut mcp_servers: Vec<String> = vec![];
     if agent.tools.servers_on().next().is_some() {
         if spec.kind == Kind::ClaudeCode {
             let (st2, a2, cap) = (st.clone(), agent.clone(), std::time::Duration::from_secs(limits.minutes * 60));
@@ -1274,6 +1291,7 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
                         allowed_tools.extend(allow);
                         mcp_refused = refuse;
                         mcp_config = Some(path);
+                        mcp_servers = servers.iter().map(|s| s.name.clone()).collect();
                         claude_code_signs_in = crate::mcp_servers::claude_code_names(st, &servers);
                     }
                     Err(e) => notes.push(format!("Couldn't write this run's MCP config, so it goes without its MCP servers: {e}")),
@@ -1323,9 +1341,18 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
         Some(r) => prompt::continue_prompt_with(&r.reason, note.as_ref(), Some(limits)),
         None => prompt::with_memory(&prompt::build_from(&ctx, &instructions, fetched_from(&project)), &memory.text),
     }, shots.as_ref().map(|s| &s.section)), &rules);
+    // A worktree's commits go to the repository's git folder, outside the worktree. GA-263: Codex's sandbox may write only
+    // the parts of it that a commit writes (`worktree::commit_dirs`), never its config or hooks. With rerere on in your
+    // git config, every commit would make the git folder's rr-cache, which the sandbox refuses: there the run's own git
+    // goes without rerere (a writable rr-cache would let an agent leave a conflict resolution for your own merges).
+    let mut git_config = git_config;
     let writable_dirs: Vec<String> = if spec.kind == Kind::Codex {
+        if permission_mode != "danger-full-access" {
+            git_config.push(("rerere.enabled".into(), "false".into()));
+        }
         let dir = wt.path.clone();
-        tokio::task::spawn_blocking(move || git_common_dir(&dir)).await.ok().flatten().into_iter().collect()
+        tokio::task::spawn_blocking(move || worktree::commit_dirs(&dir)).await.ok().and_then(Result::ok).unwrap_or_default()
+            .into_iter().map(|d| d.to_string_lossy().to_string()).collect()
     } else {
         vec![]
     };
@@ -1334,13 +1361,12 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
         prompt: if untrusted { format!("{base_prompt}\n\n{}", gizai_agents::mcp_run::UNTRUSTED) } else { base_prompt },
         permission_mode, allowed_tools, mcp_config: mcp_config.clone(), disallowed_tools: mcp_refused, web, slash_commands,
         model: agent.model.clone(), max_budget_usd: get_settings(st).max_run_usd, effort: agent.effort.clone(),
-        // A worktree's commits go to the repository's git folder, outside the worktree: Codex's sandbox must be able to write it.
-        writable_dirs,
+        writable_dirs, mcp_servers,
         folders, temp_dir, git_config,
     };
     // GA-202: the CLI and everything it starts run in the slice of the agent runs, under their memory limit (Linux).
     let mut exec = process::Exec { slice: st.run_memory.slice(), ..agent_cli::task_exec(&spec, &run) };
-    // GA-182: the agent's own commands find the preview (GIZAI_PREVIEW_PORT, _URL and _DIR; not PORT)
+    // GA-182: the agent's own commands find the preview (HERSIR_PREVIEW_PORT, _URL and _DIR, and the GIZAI_ ones; not PORT)
     if let Some(s) = &shots {
         exec.env.extend(s.env.iter().cloned());
     }
@@ -1539,14 +1565,6 @@ pub(crate) fn web_for_run(agent: &team::Member, kind: Kind, cli_name: &str) -> (
     (web, notes)
 }
 
-/// The repository's shared git folder for a worktree (where its commits go), as an absolute path.
-fn git_common_dir(wt: &Path) -> Option<String> {
-    let out = gizai_agents::os::command("git").args(["rev-parse", "--path-format=absolute", "--git-common-dir"]).current_dir(wt)
-        .stdin(std::process::Stdio::null()).output().ok().filter(|o| o.status.success())?;
-    let dir = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    (!dir.is_empty()).then_some(dir)
-}
-
 /// Saves the commit the run's worktree `dir` ended at (`runs.head_sha`). With the one it started at, it gives the
 /// commits the run made (`commits`). Only a worktree counts: never the commit of a repository around it.
 pub(crate) fn record_head(db: &gizai_core::db::Db, run_id: &str, dir: &Path) {
@@ -1722,7 +1740,7 @@ async fn finish_run(st: &AppState, run_id: &str, task_id: &str, dir: &Path, ran:
         match workflow::apply_outcome_with(&st.db, run_id, gated, asks) {
             Ok(g) => {
                 moved = g.moved_to.is_some();
-                // GA-70: the Team Lead took the question; it answers (and continues this session) or asks you.
+                // GA-70: the Chief took the question; it answers (and continues this session) or asks you.
                 if let Some(lead) = &g.lead {
                     crate::ask_lead::start(st, run_id, lead);
                 }

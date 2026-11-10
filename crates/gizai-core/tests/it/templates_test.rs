@@ -171,10 +171,11 @@ fn save_writes_format_1_with_every_column_and_every_agent_field() {
     }).unwrap();
 
     let dir = tempfile::tempdir().unwrap();
-    let p = dir.path().join("My team.gizai-team.json");
+    let p = dir.path().join("My team.hersir-team.json");
     templates::save(&db, &s.team_id, &p).unwrap();
     let text = std::fs::read_to_string(&p).unwrap();
-    assert!(text.starts_with("{\n  \"format\": \"gizai-team\",\n  \"format_version\": 1,\n"), "indented JSON:\n{}", &text[..120]);
+    // GA-249: format hersir-team, still format version 1
+    assert!(text.starts_with("{\n  \"format\": \"hersir-team\",\n  \"format_version\": 1,\n"), "indented JSON:\n{}", &text[..120]);
     let v: Value = serde_json::from_str(&text).unwrap();
     assert_eq!(keys(&v), sorted(&TEAM_FIELDS));
     let at: Vec<usize> = TEAM_FIELDS.iter().map(|f| text.find(&format!("\n  \"{f}\": ")).unwrap_or_else(|| panic!("{f}"))).collect();
@@ -201,7 +202,7 @@ fn save_writes_format_1_with_every_column_and_every_agent_field() {
     // Every agent field the card lists, and nothing else.
     let agents = v["agents"].as_array().unwrap();
     assert_eq!(agents.iter().map(|a| a["name"].as_str().unwrap()).collect::<Vec<_>>(),
-               ["Team Lead", "Backend Agent", "Frontend Agent", "QA Agent", "DevOps Agent"], "in the order they joined");
+               ["Chief", "Backend Agent", "Frontend Agent", "QA Agent", "DevOps Agent"], "in the order they joined");
     for a in agents {
         assert_eq!(keys(a), sorted(&AGENT_FIELDS), "{}", a["name"]);
     }
@@ -214,7 +215,7 @@ fn save_writes_format_1_with_every_column_and_every_agent_field() {
     assert_eq!((&backend["cards_at_once"], &backend["monthly_budget_usd"], &backend["use_memory"]), (&json!(3), &json!(25.5), &json!(false)));
     assert!(text.contains("\"monthly_budget_usd\": 25.5,") && text.contains("\"monthly_budget_usd\": 25,"), "25.5 as 25.5, 25 as 25");
     assert_eq!(a("QA Agent")["monthly_budget_usd"], json!(25));
-    assert_eq!((&a("Team Lead")["chat"], &backend["chat"]), (&json!(true), &json!(false)));
+    assert_eq!((&a("Chief")["chat"], &backend["chat"]), (&json!(true), &json!(false)));
     let frontend = a("Frontend Agent");
     assert_eq!(frontend["mcp_servers"], json!([{"name": "figma", "tools_off": ["get_image"]}]), "by name; the browser is its own switch");
     assert_eq!((&frontend["browser"], &frontend["web_search"], &frontend["web_fetch"], &frontend["fetch_domains"]),
@@ -267,7 +268,7 @@ fn the_file_holds_no_folders_server_settings_cli_ids_people_cards_or_status() {
     assert_eq!(qa_file.cli, "claude_code", "the CLI's kind, not its id or account");
     assert_eq!(f.agents.iter().find(|a| a.name == "Backend Agent").unwrap().mcp_servers, [FileServer { name: "figma".into(), tools_off: vec![] }]);
     // The archived Frontend Agent is left out, from the agents and from every column; the paused DevOps Agent is in.
-    assert_eq!(f.agents.iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), ["Team Lead", "Backend Agent", "QA Agent", "DevOps Agent"]);
+    assert_eq!(f.agents.iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), ["Chief", "Backend Agent", "QA Agent", "DevOps Agent"]);
     assert!(f.columns.iter().all(|c| !c.agents.iter().any(|a| a == "Frontend Agent")), "{:?}", f.columns);
     assert_eq!(f.columns.iter().find(|c| c.name == "Deploy").unwrap().agents, ["DevOps Agent"]);
 }
@@ -339,7 +340,7 @@ fn the_builtin_software_team_is_a_new_installs_first_team() {
     let (db, s) = install();
     let first = templates::export(&db, &s.team_id).unwrap();
     let b = templates::builtin("software").unwrap();
-    assert_eq!((b.format.as_str(), b.format_version, b.name.as_str()), ("gizai-team", 1, "Software team"));
+    assert_eq!((b.format.as_str(), b.format_version, b.name.as_str()), ("hersir-team", 1, "Software team"));
     assert_eq!(b.agents, first.agents, "the same agents, instructions, commands and settings");
     assert_eq!(b.columns, first.columns, "the same columns, with their agents");
     assert_eq!((b.labels, b.branches), (first.labels, first.branches));
@@ -359,13 +360,13 @@ fn the_builtin_comes_in_active_on_its_columns_and_the_team_lead_keeps_chat() {
     assert_eq!(plan.team_name, "Software team");
     assert!(plan.agents.iter().all(|a| a.active), "a built-in's agents are active");
     assert_eq!(plan.agents.iter().map(|a| (a.name.as_str(), a.file_name.as_str())).collect::<Vec<_>>(), [
-        ("Team Lead", "Team Lead"),
+        ("Chief", "Chief"),
         ("Backend Agent (Software team)", "Backend Agent"),
         ("Frontend Agent (Software team)", "Frontend Agent"),
         ("QA Agent (Software team)", "QA Agent"),
         ("DevOps Agent (Software team)", "DevOps Agent"),
-    ], "the Team Lead's name is free once yours is Master Chief");
-    assert_eq!(plan.notes, ["Your Team Lead stays Master Chief."]);
+    ], "the Chief's name is free once yours is Master Chief");
+    assert_eq!(plan.notes, ["Your Chief stays Master Chief."]);
     assert_eq!(plan.labels_added, Vec::<String>::new());
     assert!(plan.agents.iter().all(|a| a.extra_tools.is_empty() && a.missing_servers.is_empty() && a.cli_name == "Claude Code"
                                       && a.permission_mode == "acceptEdits"));
@@ -379,7 +380,7 @@ fn the_builtin_comes_in_active_on_its_columns_and_the_team_lead_keeps_chat() {
     assert_eq!(agent_names_on(&t, "Testing"), ["QA Agent (Software team)"]);
     assert_eq!(agent_names_on(&t, "Deploy"), ["DevOps Agent (Software team)"]);
     for (name, role) in seed::DEFAULT_AGENTS {
-        let m = member(&t, &if name == "Team Lead" { name.to_string() } else { format!("{name} (Software team)") });
+        let m = member(&t, &if name == seed::CHIEF { name.to_string() } else { format!("{name} (Software team)") });
         assert_eq!(m.status, "active", "{name}");
         assert_eq!(m.instructions_md.as_deref(), Some(seed::role_template(role).as_str()), "{name}");
         assert_eq!(m.allowed_tools, seed::role_tools(role), "{name}");
@@ -401,8 +402,8 @@ fn without_a_chat_agent_the_builtins_team_lead_gets_chat() {
     assert_eq!(plan.agents.iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), seed::DEFAULT_AGENTS.iter().map(|(n, _)| *n).collect::<Vec<_>>());
     let id = templates::import(&db, &s.you_id, &builtin(), &plan.team_name).unwrap();
     let chat = team::chat_agent(&db).unwrap().unwrap();
-    assert_eq!(chat.name, "Team Lead");
-    assert_eq!(member(&team::get(&db, &id).unwrap(), "Team Lead").actor_id, chat.actor_id);
+    assert_eq!(chat.name, "Chief");
+    assert_eq!(member(&team::get(&db, &id).unwrap(), "Chief").actor_id, chat.actor_id);
 }
 
 #[test]
@@ -443,7 +444,7 @@ fn export_then_import_from_the_saved_path_makes_the_same_team_and_the_first_one_
     let before = serde_json::to_value(team::get(&db, &s.team_id).unwrap()).unwrap();
 
     let dir = tempfile::tempdir().unwrap();
-    let p = dir.path().join(format!("{}.gizai-team.json", t.name));
+    let p = dir.path().join(format!("{}.hersir-team.json", t.name));
     templates::save(&db, &s.team_id, &p).unwrap();
     let plan = templates::preview(&db, &path(&p)).unwrap();
     assert_eq!(plan.team_name, format!("{} 2", t.name), "the team's name is taken: it gets a number");
@@ -463,7 +464,7 @@ fn export_then_import_from_the_saved_path_makes_the_same_team_and_the_first_one_
     let mut want = a.agents.clone();
     want[0].chat = false;
     assert_eq!(b.agents, want);
-    assert_eq!(plan.notes, ["Your Team Lead stays Team Lead."]);
+    assert_eq!(plan.notes, ["Your Chief stays Chief."]);
 
     let copy = team::get(&db, &id).unwrap();
     assert!(copy.members.iter().filter(|m| m.kind == "agent").all(|m| m.status == "paused"), "agents from a file come in paused");
@@ -474,6 +475,38 @@ fn export_then_import_from_the_saved_path_makes_the_same_team_and_the_first_one_
 }
 
 // ---- refusals ----
+
+#[test]
+fn the_format_is_hersir_team_and_a_gizai_team_file_from_before_0_17_still_makes_a_team() {
+    assert_eq!((templates::FORMAT, templates::OLD_FORMAT, templates::FORMAT_VERSION), ("hersir-team", "gizai-team", 1));
+    assert_eq!((templates::FILE_SUFFIX, templates::OLD_FILE_SUFFIX), (".hersir-team.json", ".gizai-team.json"));
+    let (db, s) = install();
+    assert_eq!(templates::export(&db, &s.team_id).unwrap().format, "hersir-team", "Export writes hersir-team");
+
+    let dir = tempfile::tempdir().unwrap();
+    for (format, file_name, team) in [("hersir-team", "Small.hersir-team.json", "From hersir"), ("gizai-team", "Small.gizai-team.json", "From gizai")] {
+        let mut t = small("Small team");
+        t.format = format.into();
+        let p = dir.path().join(file_name);
+        std::fs::write(&p, serde_json::to_string_pretty(&t).unwrap()).unwrap();
+        // from the file and from its text
+        let plan = templates::preview(&db, &path(&p)).unwrap_or_else(|e| panic!("{format}: {e}"));
+        assert_eq!(plan.team_name, "Small team", "{format}");
+        templates::preview(&db, &file(&t)).unwrap_or_else(|e| panic!("{format} as text: {e}"));
+        let id = templates::import(&db, &s.you_id, &path(&p), team).unwrap_or_else(|e| panic!("{format}: {e}"));
+        let made = team::get(&db, &id).unwrap();
+        assert_eq!(made.name, team);
+        assert_eq!(made.states.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), ["Backlog", "Build", "Check", "Done"], "{format}");
+        assert_eq!(agent_names_on(&made, "Build").len(), 1, "{format}: its agent too");
+    }
+    // anything else is still refused, a near miss too
+    for other in ["hersir", "Hersir-team", "hersir-team ", "gizai-backup", "hersir-backup"] {
+        let mut t = small("Odd");
+        t.format = other.into();
+        let e = templates::preview(&db, &file(&t)).unwrap_err().to_string();
+        assert!(e.contains("isn't a Hersir team template"), "{other}: {e}");
+    }
+}
 
 #[test]
 fn each_refusal_says_why_and_makes_nothing() {
@@ -709,7 +742,7 @@ fn with_a_chat_agent_there_the_files_chat_agent_comes_without_chat_or_the_board_
     boss.board_check_minutes = Some(30);
     f.agents.push(boss.clone());
     let plan = templates::preview(&db, &file(&f)).unwrap();
-    assert_eq!(plan.notes, ["Your Team Lead stays Master Chief."]);
+    assert_eq!(plan.notes, ["Your Chief stays Master Chief."]);
     let t = team::get(&db, &templates::import(&db, &s.you_id, &file(&f), "Small team").unwrap()).unwrap();
     let b = member(&t, "Boss");
     assert_eq!((b.chat_enabled, b.board_check_minutes), (false, None));
@@ -843,8 +876,39 @@ fn a_source_holds_one_template_and_a_new_team_without_one_works_as_before() {
 fn the_format_page_describes_every_field_of_format_1() {
     let doc = include_str!("../../../../docs/team-template-format.md");
     assert!(doc.contains("This template needs a newer version of the app."));
-    assert!(doc.contains(".gizai-team.json"));
+    assert!(doc.contains(".hersir-team.json"), "GA-249");
+    assert!(doc.contains(".gizai-team.json"), "and the name before 0.17.0, still read");
+    assert!(doc.contains("`hersir-team`") && doc.contains("`gizai-team`"));
     for field in TEAM_FIELDS.iter().chain(&COLUMN_FIELDS).chain(&AGENT_FIELDS).chain(&["tools_off", "key", "roles"]) {
         assert!(doc.contains(&format!("`{field}`")), "docs/team-template-format.md doesn't name `{field}`");
     }
+}
+
+// ---- GA-262: one rule per allowed command ----
+
+#[test]
+fn a_template_with_an_allowed_command_that_isnt_one_rule_is_refused_and_export_leaves_an_old_one_out() {
+    let (db, s) = install();
+    for bad in ["Bash(ls:*) Bash(*)", "Bash(a) b", "Bash(a,b)", "Bash(a(b))"] {
+        let mut t = small("Small team");
+        t.agents[0].allowed_tools.push(bad.into());
+        let before = counts(&db);
+        let e = templates::preview(&db, &file(&t)).unwrap_err().to_string();
+        assert_eq!(e, format!("Builder's allowed commands: {bad} isn't one rule: write each command as its own entry, like Bash(npm test:*)."));
+        let e = templates::import(&db, &s.you_id, &file(&t), "Refused").unwrap_err().to_string();
+        assert!(e.contains(&team::not_one_rule(bad)), "{bad}, import: {e}");
+        assert_eq!(counts(&db), before, "{bad} makes nothing");
+    }
+    // An agent saved before each entry had to be one rule: export leaves that entry out (as runs do), keeps the rest, and the
+    // file imports again.
+    let t = team::get(&db, &s.team_id).unwrap();
+    let be = member(&t, "Backend Agent").actor_id.clone();
+    let old = [seed::role_tools("backend"), strs(&["Bash(ls:*) Bash(*)", "Bash(terraform plan:*)"])].concat();
+    sql(&db, "UPDATE agent_configs SET allowed_tools_json=?2 WHERE actor_id=?1", &[&be, &serde_json::to_string(&old).unwrap()]);
+    assert!(team::agent(&db, &be).unwrap().allowed_tools.contains(&"Bash(ls:*) Bash(*)".to_string()), "saved as before GA-262");
+    let f = templates::export(&db, &s.team_id).unwrap();
+    let tools = &f.agents.iter().find(|a| a.name == "Backend Agent").unwrap().allowed_tools;
+    assert!(!tools.iter().any(|t| t.contains("Bash(*)")), "{tools:?}");
+    assert!(tools.contains(&"Bash(terraform plan:*)".to_string()) && tools.contains(&"Bash(git status:*)".to_string()), "{tools:?}");
+    assert!(templates::preview(&db, &file(&f)).is_ok(), "the exported file imports");
 }
