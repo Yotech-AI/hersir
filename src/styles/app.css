@@ -433,6 +433,10 @@ a.member:hover { border-color: var(--line-2); }
 .update-notice.failed .icon { color: var(--danger); }
 .update-error { color: var(--danger); font-size: var(--fs-xs); line-height: 1.4; overflow-wrap: anywhere; }
 .update-failed { display: flex; flex-direction: column; gap: 6px; }
+/* a package's update command (GA-200), with Copy beside it */
+.update-command { display: flex; align-items: center; gap: 8px; }
+.update-command code { flex: 1; min-width: 0; padding: 5px 9px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--raised);
+  font-size: var(--fs-sm); white-space: pre-wrap; overflow-wrap: anywhere; }
 /* a restore that is ready, and how it went: in the sidebar a long reason scrolls, so the company pages stay in sight */
 .restore-note { display: flex; align-items: flex-start; gap: 8px; padding: 6px 10px; border: 1px solid var(--line-2); border-radius: var(--radius);
   background: var(--raised); color: var(--text); font-size: var(--fs); line-height: 1.4; overflow-wrap: anywhere; }

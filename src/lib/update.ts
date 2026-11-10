@@ -28,7 +28,25 @@ export function notice(s: UpdateStatus): Notice | null {
   if (!s.available) return null;
   const v = s.available.version;
   if (job?.step === "failed" && job.version === v) return { kind: "failed", version: v, text: `Update to ${v} failed` };
-  return { kind: "offer", version: v, text: `Update to ${v}`, canInstall: !s.cannotInstall };
+  // a package's Hersir doesn't update itself (GA-200): the notice only says a release is out, Settings says how
+  return { kind: "offer", version: v, text: s.package ? `Hersir ${v} is out` : `Update to ${v}`, canInstall: !s.cannotInstall };
+}
+
+/** Settings → Updates' text for a Hersir from a package manager ("aur", "homebrew", "scoop" or another word). */
+export function packageText(pkg: string): string {
+  const who = pkg === "aur" ? "the AUR, so yay" : pkg === "homebrew" ? "Homebrew, so brew" : pkg === "scoop" ? "Scoop, so scoop"
+    : "a package, so its package manager";
+  return `Hersir came from ${who} updates it, not Hersir itself. Hersir still asks GitHub for new releases and tells you when one is out.`;
+}
+
+/** The hint under a package's update command: how soon its package follows a release. Null for another package. */
+export function packageHint(pkg: string): string | null {
+  switch (pkg) {
+    case "aur": return "The AUR package follows each release, usually on the same day.";
+    case "homebrew": return "The formula in yotech-ai/tap follows each release, usually on the same day.";
+    case "scoop": return "The Scoop bucket follows each release, usually on the same day.";
+    default: return null;
+  }
 }
 
 /** Where an update is, in a few words: "Building 0.1.6…". */

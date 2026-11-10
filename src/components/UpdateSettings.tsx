@@ -1,10 +1,11 @@
 // Settings → Updates: this version and what the release check found, the update (its steps, why it failed, the
-// restart), and Check for new releases (on or off) with Check now.
+// restart), and Check for new releases (on or off) with Check now. A Hersir from a package manager (AUR, Homebrew, Scoop)
+// doesn't update itself: it says so, and shows its package's update command with Copy (GA-200).
 import { useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { CircleArrowUp, CircleCheck, CircleMinus, CircleX, ExternalLink, LoaderCircle, RefreshCw, Square } from "lucide-react";
+import { CircleArrowUp, CircleCheck, CircleMinus, CircleX, Copy, ExternalLink, LoaderCircle, RefreshCw, Square } from "lucide-react";
 import { checkForUpdates, setUpdateAutoCheck, startUpdate, stopUpdate } from "../api";
-import { canStop, checkLine, isRunning, stepText, type CheckMark } from "../lib/update";
+import { canStop, checkLine, isRunning, packageHint, packageText, stepText, type CheckMark } from "../lib/update";
 import { useUpdate } from "../lib/useUpdate";
 import type { UpdateStatus } from "../types";
 import { Field, FormSection } from "./Form";
@@ -23,8 +24,10 @@ export function UpdateSettings() {
   const job = s.job;
   const release = s.available;
   const update = () => release && act(startUpdate(release.version));
+  const command = s.package ? s.updateCommand : null;
+  const commandHint = s.package && command ? packageHint(s.package) : null;
   return (
-    <FormSection title="Updates" text="Hersir updates from its signed releases on GitHub. An update checks the release's signature, downloads its ready-made build for your system in the background (or builds it from source when there is none), backs up your data, installs it and offers a restart. If a step fails, the installed version keeps working.">
+    <FormSection title="Updates" text={s.package ? packageText(s.package) : "Hersir updates from its signed releases on GitHub. An update checks the release's signature, downloads its ready-made build for your system in the background (or builds it from source when there is none), backs up your data, installs it and offers a restart. If a step fails, the installed version keeps working."}>
       <Field label="Version" wide>
         <div className={`gh-line ${line.mark === "new" ? "ok" : line.mark}`}><Mark className="icon" /><span>Hersir {s.current}. {line.text}</span></div>
         {release?.url?.startsWith("https://") && (
@@ -67,7 +70,16 @@ export function UpdateSettings() {
                 <div className="gh-line skipped"><CircleMinus className="icon" /><span>The update to {job.version} was stopped. Hersir {s.current} is still installed.</span></div>
               )}
               {release && (s.cannotInstall
-                ? <div className="gh-line skipped"><CircleMinus className="icon" /><span>{s.cannotInstall}</span></div>
+                ? <>
+                  <div className="gh-line skipped"><CircleMinus className="icon" /><span>{s.cannotInstall}</span></div>
+                  {command && (
+                    <div className="update-command">
+                      <code className="mono">{command}</code>
+                      <button className="btn ghost sm" onClick={() => navigator.clipboard?.writeText(command).catch(() => {})} title="Copy the command"><Copy className="icon" />Copy</button>
+                    </div>
+                  )}
+                  {commandHint && <span className="hint">{commandHint}</span>}
+                </>
                 : <div><button className="btn primary" onClick={update}><CircleArrowUp className="icon" />{job?.step === "failed" && job.version === release.version ? "Try again" : `Update to ${release.version}`}</button></div>)}
             </>
           )}
