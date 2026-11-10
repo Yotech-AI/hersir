@@ -126,9 +126,11 @@ Hersir runs the coding CLIs installed on Windows itself, like `claude.exe` or np
 
 If PowerShell won't run scripts, start these the way the block above does: `powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Check`. The one line needs no such change: it starts `install.ps1` that way itself.
 
-## Not signed
+## Signatures
 
-Hersir isn't signed yet: there is no Apple Developer account or Windows certificate until Hersir has paid features. A build made on your own computer isn't a download, so Gatekeeper and SmartScreen shouldn't stop it. If they still do:
+Every release of Hersir is signed with Hersir's own release key, and the one-line install and Update check that signature before anything of the release runs: a release without it, or with one that doesn't check, isn't installed ([how a release is signed](RELEASING.md#making-a-release), step 5).
+
+Hersir has no Apple or Microsoft signature yet: there is no Apple Developer account or Windows certificate until Hersir has paid features. A build made on your own computer isn't a download, so Gatekeeper and SmartScreen shouldn't stop it. If they still do:
 
 - macOS: System Settings → Privacy & Security → Open Anyway, or `xattr -dr com.apple.quarantine ~/.local/lib/hersir/Hersir.app`;
 - Windows: More info → Run anyway.
