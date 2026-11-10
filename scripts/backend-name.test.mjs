@@ -79,12 +79,13 @@ describe("the name in the backend's texts (GA-232)", () => {
     expect(lib).toContain('MenuItem::with_id(app, "quit", "Quit Hersir completely", true, None::<&str>)');
     expect(lib).toContain('.tooltip("Hersir")');
     expect(lib).toContain('TrayIconBuilder::with_id("gizai")');
-    expect(lib).toContain('pub const APP_ID: &str = "ai.gizai.app";');
+    // GA-248: the app id is dev.hersir.app, and the notifications use install.sh's hersir icon and desktop entry
+    expect(lib).toContain('pub const APP_ID: &str = "dev.hersir.app";');
     const notes = read("src-tauri/src/notifications.rs");
     expect(notes.match(/appname\("Hersir"\)/g)).toHaveLength(2);
     expect(notes).not.toContain('appname("Gizai")');
-    expect(notes).toContain('.icon("gizai")');
-    expect(notes).toContain('Hint::DesktopEntry("gizai".into())');
+    expect(notes).toContain('.icon("hersir")');
+    expect(notes).toContain('Hint::DesktopEntry("hersir".into())');
   });
 
   it("with GA-233 in, the app bundle and the window title say Hersir too, and the gizai program stays", () => {

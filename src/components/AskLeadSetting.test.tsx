@@ -41,16 +41,16 @@ function checkbox(on: boolean | null): { checked: boolean; disabled: boolean; on
 
 beforeEach(() => { queue.length = 0; sets.length = 0; said.length = 0; api.setAskLeadEnabled.mockReset(); });
 
-describe("Settings → Runs → Ask the Team Lead first (GA-70)", () => {
+describe("Settings → Runs → Ask the Chief first (GA-70, GA-254)", () => {
   it("is on, and says what always comes to you", () => {
     const html = render(true);
-    expect(html).toContain('<input type="checkbox" checked=""/>Ask the Team Lead first');
-    expect(html).toContain("An agent that needs a decision asks the Team Lead first");
+    expect(html).toContain('<input type="checkbox" checked=""/>Ask the Chief first');
+    expect(html).toContain("An agent that needs a decision asks the Chief first");
     expect(html).toContain("Money, scope, deadlines, client messages, security and deleting always come to you.");
   });
   it("says what off means when it is off", () => {
     const html = render(false);
-    expect(html).toContain('<input type="checkbox"/>Ask the Team Lead first');
+    expect(html).toContain('<input type="checkbox"/>Ask the Chief first');
     expect(html).toContain("Off: an agent that needs a decision puts its card in your Inbox at once.");
   });
   it("shows on while it loads, but can't be switched yet", () => {

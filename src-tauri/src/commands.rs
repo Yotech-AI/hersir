@@ -724,6 +724,25 @@ pub async fn list_chat_threads(st: State<'_, AppState>, limit: Option<usize>) ->
 pub async fn get_chat_thread(st: State<'_, AppState>, thread_id: String) -> R<gizai_core::chat::ChatThread> {
     off(&st, move |st| gizai_core::chat::get_thread(&st.db, &thread_id).map_err(e)).await
 }
+/// Chat → Pinned (GA-257): the pinned chats, the most recently pinned first, also those older than the ones in Recent.
+#[tauri::command]
+pub async fn pinned_chats(st: State<'_, AppState>) -> R<Vec<gizai_core::chat::ChatThread>> {
+    off(&st, |st| gizai_core::chat::pinned_threads(&st.db).map_err(e)).await
+}
+/// Pin to the top on a chat: it shows under Pinned, at the top, until it is unpinned.
+#[tauri::command]
+pub async fn pin_chat(app: AppHandle, st: State<'_, AppState>, thread_id: String) -> R<()> {
+    off(&st, move |st| gizai_core::chat::set_pinned(&st.db, &thread_id, true).map_err(e)).await?;
+    changed(&app, "chat_pins");
+    Ok(())
+}
+/// Unpin on a chat: it leaves Pinned (and is in Recent again when it is one of the 30 newest).
+#[tauri::command]
+pub async fn unpin_chat(app: AppHandle, st: State<'_, AppState>, thread_id: String) -> R<()> {
+    off(&st, move |st| gizai_core::chat::set_pinned(&st.db, &thread_id, false).map_err(e)).await?;
+    changed(&app, "chat_pins");
+    Ok(())
+}
 /// Chat → Archive: the chats whose title or messages (yours and the Chief's) hold `query`; all of them for an empty one.
 #[tauri::command]
 pub async fn search_chat_threads(st: State<'_, AppState>, query: String) -> R<Vec<gizai_core::chat::ThreadHit>> {

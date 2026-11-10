@@ -2,12 +2,12 @@
 # by the release's own installer as someone would make it (install.sh --build-only, install.ps1 -BuildOnly). An archive
 # holds exactly the files install.sh --skip-build (install.ps1 -SkipBuild) installs from a build, at the paths the build
 # leaves them in the source:
-#   hersir-X.Y.Z-linux-x86_64.tar.gz   target/release/gizai and target/release/gizai-mcp
+#   hersir-X.Y.Z-linux-x86_64.tar.gz   target/release/hersir and target/release/hersir-mcp
 #   hersir-X.Y.Z-macos-arm64.tar.gz    the same, and target/release/bundle/macos/Hersir.app
-#   hersir-X.Y.Z-windows-x86_64.zip    target/release/gizai.exe and target/release/gizai-mcp.exe
+#   hersir-X.Y.Z-windows-x86_64.zip    target/release/hersir.exe and target/release/hersir-mcp.exe
 #   SHA256SUMS                         one line per archive, "<sha256>  <file name>", as sha256sum writes it
 # Each archive is checked before it counts: unpacked into a fresh checkout of the same commit, it installs with
-# --skip-build (-SkipBuild) into a scratch folder, and the installed gizai --version says the version.
+# --skip-build (-SkipBuild) into a scratch folder, and the installed hersir --version says the version.
 # - A published release: it builds the release's tag and attaches the four files to the release, with the workflow's
 #   own token, in the one job that may write. By hand, with a release's tag, it does the same for a release that exists
 #   (and replaces the builds it has).
@@ -189,9 +189,9 @@ jobs:
           out="$RUNNER_TEMP/builds/$ARCHIVE"
           if [ "$RUNNER_OS" = macOS ]; then
             COPYFILE_DISABLE=1 /usr/bin/tar --no-xattrs -czf "$out" \
-              target/release/gizai target/release/gizai-mcp target/release/bundle/macos/Hersir.app
+              target/release/hersir target/release/hersir-mcp target/release/bundle/macos/Hersir.app
           else
-            tar --owner=0 --group=0 --numeric-owner -czf "$out" target/release/gizai target/release/gizai-mcp
+            tar --owner=0 --group=0 --numeric-owner -czf "$out" target/release/hersir target/release/hersir-mcp
           fi
           tar -tzvf "$out"
           ls -l "$out"
@@ -209,7 +209,7 @@ jobs:
           $out = Join-Path $builds $env:ARCHIVE
           $zip = [System.IO.Compression.ZipFile]::Open($out, 'Create')
           try {
-            foreach ($p in @('gizai.exe', 'gizai-mcp.exe')) {
+            foreach ($p in @('hersir.exe', 'hersir-mcp.exe')) {
               $file = Join-Path $env:GITHUB_WORKSPACE "target\release\$p"
               [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $file, "target/release/$p", 'Optimal') | Out-Null
             }
@@ -226,43 +226,43 @@ jobs:
         run: git worktree add --detach "$RUNNER_TEMP/fresh" HEAD
 
       # ... with the archive unpacked into it, installs with its own install.sh --skip-build into a scratch folder, and
-      # the installed gizai says the version.
+      # the installed hersir says the version.
       - name: Check the archive (Linux, macOS)
         if: runner.os != 'Windows'
         shell: bash
         env:
           ARCHIVE: ${{ steps.version.outputs.archive }}
           VERSION: ${{ steps.version.outputs.version }}
-          GIZAI_PREFIX: ${{ runner.temp }}/scratch
+          HERSIR_PREFIX: ${{ runner.temp }}/scratch
           XDG_DATA_HOME: ${{ runner.temp }}/scratch/share
-          GIZAI_DATA_DIR: ${{ runner.temp }}/scratch/share/gizai
+          HERSIR_DATA_DIR: ${{ runner.temp }}/scratch/share/hersir
         run: |
           fresh="$RUNNER_TEMP/fresh"
           tar -xzf "$RUNNER_TEMP/builds/$ARCHIVE" -C "$fresh"
           /bin/bash "$fresh/install.sh" --skip-build
-          got="$("$GIZAI_PREFIX/bin/gizai" --version)" || { echo "$GIZAI_PREFIX/bin/gizai --version failed: $got"; exit 1; }
-          echo "gizai --version: $got"
-          if [ "$got" != "gizai $VERSION" ]; then echo "The installed gizai says $got, not gizai $VERSION."; exit 1; fi
+          got="$("$HERSIR_PREFIX/bin/hersir" --version)" || { echo "$HERSIR_PREFIX/bin/hersir --version failed: $got"; exit 1; }
+          echo "hersir --version: $got"
+          if [ "$got" != "hersir $VERSION" ]; then echo "The installed hersir says $got, not hersir $VERSION."; exit 1; fi
 
       # The same with install.ps1 -SkipBuild, in Windows PowerShell 5.1, which unpacks the zip with Expand-Archive.
-      # install.ps1 writes what the installed gizai.exe --version says into gizai-installed.txt.
+      # install.ps1 writes what the installed hersir.exe --version says into hersir-installed.txt.
       - name: Check the archive (Windows)
         if: runner.os == 'Windows'
         shell: powershell
         env:
           ARCHIVE: ${{ steps.version.outputs.archive }}
           VERSION: ${{ steps.version.outputs.version }}
-          GIZAI_PREFIX: ${{ runner.temp }}\scratch
-          GIZAI_DATA_DIR: ${{ runner.temp }}\scratch-data
+          HERSIR_PREFIX: ${{ runner.temp }}\scratch
+          HERSIR_DATA_DIR: ${{ runner.temp }}\scratch-data
         run: |
           $ProgressPreference = 'SilentlyContinue'
           $fresh = Join-Path $env:RUNNER_TEMP 'fresh'
           Expand-Archive -LiteralPath (Join-Path $env:RUNNER_TEMP "builds\$env:ARCHIVE") -DestinationPath $fresh
           powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $fresh 'install.ps1') -SkipBuild
           if ($LASTEXITCODE -ne 0) { 'install.ps1 -SkipBuild failed'; exit 1 }
-          $got = Get-Content -LiteralPath (Join-Path $env:GIZAI_PREFIX 'gizai-installed.txt')
-          "gizai --version: $got"
-          if ("$got" -ne "gizai $env:VERSION") { "The installed gizai.exe says $got, not gizai $env:VERSION."; exit 1 }
+          $got = Get-Content -LiteralPath (Join-Path $env:HERSIR_PREFIX 'hersir-installed.txt')
+          "hersir --version: $got"
+          if ("$got" -ne "hersir $env:VERSION") { "The installed hersir.exe says $got, not hersir $env:VERSION."; exit 1 }
 
       # The archive as the run's artifact, by its own name: for SHA256SUMS and the release, or for QA on a pull request.
       # Stored as it is: it is compressed already. A run that is run again replaces it.

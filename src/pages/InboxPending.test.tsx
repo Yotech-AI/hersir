@@ -1,6 +1,6 @@
-// GA-102, the Inbox: a chat with calls of the Team Lead's that wait for your approval heads it under From the Team Lead,
+// GA-102, the Inbox: a chat with calls of the Chief's that wait for your approval heads it under From the Chief,
 // labelled Approval with how many wait, whoever started the chat, and has no ×: it stays until you approved or discarded
-// each call in the chat. The Team Lead's own questions keep their ×. Rendered to HTML on the server: useData answers in
+// each call in the chat. The Chief's own questions keep their ×. Rendered to HTML on the server: useData answers in
 // TasksPage's order.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -36,10 +36,10 @@ describe("chats with calls that wait for your approval in the Inbox", () => {
     thread("asks", "Which date format?", { updatedAt: 9, kind: "question", waiting: true }),
     thread("quiet", "Just chatting", { updatedAt: 7 }),
   ]);
-  const section = html.slice(html.indexOf('aria-label="From the Team Lead"'));
+  const section = html.slice(html.indexOf('aria-label="From the Chief"'));
 
-  it("head the Inbox with the Team Lead's questions, newest first, and count in its total", () => {
-    expect(section).toContain("<h3>From the Team Lead</h3>");
+  it("head the Inbox with the Chief's questions, newest first, and count in its total", () => {
+    expect(section).toContain("<h3>From the Chief</h3>");
     expect(section.indexOf("Which date format?")).toBeLessThan(section.indexOf("Remember the release notes"));
     expect(section).not.toContain("Just chatting");
     expect(html).toMatch(/<b>Inbox<\/b><span class="faint">2<\/span>/);
@@ -47,22 +47,25 @@ describe("chats with calls that wait for your approval in the Inbox", () => {
 
   it("are labelled Approval with how many calls wait, open the chat, and have no ×", () => {
     const row = section.slice(section.indexOf('href="#/chat/mine"') - 200, section.indexOf("Remember the release notes") + 400);
-    expect(row).toContain('<span class="badge needs" title="2 calls of the Team Lead&#x27;s wait for your approval here">Approval</span> Remember the release notes');
+    expect(row).toContain('<span class="badge needs" title="2 calls of the Chief&#x27;s wait for your approval here">Approval</span> Remember the release notes');
     expect(row).toContain("2 to approve");
     expect(section).not.toContain('aria-label="Dismiss Remember the release notes"');
-    // the Team Lead's question keeps its ×
+    // the Chief's question keeps its ×
     expect(section).toContain('aria-label="Dismiss Which date format?"');
   });
 
   it("says one call in the singular", () => {
     const h = inbox([thread("one", "One thing", { updatedAt: 1, pendingActions: 1 })]);
     expect(h).toContain("1 to approve");
-    expect(h).toContain('title="A call of the Team Lead&#x27;s waits for your approval here"');
+    expect(h).toContain('title="A call of the Chief&#x27;s waits for your approval here"');
   });
 
   it("leave the Inbox once nothing waits", () => {
     const h = inbox([thread("done", "All decided", { updatedAt: 1, pendingActions: 0 })]);
-    expect(h).not.toContain('aria-label="From the Team Lead"');
+    expect(h).not.toContain('aria-label="From the Chief"');
     expect(h).toContain("the calls it waits for your OK on show up here");
+    // GA-254: the empty Inbox names the Chief
+    expect(h).toContain("Cards on hold, cards waiting for your review or deploy, the Chief&#x27;s questions and the calls it waits for your OK on show up here.");
+    expect(h).not.toContain("Team Lead");
   });
 });

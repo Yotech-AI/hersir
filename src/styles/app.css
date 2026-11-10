@@ -366,6 +366,25 @@ a.member:hover { border-color: var(--line-2); }
 .archive-row .snippet { color: var(--text-2); font-size: var(--fs-sm); line-height: 1.45; overflow-wrap: anywhere; }
 .archive-row .snippet .who { color: var(--text); font-weight: 600; }
 .archive-row mark { border-radius: 3px; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+/* GA-257: Pin to the top / Unpin beside a chat's link on the left and in the Archive, shown on hover and focus and always
+   on a pinned chat (a filled pin, crossed out on hover); the row stays lit while the pointer is on it. In the top bar it
+   always shows. */
+.th-row, .archive-item { position: relative; }
+.chat-threads .th-row > .th { padding-right: 38px; }
+.chat-threads .th-row:hover > .th:not(.on) { background: var(--hover); color: var(--text); }
+.th-row > .pin-btn { position: absolute; top: 50%; right: 6px; transform: translateY(-50%); }
+.archive-item > .archive-row { padding-right: 46px; }
+.archive-item:hover > .archive-row { background: var(--hover); }
+.archive-item > .pin-btn { position: absolute; top: 6px; right: 8px; }
+.pin-btn .icon { width: 14px; height: 14px; }
+.pin-btn .lucide-pin-off, .pin-btn.on:hover .lucide-pin, .pin-btn.on:focus-visible .lucide-pin { display: none; }
+.pin-btn.on:hover .lucide-pin-off, .pin-btn.on:focus-visible .lucide-pin-off { display: block; }
+.pin-btn.on .lucide-pin { fill: currentColor; }
+.pin-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.th-row > .pin-btn, .archive-item > .pin-btn { opacity: 0; transition: opacity .12s; }
+.th-row:hover > .pin-btn, .th-row:focus-within > .pin-btn, .th-row.pinned > .pin-btn,
+.archive-item:hover > .pin-btn, .archive-item:focus-within > .pin-btn, .archive-item.pinned > .pin-btn { opacity: 1; }
+@media (hover: none) { .th-row > .pin-btn, .archive-item > .pin-btn { opacity: 1; } }
 .org-panel { padding: 6px 0; background: var(--bg); }
 /* Branch names with × (shown on hover or focus; off while the branch has agents), Add branch, a dragged agent card. */
 .org-dept-name { display: inline-flex; align-items: center; gap: 2px; }
@@ -471,6 +490,7 @@ a.member:hover { border-color: var(--line-2); }
 .mcp-tool .mt-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mcp-tool .mt-switch { width: 15px; height: 15px; accent-color: var(--accent); margin: 0; }
 .mcp-tool .mt-summary { color: var(--text-2); font-size: var(--fs-sm); }
+.mcp-tool .mt-summary.warn { color: var(--warning); }
 .mcp-tool .mt-desc { white-space: pre-wrap; margin: 4px 0; }
 .mcp-tool .mt-params { margin: 4px 0; padding-left: 18px; font-size: var(--fs-sm); }
 .mcp-tool p { margin: 4px 0; font-size: var(--fs-sm); }

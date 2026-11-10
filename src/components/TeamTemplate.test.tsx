@@ -69,10 +69,10 @@ describe("the check of a template file", () => {
     const cards = parts(html, "tt-agent").map(text);
     expect(cards).toHaveLength(3);
     expect(cards[0]).toContain("Backend Agent (Mobile team 2) Backend Agent in the file Paused");
-    expect(cards[0]).toContain("Role backend CLI Claude Code Model opus Effort high Permission mode acceptEdits");
+    expect(cards[0]).toContain("Role Backend CLI Claude Code Model opus Effort high Permission mode acceptEdits");
     expect(cards[1]).not.toContain("in the file");
     expect(cards[1]).toContain("Model The CLI's default Effort The CLI's default");
-    expect(cards[2]).toContain("Role qa CLI Codex Model gpt-5 Effort medium Permission mode workspace-write");
+    expect(cards[2]).toContain("Role QA CLI Codex Model gpt-5 Effort medium Permission mode workspace-write");
   });
 
   it("shows the extra commands under their heading, highlighted, only for the agent that has them", () => {
@@ -125,6 +125,19 @@ describe("the check of the built-in Software team", () => {
     expect(html).not.toContain("Paused");
     expect(text(html)).toContain("No labels added.");
     expect(html).not.toContain('aria-label="Notes"');
+  });
+});
+
+describe("the check of the built-in Software team, with its Chief (GA-254)", () => {
+  // the built-in template's first agent: seed::DEFAULT_AGENTS' lead, with Chat on
+  const chief = { name: "Chief", fileName: "Chief", role: "lead", cliName: "Claude Code", model: null, effort: null, permissionMode: "acceptEdits",
+    extraTools: [], missingServers: [], active: true };
+  const cards = parts(renderToStaticMarkup(<TemplateCheck plan={{ ...builtin, agents: [chief, ...builtin.agents] }} fromFile={false} />), "tt-agent").map(text);
+
+  it("shows the lead role as Chief, not as its key lead", () => {
+    expect(cards[0]).toContain("Chief");
+    expect(cards[0]).toContain("Role Chief CLI Claude Code");
+    expect(cards[0]).not.toMatch(/\bRole lead\b/);
   });
 });
 

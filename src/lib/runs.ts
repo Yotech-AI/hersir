@@ -42,8 +42,8 @@ export function badgeOf(r: Run): { cls: string; text: string } {
   if (r.status === "cancelled") return { cls: "", text: "stopped" };
   if (r.status === "timed_out") return { cls: "warn", text: STATUS_TEXT.timed_out };
   // GA-70: a question the Team Lead has, or answered, doesn't need you (teal while it works on it).
-  if (r.outcome === "needs_decision" && (r.lead?.state === "asking" || r.lead?.state === "answering")) return { cls: "live", text: "With the Team Lead" };
-  if (r.outcome === "needs_decision" && r.lead?.state === "answered") return { cls: "ok", text: "Team Lead answered" };
+  if (r.outcome === "needs_decision" && (r.lead?.state === "asking" || r.lead?.state === "answering")) return { cls: "live", text: "With the Chief" };
+  if (r.outcome === "needs_decision" && r.lead?.state === "answered") return { cls: "ok", text: "Chief answered" };
   const ok = r.status === "succeeded" && r.outcome !== "no_result";
   const cls = r.outcome === "needs_decision" || r.outcome === "qa_fail" ? "needs" : ok ? "ok" : "fail";
   const text = r.trigger === "chat" && r.status === "succeeded" ? "answered" : (r.outcome ? OUTCOME_TEXT[r.outcome] : undefined) ?? STATUS_TEXT[r.status] ?? r.status;
@@ -91,14 +91,14 @@ const TRIGGER_TEXT: Record<string, string> = {
  *  "Team Lead escalated to you: <why>". */
 export function leadText(l: LeadAnswer): string {
   switch (l.state) {
-    case "asking": return "With the Team Lead";
-    case "answering": return "Team Lead answered; the agent carries on";
-    case "answered": return "Team Lead answered";
-    case "escalated": return `Team Lead escalated to you${l.reason ? `: ${l.reason}` : ""}`;
-    case "dropped": return "The Team Lead stopped: the card moved on first";
-    case "skipped": return `Went to you: the Team Lead can't look at questions here${l.reason ? ` (${l.reason})` : ""}`;
-    case "limit": return `Went to you: ${l.reason ?? "the Team Lead's limit for this card"}`;
-    default: return "Team Lead";
+    case "asking": return "With the Chief";
+    case "answering": return "Chief answered; the agent carries on";
+    case "answered": return "Chief answered";
+    case "escalated": return `Chief escalated to you${l.reason ? `: ${l.reason}` : ""}`;
+    case "dropped": return "The Chief stopped: the card moved on first";
+    case "skipped": return `Went to you: the Chief can't look at questions here${l.reason ? ` (${l.reason})` : ""}`;
+    case "limit": return `Went to you: ${l.reason ?? "the Chief's limit for this card"}`;
+    default: return "Chief";
   }
 }
 

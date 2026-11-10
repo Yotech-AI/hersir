@@ -16,15 +16,15 @@ const CHAT_FAKE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../crates/gizai-ag
 const RUN_FAKE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../crates/gizai-agents/tests/fake-claude.sh");
 const MIN: i64 = 60_000;
 
-/// The shim binary: target/debug/gizai-mcp (built by `cargo test --workspace`; built here when missing).
+/// The shim binary: target/debug/hersir-mcp, which the crate gizai-mcp builds (built by `cargo test --workspace`; built here when missing).
 fn shim() -> PathBuf {
     static BUILT: std::sync::Once = std::sync::Once::new();
-    let path = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/debug/gizai-mcp"));
+    let path = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/debug/hersir-mcp"));
     BUILT.call_once(|| {
         let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
         let ok = std::process::Command::new(cargo).args(["build", "-q", "-p", "gizai-mcp"])
             .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/..")).status().map(|s| s.success()).unwrap_or(false);
-        assert!(ok && path.is_file(), "could not build gizai-mcp");
+        assert!(ok && path.is_file(), "could not build hersir-mcp (the crate gizai-mcp)");
     });
     path
 }

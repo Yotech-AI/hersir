@@ -87,6 +87,59 @@ fn a_server_with_some_tools_off_allows_the_ones_on_by_full_name_and_refuses_the_
     assert!(mcp_run::permissions(&[]) == (vec![], vec![]), "no servers: nothing allowed, nothing refused");
 }
 
+/// GA-262: names a run never allows or refuses: `x Bash` would reach Claude Code as two rules, the second any command.
+const NOT_PLAIN: [&str; 7] = ["x Bash", "x,Bash", "x(Bash)", "mcp__a", "", "zoek\u{e9}", "naam\tBash"];
+
+fn long_name() -> String {
+    "a".repeat(65)
+}
+
+#[test]
+fn a_plain_tool_name_has_letters_digits_underscores_and_dashes_at_most_64_and_doesnt_start_with_mcp() {
+    let s64 = "a".repeat(64);
+    for ok in ["search", "get_card", "read-page", "Tool2", s64.as_str(), "mcp_x", "xmcp__"] {
+        assert!(mcp_run::plain_tool_name(ok), "{ok} is plain");
+    }
+    let long = long_name();
+    for bad in NOT_PLAIN.iter().copied().chain([long.as_str()]) {
+        assert!(!mcp_run::plain_tool_name(bad), "{bad:?} isn't plain");
+    }
+    assert_eq!(mcp_run::LEFT_OUT, "left out: its name isn't a plain tool name");
+}
+
+#[test]
+fn a_tool_whose_name_isnt_plain_is_never_allowed_or_refused_and_the_servers_other_tools_go_in_by_full_name() {
+    let long = long_name();
+    let bad: Vec<&str> = NOT_PLAIN.iter().copied().chain([long.as_str()]).collect();
+    // all tools on, but one known with such a name: never the whole server, the plain ones by full name
+    let known: Vec<&str> = ["search"].into_iter().chain(bad.iter().copied()).chain(["delete_page"]).collect();
+    let (allowed, refused) = mcp_run::permissions(&[server("srv", json!({}), &[], &known)]);
+    assert_eq!(allowed, ["mcp__srv__search", "mcp__srv__delete_page"]);
+    assert!(refused.is_empty(), "{refused:?}");
+    // with such a tool off too (a second guard: the app puts them there), it is named in neither list
+    let off: Vec<&str> = ["delete_page"].into_iter().chain(bad.iter().copied()).collect();
+    let (allowed, refused) = mcp_run::permissions(&[server("srv", json!({}), &off, &known)]);
+    assert_eq!(allowed, ["mcp__srv__search"]);
+    assert_eq!(refused, ["mcp__srv__delete_page"]);
+    for rule in allowed.iter().chain(&refused) {
+        assert!(!rule.contains("Bash") && !rule.contains(' ') && !rule.contains(',') && rule.len() <= "mcp__srv__".len() + 64, "{rule}");
+    }
+    // a server whose tools have plain names is as before
+    assert_eq!(mcp_run::permissions(&[server("otus", json!({}), &[], &["search", "delete"])]).0, ["mcp__otus"]);
+}
+
+#[test]
+fn settings_shows_a_tool_whose_name_isnt_plain_as_left_out() {
+    let view = |name: &str| gizai_agents::mcp_tools::describe(&json!({"name": name, "description": "d", "inputSchema": {"type": "object"}}));
+    let long = long_name();
+    for bad in ["x Bash", "mcp__a", long.as_str()] {
+        assert_eq!(view(bad).left_out.as_deref(), Some(mcp_run::LEFT_OUT), "{bad}");
+    }
+    assert_eq!(view("search").left_out, None);
+    let shown = serde_json::to_value(view("x Bash")).unwrap();
+    assert_eq!(shown["leftOut"], "left out: its name isn't a plain tool name", "the app gets it as leftOut: {shown}");
+}
+
 // Linux and macOS: file modes. Windows has none; the file is in the user's own profile (docs/PLATFORMS.md).
 #[cfg(unix)]
 #[test]

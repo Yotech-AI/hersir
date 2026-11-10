@@ -34,6 +34,14 @@
 #     Recent is scrolled; Archive opens #/chats (Recent still there, Chat / Archive, the search focused, all 36 chats); a word
 #     from the oldest chat's Team Lead message finds only that chat, marked; "0%" matches literally; no match says so; the
 #     hit opens the chat, its title in the crumbs.
+# 10b. chat pins (GA-257), against prep_chats' 36 chats, in two starts on the same data: (a) nothing pinned; each chat on
+#     the left has its pin ("Pin to the top", label and tooltip) beside its link, hidden until the row is pointed at or
+#     focused; a click pins Chat 3, the focused pin of "Which database?" pressed pins it (the focus goes along), the top
+#     bar's pin pins Chat 5, the Archive's pins Chat 34 and Chat 35 (older than the 30 newest) and unpins Chat 34, and in a
+#     search Chat 35 is unpinned and pinned again (the search stays); Unpin on the left puts Chat 3 back in Recent at its
+#     place. Each time at once, without opening the chat: Pinned above Recent, the newest pin first, not again in Recent,
+#     Unpin on each, and the backend agrees. (b) A restart: the pins are still there; Chat 35 opened from Pinned and
+#     unpinned in its top bar leaves Pinned and isn't in Recent.
 # 11. appearance (GA-42), against prep_chats' data: #/settings/appearance opens Settings on the Appearance tab with Font, the
 #     three text sizes, Theme, Density and Reset to defaults (off); at the defaults nothing is on <html> and the sizes are the
 #     design system's; each font choice shows in its own font and every font loads from the app. Clicks pick the largest sizes:
@@ -150,8 +158,8 @@ cd "$(dirname "$0")/.."
 source scripts/app-ready.sh
 gz_demo || { echo "could not make the demo data"; exit 1; }
 gz_app || { echo "could not build the app"; exit 1; }
-# The chat test needs gizai-mcp next to the app (a fresh checkout doesn't have it yet).
-(source scripts/env.sh && cargo build --release -q -p gizai-mcp) || { echo "could not build gizai-mcp"; exit 1; }
+# The chat test needs hersir-mcp next to the app (a fresh checkout doesn't have it yet; the crate gizai-mcp builds it).
+(source scripts/env.sh && cargo build --release -q -p gizai-mcp) || { echo "could not build hersir-mcp"; exit 1; }
 # Every test copy points Claude Code at the fake, so the agent form's model list never starts the real claude.
 fresh() { rm -rf .devdata/uitest && mkdir -p .devdata/uitest && cp -r .devdata/demo/. .devdata/uitest/
   python3 -c "import sqlite3,json,time,sys; c=sqlite3.connect('.devdata/uitest/gizai.db'); c.execute(\"insert or replace into settings(key,org_id,value_json,updated_at) values('claude_bin','',?,?)\", (json.dumps(sys.argv[1]), int(time.time()*1000))); c.commit()" "$PWD/crates/gizai-agents/tests/fake-claude.sh"; }
@@ -184,6 +192,11 @@ DATA=$PWD/.devdata/uitest ROUTE=projects MODE=open:project scripts/smoke-cage.sh
 fresh
 (source scripts/env.sh && cargo run -q -p gizai-core --example prep_chats -- .devdata/uitest "$PWD/crates/gizai-agents/tests/fake-claude.sh")
 DATA=$PWD/.devdata/uitest ROUTE=chat MODE=archive scripts/smoke-cage.sh || fail=1
+fresh
+(source scripts/env.sh && cargo run -q -p gizai-core --example prep_chats -- .devdata/uitest "$PWD/crates/gizai-agents/tests/fake-claude.sh")
+DATA=$PWD/.devdata/uitest ROUTE=chat MODE=pins-a scripts/smoke-cage.sh || fail=1
+# the same data: a restart
+DATA=$PWD/.devdata/uitest ROUTE=chat MODE=pins-b scripts/smoke-cage.sh || fail=1
 fresh
 (source scripts/env.sh && cargo run -q -p gizai-core --example prep_chats -- .devdata/uitest "$PWD/crates/gizai-agents/tests/fake-claude.sh")
 DATA=$PWD/.devdata/uitest ROUTE=settings/appearance MODE=appearance-set scripts/smoke-cage.sh || fail=1

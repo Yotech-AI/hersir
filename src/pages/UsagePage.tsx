@@ -156,7 +156,7 @@ function ProjectsTab({ u }: { u: Usage }) {
     name: <a href={href({ page: "project", id: p.projectId })}><span className="dot" style={{ background: p.color ?? "var(--text-3)" }} />{p.name}<span className="id">{p.key}</span></a>,
   }));
   rows.push({ id: "chat", totals: u.chat, name: <><MessagesSquare className="icon" />Chat (no project)</>,
-    title: "The Team Lead's chat turns and board checks: they have no card, so no project" });
+    title: "The Chief's chat turns and board checks: they have no card, so no project" });
   if (u.noProject.runs > 0) rows.push({ id: "no-project", totals: u.noProject, name: <><FolderKanban className="icon" />Cards without a project</>,
     title: "Runs on cards that have no project" });
   return <UsageTable rows={rows} total={u.total} nameHeader="Project" label="Usage per project" />;
@@ -263,7 +263,7 @@ export function UsagePage() {
             <div role="tabpanel" className="usage-tab"><SubscriptionTab /></div>
           ) : u && u.total.runs === 0 ? (
             <div className="empty"><b>No runs {periodPhrase(period)}.</b>
-              <span>The agents' runs and the Team Lead's chat turns show here with their tokens and API cost.</span></div>
+              <span>The agents' runs and the Chief's chat turns show here with their tokens and API cost.</span></div>
           ) : u && (
             <div role="tabpanel" className="usage-tab">
               {tab === "total" && <TotalTab u={u} />}

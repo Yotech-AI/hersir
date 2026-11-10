@@ -17,7 +17,7 @@ RUNNER=$DEV/shot-runner.sh
 cat > "$RUNNER" <<RUN
 #!/usr/bin/env bash
 ${SHOT_SIZE:+wlr-randr --output "\$(wlr-randr | head -n1 | cut -d' ' -f1)" --custom-mode $SHOT_SIZE}
-"$GZ/target/release/gizai" & APP=\$!
+"$GZ/target/release/hersir" & APP=\$!
 sleep ${SHOT_WAIT:-3.5}
 grim "$OUT"
 # End the agent runs it started (their own process groups, found by parent PID), then quit the app with SIGTERM:

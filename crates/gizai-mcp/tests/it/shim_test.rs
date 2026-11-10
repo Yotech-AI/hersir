@@ -4,7 +4,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::net::UnixListener;
 use std::process::{Command, Stdio};
 
-const SHIM: &str = env!("CARGO_BIN_EXE_gizai-mcp");
+const SHIM: &str = env!("CARGO_BIN_EXE_hersir-mcp");
 
 /// A server on `sock` for one shim: the hello line and the first request it got, after it answered that request.
 fn serve_once(sock: &std::path::Path) -> std::thread::JoinHandle<(String, String)> {
@@ -91,7 +91,7 @@ fn says_why_when_gizai_is_not_running() {
     let out = shim(&[("GIZAI_SOCKET", missing.as_os_str()), ("GIZAI_TOKEN", "x".as_ref())]).stdin(Stdio::null()).output().unwrap();
     assert_eq!(out.status.code(), Some(1));
     let err = String::from_utf8_lossy(&out.stderr);
-    assert!(err.starts_with("gizai-mcp:"), "{err}");
+    assert!(err.starts_with("hersir-mcp:"), "{err}");
     assert!(err.contains("Hersir"), "{err}");
 }
 

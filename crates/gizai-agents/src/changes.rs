@@ -149,10 +149,11 @@ pub struct FileDiff {
 
 // ---- git ----
 
-/// git in `dir`, reading only: literal paths, and no optional lock (git status and diff otherwise refresh the index).
+/// git in `dir`, reading only: literal paths, no optional lock (git status and diff otherwise refresh the index), and
+/// none of the repository's hooks or its fsmonitor program (`worktree::git_command`).
 fn git_bytes(dir: &Path, args: &[&str], input: Option<&[u8]>) -> Result<Vec<u8>, AgentError> {
-    let mut cmd = crate::os::command("git");
-    cmd.arg("-C").arg(dir).args(args).env("GIT_LITERAL_PATHSPECS", "1").env("GIT_OPTIONAL_LOCKS", "0")
+    let mut cmd = crate::worktree::git_command(dir);
+    cmd.args(args).env("GIT_LITERAL_PATHSPECS", "1").env("GIT_OPTIONAL_LOCKS", "0")
         .stdin(if input.is_some() { Stdio::piped() } else { Stdio::null() }).stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = cmd.spawn().map_err(|e| AgentError::Git(format!("can't run git: {e}")))?;
     if let (Some(text), Some(mut pipe)) = (input, child.stdin.take()) {
@@ -449,7 +450,7 @@ fn read_up_to(from: &mut impl Read, buf: &mut [u8]) -> std::io::Result<usize> {
 
 /// Whether the blob `id` (too big to read whole) has a NUL byte in its first 8,000 bytes.
 fn peek_blob(repo: &Path, id: &str) -> bool {
-    let child = crate::os::command("git").arg("-C").arg(repo).args(["cat-file", "blob", id])
+    let child = crate::worktree::git_command(repo).args(["cat-file", "blob", id])
         .stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn();
     let Ok(mut child) = child else { return false };
     let mut head = vec![0u8; BINARY_PEEK];

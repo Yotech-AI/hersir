@@ -101,7 +101,8 @@ function newCase() {
   const home = join(root, "home");
   mkdirSync(home, { recursive: true });
   const share = join(home, ".local", "share");
-  return { root, home, share, src: join(share, "gizai-src"), log: join(root, "install.log") };
+  // hersir-src (GA-248); gizai-src was its name before 0.17.0
+  return { root, home, share, src: join(share, "hersir-src"), oldSrc: join(share, "gizai-src"), log: join(root, "install.log") };
 }
 
 // get.sh piped into /bin/sh, as curl -fsSL <url> | sh -s -- <args> runs it, or with stdin run as a file
@@ -153,7 +154,7 @@ function tools(c, names, extra = {}) {
 }
 
 describe.skipIf(!unix)("scripts/get.sh", { timeout: 60_000 }, () => {
-  it("gets the latest release into ~/.local/share/gizai-src, runs its install.sh --check, then install.sh", () => {
+  it("gets the latest release into ~/.local/share/hersir-src, runs its install.sh --check, then install.sh", () => {
     const c = newCase();
     const r = getSh(c);
     expect(r.code, r.out).toBe(0);
@@ -162,11 +163,11 @@ describe.skipIf(!unix)("scripts/get.sh", { timeout: 60_000 }, () => {
     expect(runs(c).map((run) => run.args)).toEqual(["--check", ""]);
     expect(runs(c).every((run) => run.from === c.src)).toBe(true);
     // the check's result shows, before the install's
-    expect(r.out).toMatch(/install\.sh --check \(from .*gizai-src\)[\s\S]*install\.sh  \(from .*gizai-src\)/);
+    expect(r.out).toMatch(/install\.sh --check \(from .*hersir-src\)[\s\S]*install\.sh  \(from .*hersir-src\)/);
     // the source folder has a repository of its own, and get.sh wrote nothing else
     expect(existsSync(join(c.src, ".git", "HEAD"))).toBe(true);
     expect(readdirSync(c.home)).toEqual([".local"]);
-    expect(readdirSync(c.share)).toEqual(["gizai-src"]);
+    expect(readdirSync(c.share)).toEqual(["hersir-src"]);
   });
 
   it("gives install.sh nothing on stdin, so neither run reads what was sent to get.sh", () => {
@@ -198,14 +199,45 @@ describe.skipIf(!unix)("scripts/get.sh", { timeout: 60_000 }, () => {
     expect(runs(c).map((run) => run.args)).toEqual(["--check", "", "--check", ""]);
   });
 
-  it("updates a gizai-src that install.sh's own curl | bash cloned before", () => {
+  it("updates a gizai-src that install.sh's own curl | bash cloned before, which becomes hersir-src with its build (GA-248)", () => {
     const c = newCase();
     mkdirSync(c.share, { recursive: true });
     git(c.share, "clone", "-q", "--depth", "1", "--branch", "main", pathToFileURL(fake).href, "gizai-src");
+    mkdirSync(join(c.oldSrc, "target", "release"), { recursive: true });
+    writeFileSync(join(c.oldSrc, "target", "release", "gizai"), "an earlier build\n");
     const r = getSh(c);
     expect(r.code, r.out).toBe(0);
     expect(git(c.src, "rev-parse", "HEAD")).toBe(commits["v0.1.0"]);
     expect(runs(c).map((run) => run.args)).toEqual(["--check", ""]);
+    expect(readFileSync(join(c.src, "target", "release", "gizai"), "utf8")).toBe("an earlier build\n");
+    expect(readdirSync(c.share)).toEqual(["hersir-src"]);
+  });
+
+  it("removes a gizai-src from before 0.17.0 when there is a hersir-src already (GA-248)", () => {
+    const c = newCase();
+    expect(getSh(c).code).toBe(0);
+    mkdirSync(join(c.oldSrc, "target"), { recursive: true });
+    writeFileSync(join(c.oldSrc, "target", "old"), "old\n");
+    const r = getSh(c, [], { GIZAI_RELEASES_URL: release("v0.2.0") });
+    expect(r.code, r.out).toBe(0);
+    expect(git(c.src, "rev-parse", "HEAD")).toBe(commits["v0.2.0"]);
+    expect(readdirSync(c.share)).toEqual(["hersir-src"]);
+  });
+
+  it("reads the HERSIR_ names, which win over the GIZAI_ ones from before 0.17.0 (GA-248)", () => {
+    const c = newCase();
+    const r = getSh(c, [], { GIZAI_RELEASES_URL: release("v0.1.0"), HERSIR_RELEASES_URL: release("v0.2.0") });
+    expect(r.code, r.out).toBe(0);
+    expect(git(c.src, "rev-parse", "HEAD")).toBe(commits["v0.2.0"]);
+    const ref = getSh(c, [], { GIZAI_REF: "v0.1.0", HERSIR_REF: "next" });
+    expect(ref.code, ref.out).toBe(0);
+    expect(git(c.src, "rev-parse", "HEAD")).toBe(commits.next);
+    const repo = getSh(c, [], { GIZAI_REPO: join(c.root, "no-such-repo"), HERSIR_REPO: fake, HERSIR_REF: "v0.1.0" });
+    expect(repo.code, repo.out).toBe(0);
+    expect(git(c.src, "rev-parse", "HEAD")).toBe(commits["v0.1.0"]);
+    const alone = getSh(c, [], { GIZAI_REPO: undefined, GIZAI_RELEASES_URL: undefined, HERSIR_REPO: fake, HERSIR_RELEASES_URL: release("v0.2.0") });
+    expect(alone.code, alone.out).toBe(0);
+    expect(git(c.src, "rev-parse", "HEAD")).toBe(commits["v0.2.0"]);
   });
 
   it("makes a .git that was cut short again", () => {
@@ -241,21 +273,21 @@ describe.skipIf(!unix)("scripts/get.sh", { timeout: 60_000 }, () => {
     expect(readdirSync(data).sort()).toEqual(["backups", "gizai.db"]);
     expect(readdirSync(join(data, "backups"))).toEqual([]);
     expect(readFileSync(join(data, "gizai.db"), "utf8")).toBe("my data\n");
-    expect(readdirSync(c.share).sort()).toEqual(["gizai", "gizai-src"]);
+    expect(readdirSync(c.share).sort()).toEqual(["gizai", "hersir-src"]);
     expect(existsSync(join(c.home, "Library"))).toBe(false);
   });
 
-  it("uses XDG_DATA_HOME's gizai-src, and passes GIZAI_PREFIX and XDG_DATA_HOME on to install.sh", () => {
+  it("uses XDG_DATA_HOME's hersir-src, and passes GIZAI_PREFIX and XDG_DATA_HOME on to install.sh", () => {
     const c = newCase();
     const xdg = join(c.root, "xdg");
     const prefix = join(c.root, "opt", "gizai");
     const r = getSh(c, [], { XDG_DATA_HOME: xdg, GIZAI_PREFIX: prefix });
     expect(r.code, r.out).toBe(0);
-    expect(git(join(xdg, "gizai-src"), "rev-parse", "HEAD")).toBe(commits["v0.1.0"]);
+    expect(git(join(xdg, "hersir-src"), "rev-parse", "HEAD")).toBe(commits["v0.1.0"]);
     expect(existsSync(c.share)).toBe(false);
     expect(runs(c)).toEqual([
-      { args: "--check", prefix, xdg, from: join(xdg, "gizai-src"), input: "" },
-      { args: "", prefix, xdg, from: join(xdg, "gizai-src"), input: "" },
+      { args: "--check", prefix, xdg, from: join(xdg, "hersir-src"), input: "" },
+      { args: "", prefix, xdg, from: join(xdg, "hersir-src"), input: "" },
     ]);
   });
 
@@ -449,13 +481,13 @@ describe.skipIf(!unix)("scripts/get.sh", { timeout: 60_000 }, () => {
     expect(r.out).toMatch(/Claude Code: (found|not found)/);
     expect(r.code === 0, r.out).toBe(r.out.includes("Everything Hersir needs to build is here."));
     expect(git(c.src, "rev-parse", "HEAD")).toBe(git(REPO_ROOT, "rev-parse", "HEAD"));
-    expect(readdirSync(c.share)).toEqual(["gizai-src"]);
+    expect(readdirSync(c.share)).toEqual(["hersir-src"]);
 
     // an option install.sh doesn't know stops at its check, with its code
     const typo = getSh(c, ["--chek"], { GIZAI_REPO: REPO_ROOT, GIZAI_REF: "HEAD", GIZAI_RELEASES_URL: undefined });
     expect(typo.code).toBe(2);
     expect(typo.out).toContain("unknown option: --chek");
-    expect(readdirSync(c.share)).toEqual(["gizai-src"]);
+    expect(readdirSync(c.share)).toEqual(["hersir-src"]);
   });
 });
 
@@ -508,6 +540,7 @@ describe("the one-line installs people see", () => {
     const ps1 = read("scripts/get.ps1");
     expect(ps1).toContain("$DefaultRepo = 'https://github.com/Yotech-AI/hersir.git'");
     expect(ps1).toContain('$url = "https://api.github.com/repos/$($Matches[2])/releases/latest"');
-    expect(ps1).toContain("$repo = if ($env:GIZAI_REPO) { $env:GIZAI_REPO } else { $DefaultRepo }");
+    expect(ps1).toContain("$repo = Get-Setting 'REPO'");
+    expect(ps1).toContain("if (-not $repo) { $repo = $DefaultRepo }");
   });
 });

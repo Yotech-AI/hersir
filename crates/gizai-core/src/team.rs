@@ -282,6 +282,22 @@ pub fn role_key(raw: &str) -> String {
     raw.trim().to_lowercase().split_whitespace().collect::<Vec<_>>().join("-")
 }
 
+/// GA-262: an allowed command is one rule: a tool name (letters, digits, `_` and `-`), optionally followed by one `( … )`
+/// with no `(`, `)` or `,` inside, and nothing after it. Claude Code reads `--allowedTools` as rules separated by spaces or
+/// commas outside parentheses, so `Bash(ls:*) Bash(*)` saved as one entry would reach it as two rules, the second any
+/// command.
+pub fn one_rule(entry: &str) -> bool {
+    let t = entry.trim();
+    let (name, rest) = t.split_at(t.find('(').unwrap_or(t.len()));
+    let name_ok = !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+    name_ok && (rest.is_empty() || rest.strip_prefix('(').and_then(|r| r.strip_suffix(')')).is_some_and(|inner| !inner.contains(['(', ')', ','])))
+}
+
+/// Why `entry` is refused, or left out of runs, when it isn't one rule (`one_rule`).
+pub fn not_one_rule(entry: &str) -> String {
+    format!("{} isn't one rule: write each command as its own entry, like Bash(npm test:*).", entry.trim())
+}
+
 struct CleanAgent {
     name: String, role: String, title: Option<String>, adapter: String, model: Option<String>, permission_mode: String,
     tools_json: String, wakeup: String, heartbeat_minutes: Option<i64>, budget: Option<i64>, effort: Option<String>,
@@ -347,6 +363,10 @@ fn clean_agent_on(cli: crate::clis::Cli, i: &AgentInput, places: Option<&crate::
         return Err(Error::Invalid("an agent works on between 1 and 10 cards at once".into()));
     }
     let tools: Vec<String> = i.allowed_tools.iter().map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect();
+    // GA-262: each entry one rule, from the agent form, chat and a team template alike.
+    if let Some(t) = tools.iter().find(|t| !one_rule(t)) {
+        return Err(Error::Invalid(not_one_rule(t)));
+    }
     let folders_json = match (&i.folders, places) {
         (Some(list), Some(places)) => Some(serde_json::to_string(&crate::folders::clean(list, places)?)?),
         _ => None,

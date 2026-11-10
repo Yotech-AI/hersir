@@ -225,7 +225,7 @@ fn install_command(wt: &Path, dep: &Dep) -> (String, &'static str, &'static [&'s
 /// Whether `dep`'s lock file (or, without one, its manifest) differs between commit `since` and the worktree's HEAD.
 fn lock_changed(wt: &Path, since: &str, dep: &Dep) -> bool {
     let blob = |rev: &str, file: &str| -> Option<String> {
-        let out = os::command("git").arg("-C").arg(wt).args(["rev-parse", "--verify", "--quiet", &format!("{rev}:{file}")]).output().ok()?;
+        let out = crate::worktree::git_command(wt).args(["rev-parse", "--verify", "--quiet", &format!("{rev}:{file}")]).output().ok()?;
         out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
     };
     let mut files: Vec<&str> = dep.locks.iter().copied().filter(|f| blob(since, f).is_some() || blob("HEAD", f).is_some()).collect();
