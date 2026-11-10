@@ -564,6 +564,13 @@ async fn the_team_leads_chat_gets_its_servers_next_to_gizai_with_their_tools_all
     assert_eq!(config.keys().collect::<Vec<_>>(), ["docs", "gizai", "otus"], "{config:?}");
     assert_eq!(config["gizai"]["command"], FAKE_CHAT);
     assert!(config["gizai"]["env"]["GIZAI_TOKEN"].as_str().is_some_and(|t| !t.is_empty()), "{config:?}");
+    // GA-249: the shim gets the socket and the token under both names, the same values
+    let env = config["gizai"]["env"].as_object().unwrap();
+    let mut names: Vec<&String> = env.keys().collect();
+    names.sort();
+    assert_eq!(names, ["GIZAI_SOCKET", "GIZAI_TOKEN", "HERSIR_SOCKET", "HERSIR_TOKEN"], "{env:?}");
+    assert_eq!((&env["HERSIR_SOCKET"], &env["HERSIR_TOKEN"]), (&env["GIZAI_SOCKET"], &env["GIZAI_TOKEN"]), "{env:?}");
+    assert_eq!(env["HERSIR_SOCKET"].as_str().map(PathBuf::from), Some(st.mcp_socket.clone()));
     assert_eq!(config["otus"], json!({"type": "stdio", "command": "npx", "args": ["-y", "@otus/mcp"], "env": {"OTUS_TOKEN": OTUS_SECRET}}));
     assert_eq!(config["docs"]["headers"], json!({"X-Api-Key": DOCS_HEADER, "Authorization": format!("Bearer {DOCS_TOKEN}")}));
 

@@ -143,7 +143,8 @@ pub fn end_leftovers(st: &AppState) -> Vec<Leftover> {
 /// Gizai's start, before it recovers the runs a previous Gizai left (`open_state`): whatever that Gizai left running in
 /// the slice of the data folder `data_dir` ends (it crashed, or was killed), its runs' CLIs and what they started, SIGTERM
 /// and SIGKILL 3 s later. A Gizai with another data folder has another slice, which this never touches. Linux with a
-/// systemd user session; nothing with `GIZAI_RUNS_SLICE=off`. Returns what it ended, which Gizai's log names.
+/// systemd user session; nothing with `HERSIR_RUNS_SLICE=off` (or `GIZAI_RUNS_SLICE=off`). Returns what it ended, which
+/// Gizai's log names.
 pub fn end_leftovers_at_start(data_dir: &Path) -> Vec<Leftover> {
     let left = mem::end_leftovers_in(&mem::slice_name(data_dir));
     if !left.is_empty() {

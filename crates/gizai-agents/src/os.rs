@@ -13,6 +13,12 @@ use std::sync::Arc;
 #[cfg(windows)]
 pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
+/// The environment variable `HERSIR_<name>`, else `GIZAI_<name>`, its name before Hersir 0.17.0 (GA-248): the HERSIR_
+/// name wins when both are set, and the GIZAI_ one still works alone. An empty one counts as unset.
+pub fn hersir_var(name: &str) -> Option<OsString> {
+    [format!("HERSIR_{name}"), format!("GIZAI_{name}")].into_iter().filter_map(std::env::var_os).find(|v| !v.is_empty())
+}
+
 /// A Command for `program` (a name or a path) that works on every system. On Windows no console window opens, and an
 /// npm `.cmd` shim runs what the shim would: `node <its script>` (Gemini, Codex), or the program it points at (an
 /// npm-installed Claude Code's `claude.exe`). So arguments with spaces, quotes and line breaks reach the CLI unchanged.

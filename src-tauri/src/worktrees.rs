@@ -95,15 +95,16 @@ pub fn take_over_plan(project: &Project, from: &Path, limit: u64) -> TakeOver {
 }
 
 /// A card without a worktree (`task`) takes over the worktree of a finished card of its project, so its build stays
-/// warm: the first of `reusable`'s that `worktree::reuse` can move to `base_dir` (the project's part of Gizai's worktree
-/// folder) and switch to the card's branch, made from `start` when it has none yet. A build folder over `limit`
-/// (`BUILD_LIMIT`) is emptied (`take_over_plan`), and the card's activity says so. None when there is none to take over.
-/// Measuring the build folder walks it, so call it off the async threads.
+/// warm: the first of `reusable`'s that `worktree::reuse_on` can move to `base_dir` (the project's part of Gizai's
+/// worktree folder) and switch to the card's branch (`worktree::card_branch`), made from `start` when it has none yet.
+/// A build folder over `limit` (`BUILD_LIMIT`) is emptied (`take_over_plan`), and the card's activity says so. None
+/// when there is none to take over. Measuring the build folder walks it, so call it off the async threads.
 pub fn take_over(st: &AppState, project: &Project, task: &Task, repo: &Path, base_dir: &Path, start: &str, limit: u64)
     -> Option<worktree::Worktree> {
+    let branch = worktree::card_branch(task.branch.as_deref(), &task.identifier, &task.title);
     for (card, from) in reusable(st, &project.id, base_dir) {
         let plan = take_over_plan(project, &from, limit);
-        match worktree::reuse(repo, &from, base_dir, &task.identifier, &task.title, start, &plan.keep) {
+        match worktree::reuse_on(repo, &from, base_dir, &task.identifier, &branch, start, &plan.keep) {
             Ok(wt) => {
                 // GA-210: the finished card's runs' temp folder is named after its old place; the new card gets its own
                 if let Err(e) = worktree::remove_run_temp(&st.temp_base, &from) {

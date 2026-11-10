@@ -32,7 +32,7 @@ async fn main() {
         }
     })).unwrap();
     st.mcp_socket = gizai_lib::mcp::socket_path(&st.data_dir);
-    st.mcp_shim = Some(PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/debug/gizai-mcp")));
+    st.mcp_shim = Some(PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/debug/hersir-mcp")));
     if projects::list(&st.db).unwrap().is_empty() {
         projects::create(&st.db, &st.you_id, ProjectInput { name: "Kade portal".into(), key: "KADE".into(), ..Default::default() }).unwrap();
     }

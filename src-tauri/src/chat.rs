@@ -434,7 +434,7 @@ fn prepare(st: &AppState, thread: Option<&ChatThread>, new_cli: Option<&str>, bi
     }
     let bin = crate::clis::spec(st, &cli, bin_override)?;
     let shim = st.mcp_shim.clone().filter(|p| p.is_file())
-        .ok_or("The gizai-mcp helper is missing next to Hersir: rebuild with scripts/run.sh")?;
+        .ok_or("The hersir-mcp helper is missing next to Hersir: rebuild with scripts/run.sh")?;
     Ok(Plan { agent, cli, bin, shim })
 }
 
@@ -1165,6 +1165,13 @@ fn lead_dirs(st: &AppState, agent: &Member, copies: &[String]) -> Vec<String> {
     dirs
 }
 
+/// What Hersir's MCP shim gets for one turn: the socket and the turn's token, each under its HERSIR_ and its GIZAI_ name
+/// (GA-249: the shim reads either, the HERSIR_ one first).
+fn shim_env(st: &AppState, token: &str) -> serde_json::Value {
+    let socket = st.mcp_socket.display().to_string();
+    json!({"HERSIR_SOCKET": socket, "GIZAI_SOCKET": socket, "HERSIR_TOKEN": token, "GIZAI_TOKEN": token})
+}
+
 /// One `claude -p` run for a turn on the plan's CLI: resuming the thread's session, or `fresh` in a new one. `add_dirs`:
 /// the folders the Chief may read (its copies of the code); its own folders from the agent form are added here.
 /// `caps`: the limits the answer started with.
@@ -1203,7 +1210,7 @@ async fn attempt_once(st: &AppState, thread: &ChatThread, plan: &Plan, prompt: &
     }
     let claude_code = crate::mcp_servers::claude_code_names(st, &servers);
     let gizai = json!({"type": "stdio", "command": shim.display().to_string(), "args": [],
-        "env": {"GIZAI_SOCKET": st.mcp_socket.display().to_string(), "GIZAI_TOKEN": token}});
+        "env": shim_env(st, &token)});
     let config = gizai_agents::mcp_run::config(vec![("gizai".into(), gizai)], &servers);
     let (mcp_allowed, mcp_refused) = gizai_agents::mcp_run::permissions(&servers);
     let cleanup = |token: &str| {
@@ -1230,7 +1237,7 @@ async fn attempt_once(st: &AppState, thread: &ChatThread, plan: &Plan, prompt: &
         model: agent.model.clone(),
         max_budget_usd: settings.max_run_usd, resume, mcp_config: Some(config_path.clone()), partial_messages: true, restricted: true,
         tools: Some(tools), permission_prompts_none: true, add_dirs: lead_dirs(st, agent, add_dirs),
-        no_session_persistence: std::env::var("GIZAI_CHAT_NO_PERSIST").is_ok_and(|v| v == "1"),
+        no_session_persistence: gizai_agents::env::var("HERSIR_CHAT_NO_PERSIST").is_some_and(|v| v == "1"),
         // The Chief's memory is Gizai's (its Memory block and tools), not Claude Code's own.
         disable_hooks: true, disable_skills: true, disable_auto_memory: true, effort: agent.effort.clone(), disallowed_tools: mcp_refused,
     };
@@ -1441,7 +1448,7 @@ pub fn start_check(st: &AppState, agent: Member, prompt: String, saw: Vec<gizai_
         return Err(format!("{} runs on {}: the board check needs a Claude Code CLI", agent.name, cli.name));
     }
     let bin = crate::clis::spec(st, &cli, None)?;
-    let shim = st.mcp_shim.clone().filter(|p| p.is_file()).ok_or("The gizai-mcp helper is missing next to Hersir: rebuild with scripts/run.sh")?;
+    let shim = st.mcp_shim.clone().filter(|p| p.is_file()).ok_or("The hersir-mcp helper is missing next to Hersir: rebuild with scripts/run.sh")?;
     let st2 = st.clone();
     Ok(tokio::spawn(async move {
         let s = check_once(&st2, &agent, &prompt, &saw, &bin, &shim).await;
@@ -1483,7 +1490,7 @@ async fn check_once(st: &AppState, agent: &Member, prompt: &str, saw: &[gizai_co
     // Only Gizai's server (not the Chief's own MCP servers or its web tools) and Read, Glob and Grep: a check uses no
     // tool from outside Gizai, so nothing marks it the way a chat answer is (`mark_outside`, `tools::NOT_AFTER_OUTSIDE`).
     let config = json!({"mcpServers": {"gizai": {"type": "stdio", "command": shim.display().to_string(), "args": [],
-        "env": {"GIZAI_SOCKET": st.mcp_socket.display().to_string(), "GIZAI_TOKEN": token}}}});
+        "env": shim_env(st, &token)}}});
     let cleanup = |token: &str| {
         let _ = tokens::revoke(&st.db, token);
         let _ = std::fs::remove_file(&config_path);
@@ -1617,7 +1624,7 @@ pub struct QuestionRun {
 }
 
 /// Whether the Chief can look at questions here (GA-70): it runs on a Claude Code CLI whose program is found, and the
-/// gizai-mcp helper is next to Gizai. Err says why not.
+/// hersir-mcp helper is next to Gizai. Err says why not.
 pub fn question_ready(st: &AppState, agent: &Member) -> Result<(), String> {
     let cli = crate::clis::of_agent(st, agent.adapter.as_deref())?;
     if cli.kind != "claude_code" {
@@ -1625,7 +1632,7 @@ pub fn question_ready(st: &AppState, agent: &Member) -> Result<(), String> {
     }
     crate::clis::spec(st, &cli, None)?;
     if !st.mcp_shim.as_ref().is_some_and(|p| p.is_file()) {
-        return Err("The gizai-mcp helper is missing next to Hersir: rebuild with scripts/run.sh".into());
+        return Err("The hersir-mcp helper is missing next to Hersir: rebuild with scripts/run.sh".into());
     }
     Ok(())
 }
@@ -1651,7 +1658,7 @@ pub async fn question_once(st: &AppState, agent: &Member, asked_run_id: &str, pr
         Err(e) => return fail("", e),
     };
     let Some(shim) = st.mcp_shim.clone().filter(|p| p.is_file()) else {
-        return fail("", "The gizai-mcp helper is missing next to Hersir: rebuild with scripts/run.sh".into());
+        return fail("", "The hersir-mcp helper is missing next to Hersir: rebuild with scripts/run.sh".into());
     };
     let chat_dir = st.data_dir.join("chat");
     let cwd = st.data_dir.join("lead");
@@ -1691,7 +1698,7 @@ async fn question_process(st: &AppState, agent: &Member, asked_run_id: &str, pro
     };
     let config_path = st.data_dir.join("chat").join(format!("{run_id}.mcp.json"));
     let config = json!({"mcpServers": {"gizai": {"type": "stdio", "command": shim.display().to_string(), "args": [],
-        "env": {"GIZAI_SOCKET": st.mcp_socket.display().to_string(), "GIZAI_TOKEN": token}}}});
+        "env": shim_env(st, &token)}}});
     let cleanup = |token: &str| {
         let _ = tokens::revoke(&st.db, token);
         let _ = std::fs::remove_file(&config_path);

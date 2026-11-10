@@ -171,10 +171,11 @@ fn save_writes_format_1_with_every_column_and_every_agent_field() {
     }).unwrap();
 
     let dir = tempfile::tempdir().unwrap();
-    let p = dir.path().join("My team.gizai-team.json");
+    let p = dir.path().join("My team.hersir-team.json");
     templates::save(&db, &s.team_id, &p).unwrap();
     let text = std::fs::read_to_string(&p).unwrap();
-    assert!(text.starts_with("{\n  \"format\": \"gizai-team\",\n  \"format_version\": 1,\n"), "indented JSON:\n{}", &text[..120]);
+    // GA-249: format hersir-team, still format version 1
+    assert!(text.starts_with("{\n  \"format\": \"hersir-team\",\n  \"format_version\": 1,\n"), "indented JSON:\n{}", &text[..120]);
     let v: Value = serde_json::from_str(&text).unwrap();
     assert_eq!(keys(&v), sorted(&TEAM_FIELDS));
     let at: Vec<usize> = TEAM_FIELDS.iter().map(|f| text.find(&format!("\n  \"{f}\": ")).unwrap_or_else(|| panic!("{f}"))).collect();
@@ -339,7 +340,7 @@ fn the_builtin_software_team_is_a_new_installs_first_team() {
     let (db, s) = install();
     let first = templates::export(&db, &s.team_id).unwrap();
     let b = templates::builtin("software").unwrap();
-    assert_eq!((b.format.as_str(), b.format_version, b.name.as_str()), ("gizai-team", 1, "Software team"));
+    assert_eq!((b.format.as_str(), b.format_version, b.name.as_str()), ("hersir-team", 1, "Software team"));
     assert_eq!(b.agents, first.agents, "the same agents, instructions, commands and settings");
     assert_eq!(b.columns, first.columns, "the same columns, with their agents");
     assert_eq!((b.labels, b.branches), (first.labels, first.branches));
@@ -443,7 +444,7 @@ fn export_then_import_from_the_saved_path_makes_the_same_team_and_the_first_one_
     let before = serde_json::to_value(team::get(&db, &s.team_id).unwrap()).unwrap();
 
     let dir = tempfile::tempdir().unwrap();
-    let p = dir.path().join(format!("{}.gizai-team.json", t.name));
+    let p = dir.path().join(format!("{}.hersir-team.json", t.name));
     templates::save(&db, &s.team_id, &p).unwrap();
     let plan = templates::preview(&db, &path(&p)).unwrap();
     assert_eq!(plan.team_name, format!("{} 2", t.name), "the team's name is taken: it gets a number");
@@ -474,6 +475,38 @@ fn export_then_import_from_the_saved_path_makes_the_same_team_and_the_first_one_
 }
 
 // ---- refusals ----
+
+#[test]
+fn the_format_is_hersir_team_and_a_gizai_team_file_from_before_0_17_still_makes_a_team() {
+    assert_eq!((templates::FORMAT, templates::OLD_FORMAT, templates::FORMAT_VERSION), ("hersir-team", "gizai-team", 1));
+    assert_eq!((templates::FILE_SUFFIX, templates::OLD_FILE_SUFFIX), (".hersir-team.json", ".gizai-team.json"));
+    let (db, s) = install();
+    assert_eq!(templates::export(&db, &s.team_id).unwrap().format, "hersir-team", "Export writes hersir-team");
+
+    let dir = tempfile::tempdir().unwrap();
+    for (format, file_name, team) in [("hersir-team", "Small.hersir-team.json", "From hersir"), ("gizai-team", "Small.gizai-team.json", "From gizai")] {
+        let mut t = small("Small team");
+        t.format = format.into();
+        let p = dir.path().join(file_name);
+        std::fs::write(&p, serde_json::to_string_pretty(&t).unwrap()).unwrap();
+        // from the file and from its text
+        let plan = templates::preview(&db, &path(&p)).unwrap_or_else(|e| panic!("{format}: {e}"));
+        assert_eq!(plan.team_name, "Small team", "{format}");
+        templates::preview(&db, &file(&t)).unwrap_or_else(|e| panic!("{format} as text: {e}"));
+        let id = templates::import(&db, &s.you_id, &path(&p), team).unwrap_or_else(|e| panic!("{format}: {e}"));
+        let made = team::get(&db, &id).unwrap();
+        assert_eq!(made.name, team);
+        assert_eq!(made.states.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), ["Backlog", "Build", "Check", "Done"], "{format}");
+        assert_eq!(agent_names_on(&made, "Build").len(), 1, "{format}: its agent too");
+    }
+    // anything else is still refused, a near miss too
+    for other in ["hersir", "Hersir-team", "hersir-team ", "gizai-backup", "hersir-backup"] {
+        let mut t = small("Odd");
+        t.format = other.into();
+        let e = templates::preview(&db, &file(&t)).unwrap_err().to_string();
+        assert!(e.contains("isn't a Hersir team template"), "{other}: {e}");
+    }
+}
 
 #[test]
 fn each_refusal_says_why_and_makes_nothing() {
@@ -843,7 +876,9 @@ fn a_source_holds_one_template_and_a_new_team_without_one_works_as_before() {
 fn the_format_page_describes_every_field_of_format_1() {
     let doc = include_str!("../../../../docs/team-template-format.md");
     assert!(doc.contains("This template needs a newer version of the app."));
-    assert!(doc.contains(".gizai-team.json"));
+    assert!(doc.contains(".hersir-team.json"), "GA-249");
+    assert!(doc.contains(".gizai-team.json"), "and the name before 0.17.0, still read");
+    assert!(doc.contains("`hersir-team`") && doc.contains("`gizai-team`"));
     for field in TEAM_FIELDS.iter().chain(&COLUMN_FIELDS).chain(&AGENT_FIELDS).chain(&["tools_off", "key", "roles"]) {
         assert!(doc.contains(&format!("`{field}`")), "docs/team-template-format.md doesn't name `{field}`");
     }

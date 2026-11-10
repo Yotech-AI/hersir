@@ -18,7 +18,7 @@ gz_sources() {
 }
 
 gz_app() {
-  local bin=target/release/gizai
+  local bin=target/release/hersir
   if [ -x "$bin" ] && [ -z "$(gz_sources -newer "$bin" -print -quit)" ]; then return 0; fi
   echo "building the app (npm run tauri build -- --no-bundle)"
   (source scripts/env.sh && { [ -d node_modules ] || npm ci; } && npm run tauri build -- --no-bundle) || return 1

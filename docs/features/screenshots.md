@@ -28,12 +28,12 @@ Screenshots stay on this computer, in Hersir's data folder. They are never commi
 The project's **Preview command** (its form → Preview) serves the card's branch. When a run starts whose agent takes screenshots, Hersir runs it after the worktree is prepared (New worktrees) and before the agent starts:
 
 - with `bash -c` (Git Bash on Windows) in the card's worktree, in a process tree of its own, its output in `.gizai-tmp/preview/preview.log`;
-- with `GIZAI_PREVIEW_PORT`: a free port from Settings → Agents and runs → Screenshots → Preview ports that no other run has, with the nine after it for a second server (an API, Vite). `PORT` has the same port, `GIZAI_PREVIEW_URL` is `http://127.0.0.1:<port>` and `GIZAI_PREVIEW_DIR` is `<worktree>/.gizai-tmp/preview`;
+- with `HERSIR_PREVIEW_PORT`: a free port from Settings → Agents and runs → Screenshots → Preview ports that no other run has, with the nine after it for a second server (an API, Vite). `PORT` has the same port, `HERSIR_PREVIEW_URL` is `http://127.0.0.1:<port>` and `HERSIR_PREVIEW_DIR` is `<worktree>/.gizai-tmp/preview`. The three are set under their names from before 0.17.0 too, `GIZAI_PREVIEW_PORT`, `GIZAI_PREVIEW_URL` and `GIZAI_PREVIEW_DIR`, so a project's older scripts keep working;
 - without `CLAUDECODE`, so a server that detaches when it sees Claude Code (Astro's) stays in the tree.
 
-The agent's own commands get the three `GIZAI_PREVIEW_*` variables too, not `PORT`, so a project script it runs to load the demo data again finds the same database.
+The agent's own commands get the `HERSIR_PREVIEW_*` and `GIZAI_PREVIEW_*` variables too, not `PORT`, so a project script it runs to load the demo data again finds the same database.
 
-**Demo data, never yours.** The command fills a throwaway database in `GIZAI_PREVIEW_DIR` with demo data and serves that, never the database in the worktree's `.env`, which is a copy of your checkout's. The folder is emptied with the rest of `.gizai-tmp/` when the run ends. The agent is told to shoot only the preview's address: never a `.test` site, a live site or a real account.
+**Demo data, never yours.** The command fills a throwaway database in `HERSIR_PREVIEW_DIR` with demo data and serves that, never the database in the worktree's `.env`, which is a copy of your checkout's. The folder is emptied with the rest of `.gizai-tmp/` when the run ends. The agent is told to shoot only the preview's address: never a `.test` site, a live site or a real account.
 
 Hersir waits until the port answers, at most the project's Start time, then starts the agent with the address in its prompt. When the preview doesn't answer in time (or ends first, or no port is free), the run starts anyway and takes no screenshots: the prompt, the run's output and the set say why, with the last lines of its log. The card is never held for a preview.
 
@@ -41,8 +41,8 @@ When the run ends, Hersir ends the preview's whole tree (SIGTERM, then SIGKILL a
 
 For example:
 
-- a static Astro site: `npx astro dev --host 127.0.0.1 --port "$GIZAI_PREVIEW_PORT" --ignore-lock` (`--ignore-lock` keeps Astro in the foreground);
-- a Laravel project: a script of its own, like `composer preview`, that points the app at an SQLite file in `$GIZAI_PREVIEW_DIR`, migrates and seeds it, builds the assets and runs `php artisan serve --no-reload` on the port;
+- a static Astro site: `npx astro dev --host 127.0.0.1 --port "$HERSIR_PREVIEW_PORT" --ignore-lock` (`--ignore-lock` keeps Astro in the foreground);
+- a Laravel project: a script of its own, like `composer preview`, that points the app at an SQLite file in `$HERSIR_PREVIEW_DIR`, migrates and seeds it, builds the assets and runs `php artisan serve --no-reload` on the port;
 - Hersir itself: `npm run browser` ([below](#hersir-itself-in-a-plain-browser)).
 
 [The research, §3.5](../research/screenshots.md#35-the-page-up-per-stack), has a recipe per stack.
@@ -102,7 +102,7 @@ What you attached to a card is never removed. [Your data](../install.md#your-dat
 
 For Hersir's developers, and the agents that work on it: `npm run browser` serves Hersir's screens in a plain browser with a fake backend. It is the Preview command of the project for Hersir's own repository, best with the sizes Window 1440 × 900 and Small 900 × 600 (the window's default and smallest size) and both themes on.
 
-- It serves them at `http://127.0.0.1:$GIZAI_PREVIEW_PORT/` (port 1430 without that variable), so a card opens at `/#/task/<id>`. The page is `browser.html` with `src/browser/`, where Tauri's `mockIPC` stands in for the backend.
+- It serves them at `http://127.0.0.1:$HERSIR_PREVIEW_PORT/` (or `$GIZAI_PREVIEW_PORT`; port 1430 without either), so a card opens at `/#/task/<id>`. The page is `browser.html` with `src/browser/`, where Tauri's `mockIPC` stands in for the backend.
 - Commands answer from `src/browser/fixtures.json`. To write it again from the demo data: `cargo run -p gizai-core --example demo -- <dir>`, then `cargo run -p gizai-core --example fixtures -- <dir> src/browser/fixtures.json`. The demo's GFW-2, in Review and in the Inbox, has six runs' screenshot sets; their pictures are drawn from each one's size and caption, as the fixtures hold no images. KADE-1, GFW-1, GFW-3 and GFW-5 show the empty tab's four reasons.
 - The app's own UI test has the same six sets, with real pictures: `cargo run -p gizai-core --example prep_screenshots -- <dir>` gives them to the demo data's GFW-2, and `scripts/ui-test.sh` opens its Screenshots tab with `screenshotsProbe` (`src/selftest.ts`): the sets, the larger view, Compare, Esc, the board's sign and the Inbox row.
 - A command without a fixture answers empty and logs its name in the browser's console. `gizaiBlobUrls()` in the console lists the pictures' `blob:` URLs that are alive, so you can see them freed when the pictures leave the screen.

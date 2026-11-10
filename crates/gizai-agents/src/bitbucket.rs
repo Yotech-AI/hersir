@@ -4,7 +4,7 @@
 //!
 //! The login is kept in your keychain (`secrets`, under `bitbucket/login`), never in Gizai's database, a log or an error
 //! text; it goes to Bitbucket only in a request's Authorization header, never in a command line. Tests point the API at
-//! a local server with GIZAI_BITBUCKET_API.
+//! a local server with HERSIR_BITBUCKET_API (or GIZAI_BITBUCKET_API).
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -30,10 +30,10 @@ const BODY_LIMIT: u64 = 8 << 20;
 /// The longest pull request title Gizai sends (Bitbucket keeps 255 characters).
 const MAX_TITLE: usize = 255;
 
-/// Where Bitbucket's API is: GIZAI_BITBUCKET_API (a local server, in tests), else `API`.
+/// Where Bitbucket's API is: HERSIR_BITBUCKET_API, else GIZAI_BITBUCKET_API (a local server, in tests), else `API`.
 pub fn api() -> String {
-    match std::env::var("GIZAI_BITBUCKET_API") {
-        Ok(url) if !url.trim().is_empty() => url.trim().trim_end_matches('/').to_string(),
+    match crate::env::var("HERSIR_BITBUCKET_API") {
+        Some(url) if !url.trim().is_empty() => url.trim().trim_end_matches('/').to_string(),
         _ => API.to_string(),
     }
 }

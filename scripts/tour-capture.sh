@@ -95,7 +95,7 @@ capture() {  # <theme> <scene folder name> <start route> <steps…>
   cat > "$runner" <<RUN
 #!/usr/bin/env bash
 wlr-randr --output "\$(wlr-randr | head -n1 | cut -d' ' -f1)" --custom-mode $MODE_SIZE --scale $SCALE
-"$GZ/target/release/gizai" & APP=\$!
+"$GZ/target/release/hersir" & APP=\$!
 # the steps write steps.json when they are done
 for _ in \$(seq 600); do [ -s "$dir/steps.json" ] && break; kill -0 \$APP 2>/dev/null || break; sleep 0.2; done
 # End the agent runs it started (their own process groups, found by parent PID), then quit the app with SIGTERM, as
