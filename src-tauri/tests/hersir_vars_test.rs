@@ -5,7 +5,8 @@ use gizai_agents::os::hersir_var;
 use gizai_lib::mcp::shim_bin;
 use gizai_lib::update::Source;
 
-const NAMES: [&str; 6] = ["HERSIR_REPO", "GIZAI_REPO", "HERSIR_RELEASES_URL", "GIZAI_RELEASES_URL", "HERSIR_MCP_BIN", "GIZAI_MCP_BIN"];
+const NAMES: [&str; 8] = ["HERSIR_REPO", "GIZAI_REPO", "HERSIR_RELEASES_URL", "GIZAI_RELEASES_URL", "HERSIR_MCP_BIN", "GIZAI_MCP_BIN",
+                          "HERSIR_RELEASE_SIGNERS", "GIZAI_RELEASE_SIGNERS"];
 
 /// Sets the variables in `vars` and unsets the others of NAMES.
 fn with(vars: &[(&str, &str)]) {
@@ -46,6 +47,18 @@ fn a_hersir_variable_wins_over_its_gizai_name_which_still_works_alone() {
     assert_eq!(Source::from_env(), Source::new("/srv/hersir.git", Some("file:///hersir.json".into())), "both: HERSIR_ wins");
     with(&[("HERSIR_RELEASES_URL", "file:///hersir.json"), ("GIZAI_REPO", "/srv/gizai.git")]);
     assert_eq!(Source::from_env(), Source::new("/srv/gizai.git", Some("file:///hersir.json".into())), "each by itself");
+
+    // GA-253: the keys a release's signature is checked with: the built-in ones, unless HERSIR_RELEASE_SIGNERS names a
+    // file (tests); it has no GIZAI_ name, and an empty one counts as unset
+    with(&[]);
+    assert_eq!(Source::from_env().signers, None, "Hersir's own release keys");
+    with(&[("HERSIR_RELEASE_SIGNERS", "/tmp/throwaway-signers")]);
+    assert_eq!(Source::from_env().signers.as_deref(), Some(std::path::Path::new("/tmp/throwaway-signers")));
+    assert_eq!(Source::from_env(), Source::new(gizai_agents::update::REPO, None).with_signers(Some("/tmp/throwaway-signers".into())));
+    with(&[("HERSIR_RELEASE_SIGNERS", "")]);
+    assert_eq!(Source::from_env().signers, None, "empty: unset");
+    with(&[("GIZAI_RELEASE_SIGNERS", "/tmp/throwaway-signers")]);
+    assert_eq!(Source::from_env().signers, None, "no GIZAI_ name");
 
     // the chat's helper, hersir-mcp
     let tmp = tempfile::tempdir().unwrap();
