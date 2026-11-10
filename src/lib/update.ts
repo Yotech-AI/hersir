@@ -10,12 +10,13 @@ export type Notice =
   | { kind: "failed"; version: string; text: string };
 
 export function isRunning(job: UpdateJob): boolean {
-  return job.step === "source" || job.step === "build" || job.step === "backup" || job.step === "install";
+  return job.step === "source" || job.step === "download" || job.step === "build" || job.step === "backup" || job.step === "install";
 }
 
-/** Whether Stop can end the update now: while it gets the source or builds (the backup and install take seconds). */
+/** Whether Stop can end the update now: while it gets the source, downloads or builds (the backup and install take
+ * seconds). */
 export function canStop(job: UpdateJob): boolean {
-  return job.step === "source" || job.step === "build";
+  return job.step === "source" || job.step === "download" || job.step === "build";
 }
 
 /** The notice above Company, or null when there is nothing newer. */
@@ -34,6 +35,7 @@ export function notice(s: UpdateStatus): Notice | null {
 export function stepText(job: UpdateJob): string {
   switch (job.step) {
     case "source": return `Getting ${job.version}…`;
+    case "download": return `Downloading ${job.version}…`;
     case "build": return `Building ${job.version}…`;
     case "backup": return "Backing up your data…";
     case "install": return `Installing ${job.version}…`;
@@ -54,6 +56,8 @@ export function checkLine(s: UpdateStatus, now = Date.now()): { mark: CheckMark;
   if (s.problem) return { mark: "failed", text: `The last check didn't work${when}: ${s.problem.fix ? `${s.problem.what}. ${s.problem.fix}` : s.problem.what}` };
   if (s.installed) return { mark: "new", text: `Version ${s.installed} is installed. Restart Hersir to use it.` };
   if (s.available) return { mark: "new", text: `Version ${s.available.version} is out${when}.` };
+  // Update offers only a signed release: a release is signed once its ready-made builds are uploaded
+  if (s.unsigned) return { mark: "skipped", text: `${s.unsigned.tag} is out, but not signed yet.` };
   if (!s.checkedAt) return { mark: "skipped", text: "Not checked yet." };
   if (!s.latest) return { mark: "skipped", text: `There is no release on GitHub yet${when}.` };
   return { mark: "ok", text: `This is the latest version${when}.` };
