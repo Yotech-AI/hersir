@@ -11,6 +11,8 @@
 //! - Only a Hersir that install.sh installed (<prefix>/lib/hersir/hersir, or <prefix>/lib/gizai for an install from
 //!   before 0.17.0) updates itself, or on Windows one that install.ps1 installed (<prefix>\hersir.exe, or gizai.exe). A
 //!   dev or test build that runs from anywhere else never installs over anything.
+//! - A Hersir from a package (the AUR, Homebrew or Scoop: `up::package_of`) never updates itself, wherever it runs from:
+//!   it says how its package manager updates it (GA-199). It still checks for new releases.
 //!
 //! Usable without a Tauri app (tests): the UI hears about changes through `AppState::notify`.
 use std::io::Write;
@@ -94,6 +96,8 @@ struct Inner {
     source: Source,
     /// The program that runs: its install prefix is where an update installs.
     exe: Option<PathBuf>,
+    /// The package manager it came from (`up::package_of`), or None. Only that package manager updates it.
+    package: Option<String>,
     /// A check runs now.
     checking: bool,
     /// The version the installed Gizai says it is, as the last check found it.
@@ -115,7 +119,8 @@ impl Default for Updates {
 
 impl Updates {
     pub fn new(source: Source, exe: Option<PathBuf>) -> Updates {
-        Updates { inner: Mutex::new(Inner { source, exe, checking: false, installed: None, job: None }) }
+        let package = exe.as_deref().and_then(up::package_of);
+        Updates { inner: Mutex::new(Inner { source, exe, package, checking: false, installed: None, job: None }) }
     }
 
     /// For tests: where releases come from.
@@ -123,9 +128,17 @@ impl Updates {
         self.lock().source = source;
     }
 
-    /// For tests: the program that runs (an update installs into its prefix, `<prefix>/lib/hersir/hersir`).
+    /// For tests: the program that runs (an update installs into its prefix, `<prefix>/lib/hersir/hersir`), and the
+    /// package it came from by its mark (`up::package_of`).
     pub fn set_exe(&self, exe: Option<PathBuf>) {
-        self.lock().exe = exe;
+        let mut inner = self.lock();
+        inner.package = exe.as_deref().and_then(up::package_of);
+        inner.exe = exe;
+    }
+
+    /// For tests: the package manager this Hersir came from, whatever its mark says (None: none).
+    pub fn set_package(&self, package: Option<&str>) {
+        self.lock().package = package.map(str::to_string);
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
@@ -205,6 +218,10 @@ pub struct UpdateStatus {
     pub install_to: Option<String>,
     /// …or why this Gizai can't update itself.
     pub cannot_install: Option<String>,
+    /// The package manager this Hersir came from (package_of), or None: an install script's Hersir, or a dev build.
+    pub package: Option<String>,
+    /// The command that updates it (package_update_command), or None.
+    pub update_command: Option<String>,
     /// The update that runs now, or the last one since Gizai started.
     pub job: Option<UpdateJob>,
     /// Where releases come from.
@@ -237,8 +254,12 @@ const INSTALLER: &str = "./install.sh";
 const INSTALLER: &str = r".\install.ps1";
 
 /// Where an update installs: the prefix install.sh (install.ps1 on Windows) installed this Gizai into. Else why it can't
-/// update itself.
+/// update itself. A package comes first: its Hersir may sit where an install script's would (the AUR's
+/// /usr/lib/hersir/hersir), and only its package manager updates it.
 fn install_prefix(inner: &Inner) -> Result<PathBuf, String> {
+    if let Some(package) = &inner.package {
+        return Err(package_text(package));
+    }
     let Some(exe) = &inner.exe else {
         return Err(format!("Hersir can't tell where it runs from, so it can't update itself. Install the new version with {INSTALLER}."));
     };
@@ -246,6 +267,18 @@ fn install_prefix(inner: &Inner) -> Result<PathBuf, String> {
         format!("This Hersir runs from {}, not from an install, so it doesn't update itself. Update its checkout with git, or install with {INSTALLER}.",
                 exe.display())
     })
+}
+
+/// Why a Hersir from `package` doesn't update itself, and how to update it (`up::package_update_command`).
+fn package_text(package: &str) -> String {
+    let from = match package {
+        "aur" => "the AUR",
+        "homebrew" => "Homebrew",
+        "scoop" => "Scoop",
+        _ => "a package",
+    };
+    let with = up::package_update_command(package).unwrap_or("the package manager that installed it");
+    format!("Hersir came from {from}, so it doesn't update itself. Update it with {with}, then restart Hersir.")
 }
 
 pub fn status(st: &AppState) -> UpdateStatus {
@@ -269,6 +302,8 @@ pub fn status(st: &AppState) -> UpdateStatus {
         installed: inner.installed.clone().filter(|v| up::is_newer(v, VERSION)),
         install_to,
         cannot_install,
+        package: inner.package.clone(),
+        update_command: inner.package.as_deref().and_then(up::package_update_command).map(str::to_string),
         job: inner.job.as_ref().map(|j| j.status.clone()),
         repo: inner.source.repo.clone(),
     }
@@ -347,9 +382,13 @@ pub async fn tick(st: &AppState, now: i64) -> bool {
 
 /// Update to `version`, the newer signed release the check found: get its source, check its signature, download its
 /// ready-made build or build it, back up your data and install it, in the background. Returns at once; the steps show
-/// in `status` (the UI hears of each one). An update that runs already is left to run.
+/// in `status` (the UI hears of each one). An update that runs already is left to run. A package's Hersir never starts
+/// one: it says how its package manager updates it, whichever release.
 pub fn start(st: &AppState, version: &str) -> Result<UpdateStatus, String> {
     let now = status(st);
+    if let Some(why) = now.cannot_install.clone().filter(|_| now.package.is_some()) {
+        return Err(why);
+    }
     if let Some(r) = now.unsigned.as_ref().filter(|r| r.version == version) {
         return Err(format!("{} is out, but not signed yet: try again in a few minutes.", r.tag));
     }
