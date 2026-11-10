@@ -6059,8 +6059,10 @@
         "url": "https://github.com/Yotech-AI/hersir/releases/tag/v0.15.0",
         "version": "0.15.0"
       },
+      "package": null,
       "problem": null,
-      "repo": "https://github.com/Yotech-AI/hersir.git"
+      "repo": "https://github.com/Yotech-AI/hersir.git",
+      "updateCommand": null
     }
   },
   "writtenAt": 1793981034454

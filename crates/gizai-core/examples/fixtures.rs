@@ -572,7 +572,7 @@ fn main() {
         "latest": {"version": env!("CARGO_PKG_VERSION"), "tag": format!("v{}", env!("CARGO_PKG_VERSION")), "name": format!("Gizai {}", env!("CARGO_PKG_VERSION")),
                    "url": format!("https://github.com/Yotech-AI/hersir/releases/tag/v{}", env!("CARGO_PKG_VERSION")), "publishedAt": null, "notes": null},
         "problem": null, "available": null, "installed": null, "installTo": "/home/you/.local", "cannotInstall": null, "job": null,
-        "repo": "https://github.com/Yotech-AI/hersir.git"}));
+        "package": null, "updateCommand": null, "repo": "https://github.com/Yotech-AI/hersir.git"}));
     // Settings → General → Backups (contract BK, gizai-core's backups types): a folder in Dropbox, daily, Keep 10, and three
     // snapshots there, newest first: this computer's daily one and Back up now's, and another computer's, made by a newer
     // Hersir, so it can't be restored here.

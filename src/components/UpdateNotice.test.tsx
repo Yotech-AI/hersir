@@ -166,3 +166,54 @@ describe("GA-253: Settings → Updates with signed releases and ready-made build
       .toContain(`The update to 0.1.6 didn't work: ${problem}. Hersir 0.1.5 is still installed and works as before.`);
   });
 });
+
+// GA-200: a Hersir from the AUR, Homebrew, Scoop or another package doesn't update itself. Its notice says the release is
+// out and stays the link to Settings, with GA-199's cannotInstall text as its tooltip.
+describe("GA-200: the notice of a Hersir from a package manager", () => {
+  const PACKAGES = [
+    { package: "aur", updateCommand: "yay -Syu",
+      cannotInstall: "Hersir came from the AUR, so it doesn't update itself. Update it with yay -Syu, then restart Hersir." },
+    { package: "homebrew", updateCommand: "brew update && brew upgrade hersir",
+      cannotInstall: "Hersir came from Homebrew, so it doesn't update itself. Update it with brew update && brew upgrade hersir, then restart Hersir." },
+    { package: "scoop", updateCommand: "scoop update; scoop update hersir",
+      cannotInstall: "Hersir came from Scoop, so it doesn't update itself. Update it with scoop update; scoop update hersir, then restart Hersir." },
+    { package: "nix", updateCommand: null,
+      cannotInstall: "Hersir came from a package, so it doesn't update itself. Update it with the package manager that installed it, then restart Hersir." },
+  ];
+  const attr = (s: string) => s.replace(/&/g, "&amp;").replace(/'/g, "&#x27;");
+
+  it("says Hersir <version> is out above Company, as a link to Settings with cannotInstall as its tooltip", () => {
+    for (const p of PACKAGES) {
+      current = status({ latest: release, available: release, installTo: null, ...p });
+      const html = renderToStaticMarkup(<UpdateNotice />);
+      expect(html).toMatch(/^<div class="update-box" aria-label="Update"><a class="update-notice" href="#\/settings" title="[^"]*">/);
+      expect(html).toContain(`title="${attr(p.cannotInstall)}"`);
+      expect(text(html).trim()).toBe("Hersir 0.1.6 is out");
+      expect(html).not.toContain("<button");
+      expect(html).not.toContain("Update to 0.1.6");
+      const side = renderToStaticMarkup(<Sidebar route={{ page: "board" } as never} youId="u1" onSearch={() => {}} onNewTask={() => {}} />);
+      expect(side.indexOf("Hersir 0.1.6 is out")).toBeGreaterThan(-1);
+      expect(side.indexOf(">Company<")).toBeGreaterThan(side.indexOf("Hersir 0.1.6 is out"));
+    }
+  });
+  it("isn't there when nothing newer is out, or the newer release isn't signed yet", () => {
+    current = status({ latest: { ...release, version: "0.1.5", tag: "v0.1.5" }, installTo: null, ...PACKAGES[0] });
+    expect(renderToStaticMarkup(<UpdateNotice />)).toBe("");
+    current = status({ latest: release, unsigned: release, installTo: null, ...PACKAGES[0] });
+    expect(renderToStaticMarkup(<UpdateNotice />)).toBe("");
+  });
+  it("without a package (null, as the backend and the browser fixtures send it) it is the Update to <version> button as before", () => {
+    current = status({ available: release, package: null, updateCommand: null });
+    const html = renderToStaticMarkup(<UpdateNotice />);
+    expect(html).toMatch(/<button class="update-notice"[^>]*title="Builds it in the background, backs up your data, installs it and offers a restart"/);
+    expect(text(html).trim()).toBe("Update to 0.1.6");
+  });
+  it("a dev build without a package still links to Settings with Update to <version> and its cannotInstall as tooltip", () => {
+    const why = "This Gizai runs from /repo/target/release/gizai, not from an install";
+    current = status({ available: release, installTo: null, cannotInstall: why, package: null, updateCommand: null });
+    const html = renderToStaticMarkup(<UpdateNotice />);
+    expect(html).toMatch(/<a class="update-notice" href="#\/settings"/);
+    expect(html).toContain(`title="${why}"`);
+    expect(text(html).trim()).toBe("Update to 0.1.6");
+  });
+});

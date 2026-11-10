@@ -263,6 +263,9 @@ fn curl_problem(said: &str, url: &str, limit: Duration) -> Problem {
 /// - Windows (install.ps1): `<prefix>\hersir.exe`, in a folder that holds install.ps1's marker `hersir-installed.txt` (a
 ///   build in target\release has none). An install from before 0.17.0 has `gizai.exe` and `gizai-installed.txt`
 ///   there too.
+///
+/// A package's Hersir can be in such a place too (the AUR's `/usr/lib/hersir/hersir`), so the app asks `package_of`
+/// first: only its package manager updates it.
 pub fn install_prefix(exe: &Path) -> Option<PathBuf> {
     #[cfg(windows)]
     {
@@ -292,6 +295,58 @@ fn mac_exe(exe: &Path) -> PathBuf {
     let in_app = exe.parent().is_some_and(|d| d.ends_with("Hersir.app/Contents/MacOS"));
     let link = exe.ancestors().nth(3).filter(|_| in_app).zip(name).map(|(app, n)| app.with_file_name(n));
     link.unwrap_or(exe)
+}
+
+/// The mark a package leaves beside Hersir's program: a file whose first line names the package manager (GA-199). The
+/// install scripts never write it.
+pub const PACKAGE_MARK: &str = "hersir-package.txt";
+
+/// The package manager this Hersir came from, or None. Reads `exe` with its links resolved (std::fs::canonicalize):
+/// the first line of `hersir-package.txt` in its folder, trimmed and lowercased ("aur", "scoop", "homebrew" or another
+/// word; an empty line is none), or on macOS "homebrew" when the path runs through `Cellar/hersir/` or
+/// `Caskroom/hersir/` (a file can't go inside Hersir.app without breaking its signature).
+pub fn package_of(exe: &Path) -> Option<String> {
+    let exe = exe.canonicalize().unwrap_or_else(|_| exe.to_path_buf());
+    let marked = exe.parent().and_then(|dir| mark_word(&dir.join(PACKAGE_MARK)));
+    marked.or_else(|| from_homebrew(&exe).then(|| "homebrew".to_string()))
+}
+
+/// The first line of the mark at `path`, trimmed and lowercased. None: there is no mark there, or its first line is
+/// empty. Windows PowerShell 5.1 may write it as UTF-16 (`Out-File`, `>`) or with a byte order mark: both read the same.
+fn mark_word(path: &Path) -> Option<String> {
+    let mut bytes = Vec::new();
+    // a mark is a word: of a bigger file only the start is read
+    File::open(path).ok()?.take(4096).read_to_end(&mut bytes).ok()?;
+    let utf16 = |rest: &[u8], unit: fn([u8; 2]) -> u16| -> String {
+        char::decode_utf16(rest.as_chunks().0.iter().map(|&pair| unit(pair))).map(|c| c.unwrap_or(char::REPLACEMENT_CHARACTER)).collect()
+    };
+    let text = match bytes.as_slice() {
+        [0xFF, 0xFE, rest @ ..] => utf16(rest, u16::from_le_bytes),
+        [0xFE, 0xFF, rest @ ..] => utf16(rest, u16::from_be_bytes),
+        [0xEF, 0xBB, 0xBF, rest @ ..] | rest => String::from_utf8_lossy(rest).into_owned(),
+    };
+    let word = text.lines().next()?.trim().to_lowercase();
+    (!word.is_empty()).then_some(word)
+}
+
+/// macOS: whether `exe` (resolved) runs from Homebrew's own folders, `…/Cellar/hersir/…` (a formula) or
+/// `…/Caskroom/hersir/…` (a cask). On Linux and Windows such a path means nothing.
+fn from_homebrew(exe: &Path) -> bool {
+    let dirs: Vec<&OsStr> = exe.parent().map(|d| d.iter().collect()).unwrap_or_default();
+    cfg!(target_os = "macos") && dirs.windows(2).any(|w| matches!(w[0].to_str(), Some("Cellar" | "Caskroom")) && w[1] == "hersir")
+}
+
+/// The command that updates a package's Hersir: "yay -Syu" for "aur", "brew update && brew upgrade hersir" for
+/// "homebrew", "scoop update; scoop update hersir" for "scoop", None for any other package.
+pub fn package_update_command(package: &str) -> Option<&'static str> {
+    match package {
+        "aur" => Some("yay -Syu"),
+        // brew upgrade refreshes the tap by itself only once a day, so a release of today needs brew update first
+        "homebrew" => Some("brew update && brew upgrade hersir"),
+        // scoop update <app> refreshes the buckets by itself only when they are three hours old
+        "scoop" => Some("scoop update; scoop update hersir"),
+        _ => None,
+    }
 }
 
 /// The program of an install from before Hersir 0.17.0 in `prefix`, when there is one: `<prefix>/lib/gizai/gizai`, on
