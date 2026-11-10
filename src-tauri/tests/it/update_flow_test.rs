@@ -997,3 +997,147 @@ async fn a_release_a_check_from_before_ga_253_found_is_checked_again_at_once() {
     assert_eq!(update::status(&s.st).available.map(|r| r.version).as_deref(), Some("9.9.9"), "signed, so offered now");
     assert!(!update::tick(&s.st, gizai_core::ids::now_ms()).await, "and not again until it is due");
 }
+
+// ---------- GA-199: a Hersir from a package never updates itself, and says how to update it ----------
+
+const AUR_TEXT: &str = "Hersir came from the AUR, so it doesn't update itself. Update it with yay -Syu, then restart Hersir.";
+const HOMEBREW_TEXT: &str = "Hersir came from Homebrew, so it doesn't update itself. Update it with brew update && brew upgrade hersir, then restart Hersir.";
+const SCOOP_TEXT: &str = "Hersir came from Scoop, so it doesn't update itself. Update it with scoop update; scoop update hersir, then restart Hersir.";
+const PACKAGE_TEXT: &str = "Hersir came from a package, so it doesn't update itself. Update it with the package manager that installed it, then restart Hersir.";
+
+/// Hersir (this version) in <prefix>/lib/hersir, where install.sh would put it too (as the AUR's /usr/lib/hersir/hersir
+/// is), with the release v9.9.9 signed (and this system's ready-made build, where there is one). Then
+/// hersir-package.txt saying `mark` beside it, read as the app reads it when it starts (set_exe).
+fn package_scratch(mark: &str) -> (Scratch, PathBuf) {
+    let (s, lib) = match ready_scratch() {
+        Some((s, lib, _)) => (s, lib),
+        None => hersir_scratch("lib/hersir"),
+    };
+    let without = update::status(&s.st);
+    assert_eq!(without.install_to.as_deref(), Some(s.prefix.display().to_string().as_str()), "without a mark it would update itself");
+    assert_eq!((without.package, without.update_command), (None, None));
+    std::fs::write(lib.join("hersir-package.txt"), format!("{mark}\n")).unwrap();
+    s.st.updates.set_exe(Some(lib.join("hersir")));
+    (s, lib)
+}
+
+/// A package's Hersir: its status has `package`, `command`, no installTo and `text` in cannotInstall, word for word; the
+/// check still offers the newer signed release; start_update fails with `text`, before a check and after it, and nothing
+/// was fetched, downloaded, built, backed up or installed.
+async fn never_updates_itself(s: &Scratch, lib: &Path, package: &str, command: Option<&str>, text: &str) {
+    let before = update::status(&s.st);
+    assert_eq!(before.package.as_deref(), Some(package), "{before:?}");
+    assert_eq!(before.update_command.as_deref(), command);
+    assert_eq!((before.install_to.as_deref(), before.cannot_install.as_deref()), (None, Some(text)));
+    assert_eq!(update::start(&s.st, "9.9.9").unwrap_err(), text, "before a check");
+
+    let st = update::check(&s.st).await;
+    assert_eq!(st.problem, None, "the check still runs");
+    let offered = st.available.clone().expect("the newer signed release still shows");
+    assert_eq!((offered.version.as_str(), offered.signed()), ("9.9.9", true));
+    assert_eq!(st.unsigned, None);
+    assert_eq!((st.package.as_deref(), st.update_command.as_deref()), (Some(package), command));
+    assert_eq!((st.install_to.as_deref(), st.cannot_install.as_deref()), (None, Some(text)));
+    assert_eq!(st.installed, None);
+
+    let program = std::fs::read(lib.join("hersir")).unwrap();
+    assert_eq!(update::start(&s.st, "9.9.9").unwrap_err(), text, "after the check");
+    let after = update::status(&s.st);
+    assert!(after.job.is_none(), "no update started: {:?}", after.job);
+    assert!(!s.t.join("data/update").exists(), "nothing was fetched, downloaded or built");
+    assert!(!s.t.join("marks/build").exists() && !s.t.join("marks/install").exists(), "install.sh never ran");
+    assert!(s.backups().is_empty(), "no backup");
+    assert_eq!(std::fs::read(lib.join("hersir")).unwrap(), program, "the package's Hersir is as it was");
+    assert!(update::restart_command(&s.st).is_err(), "nothing to restart into");
+}
+
+#[tokio::test]
+async fn a_hersir_from_the_aur_never_updates_itself_and_says_how_to_update_it() {
+    let (s, lib) = package_scratch("aur");
+    never_updates_itself(&s, &lib, "aur", Some("yay -Syu"), AUR_TEXT).await;
+    // a restart after a restore starts the same program again, not an install in its prefix
+    let again = update::start_again_command(&s.st).unwrap();
+    let args: Vec<String> = again.get_args().map(|a| a.to_string_lossy().to_string()).collect();
+    assert_eq!(args.last().map(String::as_str), Some(lib.join("hersir").display().to_string().as_str()), "{args:?}");
+}
+
+#[tokio::test]
+async fn a_hersir_from_scoop_never_updates_itself_also_beside_install_ps1s_marker() {
+    let (s, lib) = package_scratch("scoop");
+    std::fs::write(lib.join("hersir-installed.txt"), "").unwrap();
+    never_updates_itself(&s, &lib, "scoop", Some("scoop update; scoop update hersir"), SCOOP_TEXT).await;
+}
+
+#[tokio::test]
+async fn a_hersir_from_homebrew_never_updates_itself() {
+    let (s, lib) = package_scratch("homebrew");
+    never_updates_itself(&s, &lib, "homebrew", Some("brew update && brew upgrade hersir"), HOMEBREW_TEXT).await;
+}
+
+#[tokio::test]
+async fn a_hersir_from_another_package_says_the_general_text_and_no_command() {
+    let (s, lib) = package_scratch("  Nix ");
+    never_updates_itself(&s, &lib, "nix", None, PACKAGE_TEXT).await;
+}
+
+#[tokio::test]
+async fn a_package_s_unsigned_release_shows_as_unsigned_and_start_says_the_package_s_text() {
+    let (s, _lib) = package_scratch("aur");
+    s.list(&[SUMS]);
+    let st = update::check(&s.st).await;
+    assert_eq!(st.available, None, "not signed: not offered");
+    assert_eq!(st.unsigned.as_ref().map(|r| r.tag.as_str()), Some("v9.9.9"), "it says it is out, not signed yet");
+    assert_eq!(update::start(&s.st, "9.9.9").unwrap_err(), AUR_TEXT, "the package's text, whichever release");
+    assert!(!s.t.join("data/update").exists(), "nothing was fetched");
+    s.list(&[SUMS, SIG]);
+    let st = update::check(&s.st).await;
+    assert_eq!((st.available.map(|r| r.version), st.unsigned), (Some("9.9.9".into()), None), "once signed it is announced");
+}
+
+#[tokio::test]
+async fn an_empty_mark_is_no_package_and_the_update_works_as_before() {
+    let (s, lib) = package_scratch("");
+    let st = update::check(&s.st).await;
+    assert_eq!((st.package.clone(), st.update_command.clone(), st.cannot_install.clone()), (None, None, None), "{st:?}");
+    assert_eq!(st.install_to.as_deref(), Some(s.prefix.display().to_string().as_str()));
+    update::start(&s.st, "9.9.9").unwrap();
+    let done = wait_for_update(&s.st);
+    assert_eq!(done.job.clone().unwrap().step, "installed", "{:?}", done.job);
+    assert_eq!(says(&lib.join("hersir")), "hersir 9.9.9");
+}
+
+#[tokio::test]
+async fn the_mark_is_read_again_with_the_program_and_set_package_overrides_it() {
+    let (s, lib) = package_scratch("aur");
+    assert_eq!(update::status(&s.st).package.as_deref(), Some("aur"));
+    std::fs::remove_file(lib.join("hersir-package.txt")).unwrap();
+    s.st.updates.set_exe(Some(lib.join("hersir")));
+    let st = update::status(&s.st);
+    assert_eq!((st.package, st.cannot_install), (None, None), "the mark is gone");
+    s.st.updates.set_package(Some("scoop"));
+    let st = update::status(&s.st);
+    assert_eq!((st.package.as_deref(), st.cannot_install.as_deref(), st.install_to), (Some("scoop"), Some(SCOOP_TEXT), None));
+    s.st.updates.set_package(None);
+    assert_eq!(update::status(&s.st).install_to.as_deref(), Some(s.prefix.display().to_string().as_str()));
+}
+
+// macOS: a Homebrew formula's Hersir runs from …/Cellar/hersir/<version>, where install.sh's layout would have it update
+// itself into the Cellar; a link into it (Homebrew's bin/hersir) counts too. No mark needed there.
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn on_macos_a_hersir_in_homebrews_cellar_never_updates_itself_without_a_mark() {
+    let (s, _lib) = hersir_scratch("lib/hersir");
+    let cellar = s.t.join("homebrew/Cellar/hersir/9.0.0/lib/hersir");
+    write_script(&cellar.join("hersir"), &format!("#!/bin/sh\n[ \"$1\" = --version ] && echo 'hersir {VERSION}'\nexit 0\n"));
+    std::fs::create_dir_all(s.t.join("homebrew/bin")).unwrap();
+    std::os::unix::fs::symlink("../Cellar/hersir/9.0.0/lib/hersir/hersir", s.t.join("homebrew/bin/hersir")).unwrap();
+    for exe in [cellar.join("hersir"), s.t.join("homebrew/bin/hersir")] {
+        s.st.updates.set_exe(Some(exe.clone()));
+        let st = update::check(&s.st).await;
+        assert_eq!((st.package.as_deref(), st.update_command.as_deref()), (Some("homebrew"), Some("brew update && brew upgrade hersir")), "{exe:?}");
+        assert_eq!((st.install_to.as_deref(), st.cannot_install.as_deref()), (None, Some(HOMEBREW_TEXT)), "{exe:?}");
+        assert_eq!(st.available.map(|r| r.version).as_deref(), Some("9.9.9"));
+        assert_eq!(update::start(&s.st, "9.9.9").unwrap_err(), HOMEBREW_TEXT);
+        assert!(!s.t.join("data/update").exists(), "nothing was fetched");
+    }
+}
