@@ -309,6 +309,108 @@ async fn a_memory_write_naming_the_old_team_lead_folder_is_previewed_and_replace
     assert_eq!(t.waiting(&thread), [newer], "{old} was replaced");
 }
 
+/// The notes in the Chief's old folder, whatever their case: none after GA-258.
+fn in_team_lead(t: &T) -> i64 {
+    t.st.db.read(|c| Ok(c.query_row("SELECT count(*) FROM docs WHERE path LIKE 'Team Lead/%' AND deleted_at IS NULL", [], |r| r.get(0))?)).unwrap()
+}
+
+/// GA-258 QA, the fix round: a memory_write that names Team Lead/Notes waits as a new version of Chief/Notes, with its
+/// version check (no version, an older one, the current one) and a diff against Chief/Notes, whatever the path's case or
+/// `.md`; each newer call replaces the older one, and approving saves the next version of Chief/Notes and nothing in
+/// Team Lead/.
+#[tokio::test]
+async fn a_memory_write_to_team_lead_notes_waits_and_saves_as_the_next_version_of_chief_notes() {
+    let t = setup();
+    t.write_note("Chief/Notes", "# Notes\n\n- Ship on Tuesdays.\n", None);
+    t.write_note("Chief/Notes", "# Notes\n\n- Ship on Fridays.\n", Some(1));
+    let thread = t.marked("Read Otus and note what matters");
+    let none = t.keep(&thread, "memory_write", json!({"path": "Team Lead/Notes", "body_md": "# Notes\n"})).await;
+    let v = t.view(&thread, &none);
+    assert_eq!(v["preview"]["line"], "Save a new version of the note Chief/Notes", "{v}");
+    assert_eq!(v["preview"]["warning"], "Chief/Notes exists and the call gives no version, so approving fails and nothing is saved.");
+    let older = t.keep(&thread, "memory_write", json!({"path": "/team lead/notes.md", "body_md": "# Notes\n", "version": 1})).await;
+    assert_eq!(t.waiting(&thread), [older.clone()], "{none} was replaced");
+    assert_eq!(t.view(&thread, &older)["preview"]["warning"], "Chief/Notes changed since the Chief read it (version 1; it is at version 2 now), \
+        so approving fails and nothing is saved.");
+    let body = "# Notes\n\n- Ship on Fridays.\n- Release notes from Otus.\n";
+    let current = t.keep(&thread, "memory_write", json!({"path": "Team Lead/Notes", "body_md": body, "version": 2})).await;
+    assert_eq!(t.waiting(&thread), [current.clone()], "{older} was replaced");
+    let v = t.view(&thread, &current);
+    assert_eq!(v["preview"]["line"], "Save a new version of the note Chief/Notes");
+    assert!(v["preview"]["warning"].is_null(), "{v}");
+    let f = fields(&v);
+    assert_eq!(field(&f, "Note").2, "Chief/Notes");
+    assert_eq!((field(&f, "Version").1.as_deref(), field(&f, "Version").2.as_str()), (Some("2"), "3"));
+    let diff: Vec<(String, String)> = v["preview"]["diff"].as_array().unwrap().iter()
+        .map(|l| (l["kind"].as_str().unwrap().to_string(), l["text"].as_str().unwrap().to_string())).collect();
+    assert_eq!(diff, [("same", "# Notes"), ("same", ""), ("same", "- Ship on Fridays."), ("add", "- Release notes from Otus.")]
+        .map(|(k, s)| (k.to_string(), s.to_string())), "against Chief/Notes");
+    assert_eq!(t.note("Chief/Notes").unwrap().current_version, 2, "nothing saved yet");
+
+    let a = pending::approve(&t.st, &current).await.unwrap();
+    assert_eq!((a.status.as_str(), a.result_md.as_deref()),
+               ("approved", Some("Approved: save a new version of the note Chief/Notes. Saved as version 3.")));
+    let n = t.note("Chief/Notes").unwrap();
+    assert_eq!((n.path.as_str(), n.current_version, n.body_md.trim_end()), ("Chief/Notes", 3, body.trim_end()));
+    assert_eq!(in_team_lead(&t), 0, "nothing in Team Lead/");
+    assert!(memory::find(&t.st.db, "Team Lead/Notes").unwrap().is_none());
+}
+
+/// GA-258 QA, the fix round: a new note named in Team Lead/ (memory_write, or a memory_append that makes it) is previewed
+/// and keyed as its path in Chief/, where approving makes it; a memory_move to a Team Lead/ target shows the Chief/ path
+/// it lands at; and a memory_write preview tidies the path the way the write does.
+#[tokio::test]
+async fn new_notes_and_move_targets_named_in_team_lead_are_previewed_and_made_in_chief() {
+    let t = setup();
+    t.write_note("Decisions/Release day", "Fridays.", None);
+    memory::write(&t.st.db, &Who::Agent(t.backend.clone()), "Agents/Backend Agent/Cargo", "Use -j 8.", None, None).unwrap();
+    let thread = t.marked("Read Otus and keep what matters");
+    // memory_write: a new note
+    let plan = t.keep(&thread, "memory_write", json!({"path": "Team Lead/Plan", "body_md": "# Plan\n"})).await;
+    let v = t.view(&thread, &plan);
+    assert_eq!(v["preview"]["line"], "Make the note Chief/Plan", "{v}");
+    assert_eq!(field(&fields(&v), "Note").2, "Chief/Plan");
+    assert!(v["preview"]["diff"].is_null() && v["preview"]["warning"].is_null(), "{v}");
+    // a newer call for Chief/Plan, in either tool, replaces it
+    let plan2 = t.keep(&thread, "memory_write", json!({"path": "chief/Plan.md", "body_md": "# Plan\n\n- Ship.\n"})).await;
+    assert_eq!(t.waiting(&thread), [plan2.clone()], "{plan} was replaced");
+    // memory_append that makes a note
+    let ideas = t.keep(&thread, "memory_append", json!({"note": "Team Lead/Ideas", "text": "- Weekly digest."})).await;
+    let v = t.view(&thread, &ideas);
+    assert_eq!(v["preview"]["line"], "Make the note Chief/Ideas with this text", "{v}");
+    assert_eq!(field(&fields(&v), "Note").2, "Chief/Ideas");
+    let ideas2 = t.keep(&thread, "memory_append", json!({"note": "Chief/Ideas", "text": "- Weekly digest, on Mondays."})).await;
+    assert_eq!(t.waiting(&thread), [plan2.clone(), ideas2.clone()], "{ideas} was replaced");
+    // memory_move to the old folder, and to a whole path in it
+    let mv = t.keep(&thread, "memory_move", json!({"note": "Agents/Backend Agent/Cargo", "to": "Team Lead/"})).await;
+    let v = t.view(&thread, &mv);
+    assert_eq!(v["preview"]["line"], "Move the note Agents/Backend Agent/Cargo to Chief/Cargo", "{v}");
+    assert_eq!(field(&fields(&v), "To").2, "Chief/Cargo");
+    let cp = t.keep(&thread, "memory_move", json!({"note": "Decisions/Release day", "to": "Team Lead/Release", "copy": true})).await;
+    assert_eq!(t.view(&thread, &cp)["preview"]["line"], "Copy the note Decisions/Release day to Chief/Release");
+    // a write's path made tidy as the write makes it: a new version of Decisions/Release day, not a new note
+    let tidy = t.keep(&thread, "memory_write", json!({"path": " decisions/ Release  day ", "body_md": "Fridays, after the demo.", "version": 1})).await;
+    let v = t.view(&thread, &tidy);
+    assert_eq!(v["preview"]["line"], "Save a new version of the note Decisions/Release day", "{v}");
+    assert!(v["preview"]["warning"].is_null(), "{v}");
+
+    // approve each: they land where the previews said
+    for id in [&plan2, &ideas2, &mv, &cp, &tidy] {
+        let a = pending::approve(&t.st, id).await.unwrap();
+        assert_eq!(a.status, "approved", "{id}: {:?}", a.result_md);
+    }
+    let plan = t.note("Chief/Plan").unwrap();
+    assert_eq!((plan.path.as_str(), plan.current_version, plan.body_md.trim_end()), ("Chief/Plan", 1, "# Plan\n\n- Ship."));
+    let ideas = t.note("Chief/Ideas").unwrap();
+    assert_eq!((ideas.path.as_str(), ideas.body_md.trim_end()), ("Chief/Ideas", "# Ideas\n\n- Weekly digest, on Mondays."));
+    assert_eq!(t.note("Chief/Cargo").unwrap().body_md, "Use -j 8.");
+    assert!(memory::find(&t.st.db, "Agents/Backend Agent/Cargo").unwrap().is_none(), "moved");
+    assert_eq!(t.note("Chief/Release").unwrap().body_md, "Fridays.");
+    let d = t.note("Decisions/Release day").unwrap();
+    assert_eq!((d.current_version, d.body_md.as_str()), (2, "Fridays, after the demo."));
+    assert_eq!(in_team_lead(&t), 0, "nothing in Team Lead/");
+}
+
 #[tokio::test]
 async fn a_call_gizai_cant_keep_is_still_not_run_and_the_team_lead_asks_you_in_a_new_message() {
     let t = setup();
