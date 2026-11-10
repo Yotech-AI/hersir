@@ -47,15 +47,33 @@ export function switchTool(list: AgentServer[], serverId: string, tool: string, 
   return list.some((s) => s.serverId === serverId) ? list.map((s) => (s.serverId === serverId ? next : s)) : [...list, next];
 }
 
-/** The switches as saved: servers that are off and have no tools off say nothing, so they are left out. */
+/** GA-271: the switches with After the Chief uses it on Allow (`trusted`) or Ask for my OK for one server (the browser too). */
+export function trustServer(list: AgentServer[], serverId: string, trusted: boolean): AgentServer[] {
+  return list.some((s) => s.serverId === serverId)
+    ? list.map((s) => (s.serverId === serverId ? { ...s, trusted } : s))
+    : [...list, { serverId, on: false, toolsOff: [], trusted }];
+}
+
+/** The switches as saved: servers that are off, have no tools off and are on Ask for my OK say nothing, so they are left out. */
 export function cleanSwitches(list: AgentServer[]): AgentServer[] {
-  return list.filter((s) => s.on || s.toolsOff.length > 0).map((s) => ({ ...s, toolsOff: [...s.toolsOff].sort() }));
+  return list.filter((s) => s.on || s.toolsOff.length > 0 || s.trusted).map((s) => ({ ...s, toolsOff: [...s.toolsOff].sort() }));
 }
 
 export function sameSwitches(a: AgentServer[], b: AgentServer[]): boolean {
-  const key = (l: AgentServer[]) => JSON.stringify(cleanSwitches(l).sort((x, y) => x.serverId.localeCompare(y.serverId)));
+  const key = (l: AgentServer[]) => JSON.stringify(cleanSwitches(l).map((s) => ({ ...s, trusted: !!s.trusted }))
+    .sort((x, y) => x.serverId.localeCompare(y.serverId)));
   return key(a) === key(b);
 }
+
+/** GA-271: the Chief's choice per source (an MCP server, the browser, the web), as the agent form says it. Ask for my OK is
+ * the default: after such a tool, what the Chief does in that chat waits for your Approve (GA-261). */
+export const TRUST_LABEL = "After the Chief uses it:";
+export const TRUST_ASK = "Ask for my OK";
+export const TRUST_ALLOW = "Allow";
+
+/** The warning under Allow; `name` is the server's name, "the web" or "pages in the browser". */
+export const trustWarning = (name: string) =>
+  `What ${name} returns can steer the Chief: with Allow, what the Chief does after using it runs without your OK.`;
 
 /** Its state in the agent's last run, in a few words, and its badge. */
 export function lastRunLabel(status: string): { text: string; badge: string } {

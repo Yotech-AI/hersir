@@ -1085,7 +1085,7 @@ fn plan(f: &TemplateFile, builtin: bool, name: Option<&str>, here: &Here) -> Res
                 Some(id) if !servers.iter().any(|o| o.server_id == id) => {
                     let mut off = tidy(&s.tools_off);
                     off.sort();
-                    servers.push(AgentServer { server_id: id, on: true, tools_off: off });
+                    servers.push(AgentServer { server_id: id, on: true, tools_off: off, trusted: false });
                 }
                 Some(_) => {}
                 None if !missing.iter().any(|m| m.eq_ignore_ascii_case(n)) => missing.push(n.to_string()),
@@ -1093,7 +1093,7 @@ fn plan(f: &TemplateFile, builtin: bool, name: Option<&str>, here: &Here) -> Res
             }
         }
         if a.browser && !servers.iter().any(|o| o.server_id == mcp_servers::BROWSER) {
-            servers.push(AgentServer { server_id: mcp_servers::BROWSER.into(), on: true, tools_off: vec![] });
+            servers.push(AgentServer { server_id: mcp_servers::BROWSER.into(), on: true, tools_off: vec![], trusted: false });
         }
         if !servers.is_empty() && mcp_servers::mcp_not_on(&cli.kind).is_some() {
             notes.push(format!("MCP servers and the browser work on Claude Code for now: {name} runs on {}, so they stay off.", cli.name));
@@ -1164,7 +1164,7 @@ fn plan(f: &TemplateFile, builtin: bool, name: Option<&str>, here: &Here) -> Res
         builtin_tools.sort();
         let cli_tools = CliTools {
             web_search: a.web_search, web_fetch, fetch_domains: domains, insecure_certs: a.insecure_certs, builtin: builtin_tools,
-            slash_commands: a.slash_commands,
+            slash_commands: a.slash_commands, web_trusted: false,
         };
         let screenshots = a.screenshots.unwrap_or_else(|| mcp_servers::screenshots_default(&role));
         let mut extra = serde_json::Map::new();

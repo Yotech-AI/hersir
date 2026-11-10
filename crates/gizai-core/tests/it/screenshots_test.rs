@@ -718,7 +718,7 @@ fn an_agent_takes_screenshots_by_its_roles_default_until_its_own_switch_is_saved
     assert_eq!(m::agent_screenshots(&b.db, &b.agent).unwrap(), None, "never set");
     let cli = m::set_cli_tools(&b.db, &b.you, &b.agent, CliTools { web_search: true, builtin: vec!["Bash".into()], ..Default::default() }).unwrap();
     let tools = m::set_agent_tools(&b.db, &b.you, &b.agent, AgentTools { mcp: vec![AgentServer { server_id: m::BROWSER.into(), on: true,
-        tools_off: vec![] }] }).unwrap();
+        tools_off: vec![], trusted: false }] }).unwrap();
 
     m::set_agent_screenshots(&b.db, &b.you, &b.agent, false).unwrap();
     assert_eq!(m::agent_screenshots(&b.db, &b.agent).unwrap(), Some(false));

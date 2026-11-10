@@ -74,7 +74,7 @@ impl T {
         let agent = team::add_agent(&self.st.db, &self.st.you_id, &team_id, AgentInput {
             name: "Dev Agent".into(), role_key: "dev".into(), ..Default::default() }).unwrap();
         mcp_servers::save_agent(&self.st, &agent, AgentTools {
-            mcp: vec![AgentServer { server_id: self.id.clone(), on: true, tools_off: vec![] }],
+            mcp: vec![AgentServer { server_id: self.id.clone(), on: true, tools_off: vec![], trusted: false }],
         }).unwrap();
         team::agent(&self.st.db, &agent).unwrap()
     }

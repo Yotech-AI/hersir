@@ -74,8 +74,8 @@ fn setup() -> T {
         env: vec![], headers: vec![SecretLine { name: "Authorization".into(), value: Some(LINEAR_SECRET.into()) }],
     }).unwrap().server.id;
     core_mcp::set_agent_tools(&st.db, &st.you_id, &backend, AgentTools { mcp: vec![
-        AgentServer { server_id: otus.clone(), on: true, tools_off: vec!["delete_note".into()] },
-        AgentServer { server_id: linear.clone(), on: false, tools_off: vec![] },
+        AgentServer { server_id: otus.clone(), on: true, tools_off: vec!["delete_note".into()], trusted: false },
+        AgentServer { server_id: linear.clone(), on: false, tools_off: vec![], trusted: false },
     ] }).unwrap();
     T { st, lead, backend, otus, linear, _dir: dir }
 }
@@ -315,7 +315,7 @@ async fn create_and_update_agent_refuse_mcp_servers_and_their_tool_switches_and_
 async fn other_keys_a_model_might_send_dont_change_an_agents_mcp_servers() {
     let t = setup();
     let before = t.backend_tools();
-    let raw = serde_json::to_string(&AgentTools { mcp: vec![AgentServer { server_id: t.linear.clone(), on: true, tools_off: vec![] }] }).unwrap();
+    let raw = serde_json::to_string(&AgentTools { mcp: vec![AgentServer { server_id: t.linear.clone(), on: true, tools_off: vec![], trusted: false }] }).unwrap();
     let mut outcomes = vec![];
     for (key, value) in [
         ("mcpServers", json!({"linear": {"type": "http", "url": "https://mcp.linear.example/mcp"}})),
@@ -780,7 +780,7 @@ async fn a_board_check_gets_no_tool_from_outside_gizai_even_with_the_team_leads_
     let m = team::agent(&st.db, &t.lead).unwrap();
     team::update_agent(&st.db, &st.you_id, &t.lead, AgentInput { name: m.name, role_key: m.role_key, chat_enabled: Some(true), board_check_minutes: Some(15),
         ..Default::default() }).unwrap();
-    core_mcp::set_agent_tools(&st.db, &st.you_id, &t.lead, AgentTools { mcp: vec![AgentServer { server_id: t.otus.clone(), on: true, tools_off: vec![] }] }).unwrap();
+    core_mcp::set_agent_tools(&st.db, &st.you_id, &t.lead, AgentTools { mcp: vec![AgentServer { server_id: t.otus.clone(), on: true, tools_off: vec![], trusted: false }] }).unwrap();
     gizai_lib::mcp_servers::save_cli_tools(&st, &t.lead, CliTools { web_search: true, web_fetch: true, ..Default::default() }).unwrap();
     let last_call = || -> Value {
         let log = std::fs::read_to_string(st.data_dir.join("chat/fake-mcp-calls.jsonl")).unwrap();
