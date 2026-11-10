@@ -252,7 +252,7 @@ describe("Chat answers in Runs (GA-94)", () => {
     expect(runs).toMatch(/<label for="s-chat-min">Minutes per chat answer<\/label><input id="s-chat-min" class="input" type="number" min="5" max="240" value="120"\/>/);
     expect(runs).toMatch(/<label for="s-chat-calls">Tool calls per chat answer<\/label><input id="s-chat-calls" class="input" type="number" min="20" max="500" value="300"\/>/);
     const t = text(runs);
-    expect(t).toContain("Minutes per chat answer 5 to 240. The Team Lead's board check and its look at an agent's question too.");
+    expect(t).toContain("Minutes per chat answer 5 to 240. The Chief's board check and its look at an agent's question too.");
     expect(t).toContain("Tool calls per chat answer 20 to 500");
     const at = (s: string) => t.indexOf(s);
     expect(at("Tool calls per run")).toBeLessThan(at("Minutes per chat answer"));

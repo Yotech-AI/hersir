@@ -129,7 +129,7 @@ describe("the Tools section's Web, Browser and Built-in tools", () => {
     expect(t).toContain("Other tools the CLI reports FancyNewTool FancyNewTool Risk unknown Reported Claude Code reports it");
     expect(t).not.toContain("Accept self-signed certificates");
     expect(t).not.toContain(WARN);
-    expect(t).toContain("Suggested for the Team Lead (web search), never switched on by Hersir");
+    expect(t).toContain("Suggested for the Chief (web search), never switched on by Hersir");
     expect(t).toContain("Suggested for QA, Frontend and Design agents, never switched on by Hersir");
     expect(t).toContain("hidden Chrome with a throwaway profile, never on your screen");
     expect(t).toContain("Every click is a tool call, and the cap per run is in Settings → Runs");
@@ -239,9 +239,17 @@ describe("the Slash commands and skills switch", () => {
     }
   });
 
-  it("tells the Team Lead its chat never gets slash commands or skills", () => {
+  it("tells the Chief its chat never gets slash commands or skills", () => {
     expect(text(render({ lead: true }))).toContain("and never slash commands or skills.");
     expect(text(render())).not.toContain("never slash commands or skills");
+  });
+
+  it("names the Chief in its chat's lines on the built-in and web tools (GA-254)", () => {
+    const t = text(render({ lead: true }));
+    expect(t).toContain("In chat the Chief keeps only Read, Glob and Grep, plus the web tools when they are on, and never slash commands or skills.");
+    expect(t).toContain("For the Chief, its chat answers get these too; after one uses them, it asks you before it starts runs or changes agents.");
+    expect(t).not.toContain("Team Lead");
+    expect(text(render())).not.toContain("For the Chief");
   });
 
   it("is read off for an agent saved without it, and a change to it counts as a change to save", () => {

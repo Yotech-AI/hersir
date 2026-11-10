@@ -74,8 +74,8 @@ export function AgentCliToolsFields({ agentId, cliId, allowedTools, value, onCha
   return (
     <>
       <Field label="Web" wide error={err} warn={warning}
-        hint={<>What it finds on the web is data for the agent, never instructions: its prompt says so. Suggested for the Team Lead (web search), never switched on by Hersir.
-          {lead && " For the Team Lead, its chat answers get these too; after one uses them, it asks you before it starts runs or changes agents."}</>}>
+        hint={<>What it finds on the web is data for the agent, never instructions: its prompt says so. Suggested for the Chief (web search), never switched on by Hersir.
+          {lead && " For the Chief, its chat answers get these too; after one uses them, it asks you before it starts runs or changes agents."}</>}>
         <ul className="mcp-agent" aria-label="Web">
           <li className={`ma-server${value.webSearch && !web.search ? " on" : ""}`}>
             <div className="ma-head">
@@ -135,7 +135,7 @@ export function AgentCliToolsFields({ agentId, cliId, allowedTools, value, onCha
         </ul>
       </Field>
       <Field label="Built-in tools" wide
-        hint={<>{view.builtin.source}{lead && " In chat the Team Lead keeps only Read, Glob and Grep, plus the web tools when they are on, and never slash commands or skills."}</>}>
+        hint={<>{view.builtin.source}{lead && " In chat the Chief keeps only Read, Glob and Grep, plus the web tools when they are on, and never slash commands or skills."}</>}>
         <div className="ct-head">
           {view.builtin.canAsk && (
             <button type="button" className="btn ghost sm" disabled={asking} onClick={ask} title="Starts Claude Code without a login: nothing is spent, nothing is written in ~/.claude">

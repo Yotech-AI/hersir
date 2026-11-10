@@ -264,7 +264,7 @@ describe("a new install's first start (the onboarding waits)", () => {
   });
 
   it("finishing without a chat opens the board with a note saying why, which Close takes away", async () => {
-    const why = "There's no Team Lead chat yet: it needs Claude Code, which isn't installed. Once it is, start one on the Chat page.";
+    const why = "There's no chat with the Chief yet: it needs Claude Code, which isn't installed. Once it is, start one on the Chat page.";
     await start("#/inbox", { onboarding: true }, onboarding);
     await leave({ page: "board" }, why);
     await until(() => byClass("warn-banner").length === 1 && h.drawn.length > 0);
@@ -281,9 +281,9 @@ describe("a new install's first start (the onboarding waits)", () => {
 
   it("on the board already, finishing without a chat opens it at once with the note", async () => {
     await start("#/board", { onboarding: true }, onboarding);
-    await leave({ page: "board" }, "The Team Lead's chat couldn't start. You can start one on the Chat page.");
+    await leave({ page: "board" }, "The Chief's chat couldn't start. You can start one on the Chat page.");
     await until(() => h.drawn.length > 0);
-    expect(byClass("warn-banner").map((n) => squash(n.textContent))).toEqual(["The Team Lead's chat couldn't start. You can start one on the Chat page."]);
+    expect(byClass("warn-banner").map((n) => squash(n.textContent))).toEqual(["The Chief's chat couldn't start. You can start one on the Chat page."]);
     expect(h.drawn).toEqual(["TasksPage board"]);
     expect(hash).toBe("#/board");
   });

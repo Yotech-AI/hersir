@@ -32,15 +32,15 @@ describe("a card with the Team Lead on the board (GA-70)", () => {
     task(3, {}),
   ]} />);
 
-  it("shows the teal Team Lead badge, not On hold", () => {
+  it("shows the teal Chief badge, not On hold", () => {
     const c = card(html, "GA-1");
-    expect(c).toContain('<span class="badge live" title="Its question is with the Team Lead">Team Lead</span>');
+    expect(c).toContain('<span class="badge live" title="Its question is with the Chief">Chief</span>');
     expect(c).not.toContain("On hold");
   });
   it("shows On hold once the Team Lead asked you, and nothing on a card without a hold", () => {
     expect(card(html, "GA-2")).toContain('<span class="badge needs">On hold</span>');
     expect(card(html, "GA-2")).not.toContain("badge live");
     expect(card(html, "GA-3")).not.toContain("badge needs");
-    expect(card(html, "GA-3")).not.toContain("Team Lead");
+    expect(card(html, "GA-3")).not.toContain("Chief");
   });
 });

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, ChevronDown, ChevronRight, CircleAlert, GitCommitHorizontal, Image, Images, Info, PanelRight, Settings, TriangleAlert } from "lucide-react";
 import { agentCliTools } from "../../api";
 import { href } from "../../router";
+import { roleLabel } from "../../lib/agents";
 import { browserOn } from "../../lib/cliTools";
 import {
   answerOf, compare, emptyReason, emptyTexts, formatOf, leftOutText, noneText, notTakenText, olderCount, olderText, PAIRING_TEXT, previewText,
@@ -58,7 +59,7 @@ function SetBlock({ set, compared, onOpen, onViewRun }: {
       <div className="shot-head">
         <Avatar name={set.agentName} kind="agent" role={set.role} />
         <b className="who">{set.agentName}</b>
-        {set.role && <Role className="icon role" aria-label={set.role} />}
+        {set.role && <Role className="icon role" aria-label={roleLabel(set.role)} />}
         <span className={`badge ${answer.cls}`}>{answer.text}</span>
         <span className="meta"><span title={new Date(set.endedAt).toLocaleString("en-GB")}>{when(set.endedAt)}</span> · {shotCount(set.shots.length)}</span>
         {commit && <span className="commit" title={set.commit ?? undefined}><GitCommitHorizontal className="icon sm" aria-hidden />{commit}</span>}

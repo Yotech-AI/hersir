@@ -22,10 +22,10 @@ function ChatSetup() {
     <div className="chat-setup">
       <div className="panel setup-card">
         <span className="setup-icon"><MessagesSquare className="icon lg" /></span>
-        <h2>Chat with your Team Lead</h2>
-        <p className="muted">To start chatting, set up the Team Lead: an agent with Chat turned on. It runs Claude Code with Hersir's tools, so you can ask it to add clients, projects and tasks, set up agents, write docs and read your inbox.</p>
-        <button className="btn primary" onClick={() => { go({ page: "team" }); open({ kind: "agent", teamId, preset: { name: "Team Lead", role: "lead", chat: true } }); }}>
-          <Crown className="icon" />Set up the Team Lead</button>
+        <h2>Chat with your Chief</h2>
+        <p className="muted">To start chatting, set up the Chief: an agent with Chat turned on. It runs Claude Code with Hersir's tools, so you can ask it to add clients, projects and tasks, set up agents, write docs and read your inbox.</p>
+        <button className="btn primary" onClick={() => { go({ page: "team" }); open({ kind: "agent", teamId, preset: { name: "Chief", role: "lead", chat: true } }); }}>
+          <Crown className="icon" />Set up the Chief</button>
         <p className="faint small">In chat it works in a folder of its own and can read your linked repositories. It doesn't edit code or run commands: it hands that work to your agents as tasks.</p>
       </div>
     </div>

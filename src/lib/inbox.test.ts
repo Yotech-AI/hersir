@@ -41,11 +41,11 @@ describe("Team Lead chats in the Inbox", () => {
 });
 
 describe("chatLabel (Chat → Recent)", () => {
-  it("says Question or Approval while the chat waits for you, Team Lead after, nothing for your own chats", () => {
+  it("says Question or Approval while the chat waits for you, Chief after, nothing for your own chats", () => {
     expect(chatLabel(chat({ kind: "question", waiting: true }))).toBe("Question");
     expect(chatLabel(chat({ kind: "approval", waiting: true }))).toBe("Approval");
-    expect(chatLabel(chat({ kind: "approval", waiting: false }))).toBe("Team Lead");
-    expect(chatLabel(chat({ kind: "question", waiting: false }))).toBe("Team Lead");
+    expect(chatLabel(chat({ kind: "approval", waiting: false }))).toBe("Chief");
+    expect(chatLabel(chat({ kind: "question", waiting: false }))).toBe("Chief");
     expect(chatLabel(chat({}))).toBeNull();
   });
 });

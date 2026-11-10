@@ -33,5 +33,5 @@ export function buildOrg(members: Member[], branches: Branch[] = DEFAULT_BRANCHE
   }));
   const others = rest.filter((m) => !branches.some((b) => b.roles.includes(m.roleKey)));
   if (others.length) departments.push({ key: "other", name: "Specialists", agents: others.length, nodes: others.map((member) => ({ kind: "agent", member })) });
-  return { leads: leads.length ? leads : [{ kind: "ghost", role: "lead", name: "Team Lead" }], departments };
+  return { leads: leads.length ? leads : [{ kind: "ghost", role: "lead", name: "Chief" }], departments };
 }

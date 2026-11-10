@@ -54,8 +54,8 @@ function Composer({ box, files, onAddFiles, onRemoveFile, onSend, onStop, workin
       <PendingFileList paths={files} onRemove={onRemoveFile} disabled={disabled} compact />
       {/* While the Team Lead answers, Enter queues the message: it goes when the answer is done. */}
       <MarkdownEditor className="composer-editor" toolbar={false} value={value} onChange={setValue} onEnter={(md) => onSend(md)} disabled={disabled}
-        pickerUp handle={editor} ariaLabel="Message the Team Lead"
-        placeholder={working ? "Queue a message for when this answer is done…" : "Message the Team Lead…"} />
+        pickerUp handle={editor} ariaLabel="Message the Chief"
+        placeholder={working ? "Queue a message for when this answer is done…" : "Message the Chief…"} />
       <div className="composer-foot">
         <Popover up label="Add to this message" disabled={disabled} button={(open) => (
           <button type="button" className={`btn ghost sm icon-only composer-plus${open ? " on" : ""}`} disabled={disabled}

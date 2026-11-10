@@ -6,7 +6,7 @@ import {
   DEFAULT_TOOLS, draftFrom, foldersFrom, inputFrom, isLeadDraft, notOneRule, oneRule, parseTools, ROLES, roleLabel, shareChoices, shareTarget, type AgentDraft,
   type AgentPreset,
 } from "../lib/agents";
-import { agentFolder } from "../lib/memory";
+import { agentFolder, LEAD } from "../lib/memory";
 import { CLAUDE_CODE, EFFORTS_BY_KIND, FOLDERS_NOTE, KIND_LABEL, kindOf, modeFor, PERMISSIONS, RISKY, usesAllowedTools } from "../lib/clis";
 import { cliToolsToSave, fitCliTools, sameCliTools } from "../lib/cliTools";
 import { modKey } from "../lib/keys";
@@ -76,7 +76,7 @@ function FoldersField({ value, onChange, kind, lead }: { value: AgentFolder[]; o
       Folders besides its card's worktree that its file tools may read, or read and change. They limit the file tools, not the commands it may run: an allowed command can still reach any folder.
       {" "}Never /, your home folder, Hersir's data folder or folders with keys (~/.ssh, ~/.gnupg, ~/.config, …).
       {" "}{FOLDERS_NOTE[kind]}
-      {lead && " In chat the Team Lead only reads them; read and change also lets it update that folder (update_checkout) after you say yes in the chat."}
+      {lead && " In chat the Chief only reads them; read and change also lets it update that folder (update_checkout) after you say yes in the chat."}
     </>}>
       <div className="folder-list">
         {value.map((f, i) => {
@@ -110,7 +110,7 @@ function SharesField({ value, onChange, agentId, name, lead, agents }: {
   const choices = shareChoices(agentId, agents);
   const sharers = agents.filter((a) => agentId && a.sharesMemoryWith === agentId && a.actorId !== agentId).map((a) => a.name);
   const own = `Agents/${agentFolder(name || "Agent")}/`;
-  const hint = lead ? "The Team Lead keeps its own notes, in Team Lead/." : <>
+  const hint = lead ? `The Chief keeps its own notes, in ${LEAD}/.` : <>
     Its own folder ({own}), or the folder of an agent it takes turns with, like Backend Agent 2 with Backend Agent: their runs get that folder's notes and what they learn goes there.
     {" "}Joining moves its notes into that folder; back to its own folder, it starts a fresh Notes.
     {sharers.length > 0 && ` ${sharers.join(", ")} ${sharers.length === 1 ? "shares" : "share"} this agent's folder.`}
@@ -279,7 +279,7 @@ export function AgentDrawer({ teamId, agentId, preset, onClose }: { teamId?: str
             );
           })()}
         </FormSection>
-        <FormSection title="Chat" text="The agent you talk to on the Chat page: your Team Lead. Only one agent has Chat.">
+        <FormSection title="Chat" text="The agent you talk to on the Chat page: your Chief. Only one agent has Chat.">
           <Field label="Chat" wide htmlFor="a-chat"
             warn={kind !== "claude_code" ? "Chat runs on Claude Code: pick a Claude Code CLI under Runs on to turn it on." : d.chat && chatOwner && chatOwner.actorId !== agentId ? `Chat moves from ${chatOwner.name} to this agent.` : null}
             hint="In chat it uses Hersir's tools: clients, projects, tasks, agents, docs, files and your inbox. It can read your linked repositories but doesn't edit files or run commands there. The settings below are for its work on tasks.">
@@ -303,7 +303,7 @@ export function AgentDrawer({ teamId, agentId, preset, onClose }: { teamId?: str
           <SharesField value={d.memoryWith} onChange={(v) => set("memoryWith", v)} agentId={agentId} name={d.name} lead={isLeadDraft(d)} agents={agents} />
         </FormSection>
         <FormSection title="Work" text={isNew
-          ? "The columns it is on decide when it works (Team → Workflow). A new agent goes on its role's usual columns: builders on To do and In progress, QA on Testing, DevOps on Deploy, the Team Lead on none."
+          ? "The columns it is on decide when it works (Team → Workflow). A new agent goes on its role's usual columns: builders on To do and In progress, QA on Testing, DevOps on Deploy, the Chief on none."
           : "The columns it is on decide when it works (Team → Workflow): on an Auto column it takes cards by itself, on a Manual one Run starts it."}>
           <Field label="Cards at once" htmlFor="a-runs" hint="1 to 10. Each card gets its own git worktree; Settings sets the limit for all agents together."
             warn={d.maxRuns.trim() !== "" && !(Number(d.maxRuns) >= 1 && Number(d.maxRuns) <= 10) ? "Pick a number from 1 to 10" : null}>
