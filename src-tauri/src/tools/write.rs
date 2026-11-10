@@ -130,16 +130,17 @@ fn guard_agent_powers(a: &Args) -> Result<(), String> {
                             MCP servers and the CLI's other tools can't be switched on from chat: only the user does that, in the agent form → \
                             Tools. Nothing changed."));
     }
-    // MCP servers and their tools: only the user switches them, in the agent form → Tools.
-    for k in ["mcp_servers", "mcp", "tools", "mcp_tools"] {
+    // MCP servers and their tools: only the user switches them, in the agent form → Tools. GA-271: so is After the Chief uses
+    // it (`trusted`, Ask for my OK or Allow), for a server and the browser.
+    for k in ["mcp_servers", "mcp", "tools", "mcp_tools", "trusted"] {
         if a.0.get(k).is_some_and(|v| !v.is_null()) {
             return Err("an agent's MCP servers and their tools can't be switched from chat: only the user does that, in the agent form → Tools".into());
         }
     }
     // Web search, fetching pages, the browser and the CLI's built-in tools (slash commands and skills among them): the
-    // same, only the user (agent form → Tools).
+    // same, only the user (agent form → Tools). GA-271: Web's After the Chief uses it too (`web_trusted`).
     for k in ["web_search", "web_fetch", "fetch_domains", "web", "browser", "insecure_certs", "builtin_tools", "builtin", "cli_tools",
-              "slash_commands", "slash_commands_and_skills", "skills"] {
+              "slash_commands", "slash_commands_and_skills", "skills", "web_trusted", "webTrusted"] {
         if a.0.get(k).is_some_and(|v| !v.is_null()) {
             return Err("an agent's web search, fetching pages, browser and built-in tools (slash commands and skills among them) can't be \
                         switched from chat: only the user does that, in the agent form → Tools. Nothing changed.".into());

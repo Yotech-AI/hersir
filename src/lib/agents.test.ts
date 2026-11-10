@@ -151,3 +151,63 @@ describe("DEFAULT_TOOLS", () => {
     expect(parseTools(draftFrom(null, { name: "Backend Agent", role: "backend" }).tools)).toEqual(DEFAULT_TOOLS);
   });
 });
+
+// GA-271: After the Chief uses it (Ask for my OK or Allow), per MCP server, the browser and Web. The form opens from the
+// saved agent, so a choice of Allow is still there when it opens again (after a restart too), and choosing Ask again is a
+// change the form saves.
+import { cleanSwitches, sameSwitches, switchServer, switchTool, trustServer } from "./mcp";
+import { sameCliTools, switchBrowser } from "./cliTools";
+import type { AgentDraft } from "./agents";
+
+describe("an agent's sources on Allow (GA-271)", () => {
+  const chief = (mcp: { serverId: string; on: boolean; toolsOff: string[]; trusted?: boolean }[], webTrusted?: boolean) => ({
+    actorId: "lead", name: "Chief", kind: "agent", roleKey: "lead", handle: "chief", status: "active", isLead: true, allowedTools: [], chatEnabled: true,
+    tools: { mcp },
+    cliTools: { webSearch: true, webFetch: true, fetchDomains: [], insecureCerts: false, builtin: [], slashCommands: false, screenshots: false,
+      ...(webTrusted === undefined ? {} : { webTrusted }) },
+  });
+  const saved = chief([{ serverId: "s-otus", on: true, toolsOff: [], trusted: true }, { serverId: "chrome-devtools", on: true, toolsOff: [], trusted: true },
+    { serverId: "s-linear", on: true, toolsOff: [], trusted: false }], true);
+
+  it("come back when the form opens again: each server, the browser and Web", () => {
+    const d = draftFrom(saved);
+    expect(d.mcp.map((s) => [s.serverId, !!s.trusted])).toEqual([["s-otus", true], ["chrome-devtools", true], ["s-linear", false]]);
+    expect(d.cliTools.webTrusted).toBe(true);
+  });
+
+  it("read as Ask for my OK for an agent saved before the choice existed", () => {
+    const d = draftFrom(chief([{ serverId: "s-otus", on: true, toolsOff: ["delete_note"] }]));
+    expect(d.mcp.map((s) => !!s.trusted)).toEqual([false]);
+    expect(!!d.cliTools.webTrusted).toBe(false);
+    expect(d.mcp[0]!.toolsOff).toEqual(["delete_note"]);
+  });
+
+  it("are left as they are when the form is saved without touching them, and choosing Ask again is saved", () => {
+    const initial = draftFrom(saved);
+    // nothing touched: nothing to save, and a save of the servers anyway keeps Allow
+    expect(sameSwitches(draftFrom(saved).mcp, initial.mcp)).toBe(true);
+    expect(cleanSwitches(draftFrom(saved).mcp).filter((s) => s.trusted).map((s) => s.serverId)).toEqual(["s-otus", "chrome-devtools"]);
+    // Ask for my OK again for Otus, and for Web: each is a change to save, and what is saved says Ask
+    const asked = trustServer(initial.mcp, "s-otus", false);
+    expect(sameSwitches(asked, initial.mcp)).toBe(false);
+    expect(cleanSwitches(asked).find((s) => s.serverId === "s-otus")?.trusted).toBe(false);
+    expect(sameCliTools({ ...initial.cliTools, webTrusted: false }, initial.cliTools)).toBe(false);
+  });
+
+  it("stay on Allow when another switch in the form changes: a server, a tool, the browser or a new server", () => {
+    const allowed = (l: AgentDraft["mcp"]) => cleanSwitches(l).filter((s) => s.trusted).map((s) => s.serverId).sort();
+    const initial = draftFrom(saved);
+    // another server off, one of its tools off, a server new to this agent on: Otus and the browser stay on Allow
+    for (const mcp of [switchServer(initial.mcp, "s-linear", false), switchTool(initial.mcp, "s-linear", "create_issue", false),
+                       switchServer(initial.mcp, "s-notion", true), switchTool(initial.mcp, "s-otus", "delete_note", false)]) {
+      expect(sameSwitches(mcp, initial.mcp)).toBe(false);
+      expect(allowed(mcp)).toEqual(["chrome-devtools", "s-otus"]);
+    }
+    // a server on Allow switched off keeps its choice, so it is still Allow when switched on again
+    const otusOff = switchServer(initial.mcp, "s-otus", false);
+    expect(cleanSwitches(otusOff).find((s) => s.serverId === "s-otus")).toEqual({ serverId: "s-otus", on: false, toolsOff: [], trusted: true });
+    expect(switchServer(otusOff, "s-otus", true).find((s) => s.serverId === "s-otus")?.trusted).toBe(true);
+    // the browser switched off and on again (Browser row) keeps Allow too
+    expect(switchBrowser(switchBrowser(initial.mcp, false), true).find((s) => s.serverId === "chrome-devtools")?.trusted).toBe(true);
+  });
+});

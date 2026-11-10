@@ -163,11 +163,11 @@ fn save_writes_format_1_with_every_column_and_every_agent_field() {
     sql(&db, "UPDATE agent_configs SET budget_usd_micros=25000000 WHERE actor_id=?1", &[&qa]);
     let figma = mcp_servers::save(&db, McpServer { name: "figma".into(), transport: "stdio".into(), command: "figma-mcp".into(), ..Default::default() }).unwrap();
     mcp_servers::set_agent_tools(&db, &s.you_id, &fe, AgentTools { mcp: vec![
-        AgentServer { server_id: figma.id.clone(), on: true, tools_off: strs(&["get_image"]) },
-        AgentServer { server_id: mcp_servers::BROWSER.into(), on: true, tools_off: vec![] },
+        AgentServer { server_id: figma.id.clone(), on: true, tools_off: strs(&["get_image"]), trusted: false },
+        AgentServer { server_id: mcp_servers::BROWSER.into(), on: true, tools_off: vec![], trusted: false },
     ] }).unwrap();
     mcp_servers::set_cli_tools(&db, &s.you_id, &fe, CliTools {
-        web_search: true, web_fetch: true, fetch_domains: strs(&["docs.rs"]), insecure_certs: true, builtin: strs(&["NotebookEdit"]), slash_commands: true,
+        web_search: true, web_fetch: true, fetch_domains: strs(&["docs.rs"]), insecure_certs: true, builtin: strs(&["NotebookEdit"]), slash_commands: true, web_trusted: false,
     }).unwrap();
 
     let dir = tempfile::tempdir().unwrap();
@@ -243,7 +243,7 @@ fn the_file_holds_no_folders_server_settings_cli_ids_people_cards_or_status() {
         name: "figma".into(), transport: "stdio".into(), command: "/opt/private-server-q7/bin/figma".into(), args: strs(&["--private-arg-q7"]),
         env_names: strs(&["PRIVATE_ENV_Q7"]), ..Default::default()
     }).unwrap();
-    mcp_servers::set_agent_tools(&db, &s.you_id, &be, AgentTools { mcp: vec![AgentServer { server_id: figma.id.clone(), on: true, tools_off: vec![] }] }).unwrap();
+    mcp_servers::set_agent_tools(&db, &s.you_id, &be, AgentTools { mcp: vec![AgentServer { server_id: figma.id.clone(), on: true, tools_off: vec![], trusted: false }] }).unwrap();
     let second = clis::save(&db, vec![Cli { name: "Claude Code (second account)".into(), kind: "claude_code".into(), command: "/opt/private-claude-q7".into(),
                                             env: strs(&["CLAUDE_CONFIG_DIR=/srv/private-config-q7"]), ..Default::default() }]).unwrap()
         .into_iter().find(|c| c.kind == "claude_code" && c.id != clis::CLAUDE_CODE).unwrap();

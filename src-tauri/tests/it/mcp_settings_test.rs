@@ -449,8 +449,8 @@ async fn the_team_leads_tools_show_an_agents_servers_by_name_never_their_values(
     let web = mcp::save(&t.st, address_server("docs", "http://127.0.0.1:9/mcp")).unwrap();
     mcp::list_tools(&t.st, &cmd.server.id).unwrap();
     mcp::save_agent(&t.st, &dev, AgentTools { mcp: vec![
-        AgentServer { server_id: cmd.server.id.clone(), on: true, tools_off: vec!["send_mail".into()] },
-        AgentServer { server_id: web.server.id.clone(), on: true, tools_off: vec![] },
+        AgentServer { server_id: cmd.server.id.clone(), on: true, tools_off: vec!["send_mail".into()], trusted: false },
+        AgentServer { server_id: web.server.id.clone(), on: true, tools_off: vec![], trusted: false },
     ] }).unwrap();
 
     let got = tools::call(&t.st, &lead, "get_agent", json!({"agent": "Dev Agent"})).await.unwrap();
