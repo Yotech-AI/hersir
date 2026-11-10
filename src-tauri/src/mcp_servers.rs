@@ -628,6 +628,18 @@ pub fn claude_code_names(st: &AppState, servers: &[RunServer]) -> Vec<String> {
     servers.iter().filter(|r| all.iter().any(|s| s.name == r.name && s.claude_code_signs_in())).map(|r| r.name.clone()).collect()
 }
 
+/// GA-271: the names of the run's servers that `agent` has on Allow (agent form → Tools → After the Chief uses it), as the
+/// run's MCP config names them: the built-in browser is `chrome-devtools`. A server not in the run is left out.
+pub fn trusted_names(st: &AppState, agent: &Member, servers: &[RunServer]) -> Vec<String> {
+    let ids: Vec<&str> = agent.tools.trusted_on().collect();
+    if ids.is_empty() || servers.is_empty() {
+        return vec![];
+    }
+    let all = core_mcp::list(&st.db).unwrap_or_default();
+    let name_of = |id: &str| if id == core_mcp::BROWSER { Some(core_mcp::BROWSER.to_string()) } else { all.iter().find(|s| s.id == id).map(|s| s.name.clone()) };
+    ids.into_iter().filter_map(name_of).filter(|n| servers.iter().any(|r| &r.name == n)).collect()
+}
+
 /// Keeps each server's state from a run's init line on the agent (its state in the last run).
 pub fn record_states(st: &AppState, agent_id: &str, states: &[gizai_agents::stream::McpState]) {
     let pairs: Vec<(String, String)> = states.iter().map(|s| (s.name.clone(), s.status.clone())).collect();

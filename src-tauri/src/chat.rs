@@ -251,6 +251,39 @@ pub fn is_outside_tool(name: &str) -> bool {
     !matches!(name, "Read" | "Glob" | "Grep") && !gizais
 }
 
+/// GA-271: the sources the Chief that answers trusts (agent form → Tools → After the Chief uses it: Allow), read once per
+/// turn: its MCP servers on Allow, by the names the turn's MCP config gives them (the browser's `chrome-devtools` too), and
+/// whether Web is on Allow. A tool of theirs doesn't mark the chat (`marks_chat`).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Trusted {
+    pub servers: Vec<String>,
+    pub web: bool,
+}
+
+impl Trusted {
+    /// What `agent` trusts among the turn's `servers`.
+    pub fn of(st: &AppState, agent: &Member, servers: &[gizai_agents::mcp_run::RunServer]) -> Trusted {
+        Trusted { servers: crate::mcp_servers::trusted_names(st, agent, servers), web: agent.cli_tools.web_trusted }
+    }
+
+    /// Whether `tool` is a trusted source's: `WebSearch` or `WebFetch` with Web on Allow, or `mcp__<name>__<tool>` of a
+    /// server on Allow. As in `is_outside_tool`, a name that only looks like one of its tools (`mcp__otus___x`,
+    /// `mcp__otus__a__x`) isn't.
+    pub fn trusts(&self, tool: &str) -> bool {
+        match tool {
+            "WebSearch" | "WebFetch" => self.web,
+            _ => self.servers.iter().any(|s| tool.strip_prefix("mcp__").and_then(|t| t.strip_prefix(s.as_str())).and_then(|t| t.strip_prefix("__"))
+                .is_some_and(|t| !t.is_empty() && !t.starts_with('_') && !t.contains("__"))),
+        }
+    }
+}
+
+/// Whether using `tool` marks the chat (GA-261): a tool from outside Gizai (`is_outside_tool`) that isn't a trusted
+/// source's (GA-271, `Trusted`). After a trusted one, an untrusted tool still marks it.
+pub fn marks_chat(tool: &str, trusted: &Trusted) -> bool {
+    is_outside_tool(tool) && !trusted.trusts(tool)
+}
+
 /// The tool from outside Gizai this chat used first, if any (GA-261: for good, also in its later messages, in a new session
 /// with a hand-over and after a restart). A new chat has none.
 pub fn used_outside(st: &AppState, thread_id: &str) -> Option<String> {
@@ -1246,6 +1279,8 @@ async fn attempt_once(st: &AppState, thread: &ChatThread, plan: &Plan, prompt: &
         system(st, &thread.id, n);
     }
     let claude_code = crate::mcp_servers::claude_code_names(st, &servers);
+    // GA-271: the sources this Chief trusts, read once for the turn: a tool of theirs doesn't mark the chat.
+    let trusted = Trusted::of(st, agent, &servers);
     let gizai = json!({"type": "stdio", "command": shim.display().to_string(), "args": [],
         "env": shim_env(st, &token)});
     let config = gizai_agents::mcp_run::config(vec![("gizai".into(), gizai)], &servers);
@@ -1348,8 +1383,9 @@ async fn attempt_once(st: &AppState, thread: &ChatThread, plan: &Plan, prompt: &
                     tool_msgs.insert(id, m.id);
                 }
                 // Marked for good before the stream is read on (GA-261), so every call of Gizai's tools after it in the
-                // answer sees the mark (`wait_shown`); the note the first one gets comes under this call.
-                if outside {
+                // answer sees the mark (`wait_shown`); the note the first one gets comes under this call. A tool of a
+                // source the Chief trusts marks nothing (GA-271); an untrusted one after it still does.
+                if marks_chat(&name, &trusted) {
                     mark_outside(st, &thread.id, &name);
                 }
             }
