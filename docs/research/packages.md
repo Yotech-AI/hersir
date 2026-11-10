@@ -238,7 +238,7 @@ Why `/usr/lib/hersir` and not `/opt/hersir`: Arch keeps `/opt` for "Large self-c
 **Only signed releases reach a package.**
 - The version, the address and the sha256 are written by one script, `scripts/packages.sh vX.Y.Z`, on Jefsev's PC right after the signature (§5.6). It first checks `hersir-X.Y.Z.sig` with `ssh-keygen -Y verify` against `release-signers` in its own checkout of `main`, never against the release's own copy. On a wrong or missing signature it stops before it writes anything.
 - The sha256s come from that signed `SHA256SUMS`, and nothing else: the AUR's `updpkgsums` must arrive at the same number for the archive, or the script stops.
-- No manager's own automation publishes anything: no Excavator in the bucket, no `brew bump-cask-pr` or autobump in the tap, no CI with the AUR key. Their `checkver`, `autoupdate` and `livecheck` fields stay in the files, as the managers' tools expect, but only the script writes new versions.
+- No manager's own automation publishes anything: no Excavator in the bucket, no `brew bump-formula-pr` in the tap, no CI with the AUR key. Their `checkver`, `autoupdate` and `livecheck` fields stay in the files, as the managers' tools expect, but only the script writes new versions.
 - `ssh-keygen -Y verify` takes the message on standard input and signals a good signature from an allowed signer with exit status 0 (ssh-keygen(1)). It has been in OpenSSH since 8.1 (2019), so Arch's, macOS's and the CI runners' OpenSSH all have it. [V man.openbsd.org, openssh.org release notes, runner-images]
 
 **Uninstalling, and your data.**
