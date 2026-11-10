@@ -4,9 +4,9 @@ Hersir was called GizAi until version 0.14.
 
 From 0.17.0 the programs, the command and the app id are Hersir's too: `hersir`, `hersir-mcp` and `dev.hersir.app`. An install from before 0.17.0 keeps its folders when it updates, from Hersir itself or with the one line, and gets the hersir names beside its gizai ones: `gizai` still starts Hersir.
 
-Hersir builds from source on your own computer and installs for you alone, without sudo or administrator rights. It runs on Linux, on Macs with Apple silicon and on Windows 11.
+Hersir installs for you alone, without sudo or administrator rights. It runs on Linux, on Macs with Apple silicon and on Windows 11.
 
-There are no downloads, installers or binaries, on any system. The install script checks what is missing, builds Hersir and installs it. The `production` branch holds the released version; `main` is development.
+The one line installs the latest release's ready-made build for your system, in about a minute, once it has checked the release's signature. Where there is no ready-made build, it builds Hersir from the release's source on your own computer, as a clone does. There are no installers and no browser downloads. The `production` branch holds the released version; `main` is development.
 
 Hersir is early: its version is still 0.x. Every release is on [GitHub Releases](https://github.com/Yotech-AI/hersir/releases).
 
@@ -24,14 +24,21 @@ On Windows, in PowerShell:
 irm https://hersir.dev/install.ps1 | iex
 ```
 
-It gets the source of the latest release into `~/.local/share/hersir-src` (on Windows `%LOCALAPPDATA%\hersir-src`), or updates it there; the `gizai-src` folder from before 0.17.0 becomes that folder. Then it runs that release's install script: first its check, which names what is missing, then the build and the install. Run it again to update.
+It gets the source of the latest release into `~/.local/share/hersir-src` (on Windows `%LOCALAPPDATA%\hersir-src`), or updates it there; the `gizai-src` folder from before 0.17.0 becomes that folder. Then:
 
-- hersir.dev sends the line on to [`scripts/get.sh`](https://github.com/Yotech-AI/hersir/blob/production/scripts/get.sh) (on Windows [`scripts/get.ps1`](https://github.com/Yotech-AI/hersir/blob/production/scripts/get.ps1)) on the `production` branch, where you can read it first. The source it gets comes from GitHub.
+1. It checks the release's signature with ssh-keygen, against Hersir's release keys, which the line carries itself ([Signatures](#signatures)). Until it checks, nothing of the release runs.
+2. It downloads the release's ready-made build for your system, checks it against the release's `SHA256SUMS`, and puts it in the source folder.
+3. It runs that release's install script: first its check, which names what is missing, then the install, which backs up your data first.
+
+Run it again to update. When the release has no ready-made build for your system (an Intel Mac, Linux on arm64), or it can't be downloaded or doesn't match its checksum, one line says why, and the install script builds Hersir from the release's checked source instead, as before: that takes several minutes and needs what a build needs ([What every system needs](#what-every-system-needs)).
+
+- hersir.dev sends the line on to [`scripts/get.sh`](https://github.com/Yotech-AI/hersir/blob/production/scripts/get.sh) (on Windows [`scripts/get.ps1`](https://github.com/Yotech-AI/hersir/blob/production/scripts/get.ps1)) on the `production` branch, where you can read it first. The source, the signature and the ready-made builds it gets come from GitHub.
 - Older install lines with gizai.app keep working.
-- Without git (on Linux and macOS also bash and curl), it says what to install first and does nothing else.
+- Without git or ssh-keygen (on Linux and macOS also bash and curl), it says what to install first and does nothing else.
+- A release that isn't signed yet stops with `vX.Y.Z isn't signed yet: try again in a few minutes.` One whose signature doesn't check isn't installed either, and one line says why: an installed Hersir stays as it is.
 - The source folder is the install's own: changes in it are replaced. Your data stays in [its own folder](#your-data).
 - `--uninstall --purge` (`-Uninstall -Purge` on Windows) deletes the source folder with your data: the data folder Hersir uses, which is the hersir folder, or, when there is none, the gizai folder of an install from before 0.17.0 that holds `gizai.db` ([Your data](#your-data)). On macOS and Windows, `HERSIR_DATA_DIR` (else `GIZAI_DATA_DIR`) names another one.
-- CI proves the line: it installs, updates and uninstalls Hersir with it on Ubuntu 24.04, Fedora, Arch Linux, openSUSE Tumbleweed, macOS 15 on Apple silicon and Windows whenever an install script changes, and runs hersir.dev's own lines on Ubuntu, macOS and Windows after each release and every week.
+- CI proves the line: it installs, updates and uninstalls Hersir with it on Ubuntu 24.04, Fedora, Arch Linux, openSUSE Tumbleweed, macOS 15 on Apple silicon and Windows whenever an install script changes, from a ready-made build signed with a test key and from source, and checks that a release whose signature doesn't check installs nothing. It runs hersir.dev's own lines on Ubuntu, macOS and Windows once each release is signed, and every week.
 
 The install script's options go after the line:
 
@@ -39,6 +46,7 @@ The install script's options go after the line:
 |---|---|---|
 | `curl -fsSL … \| sh -s -- --check` | `& ([scriptblock]::Create((irm …))) -Check` | Gets the source and shows what is missing |
 | `curl -fsSL … \| sh -s -- --uninstall` | `& ([scriptblock]::Create((irm …))) -Uninstall` | Removes Hersir and keeps your data |
+| `curl -fsSL … \| sh -s -- --from-source` | `& ([scriptblock]::Create((irm …))) -FromSource` | Builds the release's checked source instead of using its ready-made build |
 | `curl -fsSL … \| HERSIR_PREFIX=$HOME/opt/hersir sh` | `$env:HERSIR_PREFIX = 'D:\Apps\Hersir'`, then the line | Installs into another folder than `~/.local` (on Windows `%LOCALAPPDATA%\Programs\Hersir`) |
 
 The scripts' variables from before 0.17.0, `GIZAI_PREFIX`, `GIZAI_REPO` and the others, still work; when both names are set, the `HERSIR_` one wins.
@@ -46,13 +54,15 @@ The scripts' variables from before 0.17.0, `GIZAI_PREFIX`, `GIZAI_REPO` and the 
 ## What every system needs
 
 - [Claude Code](https://docs.claude.com/en/docs/claude-code) or Codex, installed and logged in; for Claude Code, run `claude` once. The Chief's chat needs Claude Code. Agents can also run on Gemini or another coding CLI you have installed and logged in (Settings → Coding CLIs).
-- git, Rust ([rustup](https://rustup.rs)) and Node.js 20 or newer.
+- git, and ssh-keygen, with which the one line checks a release's signature. ssh-keygen is OpenSSH's client: on Linux the package `openssh-client`, `openssh-clients` or `openssh`; macOS has it, and so do Windows 11 and Git for Windows.
+- With the ready-made build, that's all Hersir needs to run, with WebKitGTK 4.1 on Linux and WebView2 on Windows: no Rust, Node.js or compiler. The check (`--check`) names only these.
+- To build from source (the one line with `--from-source`, a system without a ready-made build, or a clone), also Rust ([rustup](https://rustup.rs)), Node.js 20 or newer, and what each system lists below for a build. The check names those when it builds.
 - Optional, to review cards as pull requests on GitHub: the [GitHub CLI](https://cli.github.com) and an SSH key on your GitHub account. Settings → GitHub shows what's missing and can log gh in.
 - Optional, for a project on Bitbucket Cloud: an SSH key on your Bitbucket account and an API token with the scopes `read:user:bitbucket`, `read:pullrequest:bitbucket` and `write:pullrequest:bitbucket` (Atlassian account → Security → API tokens). Save the token with your Atlassian email in Settings → Bitbucket. Hersir keeps them in your keychain.
 
 ## Linux
 
-You also need WebKitGTK 4.1: the check (`./install.sh --check` in a clone) names the packages for your distribution. The tray icon needs libayatana-appindicator: `libayatana-appindicator` on Arch and Omarchy, `libayatana-appindicator3-1` on Debian and Ubuntu (the .deb depends on it). Without it Hersir runs without a tray icon.
+You also need WebKitGTK 4.1. With the ready-made build (for x86_64), the check names its library's package for your distribution; to build, its development packages, a C compiler and pkg-config (`./install.sh --check` in a clone). The tray icon needs libayatana-appindicator: `libayatana-appindicator` on Arch and Omarchy, `libayatana-appindicator3-1` on Debian and Ubuntu (the .deb depends on it). Without it Hersir runs without a tray icon.
 
 Install [in one line](#in-one-line), or build from a clone:
 
@@ -62,7 +72,7 @@ cd hersir
 ./install.sh
 ```
 
-The installer builds Hersir and installs it for your user in `~/.local`, with no sudo: the programs in `~/.local/lib/hersir`, and the `hersir` command in `~/.local/bin`. It also adds Hersir to your app launcher.
+The installer builds Hersir (the one line installs the ready-made build instead) and installs it for your user in `~/.local`, with no sudo: the programs in `~/.local/lib/hersir`, and the `hersir` command in `~/.local/bin`. It also adds Hersir to your app launcher.
 
 | Command | What it does |
 |---|---|
@@ -72,7 +82,7 @@ The installer builds Hersir and installs it for your user in `~/.local`, with no
 
 ## macOS
 
-For Macs with Apple silicon (M1 and later). You also need Apple's Command Line Tools, which bring git and a C compiler: run `xcode-select --install`. Node.js can come from Homebrew (`brew install node`), mise, nvm or the installer on nodejs.org.
+For Macs with Apple silicon (M1 and later). git comes with Apple's Command Line Tools (run `xcode-select --install`) or Homebrew (`brew install git`); that's all the ready-made build needs. To build from source you also need the Command Line Tools themselves, which bring a C compiler, and Node.js, from Homebrew (`brew install node`), mise, nvm or the installer on nodejs.org.
 
 Install [in one line](#in-one-line), or build from a clone:
 
@@ -84,7 +94,7 @@ cd hersir
 
 It's the same installer, with the same commands as on Linux. On a Mac it:
 
-- builds `Hersir.app` and installs it in `~/.local/lib/hersir` (an install from before 0.17.0 keeps `~/.local/lib/gizai`);
+- installs `Hersir.app`, the ready-made build's or the one it builds, in `~/.local/lib/hersir` (an install from before 0.17.0 keeps `~/.local/lib/gizai`);
 - links it into the Applications folder in your home folder (`~/Applications`): open Hersir from there and keep it in the Dock;
 - puts the `hersir` command in `~/.local/bin`.
 
@@ -94,9 +104,9 @@ Hersir's tray icon is in the menu bar.
 
 For Windows 11. You also need:
 
-- the Microsoft C++ Build Tools, with "Desktop development with C++" ([download](https://visualstudio.microsoft.com/visual-cpp-build-tools/); the Rust installer offers to install them);
-- Git for Windows: Claude Code runs its commands in Git for Windows' Git Bash;
-- WebView2, which comes with Windows 11.
+- Git for Windows: Claude Code runs its commands in Git for Windows' Git Bash, and it has an ssh-keygen too;
+- WebView2, which comes with Windows 11;
+- to build from source only: the Microsoft C++ Build Tools, with "Desktop development with C++" ([download](https://visualstudio.microsoft.com/visual-cpp-build-tools/); the Rust installer offers to install them), Rust and Node.js.
 
 Rust, Node.js and Git can come from winget:
 
@@ -114,7 +124,7 @@ cd hersir
 powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-`install.ps1` builds Hersir and installs it in `%LOCALAPPDATA%\Programs\Hersir` (an install from before 0.17.0 keeps `%LOCALAPPDATA%\Programs\Gizai`), without administrator rights. It adds Hersir to the Start menu with a shortcut that carries Hersir's app ID, which Windows needs to show Hersir's notifications.
+`install.ps1` builds Hersir (the one line installs the ready-made build instead) and installs it in `%LOCALAPPDATA%\Programs\Hersir` (an install from before 0.17.0 keeps `%LOCALAPPDATA%\Programs\Gizai`), without administrator rights. It adds Hersir to the Start menu with a shortcut that carries Hersir's app ID, which Windows needs to show Hersir's notifications.
 
 Hersir runs the coding CLIs installed on Windows itself, like `claude.exe` or npm's `gemini.cmd`. It doesn't use WSL.
 
@@ -128,9 +138,14 @@ If PowerShell won't run scripts, start these the way the block above does: `powe
 
 ## Signatures
 
-Every release of Hersir is signed with Hersir's own release key, and the one-line install and Update check that signature before anything of the release runs: a release without it, or with one that doesn't check, isn't installed ([how a release is signed](RELEASING.md#making-a-release), step 5).
+Every release of Hersir is signed with Hersir's own release key: not Apple's or Microsoft's, but a key of Hersir's own, kept on Jeffrey's computer. The one-line install and Update check that signature before anything of the release runs: a release without it, or with one that doesn't check, isn't installed ([how a release is signed](RELEASING.md#making-a-release), step 5).
 
-Hersir has no Apple or Microsoft signature yet: there is no Apple Developer account or Windows certificate until Hersir has paid features. A build made on your own computer isn't a download, so Gatekeeper and SmartScreen shouldn't stop it. If they still do:
+- The one line checks it with ssh-keygen (`ssh-keygen -Y verify`), against the two release keys it carries itself, the lines of [`release-signers`](../release-signers). It never takes keys from a release.
+- The signature covers the commit the release's tag points to and the release's `SHA256SUMS`, which has the checksum of each ready-made build: so it covers the source, and through `SHA256SUMS` the builds.
+- No signature: `vX.Y.Z isn't signed yet: try again in a few minutes.` A signature by another key, for another commit or over another `SHA256SUMS`: one line says so. Either way nothing of the release runs and nothing is installed.
+- Only then is the ready-made build checked against `SHA256SUMS`. A build that doesn't match isn't used: the one line says so, and builds the checked source instead.
+
+Hersir has no Apple or Microsoft signature yet: there is no Apple Developer account or Windows certificate until Hersir has paid features. The one line downloads the ready-made build with curl (on Windows with PowerShell), which doesn't mark it as downloaded from the internet, and a build made on your own computer isn't a download, so Gatekeeper and SmartScreen shouldn't stop either. Don't download the builds from the release's page in a browser: a browser marks them, and macOS and Windows stop an app with that mark that Apple or Microsoft hasn't signed. If they still stop it:
 
 - macOS: System Settings → Privacy & Security → Open Anyway, or `xattr -dr com.apple.quarantine ~/.local/lib/hersir/Hersir.app`;
 - Windows: More info → Run anyway.

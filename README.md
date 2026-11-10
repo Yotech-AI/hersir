@@ -74,11 +74,13 @@ On Windows 11, in PowerShell:
 irm https://hersir.dev/install.ps1 | iex
 ```
 
-It gets the source of the latest release, checks what your computer is missing, then builds Hersir and installs it for you alone, without sudo or administrator rights. Run it again to update. Every system needs git, Rust, Node.js 20 or newer, and Claude Code or Codex, logged in.
+It checks the latest release's signature against Hersir's own release keys, then installs its ready-made build for your system in about a minute, for you alone, without sudo or administrator rights. Where there is no ready-made build (an Intel Mac, Linux on arm64), it builds Hersir from the release's source instead. Run it again to update. Every system needs git, ssh-keygen (OpenSSH's client), and Claude Code or Codex, logged in.
 
 - **Linux:** also WebKitGTK 4.1, and for the tray icon `libayatana-appindicator` on Arch and Omarchy or `libayatana-appindicator3-1` on Debian and Ubuntu. The check names the packages.
-- **macOS** on Apple silicon: also Apple's Command Line Tools, from `xcode-select --install`.
-- **Windows 11:** also the Microsoft C++ Build Tools and Git for Windows.
+- **macOS** on Apple silicon: git comes with Apple's Command Line Tools, from `xcode-select --install`, or Homebrew.
+- **Windows 11:** also Git for Windows and WebView2, which comes with Windows 11.
+
+To build from source (with `--from-source`, `-FromSource` on Windows, or from a clone), you also need Rust, Node.js 20 or newer, and on macOS the Command Line Tools, on Windows the Microsoft C++ Build Tools.
 
 Or build from a clone:
 
