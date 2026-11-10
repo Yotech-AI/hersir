@@ -579,7 +579,11 @@ pub fn check_signature(release: &Release, source: &Path, dir: &Path, signers: &[
     let (sig_file, sums_file) = (dir.join(&sig_name), dir.join(SUMS_NAME));
     download(&sig_asset.url, &sig_file, log, stop)?;
     download(&sums_asset.url, &sums_file, log, stop)?;
-    let read = |p: &Path| std::fs::read(p).map_err(|e| UpdateFailed::plain(format!("Can't read {}: {e}", p.display())));
+    // each is a few hundred bytes: a file far bigger is neither
+    let read = |p: &Path| match std::fs::metadata(p) {
+        Ok(m) if m.len() > 1 << 20 => Err(refuse(format!("{} is {} bytes, far too big for what it should be", p.display(), m.len()))),
+        _ => std::fs::read(p).map_err(|e| UpdateFailed::plain(format!("Can't read {}: {e}", p.display()))),
+    };
     let (sig, sums) = (read(&sig_file)?, read(&sums_file)?);
     let commit = tag_commit(source, tag)?;
     log.say(&format!("The tag {tag} is commit {commit}, and the source is at it."));
