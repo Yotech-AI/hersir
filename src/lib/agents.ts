@@ -90,7 +90,8 @@ export function draftFrom(m?: Member | null, preset?: AgentPreset): AgentDraft {
     effort: m?.effort ?? "", maxRuns: String(m?.maxRuns ?? 1), cli: m?.adapter || "claude_code",
     boardCheck: !!m?.boardCheckMinutes, boardMinutes: String(m?.boardCheckMinutes ?? 15),
     folders: (m?.folders ?? []).map((f) => ({ path: f.path, access: f.access })),
-    mcp: (m?.tools?.mcp ?? []).map((s) => ({ serverId: s.serverId, on: s.on, toolsOff: [...s.toolsOff] })),
+    // GA-271: a server's Allow (the browser's too) comes back with the form, so Ask again is a change to save.
+    mcp: (m?.tools?.mcp ?? []).map((s) => ({ serverId: s.serverId, on: s.on, toolsOff: [...s.toolsOff], ...(s.trusted ? { trusted: true } : {}) })),
     cliTools: cliToolsFrom(m?.cliTools),
     memory: m?.useMemory !== false,
     memoryWith: m?.sharesMemoryWith ?? "",
