@@ -733,7 +733,12 @@ export type McpCandidate = {
 };
 export type McpScan = { servers: McpCandidate[]; problems: string[] };
 export type McpPick = { key: string; name: string };
-export type AgentServer = { serverId: string; on: boolean; toolsOff: string[] };
+export type AgentServer = {
+  serverId: string; on: boolean; toolsOff: string[];
+  /** GA-271, for an agent with Chat on (the Chief): After the Chief uses it, Allow (true) or Ask for my OK (false or left out,
+   *  as in data saved before). With Allow, its tools don't mark a chat as having used a tool from outside Hersir. */
+  trusted?: boolean;
+};
 export type AgentTools = { mcp: AgentServer[] };
 export type AgentServerView = {
   serverId: string; name: string; transport: string; on: boolean; toolsOff: string[]; signIn: string;
@@ -752,6 +757,9 @@ export type CliTools = {
   builtin: string[];
   /** Slash commands and skills (Claude Code's SlashCommand and Skill, one switch): on, its task runs may use them. */
   slashCommands: boolean;
+  /** GA-271, for an agent with Chat on (the Chief): After the Chief uses it, Allow (true) or Ask for my OK (false or left out,
+   *  as in data saved before) for Web. With Allow, WebSearch and WebFetch don't mark a chat. */
+  webTrusted?: boolean;
   /** Take screenshots of what it built (GA-182, contract CP; agent form → Tools, under the browser). An agent's saved
    *  tools carry it (its role's default until set). */
   screenshots: boolean;               // only with the browser on; a new agent's default: true for frontend, design and qa (SB1)

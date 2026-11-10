@@ -170,7 +170,7 @@ impl RunSetup {
         app_mcp::save_cli_tools(&self.st, &self.agent, t).unwrap();
     }
     fn browser(&self, on: bool) {
-        let mcp = if on { vec![AgentServer { server_id: core_mcp::BROWSER.into(), on: true, tools_off: vec![] }] } else { vec![] };
+        let mcp = if on { vec![AgentServer { server_id: core_mcp::BROWSER.into(), on: true, tools_off: vec![], trusted: false }] } else { vec![] };
         app_mcp::save_agent(&self.st, &self.agent, AgentTools { mcp }).unwrap();
     }
 }
@@ -392,7 +392,7 @@ async fn codex_and_gemini_agents_get_only_what_their_cli_takes_and_the_rest_is_r
     gizai_core::settings::set(&st.db, "claude_bin", &FAKE_RUN.to_string()).unwrap();
     gizai_core::settings::set(&st.db, "agents_paused", &true).unwrap();
     gizai_lib::test_task(&st, repo.to_str().unwrap(), "backend");
-    let browser_on = AgentTools { mcp: vec![AgentServer { server_id: core_mcp::BROWSER.into(), on: true, tools_off: vec![] }] };
+    let browser_on = AgentTools { mcp: vec![AgentServer { server_id: core_mcp::BROWSER.into(), on: true, tools_off: vec![], trusted: false }] };
     for (name, kind, ok, refused, flag) in [
         ("Codex", "codex", CliTools { web_search: true, ..Default::default() }, CliTools { web_fetch: true, ..Default::default() }, r#"web_search="live""#),
         ("Gemini", "gemini", CliTools { web_fetch: true, ..Default::default() }, CliTools { web_search: true, ..Default::default() }, "--allowed-tools=web_fetch"),
@@ -531,7 +531,7 @@ async fn the_team_leads_chat_gets_the_browser_next_to_gizai_when_it_is_on() {
     let st = &t.st;
     let program = stand_in(&t._tmp.path().join("bin/chromium"));
     app_mcp::save_browser(st, BrowserEntry { version: "1.10.1".into(), program: program.display().to_string() }).unwrap();
-    app_mcp::save_agent(st, &t.lead, AgentTools { mcp: vec![AgentServer { server_id: core_mcp::BROWSER.into(), on: true, tools_off: vec![] }] }).unwrap();
+    app_mcp::save_agent(st, &t.lead, AgentTools { mcp: vec![AgentServer { server_id: core_mcp::BROWSER.into(), on: true, tools_off: vec![], trusted: false }] }).unwrap();
     let call = t.turn("Check the login page of kade.test").await;
     let argv = argv_in(&call);
     // the fake keeps the config's mcpServers
