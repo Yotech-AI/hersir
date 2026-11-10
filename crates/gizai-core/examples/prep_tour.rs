@@ -1,7 +1,9 @@
 //! The product tour's fake data (scripts/tour-capture.sh, GA-148 and GA-149), made up from start to end: no real project,
 //! client, folder or person. Its owner is Alex Morgan, its projects Northwind Shop, Lumen Health and Orbit CRM, and their
-//! folders sit in <home>/Projects, the only Editor folder, so every path shows as ~/…. Each of the tour's scenes has
-//! something to show:
+//! folders sit in <home>/Projects, the only Editor folder, so every path shows as ~/…. The one folder there that isn't
+//! made up is <home>/Projects/hersir, which scripts/tour-capture.sh adds after this (GA-250): a copy of Hersir's own front
+//! end (public, Apache-2.0), the only real code in the fake home, for the Editor scene. It is a folder only, not a project.
+//! Each of the tour's scenes has something to show:
 //!  - the board: cards in every column, the Backend Agent at work on NWS-1 (Claude Code is the tour's fake);
 //!  - the Northwind Shop repository: a small Laravel shop on main, a change not committed yet (the Editor's git status);
 //!  - NWS-2 in Review: its branch and worktree with two commits, pull request #42, and the QA Agent's passed run;
