@@ -490,3 +490,47 @@ fn stop_ends_a_download_soon_and_leaves_no_part_of_it() {
     let e = up::download(&url, &to, &log, &stop).unwrap_err();
     assert_eq!(e.what, "Stopped");
 }
+
+/// A .zip as the Windows build is packed, with `entries` (path, contents; a path ending in `@link` is a link to its
+/// contents), into `out`.
+fn zip(out: &Path, entries: &[(&str, &str)]) {
+    use zip::write::SimpleFileOptions;
+    let mut z = zip::ZipWriter::new(std::fs::File::create(out).unwrap());
+    let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated).unix_permissions(0o755);
+    for (path, text) in entries {
+        match path.strip_suffix("@link") {
+            Some(link) => z.add_symlink(link, *text, options).unwrap(),
+            None => {
+                z.start_file(*path, options).unwrap();
+                z.write_all(text.as_bytes()).unwrap();
+            }
+        }
+    }
+    z.finish().unwrap();
+}
+
+#[test]
+fn a_zip_build_unpacks_the_same_way_and_nothing_outside_target_release() {
+    let f = Fake::new();
+    let log = f.log();
+    f.get_source(&log);
+    let name = "hersir-9.9.9-windows-x86_64.zip";
+    let release = f.release(&[name]);
+    let get = |entries: &[(&str, &str)]| {
+        zip(&f.files.join(name), entries);
+        let sums = format!("{}  {name}\n", sha256(&std::fs::read(f.files.join(name)).unwrap()));
+        up::get_build(release.asset(name).unwrap(), "9.9.9", sums.as_bytes(), &f.source(), &f.dir(), &log, &Stop::default())
+    };
+    let hersir = "#!/bin/sh\n# the ready-made zip\n[ \"$1\" = --version ] && echo 'hersir 9.9.9'\nexit 0\n";
+    let e = get(&[("target/release/hersir", hersir), ("../install.sh", "echo not the release's installer\n")]).unwrap_err();
+    assert_eq!(e.what, format!("Couldn't unpack {name}: ../install.sh isn't under target/release"));
+    let e = get(&[("target/release/hersir", hersir), ("install.sh", "echo not the release's installer\n")]).unwrap_err();
+    assert_eq!(e.what, format!("Couldn't unpack {name}: install.sh isn't under target/release"));
+    let e = get(&[("target/release/hersir", hersir), ("target/release/up@link", "../../install.sh")]).unwrap_err();
+    assert_eq!(e.what, format!("Couldn't unpack {name}: target/release/up is a link"));
+    assert_eq!(std::fs::read_to_string(f.source().join("install.sh")).unwrap(), "echo the release's own installer\n");
+    assert!(!f.source().join("target").exists(), "nothing of them moved into the source");
+    get(&[("target/release/hersir", hersir), ("target/release/hersir-mcp", "#!/bin/sh\nexit 0\n")]).unwrap();
+    assert!(std::fs::read_to_string(f.source().join("target/release/hersir")).unwrap().contains("# the ready-made zip"));
+    assert!(f.said().contains("Its target/release/hersir --version says 9.9.9."), "it runs: its mode came with it");
+}
