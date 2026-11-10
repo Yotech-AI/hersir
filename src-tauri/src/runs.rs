@@ -1129,6 +1129,13 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
     if let Some(todo) = worktree::unprepared(&wt.path) {
         prepare_worktree(st, Some(&agent_id), &task, &project, Path::new(&repo), &wt, todo).await?;
     }
+    // GA-263: Gemini loads the worktree's .gemini/ (settings that start MCP servers, hooks and other programs), and runs
+    // headless only with --skip-trust: in a worktree with one it doesn't start, and the card goes on hold "blocked", as
+    // the agent. Checked after the preparation, which may copy files in, at every start, Continue too.
+    if spec.kind == Kind::Gemini && agent_cli::gemini_folder(&wt.path) {
+        hold_card(st, &agent_id, task_id, agent_cli::GEMINI_FOLDER);
+        return Err(StartError::Held(agent_cli::GEMINI_FOLDER.into()));
+    }
     let behind = if project.repo_url.is_none() || wt.created { 0 } else {
         let (dir, from) = (wt.path.clone(), start.clone());
         tokio::task::spawn_blocking(move || worktree::behind(&dir, &from).unwrap_or(0)).await.unwrap_or(0)
@@ -1267,6 +1274,8 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
     let mut browser_in_run = false;
     // The servers Claude Code signs in to: a needs-auth in the init line then says to sign Claude Code in, not Gizai.
     let mut claude_code_signs_in: Vec<String> = vec![];
+    // The names of the run's own MCP servers: Gemini starts no other (GA-263), and has none for now.
+    let mut mcp_servers: Vec<String> = vec![];
     if agent.tools.servers_on().next().is_some() {
         if spec.kind == Kind::ClaudeCode {
             let (st2, a2, cap) = (st.clone(), agent.clone(), std::time::Duration::from_secs(limits.minutes * 60));
@@ -1282,6 +1291,7 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
                         allowed_tools.extend(allow);
                         mcp_refused = refuse;
                         mcp_config = Some(path);
+                        mcp_servers = servers.iter().map(|s| s.name.clone()).collect();
                         claude_code_signs_in = crate::mcp_servers::claude_code_names(st, &servers);
                     }
                     Err(e) => notes.push(format!("Couldn't write this run's MCP config, so it goes without its MCP servers: {e}")),
@@ -1331,9 +1341,18 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
         Some(r) => prompt::continue_prompt_with(&r.reason, note.as_ref(), Some(limits)),
         None => prompt::with_memory(&prompt::build_from(&ctx, &instructions, fetched_from(&project)), &memory.text),
     }, shots.as_ref().map(|s| &s.section)), &rules);
+    // A worktree's commits go to the repository's git folder, outside the worktree. GA-263: Codex's sandbox may write only
+    // the parts of it that a commit writes (`worktree::commit_dirs`), never its config or hooks. With rerere on in your
+    // git config, every commit would make the git folder's rr-cache, which the sandbox refuses: there the run's own git
+    // goes without rerere (a writable rr-cache would let an agent leave a conflict resolution for your own merges).
+    let mut git_config = git_config;
     let writable_dirs: Vec<String> = if spec.kind == Kind::Codex {
+        if permission_mode != "danger-full-access" {
+            git_config.push(("rerere.enabled".into(), "false".into()));
+        }
         let dir = wt.path.clone();
-        tokio::task::spawn_blocking(move || git_common_dir(&dir)).await.ok().flatten().into_iter().collect()
+        tokio::task::spawn_blocking(move || worktree::commit_dirs(&dir)).await.ok().and_then(Result::ok).unwrap_or_default()
+            .into_iter().map(|d| d.to_string_lossy().to_string()).collect()
     } else {
         vec![]
     };
@@ -1342,8 +1361,7 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
         prompt: if untrusted { format!("{base_prompt}\n\n{}", gizai_agents::mcp_run::UNTRUSTED) } else { base_prompt },
         permission_mode, allowed_tools, mcp_config: mcp_config.clone(), disallowed_tools: mcp_refused, web, slash_commands,
         model: agent.model.clone(), max_budget_usd: get_settings(st).max_run_usd, effort: agent.effort.clone(),
-        // A worktree's commits go to the repository's git folder, outside the worktree: Codex's sandbox must be able to write it.
-        writable_dirs,
+        writable_dirs, mcp_servers,
         folders, temp_dir, git_config,
     };
     // GA-202: the CLI and everything it starts run in the slice of the agent runs, under their memory limit (Linux).
@@ -1545,14 +1563,6 @@ pub(crate) fn web_for_run(agent: &team::Member, kind: Kind, cli_name: &str) -> (
     }
     let web = agent_cli::WebTools { search: search_on, fetch: fetch_on, fetch_domains: if fetch_on { t.fetch_domains.clone() } else { vec![] } };
     (web, notes)
-}
-
-/// The repository's shared git folder for a worktree (where its commits go), as an absolute path.
-fn git_common_dir(wt: &Path) -> Option<String> {
-    let out = gizai_agents::os::command("git").args(["rev-parse", "--path-format=absolute", "--git-common-dir"]).current_dir(wt)
-        .stdin(std::process::Stdio::null()).output().ok().filter(|o| o.status.success())?;
-    let dir = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    (!dir.is_empty()).then_some(dir)
 }
 
 /// Saves the commit the run's worktree `dir` ended at (`runs.head_sha`). With the one it started at, it gives the

@@ -20,8 +20,10 @@ pub struct RepoCheck {
     pub suggest_copy: Vec<String>,
 }
 
+/// git in `path`, without the repository's hooks and fsmonitor program (`worktree::git_command`): git status reads the
+/// index, which starts an fsmonitor.
 fn git(path: &Path, args: &[&str]) -> Option<String> {
-    let out = gizai_agents::os::command("git").arg("-C").arg(path).args(args).output().ok()?;
+    let out = worktree::git_command(path).args(args).output().ok()?;
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 

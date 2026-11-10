@@ -710,12 +710,13 @@ fn unreadable(rel: &str, e: std::io::Error) -> String {
 
 // ---- git ----
 
-/// git in the folder `dir`: without optional locks (an agent's git in the same worktree never finds the index locked by
-/// the Editor) and with literal pathspecs, but for check-ignore, which refuses them ("pathspec magic not supported by
-/// this command: 'literal'"), also when Gizai itself was started with them.
+/// git in the folder `dir`: without the repository's hooks and fsmonitor program (`worktree::git_command`), without
+/// optional locks (an agent's git in the same worktree never finds the index locked by the Editor) and with literal
+/// pathspecs, but for check-ignore, which refuses them ("pathspec magic not supported by this command: 'literal'"),
+/// also when Gizai itself was started with them.
 fn git_command(dir: &Path, args: &[&str]) -> Command {
-    let mut cmd = os::command("git");
-    cmd.arg("-C").arg(dir).args(args).env("GIT_OPTIONAL_LOCKS", "0");
+    let mut cmd = worktree::git_command(dir);
+    cmd.args(args).env("GIT_OPTIONAL_LOCKS", "0");
     if args.first() == Some(&"check-ignore") {
         cmd.env_remove("GIT_LITERAL_PATHSPECS");
     } else {
