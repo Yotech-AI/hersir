@@ -1,5 +1,5 @@
 // GA-255 QA: the lead agent is the Chief. A new install names it Chief, and its instructions and the role templates say
-// the Chief (the Memory path `Team Lead/Notes` stays). Once per database, an agent still named exactly "Team Lead" with
+// the Chief (its Memory path is `Chief/Notes`, GA-258). Once per database, an agent still named exactly "Team Lead" with
 // the lead role (the old default) is named Chief: any other name stays, and no saved instructions, handle or Memory
 // folder change.
 use gizai_core::db::Db;
@@ -43,14 +43,14 @@ fn a_new_install_names_its_lead_agent_chief_with_chat_on_and_the_handle_chief() 
 }
 
 #[test]
-fn the_leads_instructions_say_the_chief_and_keep_the_memory_path_team_lead_notes() {
+fn the_leads_instructions_say_the_chief_and_its_memory_path_chief_notes() {
     let lead = role_template("lead");
     assert!(lead.starts_with("You are the Chief in Hersir's Software team.\n"), "{lead}");
     assert!(lead.contains("in projects whose Chief may merge switch is on"), "{lead}");
-    assert!(lead.contains("memory_append to Team Lead/Notes"), "the Memory path stays: {lead}");
-    assert_eq!(lead.matches("Team Lead").count(), 1, "only the Memory path names Team Lead: {lead}");
-    assert_eq!(memory::LEAD, "Team Lead", "the Memory folder keeps its name");
-    assert_eq!(memory::lead_notes_path(), "Team Lead/Notes");
+    assert!(lead.contains("memory_append to Chief/Notes"), "the Memory path is Chief/ (GA-258): {lead}");
+    assert_eq!(lead.matches("Team Lead").count(), 0, "nothing names Team Lead: {lead}");
+    assert_eq!(memory::LEAD, "Chief", "the Memory folder is Chief/ (GA-258)");
+    assert_eq!(memory::lead_notes_path(), "Chief/Notes");
 }
 
 #[test]
@@ -84,7 +84,7 @@ fn an_old_lead_named_team_lead_becomes_chief_keeping_its_instructions_handle_and
     assert_eq!(instructions.as_deref(), Some(own), "its saved instructions don't change");
     assert_eq!(role, "lead");
     assert_eq!(team::chat_agent(&db).unwrap().unwrap().actor_id, lead, "it keeps Chat");
-    // Its notes stay in Team Lead/, and it still finds them there.
+    // Its notes stay in its own folder, and it still finds them there.
     assert_eq!(memory::ensure_lead_notes(&db, &lead, "Sanne").unwrap(), notes);
     // The rename is a change like any other: by you, in the change log (for sync), with the actor's version up.
     let (by, version, logged): (String, i64, i64) = db.read(|c| Ok(c.query_row(

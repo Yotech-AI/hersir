@@ -273,21 +273,40 @@ async fn approving_a_note_write_after_the_note_changed_fails_with_its_usual_mess
 #[tokio::test]
 async fn a_newer_write_for_the_same_note_replaces_the_older_whether_it_names_the_note_by_path_or_title() {
     let t = setup();
-    t.write_note("Team Lead/Notes", "# Notes\n\n## Working agreements\n\n- Ship on Tuesdays.\n", None);
+    t.write_note("Chief/Notes", "# Notes\n\n## Working agreements\n\n- Ship on Tuesdays.\n", None);
     let thread = t.marked("Read Otus and note what matters");
-    let first = t.keep(&thread, "memory_write", json!({"path": "team lead/notes.md", "body_md": "# Notes\n", "version": 1})).await;
+    let first = t.keep(&thread, "memory_write", json!({"path": "chief/notes.md", "body_md": "# Notes\n", "version": 1})).await;
     let other = t.keep(&thread, "memory_write", json!({"path": "Lessons/New", "body_md": "New."})).await;
     // by its title, the way a wikilink finds it
     let append = t.keep(&thread, "memory_append", json!({"note": "Notes", "heading": "Working agreements", "text": "- Fridays."})).await;
     assert_eq!(t.waiting(&thread), [other.clone(), append.clone()], "{first} was replaced");
     let v = t.view(&thread, &append);
-    assert_eq!(v["preview"]["line"], "Add to the note Team Lead/Notes");
+    assert_eq!(v["preview"]["line"], "Add to the note Chief/Notes");
     let f = fields(&v);
-    assert_eq!((field(&f, "Note").2.as_str(), field(&f, "Where").2.as_str()), ("Team Lead/Notes", "At the end of the section Working agreements"));
+    assert_eq!((field(&f, "Note").2.as_str(), field(&f, "Where").2.as_str()), ("Chief/Notes", "At the end of the section Working agreements"));
     assert_eq!(v["preview"]["text"], "- Fridays.");
     // a new note: by its path, whatever its case
     let newer = t.keep(&thread, "memory_write", json!({"path": "lessons/new.md", "body_md": "Newer."})).await;
     assert_eq!(t.waiting(&thread), [append, newer]);
+}
+
+/// GA-258 QA: the Chief's folder is Chief/ now, and a path in Team Lead/ still finds its note there, also in a call that
+/// waits for approval (an old habit, an older chat). A memory_write that names Team Lead/Notes saves a new version of
+/// Chief/Notes when approved, so its preview says so, with the version check, and a newer call for that note replaces it.
+#[tokio::test]
+async fn a_memory_write_naming_the_old_team_lead_folder_is_previewed_and_replaced_as_the_note_in_chief() {
+    let t = setup();
+    t.write_note("Chief/Notes", "# Notes\n\n- Ship on Tuesdays.\n", None);
+    let thread = t.marked("Read Otus and note what matters");
+    let old = t.keep(&thread, "memory_write", json!({"path": "Team Lead/Notes", "body_md": "# Notes\n", "version": 1})).await;
+    let v = t.view(&thread, &old);
+    assert_eq!(v["preview"]["line"], "Save a new version of the note Chief/Notes", "{v}");
+    assert!(v["preview"]["warning"].is_null(), "{v}");
+    t.write_note("Chief/Notes", "# Notes\n\n- Ship on Fridays.\n", Some(1));
+    assert_eq!(t.view(&thread, &old)["preview"]["warning"], "Chief/Notes changed since the Chief read it (version 1; it is at version 2 now), \
+        so approving fails and nothing is saved.");
+    let newer = t.keep(&thread, "memory_append", json!({"note": "Chief/Notes", "text": "- Fridays."})).await;
+    assert_eq!(t.waiting(&thread), [newer], "{old} was replaced");
 }
 
 #[tokio::test]
@@ -308,7 +327,7 @@ async fn a_call_gizai_cant_keep_is_still_not_run_and_the_team_lead_asks_you_in_a
 #[tokio::test]
 async fn every_tool_in_the_list_waits_with_a_readable_preview_and_approve_all_runs_them_as_the_team_lead() {
     let t = setup();
-    t.write_note("Team Lead/Notes", "# Notes\n\n## Working agreements\n\n- Ship on Tuesdays.\n", None);
+    t.write_note("Chief/Notes", "# Notes\n\n## Working agreements\n\n- Ship on Tuesdays.\n", None);
     memory::write(&t.st.db, &Who::Agent(t.backend.clone()), "Agents/Backend Agent/Cargo", "Use -j 8.", None, None).unwrap();
     let f = t.dir.path().join("brief.txt");
     std::fs::write(&f, "the brief").unwrap();
@@ -324,7 +343,7 @@ async fn every_tool_in_the_list_waits_with_a_readable_preview_and_approve_all_ru
         ("attach_file", json!({"path": f.display().to_string(), "task": "KADE-1"})),
         ("update_checkout", json!({"project": "KADE"})),
         ("memory_write", json!({"path": "Lessons/Otus", "body_md": "Release notes go out on Fridays."})),
-        ("memory_append", json!({"note": "Team Lead/Notes", "heading": "Working agreements", "text": "- Otus says: Fridays."})),
+        ("memory_append", json!({"note": "Chief/Notes", "heading": "Working agreements", "text": "- Otus says: Fridays."})),
         ("memory_move", json!({"note": "Agents/Backend Agent/Cargo", "to": "Lessons/"})),
         ("merge_pull_request", json!({"task": "KADE-1"})),
     ];
@@ -341,7 +360,7 @@ async fn every_tool_in_the_list_waits_with_a_readable_preview_and_approve_all_ru
     assert_eq!(lines, [
         "Start Backend Agent on KADE-1", "Continue the run on KADE-1", "Add the agent Otus Agent (backend)", "Change Backend Agent's settings",
         "Pause Backend Agent", "Add the column Otus after Review", "Change the column Testing", "Attach brief.txt to KADE-1 Export",
-        "Update KADE's linked folder to main as last fetched", "Make the note Lessons/Otus", "Add to the note Team Lead/Notes",
+        "Update KADE's linked folder to main as last fetched", "Make the note Lessons/Otus", "Add to the note Chief/Notes",
         "Move the note Agents/Backend Agent/Cargo to Lessons/Cargo", "Merge KADE-1's pull request",
     ]);
     for (x, (name, _)) in v.iter().zip(&calls) {
@@ -399,7 +418,7 @@ async fn every_tool_in_the_list_waits_with_a_readable_preview_and_approve_all_ru
     assert_eq!(said[5], "Approved: attach brief.txt to KADE-1 Export. Attached brief.txt.");
     assert_eq!(said[6], format!("Approved: update KADE's linked folder to main as last fetched. It failed: {}", usual_checkout.trim_end_matches('.')));
     assert_eq!(said[7], "Approved: make the note Lessons/Otus. Saved as version 1.");
-    assert_eq!(said[8], "Approved: add to the note Team Lead/Notes. Saved as version 2.");
+    assert_eq!(said[8], "Approved: add to the note Chief/Notes. Saved as version 2.");
     assert_eq!(said[9], "Approved: move the note Agents/Backend Agent/Cargo to Lessons/Cargo. It is at Lessons/Cargo now.");
     let notes: Vec<String> = t.notes(&thread).into_iter().map(|n| n.0).collect();
     assert_eq!(notes[..3], ["Discarded: start Backend Agent on KADE-1.", "Discarded: continue the run on KADE-1.", "Discarded: merge KADE-1's pull request."]);
@@ -415,7 +434,7 @@ async fn every_tool_in_the_list_waits_with_a_readable_preview_and_approve_all_ru
     let files = gizai_core::files::list(&t.st.db, "task", &task_id).unwrap();
     assert_eq!(files.len(), 1, "{files:?}");
     assert_eq!(t.note("Lessons/Otus").unwrap().body_md, "Release notes go out on Fridays.");
-    assert!(t.note("Team Lead/Notes").unwrap().body_md.contains("- Ship on Tuesdays.\n- Otus says: Fridays."));
+    assert!(t.note("Chief/Notes").unwrap().body_md.contains("- Ship on Tuesdays.\n- Otus says: Fridays."));
     assert!(memory::find(&t.st.db, "Lessons/Cargo").unwrap().is_some() && memory::find(&t.st.db, "Agents/Backend Agent/Cargo").unwrap().is_none());
     // as the Team Lead: memory's activity names it
     let lesson = memory::find(&t.st.db, "Lessons/Otus").unwrap().unwrap();
@@ -679,8 +698,8 @@ async fn the_team_leads_next_answer_starts_with_what_you_approved_and_discarded_
     let t = setup();
     let st = t.st.clone();
     let _server = with_socket(&t);
-    t.write_note("Team Lead/Notes", "# Notes\n\n## Working agreements\n\n- Ship on Tuesdays.\n", None);
-    let append = r#"CALL memory_append {"note": "Team Lead/Notes", "heading": "Working agreements", "text": "- Release notes go out on Fridays."}"#;
+    t.write_note("Chief/Notes", "# Notes\n\n## Working agreements\n\n- Ship on Tuesdays.\n", None);
+    let append = r#"CALL memory_append {"note": "Chief/Notes", "heading": "Working agreements", "text": "- Release notes go out on Fridays."}"#;
     let (thread, s) = turn(&st, None, &format!("OUTSIDE Read the release notes in Otus and remember when they go out. {append}")).await;
     assert_eq!(s.status, "succeeded", "{s:?}");
     // the tool result the Team Lead saw is the card's text
@@ -707,7 +726,7 @@ async fn the_team_leads_next_answer_starts_with_what_you_approved_and_discarded_
     assert_eq!(s3.status, "succeeded", "{s3:?}");
     let you = gizai_core::users::list(&st.db).unwrap().into_iter().find(|p| p.id == st.you_id).unwrap().name;
     let line = format!("[Hersir: {you} decided on calls of yours that waited for their approval after a tool from outside Hersir:\n\
-        - Approved: add to the note Team Lead/Notes. Saved as version 2 (your memory_append call)\n\
+        - Approved: add to the note Chief/Notes. Saved as version 2 (your memory_append call)\n\
         - Discarded: pause Backend Agent (your set_agent_status call)]");
     let p = prompts(&st);
     let last = p.last().unwrap();
@@ -734,23 +753,23 @@ async fn the_same_call_made_and_run_in_a_later_answer_clears_the_one_that_waits_
     let t = setup();
     let st = t.st.clone();
     let _server = with_socket(&t);
-    let append = r#"CALL memory_append {"note": "Team Lead/Notes", "heading": "Working agreements", "text": "- Fridays."}"#;
+    let append = r#"CALL memory_append {"note": "Chief/Notes", "heading": "Working agreements", "text": "- Fridays."}"#;
     let (thread, s) = turn(&st, None, &format!("OUTSIDE Read Otus. {append}")).await;
     assert_eq!(s.status, "succeeded", "{s:?}");
     let id = pending::list(&st, &thread).unwrap()[0].action.id.clone();
-    let before = t.note("Team Lead/Notes").unwrap();
+    let before = t.note("Chief/Notes").unwrap();
     // you say yes in a message instead: the answer makes the same call, and it runs
     let (_, s) = turn(&st, Some(thread.clone()), &format!("Yes, save it. {append}")).await;
     assert_eq!(s.status, "succeeded", "{s:?}");
-    let after = t.note("Team Lead/Notes").unwrap();
+    let after = t.note("Chief/Notes").unwrap();
     assert_eq!(after.current_version, before.current_version + 1);
     assert_eq!(after.body_md.matches("- Fridays.").count(), 1);
     assert!(t.waiting(&thread).is_empty(), "no longer waiting");
     let last = t.notes(&thread).pop().unwrap();
-    assert_eq!(last.0, "No longer waiting for your OK: add to the note Team Lead/Notes. The Chief made the same call itself in a later answer.");
+    assert_eq!(last.0, "No longer waiting for your OK: add to the note Chief/Notes. The Chief made the same call itself in a later answer.");
     assert_eq!(last.1["kind"], "pending_gone");
     assert_eq!(pending::approve(&st, &id).await.unwrap_err(), "It no longer waits: a newer call of the Chief's took its place.");
-    assert_eq!(t.note("Team Lead/Notes").unwrap().current_version, after.current_version, "saved once");
+    assert_eq!(t.note("Chief/Notes").unwrap().current_version, after.current_version, "saved once");
 }
 
 #[tokio::test]
@@ -960,13 +979,13 @@ async fn the_closing_note_is_for_you_only_the_team_leads_next_answer_and_a_hand_
     let t = setup();
     let st = t.st.clone();
     let _server = with_socket(&t);
-    t.write_note("Team Lead/Notes", "# Notes\n\n## Working agreements\n\n- Ship on Tuesdays.\n", None);
-    let append = r#"CALL memory_append {"note": "Team Lead/Notes", "heading": "Working agreements", "text": "- Fridays."}"#;
+    t.write_note("Chief/Notes", "# Notes\n\n## Working agreements\n\n- Ship on Tuesdays.\n", None);
+    let append = r#"CALL memory_append {"note": "Chief/Notes", "heading": "Working agreements", "text": "- Fridays."}"#;
     let (thread, s) = turn(&st, None, &format!("OUTSIDE Read Otus. {append}")).await;
     assert_eq!(s.status, "succeeded", "{s:?}");
     let id = pending::list(&st, &thread).unwrap()[0].action.id.clone();
     pending::approve(&st, &id).await.unwrap();
-    let said = "Approved: add to the note Team Lead/Notes. Saved as version 2.";
+    let said = "Approved: add to the note Chief/Notes. Saved as version 2.";
     let notes = t.notes(&thread);
     assert_eq!(notes.iter().map(|n| n.0.as_str()).collect::<Vec<_>>(), [said, DONE]);
     assert_eq!(notes[1].1, json!({"kind": "pending_done", "run": s.run_id}), "the decided call's run");
@@ -979,7 +998,7 @@ async fn the_closing_note_is_for_you_only_the_team_leads_next_answer_and_a_hand_
     let (_, s2) = turn(&st, Some(thread.clone()), "What did I decide?").await;
     assert_eq!(s2.status, "succeeded", "{s2:?}");
     let last = prompts(&st).pop().unwrap();
-    assert!(last.contains("decided on calls of yours") && last.contains("- Approved: add to the note Team Lead/Notes. Saved as version 2 (your memory_append call)"),
+    assert!(last.contains("decided on calls of yours") && last.contains("- Approved: add to the note Chief/Notes. Saved as version 2 (your memory_append call)"),
             "{last}");
     assert!(!last.contains("Nothing else waits") && !last.contains("answer above is done"), "{last}");
 

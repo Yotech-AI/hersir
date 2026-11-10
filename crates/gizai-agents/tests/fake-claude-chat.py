@@ -20,7 +20,7 @@ The prompt (stdin) decides what happens:
   FAKE_GET_PROJECT <key>          calls get_project for that project instead of get_overview; with FAKE_READ_FILES it reads
                                   the file at each of its files' paths instead (GA-207)
   FAKE_REMEMBER <text>            calls memory_append to add "- <text>" (the rest of that line) under Working agreements in
-                                  Team Lead/Notes (GA-19), instead of get_overview
+                                  Chief/Notes (GA-19), instead of get_overview
   FAKE_CHAT_STREAM                the last answer is about 20 KB of Markdown (headings, lists, tables, code blocks), streamed
                                   in pieces of 20 to 40 characters, one every 10 ms; exits 130 on SIGINT (GA-188)
   FAKE_CHAT_RESULT_THEN_HANG      answers as usual, result line too, then doesn't exit until SIGINT (exit 130), as Claude
@@ -202,7 +202,7 @@ attach = re.search(r"FAKE_ATTACH_TO ([A-Za-z0-9-]+)", prompt)
 fact = re.search(r"FAKE_REMEMBER (.+)$", prompt, re.M)
 project = re.search(r"FAKE_GET_PROJECT ([A-Za-z0-9]+)", prompt)
 if fact:
-    name, args = "memory_append", {"note": "Team Lead/Notes", "heading": "Working agreements", "text": "- " + fact.group(1).strip()}
+    name, args = "memory_append", {"note": "Chief/Notes", "heading": "Working agreements", "text": "- " + fact.group(1).strip()}
 elif attach and added:
     name, args = "attach_file", {"path": added[0], "task": attach.group(1)}
 elif project:

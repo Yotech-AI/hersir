@@ -1,8 +1,8 @@
 //! GA-85 QA: Claude Code's own memory notes into Gizai's memory (`memory_import`). Scratch account folders only (a
 //! scratch home with `.claude` and `.claude-2`), never your own `~/.claude*`: the account folders of the Claude Code CLIs
-//! in Settings, each file one note in `Team Lead/Imported/` with its source in its properties, `MEMORY.md` and the rest
+//! in Settings, each file one note in `Chief/Imported/` with its source in its properties, `MEMORY.md` and the rest
 //! left out, a second start that adds nothing, a file with a secret skipped and listed by its path only, the open thread
-//! in `Team Lead/Notes`, the files left as they were, and the imported notes kept out of every other agent's prompt.
+//! in `Chief/Notes`, the files left as they were, and the imported notes kept out of every other agent's prompt.
 //! Round 3: only the folders Claude Code keeps for Gizai's own places come in (`places`, `project_folder`); the others are
 //! counted, never read. The paths here run on every system: `place` gives `C:\home\me\shop` on Windows, and Windows lists a
 //! file as `~\.claude\…` (`shown`).
@@ -94,7 +94,7 @@ impl F {
         memory::list(&self.db, &self.lead()).unwrap().into_iter().map(|n| n.path).collect()
     }
     fn imported(&self) -> Vec<String> {
-        self.paths().into_iter().filter(|p| p.starts_with("Team Lead/Imported/")).collect()
+        self.paths().into_iter().filter(|p| p.starts_with("Chief/Imported/")).collect()
     }
     /// The scratch folder by its real path as Gizai writes paths (on macOS /private/var/…, on Windows without `\\?\`).
     fn root(&self) -> PathBuf {
@@ -196,20 +196,20 @@ fn each_memory_file_of_two_accounts_becomes_one_note_in_the_team_leads_folder_an
     let mut came: Vec<(String, String)> = r.imported.iter().map(|i| (i.file.clone(), i.note.clone())).collect();
     came.sort();
     assert_eq!(came, [
-        (shown(&format!("~/.claude-2/projects/{gizai}/memory/deploy-GA.md")), format!("Team Lead/Imported/{gizai}/deploy-GA")),
-        (shown(&format!("~/.claude/projects/{blog}/memory/lessons.MD")), format!("Team Lead/Imported/{blog}/lessons")),
-        (shown(&format!("~/.claude/projects/{shop}/memory/deploy-SHOP.md")), format!("Team Lead/Imported/{shop}/deploy-SHOP")),
-        (shown(&format!("~/.claude/projects/{shop}/memory/prefs.md")), format!("Team Lead/Imported/{shop}/prefs")),
+        (shown(&format!("~/.claude-2/projects/{gizai}/memory/deploy-GA.md")), format!("Chief/Imported/{gizai}/deploy-GA")),
+        (shown(&format!("~/.claude/projects/{blog}/memory/lessons.MD")), format!("Chief/Imported/{blog}/lessons")),
+        (shown(&format!("~/.claude/projects/{shop}/memory/deploy-SHOP.md")), format!("Chief/Imported/{shop}/deploy-SHOP")),
+        (shown(&format!("~/.claude/projects/{shop}/memory/prefs.md")), format!("Chief/Imported/{shop}/prefs")),
     ]);
     let mut imported = f.imported();
     imported.sort();
-    assert_eq!(imported, [format!("Team Lead/Imported/{gizai}/deploy-GA"), format!("Team Lead/Imported/{blog}/lessons"),
-                          format!("Team Lead/Imported/{shop}/deploy-SHOP"), format!("Team Lead/Imported/{shop}/prefs")]);
+    assert_eq!(imported, [format!("Chief/Imported/{gizai}/deploy-GA"), format!("Chief/Imported/{blog}/lessons"),
+                          format!("Chief/Imported/{shop}/deploy-SHOP"), format!("Chief/Imported/{shop}/prefs")]);
     assert!(f.paths().iter().all(|p| !p.to_lowercase().contains("memory") && !p.contains("archived") && !p.contains("todo") && !p.contains("codex")),
             "{:?}", f.paths());
 
     // each note: in the Team Lead's own folder, written by it, its source first in its properties, its text as it was
-    let ga = f.note(&format!("Team Lead/Imported/{gizai}/deploy-GA"));
+    let ga = f.note(&format!("Chief/Imported/{gizai}/deploy-GA"));
     assert_eq!((ga.scope.as_str(), ga.owner_id.as_deref(), ga.current_version, ga.updated_by.as_deref()),
                ("agent", Some(f.lead.as_str()), 1, Some("Team Lead")));
     let (props, text) = split(&ga.body_md);
@@ -222,15 +222,15 @@ name: deploy-GA\ndescription: \"How Gizai is released\"\nmetadata:\n  type: refe
     assert_eq!(p.get("claude_project").map(Vec::as_slice), Some(&[gizai.clone()][..]));
     assert_eq!(p.get("claude_file").map(Vec::as_slice), Some(&["deploy-GA.md".to_string()][..]));
     // a file without properties gets ours, then its text unchanged
-    let prefs = f.note(&format!("Team Lead/Imported/{shop}/prefs"));
+    let prefs = f.note(&format!("Chief/Imported/{shop}/prefs"));
     assert_eq!(prefs.body_md, format!("---\nsource: claude-code\nclaude_config_dir: {}\nclaude_project: {shop}\nclaude_file: prefs.md\n---\n\n{PREFS}",
                                       shown("~/.claude")));
     // a property of the file's own by one of our names gives way to ours
-    let shop_note = f.note(&format!("Team Lead/Imported/{shop}/deploy-SHOP")).body_md;
+    let shop_note = f.note(&format!("Chief/Imported/{shop}/deploy-SHOP")).body_md;
     assert!(shop_note.starts_with("---\nsource: claude-code\n") && !shop_note.contains("hand-written") && shop_note.contains("name: deploy-SHOP\n"),
             "{shop_note}");
     assert!(shop_note.ends_with("---\nDeploy mode: manual.\n"), "{shop_note}");
-    assert!(f.note(&format!("Team Lead/Imported/{blog}/lessons")).body_md.contains("claude_file: lessons.MD\n"));
+    assert!(f.note(&format!("Chief/Imported/{blog}/lessons")).body_md.contains("claude_file: lessons.MD\n"));
 
     // the token's file: skipped, listed by its path, its text nowhere
     assert_eq!(r.skipped.len(), 1, "{:?}", r.skipped);
@@ -243,13 +243,13 @@ name: deploy-GA\ndescription: \"How Gizai is released\"\nmetadata:\n  type: refe
         assert!(!body.contains(TOKEN) && !body.contains("Push with"), "{}: {body}", n.path);
     }
 
-    // Team Lead/Notes: made from its template, with an open thread listing what came and what didn't
-    let notes = f.note("Team Lead/Notes");
+    // Chief/Notes: made from its template, with an open thread listing what came and what didn't
+    let notes = f.note("Chief/Notes");
     assert_eq!(notes.owner_id.as_deref(), Some(f.lead.as_str()));
     let open = &notes.body_md[notes.body_md.find("## Open threads").expect("its template")..notes.body_md.find("## How to use memory").unwrap()];
-    assert!(open.contains(&format!("- {DAY}: Imported 4 notes from Claude Code's own memory into Team Lead/Imported/")), "{open}");
+    assert!(open.contains(&format!("- {DAY}: Imported 4 notes from Claude Code's own memory into Chief/Imported/")), "{open}");
     assert!(open.contains("1 file could not be imported") && open.contains("Sort them with Jeffrey") && open.contains("Deployments/<KEY>"), "{open}");
-    assert!(open.contains("memory_move") && open.contains("memory_list with folder \"Team Lead/Imported\""), "{open}");
+    assert!(open.contains("memory_move") && open.contains("memory_list with folder \"Chief/Imported\""), "{open}");
     assert!(open.contains("(like deploy-") && (open.contains("to Deployments/GA)") || open.contains("to Deployments/SHOP)")), "{open}");
     assert!(open.contains(&format!("- From {}: [[{gizai}/deploy-GA]]", shown(&format!("~/.claude-2/projects/{gizai}/memory")))), "{open}");
     assert!(open.contains(&format!("- From {}: [[{shop}/deploy-SHOP]], [[{shop}/prefs]]", shown(&format!("~/.claude/projects/{shop}/memory")))),
@@ -260,21 +260,21 @@ name: deploy-GA\ndescription: \"How Gizai is released\"\nmetadata:\n  type: refe
     assert!(!open.contains("Left out"), "nothing was left out: {open}");
     // the links in the thread find the notes
     let linked: Vec<String> = memory::links_from(&f.db, &notes.id).unwrap().into_iter().map(|l| l.target_id).collect();
-    for n in [format!("Team Lead/Imported/{shop}/prefs"), format!("Team Lead/Imported/{gizai}/deploy-GA")] {
+    for n in [format!("Chief/Imported/{shop}/prefs"), format!("Chief/Imported/{gizai}/deploy-GA")] {
         assert!(linked.contains(&f.note(&n).id), "{n}: {linked:?}");
     }
     assert_eq!(settings::get::<serde_json::Value>(&f.db, "claude_memory_imports").unwrap().unwrap().as_object().unwrap().len(), 5,
                "four imported, one skipped");
 
     // a second start: nothing new, nothing written
-    let (count, version) = (f.paths().len(), f.note("Team Lead/Notes").current_version);
+    let (count, version) = (f.paths().len(), f.note("Chief/Notes").current_version);
     assert_eq!(f.import(), Report::default());
-    assert_eq!((f.paths().len(), f.note("Team Lead/Notes").current_version), (count, version));
+    assert_eq!((f.paths().len(), f.note("Chief/Notes").current_version), (count, version));
     // also not once an imported file changed: it came in once
     let changed = f.home.join(format!(".claude/projects/{shop}/memory/prefs.md"));
     std::fs::write(&changed, "Changed after the import.\n").unwrap();
     assert_eq!(f.import(), Report::default());
-    assert!(!f.note(&format!("Team Lead/Imported/{shop}/prefs")).body_md.contains("Changed after"));
+    assert!(!f.note(&format!("Chief/Imported/{shop}/prefs")).body_md.contains("Changed after"));
 
     // nothing in the account folders changed, apart from the one file this test changed itself
     let mut after = snapshot(&f.home);
@@ -302,11 +302,11 @@ fn a_new_file_comes_in_on_the_next_start_and_a_skipped_one_once_it_no_longer_hol
     let r = f.import();
     let mut notes: Vec<&str> = r.imported.iter().map(|i| i.note.as_str()).collect();
     notes.sort();
-    assert_eq!(notes, [format!("Team Lead/Imported/{gizai}/push-token"), format!("Team Lead/Imported/{otus}/user_role")]);
+    assert_eq!(notes, [format!("Chief/Imported/{gizai}/push-token"), format!("Chief/Imported/{otus}/user_role")]);
     assert!(r.skipped.is_empty());
-    assert!(f.note(&format!("Team Lead/Imported/{gizai}/push-token")).body_md.ends_with("The push token is in the keychain as gizai-push.\n"));
+    assert!(f.note(&format!("Chief/Imported/{gizai}/push-token")).body_md.ends_with("The push token is in the keychain as gizai-push.\n"));
     // a second thread, for what came this time
-    let notes = f.note("Team Lead/Notes").body_md;
+    let notes = f.note("Chief/Notes").body_md;
     assert_eq!(notes.matches(&format!("- {DAY}: Imported ")).count(), 2, "{notes}");
     assert!(notes.contains(&format!("- {DAY}: Imported 2 notes")), "{notes}");
     assert_eq!(f.import(), Report::default());
@@ -326,8 +326,8 @@ fn a_file_that_is_too_big_or_not_text_is_skipped_by_its_path_and_a_thread_still_
                [shown(&format!("~/.claude/projects/{p}/memory/big.md")), shown(&format!("~/.claude/projects/{p}/memory/binary.md"))]);
     assert!(why[0].1.contains("too big") && why[1].1.contains("isn't text"), "{why:?}");
     assert!(f.imported().is_empty());
-    let notes = f.note("Team Lead/Notes").body_md;
-    assert!(notes.contains(&format!("- {DAY}: 2 files in Claude Code's own memory could not be imported into Team Lead/Imported/:")), "{notes}");
+    let notes = f.note("Chief/Notes").body_md;
+    assert!(notes.contains(&format!("- {DAY}: 2 files in Claude Code's own memory could not be imported into Chief/Imported/:")), "{notes}");
     assert!(notes.contains(&format!("- Not imported: {} (it is 201 KB, too big for a note; nothing of its text was kept)",
                                     shown(&format!("~/.claude/projects/{p}/memory/big.md")))), "{notes}");
     assert!(notes.contains(&format!("- Not imported: {} (it isn't text (UTF-8); nothing of its text was kept)",
@@ -348,7 +348,7 @@ fn a_file_with_a_private_key_is_listed_by_its_path_only() {
     assert_eq!(r.skipped.len(), 1);
     assert_eq!(r.skipped[0].file, shown(&format!("~/.claude/projects/{p}/memory/key.md")));
     assert!(r.skipped[0].why.contains("private key"), "{:?}", r.skipped);
-    let notes = f.note("Team Lead/Notes").body_md;
+    let notes = f.note("Chief/Notes").body_md;
     assert!(!notes.contains("b3BlbnNzaC1rZXktdjEAAAAA"), "never the text: {notes}");
     assert!(notes.contains(&format!("- Not imported: {} (it holds a private key", shown(&format!("~/.claude/projects/{p}/memory/key.md")))),
             "the file by its path, not as 'a file whose path looks like a secret': {notes}");
@@ -365,10 +365,10 @@ fn a_certificate_comes_in_but_a_bundle_with_a_private_key_after_it_is_skipped_an
     f.file(&format!(".claude/projects/{p}/memory/bundle.md"),
            format!("{CERT}-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEF\n-----END PRIVATE KEY-----\n").as_bytes());
     let r = f.import();
-    assert_eq!(r.imported.iter().map(|i| i.note.clone()).collect::<Vec<_>>(), [format!("Team Lead/Imported/{p}/cert")]);
+    assert_eq!(r.imported.iter().map(|i| i.note.clone()).collect::<Vec<_>>(), [format!("Chief/Imported/{p}/cert")]);
     assert_eq!(r.skipped, [Skipped { file: shown(&format!("~/.claude/projects/{p}/memory/bundle.md")), why: "it holds a private key".into() }]);
-    assert!(f.note(&format!("Team Lead/Imported/{p}/cert")).body_md.ends_with(CERT));
-    let notes = f.note("Team Lead/Notes").body_md;
+    assert!(f.note(&format!("Chief/Imported/{p}/cert")).body_md.ends_with(CERT));
+    let notes = f.note("Chief/Notes").body_md;
     assert!(notes.contains(&format!("- Not imported: {} (it holds a private key; nothing of its text was kept)",
                                     shown(&format!("~/.claude/projects/{p}/memory/bundle.md")))), "{notes}");
     assert!(!notes.contains("MIIEvQ") && !notes.contains("-----BEGIN") && !notes.contains("looks like a secret"), "{notes}");
@@ -378,7 +378,7 @@ fn a_certificate_comes_in_but_a_bundle_with_a_private_key_after_it_is_skipped_an
 fn a_note_whose_path_turns_into_a_token_comes_in_and_the_thread_leaves_that_path_out() {
     // Round 2: '#' can't be in a note's path (nor ':', which Windows file names can't hold either), so a file "sk#" + 20
     // letters becomes a note "sk-…", which looks like an API key; a file "deploy-sk-…" would give the example
-    // "Deployments/sk-…". Team Lead/Notes refuses a text with a secret, so such a line would have failed the whole import at
+    // "Deployments/sk-…". Chief/Notes refuses a text with a secret, so such a line would have failed the whole import at
     // every start: the thread leaves those out, the import goes through.
     let f = setup();
     let (p, q) = (folder(P), folder(Q));
@@ -389,10 +389,10 @@ fn a_note_whose_path_turns_into_a_token_comes_in_and_the_thread_leaves_that_path
     let r = f.import();
     let mut notes: Vec<String> = r.imported.iter().map(|i| i.note.clone()).collect();
     notes.sort();
-    assert_eq!(notes, [format!("Team Lead/Imported/{p}/sk-{key}"), format!("Team Lead/Imported/{q}/deploy-sk-{key}"),
-                       format!("Team Lead/Imported/{q}/prefs")]);
+    assert_eq!(notes, [format!("Chief/Imported/{p}/sk-{key}"), format!("Chief/Imported/{q}/deploy-sk-{key}"),
+                       format!("Chief/Imported/{q}/prefs")]);
     assert!(r.skipped.is_empty(), "{:?}", r.skipped);
-    let text = f.note("Team Lead/Notes").body_md;
+    let text = f.note("Chief/Notes").body_md;
     assert_eq!(memory::secret_in(&text), None, "{text}");
     assert!(text.contains(&format!("- {DAY}: Imported 3 notes from Claude Code's own memory")), "{text}");
     assert!(text.contains("- From a folder whose path, or a note's, looks like a secret (not shown): 1 note"), "{text}");
@@ -412,7 +412,7 @@ fn a_file_whose_name_holds_a_token_is_skipped_and_its_path_not_shown() {
     assert!(r.imported.is_empty());
     assert_eq!(r.skipped.len(), 1);
     assert!(r.skipped[0].why.contains("GitHub token"), "{:?}", r.skipped);
-    let notes = f.note("Team Lead/Notes").body_md;
+    let notes = f.note("Chief/Notes").body_md;
     assert!(notes.contains("- Not imported: a file whose path looks like a secret (not shown)"), "{notes}");
     assert!(!notes.contains(TOKEN), "{notes}");
     assert!(f.imported().is_empty());
@@ -433,15 +433,15 @@ fn notes_that_would_share_a_path_get_a_number_and_odd_names_are_made_safe() {
     assert_eq!(r.imported.len(), 3, "{r:?}");
     let mut imported = f.imported();
     imported.sort();
-    assert_eq!(imported, [format!("Team Lead/Imported/{shop}/deploy-SHOP"), format!("Team Lead/Imported/{shop}/deploy-SHOP (2)"),
-                          format!("Team Lead/Imported/{shop}/what- a -note- -1")]);
+    assert_eq!(imported, [format!("Chief/Imported/{shop}/deploy-SHOP"), format!("Chief/Imported/{shop}/deploy-SHOP (2)"),
+                          format!("Chief/Imported/{shop}/what- a -note- -1")]);
     let bodies: Vec<String> = ["deploy-SHOP", "deploy-SHOP (2)"].iter()
-        .map(|t| f.note(&format!("Team Lead/Imported/{shop}/{t}")).body_md).collect();
+        .map(|t| f.note(&format!("Chief/Imported/{shop}/{t}")).body_md).collect();
     let account = |a: &str| format!("claude_config_dir: {}\n", shown(a));
     assert!(bodies.iter().any(|b| b.contains(&account("~/.claude")) && b.ends_with("From the first account.\n")), "{bodies:?}");
     assert!(bodies.iter().any(|b| b.contains(&account("~/.claude-2")) && b.ends_with("From the second account.\n")), "{bodies:?}");
     // the original name stays in its properties, quoted where YAML needs it
-    let odd = f.note(&format!("Team Lead/Imported/{shop}/what- a -note- -1")).body_md;
+    let odd = f.note(&format!("Chief/Imported/{shop}/what- a -note- -1")).body_md;
     assert!(odd.contains("claude_file: 'what^ a [note] #1.md'\n"), "{odd}");
     assert_eq!(memory::properties(&odd).get("claude_file").map(Vec::as_slice), Some(&["what^ a [note] #1.md".to_string()][..]));
 }
@@ -454,8 +454,8 @@ fn names_windows_cant_hold_are_made_safe_too() {
     let shop = folder(SHOP);
     f.file(&format!(".claude/projects/{shop}/memory/what: a [note] #1?.md"), b"Odd name.\n");
     let r = f.import();
-    assert_eq!(r.imported.iter().map(|i| i.note.clone()).collect::<Vec<_>>(), [format!("Team Lead/Imported/{shop}/what- a -note- -1-")]);
-    let odd = f.note(&format!("Team Lead/Imported/{shop}/what- a -note- -1-")).body_md;
+    assert_eq!(r.imported.iter().map(|i| i.note.clone()).collect::<Vec<_>>(), [format!("Chief/Imported/{shop}/what- a -note- -1-")]);
+    let odd = f.note(&format!("Chief/Imported/{shop}/what- a -note- -1-")).body_md;
     assert!(odd.contains("claude_file: 'what: a [note] #1?.md'\n"), "{odd}");
 }
 
@@ -469,17 +469,17 @@ fn a_long_list_goes_in_a_note_of_its_own_linked_from_the_thread() {
     let r = f.import();
     assert_eq!(r.imported.len(), 40);
     let list = r.list.clone().expect("the list in a note of its own");
-    assert_eq!(list, format!("Team Lead/Imported/From Claude Code {DAY}"));
+    assert_eq!(list, format!("Chief/Imported/From Claude Code {DAY}"));
     let body = f.note(&list).body_md;
     assert!(body.contains(&format!("[[{long}/note-number-39-about-something]]")), "{body}");
-    let notes = f.note("Team Lead/Notes").body_md;
+    let notes = f.note("Chief/Notes").body_md;
     assert!(notes.contains(&format!("- The list: [[{list}]]")) && notes.contains("Imported 40 notes"), "{notes}");
     assert!(!notes.contains("note-number-39"), "the thread links the list instead: {notes}");
 }
 
 #[test]
 fn the_team_leads_memory_block_counts_the_imported_notes_not_the_list_of_them() {
-    // Round 2: the list note (From Claude Code <day>) is in Team Lead/Imported/ too, but it came from no file: 40 files are
+    // Round 2: the list note (From Claude Code <day>) is in Chief/Imported/ too, but it came from no file: 40 files are
     // 40 notes in the block, and one sorted out of the folder makes 39.
     let f = setup();
     let project = folder(LONG);
@@ -491,12 +491,12 @@ fn the_team_leads_memory_block_counts_the_imported_notes_not_the_list_of_them() 
     assert_eq!(f.imported().len(), 41, "40 notes and the list");
     let block = |f: &F| memory::prompt_block(&f.db, &f.lead(), &Context::default()).unwrap().text;
     let text = block(&f);
-    assert!(text.contains("- Team Lead/Imported/: 40 notes from Claude Code's own memory, to sort with the user"), "{text}");
-    // neither the notes nor the list in full (Team Lead/Notes, shown in full, links the list)
-    assert!(!text.contains("note-number-") && !text.contains("### Team Lead/Imported/"), "{text}");
-    memory::move_note(&f.db, &f.lead(), &format!("Team Lead/Imported/{project}/note-number-00-about-something"), "Lessons/Note zero", false)
+    assert!(text.contains("- Chief/Imported/: 40 notes from Claude Code's own memory, to sort with the user"), "{text}");
+    // neither the notes nor the list in full (Chief/Notes, shown in full, links the list)
+    assert!(!text.contains("note-number-") && !text.contains("### Chief/Imported/"), "{text}");
+    memory::move_note(&f.db, &f.lead(), &format!("Chief/Imported/{project}/note-number-00-about-something"), "Lessons/Note zero", false)
         .unwrap();
-    assert!(block(&f).contains("- Team Lead/Imported/: 39 notes from Claude Code's own memory"), "{}", block(&f));
+    assert!(block(&f).contains("- Chief/Imported/: 39 notes from Claude Code's own memory"), "{}", block(&f));
 }
 
 #[test]
@@ -509,7 +509,7 @@ fn the_thread_names_the_agents_whose_instructions_still_say_memory_md() {
     team::add_agent(&f.db, &f.you, &f.team, AgentInput { name: "DevOps Agent 3".into(), role_key: "devops".into(), ..Default::default() }).unwrap();
     f.file(&format!(".claude/projects/{}/memory/deploy-SHOP.md", folder(SHOP)), b"Deploy mode: manual.\n");
     f.import();
-    let notes = f.note("Team Lead/Notes").body_md;
+    let notes = f.note("Chief/Notes").body_md;
     assert!(notes.contains("- The instructions of DevOps Agent 2 still say to keep notes in Claude Code's memory folder (MEMORY.md)"), "{notes}");
     assert!(!notes.contains("DevOps Agent 3"), "{notes}");
 }
@@ -526,9 +526,9 @@ fn without_a_team_lead_the_notes_still_come_in() {
     let dirs = memory_import::claude_dirs(&db, home, &|_| None).unwrap();
     let r = memory_import::import(&db, &dirs, &[place(P)], home, &s.you_id, "Jeffrey", DAY).unwrap();
     assert_eq!(r.imported.len(), 1, "{r:?}");
-    let n = memory::find(&db, &format!("Team Lead/Imported/{}/a", folder(P))).unwrap().expect("the note");
+    let n = memory::find(&db, &format!("Chief/Imported/{}/a", folder(P))).unwrap().expect("the note");
     assert!(n.body_md.ends_with("A note.\n"));
-    assert!(memory::find(&db, "Team Lead/Notes").unwrap().unwrap().body_md.contains("Imported 1 note from"));
+    assert!(memory::find(&db, "Chief/Notes").unwrap().unwrap().body_md.contains("Imported 1 note from"));
 }
 
 #[test]
@@ -538,24 +538,24 @@ fn imported_notes_are_one_line_in_the_team_leads_memory_block_and_reach_no_other
     let devops = team::add_agent(&f.db, &f.you, &f.team, AgentInput { name: "DevOps Agent".into(), role_key: "devops".into(), ..Default::default() }).unwrap();
     f.import();
     let lead = memory::prompt_block(&f.db, &f.lead(), &Context::default()).unwrap();
-    assert!(lead.text.contains("- Team Lead/Imported/: 4 notes from Claude Code's own memory, to sort with the user (memory_list with folder \
-\"Team Lead/Imported\" lists them)"), "{}", lead.text);
+    assert!(lead.text.contains("- Chief/Imported/: 4 notes from Claude Code's own memory, to sort with the user (memory_list with folder \
+\"Chief/Imported\" lists them)"), "{}", lead.text);
     assert!(!lead.text.contains("Release: main -> production PR"), "not in full: {}", lead.text);
-    assert!(!lead.given.iter().any(|g| g.path.starts_with("Team Lead/Imported/")), "{:?}", lead.given);
-    assert!(lead.text.contains("### Team Lead/Notes"), "its own notes still come in full: {}", lead.text);
+    assert!(!lead.given.iter().any(|g| g.path.starts_with("Chief/Imported/")), "{:?}", lead.given);
+    assert!(lead.text.contains("### Chief/Notes"), "its own notes still come in full: {}", lead.text);
     // the DevOps Agent's run on GA: not one of them, though deploy-GA is about that project
     let cx = Context { role: "devops".into(), project: Some(("GA".into(), "Gizai".into())), client: None };
     let run = memory::prompt_block(&f.db, &Who::Agent(devops), &cx).unwrap();
     assert!(!run.text.contains("Imported") && !run.text.contains("deploy-GA") && !run.text.contains("Release: main"), "{}", run.text);
     // once the Team Lead moves deploy-GA to Deployments/GA with the project and role, it reaches the DevOps Agent
-    memory::move_note(&f.db, &f.lead(), &format!("Team Lead/Imported/{}/deploy-GA", folder(GIZAI)), "Deployments/GA", false).unwrap();
+    memory::move_note(&f.db, &f.lead(), &format!("Chief/Imported/{}/deploy-GA", folder(GIZAI)), "Deployments/GA", false).unwrap();
     let body = f.note("Deployments/GA").body_md.replacen("---\n", "---\ntype: deployment\nproject: GA\napplies_to: devops\n", 1);
     memory::write(&f.db, &f.lead(), "Deployments/GA", &body, Some(1), None).unwrap();
     let run = memory::prompt_block(&f.db, &Who::Agent(team::all_agents(&f.db).unwrap().into_iter()
         .find(|(_, a)| a.name == "DevOps Agent").unwrap().1.actor_id), &cx).unwrap();
     assert!(run.text.contains("Deployments/GA") && run.text.contains("Release: main -> production PR"), "{}", run.text);
     let lead = memory::prompt_block(&f.db, &f.lead(), &Context::default()).unwrap();
-    assert!(lead.text.contains("- Team Lead/Imported/: 3 notes from Claude Code's own memory"), "{}", lead.text);
+    assert!(lead.text.contains("- Chief/Imported/: 3 notes from Claude Code's own memory"), "{}", lead.text);
 }
 
 #[test]
@@ -682,8 +682,8 @@ fn only_the_folders_of_gizais_places_come_in_and_the_others_are_only_counted() {
         let project = &p.get("claude_project").unwrap()[0];
         assert!(i.file.contains(&format!("{project}{}memory", std::path::MAIN_SEPARATOR)), "{i:?}: {project}");
     }
-    // Team Lead/Notes: how many were left out, never which
-    let notes = f.note("Team Lead/Notes").body_md;
+    // Chief/Notes: how many were left out, never which
+    let notes = f.note("Chief/Notes").body_md;
     assert!(notes.contains(&format!("- {DAY}: Imported 4 notes from Claude Code's own memory")), "{notes}");
     assert!(notes.contains("- Left out, not read: 3 folders of other paths, with 5 notes. Claude Code keeps a folder per path it works in, \
 and only those of Hersir's places come in"), "{notes}");
@@ -706,7 +706,7 @@ and only those of Hersir's places come in"), "{notes}");
     came.sort();
     assert_eq!(came, [at(&site, "hugo.md"), at(&site, "style.md")]);
     assert_eq!(r.left_out, LeftOut { folders: 2, notes: 3 });
-    assert!(f.note("Team Lead/Notes").body_md.contains("- Left out, not read: 2 folders of other paths, with 3 notes."));
+    assert!(f.note("Chief/Notes").body_md.contains("- Left out, not read: 2 folders of other paths, with 3 notes."));
 }
 
 #[test]
@@ -714,7 +714,7 @@ fn with_only_other_folders_nothing_comes_in_and_no_thread_is_written() {
     let f = setup();
     f.file(&format!(".claude/projects/{}/memory/notes.md", folder("/home/me/elsewhere")), b"Not one of Hersir's.\n");
     assert_eq!(f.import(), Report::default());
-    assert!(memory::find(&f.db, "Team Lead/Notes").unwrap().is_none_or(|n| !n.body_md.contains("Left out")));
+    assert!(memory::find(&f.db, "Chief/Notes").unwrap().is_none_or(|n| !n.body_md.contains("Left out")));
     assert!(f.imported().is_empty());
 }
 
