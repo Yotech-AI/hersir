@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { ChevronRight, FileDiff } from "lucide-react";
 import { runCommits, runEvents } from "../api";
 import { commitCount, elapsed, formatCost, formatTokens, lastAgentText, leadText, resumeCommand, runReason, toolCalls, triggerName } from "../lib/runs";
+import { roleLabel } from "../lib/agents";
 import { relTime } from "../lib/format";
 import { href } from "../router";
 import type { Commit, Run, SeqEvent } from "../types";
@@ -53,7 +54,7 @@ function RunRow({ r }: { r: Run }) {
     <div className={`run-row${open ? " open" : ""}`} id={`run-${r.id}`}>
       <div className="panel-row run-line"><button className="run-open" aria-expanded={open} onClick={toggle}>
         <ChevronRight className="icon sm chev" />{outcomeBadge(r)}<span className="chip-id">{r.id.slice(-8)}</span>
-        <span className="grow">{r.agentName} <span className="faint">· {r.roleKey} · {triggerName(r)}</span>
+        <span className="grow">{r.agentName} <span className="faint">· {roleLabel(r.roleKey ?? "")} · {triggerName(r)}</span>
           {commits && commits.length > 0 && <span className="faint"> · {commitCount(commits.length)}</span>}{reason && <span className="faint"> · {reason}</span>}
           {/* The badge says it while the Team Lead has the question, or answered it. */}
           {r.lead && !["asking", "answering", "answered"].includes(r.lead.state)
