@@ -5,7 +5,7 @@ import { emit } from "@tauri-apps/api/event";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
 import type { Terminal } from "@xterm/xterm";
-import { appInfo, archiveTask, chatMessages, checkTeamExport, editorFolders, getTask, getTeam as teamById, listChatThreads, listDocs, listLabels, listProjects, listTasks, listTeams, previewTeamTemplate, readClipboardText, selftestPaste, setAgentStatus, terminalClose, terminalInput, terminalList, terminalOpen } from "./api";
+import { appInfo, archiveTask, chatMessages, checkTeamExport, editorFolders, getTask, getTeam as teamById, listChatThreads, listDocs, listLabels, listProjects, listTasks, listTeams, pinnedChats, previewTeamTemplate, readClipboardText, selftestPaste, setAgentStatus, terminalClose, terminalInput, terminalList, terminalOpen } from "./api";
 import { isMac } from "./lib/keys";
 import { periodDays } from "./lib/usage";
 import { getAppearance, resetAppearance, setAppearance } from "./lib/appearance";
@@ -1135,7 +1135,8 @@ export async function chatArchiveProbe() {
   if (scroller) scroller.scrollTop = scroller.scrollHeight;
   await sleep(100);
   const atEnd = !!scroller && scroller.scrollTop > 0 && inSight();
-  const lastRowAbove = (q(".chat-threads-list a.th:last-child")?.getBoundingClientRect().bottom ?? 1e9) <= (button?.getBoundingClientRect().top ?? 0) + 0.5;
+  // GA-257: each chat on the left is a .th-row, its link with its pin button beside it
+  const lastRowAbove = (q(".chat-threads-list > .th-row:last-child")?.getBoundingClientRect().bottom ?? 1e9) <= (button?.getBoundingClientRect().top ?? 0) + 0.5;
   const buttonOk = !!button && textOf(button) === "Archive" && button.getAttribute("href") === "#/chats" && !!button.querySelector("svg.lucide-history")
     && !button.classList.contains("on") && !scroller?.contains(button);
 
@@ -1189,6 +1190,193 @@ export async function chatArchiveProbe() {
     button_ok: buttonOk, opened, all: all.length, all_ok: allOk, row_ok: rowOk, crumbs, focused, focused_el: focusedEl, highlighted,
     chat_nav_on: chatNavOn, recent_stays: recentStays, search_on_top: searchOnTop, found, hit_ok: hitOk, percent_ok: percentOk, no_match: none,
     opened_chat: openedChat, chat_crumbs: chatCrumbs, not_in_recent: notInRecent };
+}
+
+/** GA-257, against prep_chats' 36 chats ("Which database?", a Team Lead question, then "Chat 1" … "Chat 35", the oldest last),
+ * in two starts on the same data. (a) Nothing pinned: no Pinned heading, and each chat on the left has a pin button, "Pin to
+ * the top" (label and tooltip), beside its link (a click on the button's spot reaches the button), hidden until the row is
+ * pointed at or focused. A click pins Chat 3; the focused button of "Which database?" pressed pins it, the focus going
+ * along; the top bar's pin pins Chat 5; the Archive's pins Chat 34 and Chat 35 (older than the 30 newest) and unpins Chat
+ * 34; in a search, Chat 35 is unpinned and pinned again, the search staying as it was; Chat 3's Unpin on the left puts it
+ * back in Recent at its place. Each time the list changes at once, the chat isn't opened (the address stays), Pinned is
+ * above Recent with the newest pin first, a pinned chat isn't under Recent again, its button says Unpin, and the backend
+ * has the same pins. (b) After a restart: Pinned still has Chat 35, Chat 5 and "Which database?" with their label and time;
+ * Chat 35 opened from Pinned and unpinned in its top bar leaves Pinned and isn't in Recent, and stays open. */
+export async function chatPinsProbe(stage: "a" | "b") {
+  const NEWEST = ["Which database?", ...Array.from({ length: 29 }, (_, i) => `Chat ${i + 1}`)];
+  const titleOf = (r: Element | null | undefined) => textOf(r?.querySelector("a.th .ellipsis"));
+  /** The rows under heading `name` on the left, up to the next heading. */
+  const part = (name: "Pinned" | "Recent") => {
+    const out: HTMLElement[] = [];
+    let on = false;
+    for (const el of [...(q(".chat-threads-list")?.children ?? [])]) {
+      if (el.classList.contains("nav-label")) { on = textOf(el) === name; continue; }
+      if (on && el.classList.contains("th-row")) out.push(el as HTMLElement);
+    }
+    return out;
+  };
+  const titles = (name: "Pinned" | "Recent") => part(name).map(titleOf);
+  const row = (name: "Pinned" | "Recent", title: string) => part(name).find((r) => titleOf(r) === title);
+  const pinIn = (r: Element | null | undefined) => r?.querySelector<HTMLButtonElement>(":scope > button.pin-btn") ?? null;
+  const label = (b: HTMLButtonElement | null) => (b ? `${b.getAttribute("aria-label")}|${b.title}` : null);
+  const headings = () => textsOf(".chat-threads-list > .nav-label");
+  const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+  const opacity = (b: Element | null) => (b ? Number(getComputedStyle(b).opacity) : -1);
+  /** A click at the middle of `b` reaches `b` (it lies on top of the chat's link there). */
+  const onTop = (b: Element | null) => {
+    if (!b) return false;
+    const r = b.getBoundingClientRect(), at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return r.width > 0 && !!at && (at === b || b.contains(at));
+  };
+  /** Presses `b` as a mouse does at its middle (pointer, mouse and click events); a key's press is a click on the focused button. */
+  const press = (b: HTMLButtonElement, how: "mouse" | "key") => {
+    if (how === "key") {
+      b.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", keyCode: 13, bubbles: true, cancelable: true }));
+      b.click();
+      b.dispatchEvent(new KeyboardEvent("keyup", { key: "Enter", code: "Enter", keyCode: 13, bubbles: true, cancelable: true }));
+      return;
+    }
+    const r = b.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+    const init = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, button: 0 };
+    b.dispatchEvent(pe("pointerdown", x, y));
+    b.dispatchEvent(new MouseEvent("mousedown", { ...init, buttons: 1 }));
+    b.dispatchEvent(pe("pointerup", x, y));
+    b.dispatchEvent(new MouseEvent("mouseup", init));
+    b.dispatchEvent(new MouseEvent("click", init));
+  };
+  /** Presses `b` and waits until `done`: how long the list took (ms), whether the address stayed, and the backend's pins. */
+  const step = async (b: HTMLButtonElement | null, how: "mouse" | "key", done: () => boolean) => {
+    if (!b) return { pressed: false, ms: -1, stayed: false, at_once: false, backend: [] as string[], shown: [] as string[] };
+    const hash = location.hash, t0 = performance.now();
+    press(b, how);
+    const changed = await waitFor(() => (done() ? true : null), 3000);
+    const ms = Math.round(performance.now() - t0);
+    await sleep(500); // the backend's notice (chat_pins) reloads the list: it must stay as it is
+    const backend = (await pinnedChats()).map((t) => t.title);
+    return { pressed: true, ms, stayed: location.hash === hash, at_once: !!changed && ms < 300 && done(), backend, shown: titles("Pinned") };
+  };
+  const stepOk = (s: Awaited<ReturnType<typeof step>>, pinned: string[]) => s.pressed && s.stayed && s.at_once && same(s.backend, pinned) && same(s.shown, pinned);
+  /** Pinned above Recent, the pinned chats not again under Recent, which is the 30 newest without them. */
+  const listOk = (pinned: string[]) => {
+    const h = headings();
+    return same(titles("Pinned"), pinned) && (pinned.length ? same(h, ["Pinned", "Recent"]) : same(h, ["Recent"]))
+      && same(titles("Recent"), NEWEST.filter((t) => !pinned.includes(t)))
+      && part("Pinned").every((r) => r.classList.contains("pinned") && label(pinIn(r)) === "Unpin|Unpin" && opacity(pinIn(r)) === 1 && !!textOf(r.querySelector(".when")))
+      && part("Recent").every((r) => !r.classList.contains("pinned") && label(pinIn(r)) === "Pin to the top|Pin to the top");
+  };
+  /** The stylesheet shows a row's pin when the row is pointed at (a pointer can't be moved in the cage). */
+  const hoverRule = [...document.styleSheets].flatMap((sh) => { try { return [...sh.cssRules]; } catch { return []; } })
+    .some((r) => r instanceof CSSStyleRule && r.selectorText.split(",").map((s) => s.trim()).includes(".th-row:hover > .pin-btn") && r.style.opacity === "1");
+  const focusRule = [...document.styleSheets].flatMap((sh) => { try { return [...sh.cssRules]; } catch { return []; } })
+    .some((r) => r instanceof CSSStyleRule && r.selectorText.split(",").map((s) => s.trim()).includes(".th-row:focus-within > .pin-btn") && r.style.opacity === "1");
+  const noHover = matchMedia("(hover: none)").matches;
+  const crumbsPin = () => q<HTMLButtonElement>(".topbar .crumbs button.pin-btn");
+
+  if (!(await waitFor(() => (part("Recent").length > 0 ? true : null), 6000))) return { ok: false, error: "Recent shows no chats", page: textOf(q(".main")).slice(0, 300) };
+
+  if (stage === "b") {
+    const kept = ["Chat 35", "Chat 5", "Which database?"];
+    await waitFor(() => (titles("Pinned").length ? true : null), 3000);
+    const keptOk = listOk(kept) && textOf(row("Pinned", "Which database?")?.querySelector(".badge")) === "Question" && !titles("Recent").includes("Chat 35");
+    const shown = { pinned: titles("Pinned"), recent: titles("Recent").length, headings: headings() };
+    // Chat 35, older than the 30 newest, opened from Pinned: its title in the crumbs, Unpin in the top bar
+    row("Pinned", "Chat 35")?.querySelector<HTMLAnchorElement>("a.th")?.click();
+    const opened = !!(await waitFor(() => (location.hash.startsWith("#/chat/") && textOf(q(".topbar .crumbs")).includes("Chat 35") && crumbsPin() ? true : null), 5000));
+    const onOk = !!row("Pinned", "Chat 35")?.querySelector('a.th.on[aria-current="page"]');
+    const topLabel = label(crumbsPin());
+    const unpin = await step(crumbsPin(), "mouse", () => !titles("Pinned").includes("Chat 35"));
+    const after = { pinned: titles("Pinned"), in_recent: titles("Recent").includes("Chat 35"), crumbs: textOf(q(".topbar .crumbs")), top: label(crumbsPin()) };
+    const unpinOk = stepOk(unpin, ["Chat 5", "Which database?"]) && listOk(["Chat 5", "Which database?"]) && !after.in_recent
+      && after.crumbs === "Chat/Chat 35" && after.top === "Pin to the top|Pin to the top";
+    const ok = keptOk && opened && onOk && topLabel === "Unpin|Unpin" && unpinOk && hoverRule;
+    return { ok, stage, kept_ok: keptOk, shown, opened, on_ok: onOk, top_label: topLabel, unpin, after, unpin_ok: unpinOk, hover_rule: hoverRule };
+  }
+
+  // (a) nothing pinned yet
+  const startOk = listOk([]) && part("Recent").length === 30 && !headings().includes("Pinned");
+  const recentRows = part("Recent");
+  const buttonsBeside = recentRows.every((r) => { const b = pinIn(r), a = r.querySelector("a.th"); return !!b && !!a && !a.contains(b) && !b.closest("a"); });
+  const chat3 = row("Recent", "Chat 3");
+  chat3?.scrollIntoView({ block: "center" });
+  await sleep(200);
+  const onTopOk = onTop(pinIn(chat3));
+  // hidden until pointed at or focused (always shown where the screen has no pointer that hovers)
+  const hiddenOk = noHover ? opacity(pinIn(recentRows[5])) === 1 : opacity(pinIn(recentRows[5])) === 0;
+
+  // 1. a click on Chat 3's pin
+  const s1 = await step(pinIn(chat3), "mouse", () => same(titles("Pinned"), ["Chat 3"]));
+  const ok1 = stepOk(s1, ["Chat 3"]) && listOk(["Chat 3"]) && location.hash === "#/chat" && !q(".chat-threads-list a.th.on[href^='#/chat/']");
+
+  // 2. the keyboard: Which database?'s pin focused (shown then) and pressed; the focus goes along to its button under Pinned
+  const wd = row("Recent", "Which database?");
+  const wdPin = pinIn(wd);
+  wdPin?.focus();
+  await sleep(250);
+  // where the cage's window has no focus (document.hasFocus()), WebKit matches no :focus, so the stylesheet's rule is read
+  const focusShown = document.activeElement === wdPin && (opacity(wdPin) === 1 || (!document.hasFocus() && focusRule));
+  const focusState = { active: document.activeElement === wdPin, opacity: opacity(wdPin), has_focus: document.hasFocus(),
+    focus: wdPin?.matches(":focus") ?? null, visible: wdPin?.matches(":focus-visible") ?? null, within: wd?.matches(":focus-within") ?? null };
+  const s2 = await step(wdPin, "key", () => same(titles("Pinned"), ["Which database?", "Chat 3"]));
+  await nextFrame(); await nextFrame();
+  const focusFollows = document.activeElement === pinIn(row("Pinned", "Which database?"));
+  const ok2 = stepOk(s2, ["Which database?", "Chat 3"]) && listOk(["Which database?", "Chat 3"]) && focusShown && focusFollows
+    && textOf(row("Pinned", "Which database?")?.querySelector(".badge")) === "Question";
+
+  // 3. the top bar: Chat 5 opened, its pin after the title
+  row("Recent", "Chat 5")?.querySelector<HTMLAnchorElement>("a.th")?.click();
+  const opened5 = !!(await waitFor(() => (location.hash.startsWith("#/chat/") && textOf(q(".topbar .crumbs")) === "Chat/Chat 5" && crumbsPin() ? true : null), 5000));
+  const top5 = { label: label(crumbsPin()), shown: opacity(crumbsPin()) === 1, on_top: onTop(crumbsPin()),
+    after_title: crumbsPin()?.previousElementSibling?.classList.contains("ellipsis") ?? false };
+  const s3 = await step(crumbsPin(), "mouse", () => same(titles("Pinned"), ["Chat 5", "Which database?", "Chat 3"]));
+  const ok3 = opened5 && top5.label === "Pin to the top|Pin to the top" && top5.shown && top5.on_top && top5.after_title
+    && stepOk(s3, ["Chat 5", "Which database?", "Chat 3"]) && listOk(["Chat 5", "Which database?", "Chat 3"])
+    && label(crumbsPin()) === "Unpin|Unpin" && !!row("Pinned", "Chat 5")?.querySelector('a.th.on[aria-current="page"]')
+    && textOf(q(".topbar .crumbs")) === "Chat/Chat 5";
+
+  // 4. the Archive: every row has its pin; Chat 34 and Chat 35, older than the 30 newest, pinned there, Chat 34 unpinned
+  q<HTMLAnchorElement>(".chat-threads-foot a.th")?.click();
+  const items = () => [...document.querySelectorAll<HTMLElement>(".archive-item")];
+  const item = (title: string) => items().find((r) => textOf(r.querySelector(".archive-row .title")) === title);
+  const archiveOpen = !!(await waitFor(() => (location.hash === "#/chats" && items().length === 36 ? true : null), 5000));
+  const archiveLabels = items().every((r) => label(pinIn(r)) === (["Chat 5", "Which database?", "Chat 3"].includes(textOf(r.querySelector(".title"))) ? "Unpin|Unpin" : "Pin to the top|Pin to the top")
+    && !r.querySelector(".archive-row")?.contains(pinIn(r)));
+  item("Chat 34")?.scrollIntoView({ block: "center" });
+  await sleep(200);
+  const archiveOnTop = onTop(pinIn(item("Chat 34")));
+  const s4 = await step(pinIn(item("Chat 34")), "mouse", () => titles("Pinned")[0] === "Chat 34");
+  const s5 = await step(pinIn(item("Chat 35")), "mouse", () => titles("Pinned")[0] === "Chat 35");
+  const five = ["Chat 35", "Chat 34", "Chat 5", "Which database?", "Chat 3"];
+  const ok45 = archiveOpen && archiveLabels && archiveOnTop && stepOk(s4, ["Chat 34", "Chat 5", "Which database?", "Chat 3"]) && stepOk(s5, five) && listOk(five)
+    && label(pinIn(item("Chat 35"))) === "Unpin|Unpin" && items().length === 36;
+  const s6 = await step(pinIn(item("Chat 34")), "mouse", () => !titles("Pinned").includes("Chat 34"));
+  const four = ["Chat 35", "Chat 5", "Which database?", "Chat 3"];
+  const ok6 = stepOk(s6, four) && listOk(four) && !titles("Recent").includes("Chat 34") && !!item("Chat 34") && label(pinIn(item("Chat 34"))) === "Pin to the top|Pin to the top";
+
+  // 5. in a search: Chat 35 unpinned and pinned again, the search as it was
+  const search = q<HTMLInputElement>(".chat-archive input.archive-search");
+  if (search) typeInto(search, "flamingo");
+  const found = !!(await waitFor(() => (items().length === 1 && item("Chat 35") ? true : null), 4000));
+  const s7 = await step(pinIn(item("Chat 35")), "mouse", () => !titles("Pinned").includes("Chat 35"));
+  const stays = items().length === 1 && !!item("Chat 35") && label(pinIn(item("Chat 35"))) === "Pin to the top|Pin to the top" && search?.value === "flamingo";
+  const s8 = await step(pinIn(item("Chat 35")), "mouse", () => titles("Pinned")[0] === "Chat 35");
+  const ok78 = found && stepOk(s7, ["Chat 5", "Which database?", "Chat 3"]) && stays && stepOk(s8, four) && items().length === 1
+    && JSON.stringify(textsOf(".archive-item mark")) === JSON.stringify(["flamingo"]);
+
+  // 6. Chat 3 unpinned on the left, by the keyboard: back in Recent at its place, the focus going along
+  const c3pin = pinIn(row("Pinned", "Chat 3"));
+  c3pin?.focus();
+  const s9 = await step(c3pin, "key", () => !titles("Pinned").includes("Chat 3"));
+  await nextFrame(); await nextFrame();
+  const three = ["Chat 35", "Chat 5", "Which database?"];
+  const backAt = titles("Recent").slice(0, 3);
+  const ok9 = stepOk(s9, three) && listOk(three) && same(backAt, ["Chat 1", "Chat 2", "Chat 3"]) && titles("Recent").length === 28
+    && document.activeElement === pinIn(row("Recent", "Chat 3")) && location.hash === "#/chats";
+
+  const ok = startOk && buttonsBeside && onTopOk && hiddenOk && ok1 && ok2 && ok3 && ok45 && ok6 && ok78 && ok9 && hoverRule;
+  return { ok, stage, start_ok: startOk, buttons_beside: buttonsBeside, on_top: onTopOk, hidden_ok: hiddenOk, no_hover: noHover, hover_rule: hoverRule, focus_rule: focusRule,
+    s1, ok1, focus_shown: focusShown, focus_state: focusState, focus_follows: focusFollows, s2, ok2, opened5, top5, s3, ok3, archive_open: archiveOpen, archive_labels: archiveLabels,
+    archive_on_top: archiveOnTop, s4, s5, ok45, s6, ok6, found, stays, s7, s8, ok78, back_at: backAt, s9, ok9,
+    pinned: titles("Pinned"), recent: titles("Recent").length, active: `${document.activeElement?.tagName} ${document.activeElement?.className} ${document.activeElement?.getAttribute("data-pin")}` };
 }
 
 // ---------- GA-42: Settings → Appearance ----------

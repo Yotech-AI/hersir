@@ -3,9 +3,9 @@
 // read only when the notice names one of the read's tables. A read that isn't here reloads after any write, as before.
 //
 // The names are the notices' names, which aren't always the table written: "team" is an agent's MCP servers and tools
-// (agent_configs, save_agent_mcp and save_agent_cli_tools), "subscription_limits" a settings row; "actors" also covers
-// agent_configs and team_members, "teams" a new team's members and columns, "workflow_states" the columns' agents,
-// "projects" the repositories, "docs" a doc's versions, "tasks" a card's labels. Some writes name another table than one
+// (agent_configs, save_agent_mcp and save_agent_cli_tools), "subscription_limits" and "chat_pins" settings rows;
+// "actors" also covers agent_configs and team_members, "teams" a new team's members and columns, "workflow_states" the
+// columns' agents, "projects" the repositories, "docs" a doc's versions, "tasks" a card's labels. Some writes name another table than one
 // they also change, so a read lists that notice too: a saved chat message also changes its chat's last activity but sends
 // "chat_messages"; a run's start sets its card's branch but sends "runs"; a run's end writes the run but sends "tasks"
 // and "comments"; the Team Lead's own notes can appear with a chat answer or a board check ("chat_messages", "runs").
@@ -37,6 +37,7 @@ export const READS: Readonly<Record<string, readonly string[]>> = {
   agent_notes: ["docs", "actors", "team", "teams", "tasks", "runs", "chat_messages"],
   list_chat_threads: CHATS,
   get_chat_thread: CHATS,
+  pinned_chats: [...CHATS, "chat_pins"],
   list_runs: ["runs", "tasks", "actors"],
   agent_runs: ["runs", "tasks", "actors"],
   agent_stats: ["runs", "tasks"],
