@@ -524,7 +524,9 @@ async fn an_agent_on_codex_or_gemini_shows_why_mcp_is_off_and_its_run_goes_witho
         let run = gizai_core::runs::get(&st.db, &s.run_id).unwrap();
         let stderr = read(&Path::new(&run.log_path).with_extension("stderr.log"));
         let argv = stderr.lines().find_map(|l| l.strip_prefix("argv: ")).unwrap_or_else(|| panic!("{name}: no argv in {stderr}"));
-        assert!(!argv.contains("mcp") && !stderr.contains(OTUS_SECRET), "{name}: {stderr}");
+        // GA-263: Gemini starts no MCP server but the run's own, and this run has none: one empty name
+        let argv = argv.replacen("--allowed-mcp-server-names  ", "", usize::from(kind == "gemini"));
+        assert!(!argv.contains("mcp") && !argv.contains("otus") && !stderr.contains(OTUS_SECRET), "{name}: {stderr}");
         assert!(config_files(&st.data_dir.join("runs")).is_empty(), "{name}");
         // back on Claude Code with nothing on, for the next CLI
         switch(&st, &agent, &[]);

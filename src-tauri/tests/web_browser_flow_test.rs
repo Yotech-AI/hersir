@@ -417,6 +417,8 @@ async fn codex_and_gemini_agents_get_only_what_their_cli_takes_and_the_rest_is_r
         let stderr = read(&Path::new(&run.log_path).with_extension("stderr.log"));
         let argv = stderr.lines().find_map(|l| l.strip_prefix("argv: ")).unwrap_or_else(|| panic!("{name}: no argv in {stderr}"));
         assert!(argv.contains(flag), "{name}: {argv}");
+        // GA-263: Gemini starts no MCP server but the run's own, and this run has none: one empty name
+        let argv = argv.replacen("--allowed-mcp-server-names  ", "", usize::from(kind == "gemini"));
         assert!(!argv.contains("mcp") && !argv.contains("chrome-devtools") && !argv.contains("--chrome"), "{name}: {argv}");
         // nothing written into the worktree for the CLI's settings
         let wt = PathBuf::from(run.worktree_path.unwrap());

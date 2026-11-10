@@ -69,13 +69,21 @@ async fn a_codex_agent_runs_codex_exec_and_moves_the_card() {
 
     let err = stderr_of(&run);
     let common = std::fs::canonicalize(repo.join(".git")).unwrap();
+    let wt = std::path::Path::new(run.worktree_path.as_deref().unwrap());
     // GA-210: and the run's temp folder, outside the worktree
-    let temp = gizai_agents::worktree::run_temp_in(&st.temp_base, std::path::Path::new(run.worktree_path.as_deref().unwrap()));
+    let temp = gizai_agents::worktree::run_temp_in(&st.temp_base, wt);
+    // GA-263: of the git folder only what a commit writes, never the folder itself (its config, its hooks)
+    let own = common.join("worktrees").join(wt.file_name().unwrap());
+    let roots: Vec<String> = [common.join("objects"), common.join("refs"), common.join("logs"), own, temp]
+        .iter().map(|p| format!("\"{}\"", p.display())).collect();
     for want in ["argv: exec --json -m gpt-5-codex -c model_reasoning_effort=\"high\" -c approval_policy=\"never\" -c web_search=\"disabled\" -c sandbox_mode=\"workspace-write\"",
                  "sandbox_workspace_write.network_access=true",
-                 &format!("sandbox_workspace_write.writable_roots=[\"{}\",\"{}\"] -", common.display(), temp.display())] {
+                 &format!("sandbox_workspace_write.writable_roots=[{}] ", roots.join(",")),
+                 // its commits make no rr-cache in the git folder
+                 "shell_environment_policy.set.GIT_CONFIG_KEY_0=\"rerere.enabled\" -c shell_environment_policy.set.GIT_CONFIG_VALUE_0=\"false\""] {
         assert!(err.contains(want), "{want} missing in {err}");
     }
+    assert!(!err.contains(&format!("\"{}\"", common.display())), "the git folder itself isn't writable: {err}");
     let home = std::env::var("HOME").unwrap();
     assert!(err.contains(&format!("account: {home}/.codex-2")), "the CLI's environment, ~ expanded: {err}");
     assert!(!err.contains("prompt chars: 0"), "the prompt came on stdin: {err}");
@@ -207,6 +215,70 @@ async fn a_gemini_agent_runs_headless_with_gizais_session() {
     }
     assert!(err.contains("--session-id"), "{err}");
     assert!(started == "gemini-own-id" || err.contains(&format!("--session-id {started}")), "the session Continue resumes is the one Gemini ran: {started} / {err}");
+}
+
+/// GA-263: a .gemini/settings.json that would start an MCP server and a hook (each touches `ran`).
+fn gemini_settings(dir: &std::path::Path, ran: &std::path::Path) {
+    std::fs::create_dir_all(dir.join(".gemini")).unwrap();
+    let touch = format!("touch {}", ran.display());
+    let settings = serde_json::json!({
+        "mcpServers": {"planted": {"command": "sh", "args": ["-c", touch]}},
+        "hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": touch}]}]},
+    });
+    std::fs::write(dir.join(".gemini/settings.json"), settings.to_string()).unwrap();
+}
+
+#[tokio::test]
+async fn a_gemini_run_on_a_branch_with_a_gemini_folder_never_starts_and_holds_the_card_while_codex_runs_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let st = gizai_lib::test_state(tmp.path());
+    let repo = git_repo(tmp.path());
+    let ran = tmp.path().join("ran");
+    gemini_settings(&repo, &ran);
+    for a in [&["add", ".gemini"][..], &["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "gemini settings"][..]] {
+        assert!(std::process::Command::new("git").args(a).current_dir(&repo).status().unwrap().success());
+    }
+    let task = gizai_lib::test_task(&st, repo.to_str().unwrap(), "backend");
+    let gemini = add_cli(&st, "Gemini", "gemini", FAKE_CLI, &["FAKE_KIND=gemini"], "");
+    put_agent_on(&st, &gemini, AgentInput::default());
+
+    let err = gizai_lib::runs::run_once(&st, &task, None, None).await.map(|s| s.status).unwrap_err();
+    assert_eq!(err, gizai_agents::cli::GEMINI_FOLDER);
+    let t = gizai_core::tasks::get(&st.db, &task).unwrap();
+    assert_eq!((t.hold.as_deref(), t.hold_reason.as_deref()), (Some("blocked"), Some(gizai_agents::cli::GEMINI_FOLDER)));
+    assert!(gizai_core::runs::list_for_task(&st.db, &task).unwrap().is_empty(), "Gemini never started");
+    assert!(!ran.exists(), "nothing of .gemini started");
+
+    // the same repository on Codex: its run goes
+    let codex = add_cli(&st, "Codex", "codex", FAKE_CLI, &["FAKE_KIND=codex"], "");
+    put_agent_on(&st, &codex, AgentInput::default());
+    let task2 = gizai_lib::test_task(&st, repo.to_str().unwrap(), "backend");
+    let s = gizai_lib::runs::run_once(&st, &task2, None, None).await.unwrap();
+    assert_eq!((s.status.as_str(), s.outcome.as_deref()), ("succeeded", Some("ready_for_testing")), "{:?}", s.error);
+}
+
+#[tokio::test]
+async fn the_next_gemini_run_of_a_card_is_refused_once_its_worktree_has_a_gemini_folder() {
+    let tmp = tempfile::tempdir().unwrap();
+    let st = gizai_lib::test_state(tmp.path());
+    let repo = git_repo(tmp.path());
+    let task = gizai_lib::test_task(&st, repo.to_str().unwrap(), "backend");
+    let gemini = add_cli(&st, "Gemini", "gemini", FAKE_CLI, &["FAKE_KIND=gemini"], "");
+    let agent = put_agent_on(&st, &gemini, AgentInput::default());
+    let s = gizai_lib::runs::run_once(&st, &task, None, None).await.unwrap();
+    let first = gizai_core::runs::get(&st.db, &s.run_id).unwrap();
+    assert_eq!(first.status, "succeeded", "{first:?}");
+
+    // the run (or anyone) left a .gemini in the worktree: the next start reads it, so there is none
+    let ran = tmp.path().join("ran");
+    gemini_settings(std::path::Path::new(first.worktree_path.as_deref().unwrap()), &ran);
+    // Run again, by the same agent, in the same worktree
+    let err = gizai_lib::runs::run_once(&st, &task, Some(agent), None).await.map(|s| s.status).unwrap_err();
+    assert_eq!(err, gizai_agents::cli::GEMINI_FOLDER);
+    let t = gizai_core::tasks::get(&st.db, &task).unwrap();
+    assert_eq!((t.hold.as_deref(), t.hold_reason.as_deref()), (Some("blocked"), Some(gizai_agents::cli::GEMINI_FOLDER)));
+    assert_eq!(gizai_core::runs::list_for_task(&st.db, &task).unwrap().len(), 1, "no second run");
+    assert!(!ran.exists());
 }
 
 #[tokio::test]
