@@ -244,6 +244,14 @@ describe("the Slash commands and skills switch", () => {
     expect(text(render())).not.toContain("never slash commands or skills");
   });
 
+  it("names the Chief in its chat's lines on the built-in and web tools (GA-254)", () => {
+    const t = text(render({ lead: true }));
+    expect(t).toContain("In chat the Chief keeps only Read, Glob and Grep, plus the web tools when they are on, and never slash commands or skills.");
+    expect(t).toContain("For the Chief, its chat answers get these too; after one uses them, it asks you before it starts runs or changes agents.");
+    expect(t).not.toContain("Team Lead");
+    expect(text(render())).not.toContain("For the Chief");
+  });
+
   it("is read off for an agent saved without it, and a change to it counts as a change to save", () => {
     expect(cliToolsFrom({ webSearch: true, webFetch: false, fetchDomains: [], insecureCerts: false, builtin: [] } as unknown as CliTools).slashCommands).toBe(false);
     expect(cliToolsFrom(null).slashCommands).toBe(false);

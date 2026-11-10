@@ -64,6 +64,14 @@ describe("the Runs tab: who answered a question (GA-70)", () => {
     // no run of the Chief: no cost line
     expect(text(render(lead({ state: "limit", leadId: null, runId: null, reason: "x" })))).not.toContain("Chief's look");
   });
+  it("a run of the Chief's (a board check on its page) names its role Chief, not its key lead (GA-254)", () => {
+    const check = { ...asked(null), id: "01HZRUN0000000000000000002", agentId: "lead", agentName: "Ann", taskId: null, roleKey: "lead",
+      trigger: "board_check", outcome: null, summaryMd: "Nothing new on the board." } as Run;
+    const line = row(renderToStaticMarkup(<RunHistory runs={[check]} />));
+    expect(line).toContain("Ann");
+    expect(line).not.toMatch(/· lead ·/);
+    expect(line).not.toContain("Team Lead");
+  });
   it("a question that went to you directly shows none of it", () => {
     const html = render(null);
     expect(html).toContain('<span class="badge needs">Needs your decision</span>');

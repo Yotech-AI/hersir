@@ -64,5 +64,8 @@ describe("chats with calls that wait for your approval in the Inbox", () => {
     const h = inbox([thread("done", "All decided", { updatedAt: 1, pendingActions: 0 })]);
     expect(h).not.toContain('aria-label="From the Chief"');
     expect(h).toContain("the calls it waits for your OK on show up here");
+    // GA-254: the empty Inbox names the Chief
+    expect(h).toContain("Cards on hold, cards waiting for your review or deploy, the Chief&#x27;s questions and the calls it waits for your OK on show up here.");
+    expect(h).not.toContain("Team Lead");
   });
 });

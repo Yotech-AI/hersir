@@ -128,6 +128,19 @@ describe("the check of the built-in Software team", () => {
   });
 });
 
+describe("the check of the built-in Software team, with its Chief (GA-254)", () => {
+  // the built-in template's first agent: seed::DEFAULT_AGENTS' lead, with Chat on
+  const chief = { name: "Chief", fileName: "Chief", role: "lead", cliName: "Claude Code", model: null, effort: null, permissionMode: "acceptEdits",
+    extraTools: [], missingServers: [], active: true };
+  const cards = parts(renderToStaticMarkup(<TemplateCheck plan={{ ...builtin, agents: [chief, ...builtin.agents] }} fromFile={false} />), "tt-agent").map(text);
+
+  it("shows the lead role as Chief, not as its key lead", () => {
+    expect(cards[0]).toContain("Chief");
+    expect(cards[0]).toContain("Role Chief CLI Claude Code");
+    expect(cards[0]).not.toMatch(/\bRole lead\b/);
+  });
+});
+
 describe("Export's question", () => {
   const warnings: TemplateWarning[] = [
     { agent: "Backend Agent", field: "instructions_md", kind: "email", excerpt: "mail jef@example.com when done" },

@@ -218,6 +218,13 @@ describe("the organisation chart", () => {
     expect(html).toContain("Add branch");
   });
 
+  it("names the empty spot at the top Chief, as its role and in its title (GA-254)", () => {
+    const html = chart([]);
+    expect(html).toContain('title="Add the Chief: the agent you chat with"');
+    expect(html).toContain('<span class="org-text"><b>Chief</b><span>Add your Chief</span></span>');
+    expect(html).not.toContain("Team Lead");
+  });
+
   it("puts the agents above their branch's empty spot, as cards that drag onto a column", () => {
     const html = chart(members);
     const dev = html.slice(html.indexOf('data-branch="Development"'), html.indexOf('data-branch="Quality"'));
@@ -257,6 +264,18 @@ describe("the agent form", () => {
     expect(html).toContain("Board check");
     expect(html).toContain('aria-label="Board check minutes"');
     expect(html).not.toContain("Wakes up");
+  });
+
+  it("offers the lead role as Chief and says the agent you talk to is your Chief (GA-254)", () => {
+    const html = renderToStaticMarkup(<AgentDrawer teamId="team" preset={{ name: "Chief", role: "lead", chat: true }} onClose={() => {}} />);
+    expect(html).toContain('value="Chief"');
+    expect(html).toMatch(/<option value="lead" selected="">Chief<\/option>/);
+    expect(html).toContain("The agent you talk to on the Chat page: your Chief. Only one agent has Chat.");
+    // the only Team Lead left is the name of its Memory folder
+    expect(html.replace(/in Team Lead\/\./g, "")).not.toContain("Team Lead");
+    const worker = renderToStaticMarkup(<AgentDrawer teamId="team" preset={{ name: "Frontend Agent", role: "frontend" }} onClose={() => {}} />);
+    expect(worker).toMatch(/<option value="lead">Chief<\/option>/);
+    expect(worker).toContain("QA on Testing, DevOps on Deploy, the Chief on none.");
   });
 });
 
