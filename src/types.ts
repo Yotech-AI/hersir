@@ -557,6 +557,10 @@ export type UpdateStatus = {
   installed?: string | null;
   /** Where an update installs, or why this Gizai can't update itself (a dev build). */
   installTo?: string | null; cannotInstall?: string | null;
+  /** The package manager this Hersir came from ("aur", "homebrew", "scoop", …), or null: an install script's Hersir or a dev build. */
+  package?: string | null;
+  /** The command that updates a package's Hersir ("yay -Syu"), or null. */
+  updateCommand?: string | null;
   /** The update that runs now, or the last one since Gizai started. */
   job?: UpdateJob | null;
   /** Where releases come from. */
