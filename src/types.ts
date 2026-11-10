@@ -516,10 +516,17 @@ export type BitbucketStatus = {
 };
 
 // ---- updates: Settings → Updates and the notice above Company ----
-/** A release on GitHub: `version` "0.1.6" from the tag "v0.1.6"; `url` is its page, `notes` its Markdown notes. */
-export type Release = { version: string; tag: string; name?: string | null; url?: string | null; publishedAt?: string | null; notes?: string | null };
-/** While an update runs: source (getting it), build, backup, install. When it has ended: installed, failed, stopped. */
-export type UpdateStep = "source" | "build" | "backup" | "install" | "installed" | "failed" | "stopped";
+/** A release on GitHub: `version` "0.1.6" from the tag "v0.1.6"; `url` is its page, `notes` its Markdown notes.
+ * `assets`: the files attached to it (its ready-made builds, SHA256SUMS, its signature hersir-X.Y.Z.sig); null when a
+ * Hersir from before GA-253 found it. */
+export type Release = {
+  version: string; tag: string; name?: string | null; url?: string | null; publishedAt?: string | null; notes?: string | null;
+  assets?: { name: string; url: string }[] | null;
+};
+/** While an update runs: source (getting it and checking its signature), download (its ready-made build), build (from
+ * source, when there is no ready-made build or it didn't work), backup, install. When it has ended: installed, failed,
+ * stopped. */
+export type UpdateStep = "source" | "download" | "build" | "backup" | "install" | "installed" | "failed" | "stopped";
 export type UpdateJob = {
   version: string; step: UpdateStep; startedAt: number; endedAt?: number | null;
   /** Its log: every command and what it said. */
@@ -531,6 +538,8 @@ export type UpdateJob = {
   problem?: string | null; output?: string | null;
   /** When it failed: whether the Gizai installed before is still in place, as it was (unless the install failed partway). */
   unchanged: boolean;
+  /** Why it builds from source instead of installing the release's ready-made build, in a sentence without its full stop. */
+  fromSource?: string | null;
 };
 export type UpdateStatus = {
   /** This Gizai's version. */
@@ -540,8 +549,10 @@ export type UpdateStatus = {
   checking: boolean;
   /** The last check: when, the latest release it found, and why it didn't work. */
   checkedAt?: number | null; latest?: Release | null; problem?: GithubProblem | null;
-  /** The latest release when it is newer than this Gizai. */
+  /** The latest release when it is newer than this Gizai and signed: only that one is offered. */
   available?: Release | null;
+  /** The latest release when it is newer than this Gizai but not signed yet. */
+  unsigned?: Release | null;
   /** A newer version that is installed already: a restart starts it. */
   installed?: string | null;
   /** Where an update installs, or why this Gizai can't update itself (a dev build). */

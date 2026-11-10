@@ -24,7 +24,7 @@ export function UpdateSettings() {
   const release = s.available;
   const update = () => release && act(startUpdate(release.version));
   return (
-    <FormSection title="Updates" text="Hersir updates from its releases on GitHub. An update builds the new version from source in the background, backs up your data, installs it and offers a restart. If a step fails, the installed version keeps working.">
+    <FormSection title="Updates" text="Hersir updates from its signed releases on GitHub. An update checks the release's signature, downloads its ready-made build for your system in the background (or builds it from source when there is none), backs up your data, installs it and offers a restart. If a step fails, the installed version keeps working.">
       <Field label="Version" wide>
         <div className={`gh-line ${line.mark === "new" ? "ok" : line.mark}`}><Mark className="icon" /><span>Hersir {s.current}. {line.text}</span></div>
         {release?.url?.startsWith("https://") && (
@@ -38,7 +38,8 @@ export function UpdateSettings() {
         <Field label="Update" wide hint={s.installTo ? `Installs into ${s.installTo}. The source and its build stay in your data folder (update/), so the next update builds faster.` : undefined}>
           {job && isRunning(job) ? (
             <>
-              <div className="gh-line"><LoaderCircle className="icon spin" /><span>{stepText(job)} {job.step === "build" ? "The first build takes a while; later ones are quicker. You can keep working." : ""}</span></div>
+              <div className="gh-line"><LoaderCircle className="icon spin" /><span>{stepText(job)} {job.step === "build" ? "The first build takes a while; later ones are quicker. You can keep working." : job.step === "download" ? "You can keep working." : ""}</span></div>
+              {job.fromSource && <span className="hint">{job.fromSource}.</span>}
               {canStop(job) && <div><button className="btn sm" onClick={() => act(stopUpdate())}><Square className="icon" />Stop</button></div>}
               {job.backup && <span className="hint">Your data was backed up to <span className="mono">{job.backup}</span></span>}
             </>
@@ -46,6 +47,7 @@ export function UpdateSettings() {
             <>
               <div className="gh-line ok"><CircleCheck className="icon" /><span>Version {job?.step === "installed" ? job.version : s.installed} is installed. Restart Hersir to use it.</span></div>
               {job?.step === "installed" && job.problem && <span className="warn">{job.problem}</span>}
+              {job?.step === "installed" && job.fromSource && <span className="hint">{job.fromSource}.</span>}
               {job?.backup && <span className="hint">Your data was backed up to <span className="mono">{job.backup}</span></span>}
               <div><RestartButton className="btn primary" label="Restart Hersir" /></div>
             </>
@@ -57,6 +59,7 @@ export function UpdateSettings() {
                     ? `Hersir ${s.current} is still installed and works as before.`
                     : "The installer stopped partway, so the installed Hersir may not start: try again, or run ./install.sh from a checkout of production."}</span></div>
                   {job.output && <pre className="update-output mono">{job.output}</pre>}
+                  {job.fromSource && <span className="hint">{job.fromSource}.</span>}
                   <span className="hint">Everything it did is in <span className="mono">{job.log}</span></span>
                 </div>
               )}

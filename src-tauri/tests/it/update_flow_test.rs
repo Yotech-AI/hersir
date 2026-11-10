@@ -1,7 +1,9 @@
 //! Gizai's own update, end to end without GitHub and without a real install: a scratch folder holds the data, an
 //! "installed" Gizai (a stub that says it is this version) in <prefix>/lib/gizai, a local repository with the release
 //! tag v9.9.9 whose install.sh is a stub, and a file shaped like GitHub's latest-release answer. Files in control/
-//! make the stub fail where a test wants it to.
+//! make the stub fail where a test wants it to. GA-253: the release's files (SHA256SUMS, hersir-9.9.9.sig and a
+//! ready-made build) are at file:// addresses in <t>/release, signed with a throwaway key made for the test, which
+//! HERSIR_RELEASE_SIGNERS (Source::with_signers) holds; never with Hersir's own keys.
 // Linux and macOS only: these tests run shell or Python scripts as fake programs, which Windows can't start.
 #![cfg(unix)]
 use std::io::Write;
@@ -107,8 +109,6 @@ fn scratch(cargo_version: &str) -> Scratch {
     git(&repo, &["add", "-A"]);
     git(&repo, &["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "release 9.9.9"]);
     git(&repo, &["tag", "v9.9.9"]);
-    std::fs::write(t.join("latest.json"), r#"{"tag_name": "v9.9.9", "name": "v9.9.9", "html_url": "https://github.com/Yotech-AI/hersir/releases/tag/v9.9.9",
-        "published_at": "2026-10-07T12:00:00Z", "draft": false, "prerelease": false, "body": "- What changed"}"#).unwrap();
 
     let prefix = t.join("home/.local");
     write_script(&prefix.join("lib/gizai/gizai"), &format!("#!/bin/sh\n[ \"$1\" = --version ] && echo 'gizai {VERSION}'\nexit 0\n"));
@@ -121,9 +121,83 @@ fn scratch(cargo_version: &str) -> Scratch {
             counter.fetch_add(1, Ordering::SeqCst);
         }
     })).unwrap();
-    st.updates.set_source(Source::new(&repo.display().to_string(), Some(format!("file://{}", t.join("latest.json").display()))));
+    // GA-253: releases are checked with a throwaway key made for this test (HERSIR_RELEASE_SIGNERS), never Hersir's own
+    st.updates.set_source(Source::new(&repo.display().to_string(), Some(format!("file://{}", t.join("latest.json").display())))
+        .with_signers(Some(t.join("signers"))));
     st.updates.set_exe(Some(prefix.join("lib/gizai/gizai")));
-    Scratch { _tmp: tmp, t, st, notes, prefix }
+    let s = Scratch { _tmp: tmp, t, st, notes, prefix };
+    s.keygen("throwaway");
+    std::fs::write(s.t.join("signers"), format!("hersir-release namespaces=\"hersir-release\" {}", std::fs::read_to_string(s.t.join("keys/throwaway.pub")).unwrap())).unwrap();
+    // signed, without a ready-made build: the update builds it from source, as before GA-253
+    s.publish(&[SUMS, SIG], None, "throwaway");
+    s
+}
+
+// ---------- GA-253: the fake release's files ----------
+
+const SUMS: &str = "SHA256SUMS";
+const SIG: &str = "hersir-9.9.9.sig";
+
+impl Scratch {
+    /// A new ed25519 key without a passphrase at <t>/keys/<name>.
+    fn keygen(&self, name: &str) {
+        let keys = self.t.join("keys");
+        std::fs::create_dir_all(&keys).unwrap();
+        let o = Command::new("ssh-keygen").args(["-q", "-t", "ed25519", "-N", "", "-C", name, "-f"]).arg(keys.join(name)).stdin(Stdio::null()).output().unwrap();
+        assert!(o.status.success(), "ssh-keygen: {}", String::from_utf8_lossy(&o.stderr));
+    }
+
+    /// The commit the tag v9.9.9 points to in the fake repository.
+    fn commit(&self) -> String {
+        git(&self.t.join("fake-repo"), &["rev-parse", "v9.9.9^{commit}"])
+    }
+
+    /// This system's ready-made build of 9.9.9 in <t>/release, as the release workflow packs it: target/release/hersir
+    /// (which says it is 9.9.9 and that it is the ready-made build) and hersir-mcp. Its name, or None on a system without
+    /// ready-made builds.
+    fn archive(&self) -> Option<String> {
+        let name = gizai_agents::update::build_name("9.9.9")?;
+        let build = self.t.join("ready");
+        write_script(&build.join("target/release/hersir"), "#!/bin/sh\n# the ready-made build\n[ \"$1\" = --version ] && echo 'hersir 9.9.9'\nexit 0\n");
+        write_script(&build.join("target/release/hersir-mcp"), "#!/bin/sh\nexit 0\n");
+        std::fs::create_dir_all(self.t.join("release")).unwrap();
+        let o = Command::new("tar").arg("-czf").arg(self.t.join("release").join(&name)).arg("-C").arg(&build)
+            .args(["target/release/hersir", "target/release/hersir-mcp"]).output().unwrap();
+        assert!(o.status.success(), "tar: {}", String::from_utf8_lossy(&o.stderr));
+        Some(name)
+    }
+
+    /// Publishes the release v9.9.9 as the check finds it: <t>/release gets SHA256SUMS (with `sum` for the ready-made
+    /// build instead of its own sha256, when given) and hersir-9.9.9.sig by the key <t>/keys/<key> over the tag's commit
+    /// now, and latest.json lists the files `assets` there, at file:// addresses.
+    fn publish(&self, assets: &[&str], sum: Option<&str>, key: &str) {
+        let dir = self.t.join("release");
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut sums = String::new();
+        if let Some(name) = gizai_agents::update::build_name("9.9.9").filter(|n| dir.join(n).exists()) {
+            let own = gizai_agents::update::sha256_file(&dir.join(&name)).unwrap();
+            sums.push_str(&format!("{}  {name}\n", sum.unwrap_or(&own)));
+        }
+        sums.push_str(&format!("{}  hersir-9.9.9-some-other-system.tar.gz\n", "a".repeat(64)));
+        std::fs::write(dir.join(SUMS), &sums).unwrap();
+        let message = dir.join("message");
+        std::fs::write(&message, format!("hersir v9.9.9 {}\n{sums}", self.commit())).unwrap();
+        let _ = std::fs::remove_file(dir.join("message.sig"));
+        let o = Command::new("ssh-keygen").args(["-q", "-Y", "sign", "-n", "hersir-release", "-f"]).arg(self.t.join("keys").join(key))
+            .arg(&message).stdin(Stdio::null()).output().unwrap();
+        assert!(o.status.success(), "ssh-keygen -Y sign: {}", String::from_utf8_lossy(&o.stderr));
+        std::fs::rename(dir.join("message.sig"), dir.join(SIG)).unwrap();
+        self.list(assets);
+    }
+
+    /// latest.json: the release v9.9.9 with the files `assets` in <t>/release attached.
+    fn list(&self, assets: &[&str]) {
+        let listed: Vec<String> = assets.iter().map(|n| {
+            format!(r#"{{"name": "{n}", "state": "uploaded", "browser_download_url": "file://{}"}}"#, self.t.join("release").join(n).display())
+        }).collect();
+        std::fs::write(self.t.join("latest.json"), format!(r#"{{"tag_name": "v9.9.9", "name": "v9.9.9", "html_url": "https://github.com/Yotech-AI/hersir/releases/tag/v9.9.9",
+            "published_at": "2026-10-07T12:00:00Z", "draft": false, "prerelease": false, "body": "- What changed", "assets": [{}]}}"#, listed.join(","))).unwrap();
+    }
 }
 
 /// Waits until the update has ended, and returns how it ended.
@@ -387,6 +461,8 @@ fn hersir_scratch(lib: &str) -> (Scratch, PathBuf) {
     std::fs::write(repo.join("install.sh"), HERSIR_INSTALL_SH).unwrap();
     git(&repo, &["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-am", "release 9.9.9, with the hersir names"]);
     git(&repo, &["tag", "-f", "v9.9.9"]);
+    // GA-253: the tag is on another commit now, so the release is signed again
+    s.publish(&[SUMS, SIG], None, "throwaway");
     std::fs::remove_dir_all(s.prefix.join("lib/gizai")).unwrap();
     let lib = s.prefix.join(lib);
     write_script(&lib.join("hersir"), &format!("#!/bin/sh\n[ \"$1\" = --version ] && echo 'hersir {VERSION}'\nexit 0\n"));
@@ -614,4 +690,310 @@ fn own_nice() -> i32 {
         nice
     };
     nice.trim().parse().unwrap()
+}
+
+// ---------- GA-253: only a signed release, its signature first, then its ready-made build ----------
+
+/// The release's install.sh for GA-253's tests: --build-only builds target/release/hersir from source (a stub that says
+/// 9.9.9) and notes it in marks/build, --skip-build checks the data was backed up first, installs target/release/hersir
+/// into $HERSIR_PREFIX/lib/hersir the way install.sh does (a temporary name, then a rename) and notes it in marks/install.
+const READY_INSTALL_SH: &str = r#"set -e
+T='@T@'; C="$T/control"; M="$T/marks"
+case "$1" in
+  --build-only)
+    echo built > "$M/build"
+    [ -f "$C/build-secs" ] && sleep "$(cat "$C/build-secs")"
+    mkdir -p target/release
+    printf '#!/bin/sh\n[ "$1" = --version ] && echo "hersir 9.9.9"\nexit 0\n' > target/release/hersir
+    printf '#!/bin/sh\nexit 0\n' > target/release/hersir-mcp
+    chmod 755 target/release/hersir target/release/hersir-mcp
+    echo "Built hersir 9.9.9 from source"
+    ;;
+  --skip-build)
+    ls "$T/data/backups" 2>/dev/null | grep -q '^gizai-before-update-' || { echo "no backup of the data before installing" >&2; exit 9; }
+    L="$HERSIR_PREFIX/lib/hersir"; mkdir -p "$L"
+    cp target/release/hersir "$L/.hersir.new.$$" && mv -f "$L/.hersir.new.$$" "$L/hersir"
+    printf '#!/bin/sh\nexec "$(dirname "$0")/hersir" "$@"\n' > "$L/.launch.new.$$" && chmod 755 "$L/.launch.new.$$" && mv -f "$L/.launch.new.$$" "$L/hersir-launch"
+    echo installed > "$M/install"
+    echo "Done: hersir 9.9.9"
+    ;;
+esac
+"#;
+
+/// Hersir (this version) installed in <prefix>/lib/hersir, and the release v9.9.9 with READY_INSTALL_SH and this
+/// system's ready-made build, signed with the throwaway key and listed with SHA256SUMS and its .sig. None on a system
+/// without ready-made builds (an Intel Mac, Linux on arm64): those tests have nothing to check there.
+fn ready_scratch() -> Option<(Scratch, PathBuf, String)> {
+    gizai_agents::update::build_name("9.9.9")?;
+    let (s, lib) = hersir_scratch("lib/hersir");
+    let repo = s.t.join("fake-repo");
+    std::fs::write(repo.join("install.sh"), READY_INSTALL_SH.replace("@T@", &s.t.display().to_string())).unwrap();
+    git(&repo, &["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-am", "release 9.9.9, with marks"]);
+    git(&repo, &["tag", "-f", "v9.9.9"]);
+    let archive = s.archive().unwrap();
+    s.publish(&[&archive, SUMS, SIG], None, "throwaway");
+    Some((s, lib, archive))
+}
+
+fn log_of(st: &UpdateStatus) -> String {
+    std::fs::read_to_string(&st.job.as_ref().unwrap().log).unwrap()
+}
+
+/// Waits until the update is at `step`; false when it ended or moved past it first.
+fn wait_for_step(st: &AppState, step: &str) -> bool {
+    let until = Instant::now() + Duration::from_secs(30);
+    loop {
+        let job = update::status(st).job.unwrap();
+        if job.step == step {
+            return true;
+        }
+        if !job.running() || Instant::now() > until {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+#[tokio::test]
+async fn an_update_to_a_signed_release_installs_its_ready_made_build_without_building() {
+    let Some((s, lib, archive)) = ready_scratch() else { return };
+    let st = update::check(&s.st).await;
+    let offered = st.available.clone().expect("a signed release is offered");
+    assert!(offered.signed() && offered.asset(&archive).is_some(), "{offered:?}");
+    assert_eq!(st.unsigned, None);
+    update::start(&s.st, "9.9.9").unwrap();
+    let done = wait_for_update(&s.st);
+    let job = done.job.clone().unwrap();
+    assert_eq!(job.step, "installed", "{job:?}\n{}", log_of(&done));
+    assert_eq!((job.problem.as_deref(), job.from_source.as_deref()), (None, None), "it built nothing");
+    assert!(!s.t.join("marks/build").exists(), "install.sh --build-only never ran, so neither did cargo or npm");
+    assert!(s.t.join("marks/install").exists());
+    assert_eq!(s.backups().len(), 1, "the data was backed up first");
+    assert_eq!(says(&lib.join("hersir")), "hersir 9.9.9");
+    assert!(std::fs::read_to_string(lib.join("hersir")).unwrap().contains("# the ready-made build"), "the ready-made build is what is installed");
+    assert_eq!(done.installed.as_deref(), Some("9.9.9"));
+    assert!(update::restart_command(&s.st).is_ok(), "Restart is offered");
+    let log = log_of(&done);
+    let at = |line: &str| log.find(line).unwrap_or_else(|| panic!("the log has {line:?}:\n{log}"));
+    let order = [at("$ git fetch --depth 1"), at("== Checking the signature of v9.9.9 with the keys in HERSIR_RELEASE_SIGNERS"),
+                 at(&format!("The tag v9.9.9 is commit {}", s.commit())), at("The signature checks: hersir-9.9.9.sig is by throwaway"),
+                 at(&format!("== Downloading {archive}")), at(&format!("{archive}: its sha256 is")), at("as the release's SHA256SUMS says."),
+                 at("Its target/release/hersir --version says 9.9.9."), at("== Backing up your data"), at("$ ./install.sh --skip-build"),
+                 at("== Installed 9.9.9")];
+    assert!(order.windows(2).all(|w| w[0] < w[1]), "in this order: {order:?}\n{log}");
+    assert!(!log.contains("--build-only") && !log.contains("== Building"), "{log}");
+    assert!(!s.t.join("data/update").join(&archive).exists(), "the archive went once unpacked");
+}
+
+#[tokio::test]
+async fn a_release_without_its_signature_isnt_offered_and_says_not_signed_yet() {
+    let s = scratch("9.9.9");
+    s.list(&[SUMS]);
+    let st = update::check(&s.st).await;
+    assert_eq!(st.available, None, "not offered");
+    assert_eq!(st.unsigned.as_ref().map(|r| r.tag.as_str()), Some("v9.9.9"), "Settings → Updates says it is out, not signed yet");
+    assert_eq!(st.latest.as_ref().map(|r| r.version.as_str()), Some("9.9.9"));
+    let e = update::start(&s.st, "9.9.9").unwrap_err();
+    assert_eq!(e, "v9.9.9 is out, but not signed yet: try again in a few minutes.");
+    assert!(update::status(&s.st).job.is_none() && !s.t.join("data/update").exists(), "nothing was fetched");
+    // once it is signed, the next check offers it
+    s.list(&[SUMS, SIG]);
+    let st = update::check(&s.st).await;
+    assert_eq!(st.available.map(|r| r.version).as_deref(), Some("9.9.9"));
+    assert_eq!(st.unsigned, None);
+}
+
+/// Runs the update to v9.9.9 of `s`, which must fail on its signature, and checks nothing of it ran, nothing was
+/// installed or backed up, and the problem says `why`.
+async fn refused(s: &Scratch, lib: &Path, archive: &str, why: &str) {
+    update::check(&s.st).await;
+    let before = std::fs::read(lib.join("hersir")).unwrap();
+    update::start(&s.st, "9.9.9").unwrap();
+    let done = wait_for_update(&s.st);
+    let job = done.job.clone().unwrap();
+    let log = log_of(&done);
+    assert_eq!(job.step, "failed", "{job:?}\n{log}");
+    let problem = job.problem.clone().unwrap();
+    assert!(problem.contains(why) && problem.ends_with("so Hersir doesn't install it"), "{problem}");
+    assert!(!problem.contains('\n'), "one line: {problem}");
+    assert!(job.unchanged, "the installed Hersir is as it was");
+    assert_eq!(std::fs::read(lib.join("hersir")).unwrap(), before, "not touched");
+    assert_eq!(says(&lib.join("hersir")), format!("hersir {VERSION}"));
+    assert!(!s.t.join("marks/build").exists() && !s.t.join("marks/install").exists(), "nothing built or installed");
+    assert!(s.backups().is_empty(), "no backup either");
+    assert!(!log.contains(&format!("== Downloading {archive}")) && !s.t.join("data/update/source/target").exists(), "the ready-made build wasn't downloaded: {log}");
+    assert!(log.contains("== Checking the signature of v9.9.9") && log.contains(&format!("== {problem}")), "the log shows the check and why: {log}");
+    assert_eq!(done.installed, None);
+}
+
+#[tokio::test]
+async fn a_signature_by_another_key_installs_nothing_and_says_why() {
+    let Some((s, lib, archive)) = ready_scratch() else { return };
+    s.keygen("other");
+    s.publish(&[&archive, SUMS, SIG], None, "other");
+    refused(&s, &lib, &archive, "hersir-9.9.9.sig is signed with a key that isn't one of Hersir's release keys (SHA256:").await;
+}
+
+#[tokio::test]
+async fn a_changed_sha256sums_installs_nothing_and_says_why() {
+    let Some((s, lib, archive)) = ready_scratch() else { return };
+    // SHA256SUMS changed after it was signed: a sum for another archive
+    let sums = std::fs::read_to_string(s.t.join("release").join(SUMS)).unwrap();
+    std::fs::write(s.t.join("release").join(SUMS), sums.replace(&"a".repeat(64), &"b".repeat(64))).unwrap();
+    refused(&s, &lib, &archive, "The signature of v9.9.9 doesn't check: the release's SHA256SUMS or the commit of its tag").await;
+}
+
+#[tokio::test]
+async fn a_tag_on_another_commit_installs_nothing_and_says_why() {
+    let Some((s, lib, archive)) = ready_scratch() else { return };
+    let signed = s.commit();
+    // the tag moved after the release was signed
+    let repo = s.t.join("fake-repo");
+    std::fs::write(repo.join("README.md"), "not what was signed\n").unwrap();
+    git(&repo, &["add", "-A"]);
+    git(&repo, &["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "after the signature"]);
+    git(&repo, &["tag", "-f", "v9.9.9"]);
+    assert_ne!(s.commit(), signed);
+    refused(&s, &lib, &archive, &format!("doesn't check: the release's SHA256SUMS or the commit of its tag ({}) isn't what was signed", &s.commit()[..12])).await;
+}
+
+#[tokio::test]
+async fn with_hersirs_own_keys_a_release_signed_with_a_throwaway_key_installs_nothing() {
+    let Some((s, lib, archive)) = ready_scratch() else { return };
+    // no HERSIR_RELEASE_SIGNERS: the keys built into Hersir
+    s.st.updates.set_source(Source::new(&s.t.join("fake-repo").display().to_string(), Some(format!("file://{}", s.t.join("latest.json").display()))));
+    refused(&s, &lib, &archive, "isn't one of Hersir's release keys").await;
+    assert!(log_of(&update::status(&s.st)).contains("== Checking the signature of v9.9.9 with Hersir's own release keys"));
+}
+
+/// Runs the update to v9.9.9 of `s`, which must build from source for `why`, and install that build.
+async fn builds_from_source(s: &Scratch, lib: &Path, why: &str) {
+    s.control("build-secs", "1");
+    update::check(&s.st).await;
+    update::start(&s.st, "9.9.9").unwrap();
+    assert!(wait_for_step(&s.st, "build"), "it shows the build step");
+    let mid = update::status(&s.st).job.unwrap();
+    assert_eq!(mid.from_source.as_deref(), Some(why), "Settings → Updates says why it builds while it does");
+    let done = wait_for_update(&s.st);
+    let job = done.job.clone().unwrap();
+    let log = log_of(&done);
+    assert_eq!(job.step, "installed", "{job:?}\n{log}");
+    assert_eq!(job.problem, None);
+    assert_eq!(job.from_source.as_deref(), Some(why), "and still says so once it is installed");
+    assert!(s.t.join("marks/build").exists(), "it built the source");
+    assert!(s.t.join("marks/install").exists() && s.backups().len() == 1);
+    assert!(!std::fs::read_to_string(lib.join("hersir")).unwrap().contains("ready-made"), "what it built is installed");
+    assert_eq!(says(&lib.join("hersir")), "hersir 9.9.9");
+    for line in ["The signature checks", &format!("== {why}"), "== Building 9.9.9", "$ ./install.sh --build-only", "== Installed 9.9.9"] {
+        assert!(log.contains(line), "the log has {line:?}:\n{log}");
+    }
+}
+
+#[tokio::test]
+async fn with_a_good_signature_a_wrong_checksum_builds_from_source_and_says_why() {
+    let Some((s, lib, archive)) = ready_scratch() else { return };
+    s.publish(&[&archive, SUMS, SIG], Some(&"0".repeat(64)), "throwaway");
+    builds_from_source(&s, &lib, &format!("{archive} doesn't match the release's SHA256SUMS, so Hersir builds 9.9.9 from source")).await;
+    assert!(log_of(&update::status(&s.st)).contains(&format!("but the release's SHA256SUMS says {}", "0".repeat(64))));
+}
+
+#[tokio::test]
+async fn with_a_good_signature_and_no_build_for_this_system_it_builds_from_source_and_says_why() {
+    let Some((s, lib, archive)) = ready_scratch() else { return };
+    s.list(&[SUMS, SIG]);
+    builds_from_source(&s, &lib, &format!("The release has no ready-made build for this system ({archive}), so Hersir builds 9.9.9 from source")).await;
+}
+
+#[tokio::test]
+async fn a_download_that_fails_builds_from_source_and_says_why() {
+    let Some((s, lib, archive)) = ready_scratch() else { return };
+    std::fs::remove_file(s.t.join("release").join(&archive)).unwrap();
+    update::check(&s.st).await;
+    update::start(&s.st, "9.9.9").unwrap();
+    let job = wait_for_update(&s.st).job.unwrap();
+    assert_eq!(job.step, "installed", "{job:?}");
+    let why = job.from_source.unwrap();
+    assert!(why.starts_with(&format!("Couldn't download {archive}: ")) && why.ends_with(", so Hersir builds 9.9.9 from source"), "{why}");
+    assert!(s.t.join("marks/build").exists());
+    assert_eq!(says(&lib.join("hersir")), "hersir 9.9.9");
+}
+
+/// A local HTTP server that sends the start of a 100 MB file, then nothing more for a minute: a download in progress.
+fn slow_server() -> String {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://127.0.0.1:{}/hersir.tar.gz", listener.local_addr().unwrap().port());
+    std::thread::spawn(move || {
+        use std::io::Read;
+        let Ok((mut conn, _)) = listener.accept() else { return };
+        let _ = conn.read(&mut [0u8; 4096]);
+        let _ = conn.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 104857600\r\n\r\n");
+        let _ = conn.write_all(&[0u8; 65536]);
+        std::thread::sleep(Duration::from_secs(60));
+    });
+    url
+}
+
+/// Starts the update of `s` (a ready scratch) with its ready-made build `archive` on a slow server, and returns once
+/// the download has begun.
+async fn at_the_download(s: &Scratch, archive: &str) {
+    let latest = std::fs::read_to_string(s.t.join("latest.json")).unwrap();
+    let file = format!("file://{}", s.t.join("release").join(archive).display());
+    std::fs::write(s.t.join("latest.json"), latest.replace(&file, &slow_server())).unwrap();
+    update::check(&s.st).await;
+    update::start(&s.st, "9.9.9").unwrap();
+    assert!(wait_for_step(&s.st, "download"), "the update shows its download step: {:?}", update::status(&s.st).job);
+    let part = s.t.join("data/update").join(archive);
+    let until = Instant::now() + Duration::from_secs(30);
+    while std::fs::metadata(&part).map(|m| m.len()).unwrap_or(0) == 0 {
+        assert!(Instant::now() < until, "the download never began");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// The update ended at its download: stopped, nothing built, backed up or installed, no part of the download left.
+fn stopped_at_the_download(s: &Scratch, lib: &Path, archive: &str, asked: Instant) {
+    let done = wait_for_update(&s.st);
+    assert!(asked.elapsed() < Duration::from_secs(15), "it stopped soon: {:?}", asked.elapsed());
+    let job = done.job.clone().unwrap();
+    assert_eq!(job.step, "stopped", "{job:?}\n{}", log_of(&done));
+    assert_eq!((job.problem.as_deref(), job.from_source.as_deref()), (None, None), "a stop isn't a failure, and doesn't build instead");
+    assert!(job.unchanged);
+    assert!(!s.t.join("marks/build").exists() && !s.t.join("marks/install").exists() && s.backups().is_empty());
+    assert_eq!(says(&lib.join("hersir")), format!("hersir {VERSION}"));
+    assert!(!s.t.join("data/update").join(archive).exists(), "the part it downloaded is gone");
+    assert!(log_of(&done).contains("== Stopped"));
+    assert_eq!(done.available.map(|r| r.version).as_deref(), Some("9.9.9"), "it can be started again");
+}
+
+#[tokio::test]
+async fn stop_during_the_download_ends_the_update_and_the_installed_hersir_stays() {
+    let Some((s, lib, archive)) = ready_scratch() else { return };
+    at_the_download(&s, &archive).await;
+    let asked = Instant::now();
+    let st = update::stop(&s.st);
+    assert!(st.job.is_some());
+    stopped_at_the_download(&s, &lib, &archive, asked);
+}
+
+#[tokio::test]
+async fn quitting_hersir_during_the_download_ends_the_update() {
+    let Some((s, lib, archive)) = ready_scratch() else { return };
+    at_the_download(&s, &archive).await;
+    let asked = Instant::now();
+    update::on_exit(&s.st);
+    stopped_at_the_download(&s, &lib, &archive, asked);
+}
+
+#[tokio::test]
+async fn a_release_a_check_from_before_ga_253_found_is_checked_again_at_once() {
+    let s = scratch("9.9.9");
+    let now = gizai_core::ids::now_ms();
+    let mut old = gizai_agents::update::parse_release(r#"{"tag_name": "v9.9.9"}"#).unwrap();
+    old.assets = None;
+    settings::set(&s.st.db, "update_last_check", &LastCheck { at: now, latest: Some(old.clone()), problem: None }).unwrap();
+    let st = update::status(&s.st);
+    assert_eq!((st.available, st.unsigned.map(|r| r.version)), (None, Some("9.9.9".into())), "not known to be signed: not offered");
+    assert!(update::tick(&s.st, now).await, "a check from before GA-253 kept no files: checked again at once");
+    assert_eq!(update::status(&s.st).available.map(|r| r.version).as_deref(), Some("9.9.9"), "signed, so offered now");
+    assert!(!update::tick(&s.st, gizai_core::ids::now_ms()).await, "and not again until it is due");
 }

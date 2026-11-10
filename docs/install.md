@@ -6,7 +6,7 @@ From 0.17.0 the programs, the command and the app id are Hersir's too: `hersir`,
 
 Hersir installs for you alone, without sudo or administrator rights. It runs on Linux, on Macs with Apple silicon and on Windows 11.
 
-The one line installs the latest release's ready-made build for your system, in about a minute, once it has checked the release's signature. Where there is no ready-made build, it builds Hersir from the release's source on your own computer, as a clone does. There are no installers and no browser downloads. The `production` branch holds the released version; `main` is development.
+The one line installs the latest release's ready-made build for your system, in about a minute, once it has checked the release's signature. Where there is no ready-made build, it builds Hersir from the release's source on your own computer, as a clone does. Updates from inside Hersir install the release's ready-made build too, once its signature checks ([Updates](#updates)). There are no installers and no browser downloads, on any system. The `production` branch holds the released version; `main` is development.
 
 Hersir is early: its version is still 0.x. Every release is on [GitHub Releases](https://github.com/Yotech-AI/hersir/releases).
 
@@ -145,7 +145,7 @@ Every release of Hersir is signed with Hersir's own release key: not Apple's or 
 - No signature: `vX.Y.Z isn't signed yet: try again in a few minutes.` A signature by another key, for another commit or over another `SHA256SUMS`: one line says so. Either way nothing of the release runs and nothing is installed.
 - Only then is the ready-made build checked against `SHA256SUMS`. A build that doesn't match isn't used: the one line says so, and builds the checked source instead.
 
-Hersir has no Apple or Microsoft signature yet: there is no Apple Developer account or Windows certificate until Hersir has paid features. The one line downloads the ready-made build with curl (on Windows with PowerShell), which doesn't mark it as downloaded from the internet, and a build made on your own computer isn't a download, so Gatekeeper and SmartScreen shouldn't stop either. Don't download the builds from the release's page in a browser: a browser marks them, and macOS and Windows stop an app with that mark that Apple or Microsoft hasn't signed. If they still stop it:
+Hersir has no Apple or Microsoft signature yet: there is no Apple Developer account or Windows certificate until Hersir has paid features. The one line and Update download a release's ready-made build with curl (the one line on Windows with PowerShell), which doesn't mark it as downloaded from the internet, and a build made on your own computer isn't a download, so Gatekeeper and SmartScreen shouldn't stop either. Don't download the builds from the release's page in a browser: a browser marks them, and macOS and Windows stop an app with that mark that Apple or Microsoft hasn't signed. If they still stop it:
 
 - macOS: System Settings → Privacy & Security → Open Anyway, or `xattr -dr com.apple.quarantine ~/.local/lib/hersir/Hersir.app`;
 - Windows: More info → Run anyway.
@@ -167,12 +167,15 @@ You can skip it. Hersir is set up already: you (named after your login), My comp
 
 ## Updates
 
-Hersir asks GitHub for the latest release 20 seconds after it starts, then every six hours. When a newer one is out, **Update to X.Y.Z** shows above Company in the sidebar. Click it and Hersir:
+Hersir asks GitHub for the latest release 20 seconds after it starts, then every six hours. When a newer one is out and signed, **Update to X.Y.Z** shows above Company in the sidebar. Click it and Hersir:
 
-1. builds the new version from source in the background with your system's install script, while you keep working;
-2. backs up your data;
-3. installs the new version;
-4. offers a restart.
+1. gets the release's source and checks its signature against Hersir's own release keys, which are built into Hersir: a release that isn't signed, or whose signature doesn't check, is never installed;
+2. downloads the release's ready-made build for your system in the background, while you keep working, and checks it against the release's signed checksums. On a system without one (an Intel Mac, Linux on arm64), or when the download or its checksum fails, it builds the new version from source with your system's install script instead, and Settings → Updates says why;
+3. backs up your data;
+4. installs the new version;
+5. offers a restart.
+
+A newer release that isn't signed yet isn't offered: Settings → Updates says `vX.Y.Z is out, but not signed yet.` Releases are signed shortly after they come out. The download uses curl, so the build isn't marked as downloaded from the internet, and Gatekeeper and SmartScreen don't stop it.
 
 If a step fails, the version you have keeps working, and Settings → Updates says why. Settings → Updates also has Check now, and switches the check off.
 
