@@ -644,7 +644,8 @@ describe("the installers' messages say Hersir (GA-234)", () => {
   });
 
   it("Cargo.toml's descriptions and browser.html's title say Hersir", () => {
-    const tomls = git("ls-files", "Cargo.toml", "*/Cargo.toml").stdout.split("\n").filter(Boolean);
+    // Hersir's own crates: third_party/ holds other people's crates with their own descriptions (GA-264)
+    const tomls = git("ls-files", "Cargo.toml", "*/Cargo.toml").stdout.split("\n").filter((t) => t && !t.startsWith("third_party/"));
     const descriptions = tomls.flatMap((t) => [...read(t).matchAll(/^description = "(.*)"$/gm)].map((m) => m[1]));
     expect(descriptions).toHaveLength(4);
     for (const d of descriptions) expect(d).toMatch(/^Hersir[: ]/);
