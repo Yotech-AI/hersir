@@ -49,6 +49,15 @@ Approve runs exactly that call once, with every other rule in force; it isn't ke
 
 Tools that only read never wait, and a chat that never used a tool from outside Hersir works as before.
 
+### Sources you trust
+
+Like Claude's connectors, each source the Chief has gets a choice in its agent form → Tools: each MCP server, the browser and Web show **After the Chief uses it:** with **Ask for my OK** or **Allow**. Every source starts on Ask for my OK, also one saved before this choice existed, and only the agent form changes it: the Chief can't, from chat (`update_agent` with `trusted` or `webTrusted` is refused, and nothing changes). Other agents' forms don't show it.
+
+- **Ask for my OK** (the default): after the Chief uses the source, the chat is marked and its calls wait for your Approve, as above.
+- **Allow**: its tools don't mark the chat, so what the Chief does after using them runs at once, and the chat shows no line about them. For Web, that is web search and fetching pages; for the browser, its tools; for an MCP server, its tools. The form warns under it: "What `<name>` returns can steer the Chief: with Allow, what the Chief does after using it runs without your OK." Choose it only for a source you trust, like your own OTUS.
+
+A source on Ask still marks the chat when the Chief uses it, also after one on Allow in the same answer.
+
 ### Cards that wait for your OK
 
 In a marked chat, a card the Chief puts in an Auto column (its agents pick it up by themselves), or whose description, acceptance criteria, assignee or cards it builds on it changes there, is saved on hold: "Waiting for your OK: the Chief put this card here after using `<tool>`, a tool from outside Hersir. Check it, then take it off hold." No agent starts it.
