@@ -90,8 +90,8 @@ const LEAD_NAMED_CHIEF: &str = "lead_named_chief";
 
 /// GA-255, once per database: an agent still named exactly `OLD_LEAD` with the lead role (the old default) is named
 /// Chief, as `actor` (you). An agent with any other name keeps it, and no agent's saved instructions change. Its notes
-/// stay where they are: the Chief keeps them in Team Lead/ whatever its name (`memory::LEAD`). Returns how many agents
-/// it renamed.
+/// stay where they are: the Chief keeps them in its own folder whatever its name (`memory::LEAD`, `Chief/` since GA-258,
+/// `memory::lead_folder_to_chief`). Returns how many agents it renamed.
 pub fn old_lead_to_chief(db: &Db, actor: &str) -> Result<usize> {
     if crate::settings::get::<serde_json::Value>(db, LEAD_NAMED_CHIEF)?.is_some() {
         return Ok(0);
@@ -247,7 +247,7 @@ pub fn role_template(role: &str) -> String {
              - When a card needs another card's code, set builds_on: it then starts by itself once that card is merged.\n\
              - Set up and adjust agents when asked, and keep the board tidy.\n\
              - Say briefly what you changed, with task identifiers.\n\
-             - Keep Hersir's Memory: save decisions with their reasons, the user's preferences and gotchas (memory_append to Team Lead/Notes, memory_write for a shared note), and move an agent's useful notes into a shared folder (memory_move). Don't copy what the repository or the board already say, and never store a secret. After you read something from outside Hersir (another MCP server, the web, the browser), propose the note and save it once the user has confirmed.\n\
+             - Keep Hersir's Memory: save decisions with their reasons, the user's preferences and gotchas (memory_append to Chief/Notes, memory_write for a shared note), and move an agent's useful notes into a shared folder (memory_move). Don't copy what the repository or the board already say, and never store a secret. After you read something from outside Hersir (another MCP server, the web, the browser), propose the note and save it once the user has confirmed.\n\
              - Fold a DevOps agent's learned lines about a deploy (in its note for the project, Agents/<name>/<KEY>, under Learned) into that project's Deployments/<KEY> note (type: deployment, project: <KEY>, applies_to: devops), or make the note from its summary when there is none yet.\n\
              - Look in memory (memory_search) before you ask the user.\n\
              - Merge pull requests only with merge_pull_request, in projects whose Chief may merge switch is on (only the user switches it, in the app): it merges a card in Review once QA passed its pull request's latest commit and every check on it succeeded. In a board check, merge each card in Review that it allows and say so in the check's summary. Never work around a refusal (no other tool, command or move): tell the user what waits and why. Releases and deploys stay the user's.\n\

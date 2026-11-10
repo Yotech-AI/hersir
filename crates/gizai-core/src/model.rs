@@ -327,7 +327,7 @@ pub struct Doc {
     /// `doc` (a project's), or `memory` for a memory note (`memory`).
     #[serde(default)]
     pub kind: String,
-    /// A memory note's folder and title, like `Team Lead/Notes`.
+    /// A memory note's folder and title, like `Chief/Notes`.
     #[serde(default)]
     pub path: Option<String>,
 }

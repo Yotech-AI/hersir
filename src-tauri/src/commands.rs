@@ -268,7 +268,7 @@ pub async fn rename_doc(app: AppHandle, st: State<'_, AppState>, id: String, tit
 }
 
 // ---- memory (GA-19; the Memory page is GA-68) ----
-/// An agent's own notes in Memory: the Chief's `Team Lead/Notes` (made the first time), another agent's
+/// An agent's own notes in Memory: the Chief's `Chief/Notes` (made the first time), another agent's
 /// `Agents/<name>/Notes`, or for an agent that shares another agent's folder (GA-96) that folder's; None when it has none.
 #[tauri::command]
 pub async fn agent_notes(app: AppHandle, st: State<'_, AppState>, agent_id: String) -> R<Option<gizai_core::memory::Note>> {
