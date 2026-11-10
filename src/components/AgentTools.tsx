@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { agentMcp, listMcpServers } from "../api";
-import { actsAsYou, CLAUDE_CODE_NO_LIST, lastRunLabel, npmWarning, RISK_BADGE, RISK_LABEL, signInLabel, switchServer, switchTool, toolsSummary, TRANSPORT_LABEL } from "../lib/mcp";
+import { actsAsYou, CLAUDE_CODE_NO_LIST, lastRunLabel, npmWarning, RISK_BADGE, RISK_LABEL, signInLabel, switchServer, switchTool, toolsSummary, TRANSPORT_LABEL, trustServer } from "../lib/mcp";
 import type { AgentMcpView, AgentServer, CliKind, McpServerView } from "../types";
 import { Field } from "./Form";
 import { McpToolList } from "./McpTools";
+import { TrustChoice } from "./TrustChoice";
 
 /** Why an agent on another CLI can't have MCP servers or the browser: the same words as `mcp_not_on` in
  * crates/gizai-core/src/mcp_servers.rs. */
@@ -15,9 +16,10 @@ export const MCP_NOT_ON: Record<string, string> = {
 export const MCP_NOT_YET = MCP_NOT_ON.other;
 
 /** The agent form's Tools: each MCP server from Settings with a switch, its sign-in state, its state in the agent's last run,
- * and its tools with a switch each, what they do and their risk. Everything is off until you switch it on. */
-export function AgentToolsField({ agentId, kind, allowedTools, value, onChange }: {
-  agentId?: string; kind: CliKind; allowedTools: string[]; value: AgentServer[]; onChange: (v: AgentServer[]) => void;
+ * and its tools with a switch each, what they do and their risk. Everything is off until you switch it on. For an agent
+ * with Chat on (`lead`, the Chief), each server has After the Chief uses it: Ask for my OK (the default) or Allow (GA-271). */
+export function AgentToolsField({ agentId, kind, allowedTools, value, onChange, lead }: {
+  agentId?: string; kind: CliKind; allowedTools: string[]; value: AgentServer[]; onChange: (v: AgentServer[]) => void; lead?: boolean;
 }) {
   const [servers, setServers] = useState<McpServerView[] | null>(null);
   const [view, setView] = useState<AgentMcpView | null>(null);
@@ -64,6 +66,10 @@ export function AgentToolsField({ agentId, kind, allowedTools, value, onChange }
                 {you && <span className="warn">{you} Switch it on only for an agent you trust with that.</span>}
                 {s.signIn === "needs_sign_in" && <span className="warn">Needs sign-in: a run leaves it out until you sign in in Settings → MCP servers.</span>}
                 {s.missing.length > 0 && <span className="warn">No value saved for {s.missing.join(", ")}: a run leaves it out until you enter it in Settings → MCP servers.</span>}
+                {lead && (
+                  <TrustChoice id={`trust-${s.id}`} source={s.name} name={s.name} trusted={!!sw?.trusted} disabled={disabled}
+                    onChange={(t) => onChange(trustServer(value, s.id, t))} />
+                )}
                 {on && tools.length > 0 && (
                   <McpToolList tools={tools} disabled={disabled} isOn={(name) => !off.includes(name)} onSwitch={(name, v) => onChange(switchTool(value, s.id, name, v))} />
                 )}

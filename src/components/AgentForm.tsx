@@ -329,7 +329,7 @@ export function AgentDrawer({ teamId, agentId, preset, onClose }: { teamId?: str
           <Field label="Monthly budget ($)" htmlFor="a-budget" hint={kind === "claude_code" ? "Once its runs this calendar month (UTC) cost this much, it starts no new runs" : `${cliName} doesn't report what a run costs, so its runs count as $0 here`}><input id="a-budget" className="input" inputMode="decimal" value={d.budget} onChange={(e) => set("budget", e.target.value)} placeholder="No limit" /></Field>
         </FormSection>
         <FormSection title="Tools" text={`What ${cliName} may use besides its worktree, folders and commands: outside services through MCP servers, the web, a hidden browser and its own built-in tools. Everything is off until you switch it on.`}>
-          <AgentToolsField agentId={agentId} kind={kind} allowedTools={!usesAllowedTools(kind) ? [] : parseTools(d.tools).length > 0 ? parseTools(d.tools) : DEFAULT_TOOLS} value={d.mcp} onChange={(v) => set("mcp", v)} />
+          <AgentToolsField agentId={agentId} kind={kind} allowedTools={!usesAllowedTools(kind) ? [] : parseTools(d.tools).length > 0 ? parseTools(d.tools) : DEFAULT_TOOLS} value={d.mcp} onChange={(v) => set("mcp", v)} lead={d.chat} />
           <AgentCliToolsFields agentId={agentId} cliId={cliId} lead={d.chat} value={d.cliTools} onChange={(v) => set("cliTools", v)}
             mcp={d.mcp} onMcp={(v) => set("mcp", v)}
             allowedTools={!usesAllowedTools(kind) ? [] : parseTools(d.tools).length > 0 ? parseTools(d.tools) : DEFAULT_TOOLS} />
