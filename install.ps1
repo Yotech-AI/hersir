@@ -10,9 +10,9 @@
 #
 # Usage, in PowerShell (Windows PowerShell 5.1 or PowerShell 7):
 #   .\install.ps1                from a checkout: check, build and install
-#   .\install.ps1 -Check         only report what is missing
+#   .\install.ps1 -Check         only report what is missing (with -SkipBuild: what Hersir needs to run)
 #   .\install.ps1 -BuildOnly     check and build, install nothing (Hersir's own Update runs this, then -SkipBuild)
-#   .\install.ps1 -SkipBuild     install the programs already built in target\release
+#   .\install.ps1 -SkipBuild     install the programs already built in target\release, or a release's ready-made build
 #   .\install.ps1 -Uninstall     remove Hersir, also an install from before 0.17.0 (add -Purge to delete your data too)
 # When PowerShell won't run scripts: powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
 # Run outside a checkout, it clones (or updates) the source into %LOCALAPPDATA%\hersir-src first.
@@ -47,6 +47,27 @@ function Invoke-Step([string]$Exe, [string[]]$Arguments) {
     Say "$Exe $($Arguments -join ' ') failed (exit code $LASTEXITCODE)."
     exit 1
   }
+}
+
+# ssh-keygen.exe: Windows' own, from its OpenSSH Client, else Git for Windows' (<Git>\usr\bin), or ''. As get.ps1
+# finds it.
+function Find-SshKeygen {
+  foreach ($folder in @('System32', 'Sysnative')) {
+    $exe = Join-Path $env:SystemRoot "$folder\OpenSSH\ssh-keygen.exe"
+    if (Test-Path -LiteralPath $exe -PathType Leaf) { return $exe }
+  }
+  $git = Get-Command 'git.exe' -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($git) {
+    # git.exe is in <Git>\cmd, <Git>\bin or <Git>\mingw64\bin
+    $up = Split-Path -Parent $git.Source
+    foreach ($i in 1..3) {
+      $exe = Join-Path $up 'usr\bin\ssh-keygen.exe'
+      if (Test-Path -LiteralPath $exe -PathType Leaf) { return $exe }
+      $up = Split-Path -Parent $up
+      if (-not $up) { break }
+    }
+  }
+  return ''
 }
 
 # A program's output, errors included, as one text.
@@ -189,7 +210,14 @@ $notes = New-Object System.Collections.Generic.List[string]
 if (-not (Have 'git')) {
   $notes.Add('Git for Windows is missing (Claude Code needs it too): winget install --id Git.Git -e   (then open a new terminal)')
 }
-if (-not $SkipBuild) {
+if ($SkipBuild) {
+  # A build that is there already, a release's ready-made build or what -BuildOnly made: only what Hersir needs to run.
+  # Git for Windows (above), WebView2 (below), and ssh-keygen, with which Hersir checks a release's signature before
+  # it updates. No Rust, Node.js or C++ Build Tools.
+  if (-not (Find-SshKeygen)) {
+    $notes.Add("ssh-keygen is missing: add Windows' OpenSSH Client (Settings > System > Optional features), or install Git for Windows, which has one")
+  }
+} else {
   if (Have 'cargo') {
     $rustc = Read-Program 'rustc' @('-vV')
     if ($rustc -match 'host: (\S+)' -and $Matches[1] -notlike '*-windows-msvc') {
@@ -240,7 +268,7 @@ foreach ($key in @("HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\$web
 if (-not $hasWebView) {
   Say "WebView2: not found, so Hersir's window can't open. Windows 11 comes with it; get the Evergreen Runtime from https://developer.microsoft.com/microsoft-edge/webview2/"
 }
-if ($ok) { Say 'Everything Hersir needs to build is here.' }
+if ($ok -and $SkipBuild) { Say 'Everything Hersir needs to run is here.' } elseif ($ok) { Say 'Everything Hersir needs to build is here.' }
 if ($Check) { if ($ok) { exit 0 } else { exit 1 } }
 if (-not $ok -and -not $SkipBuild) {
   Say ''

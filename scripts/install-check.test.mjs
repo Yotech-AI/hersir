@@ -61,3 +61,63 @@ describe.runIf(linux)("install.sh --check: the tray icon library", () => {
     expect(check(list(["libayatana-indicator3.so.7"], 3, "first"))).toContain(TRAY);
   });
 });
+
+// GA-252: install.sh --check --skip-build, as the one line runs it before it installs a release's ready-made build, asks
+// only for what Hersir needs to run: git, ssh-keygen (with which Hersir checks a release's signature) and on Linux
+// WebKitGTK 4.1's library. Not Rust, Node.js, npm, a C compiler or pkg-config, which a build needs and --check alone
+// still names. It runs with a PATH of only the programs given here, so none of those is there.
+const RUN_LIBS = list(["libwebkit2gtk-4.1.so.0", "libayatana-appindicator3.so.1"], 50, "first");
+function checkWith(programs, args) {
+  const dir = join(scratch, `run-${++n}`);
+  const bin = join(dir, "bin");
+  mkdirSync(join(dir, "home"), { recursive: true });
+  mkdirSync(bin);
+  for (const name of ["uname", "grep", "sed", "cat", "readlink", ...programs]) {
+    const found = spawnSync("/bin/sh", ["-c", `command -v ${name}`], { encoding: "utf8" }).stdout.trim();
+    if (!found.startsWith("/")) throw new Error(`${name} isn't installed as a program`);
+    writeFileSync(join(bin, name), `#!/bin/sh\nexec '${found}' "$@"\n`);
+    chmodSync(join(bin, name), 0o755);
+  }
+  writeFileSync(join(dir, "ldconfig.txt"), RUN_LIBS);
+  const awk = spawnSync("/bin/sh", ["-c", "command -v awk"], { encoding: "utf8" }).stdout.trim();
+  writeFileSync(join(bin, "ldconfig"), `#!/bin/sh\n[ "$1" = -p ] && exec '${awk}' '{ print }' "${join(dir, "ldconfig.txt")}"\nexit 0\n`);
+  chmodSync(join(bin, "ldconfig"), 0o755);
+  const bash = spawnSync("/bin/sh", ["-c", "command -v bash"], { encoding: "utf8" }).stdout.trim();
+  const env = { HOME: join(dir, "home"), USER: "hersir", PATH: bin };
+  const r = spawnSync(bash, [join(ROOT, "install.sh"), ...args], { cwd: dir, env, encoding: "utf8" });
+  return { code: r.status, out: `${r.stdout}${r.stderr}` };
+}
+const BUILD_NEEDS = /Rust|Node\.js|npm|pkg-config|compiler|cargo|Command Line Tools|build-essential|base-devel|-devel?\b/;
+
+describe.runIf(linux)("install.sh --check --skip-build: what a ready-made build needs to run (GA-252)", () => {
+  it("with git, ssh-keygen and WebKitGTK 4.1, and no Rust, Node.js or compiler, has everything Hersir needs to run", () => {
+    const r = checkWith(["git", "ssh-keygen"], ["--check", "--skip-build"]);
+    expect(r.code, r.out).toBe(0);
+    expect(r.out).toContain("Everything Hersir needs to run is here.");
+    expect(r.out).not.toMatch(BUILD_NEEDS);
+    expect(r.out).not.toContain("Missing system packages");
+    // the note about Claude Code stays
+    expect(r.out).toContain("Claude Code: not found.");
+  });
+
+  it("names git and ssh-keygen when they are missing, with the line that installs what Hersir needs to run", () => {
+    const r = checkWith([], ["--check", "--skip-build"]);
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("Missing system packages: git ssh-keygen \nInstall them with:\n  ");
+    const line = r.out.split("Install them with:\n  ")[1].split("\n")[0];
+    expect(line).toMatch(/git/);
+    expect(line).toMatch(/openssh|OpenSSH/);
+    expect(r.out).not.toMatch(BUILD_NEEDS);
+    expect(r.out).not.toContain("Everything Hersir needs");
+  });
+
+  it("without --skip-build, names what a build needs, as before", () => {
+    const r = checkWith(["git", "ssh-keygen"], ["--check"]);
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("Missing system packages: pkg-config cc");
+    expect(r.out).toContain("Rust is missing");
+    expect(r.out).toContain("Node.js 20 or newer is missing");
+    expect(r.out).toContain("npm is missing");
+    expect(r.out).not.toContain("Everything Hersir needs");
+  });
+});

@@ -74,11 +74,13 @@ On Windows 11, in PowerShell:
 irm https://hersir.dev/install.ps1 | iex
 ```
 
-It gets the source of the latest release, checks what your computer is missing, then builds Hersir and installs it for you alone, without sudo or administrator rights. Run it again to update. Every system needs git, Rust, Node.js 20 or newer, and Claude Code or Codex, logged in.
+It checks the latest release's signature against Hersir's own release keys, then installs its ready-made build for your system in about a minute, for you alone, without sudo or administrator rights. Where there is no ready-made build (an Intel Mac, Linux on arm64), it builds Hersir from the release's source instead. Run it again to update. Every system needs git, ssh-keygen (OpenSSH's client), and Claude Code or Codex, logged in.
 
 - **Linux:** also WebKitGTK 4.1, and for the tray icon `libayatana-appindicator` on Arch and Omarchy or `libayatana-appindicator3-1` on Debian and Ubuntu. The check names the packages.
-- **macOS** on Apple silicon: also Apple's Command Line Tools, from `xcode-select --install`.
-- **Windows 11:** also the Microsoft C++ Build Tools and Git for Windows.
+- **macOS** on Apple silicon: git comes with Apple's Command Line Tools, from `xcode-select --install`, or Homebrew.
+- **Windows 11:** also Git for Windows and WebView2, which comes with Windows 11.
+
+To build from source (with `--from-source`, `-FromSource` on Windows, or from a clone), you also need Rust, Node.js 20 or newer, and on macOS the Command Line Tools, on Windows the Microsoft C++ Build Tools.
 
 Or build from a clone:
 
@@ -132,7 +134,7 @@ A performance card runs `scripts/perf.sh` on `main` and on its branch, on the sa
 
 The capture makes the stills of each feature: Hersir with made-up data in a headless compositor, scene by scene, in dark and light, with a `scenes.json` of what each step clicked. The website's repository makes hersir.dev's pictures from them.
 
-On every pull request and every push to `main`, CI (`.github/workflows/ci.yml`) builds Hersir and runs `cargo test --workspace` and `npm test` on Linux, macOS (Apple silicon) and Windows, and checks the install scripts there. A pull request that changes an install script also installs Hersir with the one line on Ubuntu, Fedora, Arch Linux, openSUSE Tumbleweed, macOS and Windows (`.github/workflows/install.yml`). A pull request into `main` that changes nothing but Hersir's version, a release's first step, skips both, and its checks pass within a minute or two: the release's pull request into `production` runs them in full (`docs/RELEASING.md`). After each release, and every week, hersir.dev's own lines install it on Ubuntu, macOS and Windows (`.github/workflows/one-line.yml`).
+On every pull request and every push to `main`, CI (`.github/workflows/ci.yml`) builds Hersir and runs `cargo test --workspace` and `npm test` on Linux, macOS (Apple silicon) and Windows, and checks the install scripts there. A pull request that changes an install script also installs Hersir with the one line on Ubuntu, Fedora, Arch Linux, openSUSE Tumbleweed, macOS and Windows (`.github/workflows/install.yml`). A pull request into `main` that changes nothing but Hersir's version, a release's first step, skips both, and its checks pass within a minute or two: the release's pull request into `production` runs them in full (`docs/RELEASING.md`). Once each release is signed, and every week, hersir.dev's own lines install it on Ubuntu, macOS and Windows (`.github/workflows/one-line.yml`).
 
 [CLAUDE.md](CLAUDE.md) has the rules for working in this repository, [docs/HANDOFF-2026-10-07.md](docs/HANDOFF-2026-10-07.md) explains how it is built, and [docs/RELEASING.md](docs/RELEASING.md) how a release is made.
 

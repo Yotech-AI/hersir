@@ -15,9 +15,9 @@
 #   ./install.sh                 from a checkout: check, build and install
 #   curl -fsSL <raw url of this file> | bash
 #                                clone (or update) the source into ~/.local/share/hersir-src, then the same
-#   ./install.sh --check         only report what is missing
+#   ./install.sh --check         only report what is missing (with --skip-build: what Hersir needs to run)
 #   ./install.sh --build-only    check and build, install nothing (Hersir's own Update runs this, then --skip-build)
-#   ./install.sh --skip-build    install the programs already built in target/release
+#   ./install.sh --skip-build    install the programs already built in target/release, or a release's ready-made build
 #   ./install.sh --uninstall     remove Hersir, also an install from before 0.17.0 (add --purge to delete your data too)
 # Environment: HERSIR_REPO (the git URL to clone), HERSIR_BRANCH (default production: the released code; main is
 # development), HERSIR_PREFIX (default ~/.local), HERSIR_DATA_DIR, else GIZAI_DATA_DIR (macOS: another data folder).
@@ -78,6 +78,21 @@ fi
 say() { printf '%s\n' "$*"; }
 step() { printf '\n== %s\n' "$*"; }
 have() { command -v "$1" >/dev/null 2>&1; }
+# Whether the system has the shared library $1 (a file name, like libwebkit2gtk-4.1.so.0): in ldconfig's list (which
+# may not be on your PATH), else in the usual library folders. grep reads the whole list, as for the tray icon below.
+have_lib() {
+  local ldconfig dir
+  for ldconfig in ldconfig /sbin/ldconfig /usr/sbin/ldconfig; do
+    if have "$ldconfig"; then
+      "$ldconfig" -p 2>/dev/null | grep -F "$1" >/dev/null && return 0
+      break
+    fi
+  done
+  for dir in /usr/lib64 /usr/lib /usr/lib/x86_64-linux-gnu /usr/lib/aarch64-linux-gnu /lib64 /lib; do
+    [ -e "$dir/$1" ] && return 0
+  done
+  return 1
+}
 # Removes the link $1 when it is this install's: a link to $2.
 remove_own_link() { if [ -L "$1" ] && [ "$(readlink "$1")" = "$2" ]; then rm -f "$1"; fi; }
 # Removes the one line's source copy from before 0.17.0, gizai-src (it is hersir-src now), unless this runs from it.
@@ -142,14 +157,28 @@ fi
 step "Checking what Hersir needs"
 missing_cmds=() missing_libs=() notes=()
 node_from="your package manager, mise or nvm"
-if [ "$OS" = Darwin ]; then
-  # git and a C compiler come with Apple's Command Line Tools (until then, git and cc only offer to install them).
-  xcode-select -p >/dev/null 2>&1 || notes+=("Apple's Command Line Tools (git and a C compiler) are missing: xcode-select --install")
-  node_from="Homebrew (brew install node), mise, nvm or the installer from nodejs.org"
+if [ "$SKIP_BUILD" = 1 ]; then
+  # A build that is there already, a release's ready-made build or what --build-only made: only what Hersir needs to
+  # run. git, which its agents work with; ssh-keygen (OpenSSH's client), with which Hersir checks a release's signature
+  # before it updates; on Linux WebKitGTK 4.1's library, for its window. No Rust, Node.js or compiler.
+  if [ "$OS" = Darwin ]; then
+    # /usr/bin/git only offers to install Apple's Command Line Tools until they are there.
+    if ! have git || { [ "$(command -v git)" = /usr/bin/git ] && ! xcode-select -p >/dev/null 2>&1; }; then
+      notes+=("git is missing: install Apple's Command Line Tools, which bring it (xcode-select --install), or git from Homebrew (brew install git)")
+    fi
+    have ssh-keygen || notes+=("ssh-keygen is missing: it comes with macOS, in /usr/bin")
+  else
+    for c in git ssh-keygen; do have "$c" || missing_cmds+=("$c"); done
+    have_lib libwebkit2gtk-4.1.so.0 || missing_libs+=("webkit2gtk-4.1")
+  fi
 else
-  for c in git pkg-config cc; do have "$c" || missing_cmds+=("$c"); done
-fi
-if [ "$SKIP_BUILD" = 0 ]; then
+  if [ "$OS" = Darwin ]; then
+    # git and a C compiler come with Apple's Command Line Tools (until then, git and cc only offer to install them).
+    xcode-select -p >/dev/null 2>&1 || notes+=("Apple's Command Line Tools (git and a C compiler) are missing: xcode-select --install")
+    node_from="Homebrew (brew install node), mise, nvm or the installer from nodejs.org"
+  else
+    for c in git pkg-config cc; do have "$c" || missing_cmds+=("$c"); done
+  fi
   have cargo || notes+=("Rust is missing: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh   (then open a new terminal)")
   if have node; then
     major="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"
@@ -158,11 +187,11 @@ if [ "$SKIP_BUILD" = 0 ]; then
     notes+=("Node.js 20 or newer is missing; install it with $node_from")
   fi
   have npm || notes+=("npm is missing (it comes with Node.js)")
-fi
-if [ "$OS" = Linux ]; then
-  for lib in webkit2gtk-4.1 gtk+-3.0 librsvg-2.0 openssl; do
-    have pkg-config && pkg-config --exists "$lib" 2>/dev/null || missing_libs+=("$lib")
-  done
+  if [ "$OS" = Linux ]; then
+    for lib in webkit2gtk-4.1 gtk+-3.0 librsvg-2.0 openssl; do
+      have pkg-config && pkg-config --exists "$lib" 2>/dev/null || missing_libs+=("$lib")
+    done
+  fi
 fi
 
 distro=""
@@ -183,6 +212,18 @@ deps_command() {
     *) say "Install WebKitGTK 4.1, GTK 3, librsvg and OpenSSL development packages, a C compiler and pkg-config (see https://v2.tauri.app/start/prerequisites/)." ;;
   esac
 }
+# The command that installs what a build that is there already needs to run (--skip-build): WebKitGTK 4.1's library,
+# the tray icon's, git and OpenSSH's client, which has ssh-keygen. CI's Install workflow runs it on Ubuntu, Fedora, Arch
+# and openSUSE Tumbleweed before it installs a ready-made build there.
+run_deps_command() {
+  case "$distro" in
+    *" arch "*|*" manjaro "*|*" endeavouros "*|*" omarchy "*) say "sudo pacman -S --needed webkit2gtk-4.1 libayatana-appindicator git openssh" ;;
+    *" debian "*|*" ubuntu "*) say "sudo apt install libwebkit2gtk-4.1-0 libayatana-appindicator3-1 git openssh-client" ;;
+    *" fedora "*|*" rhel "*) say "sudo dnf install webkit2gtk4.1 libappindicator-gtk3 git openssh-clients" ;;
+    *" opensuse"*|*" suse "*) say "sudo zypper in libwebkit2gtk-4_1-0 libappindicator3-1 git openssh-clients" ;;
+    *) say "Install WebKitGTK 4.1, libayatana-appindicator, git and OpenSSH's client (ssh-keygen) with your package manager." ;;
+  esac
+}
 
 ok=1
 if [ "${#missing_cmds[@]}" -gt 0 ] || [ "${#missing_libs[@]}" -gt 0 ]; then
@@ -190,7 +231,7 @@ if [ "${#missing_cmds[@]}" -gt 0 ] || [ "${#missing_libs[@]}" -gt 0 ]; then
   # ${a[*]-} and ${a[@]+...}: bash before 4.4 (macOS has 3.2) calls an empty array unbound under set -u
   say "Missing system packages: ${missing_cmds[*]-} ${missing_libs[*]-}"
   say "Install them with:"
-  say "  $(deps_command)"
+  if [ "$SKIP_BUILD" = 1 ]; then say "  $(run_deps_command)"; else say "  $(deps_command)"; fi
 fi
 for n in ${notes[@]+"${notes[@]}"}; do ok=0; say "$n"; done
 if have claude; then
@@ -207,7 +248,11 @@ fi
 if [ "$OS" = Darwin ] && [ "$(uname -m)" != arm64 ]; then
   say "Note: Hersir is made for Macs with Apple silicon, and this shell runs as $(uname -m) (an Intel Mac, or Rosetta). The build may work, but isn't tested."
 fi
-[ "$ok" = 1 ] && say "Everything Hersir needs to build is here."
+if [ "$ok" = 1 ] && [ "$SKIP_BUILD" = 1 ]; then
+  say "Everything Hersir needs to run is here."
+elif [ "$ok" = 1 ]; then
+  say "Everything Hersir needs to build is here."
+fi
 if [ "$CHECK" = 1 ]; then exit $((1 - ok)); fi
 if [ "$ok" = 0 ] && [ "$SKIP_BUILD" = 0 ]; then
   say ""

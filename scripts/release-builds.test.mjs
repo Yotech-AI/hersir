@@ -358,13 +358,14 @@ describe.runIf(unix)("Release builds: the version and the archive's name", () =>
 function checkPrinting(osRelease) {
   const lines = read("install.sh").split("\n");
   const from = lines.indexOf('distro=""');
-  const to = lines.indexOf('  say "  $(deps_command)"');
+  // the build's line; with --skip-build, the line to run a ready-made build (GA-252)
+  const to = lines.indexOf('  if [ "$SKIP_BUILD" = 1 ]; then say "  $(run_deps_command)"; else say "  $(deps_command)"; fi');
   expect(from).toBeGreaterThan(0);
   expect(lines[to + 1]).toBe("fi");
   return [
     "#!/usr/bin/env bash",
     lines.find((l) => l.startsWith("say() {")),
-    "missing_cmds=() missing_libs=(webkit2gtk-4.1)",
+    "SKIP_BUILD=0 missing_cmds=() missing_libs=(webkit2gtk-4.1)",
     ...lines.slice(from, to + 2).map((l) => l.replaceAll("/etc/os-release", osRelease)),
     "exit 1",
     "",
