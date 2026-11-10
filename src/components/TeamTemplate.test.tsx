@@ -69,10 +69,10 @@ describe("the check of a template file", () => {
     const cards = parts(html, "tt-agent").map(text);
     expect(cards).toHaveLength(3);
     expect(cards[0]).toContain("Backend Agent (Mobile team 2) Backend Agent in the file Paused");
-    expect(cards[0]).toContain("Role backend CLI Claude Code Model opus Effort high Permission mode acceptEdits");
+    expect(cards[0]).toContain("Role Backend CLI Claude Code Model opus Effort high Permission mode acceptEdits");
     expect(cards[1]).not.toContain("in the file");
     expect(cards[1]).toContain("Model The CLI's default Effort The CLI's default");
-    expect(cards[2]).toContain("Role qa CLI Codex Model gpt-5 Effort medium Permission mode workspace-write");
+    expect(cards[2]).toContain("Role QA CLI Codex Model gpt-5 Effort medium Permission mode workspace-write");
   });
 
   it("shows the extra commands under their heading, highlighted, only for the agent that has them", () => {

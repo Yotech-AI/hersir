@@ -17,6 +17,7 @@ import { boardDrawn, perfCalls, perfCount, perfFirst, perfFrames, perfHeard, per
 import { graphProbe } from "./components/memory/GraphCanvas";
 import { TerminalView } from "./components/terminal/TerminalView";
 import { boardOrder } from "./lib/columns";
+import { roleLabel } from "./lib/agents";
 import { pickTeam } from "./lib/team";
 import { PAUSED_LINE, kindWord } from "./components/TeamTemplate";
 import type { FolderMain, Team, TemplatePlan } from "./types";
@@ -4768,7 +4769,7 @@ async function templatesSteps(dir: string, dialog: { asked: { cmd: string; optio
   const swShown = await checkShown();
   const software: Record<string, unknown> = {
     shown: swShown, description: swDescription, name: nameField()?.value, plan_name: swPlan.teamName, plan_columns: swPlan.columns.length,
-    plan_agents: swPlan.agents.length, rows_match: same(rowsShown(), planRows(swPlan)), rows: rowsShown().length,
+    plan_agents: swPlan.agents.length, first_role: swPlan.agents[0]?.role, rows_match: same(rowsShown(), planRows(swPlan)), rows: rowsShown().length,
     cards: textsOf(".tt-agent .h b"), heading: (drawer()?.textContent ?? "").includes("Commands beyond"), paused_line: !!q(".tt-paused"),
     props: textsOf(".tt-agent:first-child .tt-props dd"), subtitle: textOf(q(".drawer-head p", drawer()!)), on: createBtn()?.disabled === false,
   };
@@ -4800,7 +4801,7 @@ async function templatesSteps(dir: string, dialog: { asked: { cmd: string; optio
     return {
       name: textOf(c?.querySelector(".h b")) === a.name,
       file_name: a.fileName === a.name || textsOf(".h .faint", c ?? document).includes(`${a.fileName} in the file`),
-      props: same(textsOf(".tt-props dd", c ?? document), [a.role, a.cliName, a.model ?? "The CLI's default", a.effort ?? "The CLI's default", a.permissionMode || "None"]),
+      props: same(textsOf(".tt-props dd", c ?? document), [roleLabel(a.role), a.cliName, a.model ?? "The CLI's default", a.effort ?? "The CLI's default", a.permissionMode || "None"]),
       extra: a.extraTools.length ? textOf(extra?.querySelector("h4")) === "Commands beyond its role's usual ones" && same(textsOf("li", extra ?? document), a.extraTools) : !extra,
       missing: same(textsOf(".tt-missing", c ?? document), a.missingServers.map((s) => `Needs MCP server ${s}: add it in Settings → MCP to switch it on.`)),
     };
@@ -4923,8 +4924,8 @@ async function templatesSteps(dir: string, dialog: { asked: { cmd: string; optio
   const e = out.empty as { focus: boolean; subtitle: string; group: boolean; starts: string[]; notes: string[]; empty_on: boolean; off_without_name: boolean; no_check: boolean;
     made: { on: boolean; closed: boolean; shown: boolean; picked: boolean; name: string; columns: unknown; agents: number | null } };
   const ep = out.export_plain as { warnings: number; question: boolean; asked?: string; default_path?: unknown; filters?: unknown; toast: boolean; file: { columns: string[]; agents: number } | string };
-  const sw = software as { shown: boolean; description: string; name?: string; plan_name: string; plan_columns: number; plan_agents: number; rows_match: boolean;
-    rows: number; cards: string[]; heading: boolean; paused_line: boolean; on: boolean; made: { on: boolean; closed: boolean; shown: boolean; name: string; agents: unknown[][] | null; columns: string[] | null } };
+  const sw = software as { shown: boolean; description: string; name?: string; plan_name: string; plan_columns: number; plan_agents: number; first_role?: string; rows_match: boolean;
+    rows: number; cards: string[]; props: string[]; heading: boolean; paused_line: boolean; on: boolean; made: { on: boolean; closed: boolean; shown: boolean; name: string; agents: unknown[][] | null; columns: string[] | null } };
   const f = file as { asked?: string; filters?: { extensions?: string[] }[]; multiple?: boolean; directory?: boolean; shown: boolean; picked: string; name?: string; plan_name: string;
     rows_match: boolean; agents: Record<string, boolean>[]; paused_line: boolean; paused_above: boolean; extra_colours: string[] | null; banner_colours: string[] | null;
     labels: string; plan_labels: string[]; notes: string[]; plan_notes: string[]; plan_has: Record<string, boolean | number>;
@@ -4947,6 +4948,8 @@ async function templatesSteps(dir: string, dialog: { asked: { cmd: string; optio
     software_check: sw.shown && sw.description === "The five agents a new install gets, and the seven usual columns." && sw.name === sw.plan_name
       && sw.plan_name.startsWith("Software team") && sw.plan_columns === 7 && sw.plan_agents === 5 && sw.rows === 7 && sw.rows_match && sw.cards.length === 5
       && !sw.heading && !sw.paused_line && sw.on,
+    // GA-254: the first agent, the lead, reads Role Chief, not its key lead
+    software_chief: sw.first_role === "lead" && sw.props[0] === "Chief",
     software_made: sw.made.on && sw.made.closed && sw.made.shown && sw.made.name === "Probe software team" && sw.made.agents?.length === 5
       && !!sw.made.agents?.every((a) => a[2] === "active") && sw.made.columns?.length === 7,
     file_dialog: f.asked === "open" && same(f.filters?.[0]?.extensions, ["json"]) && f.multiple === false && f.directory === false,
