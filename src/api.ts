@@ -92,7 +92,7 @@ export const saveDoc = (id: string, bodyMd: string, baseVersion: number) => invo
 export const renameDoc = (id: string, title: string) => invoke<void>("rename_doc", { id, title });
 export const docVersions = (id: string) => invoke<T.DocVersion[]>("doc_versions", { id });
 export const docVersionBody = (id: string, version: number) => invoke<string>("doc_version_body", { id, version });
-/** An agent's own notes in Memory (the Team Lead's Team Lead/Notes is made the first time); null when it has none. */
+/** An agent's own notes in Memory (the Chief's Chief/Notes is made the first time); null when it has none. */
 export const agentNotes = (agentId: string) => invoke<T.MemoryNote | null>("agent_notes", { agentId });
 /** The Memory page (GA-68), as you: every note by path, with their text when `text`. */
 export const memoryNotes = (text = false) => invoke<T.MemoryNote[]>("memory_notes", { text });
