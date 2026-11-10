@@ -136,7 +136,7 @@ describe("Shares memory with in the agent form (GA-96)", () => {
     for (const preset of [{ name: "Chief", role: "lead", chat: true }, { name: "Team Lead", role: "lead" }, { name: "Chat Agent", role: "backend", chat: true }]) {
       const html = memory(renderToStaticMarkup(<AgentDrawer teamId="t1" preset={preset} onClose={() => {}} />));
       expect(select(html), JSON.stringify(preset)).toMatch(/^<select id="a-shares" class="select" disabled="">/);
-      expect(html).toContain("The Chief keeps its own notes, in Team Lead/.");
+      expect(html).toContain("The Chief keeps its own notes, in Chief/.");
     }
   });
 });

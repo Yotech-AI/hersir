@@ -1195,7 +1195,7 @@ fn plan(f: &TemplateFile, builtin: bool, name: Option<&str>, here: &Here) -> Res
     }
 
     // Memory folders: an agent shares the folder of the agent it names, as long as both are in the template and neither is
-    // the Chief (which keeps its notes in Team Lead/); a chain ends at its first agent with a folder of its own.
+    // the Chief (which keeps its notes in Chief/); a chain ends at its first agent with a folder of its own.
     let lead: Vec<bool> = agents.iter().map(|a| a.input.role_key == "lead" || a.input.chat_enabled == Some(true)).collect();
     let mut shares: Vec<Option<usize>> = vec![None; f.agents.len()];
     for (i, a) in f.agents.iter().enumerate() {
@@ -1203,8 +1203,8 @@ fn plan(f: &TemplateFile, builtin: bool, name: Option<&str>, here: &Here) -> Res
         match agent_index(target) {
             None => notes.push(format!("{target} isn't in this team template: {} gets its own memory folder.", names[i])),
             Some(j) if j == i => {}
-            Some(_) if lead[i] => notes.push(format!("{} is the Chief, which keeps its notes in Team Lead/: it shares no memory folder.", names[i])),
-            Some(j) if lead[j] => notes.push(format!("{} is the Chief, which keeps its notes in Team Lead/: {} gets its own memory folder.",
+            Some(_) if lead[i] => notes.push(format!("{} is the Chief, which keeps its notes in Chief/: it shares no memory folder.", names[i])),
+            Some(j) if lead[j] => notes.push(format!("{} is the Chief, which keeps its notes in Chief/: {} gets its own memory folder.",
                                                      names[j], names[i])),
             Some(j) => shares[i] = Some(j),
         }

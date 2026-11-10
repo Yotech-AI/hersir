@@ -64,7 +64,7 @@
 #     marked; a tag filters the tree; Ctrl+K finds a note. The missing link makes the note from a template, and then finds
 #     it; in its editor [[ lists notes and [[Note# their headings, and Ctrl+click on a link opens its note; KADE-1 opens
 #     the card; the agent's page shows only its folder (its search too, not Backend Agent 2's), and Recently changed says
-#     who wrote what; the Team Lead's page searches every note (path:"Team Lead" its own), the shared page none of theirs.
+#     who wrote what; the Team Lead's page searches every note (path:"Chief" its own), the shared page none of theirs.
 #     Then on the demo data (no agents, no notes): Shared notes and Set up the Team Lead in the sidebar, the page says
 #     what memory is, the tree has only the shared folders, and Set up the Team Lead opens the agent form.
 # 13. memory graph (GA-69), against prep_graph's 500 notes, in four starts on the same data: (a) #/memory/graph loads and

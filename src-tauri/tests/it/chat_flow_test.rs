@@ -504,7 +504,7 @@ fn argv_of(call: &Value) -> Vec<String> {
 
 /// GA-255: the chat's prompt names the lead the Chief: "You are the Chief" for an agent named Chief (in any case, a new
 /// install's), "You are <name>, the Chief" for another name; its instructions (the lead's template) say the Chief too,
-/// and the Memory path Team Lead/Notes stays.
+/// and its Memory path is Chief/Notes (GA-258).
 #[tokio::test]
 async fn the_chats_prompt_says_you_are_the_chief_or_you_are_its_name_the_chief() {
     let t = setup().await;
@@ -529,7 +529,7 @@ async fn the_chats_prompt_says_you_are_the_chief_or_you_are_its_name_the_chief()
     for sys in &prompts {
         assert!(!sys.contains("the Team Lead"), "{sys}");
         assert!(sys.contains("You are the Chief in Hersir's Software team.") && sys.contains("Chief may merge switch"), "its instructions: {sys}");
-        assert!(sys.contains("memory_append to Team Lead/Notes"), "the Memory path stays: {sys}");
+        assert!(sys.contains("memory_append to Chief/Notes") && !sys.contains("Team Lead/"), "the Memory path is Chief/ (GA-258): {sys}");
     }
 }
 

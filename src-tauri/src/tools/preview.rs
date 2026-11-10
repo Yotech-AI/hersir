@@ -93,12 +93,16 @@ fn note(cx: &Cx, r: &str) -> Option<memory::Note> {
     memory::get(cx.db(), &who, r).ok()
 }
 
-/// The note memory_write would save over, found as it finds it: by its path (case ignored, `.md` allowed) or its id, never
-/// by its title.
+/// The note memory_write would save over, found as it finds it (`memory::existing`): by its path (case ignored, `.md`
+/// allowed, the Chief's old `Team Lead/` as `Chief/`) or its id, never by its title.
 fn note_at(cx: &Cx, r: &str) -> Option<memory::Note> {
-    let p = r.trim().trim_matches('/');
-    let p = p.strip_suffix(".md").unwrap_or(p);
-    memory::find(cx.db(), p).ok().flatten().or_else(|| note(cx, r).filter(|n| n.id == r.trim()))
+    memory::existing(cx.db(), r).ok().flatten()
+}
+
+/// A note's path as a call gives it, in `Chief/` when it names the Chief's old folder (`Team Lead/Notes`): where approving
+/// puts the note.
+fn path_now(p: &str) -> String {
+    memory::old_lead_path(p).unwrap_or_else(|| p.to_string())
 }
 
 /// memory_write and memory_append: which note a call is for, so a newer pending call for the same note replaces the
@@ -116,7 +120,7 @@ pub(crate) fn note_key(st: &crate::AppState, actor: &str, thread: &str, tool: &s
         Some(n) => n.id,
         None => {
             let p = r.trim_matches('/');
-            p.strip_suffix(".md").unwrap_or(p).to_lowercase()
+            path_now(p.strip_suffix(".md").unwrap_or(p)).to_lowercase()
         }
     })
 }
@@ -137,7 +141,10 @@ fn memory_write(cx: &Cx, a: &Args) -> Result<Preview, String> {
                       fields: vec![field("Note", n.path.clone()), change("Version", n.current_version.to_string(), (n.current_version + 1).to_string())],
                       diff: Some(line_diff(&n.body_md, &body)), text: Some(body), warning }
         }
-        None => Preview { line: format!("Make the note {path}"), fields: vec![field("Note", path.clone())], text: Some(body), ..Default::default() },
+        None => {
+            let path = path_now(&path);
+            Preview { line: format!("Make the note {path}"), fields: vec![field("Note", path)], text: Some(body), ..Default::default() }
+        }
     })
 }
 
@@ -146,7 +153,10 @@ fn memory_append(cx: &Cx, a: &Args) -> Result<Preview, String> {
     let heading = a.opt("heading");
     let (line, path) = match note(cx, &r) {
         Some(n) => (format!("Add to the note {}", n.path), n.path),
-        None => (format!("Make the note {r} with this text"), r),
+        None => {
+            let p = path_now(&r);
+            (format!("Make the note {p} with this text"), p)
+        }
     };
     let mut fields = vec![field("Note", path)];
     fields.push(field("Where", match heading {
@@ -165,7 +175,7 @@ fn memory_move(cx: &Cx, a: &Args) -> Result<Preview, String> {
         None => (r.clone(), Some(format!("There is no note {r}, so approving fails."))),
     };
     // A folder (ending in /) keeps the note's title.
-    let to = if to.ends_with('/') { format!("{to}{}", memory::title_of(&from)) } else { to };
+    let to = path_now(&if to.ends_with('/') { format!("{to}{}", memory::title_of(&from)) } else { to });
     let verb = if copy { "Copy" } else { "Move" };
     Ok(Preview { line: format!("{verb} the note {from} to {to}"), fields: vec![field("From", from), field("To", to)], warning, ..Default::default() })
 }

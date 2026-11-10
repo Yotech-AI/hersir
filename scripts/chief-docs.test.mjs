@@ -1,8 +1,9 @@
 // GA-256 QA: Chief, not Team Lead, in the docs. Hersir's lead agent is the Chief wherever people read the docs (the
 // README, the docs hersir.dev shows, the other docs the card lists, SECURITY.md and the feature form), with a capital C;
 // the headline's common noun stays. The README opens with the Chief, the feature doc is docs/features/chief.md, titled
-// "The Chief", and no link points to team-lead.md any more. The Memory folder `Team Lead/` and the code's names stay,
-// and the historical notes keep the name they had.
+// "The Chief", and no link points to team-lead.md any more. The code's names stay, and the historical notes keep the name
+// they had. GA-258: the Memory folder is `Chief/`; only docs/memory.md still says `Team Lead/`, where it tells how that
+// folder became `Chief/`.
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -25,8 +26,11 @@ const DOCS = ["README.md", "SECURITY.md", ".github/ISSUE_TEMPLATE/feature.yml", 
   "docs/backup-format.md", ...FEATURES];
 // The historical notes, left as written (with design/, docs/research/ and docs/superpowers/).
 const HISTORICAL = ["docs/HANDOFF-2026-10-07.md", "docs/MORNING-2026-10-07.md", "docs/OPEN-ITEMS.md", "docs/v0.3-notes.md"];
-// The one "Team Lead" the docs keep: the Memory folder, as a path (`Team Lead/`, `Team Lead/Notes`, `path:"Team Lead"`).
-const MEMORY_PATH = /Team Lead\/|path:"Team Lead"/g;
+// The one "Team Lead" the docs keep (GA-258): in docs/memory.md, the Memory folder's old path (`Team Lead/`,
+// `[[Team Lead/Notes]]`) and the name a moved note gets when its path was taken (`Chief/Notes (Team Lead)`).
+const OLD_FOLDER = /Team Lead\/|\(Team Lead( \d+)?\)/g;
+// GA-258's own code names, which say chief: the backup made before the move and the setting that marks it done.
+const GA258_NAMES = /gizai-before-chief-folder|lead_folder_chief/;
 
 // The code in a Markdown file: each line of its code blocks, and its `code` spans. A ```markdown block is a sample
 // for people (RELEASING.md's release notes), so it is prose, not code.
@@ -82,13 +86,13 @@ describe("the docs say Chief", () => {
     expect(FEATURES).toEqual(expect.arrayContaining(["docs/features/board.md", "docs/features/chief.md", "docs/features/inbox.md", "docs/features/testing.md"]));
   });
 
-  it("no doc in the list says Team Lead, but for the Memory folder's path", () => {
-    const left = DOCS.flatMap((doc) => lines(doc, (l) => /team.?lead/i.test(l.replace(MEMORY_PATH, ""))));
+  it("no doc in the list says Team Lead, but for docs/memory.md on the Memory folder's old path", () => {
+    const left = DOCS.flatMap((doc) => lines(doc, (l) => /team.?lead/i.test(doc === "docs/memory.md" ? l.replace(OLD_FOLDER, "") : l)));
     expect(left).toEqual([]);
   });
 
   it("Chief has a capital C wherever it names the agent: only the headline and link targets have chief in lower case", () => {
-    const left = DOCS.flatMap((doc) => lines(doc, (l) => l !== HEADLINE && /\bchief\b/.test(l.replace(/\]\([^)]*\)/g, "](link)"))));
+    const left = DOCS.flatMap((doc) => lines(doc, (l) => l !== HEADLINE && /\bchief\b/.test(l.replace(/\]\([^)]*\)/g, "](link)").replace(/`[^`]*`/g, (c) => (GA258_NAMES.test(c) ? "`code`" : c)))));
     expect(left).toEqual([]);
   });
 
@@ -112,17 +116,20 @@ describe("the docs say Chief", () => {
 });
 
 describe("what stays", () => {
-  it("the Memory folder keeps its path, Team Lead/, and no doc names a Chief/ folder", () => {
+  it("the Memory folder is Chief/ (GA-258), and only docs/memory.md names Team Lead/, where it says how it became Chief/", () => {
     const memory = read("docs/memory.md");
-    for (const path of ["`Team Lead/`", "`Team Lead/Notes`", "`Team Lead/Imported/`", '`path:"Team Lead"`', "`Team Lead/Imported/<project folder>/<file name>`"]) {
+    for (const path of ["`Chief/`", "`Chief/Notes`", "`Chief/Imported/`", '`path:"Chief"`', "`Chief/Imported/<project folder>/<file name>`",
+      "**`Team Lead/` became `Chief/` (GA-258).**", "`backups/gizai-before-chief-folder-<time>.db`", "`Chief/Notes (Team Lead)`"]) {
       expect(memory, path).toContain(path);
     }
-    expect(read("docs/team-template-format.md")).toContain("(it keeps its notes in Team Lead/)");
-    expect(DOCS.flatMap((doc) => lines(doc, (l) => /Chief\//.test(l.replace(/\]\([^)]*\)/g, ""))))).toEqual([]);
+    expect(read("docs/team-template-format.md")).toContain("(it keeps its notes in Chief/)");
+    expect(DOCS.filter((doc) => doc !== "docs/memory.md").flatMap((doc) => lines(doc, (l) => /Team Lead\//.test(l)))).toEqual([]);
   });
 
   it("no code name in the docs became Chief: their code spans and code blocks don't say it", () => {
-    const left = DOCS.filter((doc) => doc.endsWith(".md")).flatMap((doc) => codeParts(read(doc)).filter((c) => /chief/i.test(c)).map((c) => `${doc}: ${c}`));
+    // but the Memory folder's paths (`Chief/Notes`, `[[Chief/Notes]]`, `path:"Chief"`) and GA-258's own names
+    const memoryPath = (c) => /^`(\[\[)?Chief\/|^`path:"Chief"`$/.test(c) || GA258_NAMES.test(c);
+    const left = DOCS.filter((doc) => doc.endsWith(".md")).flatMap((doc) => codeParts(read(doc)).filter((c) => /chief/i.test(c) && !memoryPath(c)).map((c) => `${doc}: ${c}`));
     expect(left).toEqual([]);
   });
 

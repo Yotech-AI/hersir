@@ -1,6 +1,6 @@
 // GA-255 QA: the lead agent is the Chief, in the app. A new install starts with an agent named Chief; at start, once per
 // database, a lead still named exactly "Team Lead" is named Chief, keeping its instructions, its handle and its Memory
-// folder Team Lead/; and the MCP tools' descriptions say the Chief, naming Team Lead only as that Memory folder.
+// folder (Chief/ since GA-258); and the MCP tools' descriptions say the Chief, and Chief/ for that Memory folder.
 #[path = "../support/data_lock.rs"]
 mod data_lock;
 use std::path::Path;
@@ -72,7 +72,7 @@ async fn at_start_a_lead_still_named_team_lead_becomes_chief_once_and_nothing_el
     assert_eq!(team::agent(&st.db, &ada).unwrap().name, "Ada");
     let by: String = st.db.read(|c| Ok(c.query_row("SELECT updated_by FROM actors WHERE id=?1", [&lead], |r| r.get(0))?)).unwrap();
     assert_eq!(by, st.you_id);
-    assert_eq!(gizai_core::memory::lead_notes_path(), "Team Lead/Notes", "its notes stay in Team Lead/");
+    assert_eq!(gizai_core::memory::lead_notes_path(), "Chief/Notes", "its notes are in Chief/ (GA-258)");
     let done: serde_json::Value = gizai_core::settings::get(&st.db, "lead_named_chief").unwrap().unwrap();
     assert_eq!(done["renamed"], 1);
 
@@ -86,7 +86,7 @@ async fn at_start_a_lead_still_named_team_lead_becomes_chief_once_and_nothing_el
 }
 
 #[test]
-fn the_mcp_tools_descriptions_say_the_chief_and_name_team_lead_only_as_the_memory_folder() {
+fn the_mcp_tools_descriptions_say_the_chief_and_chief_for_the_memory_folder() {
     let all = gizai_lib::tools::catalog();
     let mut chief = 0;
     for t in &all {
@@ -102,5 +102,12 @@ fn the_mcp_tools_descriptions_say_the_chief_and_name_team_lead_only_as_the_memor
     let merge = all.iter().find(|t| t.name == "merge_pull_request").unwrap();
     assert!(merge.description.contains("its project's Chief may merge switch is on"), "{}", merge.description);
     let search = all.iter().find(|t| t.name == "memory_search").unwrap();
-    assert!(search.description.contains("path:\"Team Lead\""), "the Memory path stays: {}", search.description);
+    assert!(search.description.contains("path:\"Chief\""), "the Memory path is Chief/ (GA-258): {}", search.description);
+    let list = all.iter().find(|t| t.name == "memory_list").unwrap();
+    assert!(list.description.contains("and you have Chief/."), "{}", list.description);
+    let append = all.iter().find(|t| t.name == "memory_append").unwrap();
+    assert!(append.input_schema.to_string().contains("like Chief/Notes"), "{}", append.input_schema);
+    for t in &all {
+        assert!(!format!("{} {}", t.description, t.input_schema).contains("Team Lead"), "{} names Team Lead", t.name);
+    }
 }

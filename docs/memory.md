@@ -33,13 +33,24 @@ Every note has:
 |---|---|---|---|
 | `Clients/`, `Projects/`, `Standards/`, `Workflows/`, `Deployments/`, `Dependencies/`, `Decisions/`, `Lessons/` | shared | everyone | the Chief and people |
 | `Agents/<name>/` | agent | that agent (and the agents that share its folder), the Chief and people | the same |
-| `Team Lead/` | agent | the Chief and people | the Chief and people |
+| `Chief/` | agent | the Chief and people | the Chief and people |
 
 A note goes in one of these folders; other top folders are refused, with the list. Each agent gets `Agents/<name>/Notes`
 when it is made (agents from before memory get theirs when Hersir starts), and a note per project, `Agents/<name>/<KEY>`,
 the first time a run on that project's card keeps a learned line (Agents' runs). Renaming an agent moves its folder,
-and the links to its notes follow. The Chief's `Team Lead/Notes` is made the first time the Chief needs it, from
+and the links to its notes follow. The Chief's `Chief/Notes` is made the first time the Chief needs it, from
 a short template: the user's preferences, working agreements, open threads, and how to use memory.
+
+**`Team Lead/` became `Chief/` (GA-258).** The Chief's folder used to be `Team Lead/`. The first time Hersir starts on
+such data, it backs up the database (`backups/gizai-before-chief-folder-<time>.db`), then moves every note under
+`Team Lead/` to the same path under `Chief/`, with its text, properties and versions. Where a note in `Chief/` has that
+path already, that note stays and the moved one gets where it came from after its title: `Chief/Notes (Team Lead)`. Every
+link to a moved note, in every note and doc, follows it as `memory_move` rewrites them (`[[Team Lead/Notes]]` becomes
+`[[Chief/Notes]]`), and so does a link into `Team Lead/` to a note that isn't there. The agents' saved instructions say
+`Chief/` where they said `Team Lead/`. It happens in one go, written by you: when anything fails, the backup included,
+nothing changes and the next start tries again. It runs once per database (the `lead_folder_chief` setting). A path in
+`Team Lead/` still finds the note in `Chief/`, in the Chief's memory tools too, so an older habit or a call that waits
+for approval still works.
 
 The rule is written once, in `gizai_core::memory::can_read` and `can_write`: the Chief and people read and write
 everything; an agent reads the shared folders and its own (in a group, the group's), and writes only its own. The Team
@@ -111,7 +122,7 @@ new version of each.
 ### Search
 
 Plain matching over the notes (memory stays small), so it is right after every save, rename and move: every word and
-`"quoted phrase"` must be in the path or the text (case ignored); `path:Standards` (or `path:"Team Lead"`) keeps the
+`"quoted phrase"` must be in the path or the text (case ignored); `path:Standards` (or `path:"Chief"`) keeps the
 notes whose path starts with it, and with a `/` at the end only that folder's (`path:"Agents/QA/"` leaves out
 `Agents/QA 2/`); `tag:rust` keeps the notes with that tag (the `tags` property or a `#tag` in the text).
 Title matches come first.
@@ -140,9 +151,9 @@ criteria or assignee it changes there, waits on hold for your OK, and taking suc
 (`docs/agent-tools.md`, Safety rules).
 
 Every chat answer and every board check has the Chief's Memory block at the end of its system prompt, in old chats
-and new ones: its own notes (`Team Lead/`, `Notes` first) in full, at most **6,000 characters** (a note that doesn't fit
+and new ones: its own notes (`Chief/`, `Notes` first) in full, at most **6,000 characters** (a note that doesn't fit
 is cut, with a pointer to `memory_read`), then the paths of every other note, at most **4,000 characters**. The notes in
-`Team Lead/Imported/` (from Claude Code's own memory, below) are one line there, with how many wait to be sorted. Its
+`Chief/Imported/` (from Claude Code's own memory, below) are one line there, with how many wait to be sorted. Its
 task runs get the same block. Its instructions ask it to save decisions with their reasons, preferences and gotchas, not to
 copy what the repository or the board say, never to store a secret, and to look in memory before asking the user.
 
@@ -292,7 +303,7 @@ One memory: Hersir's. Claude Code keeps notes of its own in `projects/<project f
 DevOps Agent's `deploy-<KEY>`).
 
 **The import (GA-85).** When Hersir starts, after the migrations, each Markdown file there, for every Claude Code account
-in Settings → Coding CLIs, becomes a note `Team Lead/Imported/<project folder>/<file name>`: its text as it was, with
+in Settings → Coding CLIs, becomes a note `Chief/Imported/<project folder>/<file name>`: its text as it was, with
 `source: claude-code`, `claude_config_dir`, `claude_project` and `claude_file` added to its properties. `MEMORY.md`
 (Claude Code's index) and the folders below are left out. Only the folders of Hersir's own places come in
 (`memory_import::places`): each project's linked folder, each card's worktree (`<data folder>/worktrees/<KEY>/<card>`),
@@ -302,7 +313,7 @@ a name over 200 characters is cut, with a hash of the path), and keeps the memor
 of the worktree's repository, the project's linked folder (read in Claude Code 2.1.289). The other folders, your own
 sessions elsewhere, are left out and not read. Each file comes in once (the `claude_memory_imports` setting keeps which),
 also when it changes later. A file with a secret in it, not text or over 200 KB is skipped, listed by its path only, and
-tried again once it changes. `Team Lead/Notes` gets an open thread with what came in and what didn't (a list over 2,000
+tried again once it changes. `Chief/Notes` gets an open thread with what came in and what didn't (a list over 2,000
 characters goes in a note of its own), how many other folders were left out (not which), and the agents whose
 instructions still say `MEMORY.md`, so the Chief sorts the notes with you (`memory_move`, like `deploy-GA` into
 `Deployments/GA`); until then no agent gets them. Hersir only reads those files. Headless test and screenshot runs don't
@@ -318,7 +329,7 @@ nor writes its memory folder, whatever its settings say. Codex and Gemini keep n
   kept (for the Chief: no notes in chat and board checks either).
 - **Shares memory with** in an agent's form, under Use memory (*Its own folder* by default): the agent whose folder it
   shares, never the Chief (see Agents that share a folder). For the Chief it is off: it keeps its own notes in
-  `Team Lead/`.
+  `Chief/`.
 - **Settings → Runs → Use memory** (on by default): off for every agent. The Chief's memory tools still work.
 - **Settings → Runs → Ask the Chief first** (on by default): off, an agent's question puts its card in the Inbox at once.
 

@@ -1775,7 +1775,7 @@ const mouse = (el: Element, type: "mouseover" | "mouseout") => el.dispatchEvent(
  *  the link finds it; in the new note's editor [[ lists notes, [[Note# their headings, and Ctrl+click opens a link.
  *  KADE-1 opens the card. The agent's page shows only its folder, also when searching (Backend Agent 2's folder starts
  *  the same), and Recently changed says the agent wrote its KADE note in a run on KADE-1. The Team Lead's page searches
- *  every note (path:"Team Lead" only its own), the shared page lists none of the agents' or the Team Lead's. The Memory page's
+ *  every note (path:"Chief" only its own, GA-258), the shared page lists none of the agents' or the Team Lead's. The Memory page's
  *  prefs are put back at the end. */
 export async function memoryProbe(noteId: string, agentId: string) {
   // GA-69: MODE=memory:graph-a|graph-b|graph-c <agent id> <note id> runs the graph's probe on prep_graph's notes instead.
@@ -2014,12 +2014,12 @@ export async function memoryProbe(noteId: string, agentId: string) {
     buttonByText(q(".mem-recent") ?? document, "Agents")?.click();
     await sleep(200);
     out.recent = { everyone, agents: textsOf(".mem-change") };
-    // by agents: the Backend Agent's KADE note (in a run) and Notes, Backend Agent 2's and the Chief's in Team Lead/ (each made its own)
+    // by agents: the Backend Agent's KADE note (in a run) and Notes, Backend Agent 2's and the Chief's in Chief/ (each made its own)
     const byAgents = textsOf(".mem-change");
     const recentOk = everyone === 9 && byAgents.length === 4 && byAgents.some((t) => t.startsWith("KADEAgents/Backend AgentBackend Agent in a run on KADE-1"))
-      && byAgents.some((t) => t.startsWith("NotesAgents/Backend AgentBackend Agent")) && byAgents.some((t) => t.startsWith("NotesTeam LeadChief"));
+      && byAgents.some((t) => t.startsWith("NotesAgents/Backend AgentBackend Agent")) && byAgents.some((t) => t.startsWith("NotesChiefChief"));
 
-    // The Team Lead's page searches every note: both agents' notes say "learned"; path:"Team Lead" keeps to its folder.
+    // The Team Lead's page searches every note: both agents' notes say "learned"; path:"Chief" keeps to its folder.
     // The shared notes' page lists no agent's or Team Lead note: they all say "data", as Use SQLite does.
     const searchFor = async (text: string, done: () => boolean) => {
       const box = q<HTMLInputElement>('input[aria-label="Search notes"]');
@@ -2029,13 +2029,13 @@ export async function memoryProbe(noteId: string, agentId: string) {
       return { hits: hitPaths(), count: resultsCount() };
     };
     const leadLearned = await searchFor("learned", () => hitPaths().length >= 3);
-    const leadPath = await searchFor('path:"Team Lead" data', () => hitPaths().length === 1 && hitPaths()[0] === "Team Lead/Notes");
+    const leadPath = await searchFor('path:"Chief" data', () => hitPaths().length === 1 && hitPaths()[0] === "Chief/Notes");
     const leadData = await searchFor("data", () => hitPaths().length >= 5);
     out.lead_search = { learned: leadLearned, team_lead: leadPath, data: leadData };
     const leadSearchOk = JSON.stringify(sorted(leadLearned.hits)) === JSON.stringify(["Agents/Backend Agent 2/Notes", "Agents/Backend Agent/KADE", "Agents/Backend Agent/Notes"])
       && leadLearned.count === "3 notes"
-      && JSON.stringify(leadPath.hits) === JSON.stringify(["Team Lead/Notes"]) && leadPath.count === "1 note"
-      && ["Decisions/Use SQLite", "Team Lead/Notes", "Agents/Backend Agent/KADE", "Agents/Backend Agent/Notes", "Agents/Backend Agent 2/Notes"].every((p) => leadData.hits.includes(p));
+      && JSON.stringify(leadPath.hits) === JSON.stringify(["Chief/Notes"]) && leadPath.count === "1 note"
+      && ["Decisions/Use SQLite", "Chief/Notes", "Agents/Backend Agent/KADE", "Agents/Backend Agent/Notes", "Agents/Backend Agent 2/Notes"].every((p) => leadData.hits.includes(p));
     const typed = q<HTMLInputElement>('input[aria-label="Search notes"]');
     if (typed) typeInto(typed, "");
     location.hash = "#/memory/shared";
@@ -2044,7 +2044,7 @@ export async function memoryProbe(noteId: string, agentId: string) {
     const sharedData = await searchFor("data", () => hitPaths().includes("Decisions/Use SQLite"));
     const sharedOnly = await searchFor("learned", () => textOf(q(".mem-results")).includes("No note matches"));
     out.shared_search = { data: sharedData, learned: { ...sharedOnly, text: textOf(q(".mem-results")).slice(0, 40) } };
-    const sharedSearchOk = sharedData.hits.includes("Decisions/Use SQLite") && sharedData.hits.every((p) => !p.startsWith("Agents/") && !p.startsWith("Team Lead/"))
+    const sharedSearchOk = sharedData.hits.includes("Decisions/Use SQLite") && sharedData.hits.every((p) => !p.startsWith("Agents/") && !p.startsWith("Chief/"))
       && sharedData.count === `${sharedData.hits.length} ${sharedData.hits.length === 1 ? "note" : "notes"}`
       && sharedOnly.hits.length === 0 && textOf(q(".mem-results")).includes("No note matches");
     const typed2 = q<HTMLInputElement>('input[aria-label="Search notes"]');
@@ -2413,8 +2413,8 @@ async function graphPartB() {
     && JSON.stringify(out.checks) === JSON.stringify(["Tags", "Orphans", "Existing notes only", "Cards", "Projects", "Clients", "Agents", "People", "Arrows"])
     && JSON.stringify(out.sliders) === JSON.stringify(["Text fade threshold", "Node size", "Link thickness", "Centre force", "Repel force", "Link force", "Link distance"])
     && !!buttonByText(p, "Animate") && !!p.querySelector('input[aria-label="Search the graph"]') && unnamed === 0;
-  // One group per top folder that has notes: the Team Lead's first, Agents last; each its own colour.
-  const groupsOk = JSON.stringify(out.groups) === JSON.stringify(['path:"Team Lead/"', "path:Clients/", "path:Decisions/", "path:Dependencies/", "path:Deployments/",
+  // One group per top folder that has notes: the Chief's first, Agents last; each its own colour.
+  const groupsOk = JSON.stringify(out.groups) === JSON.stringify(["path:Chief/", "path:Clients/", "path:Decisions/", "path:Dependencies/", "path:Deployments/",
     "path:Lessons/", "path:Projects/", "path:Standards/", "path:Workflows/", "path:Agents/"]) && new Set(swatches).size === swatches.length;
 
   // Filters.
