@@ -218,7 +218,7 @@ export type AppInfo = { version: string; data_dir: string; selftest: boolean; yo
  *  for the Backend, Frontend, QA and DevOps Agents (null: they stay where the seed put them). */
 export type OnboardingInput = { youName: string; teamName: string; agentsCli: string | null };
 export type Doc = { id: string; projectId?: string | null; title: string; bodyMd: string; currentVersion: number; updatedAt: number;
-  /** "memory" for a memory note (GA-19), with its path like "Team Lead/Notes"; "doc" for a project's. */
+  /** "memory" for a memory note (GA-19), with its path like "Chief/Notes"; "doc" for a project's. */
   kind?: string; path?: string | null };
 export type DocVersion = { version: number; authorName?: string | null; createdAt: number };
 export type FileRow = { id: string; name: string; mime?: string | null; sizeBytes: number; sha256: string; createdAt: number };
@@ -313,7 +313,7 @@ export type LeadAnswer = {
 };
 /** A memory note a run's prompt was given: its path, its length and how much of it the prompt showed (less when cut). */
 export type GivenNote = { path: string; chars: number; shown: number };
-/** A note in Gizai's Memory (GA-19): a doc of kind memory, with a path like "Team Lead/Notes". */
+/** A note in Gizai's Memory (GA-19): a doc of kind memory, with a path like "Chief/Notes". */
 export type MemoryNote = { id: string; path: string; scope: "shared" | "agent"; ownerId?: string | null; bodyMd: string; currentVersion: number;
   updatedAt: number; updatedBy?: string | null; chars: number };
 /** What saving a memory note did. */

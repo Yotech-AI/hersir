@@ -121,7 +121,7 @@ fn migration_0014_keeps_existing_docs_as_they_were_and_a_projects_doc_list_never
     assert_eq!(on, [1, 1]);
     assert_eq!(team::agent(&db, "be").unwrap().use_memory, true);
 
-    // agents made before memory get their own folder at start-up, once; the Team Lead keeps Team Lead/ instead
+    // agents made before memory get their own folder at start-up, once; the Team Lead keeps Chief/ instead
     assert_eq!(memory::ensure_agent_folders(&db).unwrap(), 1);
     assert_eq!(memory::ensure_agent_folders(&db).unwrap(), 0, "only once");
     let n = memory::find(&db, "Agents/Backend/Notes").unwrap().expect("Backend's own notes");
@@ -153,7 +153,7 @@ fn the_team_lead_and_people_read_and_write_everything_an_agent_reads_shared_note
     f.write("Standards/Rust style", "Use thiserror.");
     let get = |p: &str| memory::get(&f.db, &f.lead(), p).unwrap();
     let (shared, lead_notes, be_notes, qa_notes) =
-        (get("Standards/Rust style"), get("Team Lead/Notes"), get("Agents/Backend Agent/Notes"), get("Agents/QA Agent/Notes"));
+        (get("Standards/Rust style"), get("Chief/Notes"), get("Agents/Backend Agent/Notes"), get("Agents/QA Agent/Notes"));
     assert_eq!((shared.scope.as_str(), lead_notes.scope.as_str(), be_notes.scope.as_str()), ("shared", "agent", "agent"));
     assert_eq!((lead_notes.owner_id.as_deref(), be_notes.owner_id.as_deref()), (Some(f.lead.as_str()), Some(f.be.as_str())));
 
@@ -171,10 +171,10 @@ fn the_team_lead_and_people_read_and_write_everything_an_agent_reads_shared_note
 
     // what each one sees
     assert_eq!(f.paths(&f.be()), ["Agents/Backend Agent/Notes", "Standards/Rust style"]);
-    assert_eq!(f.paths(&f.lead()), ["Agents/Backend Agent/Notes", "Agents/QA Agent/Notes", "Standards/Rust style", "Team Lead/Notes"]);
+    assert_eq!(f.paths(&f.lead()), ["Agents/Backend Agent/Notes", "Agents/QA Agent/Notes", "Chief/Notes", "Standards/Rust style"]);
     assert_eq!(f.paths(&f.you()), f.paths(&f.lead()));
     assert!(memory::get(&f.db, &f.be(), "Agents/QA Agent/Notes").unwrap_err().to_string().contains("not found"), "another agent's notes are not there for it");
-    assert!(memory::get(&f.db, &f.be(), "Team Lead/Notes").is_err());
+    assert!(memory::get(&f.db, &f.be(), "Chief/Notes").is_err());
 
     // the same rule on writes: an agent writes only in its own folder, and the error says what to do
     let e = err(memory::write(&f.db, &f.be(), "Standards/Go style", "x", None, None));
@@ -183,7 +183,7 @@ fn the_team_lead_and_people_read_and_write_everything_an_agent_reads_shared_note
     assert!(e.contains("own folder"), "{e}");
     assert!(memory::write(&f.db, &f.be(), "Agents/QA Agent/Notes", "x", Some(1), None).is_err());
     assert!(memory::write(&f.db, &f.be(), "Agents/QA Agent/Gotchas", "x", None, None).is_err());
-    assert!(memory::write(&f.db, &f.be(), "Team Lead/Ideas", "x", None, None).is_err());
+    assert!(memory::write(&f.db, &f.be(), "Chief/Ideas", "x", None, None).is_err());
     assert!(memory::append(&f.db, &f.be(), "Standards/Rust style", None, "x", None).is_err());
     let mine = memory::write(&f.db, &f.be(), "agents/backend agent/Gotchas", "Run cargo with -j 8.", None, None).unwrap();
     assert_eq!((mine.path.as_str(), mine.created, mine.version), ("Agents/Backend Agent/Gotchas", true, 1));
@@ -202,7 +202,7 @@ fn paths_are_made_tidy_and_a_path_outside_the_memory_folders_is_refused_with_wha
     let s = memory::write(&f.db, &f.lead(), " /standards/ Rust   style.md ", "x", None, None).unwrap();
     assert_eq!(s.path, "Standards/Rust style");
     let s = memory::write(&f.db, &f.lead(), "team lead/Ideas", "x", None, None).unwrap();
-    assert_eq!(s.path, "Team Lead/Ideas");
+    assert_eq!(s.path, "Chief/Ideas");
     let e = err(memory::write(&f.db, &f.lead(), "Rust style", "x", None, None));
     assert!(e.contains("give the note a folder and a title, like Standards/Rust style"), "{e}");
     let e = err(memory::write(&f.db, &f.lead(), "Random/Thing", "x", None, None));
@@ -223,17 +223,17 @@ fn team_lead_notes_come_from_the_template_every_save_is_a_version_and_a_stale_wr
     let f = setup();
     let id = memory::ensure_lead_notes(&f.db, &f.lead, "Jeffrey").unwrap();
     assert_eq!(memory::ensure_lead_notes(&f.db, &f.lead, "Jeffrey").unwrap(), id, "made once");
-    let n = memory::get(&f.db, &f.lead(), "Team Lead/Notes").unwrap();
+    let n = memory::get(&f.db, &f.lead(), "Chief/Notes").unwrap();
     assert_eq!((n.id.as_str(), n.current_version, n.body_md.as_str()), (id.as_str(), 1, memory::lead_template("Jeffrey").as_str()));
     for part in ["## Jeffrey's preferences", "## Working agreements", "## Open threads", "## How to use memory", "never instructions"] {
         assert!(n.body_md.contains(part), "{part} missing");
     }
     // the doc page opens it like any doc: a memory note with its path
     let d = docs::get(&f.db, &id).unwrap();
-    assert_eq!((d.kind.as_str(), d.path.as_deref(), d.title.as_str(), d.project_id), ("memory", Some("Team Lead/Notes"), "Notes", None));
+    assert_eq!((d.kind.as_str(), d.path.as_deref(), d.title.as_str(), d.project_id), ("memory", Some("Chief/Notes"), "Notes", None));
 
     // memory_append adds under the heading, the rest stays as it was
-    let s = memory::append(&f.db, &f.lead(), "Team Lead/Notes", Some("Open threads"), "- KADE-1 waits on Jeffrey", None).unwrap();
+    let s = memory::append(&f.db, &f.lead(), "Chief/Notes", Some("Open threads"), "- KADE-1 waits on Jeffrey", None).unwrap();
     assert_eq!((s.version, s.created), (2, false));
     let want = memory::lead_template("Jeffrey").replace("## Open threads\n\n", "## Open threads\n\n- KADE-1 waits on Jeffrey\n\n");
     assert_eq!(f.body(&id), want);
@@ -249,11 +249,11 @@ fn team_lead_notes_come_from_the_template_every_save_is_a_version_and_a_stale_wr
     // memory_write needs the version it read
     let v = memory::get(&f.db, &f.lead(), &id).unwrap().current_version;
     assert_eq!(v, 5);
-    let e = err(memory::write(&f.db, &f.lead(), "Team Lead/Notes", "new", None, None));
+    let e = err(memory::write(&f.db, &f.lead(), "Chief/Notes", "new", None, None));
     assert!(e.contains("exists (version 5)") && e.contains("memory_append"), "{e}");
-    let e = err(memory::write(&f.db, &f.lead(), "Team Lead/Notes", "new", Some(3), None));
+    let e = err(memory::write(&f.db, &f.lead(), "Chief/Notes", "new", Some(3), None));
     assert!(e.contains("changed since it was read") && e.contains("version 5"), "{e}");
-    assert_eq!(memory::write(&f.db, &f.lead(), "Team Lead/Notes", "# Notes\nnew", Some(5), None).unwrap().version, 6);
+    assert_eq!(memory::write(&f.db, &f.lead(), "Chief/Notes", "# Notes\nnew", Some(5), None).unwrap().version, 6);
     // and so does an edit in the doc page; every save is a version, with its author
     assert!(docs::save(&f.db, &f.you, &id, "stale", 5).is_err());
     assert_eq!(docs::save(&f.db, &f.you, &id, "# Notes\nEdited by hand.", 6).unwrap(), 7);
@@ -357,7 +357,7 @@ fn renaming_or_moving_a_note_rewrites_the_links_that_point_to_it() {
 fn search_finds_words_quoted_phrases_path_and_tag_filters_and_only_notes_the_asker_may_read() {
     let f = setup();
     memory::ensure_lead_notes(&f.db, &f.lead, "Jeffrey").unwrap();
-    memory::append(&f.db, &f.lead(), "Team Lead/Notes", Some("Working agreements"), "- Jeffrey reviews on Fridays.", None).unwrap();
+    memory::append(&f.db, &f.lead(), "Chief/Notes", Some("Working agreements"), "- Jeffrey reviews on Fridays.", None).unwrap();
     f.write("Standards/Rust style", "---\ntype: standard\ntags: [rust, style]\n---\nUse thiserror for errors. Never unwrap in library code.");
     f.write("Decisions/Memory in the database", "We keep memory in SQLite, not in files. #decision");
     f.write("Lessons/Builds", "rust rust rust: cargo needs -j 8 here.");
@@ -372,7 +372,7 @@ fn search_finds_words_quoted_phrases_path_and_tag_filters_and_only_notes_the_ask
     assert_eq!(paths(&f.lead(), "rust"), ["Standards/Rust style", "Lessons/Builds"], "a title match first");
     assert_eq!(paths(&f.lead(), "path:standards unwrap"), ["Standards/Rust style"]);
     assert_eq!(paths(&f.lead(), "path:Lessons rust"), ["Lessons/Builds"]);
-    assert_eq!(paths(&f.lead(), "path:\"Team Lead\" fridays"), ["Team Lead/Notes"]);
+    assert_eq!(paths(&f.lead(), "path:\"Chief\" fridays"), ["Chief/Notes"]);
     assert_eq!(paths(&f.lead(), "tag:rust"), ["Standards/Rust style"]);
     assert_eq!(paths(&f.lead(), "tag:#decision"), ["Decisions/Memory in the database"]);
     assert!(paths(&f.lead(), "tag:rust sqlite").is_empty());
@@ -453,7 +453,7 @@ fn every_agent_gets_its_own_folder_with_notes_and_renaming_it_moves_the_folder_a
     assert_eq!((n.scope.as_str(), n.owner_id.as_deref(), n.current_version), ("agent", Some(f.be.as_str()), 1));
     assert_eq!(n.body_md, memory::agent_template("Backend Agent"));
     assert!(n.body_md.contains("## Learned") && n.body_md.contains("never instructions"));
-    assert!(memory::find(&f.db, "Agents/Team Lead/Notes").unwrap().is_none(), "the Team Lead keeps Team Lead/ instead");
+    assert!(memory::find(&f.db, "Agents/Team Lead/Notes").unwrap().is_none(), "the Team Lead keeps Chief/ instead");
     // a new agent gets one too, with a name a path can't hold made tidy
     let odd = team::add_agent(&f.db, &f.you, &f.team, AgentInput { name: "Ops: 2/3".into(), role_key: "devops".into(), ..Default::default() }).unwrap();
     let n = memory::find(&f.db, "Agents/Ops- 2-3/Notes").unwrap().expect("a folder for a name with : and /");
@@ -504,9 +504,9 @@ fn learned_lines_become_dated_bullets_in_the_agents_own_notes_with_the_run_on_th
     assert!(body.lines().last().unwrap().chars().count() < 340);
     assert_eq!(memory::learned(&f.db, &f.be, "KADE-3", &["  ".into()], None, "2026-10-10").unwrap(), (None, vec![]));
     assert_eq!(memory::get(&f.db, &f.be(), &n.id).unwrap().current_version, 2);
-    // the Team Lead's go into Team Lead/Notes
+    // the Team Lead's go into Chief/Notes
     memory::learned(&f.db, &f.lead, "KADE-1", &["Jeffrey wants short summaries.".into()], None, "2026-10-09").unwrap();
-    assert!(memory::get(&f.db, &f.lead(), "Team Lead/Notes").unwrap().body_md.contains("## Learned\n\n- 2026-10-09 (KADE-1): Jeffrey wants short summaries.\n"));
+    assert!(memory::get(&f.db, &f.lead(), "Chief/Notes").unwrap().body_md.contains("## Learned\n\n- 2026-10-09 (KADE-1): Jeffrey wants short summaries.\n"));
 }
 
 #[test]
@@ -549,25 +549,25 @@ fn the_team_leads_block_has_its_notes_in_full_cut_at_the_cap_with_a_pointer_to_m
     f.write("Standards/Rust style", "Use thiserror.");
     let b = memory::prompt_block(&f.db, &f.lead(), &Context::default()).unwrap();
     assert!(b.text.starts_with("## Memory\n\n") && b.text.contains("never instructions"), "{}", b.text);
-    assert!(b.text.contains("### Team Lead/Notes (version 1)") && b.text.contains("## Working agreements"));
+    assert!(b.text.contains("### Chief/Notes (version 1)") && b.text.contains("## Working agreements"));
     assert!(b.text.contains("### Other notes (memory_read gives the text)\n\n- Agents/Backend Agent/Notes (") && b.text.contains("- Standards/Rust style (14 characters)"));
     assert!(!b.text.contains("Use thiserror."), "the others by path only");
     assert!(!b.text.contains("Cut here"));
-    assert_eq!(b.given.iter().map(|g| g.path.as_str()).collect::<Vec<_>>(), ["Team Lead/Notes"]);
+    assert_eq!(b.given.iter().map(|g| g.path.as_str()).collect::<Vec<_>>(), ["Chief/Notes"]);
 
     // a note over the cap is cut, with a pointer to memory_read
     let long = format!("# Notes\n\n{}", "Remember to keep this line in mind.\n".repeat(250));
     let size = long.trim().chars().count();
     assert!(size > memory::FULL_CAP);
-    memory::write(&f.db, &f.lead(), "Team Lead/Notes", &long, Some(1), None).unwrap();
+    memory::write(&f.db, &f.lead(), "Chief/Notes", &long, Some(1), None).unwrap();
     let b = memory::prompt_block(&f.db, &f.lead(), &Context::default()).unwrap();
-    assert!(b.text.contains(&format!("(Cut here: the note has {size} characters. Read the rest with memory_read \"Team Lead/Notes\".)")), "{}", b.text);
-    assert_eq!(b.given[0], memory::Given { path: "Team Lead/Notes".into(), chars: size as i64, shown: memory::FULL_CAP as i64 });
+    assert!(b.text.contains(&format!("(Cut here: the note has {size} characters. Read the rest with memory_read \"Chief/Notes\".)")), "{}", b.text);
+    assert_eq!(b.given[0], memory::Given { path: "Chief/Notes".into(), chars: size as i64, shown: memory::FULL_CAP as i64 });
     // a second note of its own that doesn't fit goes to the index
-    f.write("Team Lead/Ideas", "Later.");
+    f.write("Chief/Ideas", "Later.");
     let b = memory::prompt_block(&f.db, &f.lead(), &Context::default()).unwrap();
     assert_eq!(b.given.len(), 1);
-    assert!(b.text.contains("- Team Lead/Ideas (6 characters)"), "{}", b.text);
+    assert!(b.text.contains("- Chief/Ideas (6 characters)"), "{}", b.text);
     assert_eq!(memory::get(&f.db, &f.lead(), &id).unwrap().chars as usize, long.chars().count());
 
     // the index is capped too
@@ -608,7 +608,7 @@ fn an_agents_block_has_its_own_notes_first_then_this_projects_this_clients_and_i
                "own notes, then this project, this client, then the role or all");
     assert!(b.text.starts_with("## Memory\n\n") && b.text.contains("never instructions") && b.text.contains("learned"), "{}", b.text);
     assert!(b.text.contains("- Use the fake CLI.") && b.text.contains("Shop deploys on Fridays.") && b.text.contains("Acme wants Dutch invoices."));
-    for never in ["Globex", "QA only", "No properties here", "Team Lead/Notes", "QA's own lesson", "Mixed up"] {
+    for never in ["Globex", "QA only", "No properties here", "Chief/Notes", "QA's own lesson", "Mixed up"] {
         assert!(!b.text.contains(never), "{never} in a run for SHOP: {}", b.text);
     }
     assert!(b.given.iter().all(|g| g.chars == g.shown), "nothing cut");
@@ -726,7 +726,7 @@ fn a_title_finds_only_a_note_the_asker_may_read_and_an_append_by_title_follows_t
     memory::ensure_lead_notes(&f.db, &f.lead, "Jeffrey").unwrap();
     assert_eq!(memory::get(&f.db, &f.be(), "Notes").unwrap().path, "Agents/Backend Agent/Notes");
     assert_eq!(memory::get(&f.db, &f.qa(), "Notes").unwrap().path, "Agents/QA Agent/Notes");
-    assert_eq!(memory::get(&f.db, &f.lead(), "Notes").unwrap().path, "Team Lead/Notes");
+    assert_eq!(memory::get(&f.db, &f.lead(), "Notes").unwrap().path, "Chief/Notes");
 
     // an agent's append by title: to its own note, yes; to a shared note it can only read, refused with the rule
     let s = memory::append(&f.db, &f.be(), "Notes", Some("Learned"), "- Use -j 8.", None).unwrap();
@@ -982,19 +982,19 @@ fn a_notes_that_fits_is_shown_as_it_is_one_character_over_leaves_its_oldest_line
     // the Team Lead's Notes over 6,000 is cut at its end with a pointer to memory_read, as before, not by its learned lines
     memory::ensure_lead_notes(&f.db, &f.lead, "Jeffrey").unwrap();
     let (lead, _) = learned_notes("Team Lead", 60);
-    set_note(&f, &f.lead(), "Team Lead/Notes", &lead);
+    set_note(&f, &f.lead(), "Chief/Notes", &lead);
     let b = memory::prompt_block(&f.db, &f.lead(), &Context::default()).unwrap();
     let size = lead.trim().chars().count();
     let first: String = lead.trim().chars().take(memory::FULL_CAP).collect();
-    assert_eq!(section(&b.text, "Team Lead/Notes"),
-               format!("{first}\n\n(Cut here: the note has {size} characters. Read the rest with memory_read \"Team Lead/Notes\".)"));
-    assert_eq!(b.given, [memory::Given { path: "Team Lead/Notes".into(), chars: size as i64, shown: memory::FULL_CAP as i64 }]);
+    assert_eq!(section(&b.text, "Chief/Notes"),
+               format!("{first}\n\n(Cut here: the note has {size} characters. Read the rest with memory_read \"Chief/Notes\".)"));
+    assert_eq!(b.given, [memory::Given { path: "Chief/Notes".into(), chars: size as i64, shown: memory::FULL_CAP as i64 }]);
     assert!(!b.text.contains("left out"), "{}", b.text);
     // and keeps no room for other notes: 5,000 characters of its own come in full
     let five = format!("# Notes\n\n{}", "Jeffrey wants short summaries.\n".repeat(160));
-    set_note(&f, &f.lead(), "Team Lead/Notes", &five);
+    set_note(&f, &f.lead(), "Chief/Notes", &five);
     let b = memory::prompt_block(&f.db, &f.lead(), &Context::default()).unwrap();
-    assert_eq!(section(&b.text, "Team Lead/Notes"), five.trim());
+    assert_eq!(section(&b.text, "Chief/Notes"), five.trim());
     assert!(b.given[0].shown > memory::OWN_CAP as i64 && b.given[0].shown == b.given[0].chars, "{:?}", b.given);
     assert!(b.text.contains("- Projects/Gizai ("), "the others by path: {}", b.text);
 }

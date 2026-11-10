@@ -26,7 +26,7 @@ fn note_json(n: &Note) -> Value {
 
 pub(crate) fn list(cx: &Cx, a: &Args) -> Result<Value, String> {
     let who = who(cx)?;
-    let folder = a.opt("folder").map(|f| format!("{}/", f.trim_matches('/').to_lowercase()));
+    let folder = a.opt("folder").map(|f| format!("{}/", memory::lead_folder_now(f.trim_matches('/')).to_lowercase()));
     let notes: Vec<Value> = memory::list(cx.db(), &who).map_err(err)?.iter()
         .filter(|n| folder.as_ref().is_none_or(|f| n.path.to_lowercase().starts_with(f.as_str())))
         .map(note_json).collect();

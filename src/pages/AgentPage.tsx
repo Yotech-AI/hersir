@@ -58,7 +58,7 @@ export function AgentPage({ id }: { id: string }) {
   const { data: tasks } = useData(() => listTasks({}));
   const [teamId] = useCurrentTeam();
   const { data: team } = useData(() => getTeam(teamId), [teamId]);
-  // Its own notes in Memory (GA-19): Team Lead/Notes for the Team Lead, Agents/<name>/Notes for another agent.
+  // Its own notes in Memory (GA-19): Chief/Notes for the Chief, Agents/<name>/Notes for another agent.
   const { data: notes } = useData(() => agentNotes(id).catch(() => null), [id]);
   const live = useLiveRuns().filter((r) => r.agentId === id);
   const open = useDrawer();

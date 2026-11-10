@@ -424,7 +424,7 @@ fn insert_agent(w: &crate::db::Writer, actor: &str, team_id: &str, a: &CleanAgen
     if let Some(with) = input.shares_memory_with.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         crate::memory::set_shares_in(w, actor, &id, Some(with))?;
     }
-    // Its own memory folder, Agents/<name>/, with a Notes note, unless it shares one (the Chief's Team Lead/Notes is
+    // Its own memory folder, Agents/<name>/, with a Notes note, unless it shares one (the Chief's own Chief/Notes is
     // made on first use).
     crate::memory::ensure_agent_notes_in(w, &id)?;
     Ok(id)
@@ -520,7 +520,7 @@ pub fn update_agent(db: &Db, actor: &str, actor_id: &str, input: AgentInput) -> 
             Some(false) => { c.execute("UPDATE agent_configs SET chat_enabled=0 WHERE actor_id=?1", [actor_id])?; }
             None => {}
         }
-        // Memory (GA-96): the folder it shares, else its own; the Chief keeps its notes in Team Lead/, so an agent that
+        // Memory (GA-96): the folder it shares, else its own; the Chief keeps its notes in Chief/, so an agent that
         // became it shares no folder and a group it owned goes on with its next agent.
         if let Some(with) = input.shares_memory_with.as_deref().map(str::trim) {
             crate::memory::set_shares_in(w, actor, actor_id, Some(with).filter(|s| !s.is_empty()))?;
