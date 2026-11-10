@@ -883,3 +883,32 @@ fn the_format_page_describes_every_field_of_format_1() {
         assert!(doc.contains(&format!("`{field}`")), "docs/team-template-format.md doesn't name `{field}`");
     }
 }
+
+// ---- GA-262: one rule per allowed command ----
+
+#[test]
+fn a_template_with_an_allowed_command_that_isnt_one_rule_is_refused_and_export_leaves_an_old_one_out() {
+    let (db, s) = install();
+    for bad in ["Bash(ls:*) Bash(*)", "Bash(a) b", "Bash(a,b)", "Bash(a(b))"] {
+        let mut t = small("Small team");
+        t.agents[0].allowed_tools.push(bad.into());
+        let before = counts(&db);
+        let e = templates::preview(&db, &file(&t)).unwrap_err().to_string();
+        assert_eq!(e, format!("Builder's allowed commands: {bad} isn't one rule: write each command as its own entry, like Bash(npm test:*)."));
+        let e = templates::import(&db, &s.you_id, &file(&t), "Refused").unwrap_err().to_string();
+        assert!(e.contains(&team::not_one_rule(bad)), "{bad}, import: {e}");
+        assert_eq!(counts(&db), before, "{bad} makes nothing");
+    }
+    // An agent saved before each entry had to be one rule: export leaves that entry out (as runs do), keeps the rest, and the
+    // file imports again.
+    let t = team::get(&db, &s.team_id).unwrap();
+    let be = member(&t, "Backend Agent").actor_id.clone();
+    let old = [seed::role_tools("backend"), strs(&["Bash(ls:*) Bash(*)", "Bash(terraform plan:*)"])].concat();
+    sql(&db, "UPDATE agent_configs SET allowed_tools_json=?2 WHERE actor_id=?1", &[&be, &serde_json::to_string(&old).unwrap()]);
+    assert!(team::agent(&db, &be).unwrap().allowed_tools.contains(&"Bash(ls:*) Bash(*)".to_string()), "saved as before GA-262");
+    let f = templates::export(&db, &s.team_id).unwrap();
+    let tools = &f.agents.iter().find(|a| a.name == "Backend Agent").unwrap().allowed_tools;
+    assert!(!tools.iter().any(|t| t.contains("Bash(*)")), "{tools:?}");
+    assert!(tools.contains(&"Bash(terraform plan:*)".to_string()) && tools.contains(&"Bash(git status:*)".to_string()), "{tools:?}");
+    assert!(templates::preview(&db, &file(&f)).is_ok(), "the exported file imports");
+}

@@ -22,6 +22,7 @@ That form is the only way to report a security problem. Never report one in a pu
 
 - Problems in Claude Code, Codex CLI or Gemini CLI themselves: report those to Anthropic, OpenAI or Google, as each CLI's own security policy says ([Claude Code](https://github.com/anthropics/claude-code/security/policy), [Codex CLI](https://github.com/openai/codex/security/policy), [Gemini CLI](https://github.com/google-gemini/gemini-cli/security/policy)).
 - An agent doing what you allowed it to do, like running a command on its allowed list or changing a folder you gave it.
+- What a command that runs code does. `npm`, `npx`, `node`, `php`, `composer`, `cargo`, `pytest` and `./vendor/bin/*` run the project's scripts, tests and builds, which can read and change anything your user can, Hersir's data and your keys included: Claude Code only checks the command line. Give such commands only to agents on repositories you trust. A sandbox for runs comes later ([Commands that run code](docs/features/tools.md#commands-that-run-code)).
 
 ## What to send
 

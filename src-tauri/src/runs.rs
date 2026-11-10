@@ -1245,6 +1245,13 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
         notes.push(format!("Left out of {}'s allowed commands: {}. Web search, fetching pages and the CLI's other tools come only from \
                             their switches (agent form → Tools).", agent.name, by_switch.join(", ")));
     }
+    // GA-262: an entry saved before each had to be one rule, like `Bash(ls:*) Bash(*)`, never reaches the CLI: it would read
+    // it as more than one rule.
+    let (allowed_tools, not_one): (Vec<String>, Vec<String>) = allowed_tools.into_iter().partition(|t| team::one_rule(t));
+    for t in &not_one {
+        notes.push(format!("Left out of {}'s allowed commands: {} Fix it in the agent form (Permissions → Allowed commands).", agent.name,
+                           team::not_one_rule(t)));
+    }
     let permission_mode = agent.permission_mode.clone().unwrap_or_default();
     // "How this run works" ends every task prompt, new and continued.
     let rules = prompt::RunRules {

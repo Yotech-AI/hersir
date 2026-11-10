@@ -106,6 +106,11 @@ fn guard_agent_powers(a: &Args) -> Result<(), String> {
         return Err(format!("{m} can't be set from chat: it lets an agent run anything. Set it yourself in the agent form if you really want it."));
     }
     let allowed = a.list("allowed_tools").unwrap_or_default();
+    // GA-262: each entry one rule, as the agent form saves them: Claude Code would read `Bash(ls:*) Bash(*)` or `Bash(a) b`
+    // as two. One without a `)`, like `Bash(git status:*`, is no command at all, and the check below says so.
+    if let Some(t) = allowed.iter().find(|t| t.contains(')') && !team::one_rule(t)) {
+        return Err(team::not_one_rule(t));
+    }
     for t in &allowed {
         let t = t.trim().to_lowercase().replace(' ', "");
         if t == "bash" || t == "bash(*)" || t == "bash(:*)" || t == "bash(*:*)" {
@@ -155,6 +160,58 @@ fn guard_lead_may_merge(a: &Args) -> Result<(), String> {
 /// A command for an agent's allowed commands: `Bash(…)` with something in it.
 fn is_command(t: &str) -> bool {
     t.trim().strip_prefix("Bash(").and_then(|r| r.strip_suffix(')')).is_some_and(|inner| !inner.trim().is_empty())
+}
+
+/// GA-262: commands that run any other command: shells, interpreters, and commands that run the command after them, or run
+/// it as another user. The chat gives an agent none of these (`guard_commands`).
+const RUNS_ANY_COMMAND: &[&str] = &[
+    "bash", "sh", "zsh", "fish", "dash", "ksh", "csh", "tcsh", "pwsh", "powershell", "cmd", "busybox",
+    "env", "sudo", "doas", "su", "pkexec", "run0", "runas", "eval", "exec", "command", "builtin", "source", ".",
+    "xargs", "nohup", "timeout", "nice", "time", "setsid", "stdbuf", "watch",
+    "python", "python3", "perl", "ruby", "deno", "bun", "osascript",
+];
+
+/// The command a `Bash(…)` entry lets an agent run: its first word, without the `:*` of a prefix rule (`Bash(npm test:*)`
+/// → npm, `Bash(bash:*)` → bash).
+fn command_word(entry: &str) -> Option<&str> {
+    let inner = entry.trim().strip_prefix("Bash(")?.strip_suffix(')')?.trim();
+    inner.strip_suffix(":*").unwrap_or(inner).split_whitespace().next()
+}
+
+/// GA-262: why the chat can't give an agent the command `entry`; None when it can. Its command (`command_word`) is one of
+/// `RUNS_ANY_COMMAND`, a wildcard or a path. A name with quotes, `$`, `=` or the like could be one of those spelled
+/// another way, so it counts too, and so do capitals, `.exe` and a version (`BASH`, `bash.exe`, `python3.12`).
+fn runs_any_command(entry: &str) -> Option<String> {
+    let word = command_word(entry)?;
+    if word.contains(['/', '\\']) {
+        return Some(format!("it runs {word} by its path"));
+    }
+    if word.contains(['*', '?']) {
+        return Some(format!("{word} is a wildcard, which matches any command"));
+    }
+    if !word.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '+')) {
+        return Some(format!("{word} isn't a plain command name"));
+    }
+    let name = word.to_ascii_lowercase();
+    let name = name.strip_suffix(".exe").unwrap_or(&name);
+    let unversioned = name.trim_end_matches(|c: char| c.is_ascii_digit() || c == '.');
+    (RUNS_ANY_COMMAND.contains(&name) || RUNS_ANY_COMMAND.contains(&unversioned)).then(|| format!("{word} can run any command"))
+}
+
+/// GA-262: the Chief reads text other people and agents wrote, so it gives an agent no shell or interpreter
+/// (`runs_any_command`), unless the entry is in `kept`: the agent's own list or its role's default list. Only the user
+/// adds one, in the agent form.
+fn guard_commands(a: &Args, kept: &[String]) -> Result<(), String> {
+    for t in a.list("allowed_tools").unwrap_or_default() {
+        if kept.iter().any(|k| k.trim() == t) {
+            continue;
+        }
+        if let Some(why) = runs_any_command(&t) {
+            return Err(format!("{t} can't be given from chat: {why}. Only the user can add it, in the agent form (Permissions → Allowed \
+                                commands). Nothing changed."));
+        }
+    }
+    Ok(())
 }
 
 /// A repository path from chat must be a git repository (it has a .git folder or file), and never `/`, your
@@ -485,6 +542,8 @@ fn shares_memory_with(cx: &Cx<'_>, a: &Args) -> Result<Option<String>, String> {
 
 pub(crate) async fn create_agent(cx: &Cx<'_>, a: &Args) -> Result<Value, String> {
     guard_agent_powers(a)?;
+    // GA-262: no shell or interpreter, unless its role's default list has it.
+    guard_commands(a, &gizai_core::seed::role_tools(&team::role_key(&a.opt("role").unwrap_or_default())))?;
     // GA-225: the team it joins; with more than one team it must be named.
     let team_id = resolve::team_arg(cx, a)?.id;
     let shares = shares_memory_with(cx, a)?;
@@ -510,6 +569,12 @@ pub(crate) async fn create_agent(cx: &Cx<'_>, a: &Args) -> Result<Value, String>
 pub(crate) async fn update_agent(cx: &Cx<'_>, a: &Args) -> Result<Value, String> {
     guard_agent_powers(a)?;
     let m = resolve::agent(cx, &a.req("agent")?)?;
+    // GA-262: no shell or interpreter it doesn't have already (without a list of its own it runs with Hersir's default
+    // list), unless its role's default list has it: its role now or the one given.
+    let mut kept = if m.allowed_tools.is_empty() { gizai_core::seed::DEFAULT_TOOLS.map(String::from).to_vec() } else { m.allowed_tools.clone() };
+    kept.extend(gizai_core::seed::role_tools(&m.role_key));
+    kept.extend(a.opt("role").map(|r| gizai_core::seed::role_tools(&team::role_key(&r))).unwrap_or_default());
+    guard_commands(a, &kept)?;
     let shares = shares_memory_with(cx, a)?;
     // Moved to another kind of CLI: its model, effort and permission mode don't carry over unless given (the CLI's defaults).
     let kind_now = crate::clis::of_agent(cx.st, m.adapter.as_deref()).map(|c| c.kind).unwrap_or_default();
