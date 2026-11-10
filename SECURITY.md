@@ -17,6 +17,7 @@ That form is the only way to report a security problem. Never report one in a pu
 - The socket or named pipe of the Chief's tools ([Linux, macOS and Windows](docs/PLATFORMS.md#every-linux-only-spot)).
 - Keys and tokens: a sign-in, key or token that leaves your keychain, or reaches a run or a file it shouldn't ([Your keys stay yours](docs/features/cli.md#your-keys-stay-yours)).
 - The install scripts, the one-line installs and updates ([How Hersir updates itself](docs/RELEASING.md#how-hersir-updates-itself)).
+- The release signature check: a release that the one-line install or Update installs or offers without a `hersir-X.Y.Z.sig` that checks against the keys in [`release-signers`](release-signers), over its version, its tag's commit and its `SHA256SUMS`, or a way to sign a release without those keys ([Making a release](docs/RELEASING.md#making-a-release), step 5).
 
 ## What doesn't count
 
