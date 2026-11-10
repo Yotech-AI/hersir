@@ -248,6 +248,9 @@ jobs:
   install:
     name: install on ${{ matrix.system }}
     needs: [version, release]
+    # Also when a ready-made build or the signed release failed: a skipped check would pass, so each install fails then,
+    # and says why.
+    if: ${{ !cancelled() }}
     strategy:
       fail-fast: false
       matrix:
@@ -291,6 +294,13 @@ jobs:
     # A version bump skips every step, one by one, as in ci.yml: a job skipped with if: never reports its matrix's
     # checks, and branch protection would wait for them.
     steps:
+      - name: This commit's ready-made builds and signed release
+        if: needs.version.outputs.only != 'true' && needs.release.result != 'success'
+        shell: bash
+        run: |
+          echo "The ready-made builds or the signed test release failed (see the ready-made and signed test release checks), so there is nothing to install."
+          exit 1
+
       # Windows' git turns LF into CRLF on checkout; the source folder the one line makes keeps LF too.
       - name: Keep LF line endings
         if: runner.os == 'Windows'
