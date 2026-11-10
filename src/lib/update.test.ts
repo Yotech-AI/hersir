@@ -83,3 +83,22 @@ describe("Settings → Updates: what the last check found", () => {
       .toBe("The last check didn't work (checked just now): GitHub answered the release check with HTTP 500");
   });
 });
+
+describe("GA-253: signed releases and ready-made builds", () => {
+  it("doesn't offer a release that isn't signed yet, and says so in Settings → Updates", () => {
+    expect(notice(status({ checkedAt: NOW, latest: release, unsigned: release }))).toBeNull();
+    expect(checkLine(status({ checkedAt: NOW, latest: release, unsigned: release }), NOW))
+      .toEqual({ mark: "skipped", text: "v0.1.6 is out, but not signed yet." });
+  });
+  it("says a newer version installed meanwhile, or a failed check, before an unsigned release", () => {
+    expect(checkLine(status({ checkedAt: NOW, latest: release, unsigned: release, installed: "0.1.6" }), NOW).text)
+      .toBe("Version 0.1.6 is installed. Restart Hersir to use it.");
+    expect(checkLine(status({ checkedAt: NOW, unsigned: release, problem: { what: "Can't reach GitHub" } }), NOW).mark).toBe("failed");
+  });
+  it("shows the download as a step that runs, can be stopped and says Downloading", () => {
+    expect(isRunning(job("download"))).toBe(true);
+    expect(canStop(job("download"))).toBe(true);
+    expect(stepText(job("download"))).toBe("Downloading 0.1.6…");
+    expect(notice(status({ available: release, job: job("download") }))).toEqual({ kind: "working", version: "0.1.6", text: "Downloading 0.1.6…" });
+  });
+});
