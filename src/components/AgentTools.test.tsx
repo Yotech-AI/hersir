@@ -281,3 +281,90 @@ describe("a server Claude Code signs in to", () => {
     expect(got).toEqual([[{ serverId: "s-figma", on: true, toolsOff: [] }]]);
   });
 });
+
+// GA-271: After the Chief uses it, per MCP server, only in the form of an agent with Chat on (`lead`, the Chief): two radio
+// buttons (Ask for my OK, the default, and Allow) in a named group, and the warning under Allow, read out when it shows.
+describe("After the Chief uses it, per server (GA-271)", () => {
+  const WARN = (name: string) => `What ${name} returns can steer the Chief: with Allow, what the Chief does after using it runs without your OK.`;
+  /** The radio button `value` (ask or allow) of a server's group, as HTML. */
+  const radio = (html: string, id: string, value: string) =>
+    (html.match(/<input type="radio"[^>]*>/g) ?? []).find((i) => i.includes(`name="trust-${id}"`) && i.includes(`value="${value}"`)) ?? "";
+
+  it("shows each server with Ask for my OK chosen in the Chief's form, and nothing of it in other agents' forms", () => {
+    const html = render({ lead: true, value: [{ serverId: "s-otus", on: true, toolsOff: [] }] });
+    for (const s of servers) {
+      const r = row(html, s.name);
+      expect(text(r), s.name).toContain("After the Chief uses it: Ask for my OK Allow");
+      expect(r).toContain(`role="radiogroup" aria-label="After the Chief uses ${s.name}"`);
+      expect(radio(r, s.id, "ask"), s.name).toContain('checked=""');
+      expect(radio(r, s.id, "allow"), s.name).not.toContain("checked");
+      expect(text(r)).not.toContain("can steer the Chief");
+    }
+    for (const html of [render({}), render({ lead: false, value: [{ serverId: "s-otus", on: true, toolsOff: [], trusted: true }] })]) {
+      expect(text(html)).not.toContain("After the Chief uses it");
+      expect(html).not.toContain('type="radio"');
+    }
+  });
+
+  it("shows Allow chosen with the warning under it, tied to Allow for a screen reader, and only on that server", () => {
+    const html = render({ lead: true, value: [{ serverId: "s-otus", on: true, toolsOff: [], trusted: true }, { serverId: "s-local", on: false, toolsOff: [], trusted: false }] });
+    const r = row(html, "otus");
+    expect(radio(r, "s-otus", "allow")).toContain('checked=""');
+    expect(radio(r, "s-otus", "ask")).not.toContain("checked");
+    expect(radio(r, "s-otus", "allow")).toContain('aria-describedby="trust-s-otus-warn"');
+    expect(r).toContain(`<div aria-live="polite"><span id="trust-s-otus-warn" class="warn">${WARN("otus")}</span></div>`);
+    for (const other of ["local", "acme"]) {
+      expect(text(row(html, other))).not.toContain("can steer the Chief");
+      expect(radio(row(html, other), other === "local" ? "s-local" : "s-acme", "ask")).toContain('checked=""');
+    }
+  });
+
+  it("is two native radio buttons per server with one name, so the arrow keys move between them and Tab reaches the group", () => {
+    const html = render({ lead: true });
+    for (const s of servers) {
+      expect(html.match(new RegExp(`name="trust-${s.id}"`, "g")), s.name).toHaveLength(2);
+      expect(radio(html, s.id, "ask")).not.toContain("tabindex");
+      expect(radio(html, s.id, "allow")).not.toContain("disabled");
+    }
+    // each choice has its label around it
+    expect(row(html, "otus")).toMatch(/<label class="check"><input type="radio" [^>]*value="ask"[^>]*\/> Ask for my OK<\/label>/);
+    expect(row(html, "otus")).toMatch(/<label class="check"><input type="radio" [^>]*value="allow"[^>]*\/> Allow<\/label>/);
+  });
+
+  it("hands the form Allow or Ask for one server, keeping its other switches, also for a server that is off", () => {
+    const value: AgentServer[] = [{ serverId: "s-otus", on: true, toolsOff: ["delete_note"] }];
+    const { t, got } = tree({ lead: true, value });
+    const pick = (id: string, v: string) => (findAll(t, (x) => x.name === `trust-${id}` && x.value === v)[0] as { onChange: () => void }).onChange();
+    pick("s-otus", "allow");
+    pick("s-local", "allow");
+    pick("s-otus", "ask");
+    expect(got).toEqual([
+      [{ serverId: "s-otus", on: true, toolsOff: ["delete_note"], trusted: true }],
+      [{ serverId: "s-otus", on: true, toolsOff: ["delete_note"] }, { serverId: "s-local", on: false, toolsOff: [], trusted: true }],
+      [{ serverId: "s-otus", on: true, toolsOff: ["delete_note"], trusted: false }],
+    ]);
+  });
+
+  it("is disabled, like the switches, for a Chief on Codex", () => {
+    const html = render({ lead: true, kind: "codex" });
+    expect(radio(html, "s-otus", "ask")).toContain("disabled");
+    expect(radio(html, "s-otus", "allow")).toContain("disabled");
+  });
+
+  it("is saved: an off server on Allow is kept, Allow and Ask are a change, and left out reads as Ask", async () => {
+    const { cleanSwitches, sameSwitches, trustServer } = await import("../lib/mcp");
+    expect(cleanSwitches([{ serverId: "a", on: false, toolsOff: [], trusted: true }, { serverId: "b", on: false, toolsOff: [], trusted: false }]))
+      .toEqual([{ serverId: "a", on: false, toolsOff: [], trusted: true }]);
+    const ask: AgentServer[] = [{ serverId: "a", on: true, toolsOff: [] }];
+    expect(sameSwitches(ask, trustServer(ask, "a", true))).toBe(false);
+    expect(sameSwitches(ask, trustServer(ask, "a", false))).toBe(true);
+    expect(sameSwitches([], trustServer([], "a", false))).toBe(true);
+    expect(sameSwitches([], trustServer([], "a", true))).toBe(false);
+  });
+
+  it("is passed by the agent form as Chat on, for the MCP servers and for Web and the browser", async () => {
+    const form = (await import("./AgentForm.tsx?raw")).default;
+    expect(form).toMatch(/<AgentToolsField [^\n]*lead=\{d\.chat\}/);
+    expect(form).toMatch(/<AgentCliToolsFields [^\n]*lead=\{d\.chat\}/);
+  });
+});

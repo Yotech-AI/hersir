@@ -67,6 +67,7 @@ mod terminal_flow_test;
 mod test_runs_at_once_flow_test;
 mod teams_flow_test;
 mod tools_test;
+mod trusted_sources_flow_test;
 mod update_flow_test;
 mod version_test;
 mod worktree_flow_test;
