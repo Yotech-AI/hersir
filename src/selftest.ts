@@ -648,7 +648,7 @@ export async function runProbe(taskId: string, api: {
 }
 
 /** Chat page against the fake Claude Code: the setup panel opens the agent form with Chat on, saving it
- * makes the Team Lead, then a message streams an answer whose tool card links the task it created. */
+ * makes the Chief, then a message streams an answer whose tool card links the task it created. */
 export async function chatProbe(listTitles: () => Promise<string[]>) {
   const setup = await waitFor(() => document.querySelector(".chat-setup .btn.primary") as HTMLButtonElement | null, 6000);
   if (!setup) return { ok: false, error: "no setup panel" };
@@ -660,7 +660,7 @@ export async function chatProbe(listTitles: () => Promise<string[]>) {
   const chatOn = !!(dialog.querySelector("#a-chat") as HTMLInputElement | null)?.checked;
   await waitFor(() => (dialog.querySelector(".cm-content")?.textContent ?? "").includes("Chat page") || null, 3000);
   buttonByText(dialog, "Add agent")?.click();
-  const agentPage = !!(await waitFor(() => (document.querySelector(".entity-head h1")?.textContent ?? "") === "Team Lead" || null, 4000));
+  const agentPage = !!(await waitFor(() => (document.querySelector(".entity-head h1")?.textContent ?? "") === "Chief" || null, 4000));
   window.location.hash = "#/chat";
   // GA-41: the text box is a Markdown editor without a toolbar.
   const box = await waitFor(composer, 4000);
@@ -673,7 +673,7 @@ export async function chatProbe(listTitles: () => Promise<string[]>) {
   const made = (await listTitles()).includes("Chat probe task");
   const thread = window.location.hash.startsWith("#/chat/");
   const listed = !!document.querySelector(".chat-threads .th.on");
-  const first = onTeam && name === "Team Lead" && chatOn && agentPage && !!card && reply && made && thread && listed;
+  const first = onTeam && name === "Chief" && chatOn && agentPage && !!card && reply && made && thread && listed;
   const layout = await composerLayoutProbe();
   const runsOn = await runsOnAndQueueProbe();
   const linksAndFiles = await chatPickerAndFilesProbe();
@@ -1023,8 +1023,8 @@ export async function usageProbe() {
     && asOf(subscription.claude2[0]) && asOf(subscription.claude2[1])
     && same(subscription.codex.map((r) => r.slice(0, 2)), [["5-hour limit", "24%"], ["Weekly limit", "41%"]]) && asOf(subscription.codex[0])
     && subscription.gemini.includes("Hersir can't read Gemini's limits yet.") && subscription.gemini_tables === 0
-    && same(subscription.agents, [["Backend Agent (paused)"], ["Team Lead (paused)"], ["Codex Agent (paused)"], []])
-    && subscription.chats.includes("The Team Lead's chat runs here.")
+    && same(subscription.agents, [["Backend Agent (paused)"], ["Chief (paused)"], ["Codex Agent (paused)"], []])
+    && subscription.chats.includes("The Chief's chat runs here.")
     && same(subscription.states, [["limit-ok", "limit-near", "limit-unread"], ["limit-reached", "limit-ok", "limit-unread"], ["limit-ok", "limit-ok"], []])
     && subscription.clipped.length === 0 && subscription.foot.includes("it never asks Anthropic or OpenAI");
 
@@ -1053,7 +1053,7 @@ export async function usageProbe() {
   const agentsTotal = total("Usage per agent");
   const agentsOk = same(agents, [
     ["Backend Agent", "2 runs", "16K", "3.4K", "$0.57", "95%"],
-    ["Team Lead", "1 chat turn", "2K", "100", "$0.03", "5%"],
+    ["Chief", "1 chat turn", "2K", "100", "$0.03", "5%"],
     ["Codex Agent", "1 run", "5K", "500", "Unknown", "0%"],
   ]) && same(agentsTotal, wantTotal);
   await tab("Projects");
@@ -1167,7 +1167,7 @@ export async function chatArchiveProbe() {
   const hit = rows()[0];
   const found = { titles: rowTitles(), who: textOf(hit?.querySelector(".snippet .who")), snippet: textOf(hit?.querySelector(".snippet")),
     marks: textsOf(".snippet mark", hit ?? document) };
-  const hitOk = flamingo && found.titles.length === 1 && found.who === "Team Lead:" && found.snippet === "Team Lead: The old flamingo plan is in the docs."
+  const hitOk = flamingo && found.titles.length === 1 && found.who === "Chief:" && found.snippet === "Chief: The old flamingo plan is in the docs."
     && JSON.stringify(found.marks) === JSON.stringify(["flamingo"]);
   const percent = await find("0%", () => JSON.stringify(rowTitles()) === JSON.stringify(["Chat 34"]));
   await sleep(400);
@@ -1543,23 +1543,23 @@ async function appearanceKeptProbe() {
 
 // ---------- GA-68: the Memory page ----------
 /** GA-68 on the demo data (no agents, no notes), route memory/shared: the sidebar's Memory has Shared notes (0) and Set up
- *  the Team Lead; the page says what memory is, and its tree has only the shared folders. Set up the Team Lead opens the
- *  agent form on the Team page with the Team Lead's name. */
+ *  the Chief; the page says what memory is, and its tree has only the shared folders. Set up the Chief opens the
+ *  agent form on the Team page with the Chief's name (GA-254). */
 export async function memoryEmptyProbe() {
   const items = () => [...document.querySelectorAll('.side .nav-section[aria-label="Memory"] .nav-item')]
     .map((e) => `${e.tagName.toLowerCase()}:${textOf(e)}:${e.getAttribute("href") ?? ""}`);
   await waitFor(() => (items().length === 2 ? true : null), 6000);
   const nav = items();
-  const navOk = JSON.stringify(nav) === JSON.stringify(["a:Shared notes0:#/memory/shared", "button:Set up the Team Lead:"]);
+  const navOk = JSON.stringify(nav) === JSON.stringify(["a:Shared notes0:#/memory/shared", "button:Set up the Chief:"]);
   const empty = await waitFor(() => q(".mem-empty"), 5000);
   const emptyText = textOf(empty);
-  const emptyOk = textOf(empty?.querySelector("b")) === "No notes yet" && emptyText.includes("Memory is what the Team Lead and the agents keep for later")
+  const emptyOk = textOf(empty?.querySelector("b")) === "No notes yet" && emptyText.includes("Memory is what the Chief and the agents keep for later")
     && !!buttonByText(empty ?? document, "New note");
   const top = [...document.querySelectorAll(".mem-tree > [role=treeitem]")].map((e) => e.getAttribute("aria-label"));
   const topOk = JSON.stringify(top) === JSON.stringify(["Clients", "Decisions", "Dependencies", "Deployments", "Lessons", "Projects", "Standards", "Workflows"]);
   const crumbs = textOf(q(".topbar .crumbs"));
   [...document.querySelectorAll<HTMLButtonElement>('.side .nav-section[aria-label="Memory"] button.nav-item')][0]?.click();
-  const setUp = !!(await waitFor(() => (location.hash === "#/team" && q<HTMLInputElement>(".drawer #a-name")?.value === "Team Lead" ? true : null), 5000));
+  const setUp = !!(await waitFor(() => (location.hash === "#/team" && q<HTMLInputElement>(".drawer #a-name")?.value === "Chief" ? true : null), 5000));
   return { ok: navOk && emptyOk && topOk && crumbs === "Memory/Shared notes" && setUp, nav_ok: navOk, nav, empty_ok: emptyOk, top_ok: topOk, top, crumbs, set_up: setUp };
 }
 
@@ -1601,7 +1601,7 @@ export async function memoryProbe(noteId: string, agentId: string) {
     await waitFor(() => (nav().length === 3 && nav()[0]?.count === "8" ? true : null), 6000);
     out.nav = nav();
     const navOk = JSON.stringify(nav().map((n, i) => (i === 2 ? { ...n, href: "" } : n))) === JSON.stringify([
-      { name: "Team Lead", count: "8", href: "#/memory" }, { name: "Backend Agent", count: "2", href: `#/memory/agent/${agentId}` },
+      { name: "Chief", count: "8", href: "#/memory" }, { name: "Backend Agent", count: "2", href: `#/memory/agent/${agentId}` },
       { name: "Backend Agent 2", count: "1", href: "" }]) && (nav()[2]?.href ?? "").startsWith("#/memory/agent/");
     const agentsFirst = textOf(q('.side .nav-section[aria-label="Memory"]')?.previousElementSibling?.querySelector(".nav-label")) === "Agents";
 
@@ -1825,10 +1825,10 @@ export async function memoryProbe(noteId: string, agentId: string) {
     buttonByText(q(".mem-recent") ?? document, "Agents")?.click();
     await sleep(200);
     out.recent = { everyone, agents: textsOf(".mem-change") };
-    // by agents: the Backend Agent's KADE note (in a run) and Notes, Backend Agent 2's and the Team Lead's (each made its own)
+    // by agents: the Backend Agent's KADE note (in a run) and Notes, Backend Agent 2's and the Chief's in Team Lead/ (each made its own)
     const byAgents = textsOf(".mem-change");
     const recentOk = everyone === 9 && byAgents.length === 4 && byAgents.some((t) => t.startsWith("KADEAgents/Backend AgentBackend Agent in a run on KADE-1"))
-      && byAgents.some((t) => t.startsWith("NotesAgents/Backend AgentBackend Agent")) && byAgents.some((t) => t.startsWith("NotesTeam LeadTeam Lead"));
+      && byAgents.some((t) => t.startsWith("NotesAgents/Backend AgentBackend Agent")) && byAgents.some((t) => t.startsWith("NotesTeam LeadChief"));
 
     // The Team Lead's page searches every note: both agents' notes say "learned"; path:"Team Lead" keeps to its folder.
     // The shared notes' page lists no agent's or Team Lead note: they all say "data", as Use SQLite does.
@@ -4553,7 +4553,7 @@ async function perfLead(o: PerfResult, ids: PerfIds) {
   await nextFrame();
   const sent = performance.now();
   enter(c);
-  if (!(await waitFor(() => document.querySelector(".chat-working"), 20000))) throw new Error("the Team Lead did not start answering");
+  if (!(await waitFor(() => document.querySelector(".chat-working"), 20000))) throw new Error("the Chief did not start answering");
   const from = performance.now();
   o.numbers.answer_start_ms = ms(from - sent);
   const f = await perfFrames(120000, undefined, () => !document.querySelector(".chat-working"));
