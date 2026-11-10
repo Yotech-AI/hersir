@@ -617,9 +617,13 @@ describe("the installers' messages say Hersir (GA-234)", () => {
     const lines = (path) => printed(path).map((p) => p.line.trim());
     expect(lines("install.sh")).toContain("# Hersir installer for Linux and macOS. Builds Hersir from source and installs it for you alone (no sudo):");
     expect(lines("install.sh")).toContain("#   ./install.sh --uninstall     remove Hersir, also an install from before 0.17.0 (add --purge to delete your data too)");
-    expect(lines("install.sh")).toContain('[ "$ok" = 1 ] && say "Everything Hersir needs to build is here."');
+    // with --skip-build (-SkipBuild), what Hersir needs to run; else to build (GA-252)
+    expect(lines("install.sh")).toContain('say "Everything Hersir needs to build is here."');
+    expect(lines("install.sh")).toContain('say "Everything Hersir needs to run is here."');
     expect(lines("install.ps1")).toContain("# Hersir installer for Windows. Builds Hersir from source and installs it for you alone (no administrator rights):");
-    expect(lines("install.ps1")).toContain("if ($ok) { Say 'Everything Hersir needs to build is here.' }");
+    expect(lines("install.ps1")).toContain(
+      "if ($ok -and $SkipBuild) { Say 'Everything Hersir needs to run is here.' } elseif ($ok) { Say 'Everything Hersir needs to build is here.' }",
+    );
     expect(lines("scripts/get.sh")).toContain("Hersir's one-line install for Linux and macOS:");
     expect(lines("scripts/get.ps1")).toContain('Say "Hersir\'s one-line install for Windows, in PowerShell:"');
     expect(lines("install.sh").some((l) => l.startsWith("# The tray icon loads libayatana-appindicator"))).toBe(false);
