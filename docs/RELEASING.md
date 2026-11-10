@@ -2,7 +2,7 @@
 
 This is how a new version of Hersir reaches the people who use it. It is for people and for agents (the DevOps Agent releases when a card asks for it and names the version).
 
-In short: a release is a GitHub Release with a version tag, `vX.Y.Z`, on the `production` branch. Every installed Hersir asks GitHub for the latest release. When it finds a newer one, the sidebar shows **Update to X.Y.Z** above Company. Hersir updates from Releases only, never from `main`: a merge into `main` reaches people with the next release.
+In short: a release is a GitHub Release with a version tag, `vX.Y.Z`, on the `production` branch, which Jeffrey signs on their own computer with Hersir's release key ([step 5](#making-a-release)). Every installed Hersir asks GitHub for the latest release. When it finds a newer one, the sidebar shows **Update to X.Y.Z** above Company. Hersir updates from Releases only, never from `main`: a merge into `main` reaches people with the next release.
 
 ## Branches
 
@@ -102,7 +102,7 @@ Replace `X.Y.Z` with the new version.
    curl -s https://api.github.com/repos/Yotech-AI/hersir/releases/latest | grep '"tag_name"'   # what Hersir reads: vX.Y.Z
    ```
 
-   Publishing the release also starts One-line install (`.github/workflows/one-line.yml`): hersir.dev's own lines install the new release on Ubuntu 24.04, macOS 15 and Windows, then uninstall it. Its jobs take 7 to 12 minutes and must be green on all three:
+   Publishing the release also starts One-line install (`.github/workflows/one-line.yml`): hersir.dev's own lines install the new release on Ubuntu 24.04, macOS 15 and Windows, then uninstall it. Signing the release (step 5) starts it again. Its jobs take 7 to 12 minutes and must be green on all three:
 
    ```sh
    gh run list --workflow one-line.yml --event release --limit 1 --json headBranch,status,conclusion,url   # vX.Y.Z, completed, success
@@ -110,7 +110,7 @@ Replace `X.Y.Z` with the new version.
 
    A red run is a `needs_decision` with what its log says (`gh run view <id> --log-failed`), not a new release.
 
-   Publishing the release starts Release builds (`.github/workflows/release-builds.yml`) too. It builds the release's tag with the release's own `install.sh --build-only` on Ubuntu 22.04 (x86_64) and macOS (Apple silicon), and `install.ps1 -BuildOnly` on Windows (x86_64). It checks that each build installs with `--skip-build` (`-SkipBuild`) and says the version, then attaches four files to the release with the workflow's own token. Each system builds Hersir in full, so give it about 20 minutes. Then its run must be green, and the release must have the four:
+   Publishing the release starts Release builds (`.github/workflows/release-builds.yml`) too. It builds the release's tag with the release's own `install.sh --build-only` on Ubuntu 22.04 (x86_64) and macOS (Apple silicon), and `install.ps1 -BuildOnly` on Windows (x86_64). It checks that each build installs with `--skip-build` (`-SkipBuild`) and says the version, then attaches four files to the release with the workflow's own token. Each system builds Hersir in full, so give it about 20 minutes. Then its run must be green, and the release must have the four; once Jeffrey has signed it (step 5), it has five:
 
    ```sh
    gh run list --workflow release-builds.yml --event release --limit 1 --json headBranch,status,conclusion,url   # vX.Y.Z, completed, success
@@ -119,10 +119,30 @@ Replace `X.Y.Z` with the new version.
 
    - `hersir-X.Y.Z-linux-x86_64.tar.gz`, `hersir-X.Y.Z-macos-arm64.tar.gz` and `hersir-X.Y.Z-windows-x86_64.zip`: each holds the files `install.sh --skip-build` (`install.ps1 -SkipBuild`) installs from a build, at the paths the build leaves them: `target/release/hersir` and `target/release/hersir-mcp`, on macOS also `target/release/bundle/macos/Hersir.app`, on Windows the two `.exe` files. Unpacked into the release's source, `--skip-build` installs them as if they had been built there.
    - `SHA256SUMS`: one line per archive, `<sha256>  <file name>`, as `sha256sum` writes it. `sha256sum -c SHA256SUMS` checks the three.
+   - `hersir-X.Y.Z.sig`: the release's signature, which step 5 adds.
 
-   The one-line install and Update don't use them yet: they still build from source. A red run is a `needs_decision` with what its log says, not a new release: the release keeps working without its builds. Once the cause is fixed, `gh workflow run release-builds.yml -f tag=vX.Y.Z` builds the release's tag again and attaches the four, replacing any it has. The same command gives a release from before this workflow its builds; whether to run it for one is Jeffrey's call.
+   The one-line install and Update don't use the builds yet: they still build from source. A red run is a `needs_decision` with what its log says, not a new release: the release keeps working without its builds. Once the cause is fixed, `gh workflow run release-builds.yml -f tag=vX.Y.Z` builds the release's tag again and attaches the four, replacing any it has. The same command gives a release from before this workflow its builds; whether to run it for one is Jeffrey's call. New builds make a new `SHA256SUMS`, so a release that was signed already needs signing again: `scripts/sign-release.sh vX.Y.Z --again` (step 5).
 
-   Every installed Hersir sees the release within six hours, or at once with Settings → Updates → Check now.
+   The DevOps Agent's part ends when the builds are uploaded: it asks Jeffrey to sign the release (step 5), with `needs_decision`. It never signs a release itself.
+
+5. **Sign it.** Jeffrey signs the release on their own computer, in a checkout of this repository, once Release builds has uploaded the four files of step 4. Until then no Hersir offers or installs the release.
+
+   ```sh
+   scripts/sign-release.sh vX.Y.Z
+   ```
+
+   - It reads the release from GitHub: its assets, the commit its tag points to and `production`'s latest commit. It stops, and says why, when the release has no `SHA256SUMS` or misses one of its three archives, or has `hersir-X.Y.Z.sig` already: `--again` signs it again and replaces it.
+   - It shows what it signs: the version, the commit with its subject, whether that is `production`'s latest commit, and `SHA256SUMS`. Then it asks `Sign vX.Y.Z? [y/N]`, and after `y` ssh-keygen asks for the release key's passphrase.
+   - What it signs, with `ssh-keygen -Y sign -n hersir-release` and the key in `HERSIR_RELEASE_KEY` (default `~/.ssh/hersir-release`), is this message, byte for byte: the line `hersir vX.Y.Z <commit>` and a newline, where `<commit>` is the 40-character id of the commit the tag points to, followed by the release's `SHA256SUMS` exactly as uploaded.
+   - It checks the new signature against `release-signers`, uploads it as the release's fifth asset, `hersir-X.Y.Z.sig`, checks that the release lists it, and starts One-line install again, which must then be green on all three:
+
+     ```sh
+     gh run list --workflow one-line.yml --event workflow_dispatch --limit 1 --json headBranch,status,conclusion,url   # main, completed, success
+     ```
+
+   The keys are in [`release-signers`](../release-signers), at the repository's root, in OpenSSH's allowed-signers format: Jeffrey's release key, which signs every release, and a spare, kept offline, which signs only when the first is lost or leaked. The one-line install and Update carry the same two lines built in, and never take keys from a release. Before anything of a release runs (its `install.sh` or `install.ps1`, a build or a downloaded archive), they check `hersir-X.Y.Z.sig` against those keys, over that message with the commit of the tag as they fetched it. No signature, one that doesn't check, another key or another commit: nothing is installed, one line says why, and an installed Hersir stays as it is. Only then is an archive checked against `SHA256SUMS`. Update doesn't offer a release without its signature, and the one-line install says `vX.Y.Z isn't signed yet: try again in a few minutes.` For tests, `HERSIR_RELEASE_SIGNERS`, a file in the same format, replaces the built-in keys (and `release-signers` in `scripts/sign-release.sh`): CI and QA sign fake releases with a throwaway key, never with Jeffrey's.
+
+   Once it is signed, every installed Hersir sees the release within six hours, or at once with Settings → Updates → Check now.
 
 If `git push` asks for a username (the remote is an https address and git has no login for it), push over SSH with your keys:
 
@@ -170,7 +190,8 @@ Hersir 0.11.0 installs with one line on Linux, macOS and Windows, and is now ope
 - **Never move or delete a released tag, and never reuse a version.** An installed Hersir may have fetched it already. A mistake gets fixed with the next patch version.
 - **Never push to `production` directly or force a push.** Only the pull request from `main` changes it.
 - **Never tag `main` or a card's branch.** Release tags point at `production`.
-- **Nothing signed beyond the build's own signature, and never an account or a certificate.** Release builds (`.github/workflows/release-builds.yml`) attaches ready-made builds to every release: the release's own installers build them on GitHub's runners (step 4). Nothing in them is signed beyond what the build does itself: on macOS, the ad-hoc signature every Apple silicon build has. There is no Apple Developer account and no Windows certificate: never set up an account or buy a certificate for it. Never offer the builds as browser downloads either: a browser marks what it downloads, and Gatekeeper and SmartScreen stop an unsigned app with that mark. Installers and signing come later, when Hersir has paid features.
+- **Nothing signed beyond Hersir's own release key and the build's own signature, and never an account or a certificate.** Every release is signed with Hersir's release key, on Jeffrey's computer (step 5), and the one-line install and Update check that signature. Release builds (`.github/workflows/release-builds.yml`) attaches ready-made builds to every release: the release's own installers build them on GitHub's runners (step 4). Nothing in them is signed beyond what the build does itself: on macOS, the ad-hoc signature every Apple silicon build has. No Apple or Microsoft signature: there is no Apple Developer account and no Windows certificate, so never set up an account or buy a certificate for it. Never offer the builds as browser downloads either: a browser marks what it downloads, and Gatekeeper and SmartScreen stop an app with that mark that Apple or Microsoft hasn't signed. Installers and Apple's and Microsoft's signatures come later, when Hersir has paid features.
+- **The release keys stay on Jeffrey's computer.** The private keys of `release-signers` are on Jeffrey's computer and in their password manager, never on GitHub, in CI, in Hersir's data or with an agent, and they are never loaded into ssh-agent. Nothing in CI signs, and no agent signs a release. A lost or leaked key: the next release is signed with the spare, and its Hersir carries a new `release-signers`, without that key.
 
 ## How Hersir updates itself
 
