@@ -134,3 +134,35 @@ describe("Settings → Updates", () => {
     expect(t).toContain("gizai-before-update-x.db");
   });
 });
+
+describe("GA-253: Settings → Updates with signed releases and ready-made builds", () => {
+  it("says a release that isn't signed yet is out, and offers no Update for it", () => {
+    current = status({ latest: release, unsigned: release });
+    const html = text(renderToStaticMarkup(<UpdateSettings />));
+    expect(html).toContain("Hersir 0.1.5. v0.1.6 is out, but not signed yet.");
+    expect(html).not.toContain("Update to 0.1.6");
+    expect(renderToStaticMarkup(<UpdateNotice />)).toBe("");
+  });
+  it("says Downloading with Stop while it downloads the ready-made build", () => {
+    current = status({ latest: release, available: release, job: job("download") });
+    const html = text(renderToStaticMarkup(<UpdateSettings />));
+    expect(html).toContain("Downloading 0.1.6… You can keep working.");
+    expect(html).toContain("Stop");
+    expect(html).not.toContain("The first build takes a while");
+  });
+  it("says why it builds from source while it builds, once installed and when it failed", () => {
+    const why = "hersir-0.1.6-linux-x86_64.tar.gz doesn't match the release's SHA256SUMS, so Hersir builds 0.1.6 from source";
+    current = status({ latest: release, available: release, job: job("build", { fromSource: why }) });
+    expect(text(renderToStaticMarkup(<UpdateSettings />))).toContain(`Building 0.1.6… The first build takes a while; later ones are quicker. You can keep working. ${why}.`);
+    current = status({ latest: release, available: release, installed: "0.1.6", job: job("installed", { fromSource: why, unchanged: false }) });
+    expect(text(renderToStaticMarkup(<UpdateSettings />))).toContain(`${why}.`);
+    current = status({ latest: release, available: release, job: job("failed", { fromSource: why, problem: "./install.sh --build-only failed (exit code 101)" }) });
+    expect(text(renderToStaticMarkup(<UpdateSettings />))).toContain(`${why}.`);
+  });
+  it("says in one line why a signature stopped the update, and that the installed Hersir still works", () => {
+    const problem = "hersir-0.1.6.sig is signed with a key that isn't one of Hersir's release keys (SHA256:abc), so Hersir doesn't install it";
+    current = status({ latest: release, available: release, job: job("failed", { problem }) });
+    expect(text(renderToStaticMarkup(<UpdateSettings />)))
+      .toContain(`The update to 0.1.6 didn't work: ${problem}. Hersir 0.1.5 is still installed and works as before.`);
+  });
+});
