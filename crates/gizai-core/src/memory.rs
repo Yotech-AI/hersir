@@ -390,6 +390,12 @@ pub fn find(db: &Db, path: &str) -> Result<Option<Note>> {
     db.read(|c| by_path_in(c, path))
 }
 
+/// The note a `write` to `path` saves over, found as `write` finds it, whoever asks: by its id, or by its path made tidy
+/// (case ignored, `.md` allowed, the Chief's old `Team Lead/` as `Chief/`). None: the write makes a new note.
+pub fn existing(db: &Db, path: &str) -> Result<Option<Note>> {
+    db.read(|c| find_existing(c, path))
+}
+
 /// What a write did.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
