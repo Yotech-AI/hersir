@@ -1,0 +1,32 @@
+{
+  "format": "gizai-backup",
+  "format_version": 1,
+  "name": "gizai-manual-20261110-183655-639-d0b90cd9",
+  "reason": "manual",
+  "made_at": 1794332215639,
+  "app_version": "0.16.0",
+  "schema_version": 21,
+  "device": {
+    "id": "01a1c688-c94b-7366-9e5a-0c7dd0b90cd9",
+    "name": "this machine"
+  },
+  "db": {
+    "path": "snapshots/gizai-manual-20261110-183655-639-d0b90cd9.db.zst",
+    "compression": "zstd",
+    "bytes": 15236,
+    "sha256": "bd8ad5e9f35f62a1cacb2c625a4010eeb9d1a36a0596ad3df397d2bf424eaf92",
+    "db_bytes": 471040
+  },
+  "last_change": {
+    "seq": 27,
+    "id": "01a1c688-c952-7749-8cd4-f4241c26e03e",
+    "hlc": "1794332215634-0026-01a1c688"
+  },
+  "files": [
+    {
+      "sha256": "6f0740fe719b5394b7e49ac1e12aacc114ead03da137e6a48539bb2f98739fb2",
+      "bytes": 48
+    }
+  ],
+  "files_missing": []
+}

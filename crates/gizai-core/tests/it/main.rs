@@ -62,6 +62,7 @@ mod templates_test;
 mod test_runs_at_once_test;
 mod trusted_sources_test;
 mod usage_test;
+mod v0160_data_test;
 mod workflow_test;
 mod worktrees_test;
 
