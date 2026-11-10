@@ -245,7 +245,7 @@ impl T {
 
     fn browser(&self, on: bool, tools_off: &[&str]) {
         let mcp = if on {
-            vec![AgentServer { server_id: core_mcp::BROWSER.into(), on: true, tools_off: tools_off.iter().map(|t| t.to_string()).collect() }]
+            vec![AgentServer { server_id: core_mcp::BROWSER.into(), on: true, tools_off: tools_off.iter().map(|t| t.to_string()).collect(), trusted: false }]
         } else {
             vec![]
         };

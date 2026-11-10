@@ -115,7 +115,7 @@ fn listed(st: &AppState, id: &str, tools: &[&str]) {
 
 /// The agent form's switches: (server id, on, its tools off).
 fn switch(st: &AppState, agent: &str, servers: &[(&str, bool, &[&str])]) {
-    let mcp = servers.iter().map(|(id, on, off)| AgentServer { server_id: id.to_string(), on: *on, tools_off: off.iter().map(|t| t.to_string()).collect() }).collect();
+    let mcp = servers.iter().map(|(id, on, off)| AgentServer { server_id: id.to_string(), on: *on, tools_off: off.iter().map(|t| t.to_string()).collect(), trusted: false }).collect();
     app_mcp::save_agent(st, agent, AgentTools { mcp }).unwrap();
 }
 
@@ -513,7 +513,7 @@ async fn an_agent_on_codex_or_gemini_shows_why_mcp_is_off_and_its_run_goes_witho
         assert_eq!(v.disabled.as_deref(), core_mcp::mcp_not_on(kind), "{name}");
         let why = v.disabled.clone().unwrap_or_default();
         assert!(why.contains(name) && why.contains("the browser") && !why.contains("GA-55"), "{name}: {why}");
-        let err = app_mcp::save_agent(&st, &agent, AgentTools { mcp: vec![AgentServer { server_id: otus.clone(), on: true, tools_off: vec![] }] }).unwrap_err();
+        let err = app_mcp::save_agent(&st, &agent, AgentTools { mcp: vec![AgentServer { server_id: otus.clone(), on: true, tools_off: vec![], trusted: false }] }).unwrap_err();
         assert!(err.contains("Claude Code") && err.contains(name), "{name}: {err}");
 
         let s = gizai_lib::runs::run_once(&st, &task, None, None).await.unwrap();
