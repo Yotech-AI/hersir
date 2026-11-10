@@ -1,3 +1,10 @@
+# rusqlite_migration 2.6.0, patched
+
+A copy of rusqlite_migration 2.6.0 from crates.io (Apache-2.0), changed only to accept rusqlite 0.41.
+Hersir needs rusqlite 0.41 for libsqlite3-sys 0.39.1 (RUSTSEC-2026-0459), and no rusqlite_migration
+release accepts it yet (upstream: cljoly/rusqlite_migration#370). Remove this folder and its lines in
+Cargo.toml as soon as such a release is out (GA-273).
+
 <!-- insert
 ---
 title: "Rusqlite Migration"

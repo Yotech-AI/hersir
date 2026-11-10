@@ -58,7 +58,8 @@ optional = true
 version = "0.4"
 
 [dependencies.rusqlite]
-version = "0.40.0"
+# Changed for Hersir: "0.40.0" in crates.io's 2.6.0 (see README.md).
+version = "0.41"
 features = []
 default-features = false
 
