@@ -69,7 +69,7 @@ jobs:
   # release-builds.yml): with the commit's own installer, build only, and on Ubuntu 22.04, whose glibc is older than
   # every distribution's here. Each archive is kept as the run's artifact, by its own name.
   build:
-    name: build ${{ matrix.system }}
+    name: ready-made ${{ matrix.system }}
     needs: version
     strategy:
       fail-fast: false
@@ -194,7 +194,7 @@ jobs:
   # Also a signature by another throwaway key, and a SHA256SUMS changed after it was signed, for the cases that must
   # install nothing. latest.json is GitHub's answer for the latest release. Kept as the run's artifact fake-release.
   release:
-    name: a signed release
+    name: signed test release
     needs: [version, build]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
