@@ -1,6 +1,7 @@
 // GA-257 QA: Chat → Pinned. The pins are the setting `chat_pins` (the chat ids, the newest pin first): pinned_threads lists
 // the pinned chats that exist, of any age, the newest pin first; set_pinned pins a chat to the top or unpins it, drops the
-// pins of chats that no longer exist and refuses a chat that doesn't exist. No schema change: SCHEMA_VERSION stays 21, and
+// pins of chats that no longer exist and refuses a chat that doesn't exist. No schema change for the pins (SCHEMA_VERSION is
+// 22 for GA-261's outside marks), and
 // the pins survive a restart (the database opened again) and are in a snapshot of the database, as a shared setting.
 use gizai_core::chat::{self, NewMessage};
 use gizai_core::model::*;
@@ -185,7 +186,7 @@ fn a_broken_setting_reads_as_no_pins() {
 
 #[test]
 fn pins_survive_a_restart_and_are_in_a_snapshot_without_a_schema_change() {
-    assert_eq!(db::SCHEMA_VERSION, 21, "GA-257 ships as a patch release: no schema change");
+    assert_eq!(db::SCHEMA_VERSION, 22, "the pins need no schema change: 22 is GA-261's 0022_outside_marks.sql");
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("gizai.db");
     let ids = {

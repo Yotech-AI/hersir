@@ -138,9 +138,9 @@ block (`-----BEGIN … PRIVATE KEY-----`) or an API token (`sk-…`, `ghp_…` a
 The Chief's tools: `memory_list`, `memory_search`, `memory_read`, `memory_write` (a whole note, with the version it
 read; a new path makes the note), `memory_append` (under a heading, without rewriting the note) and `memory_move` (move
 or copy, rewriting links). `memory_read`, `memory_append` and `memory_move` find a note by its path, its title (as a
-wikilink does) or its id. It sees every scope, and the activity feed shows it as the author. Once a chat answer has used
-a tool from outside Hersir (another MCP server, the web, the browser), `memory_write`, `memory_append` and `memory_move`
-aren't run for the rest of that answer, like its other tools that act: Hersir keeps each call under the answer for you to
+wikilink does) or its id. It sees every scope, and the activity feed shows it as the author. Once a chat has used a tool
+from outside Hersir (another MCP server, the web, the browser), `memory_write`, `memory_append` and `memory_move` aren't
+run for the rest of that chat (GA-261), like its other tools that act: Hersir keeps each call under the answer for you to
 approve with one click (GA-102). The preview shows the note's path and its new text, with what changes against the
 current version when the note exists (`memory_write`), the path, heading and text (`memory_append`), or from and to
 (`memory_move`). **Approve** saves exactly that, once, as the Chief, with the usual version check: a note that

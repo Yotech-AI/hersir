@@ -136,7 +136,7 @@ A repository's own files and git settings never start a program outside an agent
 
 ## Safety
 
-After a chat answer used an outside tool (an MCP server, the web, the browser), the Chief's calls that start runs, change agents or columns, save to memory or merge wait under that answer for your Approve, each with a preview. See [Approve with one click](chief.md#approve-with-one-click).
+Once a chat used an outside tool (an MCP server, the web, the browser), for the rest of that chat the Chief's calls that start runs, change agents or columns, save to memory, merge, comment, change a card's text or a project's repository, folder, branch or goal wait under its answer for your Approve, each with a preview. See [Approve with one click](chief.md#approve-with-one-click).
 
 ## Read more
 

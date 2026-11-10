@@ -779,6 +779,11 @@ pub fn ran_for_me_note(commands: &[String]) -> String {
 /// "Runs at once" is full, the agent is paused or over its budget, the card's run is starting) or can't work (false).
 pub(crate) async fn continue_for_question(st: &AppState, run_id: &str, lead: &str, answer: &str)
     -> Result<(String, tokio::task::JoinHandle<RunSummary>), (bool, String)> {
+    // GA-261: a Continue takes the card's hold off, and GA-101's waits for your OK: only you take that one off.
+    let card = core_runs::get(&st.db, run_id).ok().and_then(|r| r.task_id).and_then(|id| tasks::get(&st.db, &id).ok());
+    if card.is_some_and(|t| t.waits_for_your_ok()) {
+        return Err((false, crate::tools::ONLY_THE_USER.into()));
+    }
     let note = ContinueNote::of(st, lead, Some(answer.to_string()));
     continue_with(st, run_id, None, true, note).await.map_err(|e| match e {
         StartError::Wait(m) => (true, m),

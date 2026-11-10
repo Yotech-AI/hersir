@@ -33,7 +33,7 @@ fn task_done(cx: &Cx, id: &str, what: &str, held_after: Option<&str>) -> Result<
     let mut v = json!({"ok": true, "done": what, "task": task, "link": link("task", &t.id, &format!("{} {}", t.identifier, short(&t.title, 60)))});
     if let Some(tool) = held_after {
         v["on_hold"] = json!(format!("{} waits on hold for the user's OK, so no agent starts it: you used {tool}, a tool from outside \
-            Hersir, in this answer. Tell the user, and ask them to check it and take it off hold.", t.identifier));
+            Hersir, in this chat. Tell the user, and ask them to check it and take it off hold.", t.identifier));
     }
     Ok(v)
 }
@@ -42,6 +42,11 @@ fn task_done(cx: &Cx, id: &str, what: &str, held_after: Option<&str>) -> Result<
 /// there, after using `tool`, a tool from outside Gizai.
 fn waiting_for_ok(tool: &str) -> String {
     format!("Waiting for your OK: the Chief put this card here after using {tool}, a tool from outside Hersir. Check it, then take it off hold.")
+}
+
+/// GA-101's hold, `needs_decision` with `reason` (`waiting_for_ok`), of its own kind (GA-261): only the user takes it off.
+fn waiting_hold(reason: &str) -> tasks::NewHold<'_> {
+    tasks::NewHold { hold: "needs_decision", reason, kind: Some(HOLD_WAITING_FOR_OK) }
 }
 
 /// An Auto column: its agents pick its cards up by themselves (`workflow::waiting_for`).
@@ -57,7 +62,8 @@ fn in_auto(cx: &Cx, t: &Task) -> Result<bool, String> {
 
 /// GA-101: the patch changes what the card's agent is told (its description or acceptance criteria) or who starts it (its
 /// assignee). So does a new Builds on (GA-228, `builds_on`: card ids): its run prompt names those cards, and taking one
-/// off can start it.
+/// off can start it. GA-261: such a change outside an Auto column waits for the user's Approve after a tool from outside
+/// Gizai in the chat.
 fn steers(cx: &Cx, t: &Task, p: &TaskPatch, builds_on: Option<&[String]>) -> bool {
     let differs = |new: &Option<String>, now: Option<&str>| new.as_deref().is_some_and(|n| n.trim() != now.unwrap_or_default().trim());
     let new_builds_on = builds_on.is_some_and(|new| {
@@ -216,7 +222,7 @@ fn guard_commands(a: &Args, kept: &[String]) -> Result<(), String> {
 
 /// A repository path from chat must be a git repository (it has a .git folder or file), and never `/`, your
 /// home folder or a folder above it: agents work there and the Chief may read it.
-fn checked_repo(raw: &str) -> Result<String, String> {
+pub(crate) fn checked_repo(raw: &str) -> Result<String, String> {
     let bad = || format!("{raw} is not a git repository: give the folder that holds the project's .git");
     let p = std::path::Path::new(raw).canonicalize().map_err(|_| bad())?;
     let home = std::path::Path::new(&gizai_core::clis::home()).canonicalize().ok();
@@ -335,20 +341,11 @@ pub(crate) fn create_project(cx: &Cx, a: &Args) -> Result<Value, String> {
               "link": link("project", &p.id, &label)}))
 }
 
-pub(crate) async fn update_project(cx: &Cx<'_>, a: &Args) -> Result<Value, String> {
-    guard_lead_may_merge(a)?;
-    let cur = resolve::project(cx, &a.req("project")?)?;
+/// What `update_project` saves for the project `cur`, and the team it names: everything given is checked first (the folder
+/// is a git repository, the client and the team exist, Test runs at once is in range), so a refusal changes nothing.
+pub(crate) fn project_input(cx: &Cx, cur: &Project, a: &Args) -> Result<(ProjectInput, Option<team::Team>), String> {
     // GA-225: another team moves the project and all its cards there, as the project form does.
     let team = match a.opt("team") { Some(t) => Some(resolve::team(cx, &t)?), None => None };
-    let moves = team.as_ref().is_some_and(|t| cur.team_id.as_deref() != Some(t.id.as_str()));
-    if moves && cx.check.is_some() {
-        return Err(format!("A board check never moves a project to another team: ask the user in a chat (start_chat) instead. {} stays where it is.",
-                           cur.name));
-    }
-    // Its cards land where that team's agents start them: not after a tool from outside Gizai in this answer (GA-101).
-    if moves && let Some(tool) = cx.outside("update_project", a).await? {
-        return Err(super::refused_after("update_project", &tool));
-    }
     let repo_path = match a.text("repo_path") {
         Some(r) if r.is_empty() => None,
         Some(r) => Some(checked_repo(&r)?),
@@ -368,13 +365,79 @@ pub(crate) async fn update_project(cx: &Cx<'_>, a: &Args) -> Result<Value, Strin
         return Err(format!("test_runs_at_once is a number from {} to {}, or 0 to clear it, not {n}. Nothing changed.",
                            projects::TEST_RUNS_AT_ONCE.start(), projects::TEST_RUNS_AT_ONCE.end()));
     }
-    let moved = crate::runs::update_project(cx.st, cx.actor, &cur.id, ProjectInput {
+    let input = ProjectInput {
         client_id, name: a.opt("name").unwrap_or_else(|| cur.name.clone()), key: cur.key.clone(),
         status: a.opt("status").or(Some(cur.status.clone())), goal_md: keep(a, "goal_md", &cur.goal_md),
         repo_path, default_branch: a.opt("default_branch").or(Some(cur.default_branch.clone())),
         color: keep(a, "color", &cur.color), budget_amount_minor: cur.budget_amount_minor, budget_hours: cur.budget_hours,
-        repo_url: keep(a, repository_arg(a), &cur.repo_url), test_runs_at_once, team_id: team.map(|t| t.id), ..Default::default()
-    }).map_err(err)?;
+        repo_url: keep(a, repository_arg(a), &cur.repo_url), test_runs_at_once, team_id: team.as_ref().map(|t| t.id.clone()), ..Default::default()
+    };
+    Ok((input, team))
+}
+
+/// GA-261: what of a project steers its agents: new cards fetch, run and push the code of its repository (its link), its
+/// folder and its main branch, and every agent's prompt carries its goal. After a tool from outside Gizai in the chat, a
+/// call of `update_project` that changes one of them waits for the user's Approve.
+pub(crate) const STEERS_PROJECT: [&str; 4] = ["repository", "repo_path", "default_branch", "goal_md"];
+
+/// One thing a call of `update_project` changes: its argument (`repository` for `github` too), its label, and the value now
+/// and the new one as the project page says them ("" for none; the goal whole).
+pub(crate) struct ProjectChange {
+    pub key: &'static str,
+    pub label: &'static str,
+    pub from: String,
+    pub to: String,
+}
+
+/// What saving `input` (`project_input`) changes of the project `cur`, in the project form's order. A link in another form
+/// of the same repository, or the same folder written another way, changes nothing.
+pub(crate) fn project_changes(cx: &Cx, cur: &Project, input: &ProjectInput) -> Vec<ProjectChange> {
+    let text = |v: Option<&str>| v.unwrap_or_default().trim().to_string();
+    let client = |id: Option<&str>| id.and_then(|id| clients::get(cx.db(), id).ok()).map(|c| c.name).unwrap_or_default();
+    // As the link is saved: a GitHub or Bitbucket link in its tidy form.
+    let link = |v: Option<&str>| match gizai_core::repo_url::normalize(v.unwrap_or_default()) {
+        Ok(l) => l.map(|l| l.url).unwrap_or_default(),
+        Err(_) => text(v),
+    };
+    let runs_at_once = |n: Option<i64>| n.filter(|n| *n > 0).map(|n| n.to_string()).unwrap_or_default();
+    let team_now = cur.team_name.clone().unwrap_or_default();
+    let team_then = match input.team_id.as_deref().filter(|t| cur.team_id.as_deref() != Some(*t)) {
+        Some(id) => team::get(cx.db(), id).map(|t| t.name).unwrap_or_else(|_| id.to_string()),
+        None => team_now.clone(),
+    };
+    let all = [
+        ("name", "Name", cur.name.clone(), input.name.trim().to_string()),
+        ("client", "Client", client(cur.client_id.as_deref()), client(input.client_id.as_deref())),
+        ("status", "Status", cur.status.clone(), text(input.status.as_deref())),
+        ("color", "Colour", text(cur.color.as_deref()), text(input.color.as_deref())),
+        ("goal_md", "Goal", text(cur.goal_md.as_deref()), text(input.goal_md.as_deref())),
+        ("repo_path", "Folder", text(cur.repo_path.as_deref()), text(input.repo_path.as_deref())),
+        ("default_branch", "Main branch", cur.default_branch.trim().to_string(), text(input.default_branch.as_deref())),
+        ("repository", "Repository", link(cur.repo_url.as_deref()), link(input.repo_url.as_deref())),
+        ("test_runs_at_once", "Test runs at once", runs_at_once(cur.test_runs_at_once.map(i64::from)),
+         match input.test_runs_at_once { Some(n) => runs_at_once(Some(n)), None => runs_at_once(cur.test_runs_at_once.map(i64::from)) }),
+        ("team", "Team", team_now, team_then),
+    ];
+    all.into_iter().filter(|(_, _, from, to)| from != to).map(|(key, label, from, to)| ProjectChange { key, label, from, to }).collect()
+}
+
+pub(crate) async fn update_project(cx: &Cx<'_>, a: &Args) -> Result<Value, String> {
+    guard_lead_may_merge(a)?;
+    let cur = resolve::project(cx, &a.req("project")?)?;
+    let (input, team) = project_input(cx, &cur, a)?;
+    let moves = team.as_ref().is_some_and(|t| cur.team_id.as_deref() != Some(t.id.as_str()));
+    if moves && cx.check.is_some() {
+        return Err(format!("A board check never moves a project to another team: ask the user in a chat (start_chat) instead. {} stays where it is.",
+                           cur.name));
+    }
+    // GA-261: a new repository, folder, main branch or goal steers the project's agents.
+    let steers = project_changes(cx, &cur, &input).iter().any(|c| STEERS_PROJECT.contains(&c.key));
+    // After a tool from outside Gizai in this chat (asked once, for both): a move, whose cards land where that team's agents
+    // start them, is refused (GA-101); a call that steers waits for the user's Approve.
+    if (moves || steers) && let Some(tool) = cx.outside("update_project", a).await? {
+        return Err(if moves { super::refused_after("update_project", &tool) } else { cx.keep("update_project", a, &tool) });
+    }
+    let moved = crate::runs::update_project(cx.st, cx.actor, &cur.id, input).map_err(err)?;
     cx.changed("projects");
     if moved {
         // Its cards are in the new team's columns: that team's agents may take those in its Auto columns.
@@ -423,7 +486,7 @@ pub(crate) async fn create_task(cx: &Cx<'_>, a: &Args) -> Result<Value, String> 
         project_id: p.id.clone(), title, description_md: a.opt("description_md").unwrap_or_default(), acceptance_md: a.opt("acceptance_md"),
         state_id: column.map(|c| c.id), priority: a.int("priority")?.unwrap_or(0), assignee_id, label_ids,
         testing: Some(a.flag("testing").unwrap_or(true)),
-    }, reason.as_deref().map(|r| ("needs_decision", r)), &builds_on).map_err(err)?;
+    }, reason.as_deref().map(waiting_hold), &builds_on).map_err(err)?;
     task_done(cx, &id, "created", held_after.as_deref())
 }
 
@@ -443,6 +506,11 @@ pub(crate) async fn update_task(cx: &Cx<'_>, a: &Args) -> Result<Value, String> 
     } else if let Some(r) = a.text("hold_reason") {
         patch.hold_reason = Some(r);
     }
+    // GA-261: only the user takes GA-101's hold off (on the card, or by approving a call that waited for them): a board check
+    // or a chat answer doesn't clear it, put another hold in its place or rewrite its reason.
+    if t.waits_for_your_ok() && !cx.approved && (patch.hold.is_some() || patch.hold_reason.is_some()) {
+        return Err(super::ONLY_THE_USER.into());
+    }
     let labels = a.list("labels");
     // GA-228: the full new list of cards it builds on; an empty list clears it.
     let builds_on = builds_on_arg(cx, a)?;
@@ -458,16 +526,24 @@ pub(crate) async fn update_task(cx: &Cx<'_>, a: &Args) -> Result<Value, String> 
         Some(l) => Some(resolve::labels(&resolve::team_of(cx, t.project_id.as_ref().and_then(|p| projects::get(cx.db(), p).ok()).as_ref())?, &l)?),
         None => None,
     };
-    // GA-101: after a tool from outside Gizai, a card in an Auto column isn't taken off hold, and a change to what its agent
-    // is told or to who starts it puts it on hold for the user's OK, in the same write. A run under way goes on.
+    // GA-101: after a tool from outside Gizai in this chat, a card in an Auto column isn't taken off hold, and a change to
+    // what its agent is told or to who starts it puts it on hold for the user's OK, in the same write. A run under way goes
+    // on. GA-261: elsewhere such a change waits for the user's Approve, the whole call with it.
+    let steering = steers(cx, &t, &patch, builds_on.as_deref());
     let mut held_after = None;
-    if (clears || steers(cx, &t, &patch, builds_on.as_deref())) && in_auto(cx, &t)? && let Some(tool) = cx.outside("update_task", a).await? {
-        if clears {
-            return Err(super::refused_after("update_task", &tool));
+    if (clears || steering) && let Some(tool) = cx.outside("update_task", a).await? {
+        if in_auto(cx, &t)? {
+            if clears {
+                return Err(super::refused_after("update_task", &tool));
+            }
+            patch.hold = Some("needs_decision".into());
+            patch.hold_reason = Some(waiting_for_ok(&tool));
+            patch.hold_kind = Some(HOLD_WAITING_FOR_OK.into());
+            held_after = Some(tool);
+        } else if steering && t.archived_at.is_none() {
+            // (an archived card is read-only: the write below says so, and nothing waits for an Approve that would fail)
+            return Err(cx.keep("update_task", a, &tool));
         }
-        patch.hold = Some("needs_decision".into());
-        patch.hold_reason = Some(waiting_for_ok(&tool));
-        held_after = Some(tool);
     }
     tasks::update_with(cx.db(), cx.actor, &t.id, patch, label_ids, builds_on).map_err(err)?;
     task_done(cx, &t.id, "updated", held_after.as_deref())
@@ -483,7 +559,7 @@ pub(crate) async fn move_task(cx: &Cx<'_>, a: &Args) -> Result<Value, String> {
     // GA-101: into an Auto column after a tool from outside Gizai, it waits on hold.
     let held_after = if auto(&col) { cx.outside("move_task", a).await? } else { None };
     let reason = held_after.as_deref().map(waiting_for_ok);
-    tasks::move_to_held(cx.db(), cx.actor, &t.id, &col.id, "", reason.as_deref().map(|r| ("needs_decision", r))).map_err(err)?;
+    tasks::move_to_held(cx.db(), cx.actor, &t.id, &col.id, "", reason.as_deref().map(waiting_hold)).map_err(err)?;
     task_done(cx, &t.id, "moved", held_after.as_deref())
 }
 
@@ -704,6 +780,10 @@ fn check_free_slot(cx: &Cx, agent_id: Option<&str>) -> Result<(), String> {
 
 pub(crate) async fn start_run(cx: &Cx<'_>, a: &Args) -> Result<Value, String> {
     let t = resolve::task(cx, &a.req("task")?)?;
+    // GA-261: a card on GA-101's hold waits for the user's OK, also with an agent named: only they get it going again.
+    if t.waits_for_your_ok() && !cx.approved {
+        return Err(super::ONLY_THE_USER.into());
+    }
     let agent = match a.opt("agent") { Some(n) => Some(resolve::agent(cx, &n)?.actor_id), None => None };
     check_free_slot(cx, agent.clone().or_else(|| crate::runs::suggest(cx.st, &t.id)).as_deref())?;
     let (run_id, _done) = crate::runs::start(cx.st, &t.id, agent, None, "manual").await?;
@@ -717,6 +797,10 @@ pub(crate) async fn start_run(cx: &Cx<'_>, a: &Args) -> Result<Value, String> {
 /// agent with it and on the card as the Chief's comment (`runs::continue_answered_with_note`, GA-31).
 pub(crate) async fn continue_run(cx: &Cx<'_>, a: &Args) -> Result<Value, String> {
     let t = resolve::task(cx, &a.req("task")?)?;
+    // GA-261: a Continue takes the hold off: not GA-101's, which waits for the user's OK, unless they approved this call.
+    if t.waits_for_your_ok() && !cx.approved {
+        return Err(super::ONLY_THE_USER.into());
+    }
     let last = gizai_core::runs::list_for_task(cx.db(), &t.id).map_err(err)?.into_iter().next()
         .ok_or_else(|| format!("{} has no run to continue: start_agent_run starts one", t.identifier))?;
     check_free_slot(cx, Some(&last.agent_id))?;

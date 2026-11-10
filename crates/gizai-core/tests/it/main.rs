@@ -41,6 +41,7 @@ mod memory_page_test;
 mod memory_per_project_test;
 mod memory_test;
 mod onboarding_test;
+mod outside_marks_migration_test;
 mod pending_test;
 mod project_key_test;
 mod project_team_test;

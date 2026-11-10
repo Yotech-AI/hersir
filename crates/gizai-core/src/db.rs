@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Condvar, Mutex, MutexGuard};
 use std::sync::atomic::{AtomicU32, Ordering};
 
-pub const SCHEMA_VERSION: i64 = 21;
+pub const SCHEMA_VERSION: i64 = 22;
 
 /// The read-only connections a database file gets for `read`: reads beside the writer and beside each other (a board
 /// check's long read doesn't hold up the window's lists).
@@ -102,6 +102,7 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!("../migrations/0019_screenshots.sql")),
         M::up(include_str!("../migrations/0020_test_runs_at_once.sql")),
         M::up(include_str!("../migrations/0021_builds_on.sql")),
+        M::up(include_str!("../migrations/0022_outside_marks.sql")),
     ])
 }
 

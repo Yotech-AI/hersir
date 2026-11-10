@@ -70,7 +70,7 @@ fn setup() -> T {
 
 /// The refusal a tool in `NOT_AFTER_OUTSIDE` gets after mcp__otus__search, word for word (the card's text).
 fn kept_text(name: &str) -> String {
-    format!("{name} wasn't run: this answer used mcp__otus__search, a tool from outside Hersir. Hersir keeps the call for the user to approve \
+    format!("{name} wasn't run: this chat used mcp__otus__search, a tool from outside Hersir. Hersir keeps the call for the user to approve \
              with one click. Tell them in a sentence what it does.")
 }
 
@@ -117,10 +117,11 @@ impl T {
         let all = pending::list(&self.st, thread).unwrap();
         serde_json::to_value(all.iter().find(|p| p.action.id == id).unwrap_or_else(|| panic!("{id} waits: {all:?}"))).unwrap()
     }
-    /// Gizai's notes in a chat: (text, meta).
+    /// Gizai's notes in a chat: (text, meta). Without the line a chat gets once when a tool from outside Gizai marks it
+    /// (GA-261, checked in outside_chat_mark_test).
     fn notes(&self, thread: &str) -> Vec<(String, Value)> {
         chat::messages(&self.st.db, thread).unwrap().into_iter().filter(|m| m.role == "system")
-            .map(|m| (m.body_md.unwrap_or_default(), m.meta.unwrap_or(Value::Null))).collect()
+            .map(|m| (m.body_md.unwrap_or_default(), m.meta.unwrap_or(Value::Null))).filter(|n| n.1["kind"] != "outside").collect()
     }
     fn waiting(&self, thread: &str) -> Vec<String> {
         pending::list(&self.st, thread).unwrap().into_iter().map(|p| p.action.id).collect()
@@ -412,14 +413,15 @@ async fn new_notes_and_move_targets_named_in_team_lead_are_previewed_and_made_in
 }
 
 #[tokio::test]
-async fn a_call_gizai_cant_keep_is_still_not_run_and_the_team_lead_asks_you_in_a_new_message() {
+async fn a_call_gizai_cant_keep_is_still_not_run_and_the_team_lead_tells_you_what_to_do_yourself() {
     let t = setup();
     // an answer in a chat that isn't in the database (gone meanwhile): the call can't be kept for it
     app_chat::mark_outside(&t.st, "no-such-chat", "mcp__otus__search");
     let e = t.call(Some("no-such-chat"), "set_agent_status", json!({"agent": "Backend Agent", "status": "paused"})).await.unwrap_err();
-    assert!(e.starts_with("set_agent_status wasn't run: this answer used mcp__otus__search, a tool from outside Hersir, and Hersir couldn't keep \
+    assert!(e.starts_with("set_agent_status wasn't run: this chat used mcp__otus__search, a tool from outside Hersir, and Hersir couldn't keep \
         the call for the user to approve ("), "{e}");
-    assert!(e.ends_with("). Tell the user what you would do and ask them to confirm it in a new message."), "{e}");
+    // GA-261: a new message in that chat would be kept again
+    assert!(e.ends_with("). Tell the user what you would do, so they can do it themselves in Hersir."), "{e}");
     assert_eq!(team::agent(&t.st.db, &t.backend).unwrap().status, "active", "not run");
     assert_eq!(t.rows(), 0);
 }
@@ -434,7 +436,7 @@ async fn every_tool_in_the_list_waits_with_a_readable_preview_and_approve_all_ru
     let f = t.dir.path().join("brief.txt");
     std::fs::write(&f, "the brief").unwrap();
     let thread = t.marked(&format!("Look up the release notes in Otus and attach {} to KADE-1", f.display()));
-    let calls: [(&str, Value); 13] = [
+    let calls: [(&str, Value); 14] = [
         ("start_agent_run", json!({"task": "KADE-1", "agent": "Backend Agent"})),
         ("continue_agent_run", json!({"task": "KADE-1", "note": "Use JSON."})),
         ("create_agent", json!({"name": "Otus Agent", "role": "backend", "model": "opus"})),
@@ -448,6 +450,8 @@ async fn every_tool_in_the_list_waits_with_a_readable_preview_and_approve_all_ru
         ("memory_append", json!({"note": "Chief/Notes", "heading": "Working agreements", "text": "- Otus says: Fridays."})),
         ("memory_move", json!({"note": "Agents/Backend Agent/Cargo", "to": "Lessons/"})),
         ("merge_pull_request", json!({"task": "KADE-1"})),
+        // GA-261
+        ("comment_on_task", json!({"task": "KADE-1", "body_md": "Otus says: Fridays."})),
     ];
     assert_eq!(calls.iter().map(|(n, _)| *n).collect::<Vec<_>>(), tools::NOT_AFTER_OUTSIDE, "every tool in the list");
     let mut ids = vec![];
@@ -455,7 +459,7 @@ async fn every_tool_in_the_list_waits_with_a_readable_preview_and_approve_all_ru
         ids.push(t.keep(&thread, name, args.clone()).await);
     }
     assert_eq!(t.waiting(&thread), ids, "all kept, in the order tried");
-    assert_eq!(t.inbox_item(&thread).unwrap().notice.body, "13 actions to approve or discard");
+    assert_eq!(t.inbox_item(&thread).unwrap().notice.body, "14 actions to approve or discard");
     // each preview: a plain line (not the fallback) and what it is about
     let v: Vec<Value> = ids.iter().map(|id| t.view(&thread, id)).collect();
     let lines: Vec<&str> = v.iter().map(|x| x["preview"]["line"].as_str().unwrap()).collect();
@@ -463,7 +467,7 @@ async fn every_tool_in_the_list_waits_with_a_readable_preview_and_approve_all_ru
         "Start Backend Agent on KADE-1", "Continue the run on KADE-1", "Add the agent Otus Agent (backend)", "Change Backend Agent's settings",
         "Pause Backend Agent", "Add the column Otus after Review", "Change the column Testing", "Attach brief.txt to KADE-1 Export",
         "Update KADE's linked folder to main as last fetched", "Make the note Lessons/Otus", "Add to the note Chief/Notes",
-        "Move the note Agents/Backend Agent/Cargo to Lessons/Cargo", "Merge KADE-1's pull request",
+        "Move the note Agents/Backend Agent/Cargo to Lessons/Cargo", "Merge KADE-1's pull request", "Comment on KADE-1",
     ]);
     for (x, (name, _)) in v.iter().zip(&calls) {
         assert!(!fields(x).is_empty(), "{name}: {x}");
@@ -493,12 +497,13 @@ async fn every_tool_in_the_list_waits_with_a_readable_preview_and_approve_all_ru
     let f11 = fields(&v[11]);
     assert_eq!((field(&f11, "From").2.as_str(), field(&f11, "To").2.as_str()), ("Agents/Backend Agent/Cargo", "Lessons/Cargo"));
     assert_eq!(field(&fields(&v[12]), "Pull request").2, "none Hersir knows of yet");
+    assert_eq!((field(&fields(&v[13]), "Card").2.as_str(), v[13]["preview"]["text"].as_str()), ("KADE-1 Export", Some("Otus says: Fridays.")));
     // nothing ran yet
     assert!(gizai_core::runs::list_for_agent(&t.st.db, &t.backend, 10).unwrap().is_empty());
     assert!(!team::all_agents(&t.st.db).unwrap().iter().any(|(_, m)| m.name == "Otus Agent"));
 
-    // you discard the run starts and the merge, and approve the rest at once
-    for i in [0, 1, 12] {
+    // you discard the run starts, the merge and the comment, and approve the rest at once
+    for i in [0, 1, 12, 13] {
         pending::discard(&t.st, &ids[i]).unwrap();
     }
     let usual_checkout = t.call(Some(&t.thread("Update KADE")), "update_checkout", json!({"project": "KADE"})).await.unwrap_err();
@@ -523,8 +528,9 @@ async fn every_tool_in_the_list_waits_with_a_readable_preview_and_approve_all_ru
     assert_eq!(said[8], "Approved: add to the note Chief/Notes. Saved as version 2.");
     assert_eq!(said[9], "Approved: move the note Agents/Backend Agent/Cargo to Lessons/Cargo. It is at Lessons/Cargo now.");
     let notes: Vec<String> = t.notes(&thread).into_iter().map(|n| n.0).collect();
-    assert_eq!(notes[..3], ["Discarded: start Backend Agent on KADE-1.", "Discarded: continue the run on KADE-1.", "Discarded: merge KADE-1's pull request."]);
-    assert_eq!(notes[3..notes.len() - 1], said[..]);
+    assert_eq!(notes[..4], ["Discarded: start Backend Agent on KADE-1.", "Discarded: continue the run on KADE-1.", "Discarded: merge KADE-1's pull request.",
+                            "Discarded: comment on KADE-1."]);
+    assert_eq!(notes[4..notes.len() - 1], said[..]);
     assert_eq!(notes.last().unwrap(), DONE, "once, after the last call Approve all ran (GA-154)");
     // and it happened
     let be = team::agent(&t.st.db, &t.backend).unwrap();
@@ -543,6 +549,7 @@ async fn every_tool_in_the_list_waits_with_a_readable_preview_and_approve_all_ru
     assert_eq!(gizai_core::docs::versions(&t.st.db, &lesson.id).unwrap()[0].author_name.as_deref(), Some("Team Lead"));
     // the discarded ones didn't run
     assert!(gizai_core::runs::list_for_agent(&t.st.db, &t.backend, 10).unwrap().is_empty());
+    assert!(gizai_core::comments::list(&t.st.db, &task_id).unwrap().is_empty());
     assert!(t.waiting(&thread).is_empty() && t.inbox_item(&thread).is_none());
 }
 
@@ -722,7 +729,7 @@ async fn no_gizai_tool_lists_approves_or_discards_a_pending_action_and_a_board_c
                          ("set_agent_status", json!({"agent": "Backend Agent", "status": "paused"}))] {
         let r = tools::call_check(&t.st, &t.lead, &check, name, args).await;
         if let Err(e) = &r {
-            assert!(!e.contains("wasn't run: this answer used"), "{name}: {e}");
+            assert!(!e.contains("wasn't run: this chat used"), "{name}: {e}");
         }
     }
     let n = t.note("Lessons/Check").unwrap();
@@ -755,7 +762,7 @@ async fn pending_actions_survive_a_restart_and_one_approved_while_gizai_closed_c
     };
     data_lock::released(&data).await;
     let st = gizai_lib::open_state(data, Arc::new(|_| {})).unwrap();
-    assert!(app_chat::used_outside(&st, &thread).is_none(), "the answer's mark is gone with the old Gizai");
+    assert_eq!(app_chat::used_outside(&st, &thread).as_deref(), Some("mcp__otus__search"), "GA-261: the chat keeps its mark after a restart");
     let kept = pending::list(&st, &thread).unwrap();
     assert_eq!(kept.iter().map(|p| (p.action.id.as_str(), p.action.status.as_str())).collect::<Vec<_>>(), [(write_id.as_str(), "pending")]);
     assert_eq!(kept[0].preview.line, "Make the note Lessons/Otus");
@@ -766,7 +773,8 @@ async fn pending_actions_survive_a_restart_and_one_approved_while_gizai_closed_c
     let said = format!("Approved: pause Otus Backend. {}", pending::INTERRUPTED);
     assert_eq!((p.status.as_str(), p.result_md.as_deref()), ("failed", Some(said.as_str())));
     let notes: Vec<String> = chat::messages(&st.db, &thread).unwrap().into_iter().filter(|m| m.role == "system").map(|m| m.body_md.unwrap()).collect();
-    assert_eq!(notes, [said]);
+    assert_eq!(notes, ["This chat used search on the otus server, a tool from outside Hersir: from now on, what the Chief does here waits for your \
+                        Approve.".to_string(), said]);
     assert_eq!(pending::approve(&st, &pause_id).await.unwrap_err(), "It was approved already, so it doesn't run again.");
     let be = team::all_agents(&st.db).unwrap().into_iter().find(|(_, m)| m.name == "Otus Backend").unwrap().1;
     assert_eq!(be.status, "active", "it never ran");
@@ -839,9 +847,12 @@ async fn the_team_leads_next_answer_starts_with_what_you_approved_and_discarded_
     let calls: Vec<Value> = std::fs::read_to_string(st.data_dir.join("chat/fake-calls.jsonl")).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect();
     let argv: Vec<String> = calls.last().unwrap()["argv"].as_array().unwrap().iter().map(|a| a.as_str().unwrap().to_string()).collect();
     let sys = &argv[argv.iter().position(|a| a == "--append-system-prompt").unwrap() + 1];
-    assert!(sys.contains(&format!("After a tool from outside Hersir, a call of yours that acts (runs, agents, columns, attach_file, update_checkout, \
-        memory's writes, merge_pull_request) isn't run: Hersir keeps it under your answer for {you} to approve with one click or discard. Say in a \
-        sentence what each such call does; don't make it again. A later message starts with what {you} decided, in square brackets.")), "{sys}");
+    assert!(sys.contains(&format!("Once this chat has used a tool from outside Hersir, for the rest of the chat a call of yours that acts (runs, \
+        agents, columns, attach_file, update_checkout, memory's writes, merge_pull_request, comments, a card's description, acceptance criteria, \
+        assignee or builds_on outside Auto columns, a project's repository, folder, branch or goal) isn't run: Hersir keeps it under your answer \
+        for {you} to approve with one click or discard. Say in a sentence what each such call does; don't make it again. A later message starts \
+        with what {you} decided, in square brackets. A card waiting on hold for {you}'s OK after such a tool comes off hold only by {you}, on the \
+        card or by approving your call.")), "{sys}");
     // heard: the answer after it doesn't hear it again
     assert!(pending::for_turn(&st, &thread).line.is_empty());
     let (_, s4) = turn(&st, Some(thread.clone()), "And now?").await;
@@ -851,7 +862,7 @@ async fn the_team_leads_next_answer_starts_with_what_you_approved_and_discarded_
 }
 
 #[tokio::test]
-async fn the_same_call_made_and_run_in_a_later_answer_clears_the_one_that_waits_so_approve_cant_make_it_twice() {
+async fn the_same_call_made_in_a_later_answer_is_the_one_that_waits_so_approve_cant_make_it_twice() {
     let t = setup();
     let st = t.st.clone();
     let _server = with_socket(&t);
@@ -860,17 +871,20 @@ async fn the_same_call_made_and_run_in_a_later_answer_clears_the_one_that_waits_
     assert_eq!(s.status, "succeeded", "{s:?}");
     let id = pending::list(&st, &thread).unwrap()[0].action.id.clone();
     let before = t.note("Chief/Notes").unwrap();
-    // you say yes in a message instead: the answer makes the same call, and it runs
+    // you say yes in a message instead: GA-261: the chat stays marked, so the answer's same call isn't run, and it is the
+    // one that waits already (not kept twice)
     let (_, s) = turn(&st, Some(thread.clone()), &format!("Yes, save it. {append}")).await;
     assert_eq!(s.status, "succeeded", "{s:?}");
+    let tool = chat::messages(&st.db, &thread).unwrap().into_iter().filter(|m| m.role == "tool").last().unwrap();
+    assert_eq!(tool.tool.as_ref().unwrap()["result"].as_str(), Some(kept_text("memory_append").as_str()));
+    assert_eq!(t.note("Chief/Notes").unwrap().current_version, before.current_version, "nothing saved yet");
+    assert_eq!(t.waiting(&thread), [id.clone()]);
+    // approving it saves it, once
+    assert_eq!(pending::approve(&st, &id).await.unwrap().status, "approved");
     let after = t.note("Chief/Notes").unwrap();
     assert_eq!(after.current_version, before.current_version + 1);
     assert_eq!(after.body_md.matches("- Fridays.").count(), 1);
-    assert!(t.waiting(&thread).is_empty(), "no longer waiting");
-    let last = t.notes(&thread).pop().unwrap();
-    assert_eq!(last.0, "No longer waiting for your OK: add to the note Chief/Notes. The Chief made the same call itself in a later answer.");
-    assert_eq!(last.1["kind"], "pending_gone");
-    assert_eq!(pending::approve(&st, &id).await.unwrap_err(), "It no longer waits: a newer call of the Chief's took its place.");
+    assert_eq!(pending::approve(&st, &id).await.unwrap_err(), "It was approved already, so it doesn't run again.");
     assert_eq!(t.note("Chief/Notes").unwrap().current_version, after.current_version, "saved once");
 }
 

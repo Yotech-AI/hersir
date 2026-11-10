@@ -145,6 +145,8 @@ struct Card {
     project_id: Option<String>,
     project: Option<String>,
     test_runs_at_once: Option<i64>,
+    /// GA-261: on GA-101's hold (`model::HOLD_WAITING_FOR_OK`), which only you take off.
+    waits_for_your_ok: bool,
 }
 
 fn usd(micros: i64) -> String {
@@ -197,15 +199,16 @@ pub fn check(db: &Db, cx: &Context) -> Result<Vec<Finding>> {
                       WHERE r.task_id = t.id AND r.deleted_at IS NULL AND json_extract(r.outcome_json, '$.lead') IS NOT NULL
                       ORDER BY r.created_at DESC, r.id DESC LIMIT 1) END,
                     EXISTS (SELECT 1 FROM actors pa WHERE pa.id = t.pinned_actor_id AND pa.kind = 'person'),
-                    p.id, p.name, p.test_runs_at_once
+                    p.id, p.name, p.test_runs_at_once, t.hold IS NOT NULL AND t.hold_kind IS ?1
              FROM tasks t JOIN workflow_states s ON s.id = t.state_id LEFT JOIN projects p ON p.id = t.project_id
              WHERE t.deleted_at IS NULL AND s.category IN ('ready','in_progress','testing')
                AND (p.id IS NULL OR (p.deleted_at IS NULL AND p.status NOT IN ('archived','done','paused')))
              ORDER BY s.sort_key, t.sort_key, t.created_at")?;
-        let cards = st.query_map([], |r| Ok(Card {
+        let cards = st.query_map([crate::model::HOLD_WAITING_FOR_OK], |r| Ok(Card {
             id: r.get(0)?, identifier: r.get(1)?, title: r.get(2)?, column: r.get(3)?, category: r.get(4)?, hold: r.get(5)?,
             hold_reason: r.get(6)?, hold_at: r.get(7)?, created_at: r.get(8)?, run_for_me: runs::commands_of(r.get(9)?), lead: r.get(10)?,
             by_hand: r.get::<_, i64>(11)? != 0, project_id: r.get(12)?, project: r.get(13)?, test_runs_at_once: r.get(14)?,
+            waits_for_your_ok: r.get::<_, i64>(15)? != 0,
         }))?.collect::<rusqlite::Result<Vec<_>>>()?;
 
         // GA-212: per project, its cards in a test run (a run at work on a card in a Testing column) and when the latest of
@@ -245,6 +248,11 @@ pub fn check(db: &Db, cx: &Context) -> Result<Vec<Finding>> {
             let last_agent = last.as_ref().map(|(r, a)| (a.clone(), r.agent.clone()));
 
             if let Some(hold) = &card.hold {
+                // GA-261: GA-101's hold waits for your OK after a tool from outside Hersir, and only you take it off: a
+                // check has nothing to do there, also once you commented.
+                if card.waits_for_your_ok {
+                    continue;
+                }
                 // A person's comment after a "needs a decision" hold may answer it.
                 let answer: Option<(String, i64)> = if hold == "needs_decision" {
                     c.query_row(
