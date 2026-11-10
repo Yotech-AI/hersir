@@ -2,17 +2,20 @@ import { RISK_BADGE, RISK_LABEL } from "../lib/mcp";
 import type { McpToolView } from "../types";
 
 /** One MCP tool: its name and title, one line on what it may do with its risk, and (opened) its description, parameters
- * and what the server said about it. With `onSwitch`, a switch for the agent. */
+ * and what the server said about it. With `onSwitch`, a switch for the agent. A tool runs leave out (GA-262: its name
+ * isn't a plain tool name) says so, and its switch stays off. */
 export function McpTool({ t, on, onSwitch, disabled }: { t: McpToolView; on?: boolean; onSwitch?: (on: boolean) => void; disabled?: boolean }) {
   return (
     <li className="mcp-tool">
       <div className="mt-line">
         {onSwitch && (
-          <input type="checkbox" className="mt-switch" aria-label={`Use ${t.name}`} checked={!!on} disabled={disabled} onChange={(e) => onSwitch(e.target.checked)} />
+          <input type="checkbox" className="mt-switch" aria-label={`Use ${t.name}`} checked={!!on && !t.leftOut} disabled={disabled || !!t.leftOut}
+            onChange={(e) => onSwitch(e.target.checked)} />
         )}
         <span className="mt-name"><span className="mono">{t.name}</span>{t.title && <span className="faint"> · {t.title}</span>}</span>
         <span className={`badge ${RISK_BADGE[t.risk] ?? "outline"}`}>{RISK_LABEL[t.risk] ?? t.risk}</span>
       </div>
+      {t.leftOut && <span className="mt-summary warn">{t.leftOut}</span>}
       <span className="mt-summary">{t.summary}</span>
       <details className="mt-more">
         <summary>What it does</summary>
