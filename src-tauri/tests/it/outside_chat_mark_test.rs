@@ -34,10 +34,10 @@ const ONLY_THE_USER: &str = "Only the user takes this hold off, on the card: it 
 const WAITING: &str = "Waiting for your OK: the Chief put this card here after using mcp__otus__search, a tool from outside Hersir. \
     Check it, then take it off hold.";
 
-/// The shim binary: target/debug/gizai-mcp (built here when missing).
+/// The shim binary: target/debug/hersir-mcp, which the crate gizai-mcp builds (built here when missing).
 fn shim() -> PathBuf {
     static BUILT: std::sync::Once = std::sync::Once::new();
-    let path = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/debug/gizai-mcp"));
+    let path = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/debug/hersir-mcp"));
     BUILT.call_once(|| {
         if path.is_file() {
             return;
@@ -45,7 +45,7 @@ fn shim() -> PathBuf {
         let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
         let ok = std::process::Command::new(cargo).args(["build", "-q", "-p", "gizai-mcp"])
             .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/..")).status().map(|s| s.success()).unwrap_or(false);
-        assert!(ok && path.is_file(), "could not build gizai-mcp");
+        assert!(ok && path.is_file(), "could not build hersir-mcp (the crate gizai-mcp)");
     });
     path
 }
@@ -374,6 +374,33 @@ async fn a_marked_chat_shows_the_line_once_with_the_tool_in_words() {
     // a chat that never used one says nothing
     let plain = t.thread("Plan the export");
     t.ok(Some(&plain), "get_overview", json!({})).await;
+    assert!(t.notes(&plain).is_empty());
+}
+
+/// GA-257's pins sit next to the mark on a chat (the main merge kept both): a pin neither marks a chat nor lifts its mark.
+#[tokio::test]
+async fn a_marked_chat_can_be_pinned_and_unpinned_and_keeps_its_mark_and_a_pin_marks_nothing() {
+    let t = setup();
+    let marked = t.marked("Read Otus");
+    let plain = t.thread("Plan the export");
+    chat::set_pinned(&t.st.db, &marked, true).unwrap();
+    assert_eq!(chat::set_pinned(&t.st.db, &plain, true).unwrap(), [plain.clone(), marked.clone()]);
+    let pinned: Vec<String> = chat::pinned_threads(&t.st.db).unwrap().into_iter().map(|c| c.id).collect();
+    assert_eq!(pinned, [plain.clone(), marked.clone()], "the newest pin first");
+    // pinned, the marked chat still waits for your Approve and the plain one acts at once
+    assert_eq!(app_chat::used_outside(&t.st, &marked).as_deref(), Some("mcp__otus__search"));
+    t.keep(&marked, "comment_on_task", json!({"task": "KADE-1", "body_md": "From Otus."})).await;
+    assert!(app_chat::used_outside(&t.st, &plain).is_none());
+    t.ok(Some(&plain), "comment_on_task", json!({"task": "KADE-1", "body_md": "Export as CSV."})).await;
+    assert_eq!(t.comments("KADE-1"), [(t.lead.clone(), "Export as CSV.".to_string())]);
+    // unpinned, it keeps its mark and its one line
+    assert_eq!(chat::set_pinned(&t.st.db, &marked, false).unwrap(), [plain.clone()]);
+    assert_eq!(app_chat::used_outside(&t.st, &marked).as_deref(), Some("mcp__otus__search"));
+    t.keep(&marked, "update_project", json!({"project": "KADE", "goal_md": "Ship it to Otus."})).await;
+    assert_eq!(t.waiting(&marked), 2);
+    let notes = t.notes(&marked);
+    assert_eq!(notes.len(), 1, "{notes:?}");
+    assert_eq!(notes[0].0, LINE);
     assert!(t.notes(&plain).is_empty());
 }
 

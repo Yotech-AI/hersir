@@ -1,7 +1,7 @@
 // GA-257 QA: what Chat → Pinned counts on from the backend, read as text (Vite's ?raw), so a change on one side without the
 // other fails here. The UI's pinnedChats, pinChat and unpinChat call Tauri commands that are registered and take what the UI
 // sends; a pin or an unpin sends the notice "chat_pins", which reloads Pinned (and not Recent or the Archive's search); the
-// pins are a setting, so the schema stays at version 21 with no new migration.
+// pins are a setting, so they add no migration (the schema is at 22 for GA-261, not for the pins).
 import { describe, expect, it, vi } from "vitest";
 import { READS } from "./lib/tables";
 import libRs from "../src-tauri/src/lib.rs?raw";
@@ -64,12 +64,14 @@ describe("the notice chat_pins", () => {
   });
 });
 
-describe("no schema change (a patch release)", () => {
-  it("keeps SCHEMA_VERSION at 21 with the same 21 migrations", () => {
-    expect(dbRs).toMatch(/pub const SCHEMA_VERSION: i64 = 21;/);
+describe("no schema change for the pins", () => {
+  // The schema is at 22 since GA-261's 0022_outside_marks.sql (a chat's outside mark, GA-101's hold kind); the pins add no
+  // migration of their own.
+  it("keeps SCHEMA_VERSION at 22 with GA-261's migration last, and no migration for the pins", () => {
+    expect(dbRs).toMatch(/pub const SCHEMA_VERSION: i64 = 22;/);
     const names = Object.keys(migrations).map((p) => p.split("/").pop()).sort();
-    expect(names).toHaveLength(21);
-    expect(names.at(-1)).toBe("0021_builds_on.sql");
+    expect(names).toHaveLength(22);
+    expect(names.at(-1)).toBe("0022_outside_marks.sql");
     for (const sql of Object.values(migrations)) expect(String(sql)).not.toContain("chat_pins");
   });
 });
