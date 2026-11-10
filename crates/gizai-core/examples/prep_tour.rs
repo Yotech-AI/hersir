@@ -320,7 +320,7 @@ fn main() {
         args: vec!["artisan".into(), "boost:mcp".into()], ..Default::default() }).unwrap();
     mcp_servers::save(&db, mcp_servers::McpServer { name: "playwright".into(), transport: "stdio".into(), command: "npx".into(),
         args: vec!["@playwright/mcp@latest".into()], ..Default::default() }).unwrap();
-    mcp_servers::set_agent_tools(&db, &you, &backend, mcp_servers::AgentTools { mcp: vec![mcp_servers::AgentServer { server_id: boost.id.clone(), on: true, tools_off: vec![] }] }).unwrap();
+    mcp_servers::set_agent_tools(&db, &you, &backend, mcp_servers::AgentTools { mcp: vec![mcp_servers::AgentServer { server_id: boost.id.clone(), on: true, tools_off: vec![], trusted: false }] }).unwrap();
 
     // Memory: notes that link each other
     memory::ensure_lead_notes(&db, &lead, "Alex").unwrap();
