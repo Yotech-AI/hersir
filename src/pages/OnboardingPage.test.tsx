@@ -5,7 +5,7 @@
 // world (the CLIs installed and listed, Claude Code's MCP servers, Settings' servers) that records each call; the
 // mountains are a marker. Step 1: the seeded name, the empty team name, Next needs both. Step 2: the CLIs found, the
 // ticked ones added with save_clis, the agents' CLI picked, and without Claude Code the warning, its link and Look again.
-// Step 3: Settings' import rows and rules, importing and going on without. Step 4: the summary, and Open the Team Lead
+// Step 3: Settings' import rows and rules, importing and going on without. Step 4: the summary, and Open the Chief's
 // chat sends what finish_onboarding needs. Skip setup on every step; an error stays under its step.
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
@@ -279,7 +279,7 @@ describe("when the onboarding opens (GA-164: on a new install, step 1)", () => {
     expect(steps.all().some((n) => n.nodeName === "BUTTON")).toBe(false); // nothing done yet
     expect(eyebrow()).toBe("Step 1 of 4");
     expect(heading()).toBe("Welcome to Hersir");
-    expect(text()).toContain("Four short steps, then your Team Lead says hello. First, you and your team.");
+    expect(text()).toContain("Four short steps, then your Chief says hello. First, you and your team.");
     expect(button("Skip setup")!.attrs.get("title")).toBe("Open the board. You can set things up later in Settings.");
     expect(off(button("Back"))).toBe(true);
     expect(off(button("Next"))).toBe(false);
@@ -288,7 +288,7 @@ describe("when the onboarding opens (GA-164: on a new install, step 1)", () => {
   it("fills in your name with the seeded one (your person) and leaves Team name empty with the placeholder My team, the cursor in it", async () => {
     await open();
     expect(byId("onb-you")!.value).toBe("Jefsev");
-    expect(text(byId("onb-you-hint")!)).toBe("From your login name. The Team Lead calls you by it.");
+    expect(text(byId("onb-you-hint")!)).toBe("From your login name. The Chief calls you by it.");
     const team = byId("onb-team")!;
     expect(team.value).toBe("");
     expect(team.attrs.get("placeholder")).toBe("My team");
@@ -349,7 +349,7 @@ describe("step 1 · You and your team: Next needs both names", () => {
 });
 
 describe("step 2 · Coding CLIs", () => {
-  it("lists the CLIs found, Claude Code first and built in, the others ticked, the ones not found and the Team Lead's line", async () => {
+  it("lists the CLIs found, Claude Code first and built in, the others ticked, the ones not found and the Chief's line", async () => {
     await open();
     await toClis();
     expect(cliRows()).toEqual([
@@ -360,7 +360,7 @@ describe("step 2 · Coding CLIs", () => {
     expect(text()).toContain("Your agents work through the coding CLIs on this computer, with your own logins.");
     expect(text()).toContain("Found on this computer");
     expect(text()).toContain("Not found: OpenCode, Cursor Agent and Crush. You can add a CLI later in Settings → Coding CLIs.");
-    expect(text()).toContain("The Team Lead's chat needs Claude Code, whichever CLI your agents use.");
+    expect(text()).toContain("The Chief's chat needs Claude Code, whichever CLI your agents use.");
     expect(text()).not.toContain("isn't installed");
     expect(button("Look again")).not.toBeNull();
     // the agents' CLI: the ticked ones, Claude Code first
@@ -396,7 +396,7 @@ describe("step 2 · Coding CLIs", () => {
     await click(button("Next"), on("MCP servers"));
     await click(button("Next"), on("You're all set"));
     expect(summary()["Your agents build and test with"]).toBe("Codex");
-    await click(button("Open the Team Lead chat"), () => done.mock.calls.length > 0);
+    await click(button("Open the Chief's chat"), () => done.mock.calls.length > 0);
     expect(calls("finishOnboarding")).toEqual([[{ youName: "Jefsev", teamName: "YoTech", agentsCli: "cli-codex" }]]);
   });
 
@@ -404,7 +404,7 @@ describe("step 2 · Coding CLIs", () => {
     await open();
     await toReady();
     expect(summary()["Your agents build and test with"]).toBe("Claude Code");
-    await click(button("Open the Team Lead chat"), () => done.mock.calls.length > 0);
+    await click(button("Open the Chief's chat"), () => done.mock.calls.length > 0);
     expect(calls("finishOnboarding")[0][0]).toMatchObject({ agentsCli: "claude_code" });
   });
 
@@ -448,14 +448,14 @@ describe("step 2 · Coding CLIs, coming back", () => {
 });
 
 describe("step 2 without Claude Code", () => {
-  it("says the Team Lead's chat needs it, links how to install it and looks again; once it is found the warning goes", async () => {
+  it("says the Chief's chat needs it, links how to install it and looks again; once it is found the warning goes", async () => {
     world.claude = false;
     world.installed = [CODEX];
     await open();
     await toClis();
     const warning = byClass("onb-notice")[0];
     expect(warning.attrs.get("class")).toBe("onb-notice warn");
-    expect(text(warning)).toContain("Claude Code isn't installed yet. The Team Lead's chat needs it.");
+    expect(text(warning)).toContain("Claude Code isn't installed yet. The Chief's chat needs it.");
     const link = warning.all().find((n) => n.nodeName === "A")!;
     expect(text(link)).toBe("How to install Claude Code");
     expect(link.attrs.get("href")).toBe("https://docs.claude.com/en/docs/claude-code");
@@ -474,7 +474,7 @@ describe("step 2 without Claude Code", () => {
     await click(look, () => !text().includes("isn't installed"));
     expect(calls("findClis").length).toBe(finds + 1);
     expect(byClass("onb-notice")).toHaveLength(0);
-    expect(text()).toContain("The Team Lead's chat needs Claude Code, whichever CLI your agents use.");
+    expect(text()).toContain("The Chief's chat needs Claude Code, whichever CLI your agents use.");
     expect(cliRows()[0].row).toBe("Claude Code· Built in/home/jefsev/.local/bin/claude");
     // the Look again pressed went with the warning: the focus is on the step's heading, not lost
     expect(focused()).toBe(container.all().find((n) => n.nodeName === "H1"));
@@ -490,12 +490,12 @@ describe("step 2 without Claude Code", () => {
     await click(button("Next"), on("MCP servers"));
     await click(button("Next"), on("You're all set"));
     expect(text()).toContain("Here's what you set up.");
-    expect(text()).toContain("Claude Code isn't installed yet. The Team Lead's chat needs it.");
+    expect(text()).toContain("Claude Code isn't installed yet. The Chief's chat needs it.");
     expect(text()).not.toContain("The chat opens with this message from you:");
     expect(summary()["Your agents build and test with"]).toBe("Codex");
     await click(button("Open the board"), () => done.mock.calls.length > 0);
     expect(calls("finishOnboarding")).toEqual([[{ youName: "Jefsev", teamName: "YoTech", agentsCli: "cli-codex" }]]);
-    expect(done.mock.calls).toEqual([[{ page: "board" }, "There's no Team Lead chat yet: it needs Claude Code, which isn't installed. Once it is, start one on the Chat page."]]);
+    expect(done.mock.calls).toEqual([[{ page: "board" }, "There's no chat with the Chief yet: it needs Claude Code, which isn't installed. Once it is, start one on the Chat page."]]);
   });
 });
 
@@ -583,36 +583,36 @@ describe("step 4 · Ready", () => {
     await type(byId("onb-you"), "  Jefsev S  ");
     await toReady();
     expect(eyebrow()).toBe("Step 4 of 4");
-    expect(text()).toContain("Here's what you set up. Your Team Lead is ready to say hello.");
+    expect(text()).toContain("Here's what you set up. Your Chief is ready to say hello.");
     expect(summary()).toEqual({ "Your name": "Jefsev S", Team: "YoTech", "Your agents build and test with": "Claude Code", "MCP servers imported": "None" });
     expect(container.all().filter((n) => n.nodeName === "BUTTON" && text(n) === "Change").map((n) => n.attrs.get("aria-label"))).toEqual(
       ["Change your name", "Change the team's name", "Change the agents' coding CLI", "Change the MCP servers"]);
     expect(text()).toContain("The chat opens with this message from you:");
     expect(text(container.all().find((n) => n.nodeName === "BLOCKQUOTE")!)).toBe(
       "Hi! I just installed Hersir and set up my team. Please welcome me, tell me in a few lines what you and the team can do, and ask whether I'd like help setting up agents, clients, projects, tasks or anything else.");
-    await click(button("Open the Team Lead chat"), () => done.mock.calls.length > 0);
+    await click(button("Open the Chief's chat"), () => done.mock.calls.length > 0);
     // the names trimmed, the chat's thread opened
     expect(calls("finishOnboarding")).toEqual([[{ youName: "Jefsev S", teamName: "YoTech", agentsCli: "claude_code" }]]);
     expect(done.mock.calls).toEqual([[{ page: "chat", id: "thread-1" }, undefined]]);
   });
 
-  it("with no chat (the Team Lead couldn't start one), opens the board and says why", async () => {
+  it("with no chat (the Chief couldn't start one), opens the board and says why", async () => {
     world.chat = null;
     await open();
     await toReady();
-    await click(button("Open the Team Lead chat"), () => done.mock.calls.length > 0);
-    expect(done.mock.calls).toEqual([[{ page: "board" }, "The Team Lead's chat couldn't start. You can start one on the Chat page."]]);
+    await click(button("Open the Chief's chat"), () => done.mock.calls.length > 0);
+    expect(done.mock.calls).toEqual([[{ page: "board" }, "The Chief's chat couldn't start. You can start one on the Chat page."]]);
   });
 
   it("an error from finish_onboarding shows under the step; the step stays and the button works again", async () => {
     await open();
     await toReady();
     h.api.finishOnboarding = () => { throw "The team's name can't be empty"; };
-    await click(button("Open the Team Lead chat"), () => alert() !== null);
+    await click(button("Open the Chief's chat"), () => alert() !== null);
     expect(alert()).toBe("The team's name can't be empty");
     expect(heading()).toBe("You're all set");
     expect(done).not.toHaveBeenCalled();
-    expect(off(button("Open the Team Lead chat"))).toBe(false);
+    expect(off(button("Open the Chief's chat"))).toBe(false);
   });
 
   it("Change opens that step again, and its Next comes back to Ready", async () => {

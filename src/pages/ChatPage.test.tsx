@@ -86,7 +86,7 @@ describe("Chat → Recent", () => {
     expect(list).toContain(">Question<");
     expect(list).toContain(">Approval<");
     expect(list).toContain('class="badge outline"');
-    expect(list).toContain(">Team Lead<");
+    expect(list).toContain(">Chief<");
   });
 
   it("has Archive under the list, with the History icon, outside the part that scrolls", () => {
@@ -190,7 +190,7 @@ describe("the Archive's list", () => {
     expect(rows[0]).toContain(">Question<");
     expect(rows[1]).toContain(">Approval<");
     expect(rows[2]).not.toContain("badge");
-    expect(rows[3]).toContain(">Team Lead<");
+    expect(rows[3]).toContain(">Chief<");
     expect(rows[0]).toContain(">Chat 0<");
     expect(rows[0]).toContain(">just now<");
     expect(rows[1]).toContain(">5h ago<");

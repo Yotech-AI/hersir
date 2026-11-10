@@ -214,7 +214,7 @@ describe("the organisation chart", () => {
     const html = chart([]);
     expect([...html.matchAll(/data-branch="([^"]+)"/g)].map((m) => m[1])).toEqual(["Design", "Development", "Quality", "Operations"]);
     for (const b of ["Design", "Development", "Quality", "Operations"]) expect(html.split(`aria-label="Add an agent to ${b}"`).length - 1, b).toBe(1);
-    expect(html).toContain('aria-label="Add the Team Lead"');
+    expect(html).toContain('aria-label="Add the Chief"');
     expect(html).toContain("Add branch");
   });
 
@@ -252,8 +252,8 @@ describe("the agent form", () => {
     expect(html).toMatch(/<option value="frontend" selected="">/);
   });
 
-  it("keeps the Team Lead's board check", () => {
-    const html = renderToStaticMarkup(<AgentDrawer teamId="team" preset={{ name: "Team Lead", role: "lead", chat: true }} onClose={() => {}} />);
+  it("keeps the Chief's board check", () => {
+    const html = renderToStaticMarkup(<AgentDrawer teamId="team" preset={{ name: "Chief", role: "lead", chat: true }} onClose={() => {}} />);
     expect(html).toContain("Board check");
     expect(html).toContain('aria-label="Board check minutes"');
     expect(html).not.toContain("Wakes up");

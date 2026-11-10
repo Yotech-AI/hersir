@@ -39,10 +39,10 @@ describe("ruleSentence", () => {
 import { draftFrom, inputFrom, ROLES, roleLabel } from "./agents";
 
 describe("agent drafts", () => {
-  it("start from a preset: the Chat page's Team Lead", () => {
-    const d = draftFrom(null, { name: "Team Lead", role: "lead", chat: true });
-    expect(d).toMatchObject({ name: "Team Lead", role: "lead", chat: true });
-    expect(inputFrom(d)).toMatchObject({ name: "Team Lead", roleKey: "lead", chatEnabled: true });
+  it("start from a preset: the Chat page's Chief", () => {
+    const d = draftFrom(null, { name: "Chief", role: "lead", chat: true });
+    expect(d).toMatchObject({ name: "Chief", role: "lead", chat: true });
+    expect(inputFrom(d)).toMatchObject({ name: "Chief", roleKey: "lead", chatEnabled: true });
   });
   it("have no wake-up or heartbeat: the columns decide when an agent works (GA-53)", () => {
     const m = { actorId: "a", name: "Backend Agent", kind: "agent", roleKey: "backend", handle: "b", status: "active", isLead: false, allowedTools: [],
@@ -71,7 +71,7 @@ describe("agent drafts", () => {
   });
   it("offer the software roles with readable names", () => {
     expect(ROLES).toEqual(["lead", "frontend", "backend", "design", "qa", "devops"]);
-    expect(ROLES.map(roleLabel)).toEqual(["Team Lead", "Frontend", "Backend", "Design", "QA", "DevOps"]);
+    expect(ROLES.map(roleLabel)).toEqual(["Chief", "Frontend", "Backend", "Design", "QA", "DevOps"]);
     expect(roleLabel("api")).toBe("Api");
   });
 });
