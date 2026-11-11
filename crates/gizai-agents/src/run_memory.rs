@@ -681,7 +681,7 @@ fn watch(slice: &Slice, pid: u32, stop: &AtomicBool, mut on_kill: impl FnMut(Oom
         match counts {
             Some((n, oom)) if n > seen => {
                 seen = n;
-                // the kernel counts the `oom` before it ends a process, so it is there by the time its kill is
+                // the kernel counts the `oom` before it ends the process, so a read that shows the kill shows it too
                 let own_limit = oom > ooms;
                 ooms = oom;
                 on_kill(OomKill { count: n, own_limit });
@@ -755,9 +755,8 @@ pub struct Reading {
 }
 
 /// A Gizai's memory limit for its agent runs, the limit each run gets of its own (Memory per run, GA-277), and the slice
-/// that enforces them (Linux). Nothing is enforced or read until
-/// `enable`, which Gizai's start does: a test's Gizai keeps its processes outside systemd, and its runs don't wait for
-/// memory, unless the test enables it (or fakes a reading).
+/// that enforces them (Linux). Nothing is enforced or read until `enable`, which Gizai's start does: a test's Gizai keeps
+/// its processes outside systemd, and its runs don't wait for memory, unless the test enables it (or fakes a reading).
 ///
 /// Only `slice` waits while the slice is being set up (so no process starts outside it meanwhile); the limit, whether it
 /// is enforced and the readings never do, so Settings and the start check stay quick.
