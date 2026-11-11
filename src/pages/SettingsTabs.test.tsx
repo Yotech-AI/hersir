@@ -413,6 +413,21 @@ describe("Memory per run in Runs (GA-277)", () => {
     expect(r.got[0]).toEqual([now]);
     read.mockRestore();
   });
+  it("sends Memory per run as the backend showed it back as it came, also after an edit, and doesn't show it as a field", async () => {
+    const read = { ...MEM, runsMemoryPerRunShownGb: 16 };
+    expect(render("agents", read)).toBe(render("agents", MEM));
+    const edited = edit(read, "8");
+    expect(edited).toEqual({ ...read, runsMemoryPerRunGb: 8, runsMemoryPerRunShownGb: 16 });
+    const api = await import("../api");
+    const get = vi.spyOn(api, "getSettings").mockResolvedValueOnce({ ...read, runsMemoryPerRunGb: 8, runsMemoryPerRunShownGb: 8 });
+    const r = tree("agents", edited);
+    saveButton(r.t).onClick();
+    await settle();
+    await settle();
+    expect(calls.filter(([k]) => k === "saveSettings").map(([, a]) => a[0])).toEqual([{ ...read, runsMemoryPerRunGb: 8, runsMemoryPerRunShownGb: 16, maxRunUsd: null }]);
+    expect(r.got[0]).toEqual([{ ...read, runsMemoryPerRunGb: 8, runsMemoryPerRunShownGb: 8 }]);
+    get.mockRestore();
+  });
   it("Save settings refuses an emptied field or less than 2 GB with a message, and doesn't save", async () => {
     for (const value of ["", "1", "2.5"]) {
       calls.length = 0;

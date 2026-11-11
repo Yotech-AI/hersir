@@ -212,3 +212,101 @@ fn a_run_never_gets_more_than_memory_for_agent_runs_also_when_that_is_lowered_be
     assert_eq!(st.run_memory.run_limit(), Some(4 * GB));
     assert!(!st.run_memory.enforced(), "nothing was set up");
 }
+
+// ---- GA-277, QA round 2: Memory per run as the page showed it (`runsMemoryPerRunShownGb`) ----
+
+/// The JSON a page sends: `s` with `drop` left out (an older page that doesn't know those fields).
+fn from_page(s: &Settings, drop: &[&str]) -> Settings {
+    let mut v = serde_json::to_value(s).unwrap();
+    for k in drop {
+        v.as_object_mut().unwrap().remove(*k);
+    }
+    serde_json::from_value(v).unwrap()
+}
+
+#[test]
+fn get_settings_gives_memory_per_run_as_shown_next_to_it_also_when_memory_for_agent_runs_is_lowered_below_a_saved_one() {
+    let tmp = tempfile::tempdir().unwrap();
+    let st = gizai_lib::test_state(tmp.path());
+    gizai_core::settings::set(&st.db, gizai_lib::run_memory::KEY, &16u32).unwrap();
+    let json = serde_json::to_value(runs::get_settings(&st)).unwrap();
+    assert_eq!((&json["runsMemoryPerRunGb"], &json["runsMemoryPerRunShownGb"]), (&serde_json::json!(8), &serde_json::json!(8)), "unset: half of 16");
+    runs::save_settings(&st, &per_run(&runs::get_settings(&st), Some(10))).unwrap();
+    runs::save_settings(&st, &with(&runs::get_settings(&st), Some(6))).unwrap();
+    assert_eq!(saved_per_run(&st), Some(10));
+    let json = serde_json::to_value(runs::get_settings(&st)).unwrap();
+    assert_eq!((&json["runsMemoryPerRunGb"], &json["runsMemoryPerRunShownGb"]), (&serde_json::json!(6), &serde_json::json!(6)), "capped at Memory for agent runs");
+}
+
+#[test]
+fn the_ga202_tests_saves_of_its_first_read_leave_memory_per_run_unset() {
+    // as memory_for_agent_runs_is_half_the_computer_until_set_…: copies of the first read, saved at 2 GB, the computer's
+    // memory and 3 GB, then without Memory for agent runs
+    let tmp = tempfile::tempdir().unwrap();
+    let st = gizai_lib::test_state(tmp.path());
+    let computer = gizai_lib::run_memory::computer_gb().unwrap();
+    let s = runs::get_settings(&st);
+    assert_eq!(s.runs_memory_per_run_shown_gb, s.runs_memory_per_run_gb);
+    for gb in [2, computer, 3] {
+        runs::save_settings(&st, &with(&s, Some(gb))).unwrap();
+        assert_eq!(saved_per_run(&st), None, "{gb} GB: Memory per run stays unset");
+        assert_eq!(runs::get_settings(&st).runs_memory_per_run_gb, Some(gizai_lib::run_memory::per_run_default_gb(gb)), "{gb} GB: it follows");
+    }
+    runs::save_settings(&st, &with(&s, None)).unwrap();
+    assert_eq!((runs::get_settings(&st).runs_memory_gb, saved_per_run(&st)), (Some(3), None));
+    assert_eq!(runs::get_settings(&st).runs_memory_per_run_gb, Some(2));
+}
+
+#[test]
+fn a_page_older_than_another_save_never_saves_nor_is_refused_for_a_memory_per_run_it_only_read_but_an_edit_is_checked() {
+    let tmp = tempfile::tempdir().unwrap();
+    let st = gizai_lib::test_state(tmp.path());
+    gizai_core::settings::set(&st.db, gizai_lib::run_memory::KEY, &32u32).unwrap();
+    let old = runs::get_settings(&st);
+    assert_eq!((old.runs_memory_per_run_gb, old.runs_memory_per_run_shown_gb), (Some(16), Some(16)));
+    // another page lowers Memory for agent runs to 6 GB: an unset Memory per run follows to 3
+    runs::save_settings(&st, &with(&runs::get_settings(&st), Some(6))).unwrap();
+    assert_eq!(runs::get_settings(&st).runs_memory_per_run_gb, Some(3));
+
+    // the old page saves what it read, without Memory for agent runs (it stays 6): 16 is neither refused nor saved
+    let older = from_page(&old, &["runsMemoryGb"]);
+    runs::save_settings(&st, &Settings { max_run_minutes: 77, ..older.clone() }).unwrap();
+    assert_eq!((saved_per_run(&st), runs::get_settings(&st).runs_memory_per_run_gb), (None, Some(3)), "still unset, it follows");
+    assert_eq!(runs::get_settings(&st).max_run_minutes, 77, "the rest of the form is saved");
+    // with an edit, Memory per run is checked against Memory for agent runs as the save leaves it (6), and refused
+    let err = runs::save_settings(&st, &Settings { max_run_minutes: 88, ..per_run(&older, Some(10)) }).unwrap_err();
+    assert_eq!(err, "memory per run may be between 2 and 6 GB: memory for agent runs is 6 GB");
+    assert_eq!((saved_per_run(&st), runs::get_settings(&st).max_run_minutes), (None, 77), "nothing was saved");
+    // an edit within it is saved
+    runs::save_settings(&st, &per_run(&older, Some(5))).unwrap();
+    assert_eq!((saved_per_run(&st), runs::get_settings(&st).runs_memory_per_run_gb), (Some(5), Some(5)));
+    // the old page again, as it read it: the 5 someone saved since stays
+    runs::save_settings(&st, &older).unwrap();
+    assert_eq!(saved_per_run(&st), Some(5));
+    // the old page with its own Memory for agent runs (32) puts that back, and Memory per run stays 5
+    runs::save_settings(&st, &old).unwrap();
+    assert_eq!((runs::get_settings(&st).runs_memory_gb, saved_per_run(&st), runs::get_settings(&st).runs_memory_per_run_gb), (Some(32), Some(5), Some(5)));
+}
+
+#[test]
+fn without_the_shown_value_memory_per_run_is_compared_with_what_settings_shows_now() {
+    let tmp = tempfile::tempdir().unwrap();
+    let st = gizai_lib::test_state(tmp.path());
+    gizai_core::settings::set(&st.db, gizai_lib::run_memory::KEY, &32u32).unwrap();
+    let old = from_page(&runs::get_settings(&st), &["runsMemoryPerRunShownGb"]);
+    assert_eq!((old.runs_memory_per_run_gb, old.runs_memory_per_run_shown_gb), (Some(16), None));
+    // as Settings → Runs shows it now: unchanged, still unset
+    runs::save_settings(&st, &old).unwrap();
+    assert_eq!(saved_per_run(&st), None);
+    // after another save lowered Memory for agent runs to 6 GB, 16 is a change, and more than 6
+    runs::save_settings(&st, &with(&runs::get_settings(&st), Some(6))).unwrap();
+    let err = runs::save_settings(&st, &with(&old, None)).unwrap_err();
+    assert_eq!(err, "memory per run may be between 2 and 6 GB: memory for agent runs is 6 GB");
+    assert_eq!(saved_per_run(&st), None);
+    // 3, as it shows now, is unchanged
+    runs::save_settings(&st, &per_run(&with(&old, None), Some(3))).unwrap();
+    assert_eq!(saved_per_run(&st), None);
+    // and 4 is saved
+    runs::save_settings(&st, &per_run(&with(&old, None), Some(4))).unwrap();
+    assert_eq!(saved_per_run(&st), Some(4));
+}
