@@ -105,13 +105,16 @@ pub fn check_per_run(gb: u32, runs_gb: u32) -> Result<(), String> {
 }
 
 /// The Memory per run a save of Settings → Runs gives, checked before anything is saved: Some(gb) to save, None to keep
-/// what was saved (unset, it goes on following Memory for agent runs). Left out (`gb` None), or as Settings → Runs
-/// shows it now (`per_run_gb`), it stays as it was, also when Memory for agent runs is lowered below it in the same
-/// save: a run never gets more than Memory for agent runs anyway. Another value must be 2 GB up to Memory for agent
-/// runs as this save leaves it (`runs_gb`).
-pub fn per_run_change(st: &AppState, gb: Option<u32>, runs_gb: u32) -> Result<Option<u32>, String> {
+/// what was saved (unset, it goes on following Memory for agent runs). Left out (`gb` None), or as the page showed it
+/// (`shown`: what `get_settings` gave, which the page sends back as it came), it stays as it was. Also when Memory for
+/// agent runs is lowered below it in the same save, as a run never gets more than Memory for agent runs anyway, and when
+/// another save changed what Settings → Runs shows since the page read it: a page that saves what it read again and again
+/// never saves, nor is refused for, a Memory per run that is only stale. Without `shown` (an older page) it is compared
+/// with what Settings → Runs shows now (`per_run_gb`). Another value must be 2 GB up to Memory for agent runs as this
+/// save leaves it (`runs_gb`).
+pub fn per_run_change(st: &AppState, gb: Option<u32>, shown: Option<u32>, runs_gb: u32) -> Result<Option<u32>, String> {
     match gb {
-        Some(gb) if gb != per_run_gb(st) => check_per_run(gb, runs_gb).map(|_| Some(gb)),
+        Some(gb) if gb != shown.unwrap_or_else(|| per_run_gb(st)) => check_per_run(gb, runs_gb).map(|_| Some(gb)),
         _ => Ok(None),
     }
 }

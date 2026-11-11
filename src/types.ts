@@ -372,8 +372,10 @@ export type Settings = { claudeBin?: string | null; dataDir: string; maxConcurre
    *  enforces the limit (Linux with a systemd user session; elsewhere Gizai only waits for free memory before a run). */
   runsMemoryGb?: number; computerMemoryGb?: number; runsMemoryEnforced?: boolean;
   /** Settings → Runs → Memory per run (GA-277), in GB: one run at most, half of Memory for agent runs until set (and it
-   *  follows that), never more than Memory for agent runs. Sent back unchanged, it keeps what was saved. */
-  runsMemoryPerRunGb?: number;
+   *  follows that), never more than Memory for agent runs. Sent back unchanged, it keeps what was saved. Next to it, to be
+   *  sent back as it came: Memory per run as get_settings gave it, so a save tells a value the page showed (also after
+   *  another save changed it) from one someone typed. */
+  runsMemoryPerRunGb?: number; runsMemoryPerRunShownGb?: number;
   /** Settings → Runs: the limits of an answer of the Team Lead (also a board check and its look at a question). */
   maxChatMinutes: number; maxChatToolCalls: number;
   /** The GitHub CLI; null = found when needed. */

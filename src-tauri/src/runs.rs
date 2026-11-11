@@ -236,9 +236,14 @@ pub struct Settings {
     /// Memory per run (GA-277), in GB: one run at most, its agent and everything it starts. Half of Memory for agent runs
     /// until someone sets it, and it follows that (`run_memory::per_run_default_gb`); 2 GB up to Memory for agent runs.
     /// `get_settings` gives what a run gets now, never more than Memory for agent runs. None (left out), or the value
-    /// `get_settings` gave, keeps what was saved (`run_memory::per_run_change`).
+    /// `get_settings` gave (`runs_memory_per_run_shown_gb`), keeps what was saved (`run_memory::per_run_change`).
     #[serde(default)]
     pub runs_memory_per_run_gb: Option<u32>,
+    /// Memory per run as `get_settings` gave it, which the page sends back as it came: a save whose Memory per run is
+    /// still this value didn't change it, also when another save changed it since. None (an older page): compared with
+    /// what `get_settings` gives now.
+    #[serde(default)]
+    pub runs_memory_per_run_shown_gb: Option<u32>,
     /// Read-only: this computer's memory in GB (0 when the system doesn't say), for the hint under it.
     #[serde(default)]
     pub computer_memory_gb: u32,
@@ -306,12 +311,14 @@ fn default_push_over() -> String { "ssh".into() }
 
 pub fn get_settings(st: &AppState) -> Settings {
     let shots = gizai_core::screenshots::limits(&st.db);
+    let per_run = crate::run_memory::per_run_gb(st);
     Settings {
         claude_bin: settings::get(&st.db, "claude_bin").ok().flatten(),
         data_dir: st.data_dir.display().to_string(),
         max_concurrent_runs: settings::get(&st.db, "max_concurrent_runs").ok().flatten().unwrap_or(DEFAULT_MAX_CONCURRENT),
         runs_memory_gb: Some(crate::run_memory::setting_gb(st)),
-        runs_memory_per_run_gb: Some(crate::run_memory::per_run_gb(st)),
+        runs_memory_per_run_gb: Some(per_run),
+        runs_memory_per_run_shown_gb: Some(per_run),
         computer_memory_gb: crate::run_memory::computer_gb().unwrap_or(0),
         runs_memory_enforced: st.run_memory.enforced(),
         agents_paused: settings::get(&st.db, "agents_paused").ok().flatten().unwrap_or(false),
@@ -342,7 +349,7 @@ pub fn save_settings(st: &AppState, s: &Settings) -> Result<(), String> {
     }
     // GA-277: Memory per run, checked against Memory for agent runs as this save leaves it
     let runs_gb = s.runs_memory_gb.unwrap_or_else(|| crate::run_memory::setting_gb(st));
-    let per_run = crate::run_memory::per_run_change(st, s.runs_memory_per_run_gb, runs_gb)?;
+    let per_run = crate::run_memory::per_run_change(st, s.runs_memory_per_run_gb, s.runs_memory_per_run_shown_gb, runs_gb)?;
     if matches!(s.max_run_usd, Some(v) if v <= 0.0) {
         return Err("a spending limit must be more than $0".into());
     }
