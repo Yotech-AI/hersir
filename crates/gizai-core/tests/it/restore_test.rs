@@ -215,7 +215,7 @@ fn is_stamped(name: &str, start: &str) -> bool {
 fn this_computers_settings_are_the_cards_list_and_every_other_and_every_orgs_setting_is_shared() {
     for key in ["claude_bin", "gh_bin", "clis", "mcp_servers", "mcp_tools", "mcp_last_run", "mcp_browser", "cli_tools_seen",
                 "cli_tools_asked", "editor_roots", "github_push_over", "claude_memory_imports", "runs_memory_gb",
-                "max_concurrent_runs", "agents_paused", "subscription_limits", "onboarding", "update_auto_check",
+                "runs_memory_per_run_gb", "max_concurrent_runs", "agents_paused", "subscription_limits", "onboarding", "update_auto_check",
                 "update_last_check", "notify_hold", "notify_waiting", "notify_lead_asks", "notify_lead_answered",
                 "notify_something_new", b::FOLDER_KEY, b::EVERY_KEY, b::ON_QUIT_KEY, b::KEEP_KEY, "last_restore"] {
         assert!(scope::this_computer(key), "{key} is this computer's");
@@ -558,6 +558,44 @@ fn this_computers_settings_keep_todays_values_and_shared_ones_come_from_the_snap
     let old = Connection::open(d.dir.join("backups").join(&before[0])).unwrap();
     let v: String = old.query_row("SELECT value_json FROM settings WHERE key = 'qa_shared' AND org_id = ''", [], |r| r.get(0)).unwrap();
     assert_eq!(v, "\"today\"");
+}
+
+#[test]
+fn a_backup_and_restore_keep_memory_per_run_as_this_computers_setting() {
+    // GA-277: Memory per run is this computer's, like Memory for agent runs
+    let o = data();
+    o.set("runs_memory_gb", json!(12));
+    o.set("runs_memory_per_run_gb", json!(6));
+    let theirs = chosen(&o, "usb");
+    let m = o.snapshot(&theirs, Reason::Manual);
+
+    // a computer that has its own keeps it
+    let d = data();
+    d.set("runs_memory_gb", json!(16));
+    d.set("runs_memory_per_run_gb", json!(4));
+    let own = chosen(&d, "mine");
+    stage(&d, &theirs, &m.name, &own);
+    let (d, result) = d.restart();
+    assert!(result.unwrap().ok);
+    assert_eq!((d.get("runs_memory_gb"), d.get("runs_memory_per_run_gb")), (Some(json!(16)), Some(json!(4))));
+
+    // one that has none (a new computer) gets the backup's
+    let n = data();
+    assert_eq!(n.get("runs_memory_per_run_gb"), None);
+    let own = chosen(&n, "mine");
+    stage(&n, &theirs, &m.name, &own);
+    let (n, result) = n.restart();
+    assert!(result.unwrap().ok);
+    assert_eq!((n.get("runs_memory_gb"), n.get("runs_memory_per_run_gb")), (Some(json!(12)), Some(json!(6))));
+
+    // this computer's own backup, restored after Memory per run changed: what it has today stays
+    let usb = chosen(&o, "usb2");
+    let mine = o.snapshot(&usb, Reason::Manual);
+    o.set("runs_memory_per_run_gb", json!(5));
+    stage(&o, &usb, &mine.name, &usb);
+    let (o, result) = o.restart();
+    assert!(result.unwrap().ok);
+    assert_eq!(o.get("runs_memory_per_run_gb"), Some(json!(5)));
 }
 
 #[test]

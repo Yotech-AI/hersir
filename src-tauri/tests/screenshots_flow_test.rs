@@ -892,3 +892,38 @@ async fn in_the_slice_what_the_preview_left_in_a_group_of_its_own_ends_with_the_
     let procs: String = scopes.map(|e| std::fs::read_to_string(e.path().join("cgroup.procs")).unwrap_or_default()).collect();
     assert!(procs.trim().is_empty(), "{procs}");
 }
+
+/// GA-277, Linux with a systemd user session: in the test Gizai's own slice, the run's preview starts in a scope with
+/// Memory per run as its MemoryMax and no MemoryHigh of its own, as the run itself does. Without a user session it says
+/// so and passes.
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn in_the_slice_the_preview_starts_in_a_scope_with_memory_per_run_and_no_memory_high() {
+    use gizai_agents::run_memory::{GB, Slice, slice_name};
+    struct Own(Slice);
+    impl Drop for Own {
+        fn drop(&mut self) {
+            let _ = self.0.remove();
+        }
+    }
+    let t = setup(Some((49800, 49899)));
+    t.st.run_memory.enable(&slice_name(&t.st.data_dir), 4 * GB);
+    t.st.run_memory.set_run_limit(GB);
+    let Some(slice) = t.st.run_memory.slice().map(Own) else {
+        assert!(std::env::var_os("GIZAI_TEST_SLICE").is_none(), "GIZAI_TEST_SLICE is set, but there is no slice");
+        eprintln!("skipped: no slice for agent runs on this Linux");
+        return;
+    };
+    let at = t.tmp.path().join("preview-scope");
+    t.project(&format!("c=$(sed -n 's/^0:://p' /proc/self/cgroup); echo \"$c $(cat /sys/fs/cgroup$c/memory.max) $(cat /sys/fs/cgroup$c/memory.high)\" > '{}'; {}",
+                       at.display(), t.node_preview("")), None, None);
+    let task = t.task("");
+    let (s, g) = t.run(&task).await;
+    assert_eq!(s.status, "succeeded", "{:?}", s.error);
+    preview_gone(&t.info(g.port()), g.port());
+    let line = read(&at);
+    let f: Vec<&str> = line.split_whitespace().collect();
+    let dir = Path::new("/sys/fs/cgroup").join(f[0].trim_start_matches('/'));
+    assert_eq!(dir.parent(), Some(slice.0.dir()), "the preview ran in a scope in the slice: {line}");
+    assert_eq!((f[1], f[2]), (GB.to_string().as_str(), "max"), "Memory per run, and no MemoryHigh of its own: {line}");
+}
