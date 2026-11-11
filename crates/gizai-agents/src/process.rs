@@ -3,8 +3,8 @@
 //! and stops it.
 //! Gizai's own markers come among the CLI's events (`StreamEvent::other`): `cap_exceeded:tools` and `cap_exceeded:time`
 //! at a cap, `ended_after_result` when the CLI stayed quiet for `Caps::after_result` after the agent's result,
-//! `oom_kill:<n>` when Linux ended a process in the run at the memory limit, `leftover:<pid> <name>` for each process
-//! ended that the run left in its scope, and last `exit:<code>`.
+//! `oom_kill:<n>` when Linux ended a process in the run at the memory limit (`oom_kill:<n> per_run` at the run's own),
+//! `leftover:<pid> <name>` for each process ended that the run left in its scope, and last `exit:<code>`.
 //! Signals only ever go to that process group (never pid 0 or 1), so nothing else on the machine is touched; in the
 //! slice of the agent runs (Linux), also to what the run left running in its own scope (GA-211).
 use std::io::Write;
@@ -21,7 +21,7 @@ use crate::chat_stream::ChatEvent;
 use crate::claude::ClaudeArgs;
 use crate::cli;
 use crate::os::{self, End, Tree};
-use crate::run_memory::{Leftover, OomWatch, Scope, Slice};
+use crate::run_memory::{Leftover, OomKill, OomWatch, Scope, Slice};
 use crate::stream::RunEvent;
 
 /// A program to start for one run or chat turn.
@@ -84,9 +84,23 @@ impl StopHandle {
     }
 }
 
-/// The marker for a process Linux ended in a run at the memory limit for agent runs (GA-202), followed by how many it
-/// ended in that run so far: `oom_kill:1`.
+/// The marker for a process Linux ended in a run at a memory limit, followed by how many it ended in that run so far:
+/// `oom_kill:1` at the limit of all agent runs together (GA-202), `oom_kill:1 per_run` at the run's own limit, Memory
+/// per run (GA-277, `PER_RUN`).
 pub const OOM_KILL: &str = "oom_kill:";
+
+/// What follows the count of an `OOM_KILL` marker when the run's own limit ended the process (GA-277).
+pub const PER_RUN: &str = " per_run";
+
+/// The count and the limit an `OOM_KILL` marker gives.
+pub fn oom_kill(raw: &str) -> Option<OomKill> {
+    let rest = raw.strip_prefix(OOM_KILL)?;
+    let (count, own_limit) = match rest.strip_suffix(PER_RUN) {
+        Some(count) => (count, true),
+        None => (rest, false),
+    };
+    Some(OomKill { count: count.parse().ok()?, own_limit })
+}
 
 /// The marker for a process the run left running in its scope outside its process group, which Gizai ended at the
 /// run's end (GA-211, `Scope::end_leftovers`), followed by its pid and name: `leftover:12345 chromium`. One per process,
@@ -112,8 +126,8 @@ pub trait StreamEvent: Clone + Send + 'static {
     /// Gizai's own markers: `cap_exceeded:tools`, `cap_exceeded:time`, `exit:<code>`, `ended_after_result` when Gizai
     /// ended a CLI that stayed quiet for `Caps::after_result` once the agent was done (`ENDED_AFTER_RESULT`),
     /// `oom_kill:<n>` when Linux ended a process in the run at the memory limit for agent runs (the n-th in this run,
-    /// `OOM_KILL`), and `leftover:<pid> <name>` for each process Gizai ended that the run left running in its scope
-    /// (`LEFTOVER`).
+    /// `OOM_KILL`; `oom_kill:<n> per_run` at the run's own limit, Memory per run), and `leftover:<pid> <name>` for each
+    /// process Gizai ended that the run left running in its scope (`LEFTOVER`).
     fn other(raw: String) -> Self;
 }
 
@@ -291,8 +305,9 @@ pub fn spawn<E: StreamEvent>(args: &ClaudeArgs, cwd: &Path, log_path: &Path, cap
 }
 
 /// Any CLI, its output read by `parser`. Must be called inside a Tokio runtime. With `exec.slice` it starts in a scope
-/// of its own in that slice, the events get an `OOM_KILL` marker each time Linux ends a process in it at the limit, and
-/// at its end what it left in its scope ends too, each process with a `LEFTOVER` marker.
+/// of its own in that slice (with the slice's limit per run, if it has one), the events get an `OOM_KILL` marker each
+/// time Linux ends a process in it at a limit, and at its end what it left in its scope ends too, each process with a
+/// `LEFTOVER` marker.
 pub fn spawn_exec<E: StreamEvent, P: LineParser<E>>(exec: &Exec, cwd: &Path, log_path: &Path, caps: Caps, mut parser: P)
     -> Result<RunHandle<E>, AgentError> {
     let stderr = std::fs::File::create(log_path.with_extension("stderr.log"))?;
@@ -327,11 +342,12 @@ pub fn spawn_exec<E: StreamEvent, P: LineParser<E>>(exec: &Exec, cwd: &Path, log
     // GA-221: since when the CLI has been quiet while the agent is done, from the reader to the waiter.
     let (quiet, quiet_rx) = tokio::sync::watch::channel::<Option<Instant>>(None);
 
-    // Linux, in the slice: each process Linux ends in the run's scope at the memory limit, as it happens.
+    // Linux, in the slice: each process Linux ends in the run's scope at a memory limit, as it happens, and which.
     let watch = slice.map(|s| {
         let tx = tx.clone();
-        OomWatch::start(s, pid, move |n| {
-            let _ = tx.blocking_send(E::other(format!("{OOM_KILL}{n}")));
+        OomWatch::start_by_limit(s, pid, move |k| {
+            let own = if k.own_limit { PER_RUN } else { "" };
+            let _ = tx.blocking_send(E::other(format!("{OOM_KILL}{}{own}", k.count)));
         })
     });
 

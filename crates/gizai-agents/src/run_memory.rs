@@ -10,6 +10,11 @@
 //! (`Slice::scoped`), so its folder is known before the program starts, and when the program has ended what is left in
 //! it ends too (`Scope::end_leftovers`). Quitting ends whatever is still in the slice (`Slice::end_leftovers`), and so
 //! does the next start after a crash (`end_leftovers_in`).
+//!
+//! Memory per run (GA-277): each scope also gets a MemoryMax of its own, without a MemoryHigh (`Slice::with_run_limit`,
+//! which `RunsMemory::slice` applies), so one runaway process is ended inside its own run at once, before the slice
+//! reaches its MemoryHigh and slows every run down. Which limit ended a process tells the scope's `oom` count
+//! (`OomKill::own_limit`).
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -122,7 +127,7 @@ pub fn slice_name(data_dir: &Path) -> String {
 }
 
 /// The slice's MemoryMax and MemoryHigh (90% of it) for a limit of `max` bytes, both in whole 4 KiB pages, as the kernel
-/// keeps them: memory.max and memory.high read back these numbers.
+/// keeps them: memory.max and memory.high read back these numbers. A scope's own limit per run is the first of them.
 pub fn limits_for(max: u64) -> (u64, u64) {
     const PAGE: u64 = 4096;
     let max = max / PAGE * PAGE;
@@ -146,6 +151,9 @@ pub struct Slice {
     /// The scopes get OOMPolicy=continue (systemd 253 and newer): when Linux ends a process at the limit, the rest of its
     /// run goes on. Older systemd has no OOM policy for scopes and lets them run on anyway.
     oom_continue: bool,
+    /// Memory per run (GA-277): each scope's own MemoryMax in bytes, in whole 4 KiB pages; None for scopes without a
+    /// limit of their own, as a slice straight from `set_up` makes them.
+    run_max: Option<u64>,
 }
 
 impl Slice {
@@ -169,7 +177,7 @@ impl Slice {
                 return Err("there is no systemd user session (XDG_RUNTIME_DIR isn't set)".into());
             }
             let mut slice = Slice { name: name.to_string(), dir: PathBuf::new(), systemd_run, systemctl, keep_args: true,
-                                    oom_continue: true };
+                                    oom_continue: true, run_max: None };
             slice.set_properties(max)?;
             // systemd older than 254 refuses --expand-environment as an unknown option (and expands nothing in a scope);
             // only then is it left out, so a systemd that expands always gets it
@@ -227,6 +235,18 @@ impl Slice {
         (read("memory.max"), read("memory.high"))
     }
 
+    /// This slice, whose scopes from now on each get a limit of `max` bytes of their own (Memory per run, GA-277):
+    /// MemoryMax in whole 4 KiB pages (`limits_for`), and no MemoryHigh, so Linux ends a process that takes the scope
+    /// past it at once instead of slowing it down. The slice keeps its own limits. Scopes made before keep theirs.
+    pub fn with_run_limit(&self, max: u64) -> Slice {
+        Slice { run_max: Some(limits_for(max).0), ..self.clone() }
+    }
+
+    /// The limit each scope it makes gets of its own, in bytes (`with_run_limit`); None when they get none.
+    pub fn run_limit(&self) -> Option<u64> {
+        self.run_max
+    }
+
     /// A Command that starts `program` in a scope of its own in this slice: `systemd-run --user --scope`, which runs it
     /// in the same process once the scope is made, so its pid, process group, priority, environment, folder and open
     /// files stay as they are, and its arguments reach it unchanged, `$` included. Add the program's arguments to it.
@@ -236,7 +256,8 @@ impl Slice {
 
     /// `command`, and the scope it starts in. Gizai names the scope (`gizai-<16 hex digits>.scope`), so its cgroup folder
     /// is known before the program starts and still after it ended, when its pid is gone: what the program leaves
-    /// running there can be ended then (`Scope::end_leftovers`).
+    /// running there can be ended then (`Scope::end_leftovers`). With a limit per run (`with_run_limit`) the scope gets
+    /// it as its MemoryMax.
     pub fn scoped(&self, program: &OsStr) -> (Command, Scope) {
         let unit = format!("gizai-{}.scope", scope_id());
         let mut cmd = os::command(&self.systemd_run);
@@ -246,6 +267,9 @@ impl Slice {
         }
         if self.oom_continue {
             cmd.args(["-p", "OOMPolicy=continue"]);
+        }
+        if let Some(max) = self.run_max {
+            cmd.arg("-p").arg(format!("MemoryMax={max}"));
         }
         cmd.arg("--").arg(program);
         (cmd, Scope { dir: self.dir.join(unit) })
@@ -577,10 +601,21 @@ fn quick(cmd: &mut Command) -> Result<Vec<u8>, String> {
     Err(if said.is_empty() { format!("it ended with {status}") } else { said })
 }
 
-/// Watches the scope a process started in through `Slice::command` for processes Linux ended at the slice's limit: the
-/// `oom_kill` count in the scope's memory.events, which the kernel raises for each process it ends there. `on_kill`
-/// hears each rise with the count so far, as it happens (inotify; a look every 100 ms without it). Elsewhere it watches
-/// nothing.
+/// A rise of the `oom_kill` count in a scope's memory.events (`OomWatch`): how many processes Linux ended in the scope
+/// so far, and whether the scope's own limit ended the ones just ended (Memory per run, GA-277) rather than the slice's,
+/// the limit of all runs together. The kernel counts an `oom` in the cgroup whose limit was reached (and in those above
+/// it), never in the cgroups below it: so it was the scope's own limit when the scope's `oom` count went up since the
+/// rise before.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OomKill {
+    pub count: u64,
+    pub own_limit: bool,
+}
+
+/// Watches the scope a process started in through `Slice::command` for processes Linux ended at a memory limit, the
+/// slice's or the scope's own: the `oom_kill` count in the scope's memory.events, which the kernel raises for each
+/// process it ends there. `on_kill` hears each rise with the count so far, as it happens (inotify; a look every 100 ms
+/// without it). Elsewhere it watches nothing.
 pub struct OomWatch {
     stop: Arc<AtomicBool>,
     thread: Option<std::thread::JoinHandle<u64>>,
@@ -588,7 +623,12 @@ pub struct OomWatch {
 
 impl OomWatch {
     /// Watches the scope of `pid`, a process just started with `slice`'s `command`.
-    pub fn start(slice: &Slice, pid: u32, on_kill: impl FnMut(u64) + Send + 'static) -> OomWatch {
+    pub fn start(slice: &Slice, pid: u32, mut on_kill: impl FnMut(u64) + Send + 'static) -> OomWatch {
+        OomWatch::start_by_limit(slice, pid, move |k| on_kill(k.count))
+    }
+
+    /// `start`, where `on_kill` also hears which limit ended the process (`OomKill::own_limit`, GA-277).
+    pub fn start_by_limit(slice: &Slice, pid: u32, on_kill: impl FnMut(OomKill) + Send + 'static) -> OomWatch {
         let stop = Arc::new(AtomicBool::new(false));
         #[cfg(target_os = "linux")]
         let thread = {
@@ -620,7 +660,7 @@ impl Drop for OomWatch {
 /// The watch's thread: finds the scope of `pid` (systemd-run moves it there before the program runs; at most 10 s),
 /// then reads its memory.events whenever it changes, until `stop` or until the scope is gone.
 #[cfg(target_os = "linux")]
-fn watch(slice: &Slice, pid: u32, stop: &AtomicBool, mut on_kill: impl FnMut(u64)) -> u64 {
+fn watch(slice: &Slice, pid: u32, stop: &AtomicBool, mut on_kill: impl FnMut(OomKill)) -> u64 {
     let until = Instant::now() + Duration::from_secs(10);
     let scope = loop {
         if let Some(s) = slice.scope_of(pid) {
@@ -633,13 +673,18 @@ fn watch(slice: &Slice, pid: u32, stop: &AtomicBool, mut on_kill: impl FnMut(u64
     };
     let events = scope.join("memory.events");
     let changes = Inotify::watch(&events);
-    let mut seen = 0;
+    // the kills so far, and the scope's `oom` count at the last of them: a new scope starts at 0
+    let (mut seen, mut ooms) = (0, 0);
     loop {
         let last = stop.load(Ordering::SeqCst);
-        match std::fs::read_to_string(&events).ok().and_then(|t| stat_value(&t, "oom_kill")) {
-            Some(n) if n > seen => {
+        let counts = std::fs::read_to_string(&events).ok().and_then(|t| Some((stat_value(&t, "oom_kill")?, stat_value(&t, "oom").unwrap_or(0))));
+        match counts {
+            Some((n, oom)) if n > seen => {
                 seen = n;
-                on_kill(n);
+                // the kernel counts the `oom` before it ends a process, so it is there by the time its kill is
+                let own_limit = oom > ooms;
+                ooms = oom;
+                on_kill(OomKill { count: n, own_limit });
             }
             Some(_) => {}
             // the scope is gone: everything in it has ended
@@ -709,7 +754,8 @@ pub struct Reading {
     pub available: Option<u64>,
 }
 
-/// A Gizai's memory limit for its agent runs, and the slice that enforces it (Linux). Nothing is enforced or read until
+/// A Gizai's memory limit for its agent runs, the limit each run gets of its own (Memory per run, GA-277), and the slice
+/// that enforces them (Linux). Nothing is enforced or read until
 /// `enable`, which Gizai's start does: a test's Gizai keeps its processes outside systemd, and its runs don't wait for
 /// memory, unless the test enables it (or fakes a reading).
 ///
@@ -721,6 +767,8 @@ pub struct RunsMemory {
     name: Mutex<Option<String>>,
     /// The limit in bytes, from `enable` and `set_limit`; 0 until enabled.
     limit: AtomicU64,
+    /// Memory per run in bytes (GA-277), from `set_run_limit`; 0 for none. A scope gets at most `limit`.
+    run_limit: AtomicU64,
     /// What setting the slice up gave, once tried: the slice, or why there is none. Held while it is set up.
     made: Mutex<Option<Result<Slice, String>>>,
     /// Whether `made` holds a slice.
@@ -741,8 +789,8 @@ impl RunsMemory {
     }
 
     /// The slice to start agent processes in, set up at the first call after `enable` (Linux: systemctl and a first
-    /// scope, well under a second). None when it isn't enabled, or can't be made: then they start as before, and Gizai
-    /// logged why, once.
+    /// scope, well under a second), with the limit per run each scope gets now (`run_limit`). None when it isn't
+    /// enabled, or can't be made: then they start as before, and Gizai logged why, once.
     pub fn slice(&self) -> Option<Slice> {
         let mut made = self.made.lock().unwrap_or_else(|e| e.into_inner());
         let name = self.name.lock().unwrap_or_else(|e| e.into_inner()).clone();
@@ -760,7 +808,15 @@ impl RunsMemory {
             self.enforced.store(set_up.is_ok(), Ordering::SeqCst);
             *made = Some(set_up);
         }
-        made.as_ref()?.as_ref().ok().cloned()
+        made.as_ref()?.as_ref().ok().map(|s| self.per_run(s))
+    }
+
+    /// `slice` with the limit per run that a scope starting now gets, when there is one.
+    fn per_run(&self, slice: &Slice) -> Slice {
+        match self.run_limit() {
+            Some(max) => slice.with_run_limit(max),
+            None => slice.clone(),
+        }
     }
 
     /// The slice, once `slice` has set it up. Never sets it up, and waits at most a moment for a set-up under way (Gizai
@@ -776,7 +832,7 @@ impl RunsMemory {
                 Err(TryLockError::WouldBlock) => return None,
             }
         };
-        made.as_ref()?.as_ref().ok().cloned()
+        made.as_ref()?.as_ref().ok().map(|s| self.per_run(s))
     }
 
     /// Whether the limit is enforced now: the slice is set up.
@@ -787,6 +843,20 @@ impl RunsMemory {
     /// The limit in bytes, once enabled.
     pub fn limit(&self) -> Option<u64> {
         Some(self.limit.load(Ordering::SeqCst)).filter(|l| *l > 0)
+    }
+
+    /// Memory per run (GA-277): from now on each process `slice` hands out starts in a scope with a limit of `limit`
+    /// bytes of its own, or of the slice's limit when that is lower (`run_limit`), also after it is lowered later. Scopes
+    /// that already run keep theirs.
+    pub fn set_run_limit(&self, limit: u64) {
+        self.run_limit.store(limit, Ordering::SeqCst);
+    }
+
+    /// The limit of its own a scope that starts now gets, in bytes: Memory per run, never more than the slice's limit.
+    /// None until both are given (`set_run_limit`, `enable`).
+    pub fn run_limit(&self) -> Option<u64> {
+        let run = self.run_limit.load(Ordering::SeqCst);
+        Some(run.min(self.limit()?)).filter(|r| *r > 0)
     }
 
     /// A new limit of `limit` bytes. A slice that is set up gets it at once, MemoryMax and MemoryHigh together (after a

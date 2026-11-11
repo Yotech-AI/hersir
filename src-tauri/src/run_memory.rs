@@ -7,6 +7,11 @@
 //! What runs leave behind in the slice (GA-211): a run's end ends what it left in its scope and its log names it
 //! (`leftovers_note`); quitting ends whatever is still in the slice (`end_leftovers`), and so does Gizai's next start,
 //! after a crash, before it recovers the runs (`end_leftovers_at_start`).
+//!
+//! Memory per run (GA-277): Settings → Runs → Memory per run, one run's own limit (`PER_RUN_KEY`). With the slice each
+//! run, chat answer, board check, preview and worktree preparation starts in a scope with that MemoryMax and no
+//! MemoryHigh, so Linux ends a runaway process inside its own run at once, and the other runs go on. Why: on 11 Nov 2026
+//! a hung test grew to 31 GB, the slice passed its MemoryHigh, and every run and chat in it crawled for an hour.
 use std::path::Path;
 
 use gizai_agents::run_memory::{self as mem, GB, Leftover};
@@ -16,6 +21,9 @@ use crate::AppState;
 
 /// The settings key: the limit in whole GB. Unset until someone sets it (`default_gb`).
 pub const KEY: &str = "runs_memory_gb";
+/// The settings key of Memory per run (GA-277): one run's own limit in whole GB. Unset until someone sets it
+/// (`per_run_default_gb`).
+pub const PER_RUN_KEY: &str = "runs_memory_per_run_gb";
 /// The smallest limit Settings → Runs allows, in GB.
 pub const MIN_GB: u32 = 2;
 /// No run starts while the runs use more than this share of the limit, in percent…
@@ -69,11 +77,63 @@ pub fn save(st: &AppState, gb: u32) -> Result<(), String> {
     Ok(())
 }
 
+/// Memory per run until someone sets it (GA-277): half of Memory for agent runs `runs_gb`, rounded down, at least 2 GB
+/// (32 → 16, 31 → 15, 3 → 2).
+pub fn per_run_default_gb(runs_gb: u32) -> u32 {
+    (runs_gb / 2).max(MIN_GB)
+}
+
+/// Memory per run as saved, else `per_run_default_gb` of Memory for agent runs, which it then follows. It may be more
+/// than a Memory for agent runs that was lowered later; a run never gets more than that (`RunsMemory::run_limit`).
+fn per_run_setting_gb(st: &AppState) -> u32 {
+    settings::get::<u32>(&st.db, PER_RUN_KEY).ok().flatten().unwrap_or_else(|| per_run_default_gb(setting_gb(st)))
+}
+
+/// Memory per run in GB as Settings → Runs shows it: what a run that starts now gets, `per_run_setting_gb` and never
+/// more than Memory for agent runs.
+pub fn per_run_gb(st: &AppState) -> u32 {
+    per_run_setting_gb(st).min(setting_gb(st))
+}
+
+/// Whether Memory per run may be `gb` with Memory for agent runs at `runs_gb`: 2 GB up to Memory for agent runs.
+pub fn check_per_run(gb: u32, runs_gb: u32) -> Result<(), String> {
+    let most = runs_gb.max(MIN_GB);
+    if (MIN_GB..=most).contains(&gb) {
+        return Ok(());
+    }
+    Err(format!("memory per run may be between {MIN_GB} and {most} GB: memory for agent runs is {most} GB"))
+}
+
+/// The Memory per run a save of Settings → Runs gives, checked before anything is saved: Some(gb) to save, None to keep
+/// what was saved (unset, it goes on following Memory for agent runs). Left out (`gb` None), or as Settings → Runs
+/// shows it now (`per_run_gb`), it stays as it was, also when Memory for agent runs is lowered below it in the same
+/// save: a run never gets more than Memory for agent runs anyway. Another value must be 2 GB up to Memory for agent
+/// runs as this save leaves it (`runs_gb`).
+pub fn per_run_change(st: &AppState, gb: Option<u32>, runs_gb: u32) -> Result<Option<u32>, String> {
+    match gb {
+        Some(gb) if gb != per_run_gb(st) => check_per_run(gb, runs_gb).map(|_| Some(gb)),
+        _ => Ok(None),
+    }
+}
+
+/// Saves Memory per run when `change` (from `per_run_change`) has a new value, and gives it to the scopes that start
+/// from now on: as saved, or half of Memory for agent runs while unset (`RunsMemory::set_run_limit`). Scopes that already
+/// run keep the limit they started with. After a save of Memory for agent runs too, as an unset Memory per run follows it.
+pub fn save_per_run(st: &AppState, change: Option<u32>) -> Result<(), String> {
+    if let Some(gb) = change {
+        settings::set(&st.db, PER_RUN_KEY, &gb).map_err(|e| e.to_string())?;
+    }
+    st.run_memory.set_run_limit(u64::from(per_run_setting_gb(st)) * GB);
+    Ok(())
+}
+
 /// Gizai's start: its agent processes start in its own slice from now on (`mem::slice_name` of its data folder), with
-/// the limit from Settings → Runs. The slice is set up on a thread of its own now, so the first run rarely waits for it;
-/// when it can't be made, processes start as before and Gizai logs why, once. Tests that want the slice call this too.
+/// the limit from Settings → Runs, each in a scope with Memory per run as its own limit. The slice is set up on a thread
+/// of its own now, so the first run rarely waits for it; when it can't be made, processes start as before and Gizai
+/// logs why, once. Tests that want the slice call this too.
 pub fn start(st: &AppState) {
     st.run_memory.enable(&mem::slice_name(&st.data_dir), u64::from(setting_gb(st)) * GB);
+    st.run_memory.set_run_limit(u64::from(per_run_setting_gb(st)) * GB);
     let st = st.clone();
     std::thread::spawn(move || {
         let _ = st.run_memory.slice();
@@ -103,21 +163,31 @@ pub fn waiting_since(st: &AppState) -> Option<(i64, String)> {
     st.runs.memory_wait.lock().unwrap().clone()
 }
 
-/// Linux ended a process in `agent`'s run on the card `task_id` at the limit: the card's activity says so, as Gizai, with
-/// the limit and where to change it.
-pub fn ended_on_card(st: &AppState, task_id: &str, agent: &str) {
-    let said = format!("saw Linux end a process in {agent}'s run: the agent runs reached their memory limit of {} GB together \
-                        (Settings → Runs → Memory for agent runs)", whole(limit(st)));
+/// Linux ended a process in `agent`'s run on the card `task_id` at a limit: the card's activity says so, as Gizai, with
+/// the limit and where to change it. `per_run`: the run's own limit in bytes, when that one ended it (GA-277); None when
+/// the limit of all agent runs together did.
+pub fn ended_on_card(st: &AppState, task_id: &str, agent: &str, per_run: Option<u64>) {
+    let said = match per_run {
+        Some(own) => format!("saw Linux end a process in {agent}'s run: the run reached its memory limit of {} GB \
+                              (Settings → Runs → Memory per run)", whole(own)),
+        None => format!("saw Linux end a process in {agent}'s run: the agent runs reached their memory limit of {} GB together \
+                         (Settings → Runs → Memory for agent runs)", whole(limit(st))),
+    };
     if gizai_core::pulls::note_cleanup(&st.db, task_id, &said).is_ok() {
         (st.notify)(crate::runs::Note::RowsChanged("tasks"));
     }
 }
 
-/// The run's own note at its end, when Linux ended `count` processes in it at the limit.
-pub fn ended_note(st: &AppState, count: u64) -> String {
+/// The run's own note at its end, when Linux ended `count` processes in it at a limit: its own of `per_run` bytes
+/// (GA-277), or with None the limit of all agent runs together.
+pub fn ended_note(st: &AppState, count: u64, per_run: Option<u64>) -> String {
     let what = if count == 1 { "a process".to_string() } else { format!("{count} processes") };
-    format!("Linux ended {what} in this run: Hersir's agent runs reached their memory limit of {} GB together. \
-             Change it in Settings → Runs → Memory for agent runs.", whole(limit(st)))
+    match per_run {
+        Some(own) => format!("Linux ended {what} in this run: it reached its memory limit of {} GB per run. \
+                              Change it in Settings → Runs → Memory per run.", whole(own)),
+        None => format!("Linux ended {what} in this run: Hersir's agent runs reached their memory limit of {} GB together. \
+                         Change it in Settings → Runs → Memory for agent runs.", whole(limit(st))),
+    }
 }
 
 /// The run's own note at its end, when Gizai ended processes it left running in its scope, outside its process group

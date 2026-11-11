@@ -5,6 +5,7 @@ use std::ffi::OsStr;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -278,8 +279,9 @@ fn cp_program(path: Option<&OsStr>) -> Result<(PathBuf, &'static [&'static str])
 
 /// Runs `program args` in `dir` without prompts and returns the end of its output. After `limit` it is ended, with
 /// everything it started (its own process group, a Job Object on Windows: `os::Tree`). With `slice` it starts in a
-/// scope of its own there (`Slice::scoped`), a failure says when Linux ended a process in it at the memory limit, and
-/// what it left running in its scope outside its group ends with it (GA-211).
+/// scope of its own there (`Slice::scoped`), a failure says when Linux ended a process in it at a memory limit, and
+/// which one (all runs together, or its own per run), and what it left running in its scope outside its group ends with
+/// it (GA-211).
 fn run<S: AsRef<OsStr>>(shown: &str, program: impl AsRef<OsStr>, args: &[S], dir: &Path, path: Option<&OsStr>, limit: Duration,
                         slice: Option<&Slice>) -> Result<String, PrepareFailed> {
     let program = program.as_ref();
@@ -302,7 +304,12 @@ fn run<S: AsRef<OsStr>>(shown: &str, program: impl AsRef<OsStr>, args: &[S], dir
         }
         _ => fail(format!("couldn't start: {e}"), String::new()),
     })?;
-    let watch = slice.map(|s| OomWatch::start(s, child.id(), |_| {}));
+    // whether its own limit (Memory per run, GA-277) ended a process, rather than the limit of all runs together
+    let per_run = Arc::new(AtomicBool::new(false));
+    let watch = slice.map(|s| {
+        let per_run = per_run.clone();
+        OomWatch::start_by_limit(s, child.id(), move |k| if k.own_limit { per_run.store(true, Ordering::SeqCst) })
+    });
     let output = Arc::new(Mutex::new(Vec::<u8>::new()));
     let pipes: Vec<Box<dyn Read + Send>> = [
         child.stdout.take().map(|s| Box::new(s) as Box<dyn Read + Send>),
@@ -351,7 +358,11 @@ fn run<S: AsRef<OsStr>>(shown: &str, program: impl AsRef<OsStr>, args: &[S], dir
         let _ = r.join();
     }
     let text = tail(&String::from_utf8_lossy(&output.lock().unwrap()));
-    let at_limit = if ended_at_limit { ": Linux ended a process in it at the memory limit for agent runs (Settings → Runs)" } else { "" };
+    let at_limit = match (ended_at_limit, per_run.load(Ordering::SeqCst)) {
+        (false, _) => "",
+        (true, false) => ": Linux ended a process in it at the memory limit for agent runs (Settings → Runs)",
+        (true, true) => ": Linux ended a process in it at its memory limit per run (Settings → Runs → Memory per run)",
+    };
     match status {
         Some(s) if s.success() => Ok(text),
         Some(s) => Err(fail(match s.code() {

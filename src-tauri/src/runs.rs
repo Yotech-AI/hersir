@@ -233,6 +233,12 @@ pub struct Settings {
     /// it (`run_memory::default_gb`); 2 GB up to the computer's memory. None (left out) keeps what was saved.
     #[serde(default)]
     pub runs_memory_gb: Option<u32>,
+    /// Memory per run (GA-277), in GB: one run at most, its agent and everything it starts. Half of Memory for agent runs
+    /// until someone sets it, and it follows that (`run_memory::per_run_default_gb`); 2 GB up to Memory for agent runs.
+    /// `get_settings` gives what a run gets now, never more than Memory for agent runs. None (left out), or the value
+    /// `get_settings` gave, keeps what was saved (`run_memory::per_run_change`).
+    #[serde(default)]
+    pub runs_memory_per_run_gb: Option<u32>,
     /// Read-only: this computer's memory in GB (0 when the system doesn't say), for the hint under it.
     #[serde(default)]
     pub computer_memory_gb: u32,
@@ -305,6 +311,7 @@ pub fn get_settings(st: &AppState) -> Settings {
         data_dir: st.data_dir.display().to_string(),
         max_concurrent_runs: settings::get(&st.db, "max_concurrent_runs").ok().flatten().unwrap_or(DEFAULT_MAX_CONCURRENT),
         runs_memory_gb: Some(crate::run_memory::setting_gb(st)),
+        runs_memory_per_run_gb: Some(crate::run_memory::per_run_gb(st)),
         computer_memory_gb: crate::run_memory::computer_gb().unwrap_or(0),
         runs_memory_enforced: st.run_memory.enforced(),
         agents_paused: settings::get(&st.db, "agents_paused").ok().flatten().unwrap_or(false),
@@ -333,6 +340,9 @@ pub fn save_settings(st: &AppState, s: &Settings) -> Result<(), String> {
     if let Some(gb) = s.runs_memory_gb {
         crate::run_memory::check(gb)?;
     }
+    // GA-277: Memory per run, checked against Memory for agent runs as this save leaves it
+    let runs_gb = s.runs_memory_gb.unwrap_or_else(|| crate::run_memory::setting_gb(st));
+    let per_run = crate::run_memory::per_run_change(st, s.runs_memory_per_run_gb, runs_gb)?;
     if matches!(s.max_run_usd, Some(v) if v <= 0.0) {
         return Err("a spending limit must be more than $0".into());
     }
@@ -379,6 +389,7 @@ pub fn save_settings(st: &AppState, s: &Settings) -> Result<(), String> {
     if let Some(gb) = s.runs_memory_gb {
         crate::run_memory::save(st, gb)?;
     }
+    crate::run_memory::save_per_run(st, per_run)?;
     Ok(())
 }
 
@@ -1369,8 +1380,10 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
         writable_dirs, mcp_servers,
         folders, temp_dir, git_config,
     };
-    // GA-202: the CLI and everything it starts run in the slice of the agent runs, under their memory limit (Linux).
+    // GA-202: the CLI and everything it starts run in the slice of the agent runs, under their memory limit (Linux), in a
+    // scope with the run's own limit, Memory per run (GA-277), which it keeps to its end.
     let mut exec = process::Exec { slice: st.run_memory.slice(), ..agent_cli::task_exec(&spec, &run) };
+    let per_run = exec.slice.as_ref().and_then(|s| s.run_limit());
     // GA-182: the agent's own commands find the preview (HERSIR_PREVIEW_PORT, _URL and _DIR, and the GIZAI_ ones; not PORT)
     if let Some(s) = &shots {
         exec.env.extend(s.env.iter().cloned());
@@ -1443,8 +1456,9 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
         let mut exit = String::new();
         let mut tools = 0usize;
         let mut refused: Vec<Refusal> = vec![];
-        // GA-202: the processes Linux ended in this run at the memory limit for agent runs
-        let mut ended_at_limit = 0u64;
+        // GA-202: the processes Linux ended in this run at the memory limit for agent runs together, and GA-277: at its
+        // own limit, Memory per run
+        let (mut ended_together, mut ended_per_run) = (0u64, 0u64);
         // GA-211: the processes Gizai ended at the run's end that it left running in its scope
         let mut left: Vec<gizai_agents::run_memory::Leftover> = vec![];
         // GA-221: whether Gizai ended the CLI because it stayed quiet once the agent was done, and the agent's last text
@@ -1457,13 +1471,16 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
                 crate::limits::from_claude(&st2, &rid, info);
                 continue;
             }
-            // Linux ended a process in the run at the memory limit: the card's activity says so at once, the run's own
-            // note at its end.
-            if let RunEvent::Other { raw_type } = &ev && let Some(n) = raw_type.strip_prefix(process::OOM_KILL) {
-                if ended_at_limit == 0 {
-                    crate::run_memory::ended_on_card(&st2, &tid, &agent_name);
+            // Linux ended a process in the run at a memory limit: the card's activity says so at once, once for each
+            // limit (the run's own, or all runs' together), the run's own note at its end.
+            if let RunEvent::Other { raw_type } = &ev && let Some(kill) = process::oom_kill(raw_type) {
+                let own = per_run.filter(|_| kill.own_limit);
+                let new = kill.count.saturating_sub(ended_together + ended_per_run);
+                let ended = if own.is_some() { &mut ended_per_run } else { &mut ended_together };
+                if *ended == 0 && new > 0 {
+                    crate::run_memory::ended_on_card(&st2, &tid, &agent_name, own);
                 }
-                ended_at_limit = n.parse().unwrap_or(ended_at_limit + 1).max(ended_at_limit);
+                *ended += new;
                 continue;
             }
             // A process the run left running in its scope, ended: the run's note at its end names it.
@@ -1496,8 +1513,11 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
         });
         // GA-221: that text is the result only when Gizai ended the CLI once the agent was done and no result came.
         let done_text = done_text.filter(|_| after_result && result.is_none());
-        if ended_at_limit > 0 {
-            note_run(&st2, &rid, &crate::run_memory::ended_note(&st2, ended_at_limit));
+        if ended_per_run > 0 {
+            note_run(&st2, &rid, &crate::run_memory::ended_note(&st2, ended_per_run, per_run));
+        }
+        if ended_together > 0 {
+            note_run(&st2, &rid, &crate::run_memory::ended_note(&st2, ended_together, None));
         }
         // The run's process group has ended, whatever way (finished, Stop, a limit): its throwaway files go, its MCP
         // config (with its servers' secrets) first.
