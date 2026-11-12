@@ -119,11 +119,20 @@
 
 /* ---------- the Chat's terminal panel (GA-278): the third column of the Chat page (app.css .chat.has-term) ---------- */
 /* Its left edge is the drag handle; then the Editor panel's tabs with +, Own page and Hide, the shown terminal's folder in
-   mono, a bar when + couldn't start one, and the terminal on term-bg. */
+   mono, a bar when + couldn't start one, and the terminal on term-bg. The panel is often narrow (360px at least): +, Own
+   page and Hide are icons on the right of the strip, in sight while the tabs scroll under them, and the open tab scrolls
+   clear of them. */
 .chat-term { display: flex; min-width: 0; min-height: 0; background: var(--term-bg); }
 .chat-term-in { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+.chat-term .term-tabs { scroll-padding-inline-end: 84px; }
+.chat-term .term-tabs .acts .btn.icon-only { width: 24px; height: 24px; }
+.chat-term .term-tabs .acts .btn[aria-disabled="true"] { pointer-events: auto; }
+.chat-term .term-tabs .acts .btn[aria-disabled="true"]:hover { background: transparent; color: var(--text-2); }
+/* The folder, cut at its start when it is too long, so its own name stays in sight (the whole path is the tooltip) */
 .chat-term-where { flex: none; padding: var(--space-1) var(--space-3); overflow: hidden; border-bottom: 1px solid var(--line); background: var(--side);
-  color: var(--text-2); font-family: var(--font-mono); font-size: var(--fs-xs); line-height: 1.6; text-overflow: ellipsis; white-space: nowrap; }
+  color: var(--text-2); font-family: var(--font-mono); font-size: var(--fs-xs); line-height: 1.6; text-overflow: ellipsis; white-space: nowrap;
+  direction: rtl; text-align: left; }
+.chat-term-where > bdi { direction: ltr; }
 /* Hidden while the chat has terminals: a narrow rail on the chat's right edge, the terminal icon and how many there are */
 .chat-term-rail { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); width: calc(36px + var(--ui-box, 0px)); padding: var(--space-3) 0;
   border: 0; border-left: 1px solid var(--line); background: var(--side); color: var(--text-2); font: inherit; cursor: pointer; }

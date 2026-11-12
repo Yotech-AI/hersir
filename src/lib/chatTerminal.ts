@@ -147,3 +147,10 @@ const subscribe = (f: () => void) => {
 export function useChatTerminals(): ChatTerminals {
   return useSyncExternalStore(subscribe, () => state, () => state);
 }
+
+/** What the Chat page has on the right of the conversation: the panel, the rail (the panel hidden, with terminals) or
+ *  nothing. A string, so the page only draws again when it changes. */
+const showing = (): "panel" | "rail" | null => (!state.ids.length ? null : state.open && state.current ? "panel" : "rail");
+export function useChatTerminalShows(): "panel" | "rail" | null {
+  return useSyncExternalStore(subscribe, showing, showing);
+}

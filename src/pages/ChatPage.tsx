@@ -13,7 +13,7 @@ import { chatLabel, chatLabelTitle, chatWaits } from "../lib/inbox";
 import { RECENT_MAX } from "../lib/chat";
 import { Avatar } from "../components/Avatar";
 import { ChatArchive } from "../components/chat/ChatArchive";
-import { ChatTerminalPanel, ChatTerminalRail, OpenTerminalButton, useChatTerminal } from "../components/chat/ChatTerminal";
+import { ChatTerminals, OpenTerminalButton, useChatTerminalLayout } from "../components/chat/ChatTerminal";
 import { ChatThread } from "../components/chat/ChatThread";
 import { PinButton } from "../components/chat/PinButton";
 import { useChatLive } from "../components/chat/useChat";
@@ -72,7 +72,7 @@ export function ChatPage({ id, archive = false, youId = "" }: { id?: string; arc
   const thread = listed ?? (older.data && older.data.id === id ? older.data : undefined)
     ?? (id ? pins.list.find((t) => t.id === id) : undefined);
   const working = live.length > 0;
-  const term = useChatTerminal(!!lead);
+  const term = useChatTerminalLayout(!!lead);
   return (
     <>
       <div className="topbar">
@@ -95,7 +95,7 @@ export function ChatPage({ id, archive = false, youId = "" }: { id?: string; arc
       {agent.error && <div className="error-banner">{agent.error}</div>}
       {agent.data && !lead && <ChatSetup />}
       {lead && (
-        <div ref={term.chatRef} className={term.className} style={term.style}>
+        <div ref={term.chatRef} className={term.className}>
           <aside className="chat-threads" aria-label="Chats">
             <div className="chat-threads-list" data-pins="">
               <a className={`th${!id && !archive ? " on" : ""}`} href={href({ page: "chat" })}><span className="t"><Plus className="icon sm" />New chat</span></a>
@@ -112,7 +112,7 @@ export function ChatPage({ id, archive = false, youId = "" }: { id?: string; arc
             )}
           </aside>
           {archive ? <ChatArchive live={live} pins={pins} /> : <ChatThread threadId={id ?? null} thread={thread} agent={lead} />}
-          {term.visible ? <ChatTerminalPanel p={term} /> : term.tabs.length > 0 && <ChatTerminalRail p={term} />}
+          <ChatTerminals />
         </div>
       )}
       {pins.error && <div className="toast" role="status">{pins.error}</div>}
