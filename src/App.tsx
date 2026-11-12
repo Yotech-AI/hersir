@@ -249,7 +249,7 @@ export default function App({ onboarding = false }: { onboarding?: boolean }) {
           {/* while a page's code loads the first time, the page area stays empty (no spinner); useRoute's transition keeps
               the page you came from until the next one is ready (GA-178) */}
           <Suspense fallback={null}>
-            {route.page === "chat" || route.page === "chats" ? <ChatPage id={route.id} archive={route.page === "chats"} />
+            {route.page === "chat" || route.page === "chats" ? <ChatPage id={route.id} archive={route.page === "chats"} youId={info?.you_id ?? ""} />
               : route.page === "inbox" ? <TasksPage key="inbox" inboxFor={info?.you_id ?? ""} onNewTask={newTask} />
               : route.page === "tasks" || route.page === "board" ? <TasksPage key={route.page} initialView={route.page === "board" ? "board" : undefined} onNewTask={newTask} />
               : route.page === "task" && route.id ? <TaskPage key={route.id} id={route.id} view={route.view === "changes" || route.view === "screenshots" ? route.view : "card"} run={route.run} youId={info?.you_id ?? ""} />

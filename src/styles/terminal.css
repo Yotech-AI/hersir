@@ -58,7 +58,7 @@
 .term-panel .term-place { padding: var(--space-1) var(--space-3); }
 /* The shell ended or couldn't start: the bar is the Editor's file bar, under the tabs; the screen stays as it was. Not the
    global .file card (app.css): the bar keeps its height and the terminal takes the rest (GA-136). */
-.term-page > .ed-bar.file { flex: none; border-width: 0 0 1px; border-radius: 0; cursor: default; }
+.term-page > .ed-bar.file, .chat-term-in > .ed-bar.file { flex: none; border-width: 0 0 1px; border-radius: 0; cursor: default; }
 .term-place.ended { cursor: default; }
 
 /* Find (Ctrl+Shift+F, Cmd+F): a small box at the top right, over the terminal, so the terminal keeps its size */
@@ -86,6 +86,13 @@
 .term-handle:focus-visible { outline: none; background: var(--focus); box-shadow: 0 -1px 0 var(--focus); }
 .ed-main.is-dragging, .ed-main.is-dragging * { cursor: row-resize; user-select: none; }
 
+/* The handle on a panel's left edge (the Chat's terminal panel, GA-278): the same line, upright, its grab area centred on it */
+.term-handle[aria-orientation="vertical"] { width: 1px; height: auto; cursor: col-resize; }
+.term-handle[aria-orientation="vertical"]::before { top: 0; bottom: 0; left: calc((var(--size-handle) - 1px) / -2); right: auto; width: var(--size-handle); height: auto; }
+.term-handle[aria-orientation="vertical"]:hover, .term-handle[aria-orientation="vertical"].is-drag { box-shadow: -1px 0 0 var(--accent); }
+.term-handle[aria-orientation="vertical"]:focus-visible { box-shadow: -1px 0 0 var(--focus); }
+.chat.is-dragging, .chat.is-dragging * { cursor: col-resize; user-select: none; }
+
 /* The Terminal button in the Editor's top bar, between Fetch and Open in: a ghost button like Fetch. Pressed while the panel
    shows; off (aria-disabled, so its tooltip still says why and the keyboard reaches it) while a terminal can't start there. */
 .btn.term-btn[aria-pressed="true"] { background: var(--selected); color: var(--text); } /* the Memory page's pressed toggles look the same */
@@ -109,3 +116,18 @@
 .term-open a:hover { background: var(--hover); }
 .term-open a > .icon { flex: none; width: 16px; height: 16px; color: var(--text-3); }
 .term-open .where { margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); font-family: var(--font-mono); font-size: var(--fs-xs); }
+
+/* ---------- the Chat's terminal panel (GA-278): the third column of the Chat page (app.css .chat.has-term) ---------- */
+/* Its left edge is the drag handle; then the Editor panel's tabs with +, Own page and Hide, the shown terminal's folder in
+   mono, a bar when + couldn't start one, and the terminal on term-bg. */
+.chat-term { display: flex; min-width: 0; min-height: 0; background: var(--term-bg); }
+.chat-term-in { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+.chat-term-where { flex: none; padding: var(--space-1) var(--space-3); overflow: hidden; border-bottom: 1px solid var(--line); background: var(--side);
+  color: var(--text-2); font-family: var(--font-mono); font-size: var(--fs-xs); line-height: 1.6; text-overflow: ellipsis; white-space: nowrap; }
+/* Hidden while the chat has terminals: a narrow rail on the chat's right edge, the terminal icon and how many there are */
+.chat-term-rail { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); width: calc(36px + var(--ui-box, 0px)); padding: var(--space-3) 0;
+  border: 0; border-left: 1px solid var(--line); background: var(--side); color: var(--text-2); font: inherit; cursor: pointer; }
+.chat > .chat-term-rail:hover { background: var(--hover); color: var(--text); } /* over band.css's see-through rail */
+.chat-term-rail:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.chat-term-rail .icon { width: 16px; height: 16px; }
+.chat-term-rail .n { font-size: var(--fs-xs); font-weight: 600; font-variant-numeric: tabular-nums; }
