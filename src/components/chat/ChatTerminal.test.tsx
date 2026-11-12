@@ -8,7 +8,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ChatThread, Member, TerminalSession } from "../../types";
-import fs from "node:fs";
 
 const answers: Record<string, (...a: unknown[]) => unknown> = {};
 const f = vi.hoisted(() => ({
@@ -47,6 +46,8 @@ vi.mock("../../lib/terminals", async (orig) => ({
   useViewMade: () => false,
 }));
 
+// the styles are read from disk (vitest hands a .css import back empty); node:fs through a computed specifier, as band.test.ts does
+const fs = await import(/* @vite-ignore */ ["node", "fs"].join(":"));
 const read = (path: string): string => fs.readFileSync(new URL(`../../styles/${path}`, import.meta.url), "utf8");
 const appCss = read("app.css");
 const componentsCss = read("components.css");
