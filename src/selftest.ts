@@ -4072,6 +4072,31 @@ async function chatTerminalProbe(phase: "a" | "b") {
     q<HTMLElement>(`.chat-term .term-tab[data-term="${CSS.escape(id2)}"]`)?.dispatchEvent(new MouseEvent("auxclick", { button: 1, bubbles: true, cancelable: true }));
     check(await waitFor(() => (!tabIds().includes(id2) && !q(".ed-ask") ? true : null), 5000), "a middle click closes a waiting terminal without asking");
     check(same2(tabIds(), [id1, id3]) && shownTab() === id3, `the shown tab stays (${tabIds().join(", ")} shown ${shownTab()})`);
+
+    // the keys between tabs: Ctrl+PgUp and Ctrl+PgDn from inside the terminal (it lets them through), ← and → on a tab;
+    // F2 renames a tab in place
+    const t3 = probeView(id3)?.term;
+    t3?.focus();
+    t3?.textarea?.dispatchEvent(termKeyEvent("keydown", { key: "PageUp", code: "PageUp", keyCode: 33, ctrlKey: true }));
+    check(await waitFor(() => (shownTab() === id1 ? true : null), 2000), `Ctrl+PgUp from inside the terminal shows the tab before (${shownTab()})`);
+    await waitFor(() => (document.activeElement === term.textarea ? true : null), 2000);
+    term.textarea?.dispatchEvent(termKeyEvent("keydown", { key: "PageDown", code: "PageDown", keyCode: 34, ctrlKey: true }));
+    check(await waitFor(() => (shownTab() === id3 ? true : null), 2000), `Ctrl+PgDn shows the next tab (${shownTab()})`);
+    const tabOf = (id: string) => q<HTMLElement>(`.chat-term .term-tab[data-term="${CSS.escape(id)}"]`);
+    tabOf(id3)?.focus();
+    if (tabOf(id3)) keyOn(tabOf(id3)!, "ArrowLeft");
+    // the picked terminal then takes the focus, as a tab picked in the Editor's panel does
+    check(await waitFor(() => (shownTab() === id1 ? true : null), 2000), `← on a tab shows the one before (${shownTab()}, ${JSON.stringify({ id1, id3 })})`);
+    tabOf(id1)?.focus();
+    if (tabOf(id1)) keyOn(tabOf(id1)!, "ArrowRight");
+    check(await waitFor(() => (shownTab() === id3 ? true : null), 2000), `→ shows the next one (${shownTab()})`);
+    if (tabOf(id3)) keyOn(tabOf(id3)!, "F2");
+    const nameIn = await waitFor(() => tabOf(id3)?.querySelector<HTMLInputElement>("input.name-in") ?? null, 2000);
+    if (nameIn) {
+      typeInto(nameIn, "chat build");
+      nameIn.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true, cancelable: true }));
+    }
+    check(nameIn && (await waitFor(() => (textOf(tabOf(id3)?.querySelector(".name")) === "chat build" ? true : null), 4000)), `F2 renames the tab (${textOf(tabOf(id3))})`);
   }
 
   // 5. Hide: the shells keep running (sleep 60 in the first), the rail with the number, the conversation centred; the rail
