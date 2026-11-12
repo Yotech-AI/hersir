@@ -556,7 +556,7 @@ fn main() {
     let num = |key: &str, default: u64| settings::get::<u64>(&db, key).ok().flatten().unwrap_or(default);
     c.insert("get_settings".into(), json!({
         "claudeBin": settings::get::<String>(&db, "claude_bin").ok().flatten(), "dataDir": DATA, "maxConcurrentRuns": num("max_concurrent_runs", 3),
-        "runsMemoryGb": 16, "computerMemoryGb": 32, "runsMemoryEnforced": true,
+        "runsMemoryGb": 16, "runsMemoryPerRunGb": 8, "runsMemoryPerRunShownGb": 8, "computerMemoryGb": 32, "runsMemoryEnforced": true,
         "agentsPaused": settings::get::<bool>(&db, "agents_paused").ok().flatten().unwrap_or(false),
         "maxRunUsd": settings::get::<f64>(&db, "max_run_usd").ok().flatten(), "maxRunMinutes": num("max_run_minutes", 90),
         "maxRunToolCalls": num("max_run_tool_calls", 200), "maxChatMinutes": num("max_chat_minutes", 15), "maxChatToolCalls": num("max_chat_tool_calls", 60),

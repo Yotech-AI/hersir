@@ -2373,6 +2373,8 @@
       "pushOver": "ssh",
       "runsMemoryEnforced": true,
       "runsMemoryGb": 16,
+      "runsMemoryPerRunGb": 8,
+      "runsMemoryPerRunShownGb": 8,
       "screenshotMaxMb": 10,
       "screenshotsKeepDays": 30,
       "screenshotsKeepSets": 3,

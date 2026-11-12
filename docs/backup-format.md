@@ -180,7 +180,7 @@ When the restored database's `is_self` device isn't this computer's, every row g
 | Group | Keys |
 |---|---|
 | programs and paths | `claude_bin`, `gh_bin`, `clis`, `mcp_servers`, `mcp_tools`, `mcp_last_run`, `mcp_browser`, `cli_tools_seen`, `cli_tools_asked`, `editor_roots`, `github_push_over`, `claude_memory_imports` |
-| capacity and state | `runs_memory_gb`, `max_concurrent_runs`, `agents_paused`, `subscription_limits`, `onboarding`, `update_auto_check`, `update_last_check`, `preview_port_from`, `preview_port_to` (the ports this computer's previews take, checked against `max_concurrent_runs`) |
+| capacity and state | `runs_memory_gb`, `runs_memory_per_run_gb`, `max_concurrent_runs`, `agents_paused`, `subscription_limits`, `onboarding`, `update_auto_check`, `update_last_check`, `preview_port_from`, `preview_port_to` (the ports this computer's previews take, checked against `max_concurrent_runs`) |
 | desktop notifications | every `notify_*` key: `notify_hold`, `notify_waiting`, `notify_lead_asks`, `notify_lead_answered` |
 | backups | `backup_folder`, `backup_every`, `backup_on_quit`, `backup_keep`, `backup_last_error` (the last error belongs to this computer's folder) |
 | restores | `last_restore`, `restore_result` |

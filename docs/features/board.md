@@ -55,6 +55,8 @@ Settings → Runs sets how many runs go at once, for all agents together. Pause 
 
 Memory for agent runs, also in Settings → Runs, is how much memory all agent runs may use together: half of the computer's memory until you set it. On Linux the system holds the runs to it, and Hersir stays outside the limit, so a big build can't take Hersir down ([PLATFORMS.md](../PLATFORMS.md#memory-for-agent-runs)). On every system no run starts while the runs use over 80% of it or the computer has under 2 GB free: the card waits with the reason, like Runs at once, and starts by itself once memory frees up.
 
+Memory per run, right under it, is how much one run may use: its agent and everything it starts. It is half of Memory for agent runs until you set it, and never more than that. On Linux the system ends the biggest process of a run that reaches it, and the run goes on, so one runaway test can't slow every other run and chat down; the card's activity and the run's output then name Memory per run ([PLATFORMS.md](../PLATFORMS.md#memory-for-agent-runs)). Runs that start after you save get the new value.
+
 A project can also keep how many of its cards are tested at the same time, so a heavy test suite doesn't run several times at once: [Test runs at once](testing.md#test-runs-at-once).
 
 A card that builds on another card waits until that card is merged: [Cards that build on others](#cards-that-build-on-others).
