@@ -53,6 +53,8 @@ const subscribe = (f: () => void) => {
     if (!subs.size) { stopFocus?.(); stopFocus = undefined; }
   };
 };
+/** A message that names no path needs no folders. */
+const idle = () => () => {};
 const knownNow = () => known;
 
 // ---------- the row ----------
@@ -67,16 +69,17 @@ export const OpenInTerminal = memo(function OpenInTerminal({ md, you }: { md: st
 /** The buttons, one per folder the message names, in the order named; Open in terminal… when it names none of the Editor's
  *  folders. Why a terminal couldn't start shows under them. */
 function OpenInTerminalRow({ md, you }: { md: string; you?: string }) {
-  const folders = useSyncExternalStore(subscribe, knownNow, knownNow);
-  const named = useMemo(() => (folders ? terminalFolders(md, folders) : undefined), [md, folders]);
+  const paths = useMemo(() => namedPaths(md).length > 0, [md]);
+  const folders = useSyncExternalStore(paths ? subscribe : idle, knownNow, knownNow);
+  const named = useMemo(() => (!paths ? [] : folders ? terminalFolders(md, folders) : undefined), [md, paths, folders]);
   const [why, setWhy] = useState<string>();
   const [starting, setStarting] = useState<string>();
   const [at, setAt] = useState<{ x: number; y: number }>();
 
   // a path in none of the folders may be in one that is new since they were asked
   useEffect(() => {
-    if (named?.length === 0 && namedPaths(md).length > 0) loadFolders();
-  }, [named, md]);
+    if (paths && named?.length === 0) loadFolders();
+  }, [paths, named]);
 
   /** The terminal in that folder that waits for a command shows, or a new one starts there; it takes the focus. */
   const open = (f: EditorFolder) => {
