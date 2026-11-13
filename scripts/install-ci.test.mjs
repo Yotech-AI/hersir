@@ -3,8 +3,9 @@
 // against stand-ins for the package managers, sudo, id, curl and sleep. Install's "System packages" step must run
 // exactly the line install.sh --check prints for each distribution, only made non-interactive and without sudo as
 // root. One-line install's step for Linux and macOS must try the line again when it can't read the latest release, at
-// most 3 times a minute apart, and pass only when the installed Gizai is the latest release. That the lines really
-// install Gizai only CI shows. Not on Windows; the package step only on Linux, where it runs.
+// most 3 times: once GitHub's limit resets when rate_limit says it is used up, else a minute later (GA-283), and pass
+// only when the installed Gizai is the latest release. That the lines really install Gizai only CI shows. Not on
+// Windows; the package step only on Linux, where it runs. The Windows step's Invoke-Line runs where PowerShell 7 is.
 import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -415,11 +416,42 @@ case "$1" in
 esac
 `;
 
-// One-line install's step for Linux and macOS, in a folder of its own, with curl handing out FAKE_GET.
-function oneLine(env) {
+// What GitHub's rate_limit answers without a login, as GitHub prints it: core's limit, also as rate, with remaining
+// calls left that reset at reset (seconds since 1970), and graphql, which has no calls at all without a login.
+function rateLimit(remaining, reset) {
+  const core = { limit: 60, remaining, reset, used: 60 - remaining, resource: "core" };
+  const graphql = { limit: 0, remaining: 0, reset: reset + 1234, used: 0, resource: "graphql" };
+  const search = { limit: 10, remaining: 10, reset: reset - 1000, used: 0, resource: "search" };
+  return JSON.stringify({ resources: { core, graphql, search }, rate: core }, null, 2);
+}
+
+// The time the fake date gives for +%s, as seconds since 1970.
+const NOW = 1794592742;
+
+// One-line install's step for Linux and macOS, in a folder of its own, with curl handing out FAKE_GET, and for
+// https://api.github.com/rate_limit the next of rates (null: curl fails, as on a 403 or no network; no more: fails too).
+// With FAKE_NOW, date +%s gives it.
+function oneLine(env, rates = []) {
   const dir = mkdtempSync(join(scratch, "one-line-"));
   writeFileSync(join(dir, "get.sh"), FAKE_GET);
-  tool(join(dir, "bin"), "curl", `#!/bin/sh\necho "curl $*" >> "$RAN"\ncat "${join(dir, "get.sh")}"\n`);
+  rates.forEach((rate, i) => rate !== null && writeFileSync(join(dir, `rate-${i + 1}.json`), rate));
+  tool(
+    join(dir, "bin"),
+    "curl",
+    `#!/bin/sh
+echo "curl $*" >> "$RAN"
+case "$*" in
+  *api.github.com/rate_limit*)
+    n=$(( $(cat "${join(dir, "rate-runs")}" 2>/dev/null || echo 0) + 1 )); echo "$n" > "${join(dir, "rate-runs")}"
+    [ -f "${join(dir, "rate-")}$n.json" ] || exit 22
+    cat "${join(dir, "rate-")}$n.json" ;;
+  *) cat "${join(dir, "get.sh")}" ;;
+esac
+`,
+  );
+  if (env.FAKE_NOW) {
+    tool(join(dir, "bin"), "date", `#!/bin/sh\n{ printf date; for a in "$@"; do printf ' [%s]' "$a"; done; echo; } >> "$RAN"\n[ "$*" = +%s ] || exit 1\necho "$FAKE_NOW"\n`);
+  }
   for (const name of ["sleep", "sudo"]) tool(join(dir, "bin"), name, RECORDS);
   const r = runStep(stepRun(".github/workflows/one-line.yml", LINE), dir, {
     RUNNER_OS: "macOS",
@@ -481,12 +513,89 @@ describe.runIf(unix)("one-line.yml: hersir.dev's line on Linux and macOS", () =>
     ]);
   });
 
-  it("tries the line again a minute later when it can't read the latest release, and then passes", () => {
+  it("tries the line again a minute later when it can't read the latest release, nor rate_limit, and then passes", () => {
     const r = oneLine({ FAKE_API_FAILS: "3" });
     expect(r.status, r.out).toBe(0);
     expect(r.ran.filter((l) => l.startsWith("sleep"))).toEqual(["sleep [60]", "sleep [60]", "sleep [60]"]);
     for (const n of [1, 2, 3]) expect(r.out).toContain(`Could not read the latest release: trying again in a minute (${n} of 3).`);
+    expect(r.out).not.toContain("used up");
+    // before each try again, rate_limit, which failed each time
+    expect(r.ran.filter((l) => l.includes("rate_limit"))).toHaveLength(3);
     expect(r.out).toContain("The latest release: v0.13.0. Installed: gizai 0.13.0.");
+  });
+
+  // GA-283: three tries a minute apart didn't get past GitHub's limit on the macOS runners (#230).
+  it("when rate_limit says no calls are left, says so, waits until 10 s after the reset and tries the same line again", () => {
+    const r = oneLine({ FAKE_API_FAILS: "1", FAKE_NOW: `${NOW}` }, [rateLimit(0, NOW + 1800)]);
+    expect(r.status, r.out).toBe(0);
+    expect(r.out).toContain(
+      "GitHub's limit of 60 calls an hour without a login is used up on this runner: trying again in 31 minutes, once it resets (1 of 3).",
+    );
+    expect(r.out).not.toContain("trying again in a minute");
+    expect(r.ran.filter((l) => l.startsWith("sleep"))).toEqual(["sleep [1810]"]);
+    expect(r.ran.filter((l) => l.startsWith("get.sh"))).toEqual(["get.sh", "get.sh", "get.sh --uninstall"]);
+    // asked without a login, and the time from date +%s
+    expect(r.ran.filter((l) => l.includes("rate_limit"))).toEqual(["curl -fs --max-time 30 https://api.github.com/rate_limit"]);
+    expect(r.ran.filter((l) => l.startsWith("date"))).toEqual(["date [+%s]"]);
+    expect(r.out).toContain("The latest release: v0.13.0. Installed: gizai 0.13.0.");
+  });
+
+  it("waits at least 10 s and at most 3660 s, and rounds the minutes up", () => {
+    for (const [reset, seconds, minutes] of [
+      [NOW - 600, 10, 1], // reset already
+      [NOW - 5, 10, 1],
+      [NOW + 49, 59, 1],
+      [NOW + 50, 60, 1],
+      [NOW + 51, 61, 2],
+      [NOW + 3600, 3610, 61],
+      [NOW + 3650, 3660, 61],
+      [NOW + 7200, 3660, 61], // a reset further off than GitHub's hour
+    ]) {
+      const r = oneLine({ FAKE_API_FAILS: "1", FAKE_NOW: `${NOW}` }, [rateLimit(0, reset)]);
+      expect(r.status, r.out).toBe(0);
+      expect(r.ran.filter((l) => l.startsWith("sleep")), `reset ${reset - NOW}`).toEqual([`sleep [${seconds}]`]);
+      expect(r.out, `reset ${reset - NOW}`).toContain(`trying again in ${minutes} minutes, once it resets (1 of 3).`);
+    }
+  });
+
+  it("waits a minute, as before, when rate_limit says calls are left on this runner", () => {
+    // graphql has no calls without a login, but the line's calls count against rate (core)
+    const r = oneLine({ FAKE_API_FAILS: "2", FAKE_NOW: `${NOW}` }, [rateLimit(57, NOW + 1800), rateLimit(1, NOW + 1800)]);
+    expect(r.status, r.out).toBe(0);
+    expect(r.ran.filter((l) => l.startsWith("sleep"))).toEqual(["sleep [60]", "sleep [60]"]);
+    for (const n of [1, 2]) expect(r.out).toContain(`Could not read the latest release: trying again in a minute (${n} of 3).`);
+    expect(r.out).not.toContain("used up");
+  });
+
+  it("waits a minute when rate_limit's answer has no remaining 0 and reset under rate", () => {
+    const r = oneLine({ FAKE_API_FAILS: "3", FAKE_NOW: `${NOW}` }, [
+      "<html><body>Service unavailable</body></html>",
+      JSON.stringify({ rate: { limit: 60, remaining: 0, used: 60 } }), // no reset
+      JSON.stringify({ resources: { core: { remaining: 0, reset: NOW + 1800 } } }), // no rate
+    ]);
+    expect(r.status, r.out).toBe(0);
+    expect(r.ran.filter((l) => l.startsWith("sleep"))).toEqual(["sleep [60]", "sleep [60]", "sleep [60]"]);
+    for (const n of [1, 2, 3]) expect(r.out).toContain(`Could not read the latest release: trying again in a minute (${n} of 3).`);
+    expect(r.out).not.toContain("used up");
+  });
+
+  it("asks rate_limit before each try again, so a wait for the reset and a minute can follow each other", () => {
+    const r = oneLine({ FAKE_API_FAILS: "3", FAKE_NOW: `${NOW}` }, [rateLimit(0, NOW + 600), null, rateLimit(60, NOW + 3600)]);
+    expect(r.status, r.out).toBe(0);
+    expect(r.ran.filter((l) => l.startsWith("sleep"))).toEqual(["sleep [610]", "sleep [60]", "sleep [60]"]);
+    expect(r.out).toContain("used up on this runner: trying again in 11 minutes, once it resets (1 of 3).");
+    expect(r.out).toContain("Could not read the latest release: trying again in a minute (2 of 3).");
+    expect(r.out).toContain("Could not read the latest release: trying again in a minute (3 of 3).");
+  });
+
+  it("counts the wait with the system's own date +%s (GNU date on Ubuntu, BSD date on macOS)", () => {
+    const now = Math.floor(Date.now() / 1000);
+    const r = oneLine({ FAKE_API_FAILS: "1" }, [rateLimit(0, now + 125)]);
+    expect(r.status, r.out).toBe(0);
+    const [slept] = r.ran.filter((l) => l.startsWith("sleep")).map((l) => Number(l.match(/\[(\d+)\]/)[1]));
+    expect(slept).toBeGreaterThanOrEqual(125);
+    expect(slept).toBeLessThanOrEqual(135);
+    expect(r.out).toContain("used up on this runner: trying again in 3 minutes, once it resets (1 of 3).");
   });
 
   it("tries again at most 3 times, then fails and says why", () => {
@@ -496,16 +605,40 @@ describe.runIf(unix)("one-line.yml: hersir.dev's line on Linux and macOS", () =>
     expect(r.ran.filter((l) => l.startsWith("sleep"))).toHaveLength(3);
     expect(r.out).not.toContain("(4 of 3)");
     expect(r.out.trimEnd().split("\n").at(-1)).toBe(
-      "The one line could not read Hersir's latest release from GitHub's API, also not after trying again 3 times, a minute apart. GitHub allows 60 calls an hour without a login, and the runners share them: run this again later.",
+      "The one line could not read Hersir's latest release from GitHub's API, also not after trying again 3 times. GitHub allows 60 calls an hour without a login, and the runners share them: run this again later.",
+    );
+  });
+
+  it("also waiting for the reset, tries again at most 3 times, and doesn't ask rate_limit after the last", () => {
+    const used = rateLimit(0, NOW + 1800);
+    const r = oneLine({ FAKE_API_FAILS: "99", FAKE_NOW: `${NOW}` }, [used, used, used, used]);
+    expect(r.status).toBe(1);
+    expect(r.ran.filter((l) => l.startsWith("get.sh"))).toEqual(["get.sh", "get.sh", "get.sh", "get.sh"]);
+    expect(r.ran.filter((l) => l.startsWith("sleep"))).toEqual(["sleep [1810]", "sleep [1810]", "sleep [1810]"]);
+    expect(r.ran.filter((l) => l.includes("rate_limit"))).toHaveLength(3);
+    for (const n of [1, 2, 3]) expect(r.out).toContain(`trying again in 31 minutes, once it resets (${n} of 3).`);
+    expect(r.out).not.toContain("(4 of 3)");
+    expect(r.out.trimEnd().split("\n").at(-1)).toBe(
+      "The one line could not read Hersir's latest release from GitHub's API, also not after trying again 3 times. GitHub allows 60 calls an hour without a login, and the runners share them: run this again later.",
     );
   });
 
   it("doesn't try again when the line fails for another reason", () => {
-    const r = oneLine({ FAKE_FAIL: "error: could not compile `gizai`" });
+    const r = oneLine({ FAKE_FAIL: "error: could not compile `gizai`", FAKE_NOW: `${NOW}` }, [rateLimit(0, NOW + 1800)]);
     expect(r.status).toBe(1);
     expect(r.ran.filter((l) => l.startsWith("sleep"))).toEqual([]);
     expect(r.ran.filter((l) => l.startsWith("get.sh"))).toEqual(["get.sh"]);
+    expect(r.ran.filter((l) => l.includes("rate_limit"))).toEqual([]);
     expect(r.out).toContain("The one line didn't install Hersir.");
+  });
+
+  it("reads rate_limit with curl, sed and date +%s only: no jq, and no date -d or -r, which BSD and GNU date differ in", () => {
+    const script = stepRun(".github/workflows/one-line.yml", LINE);
+    expect(script).toContain("curl -fs --max-time 30 https://api.github.com/rate_limit");
+    expect(script).toContain("$(date +%s)");
+    expect(script).not.toMatch(/\bjq\b/);
+    expect(script).not.toMatch(/date -[dr]\b/);
+    expect(script).not.toMatch(/date --date/);
   });
 
   it("fails when what it installed isn't the latest release", () => {
@@ -521,14 +654,68 @@ describe("one-line.yml: when it runs", () => {
   const on = text.split("\njobs:")[0];
 
   // GA-252: the one line installs only a signed release, so it runs once sign-release.sh has uploaded the signature
-  // and starts it, not when the release is published, which isn't signed yet then.
-  it('is "One-line install", when sign-release.sh starts it, weekly, by hand, and on a pull request that changes it', () => {
+  // and starts it, not when the release is published, which isn't signed yet then. GA-283: not on the release's pull
+  // request into production either, which would install the published release with production's get.sh.
+  it('is "One-line install", when sign-release.sh starts it, weekly, by hand, and on a pull request into main that changes it', () => {
     expect(text).toMatch(/^name: One-line install$/m);
     expect(on).not.toContain("  release:");
     expect(on).toMatch(/ {2}schedule:\n {4}- cron: "\d+ \d+ \* \* \d"/);
     expect(on).toContain("  workflow_dispatch:\n");
-    expect(on).toContain("  pull_request:\n    paths:\n      - .github/workflows/one-line.yml\n");
+    expect(on).toContain("  pull_request:\n    paths:\n      - .github/workflows/one-line.yml\n    branches:\n      - main\n\n");
+    // the on: block itself, up to its blank line
+    const block = on.slice(on.indexOf("\non:\n") + "\non:\n".length).split("\n\n")[0];
+    expect(block.split("\n").filter((l) => /^ {2}\S/.test(l))).toEqual(["  schedule:", "  workflow_dispatch:", "  pull_request:"]);
+    expect(block).not.toContain("production");
+    expect(block).not.toContain("branches-ignore");
+    expect(block.match(/- main$/gm)).toHaveLength(1);
     expect(read("scripts/sign-release.sh")).toMatch(/^github workflow run one-line\.yml --repo "\$REPO" \|\|$/m);
+  });
+
+  it("says at the top when it runs, and why not on the release's pull request", () => {
+    const top = text.split("\nname:")[0].replace(/\n# /g, " ");
+    expect(top).toContain("and on a pull request into main that changes this file;");
+    expect(top).toContain("Not on the release's pull request into production either (GA-283): it would install the published release with production's get.sh, nothing of the pull request.");
+  });
+
+  it("has 180 minutes, so two waits for GitHub's limit to reset fit in one job", () => {
+    expect(text.match(/timeout-minutes: \d+/g)).toEqual(["timeout-minutes: 180"]);
+    expect(text).toContain("    runs-on: ${{ matrix.os }}\n    # Two waits for GitHub's limit to reset, at most an hour each, and the lines themselves.\n    timeout-minutes: 180\n");
+  });
+
+  // The line runs as people run it: only "The latest release" has the job's token, and rate_limit is asked without
+  // a login too.
+  it("gives no token to the lines, nor to rate_limit, and keeps the lines' environment", () => {
+    const lines = text.split("\n");
+    const step = (name) => {
+      const at = lines.indexOf(`      - name: ${name}`);
+      expect(at, name).toBeGreaterThan(0);
+      const end = lines.findIndex((l, i) => i > at && /^ {6}(- |# )/.test(l));
+      return lines.slice(at, end < 0 ? lines.length : end);
+    };
+    const env = (s) => s.slice(s.indexOf("        env:") + 1, s.findIndex((l) => l === "        run: |")).map((l) => l.trim());
+    expect(env(step("The latest release"))).toEqual(["GH_TOKEN: ${{ github.token }}"]);
+    expect(env(step("The one line (Linux, macOS)"))).toEqual([
+      "HERSIR_PREFIX: ${{ runner.temp }}/hersir",
+      "GIZAI_PREFIX: ${{ runner.temp }}/hersir",
+      "XDG_DATA_HOME: ${{ runner.temp }}/share",
+      "GIZAI_DATA_DIR: ${{ runner.temp }}/share/gizai",
+      "LATEST: ${{ steps.latest.outputs.tag }}",
+    ]);
+    expect(env(step("The one line (Windows)"))).toEqual([
+      "HERSIR_PREFIX: ${{ runner.temp }}\\hersir",
+      "GIZAI_PREFIX: ${{ runner.temp }}\\hersir",
+      "GIZAI_DATA_DIR: ${{ runner.temp }}\\hersir-data",
+      "LOCALAPPDATA: ${{ runner.temp }}\\localappdata",
+      "LATEST: ${{ steps.latest.outputs.tag }}",
+    ]);
+    for (const name of ["The one line (Linux, macOS)", "The one line (Windows)"]) {
+      const s = step(name).join("\n");
+      expect(s, name).not.toMatch(/token|secrets\.|authorization|-Headers|curl[^\n]* -[Hu] /i);
+    }
+    expect(text.match(/https:\/\/api\.github\.com\/rate_limit[^\n]*/g)).toEqual([
+      "https://api.github.com/rate_limit | tr -d '[:space:]')\" || rate=\"\"",
+      "https://api.github.com/rate_limit -UseBasicParsing -TimeoutSec 30).rate",
+    ]);
   });
 
   it("sets up no Rust or Node.js, so the line must install the ready-made build", () => {
@@ -549,6 +736,183 @@ describe("one-line.yml: when it runs", () => {
   it("on Windows runs hersir.dev's own lines, to install and to uninstall", () => {
     expect(text).toContain("Invoke-Line 'irm https://hersir.dev/install.ps1 | iex'");
     expect(text).toContain("Invoke-Line '& ([scriptblock]::Create((irm https://hersir.dev/install.ps1))) -Uninstall'");
+  });
+});
+
+// The Windows step's Invoke-Line, taken from the workflow as it is, run with PowerShell 7 where it is (GitHub's runners
+// have it), against stand-ins: powershell for the line's own PowerShell (it can't read the latest release for its first
+// $env:FAKE_API_FAILS runs, then returns 0, or fails with $env:FAKE_FAIL), Invoke-RestMethod for rate_limit (the next of
+// rates, as JSON; null or no more: it throws, as on a 403) and Start-Sleep. The time is the system's own.
+const pwsh = spawnSync("pwsh", ["-NoProfile", "-NonInteractive", "-Command", "exit 0"]).status === 0;
+
+function invokeLine(env, rates = []) {
+  const dir = mkdtempSync(join(scratch, "invoke-line-"));
+  rates.forEach((rate, i) => rate !== null && writeFileSync(join(dir, `rate-${i + 1}.json`), rate));
+  const script = stepRun(".github/workflows/one-line.yml", "The one line (Windows)").split("\n");
+  const from = script.findIndex((l) => l.startsWith("function Invoke-Line("));
+  const to = script.findIndex((l, i) => i > from && l === "}");
+  expect(from).toBeGreaterThanOrEqual(0);
+  expect(to).toBeGreaterThan(from);
+  writeFileSync(
+    join(dir, "test.ps1"),
+    [
+      `function powershell {
+  Add-Content -LiteralPath $env:RAN -Value "powershell $($args -join ' ')"
+  $n = [int](Get-Content -LiteralPath "$env:FAKE_DIR/runs" -ErrorAction SilentlyContinue) + 1
+  Set-Content -LiteralPath "$env:FAKE_DIR/runs" -Value $n
+  if ($n -le [int]$env:FAKE_API_FAILS) {
+    "Could not read the latest release from https://api.github.com/repos/Yotech-AI/hersir/releases/latest. Check your internet connection, then run this again."
+    'returned 1'
+    return
+  }
+  if ($env:FAKE_FAIL) { $env:FAKE_FAIL; 'returned 1'; return }
+  'returned 0'
+}
+function Invoke-RestMethod {
+  param([string]$Uri, [switch]$UseBasicParsing, [int]$TimeoutSec, $Headers)
+  Add-Content -LiteralPath $env:RAN -Value "Invoke-RestMethod $Uri$(if ($Headers) { ' with headers' })"
+  $n = [int](Get-Content -LiteralPath "$env:FAKE_DIR/rate-runs" -ErrorAction SilentlyContinue) + 1
+  Set-Content -LiteralPath "$env:FAKE_DIR/rate-runs" -Value $n
+  $file = Join-Path $env:FAKE_DIR "rate-$n.json"
+  if (-not (Test-Path -LiteralPath $file)) { throw 'The remote server returned an error: (403) Forbidden.' }
+  Get-Content -LiteralPath $file -Raw | ConvertFrom-Json
+}
+function Start-Sleep {
+  param([long]$Seconds)
+  Add-Content -LiteralPath $env:RAN -Value "Start-Sleep $Seconds"
+}`,
+      ...script.slice(from, to + 1),
+      "Invoke-Line 'irm https://hersir.dev/install.ps1 | iex'",
+      "Write-Host 'Invoke-Line returned.'",
+    ].join("\n"),
+  );
+  const run = spawnSync("pwsh", ["-NoProfile", "-NonInteractive", "-File", join(dir, "test.ps1")], {
+    cwd: dir,
+    encoding: "utf8",
+    env: { ...process.env, RAN: join(dir, "ran.txt"), FAKE_DIR: dir, RUNNER_TEMP: dir, FAKE_API_FAILS: "0", FAKE_FAIL: "", ...env },
+  });
+  const ran = existsSync(join(dir, "ran.txt")) ? readFileSync(join(dir, "ran.txt"), "utf8").trimEnd().split(/\r?\n/) : [];
+  return { status: run.status, out: `${run.stdout}${run.stderr}`.replace(/\r\n/g, "\n"), ran };
+}
+
+describe.runIf(pwsh)("one-line.yml: Invoke-Line on Windows (GA-283)", () => {
+  const last =
+    "The one line could not read Hersir's latest release from GitHub's API, also not after trying again 3 times. GitHub allows 60 calls an hour without a login, and the runners share them: run this again later.";
+  const slept = (r) => r.ran.filter((l) => l.startsWith("Start-Sleep")).map((l) => Number(l.split(" ")[1]));
+
+  it("runs the line once when it passes, and asks nothing else", () => {
+    const r = invokeLine({});
+    expect(r.status, r.out).toBe(0);
+    expect(r.out).toContain("Invoke-Line returned.");
+    expect(r.ran).toHaveLength(1);
+    expect(r.ran[0]).toMatch(/^powershell -NoProfile -ExecutionPolicy Bypass -File .*line\.ps1$/);
+  });
+
+  it("when rate_limit says no calls are left, says so, waits until 10 s after the reset and tries the line again", () => {
+    const now = Math.floor(Date.now() / 1000);
+    const r = invokeLine({ FAKE_API_FAILS: "1" }, [rateLimit(0, now + 1800)]);
+    expect(r.status, r.out).toBe(0);
+    expect(r.out).toContain(
+      "GitHub's limit of 60 calls an hour without a login is used up on this runner: trying again in 31 minutes, once it resets (1 of 3).",
+    );
+    expect(r.out).not.toContain("trying again in a minute");
+    expect(slept(r)).toHaveLength(1);
+    expect(slept(r)[0]).toBeGreaterThanOrEqual(1795);
+    expect(slept(r)[0]).toBeLessThanOrEqual(1810);
+    expect(r.ran.filter((l) => l.startsWith("Invoke-RestMethod"))).toEqual(["Invoke-RestMethod https://api.github.com/rate_limit"]);
+    expect(r.ran.filter((l) => l.startsWith("powershell"))).toHaveLength(2);
+    expect(r.out).toContain("Invoke-Line returned.");
+  });
+
+  it("waits at least 10 s and at most 3660 s", () => {
+    const now = Math.floor(Date.now() / 1000);
+    const early = invokeLine({ FAKE_API_FAILS: "1" }, [rateLimit(0, now - 600)]);
+    expect(early.status, early.out).toBe(0);
+    expect(slept(early)).toEqual([10]);
+    expect(early.out).toContain("used up on this runner: trying again in 1 minutes, once it resets (1 of 3).");
+    const late = invokeLine({ FAKE_API_FAILS: "1" }, [rateLimit(0, now + 7200)]);
+    expect(late.status, late.out).toBe(0);
+    expect(slept(late)).toEqual([3660]);
+    expect(late.out).toContain("used up on this runner: trying again in 61 minutes, once it resets (1 of 3).");
+  });
+
+  it("waits a minute when rate_limit says calls are left, or can't be read", () => {
+    const now = Math.floor(Date.now() / 1000);
+    const r = invokeLine({ FAKE_API_FAILS: "3" }, [rateLimit(57, now + 1800), null, JSON.stringify({ rate: { remaining: 0 } })]);
+    expect(r.status, r.out).toBe(0);
+    expect(slept(r)).toEqual([60, 60, 60]);
+    for (const n of [1, 2, 3]) expect(r.out).toContain(`Could not read the latest release: trying again in a minute (${n} of 3).`);
+    expect(r.out).not.toContain("used up");
+    expect(r.out).toContain("Invoke-Line returned.");
+  });
+
+  it("tries again at most 3 times, also waiting for the reset, then fails and says why", () => {
+    const now = Math.floor(Date.now() / 1000);
+    const used = rateLimit(0, now + 600);
+    const r = invokeLine({ FAKE_API_FAILS: "99" }, [used, used, used, used]);
+    expect(r.status).toBe(1);
+    expect(r.ran.filter((l) => l.startsWith("powershell"))).toHaveLength(4);
+    expect(r.ran.filter((l) => l.startsWith("Invoke-RestMethod"))).toHaveLength(3);
+    expect(slept(r)).toHaveLength(3);
+    for (const n of [1, 2, 3]) expect(r.out).toContain(`trying again in 11 minutes, once it resets (${n} of 3).`);
+    expect(r.out).not.toContain("(4 of 3)");
+    expect(r.out.trimEnd().split("\n").at(-1)).toBe(last);
+    expect(r.out).not.toContain("Invoke-Line returned.");
+  });
+
+  it("doesn't try again when the line fails for another reason", () => {
+    const r = invokeLine({ FAKE_FAIL: "Something else went wrong." }, [rateLimit(0, Math.floor(Date.now() / 1000) + 600)]);
+    expect(r.status).toBe(1);
+    expect(r.out).toContain("The one line failed: it returned 1.");
+    expect(r.ran.filter((l) => l.startsWith("powershell"))).toHaveLength(1);
+    expect(r.ran.filter((l) => !l.startsWith("powershell"))).toEqual([]);
+  });
+});
+
+describe("one-line.yml: Invoke-Line on Windows, as written (GA-283)", () => {
+  const script = stepRun(".github/workflows/one-line.yml", "The one line (Windows)");
+
+  it("reads rate_limit with Invoke-RestMethod, the time with DateTimeOffset, and waits with Start-Sleep, in the same texts", () => {
+    expect(script).toContain("Invoke-RestMethod -Uri https://api.github.com/rate_limit -UseBasicParsing -TimeoutSec 30).rate");
+    expect(script).toContain("$rate.remaining");
+    expect(script).toContain("$rate.reset");
+    expect(script).toContain("[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()");
+    expect(script).toContain("Start-Sleep -Seconds $seconds");
+    expect(script).toContain("Start-Sleep -Seconds 60");
+    expect(script).toContain(
+      `Write-Host "GitHub's limit of 60 calls an hour without a login is used up on this runner: trying again in $([Math]::Ceiling($seconds / 60.0)) minutes, once it resets ($try of 3)."`,
+    );
+    expect(script).toContain('Write-Host "Could not read the latest release: trying again in a minute ($try of 3)."');
+    expect(script).toContain(
+      `Write-Host "The one line could not read Hersir's latest release from GitHub's API, also not after trying again 3 times. GitHub allows 60 calls an hour without a login, and the runners share them: run this again later."`,
+    );
+  });
+
+  it("still runs each line in a Windows PowerShell 5.1 of its own", () => {
+    expect(script).toContain("$out = @(powershell -NoProfile -ExecutionPolicy Bypass -File $wrapper | ForEach-Object { Write-Host $_; $_ })");
+  });
+});
+
+describe("the docs on One-line install (GA-283)", () => {
+  it("PLATFORMS.md: on pull requests into main, and it waits for GitHub's limit to reset", () => {
+    const platforms = read("docs/PLATFORMS.md");
+    const bullet = platforms.split("\n").find((l) => l.startsWith("  - **`one-line.yml` (One-line install)"));
+    expect(bullet).toContain("every Monday, by hand, and on pull requests into main that change it:**");
+    expect(bullet).toContain(
+      "when that limit is used up, the job waits until it resets (at most an hour) and tries again, at most 3 times.",
+    );
+    expect(bullet).not.toContain("a minute later");
+  });
+
+  it("RELEASING.md: One-line install doesn't run on the release's pull request, right after Release builds' six checks", () => {
+    const releasing = read("docs/RELEASING.md");
+    const sentence =
+      "   One-line install doesn't run on this pull request: it would install the published release with production's `get.sh`, nothing of the release; signing it (step 5) starts it.";
+    expect(releasing.split(sentence)).toHaveLength(2);
+    const paragraphs = releasing.split("\n\n");
+    const at = paragraphs.indexOf(sentence);
+    expect(paragraphs[at - 1]).toMatch(/^ {3}A release that changes `install\.sh`, `install\.ps1` or `\.github\/workflows\/release-builds\.yml` has six more checks/);
+    expect(paragraphs[at + 1]).toMatch(/^ {3}Each must say `COMPLETED SUCCESS`/);
   });
 });
 
