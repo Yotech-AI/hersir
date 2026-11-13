@@ -19,14 +19,14 @@ import { QuitSettings } from "../components/QuitSettings";
 import { focusLimit, ScreenshotSettings } from "../components/ScreenshotSettings";
 import { UpdateSettings } from "../components/UpdateSettings";
 import { limitsProblem, type LimitsProblem } from "../lib/screenshotSettings";
-import { cardAgents, runsAtOnceWarning, runsMemoryError, runsMemoryHint, type CardAgent } from "../lib/settings";
+import { cardAgents, RUNS_MEMORY_PER_RUN_HINT, runsAtOnceWarning, runsMemoryError, runsMemoryHint, runsMemoryPerRunError, type CardAgent } from "../lib/settings";
 
 /** Settings → Notifications: a switch per kind, in this order. */
 const NOTIFY: [keyof NotificationSwitches, string][] = [
   ["hold", "A card goes on hold"],
   ["waiting", "A card waits for your review or deploy"],
-  ["leadAsks", "The Team Lead asks you something (a Question or Approval chat)"],
-  ["leadAnswered", "The Team Lead answers in a chat while the Hersir window is hidden or in the background"],
+  ["leadAsks", "The Chief asks you something (a Question or Approval chat)"],
+  ["leadAnswered", "The Chief answers in a chat while the Hersir window is hidden or in the background"],
 ];
 
 /** Settings' tabs (GA-42), in the address as #/settings/<tab>; General opens first. */
@@ -63,13 +63,16 @@ export function SettingsPage({ tab }: { tab?: string } = {}) {
   const save = async (next: Settings = s) => {
     const usd = budget.trim() === "" ? null : Number(budget.replace(",", "."));
     if (usd !== null && !(usd > 0)) { setMsg({ ok: false, text: "The spending limit must be a positive amount, or empty for no limit." }); return; }
-    const memory = runsMemoryError(next.runsMemoryGb);
+    const memory = runsMemoryError(next.runsMemoryGb) ?? runsMemoryPerRunError(next.runsMemoryPerRunGb);
     if (memory) { setMsg({ ok: false, text: memory }); return; }
     // Settings → Agents and runs → Screenshots (GA-185): a value outside its range is refused with why, before the backend would
     const shots = limitsProblem(next);
     setShotsErr(shots);
     if (shots) { setMsg({ ok: false, text: shots.message }); focusLimit(shots.key); return; }
-    try { await saveSettings({ ...next, maxRunUsd: usd }); setMsg({ ok: true, text: "Settings saved." }); setSavedAt(Date.now()); } catch (e) { setMsg({ ok: false, text: String(e) }); }
+    try { await saveSettings({ ...next, maxRunUsd: usd }); setMsg({ ok: true, text: "Settings saved." }); setSavedAt(Date.now()); } catch (e) { setMsg({ ok: false, text: String(e) }); return; }
+    // What the backend has now: a Memory per run that isn't set follows a new Memory for agent runs (GA-277), and the
+    // next save sends it as it is now.
+    getSettings().then((x) => { if (x) setS(x); }).catch(() => {});
   };
   const panel = (t: SettingsTab) => ({ role: "tabpanel", className: "form settings-panel", hidden: open !== t, "aria-label": TABS.find(([k]) => k === t)?.[2] });
   return (
@@ -120,10 +123,13 @@ export function SettingsPage({ tab }: { tab?: string } = {}) {
             <Field label="Memory for agent runs" htmlFor="s-memory" hint={runsMemoryHint(s)}>
               <div className="input-group"><input id="s-memory" className="input" type="number" min={2} max={s.computerMemoryGb || undefined} step={1} value={s.runsMemoryGb ?? ""}
                 onChange={(e) => setS({ ...s, runsMemoryGb: Number(e.target.value) })} /><span className="faint">GB</span></div></Field>
+            <Field label="Memory per run" htmlFor="s-memory-run" hint={RUNS_MEMORY_PER_RUN_HINT}>
+              <div className="input-group"><input id="s-memory-run" className="input" type="number" min={2} max={s.runsMemoryGb || undefined} step={1} value={s.runsMemoryPerRunGb ?? ""}
+                onChange={(e) => setS({ ...s, runsMemoryPerRunGb: Number(e.target.value) })} /><span className="faint">GB</span></div></Field>
             <Field label="Spend per run ($)" htmlFor="s-usd" hint="Claude Code stops a run that reaches this amount; other CLIs don't report cost"><input id="s-usd" className="input" inputMode="decimal" value={budget} onChange={(e) => setBudget(e.target.value)} placeholder="No limit" /></Field>
             <Field label="Minutes per run" htmlFor="s-min" hint="5 to 480"><input id="s-min" className="input" type="number" min={5} max={480} value={s.maxRunMinutes} onChange={(e) => setS({ ...s, maxRunMinutes: Number(e.target.value) })} /></Field>
             <Field label="Tool calls per run" htmlFor="s-calls" hint="20 to 2000. Every file read, edit and command is one."><input id="s-calls" className="input" type="number" min={20} max={2000} value={s.maxRunToolCalls} onChange={(e) => setS({ ...s, maxRunToolCalls: Number(e.target.value) })} /></Field>
-            <Field label="Minutes per chat answer" htmlFor="s-chat-min" hint="5 to 240. The Team Lead's board check and its look at an agent's question too."><input id="s-chat-min" className="input" type="number" min={5} max={240} value={s.maxChatMinutes} onChange={(e) => setS({ ...s, maxChatMinutes: Number(e.target.value) })} /></Field>
+            <Field label="Minutes per chat answer" htmlFor="s-chat-min" hint="5 to 240. The Chief's board check and its look at an agent's question too."><input id="s-chat-min" className="input" type="number" min={5} max={240} value={s.maxChatMinutes} onChange={(e) => setS({ ...s, maxChatMinutes: Number(e.target.value) })} /></Field>
             <Field label="Tool calls per chat answer" htmlFor="s-chat-calls" hint="20 to 500"><input id="s-chat-calls" className="input" type="number" min={20} max={500} value={s.maxChatToolCalls} onChange={(e) => setS({ ...s, maxChatToolCalls: Number(e.target.value) })} /></Field>
             <Field label="Pause all agents" wide hint={s.agentsPaused ? "Paused: no automatic starts from Auto columns. Run still works by hand." : "The agents on Auto columns take their cards by themselves."}>
               <label className="check"><input type="checkbox" checked={s.agentsPaused} onChange={(e) => { const next = { ...s, agentsPaused: e.target.checked }; setS(next); save(next); }} />Pause all agents</label></Field>
@@ -134,7 +140,7 @@ export function SettingsPage({ tab }: { tab?: string } = {}) {
         </div>
         <div {...panel("mcp")}>
           <FormSection title="MCP servers" text="Outside services your agents can use, like Otus OS: one list for all agents, switched on per agent in its form → Tools. Values of environment and header lines and sign-ins stay in your keychain.">
-            <Field label="Servers" wide hint="Saved as soon as you add, change or remove one. Only you add, import, sign in to and switch on servers: the Team Lead can't."><McpSettings /></Field>
+            <Field label="Servers" wide hint="Saved as soon as you add, change or remove one. Only you add, import, sign in to and switch on servers: the Chief can't."><McpSettings /></Field>
           </FormSection>
         </div>
         <div {...panel("github")}>

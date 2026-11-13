@@ -175,11 +175,13 @@ const keydown = (k: string, code: string, mods: Parameters<typeof key>[2] = {}) 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 const PAGE: TerminalPlace = { kind: "page" };
 const PANEL: TerminalPlace = { kind: "panel", folder: "/home/you/Herd/gizai" };
+const CHAT: TerminalPlace = { kind: "chat" };
 
 describe("the exports TF1 and TF2 use, word for word", () => {
   it("has TerminalPlace, useTerminals, showIn and useShownIn as the card writes them", () => {
     const lines = source.split("\n").map((l) => l.trim());
-    expect(lines).toContain('export type TerminalPlace = { kind: "page" } | { kind: "panel"; folder: string };');
+    // GA-278 adds the Chat page's terminal panel as a third place
+    expect(lines).toContain('export type TerminalPlace = { kind: "page" } | { kind: "panel"; folder: string } | { kind: "chat" };');
     expect(lines).toContain("export function useTerminals(): TerminalSession[] {");
     expect(lines).toContain("export function showIn(id: string, place: TerminalPlace): void {");
     expect(lines).toContain("export function useShownIn(id: string): TerminalPlace | null {");
@@ -191,6 +193,12 @@ describe("the exports TF1 and TF2 use, word for word", () => {
     expect(T.samePlace(PANEL, { kind: "panel", folder: "/home/you/Herd/other" })).toBe(false);
     expect(T.samePlace(PAGE, PANEL)).toBe(false);
     expect(T.samePlace(null, PAGE)).toBe(false);
+  });
+  it("names the Chat page's terminal panel chat (GA-278), one place for every chat", () => {
+    expect(T.placeKey(CHAT)).toBe("chat");
+    expect(T.samePlace(CHAT, { kind: "chat" })).toBe(true);
+    expect(T.samePlace(CHAT, PAGE)).toBe(false);
+    expect(T.samePlace(CHAT, PANEL)).toBe(false);
   });
 });
 
@@ -321,6 +329,9 @@ describe("the place's text (design §8)", () => {
     expect(awayText(g, PAGE)).toBe("gizai 2 is on its own page.");
     expect(awayText(g, PANEL)).toBe("gizai 2 is in gizai's Editor.");
     expect(awayText(session("t2", { name: "GA-118", folderPath: "C:\\Users\\you\\.gizai\\worktrees\\GA\\GA-118\\" }), PANEL)).toBe("GA-118 is in GA-118's Editor.");
+    // GA-278, word for word as the card gives it
+    expect(awayText(g, CHAT)).toBe("gizai 2 is in the Chat's terminal panel.");
+    expect(awayText(g, null)).toBe("gizai 2 isn't shown anywhere.");
   });
 });
 
@@ -628,5 +639,26 @@ describe("the store: one view per terminal, for the terminal's whole life", () =
     expect(page.children).not.toContain(v.host);
     expect(s.webgls.every((g) => g.disposed)).toBe(true);
     expect(term(1).disposed).toBe(false);
+  });
+});
+
+// GA-278: the Chat page's terminals (src/lib/chatTerminal.ts) follow this list from outside React. Last, as it changes the list.
+describe("the list for a store outside React", () => {
+  it("hands the list to a store outside React (GA-278's chat terminals): terminalsNow, and watchTerminals on each change until it stops", async () => {
+    expect(T.terminalsNow()).toBe(T.useTerminals());
+    let calls = 0;
+    const stop = T.watchTerminals(() => { calls++; });
+    s.changed!([session("t1", { busy: "npm" }), session("t9")]);
+    await flush();
+    expect(calls).toBeGreaterThan(0);
+    expect(T.terminalsNow().map((x) => x.id)).toEqual(["t1", "t9"]);
+    T.showIn("t9", CHAT);
+    const before = calls;
+    expect(before, "where a terminal shows counts as a change too").toBeGreaterThan(1);
+    stop();
+    s.changed!([session("t1", { busy: "npm" })]);
+    await flush();
+    expect(calls, "stopped").toBe(before);
+    expect(T.terminalsNow().map((x) => x.id)).toEqual(["t1"]);
   });
 });

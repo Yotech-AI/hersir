@@ -97,7 +97,7 @@ async fn get_agent_shows_the_setting_and_create_agent_and_update_agent_set_it_by
     // the Team Lead itself shares nothing
     assert!(t.call("update_agent", json!({"agent": "Team Lead", "shares_memory_with": "Backend Agent"})).await.is_err());
     let lead = t.agent("Team Lead").await;
-    assert_eq!((lead["shares_memory_with"].clone(), lead["memory_folder"].clone()), (Value::Null, json!("Team Lead/")), "{lead}");
+    assert_eq!((lead["shares_memory_with"].clone(), lead["memory_folder"].clone()), (Value::Null, json!("Chief/")), "{lead}");
     // a field left out keeps it
     t.ok("update_agent", json!({"agent": "Backend Agent 2", "title": "Second account"})).await;
     assert_eq!(t.shares("Backend Agent 2"), Some(t.id("Backend Agent")));

@@ -1,11 +1,13 @@
 //! The product tour's fake data (scripts/tour-capture.sh, GA-148 and GA-149), made up from start to end: no real project,
 //! client, folder or person. Its owner is Alex Morgan, its projects Northwind Shop, Lumen Health and Orbit CRM, and their
-//! folders sit in <home>/Projects, the only Editor folder, so every path shows as ~/…. Each of the tour's scenes has
-//! something to show:
+//! folders sit in <home>/Projects, the only Editor folder, so every path shows as ~/…. The one folder there that isn't
+//! made up is <home>/Projects/hersir, which scripts/tour-capture.sh adds after this (GA-250): a copy of Hersir's own front
+//! end (public, Apache-2.0), the only real code in the fake home, for the Editor scene. It is a folder only, not a project.
+//! Each of the tour's scenes has something to show:
 //!  - the board: cards in every column, the Backend Agent at work on NWS-1 (Claude Code is the tour's fake);
 //!  - the Northwind Shop repository: a small Laravel shop on main, a change not committed yet (the Editor's git status);
 //!  - NWS-2 in Review: its branch and worktree with two commits, pull request #42, and the QA Agent's passed run;
-//!  - the Team Lead chat: a request, the two cards it made, and a third card waiting for your Approve;
+//!  - the Chief's chat: a request, the two cards it made, and a third card waiting for your Approve;
 //!  - Settings → Coding CLIs: Claude Code at ~/.local/bin/claude and Codex at ~/.local/bin/codex, and the limits each
 //!    reported, for Usage → Subscription;
 //!  - Memory: notes that link each other, enough for a graph;
@@ -110,14 +112,14 @@ fn main() {
     let codex = clis::save(&db, vec![clis::Cli { name: "Codex".into(), kind: "codex".into(), command: "~/.local/bin/codex".into(), ..Default::default() }])
         .unwrap().into_iter().find(|c| c.name == "Codex").unwrap().id;
 
-    // The team: the Team Lead, Backend and Design Agents on Claude Code, the Frontend and QA Agents on Codex
+    // The team: the Chief, Backend and Design Agents on Claude Code, the Frontend and QA Agents on Codex
     let agent = |name: &str, role: &str, cli: &str, chat: bool| {
         let on_claude = cli.is_empty();
         team::add_agent(&db, &you, &s.team_id, AgentInput { name: name.into(), role_key: role.into(), adapter: cli.into(),
             model: on_claude.then(|| "opus".into()), effort: Some("high".into()), instructions_md: Some(seed::role_template(role)),
             chat_enabled: Some(chat), ..Default::default() }).unwrap()
     };
-    let lead = agent("Team Lead", "lead", "", true);
+    let lead = agent("Chief", "lead", "", true);
     let frontend = agent("Frontend Agent", "frontend", &codex, false);
     let backend = agent("Backend Agent", "backend", "", false);
     let design = agent("Design Agent", "design", "", false);
@@ -280,7 +282,7 @@ fn main() {
         summary: "The import command is written, but the warehouse's SFTP server refuses my key, so I can't test it against the real folder. Add the key to your SSH agent, then press Done, continue: I'll run the import for yesterday and check the 312 products.".into(),
         issues: vec![] }), &["ssh-add ~/.ssh/warehouse_sftp_ed25519".into(), "ssh -o BatchMode=yes sftp@files.northwind.example exit".into()]).unwrap();
 
-    // The Team Lead chat: an older thread, then a request, the two cards it made, and a third that waits for your OK (it
+    // The Chief's chat: an older thread, then a request, the two cards it made, and a third that waits for your OK (it
     // read the client's spec on the web first, from outside Gizai)
     let older = chat::create_thread(&db, &you, &lead, "What needs my attention today?").unwrap();
     let say_in = |thread: &str, role: &str, author: &str, body: Option<&str>, tool: Option<(&str, serde_json::Value)>| {
@@ -318,7 +320,7 @@ fn main() {
         args: vec!["artisan".into(), "boost:mcp".into()], ..Default::default() }).unwrap();
     mcp_servers::save(&db, mcp_servers::McpServer { name: "playwright".into(), transport: "stdio".into(), command: "npx".into(),
         args: vec!["@playwright/mcp@latest".into()], ..Default::default() }).unwrap();
-    mcp_servers::set_agent_tools(&db, &you, &backend, mcp_servers::AgentTools { mcp: vec![mcp_servers::AgentServer { server_id: boost.id.clone(), on: true, tools_off: vec![] }] }).unwrap();
+    mcp_servers::set_agent_tools(&db, &you, &backend, mcp_servers::AgentTools { mcp: vec![mcp_servers::AgentServer { server_id: boost.id.clone(), on: true, tools_off: vec![], trusted: false }] }).unwrap();
 
     // Memory: notes that link each other
     memory::ensure_lead_notes(&db, &lead, "Alex").unwrap();

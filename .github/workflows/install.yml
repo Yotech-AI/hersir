@@ -1,13 +1,28 @@
-# Installs Gizai the way people do, into a scratch folder, on Linux (Ubuntu 24.04 itself, and Fedora, Arch Linux and
-# openSUSE Tumbleweed in containers), macOS (Apple silicon) and Windows. The first install is the one line at the pull
-# request's own commit, with a full build: scripts/get.sh piped into sh, or scripts/get.ps1 from memory in Windows
-# PowerShell 5.1. Then, over it, what Gizai's own update does: build only, then install. On macOS and Windows that
-# update goes over an install as Gizai made it before it was called Hersir (GA-233), with Gizai.app and Gizai.lnk,
-# which it must remove. Then the checks, and the one line's uninstall. On Linux the system packages come from the line
-# install.sh --check prints for that system, so each distribution's line is tried too.
+# Installs Hersir the way people do, into a scratch folder, on Linux (Ubuntu 24.04 itself, and Fedora, Arch Linux and
+# openSUSE Tumbleweed in containers), macOS (Apple silicon) and Windows (GA-252).
+# - build and a signed release: the pull request's own commit, built and packed on Linux (x86_64), macOS (Apple
+#   silicon) and Windows (x86_64) exactly as Release builds packs a release's ready-made builds, then made into a fake
+#   release vX.Y.Z (the version in tauri.conf.json) with SHA256SUMS and hersir-X.Y.Z.sig, signed with a throwaway key
+#   made in the job for it. Never with Hersir's release keys: the one line checks it against that test key alone
+#   (HERSIR_RELEASE_SIGNERS).
+# - install, on each of the six systems: the one line at the pull request's own commit, scripts/get.sh piped into sh, or
+#   scripts/get.ps1 from memory in Windows PowerShell 5.1, with that release (HERSIR_RELEASES_URL and HERSIR_BUILDS_URL):
+#   1. the ready-made build, before Rust and Node.js are set up: with git, ssh-keygen and on Linux WebKitGTK 4.1 it
+#      installs without a build, in about a minute, and its check names only what Hersir needs to run;
+#   2. a release without its signature, with one by another key, with a changed SHA256SUMS and with its tag on another
+#      commit, each also with --from-source: nothing of it runs, one line says why, and the install stays as it is;
+#   3. a good signature with a wrong checksum, then --from-source: one line says why, then a full build from source;
+#   4. over it, what Hersir's own update does: build only, then install. On macOS and Windows that update goes over an
+#      install with the app as it was named before it was called Hersir (GA-233), Gizai.app and Gizai.lnk, which it must
+#      remove. A new install has the hersir names alone (GA-248). Then the checks, and the one line's uninstall.
+# - update from 0.16.0: Hersir 0.16.0, installed with its own installer, then updated with this commit's source the
+#   way 0.16.0's own update does it, which can't change any more (GA-248). It must pass 0.16.0's check and restart into
+#   the new Hersir, in 0.16.0's folders.
+# On Linux the system packages come from the lines install.sh --check --skip-build (to run a ready-made build) and
+# install.sh --check (to build) print for that system, so each distribution's lines are tried too.
 # A release build takes a while, so it runs only on pull requests that change an installer, and by hand. A pull request
-# into main that only bumps Gizai's version passes without building or installing (the "Version only?" job).
-# It signs, releases and uploads nothing.
+# into main that only bumps Hersir's version passes without building or installing (the "Version only?" job).
+# It releases and uploads nothing, and signs nothing with Hersir's keys.
 name: Install
 
 on:
@@ -50,20 +65,774 @@ jobs:
           git fetch --quiet --no-tags --depth=2 origin "$GITHUB_SHA" || exit 0
           if node scripts/version-only.mjs HEAD^1 HEAD; then echo "only=true" >> "$GITHUB_OUTPUT"; fi
 
-  install:
-    name: install on ${{ matrix.system }}
+  # This commit's ready-made builds, made and packed as Release builds makes a release's (.github/workflows/
+  # release-builds.yml): with the commit's own installer, build only, and on Ubuntu 22.04, whose glibc is older than
+  # every distribution's here. Each archive is kept as the run's artifact, by its own name.
+  build:
+    name: ready-made ${{ matrix.system }}
     needs: version
     strategy:
       fail-fast: false
       matrix:
+        include:
+          - system: linux-x86_64
+            runner: ubuntu-22.04
+            ext: tar.gz
+          - system: macos-arm64
+            runner: macos-15
+            ext: tar.gz
+          - system: windows-x86_64
+            runner: windows-latest
+            ext: zip
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    steps:
+      - name: Keep LF line endings
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v4
+        if: needs.version.outputs.only != 'true'
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        if: needs.version.outputs.only != 'true'
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: needs.version.outputs.only != 'true'
+
+      - name: The archive's name
+        id: version
+        if: needs.version.outputs.only != 'true'
+        shell: bash
+        env:
+          SYSTEM: ${{ matrix.system }}
+          EXT: ${{ matrix.ext }}
+        run: |
+          version="$(node -p 'require("./src-tauri/tauri.conf.json").version')"
+          echo "Building hersir-$version-$SYSTEM.$EXT from $(git rev-parse HEAD)."
+          echo "archive=hersir-$version-$SYSTEM.$EXT" >> "$GITHUB_OUTPUT"
+
+      - name: System packages, as install.sh --check names them
+        if: needs.version.outputs.only != 'true' && runner.os == 'Linux'
+        shell: bash
+        run: |
+          check="$(bash ./install.sh --check 2>&1)" || true
+          printf '%s\n' "$check"
+          line="$(printf '%s\n' "$check" | sed -n '/^Install them with:$/{n;s/^ *//;p;q;}')"
+          if [ -z "$line" ]; then echo "install.sh --check names no system packages to install."; exit 0; fi
+          cmd="$(printf '%s\n' "$line" | sed 's/apt install /apt install -y /g')"
+          printf '\ninstall.sh --check says: %s\nRunning: %s\n' "$line" "$cmd"
+          sudo apt-get update
+          eval "$cmd"
+
+      - name: Build (install.sh --build-only)
+        if: needs.version.outputs.only != 'true' && runner.os != 'Windows'
+        shell: bash
+        run: /bin/bash ./install.sh --build-only
+
+      - name: Build (install.ps1 -BuildOnly)
+        if: needs.version.outputs.only != 'true' && runner.os == 'Windows'
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -BuildOnly
+          if ($LASTEXITCODE -ne 0) { 'install.ps1 -BuildOnly failed'; exit 1 }
+
+      # As Release builds packs them: exactly the files --skip-build installs, at the paths the build left them.
+      - name: Pack (Linux, macOS)
+        if: needs.version.outputs.only != 'true' && runner.os != 'Windows'
+        shell: bash
+        env:
+          ARCHIVE: ${{ steps.version.outputs.archive }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/builds"
+          out="$RUNNER_TEMP/builds/$ARCHIVE"
+          if [ "$RUNNER_OS" = macOS ]; then
+            COPYFILE_DISABLE=1 /usr/bin/tar --no-xattrs -czf "$out" \
+              target/release/hersir target/release/hersir-mcp target/release/bundle/macos/Hersir.app
+          else
+            tar --owner=0 --group=0 --numeric-owner -czf "$out" target/release/hersir target/release/hersir-mcp
+          fi
+          tar -tzvf "$out"
+
+      - name: Pack (Windows)
+        if: needs.version.outputs.only != 'true' && runner.os == 'Windows'
+        shell: powershell
+        env:
+          ARCHIVE: ${{ steps.version.outputs.archive }}
+        run: |
+          Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+          $builds = Join-Path $env:RUNNER_TEMP 'builds'
+          New-Item -ItemType Directory -Force -Path $builds | Out-Null
+          $out = Join-Path $builds $env:ARCHIVE
+          $zip = [System.IO.Compression.ZipFile]::Open($out, 'Create')
+          try {
+            foreach ($p in @('hersir.exe', 'hersir-mcp.exe')) {
+              $file = Join-Path $env:GITHUB_WORKSPACE "target\release\$p"
+              [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $file, "target/release/$p", 'Optimal') | Out-Null
+            }
+          } finally {
+            $zip.Dispose()
+          }
+          "$out, $((Get-Item -LiteralPath $out).Length) bytes"
+
+      - uses: actions/upload-artifact@v4
+        if: needs.version.outputs.only != 'true'
+        with:
+          name: ${{ steps.version.outputs.archive }}
+          path: ${{ runner.temp }}/builds/${{ steps.version.outputs.archive }}
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: true
+
+  # This commit as a release, vX.Y.Z: the three archives, SHA256SUMS as Release builds writes it, and the signature
+  # over the message the one line checks ("hersir vX.Y.Z <commit>", then SHA256SUMS), made with a throwaway key made
+  # here and gone with the job. test-signers names that key, in the allowed-signers format, for HERSIR_RELEASE_SIGNERS.
+  # Also a signature by another throwaway key, and a SHA256SUMS changed after it was signed, for the cases that must
+  # install nothing. latest.json is GitHub's answer for the latest release. Kept as the run's artifact fake-release.
+  release:
+    name: signed test release
+    needs: [version, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        if: needs.version.outputs.only != 'true'
+        with:
+          pattern: hersir-*
+          path: release
+          merge-multiple: true
+
+      - name: SHA256SUMS, and its signature by a test key
+        if: needs.version.outputs.only != 'true'
+        working-directory: release
+        run: |
+          set -eu
+          set -- hersir-*
+          version="${1#hersir-}"
+          version="${version%%-*}"
+          archives="hersir-$version-linux-x86_64.tar.gz hersir-$version-macos-arm64.tar.gz hersir-$version-windows-x86_64.zip"
+          [ "$*" = "$archives" ] || { echo "The archives are $*, not $archives."; exit 1; }
+          sha256sum $archives > SHA256SUMS
+          cat SHA256SUMS
+          keys="$RUNNER_TEMP/keys"
+          mkdir -p "$keys"
+          ssh-keygen -q -t ed25519 -N '' -C 'Install test release key' -f "$keys/test"
+          ssh-keygen -q -t ed25519 -N '' -C 'Install other key' -f "$keys/other"
+          printf 'hersir-release namespaces="hersir-release" %s\n' "$(cat "$keys/test.pub")" > test-signers
+          { printf 'hersir v%s %s\n' "$version" "$GITHUB_SHA"; cat SHA256SUMS; } > "$keys/message"
+          ssh-keygen -q -Y sign -f "$keys/test" -n hersir-release "$keys/message"
+          mv "$keys/message.sig" "hersir-$version.sig"
+          ssh-keygen -q -Y sign -f "$keys/other" -n hersir-release "$keys/message"
+          mv "$keys/message.sig" other-key.sig
+          ssh-keygen -Y verify -f test-signers -I hersir-release -n hersir-release -s "hersir-$version.sig" < "$keys/message"
+          # the first archive's checksum, each hex digit one up
+          first="$(head -n 1 SHA256SUMS)"
+          { printf '%s  %s\n' "$(printf '%s' "${first%%  *}" | tr '0-9a-f' '1-9a-f0')" "${first#*  }"; tail -n +2 SHA256SUMS; } > SHA256SUMS.changed
+          printf '{"tag_name": "v%s", "name": "v%s", "draft": false, "prerelease": false}\n' "$version" "$version" > latest.json
+          rm -rf "$keys"
+          ls -l
+
+      - uses: actions/upload-artifact@v4
+        if: needs.version.outputs.only != 'true'
+        with:
+          name: fake-release
+          path: release
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: true
+
+  install:
+    name: install on ${{ matrix.system }}
+    needs: [version, release]
+    # Also when a ready-made build or the signed release failed: a skipped check would pass, so each install fails then,
+    # and says why.
+    if: ${{ !cancelled() }}
+    strategy:
+      fail-fast: false
+      matrix:
         # refresh: the package lists. start: what a container needs before the job can start, git (without it
-        # actions/checkout makes no git repository, and the one line gets the source with it), curl and bash. On Arch
-        # and Tumbleweed, which roll, the refresh is a full upgrade, as Tauri's own steps do first: installing from
-        # fresh lists onto an older system is a partial upgrade. Fedora's container has curl-minimal, which conflicts
-        # with the curl its package line names: curl replaces it, as on a desktop install. Tumbleweed's has no awk, and
-        # git needs one: zypper would give it busybox-gawk, which conflicts with gawk, the only awk the package line's
-        # devel_basis takes, and -n would cancel that line. So gawk comes with git, as on a desktop install; the line
-        # would install it anyway.
+        # actions/checkout makes no git repository, and the one line gets the source with it), curl and bash, and what
+        # the one line needs to check and unpack a ready-made build: OpenSSH's client, for ssh-keygen, and tar and gzip,
+        # which a desktop always has. On Arch and Tumbleweed, which roll, the refresh is a full upgrade, as Tauri's own
+        # steps do first: installing from fresh lists onto an older system is a partial upgrade. Fedora's container has
+        # curl-minimal, which conflicts with the curl its package line names: curl replaces it, as on a desktop install.
+        # Tumbleweed's has no awk, and git needs one: zypper would give it busybox-gawk, which conflicts with gawk, the
+        # only awk the package line's devel_basis takes, and -n would cancel that line. So gawk comes with git, as on a
+        # desktop install; the line would install it anyway.
+        include:
+          - system: ubuntu-24.04
+            runner: ubuntu-24.04
+            refresh: sudo apt-get update
+          - system: fedora
+            runner: ubuntu-24.04
+            container: fedora:latest
+            refresh: dnf -y makecache
+            start: dnf -y install --allowerasing git curl bash openssh-clients tar gzip
+          - system: archlinux
+            runner: ubuntu-24.04
+            container: archlinux:latest
+            refresh: pacman -Syu --noconfirm
+            start: pacman -S --needed --noconfirm git curl bash openssh tar gzip
+          - system: opensuse/tumbleweed
+            runner: ubuntu-24.04
+            container: opensuse/tumbleweed:latest
+            refresh: zypper -n refresh && zypper -n dup
+            start: zypper -n install git curl bash gawk openssh-clients tar gzip
+          - system: macos-15
+            runner: macos-15
+          - system: windows-latest
+            runner: windows-latest
+    runs-on: ${{ matrix.runner }}
+    # An empty one runs the job on the runner itself, as does a version bump, which skips every step and so needs no
+    # image (pulling one could still fail).
+    container: ${{ needs.version.outputs.only != 'true' && matrix.container || '' }}
+    timeout-minutes: 90
+    # A version bump skips every step, one by one, as in ci.yml: a job skipped with if: never reports its matrix's
+    # checks, and branch protection would wait for them.
+    steps:
+      - name: This commit's ready-made builds and signed release
+        if: needs.version.outputs.only != 'true' && needs.release.result != 'success'
+        shell: bash
+        run: |
+          echo "The ready-made builds or the signed test release failed (see the ready-made and signed test release checks), so there is nothing to install."
+          exit 1
+
+      # Windows' git turns LF into CRLF on checkout; the source folder the one line makes keeps LF too.
+      - name: Keep LF line endings
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
+
+      # Once a step adds a folder to GITHUB_PATH (setup-node does), the runner gives a container's steps the PATH from
+      # the image's settings after the added folders. opensuse/tumbleweed's image sets none, so its steps would get
+      # node's folder alone and find no bash (exit code 127). So the PATH the container starts with goes there first,
+      # as one line, which keeps its order.
+      - name: The container's PATH
+        if: needs.version.outputs.only != 'true' && matrix.container
+        shell: sh
+        run: echo "$PATH" >> "$GITHUB_PATH"
+
+      # In a container the job runs as root, and the workspace belongs to the runner's user: git may use it all the same.
+      - name: Package lists, and git, curl, bash and OpenSSH's client
+        if: needs.version.outputs.only != 'true' && runner.os == 'Linux'
+        shell: sh
+        run: |
+          set -eux
+          ${{ matrix.refresh }}
+          ${{ matrix.start }}
+          if [ -n "${{ matrix.container }}" ]; then git config --global --add safe.directory "$GITHUB_WORKSPACE"; fi
+
+      - uses: actions/checkout@v4
+        if: needs.version.outputs.only != 'true'
+
+      - uses: actions/download-artifact@v4
+        if: needs.version.outputs.only != 'true'
+        with:
+          name: fake-release
+          path: fake-release
+
+      # What a ready-made build needs to run, installed with the line install.sh --check --skip-build prints for this
+      # system (run_deps_command), as someone would copy it: only made non-interactive (-y, --noconfirm or -n) and, where
+      # the job runs as root, without sudo. No compiler, Rust or Node.js yet.
+      - name: System packages to run Hersir, as install.sh --check --skip-build names them
+        if: needs.version.outputs.only != 'true' && runner.os == 'Linux'
+        shell: bash
+        run: |
+          check="$(bash ./install.sh --check --skip-build 2>&1)" || true
+          printf '%s\n' "$check"
+          line="$(printf '%s\n' "$check" | sed -n '/^Install them with:$/{n;s/^ *//;p;q;}')"
+          if [ -z "$line" ]; then echo "install.sh --check --skip-build named no system packages to install."; exit 1; fi
+          cmd="$(printf '%s\n' "$line" | sed -e 's/apt install /apt install -y /g' -e 's/pacman -S /pacman -S --noconfirm /g' \
+            -e 's/dnf install /dnf install -y /g' -e 's/zypper in /zypper -n in /g')"
+          if [ "$(id -u)" = 0 ]; then cmd="$(printf '%s\n' "$cmd" | sed 's/sudo //g')"; fi
+          printf '\ninstall.sh --check --skip-build says: %s\nRunning: %s\n' "$line" "$cmd"
+          eval "$cmd" || { echo "The package line install.sh --check --skip-build prints failed."; exit 1; }
+
+      # Everything the installs make goes into the runner's temp folder: the programs (HERSIR_PREFIX), the source folder
+      # the one line makes (XDG_DATA_HOME's hersir-src, on Windows LOCALAPPDATA's) and the data folder (GIZAI_DATA_DIR;
+      # on Linux $XDG_DATA_HOME/gizai, where it points too). From the shell's RUNNER_TEMP, which in a container is the
+      # container's own path.
+      - name: Scratch folders
+        if: needs.version.outputs.only != 'true' && runner.os != 'Windows'
+        shell: bash
+        run: |
+          {
+            echo "HERSIR_PREFIX=$RUNNER_TEMP/hersir"
+            echo "XDG_DATA_HOME=$RUNNER_TEMP/share"
+            echo "GIZAI_DATA_DIR=$RUNNER_TEMP/share/gizai"
+          } >> "$GITHUB_ENV"
+
+      # UTF-8 without a byte order mark, which Windows PowerShell's Out-File -Encoding utf8 would write.
+      - name: Scratch folders (Windows)
+        if: needs.version.outputs.only != 'true' && runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $t = $env:RUNNER_TEMP
+          [IO.File]::AppendAllText($env:GITHUB_ENV, "HERSIR_PREFIX=$t\hersir`nGIZAI_DATA_DIR=$t\hersir-data`nLOCALAPPDATA=$t\localappdata`n")
+
+      # The release job's release, as the one line reads a release: latest.json (HERSIR_RELEASES_URL), and a folder of
+      # downloads per case (HERSIR_BUILDS_URL): signed; unsigned, without hersir-X.Y.Z.sig; other-key, signed by another
+      # key; changed-sums, with SHA256SUMS changed after it was signed; wrong-sum, signed, but each archive changed. Its
+      # tag, vX.Y.Z, goes on this commit in the checkout, where the one line gets the source (HERSIR_REPO), and in a copy,
+      # moved, on another commit. line.sh runs the one line with one of them: line.sh <case> [options].
+      - name: This commit as a signed release
+        if: needs.version.outputs.only != 'true' && runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -eu
+          release="$RUNNER_TEMP/release" builds="$RUNNER_TEMP/builds"
+          mv "$GITHUB_WORKSPACE/fake-release" "$release"
+          version="$(sed -n 's/.*"tag_name": "v\([^"]*\)".*/\1/p' "$release/latest.json")"
+          sig="hersir-$version.sig"
+          for kind in signed unsigned other-key changed-sums wrong-sum; do
+            mkdir -p "$builds/$kind"
+            cp "$release"/hersir-"$version"-* "$release/SHA256SUMS" "$builds/$kind/"
+          done
+          cp "$release/$sig" "$builds/signed/"
+          cp "$release/other-key.sig" "$builds/other-key/$sig"
+          cp "$release/$sig" "$builds/changed-sums/"
+          cp "$release/SHA256SUMS.changed" "$builds/changed-sums/SHA256SUMS"
+          cp "$release/$sig" "$builds/wrong-sum/"
+          for archive in "$builds/wrong-sum"/hersir-"$version"-*; do printf 'x' >> "$archive"; done
+          git -C "$GITHUB_WORKSPACE" tag -f "v$version" HEAD
+          moved="$RUNNER_TEMP/moved"
+          git init -q "$moved"
+          git -C "$moved" fetch -q --depth 1 "$GITHUB_WORKSPACE" HEAD
+          other="$(git -C "$moved" -c user.name=CI -c user.email=ci@hersir.invalid commit-tree -p FETCH_HEAD -m 'Another commit' 'FETCH_HEAD^{tree}')"
+          git -C "$moved" tag -f "v$version" "$other"
+          cat > "$RUNNER_TEMP/line.sh" <<'LINE'
+          #!/bin/bash
+          # The one line as people run it, get.sh piped into sh, with the release's downloads of one case: line.sh <case>
+          # [options]. LINE_REPO is another repository to get the tag from.
+          kind="$1"; shift
+          cat "$GITHUB_WORKSPACE/scripts/get.sh" | HERSIR_REPO="${LINE_REPO:-$GITHUB_WORKSPACE}" HERSIR_BUILDS_URL="file://$BUILDS/$kind" sh -s -- "$@"
+          LINE
+          {
+            echo "VERSION=$version"
+            echo "BUILDS=$builds"
+            echo "HERSIR_RELEASES_URL=file://$release/latest.json"
+            echo "HERSIR_RELEASE_SIGNERS=$release/test-signers"
+          } >> "$GITHUB_ENV"
+          ls -lR "$builds"
+
+      - name: This commit as a signed release (Windows)
+        if: needs.version.outputs.only != 'true' && runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $release = Join-Path $env:RUNNER_TEMP 'release'; $builds = Join-Path $env:RUNNER_TEMP 'builds'
+          Move-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'fake-release') -Destination $release
+          $version = "$((Get-Content -LiteralPath "$release\latest.json" -Raw | ConvertFrom-Json).tag_name)" -replace '^v', ''
+          $sig = "hersir-$version.sig"
+          foreach ($case in @('signed', 'unsigned', 'other-key', 'changed-sums', 'wrong-sum')) {
+            New-Item -ItemType Directory -Force -Path "$builds\$case" | Out-Null
+            Copy-Item -Path "$release\hersir-$version-*", "$release\SHA256SUMS" -Destination "$builds\$case"
+          }
+          Copy-Item -LiteralPath "$release\$sig" -Destination "$builds\signed"
+          Copy-Item -LiteralPath "$release\other-key.sig" -Destination "$builds\other-key\$sig"
+          Copy-Item -LiteralPath "$release\$sig" -Destination "$builds\changed-sums"
+          Copy-Item -LiteralPath "$release\SHA256SUMS.changed" -Destination "$builds\changed-sums\SHA256SUMS" -Force
+          Copy-Item -LiteralPath "$release\$sig" -Destination "$builds\wrong-sum"
+          Get-ChildItem -Path "$builds\wrong-sum\hersir-$version-*" | ForEach-Object { [IO.File]::AppendAllText($_.FullName, 'x') }
+          git -C $env:GITHUB_WORKSPACE tag -f "v$version" HEAD
+          $moved = Join-Path $env:RUNNER_TEMP 'moved'
+          git init -q $moved
+          git -C $moved fetch -q --depth 1 $env:GITHUB_WORKSPACE HEAD
+          $other = git -C $moved -c user.name=CI -c user.email=ci@hersir.invalid commit-tree -p FETCH_HEAD -m 'Another commit' 'FETCH_HEAD^{tree}'
+          git -C $moved tag -f "v$version" $other
+          if ($LASTEXITCODE -ne 0) { 'Could not tag another commit'; exit 1 }
+          $line = @'
+          # The one line as people run it, but with the release's downloads of one case: get.ps1 from memory in a Windows
+          # PowerShell 5.1 of its own, as irm | iex runs it, or with options as & ([scriptblock]::Create(...)) -Option.
+          # Its output, ending in "returned <its result>". -Repo is another repository to get the tag from.
+          param([string]$Case, [string]$Options = '', [string]$Repo = $env:GITHUB_WORKSPACE)
+          $env:HERSIR_REPO = $Repo
+          $env:HERSIR_RELEASES_URL = ([Uri](Join-Path $env:RELEASE 'latest.json')).AbsoluteUri
+          $env:HERSIR_BUILDS_URL = ([Uri](Join-Path $env:BUILDS $Case)).AbsoluteUri
+          $env:HERSIR_RELEASE_SIGNERS = Join-Path $env:RELEASE 'test-signers'
+          $get = Join-Path $env:GITHUB_WORKSPACE 'scripts\get.ps1'
+          $run = if ($Options) { "& ([scriptblock]::Create((Get-Content -LiteralPath '$get' -Raw))) $Options" } else { "Get-Content -LiteralPath '$get' -Raw | Invoke-Expression" }
+          $iex = Join-Path $env:RUNNER_TEMP 'iex-line.ps1'
+          Set-Content -LiteralPath $iex -Value ($run + '; "returned $LASTEXITCODE"')
+          powershell -NoProfile -ExecutionPolicy Bypass -File $iex
+          '@
+          Set-Content -LiteralPath "$env:RUNNER_TEMP\line.ps1" -Value $line
+          [IO.File]::AppendAllText($env:GITHUB_ENV, "VERSION=$version`nRELEASE=$release`nBUILDS=$builds`n")
+          Get-ChildItem -Recurse -LiteralPath $builds | ForEach-Object { $_.FullName }
+          exit 0
+
+      # 1. The one line with the release's ready-made build, on a system with git, ssh-keygen and (on Linux) WebKitGTK 4.1,
+      # before Rust and Node.js are set up. Its check names only what Hersir needs to run. Then it checks the signature,
+      # installs the build without building, in about a minute (the log says how long), and the installed hersir says
+      # the release's version. On macOS nothing in Hersir.app has a quarantine mark.
+      - name: The one line with the ready-made build (get.sh)
+        if: needs.version.outputs.only != 'true' && runner.os != 'Windows'
+        shell: bash
+        run: |
+          fail() { echo "$*"; exit 1; }
+          bash "$RUNNER_TEMP/line.sh" signed --check 2>&1 | tee "$RUNNER_TEMP/check.log" || fail "get.sh --check with the ready-made build failed."
+          grep -qxF "Everything Hersir needs to run is here." "$RUNNER_TEMP/check.log" || fail "get.sh --check didn't find all Hersir needs to run."
+          if grep -E "Rust|Node\.js|npm|pkg-config|compiler|Command Line Tools" "$RUNNER_TEMP/check.log"; then
+            fail "get.sh --check with a ready-made build names what a build needs."
+          fi
+          start="$(date +%s)"
+          bash "$RUNNER_TEMP/line.sh" signed 2>&1 | tee "$RUNNER_TEMP/line.log" || fail "The one line didn't install the ready-made build."
+          echo "The one line with the ready-made build took $(( $(date +%s) - start )) seconds."
+          grep -qF "is signed with Hersir's release key" "$RUNNER_TEMP/line.log" || fail "The one line didn't check the signature."
+          grep -qF "matches its checksum in SHA256SUMS" "$RUNNER_TEMP/line.log" || fail "The one line didn't use the ready-made build."
+          if grep -q '^== Building' "$RUNNER_TEMP/line.log"; then fail "The one line built Hersir, though the release has a ready-made build."; fi
+          got="$("$HERSIR_PREFIX/bin/hersir" --version | tail -n 1)" || fail "$HERSIR_PREFIX/bin/hersir --version failed: $got"
+          echo "hersir --version: $got"
+          [ "$got" = "hersir $VERSION" ] || fail "hersir --version says $got, not hersir $VERSION."
+          if [ "$RUNNER_OS" = macOS ]; then
+            app="$HERSIR_PREFIX/lib/hersir/Hersir.app"
+            if xattr -p com.apple.quarantine "$app" 2>/dev/null; then fail "$app has a quarantine mark."; fi
+            if xattr -r -l "$app" | grep com.apple.quarantine; then fail "A file in $app has a quarantine mark."; fi
+            codesign --verify --deep --strict "$app"
+          fi
+
+      # The same with get.ps1, in Windows PowerShell 5.1. The installed .exe files have no Zone.Identifier stream.
+      - name: The one line with the ready-made build (get.ps1)
+        if: needs.version.outputs.only != 'true' && runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $line = "$env:RUNNER_TEMP\line.ps1"
+          $check = @(& $line -Case 'signed' -Options '-Check')
+          $check | ForEach-Object { Write-Host $_ }
+          if ($check[-1] -ne 'returned 0') { "get.ps1 -Check with the ready-made build failed: it $($check[-1])"; exit 1 }
+          if ($check -notcontains 'Everything Hersir needs to run is here.') { "get.ps1 -Check didn't find all Hersir needs to run."; exit 1 }
+          if ($check -match 'Rust|Node\.js|npm|C\+\+ Build Tools') { 'get.ps1 -Check with a ready-made build names what a build needs.'; exit 1 }
+          $time = [Diagnostics.Stopwatch]::StartNew()
+          $out = @(& $line -Case 'signed')
+          $out | ForEach-Object { Write-Host $_ }
+          "The one line with the ready-made build took $([int]$time.Elapsed.TotalSeconds) seconds."
+          if ($out[-1] -ne 'returned 0') { "get.ps1 didn't install the ready-made build: it $($out[-1])"; exit 1 }
+          if (-not ($out -match "is signed with Hersir's release key")) { "get.ps1 didn't check the signature."; exit 1 }
+          if (-not ($out -match 'matches its checksum in SHA256SUMS')) { "get.ps1 didn't use the ready-made build."; exit 1 }
+          if ($out -match '^== Building') { 'get.ps1 built Hersir, though the release has a ready-made build.'; exit 1 }
+          $marker = Get-Content -LiteralPath "$env:HERSIR_PREFIX\hersir-installed.txt"
+          "installed: $marker"
+          if ("$marker" -ne "hersir $env:VERSION") { "hersir-installed.txt says $marker, not hersir $env:VERSION."; exit 1 }
+          foreach ($exe in @('hersir.exe', 'hersir-mcp.exe')) {
+            if (Get-Item -LiteralPath "$env:HERSIR_PREFIX\$exe" -Stream 'Zone.Identifier' -ErrorAction SilentlyContinue) { "$exe has a Zone.Identifier stream."; exit 1 }
+          }
+          exit 0
+
+      # 2. Releases that don't check: without hersir-X.Y.Z.sig, signed by another key, with SHA256SUMS changed after it
+      # was signed, and with the tag on another commit; each also with --from-source. Nothing of the release runs (its
+      # install.sh --check would show "== Checking what Hersir needs"), one line says why, and the installed Hersir stays
+      # as it is.
+      - name: Releases that don't check install nothing (get.sh)
+        if: needs.version.outputs.only != 'true' && runner.os != 'Windows'
+        shell: bash
+        run: |
+          fail() { echo "$*"; exit 1; }
+          installed="$HERSIR_PREFIX/lib/hersir/hersir"
+          before="$(cksum < "$installed")"
+          refused() { # refused <case> <the line it must say> [options]
+            local kind="$1" says="$2" status=0
+            shift 2
+            bash "$RUNNER_TEMP/line.sh" "$kind" "$@" > "$RUNNER_TEMP/refused.log" 2>&1 || status=$?
+            cat "$RUNNER_TEMP/refused.log"
+            [ "$status" = 1 ] || fail "With $kind $*, the one line ended with $status, not 1."
+            grep -qF "$says" "$RUNNER_TEMP/refused.log" || fail "With $kind $*, the one line didn't say: $says"
+            if grep -q '^== Checking what Hersir needs' "$RUNNER_TEMP/refused.log"; then fail "With $kind $*, the release's install.sh ran."; fi
+            [ "$(cksum < "$installed")" = "$before" ] || fail "With $kind $*, the installed Hersir changed."
+          }
+          for options in "" --from-source; do
+            refused unsigned "v$VERSION isn't signed yet: try again in a few minutes." $options
+            refused other-key "doesn't check against Hersir's release keys, so nothing was installed." $options
+            refused changed-sums "but not for its commit" $options
+            export LINE_REPO="$RUNNER_TEMP/moved"
+            refused signed "but not for its commit" $options
+            unset LINE_REPO
+          done
+
+      - name: Releases that don't check install nothing (get.ps1)
+        if: needs.version.outputs.only != 'true' && runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $line = "$env:RUNNER_TEMP\line.ps1"
+          $installed = "$env:HERSIR_PREFIX\hersir.exe"
+          $before = (Get-FileHash -LiteralPath $installed).Hash
+          function Test-Refused([string]$Case, [string]$Says, [string]$Options, [string]$Repo) {
+            $out = @(& $line -Case $Case -Options $Options -Repo $Repo)
+            $out | ForEach-Object { Write-Host $_ }
+            if ($out[-1] -ne 'returned 1') { Write-Host "With $Case $Options, get.ps1 $($out[-1]), not returned 1."; exit 1 }
+            if (-not ($out | Where-Object { "$_".Contains($Says) })) { Write-Host "With $Case $Options, get.ps1 didn't say: $Says"; exit 1 }
+            if ($out -match '^== Checking what Hersir needs') { Write-Host "With $Case $Options, the release's install.ps1 ran."; exit 1 }
+            if ((Get-FileHash -LiteralPath $installed).Hash -ne $before) { Write-Host "With $Case $Options, the installed Hersir changed."; exit 1 }
+          }
+          foreach ($options in @('', '-FromSource')) {
+            Test-Refused 'unsigned' "v$env:VERSION isn't signed yet: try again in a few minutes." $options $env:GITHUB_WORKSPACE
+            Test-Refused 'other-key' "doesn't check against Hersir's release keys, so nothing was installed." $options $env:GITHUB_WORKSPACE
+            Test-Refused 'changed-sums' 'but not for its commit' $options $env:GITHUB_WORKSPACE
+            Test-Refused 'signed' 'but not for its commit' $options "$env:RUNNER_TEMP\moved"
+          }
+          exit 0
+
+      # The system packages Hersir's build needs, installed with the line install.sh --check prints for this system
+      # (deps_command), as someone would copy it: only made non-interactive (-y, --noconfirm or -n) and, where the job
+      # runs as root, without sudo.
+      - name: System packages, as install.sh --check names them
+        if: needs.version.outputs.only != 'true' && runner.os == 'Linux'
+        shell: bash
+        run: |
+          check="$(bash ./install.sh --check 2>&1)" || true
+          printf '%s\n' "$check"
+          line="$(printf '%s\n' "$check" | sed -n '/^Install them with:$/{n;s/^ *//;p;q;}')"
+          if [ -z "$line" ]; then echo "install.sh --check named no system packages to install."; exit 1; fi
+          cmd="$(printf '%s\n' "$line" | sed -e 's/apt install /apt install -y /g' -e 's/pacman -S /pacman -S --noconfirm /g' \
+            -e 's/dnf install /dnf install -y /g' -e 's/dnf group install /dnf group install -y /g' -e 's/zypper in /zypper -n in /g')"
+          if [ "$(id -u)" = 0 ]; then cmd="$(printf '%s\n' "$cmd" | sed 's/sudo //g')"; fi
+          printf '\ninstall.sh --check says: %s\nRunning: %s\n' "$line" "$cmd"
+          eval "$cmd" || { echo "The package line install.sh --check prints failed."; exit 1; }
+
+      # Node.js and Rust, which install.sh's check asks for when it builds. In a container, rust-toolchain installs
+      # rustup first.
+      - uses: actions/setup-node@v4
+        if: needs.version.outputs.only != 'true'
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: needs.version.outputs.only != 'true'
+
+      # 3. A good signature, but this system's archive doesn't match its checksum in SHA256SUMS: one line says so, then
+      # the one line builds the checked source, in full, as before ready-made builds (the log says how long). Then
+      # --from-source, which always builds, over it.
+      - name: A wrong checksum, and --from-source, build from source (get.sh)
+        if: needs.version.outputs.only != 'true' && runner.os != 'Windows'
+        shell: bash
+        run: |
+          fail() { echo "$*"; exit 1; }
+          start="$(date +%s)"
+          bash "$RUNNER_TEMP/line.sh" wrong-sum 2>&1 | tee "$RUNNER_TEMP/line.log" || fail "The one line didn't build from source after a wrong checksum."
+          echo "The one line built from source in $(( $(date +%s) - start )) seconds."
+          grep -qF "doesn't match its checksum in SHA256SUMS, so v$VERSION is built from source." "$RUNNER_TEMP/line.log" || fail "The one line didn't say the checksum is wrong."
+          grep -q '^== Building' "$RUNNER_TEMP/line.log" || fail "The one line didn't build."
+          bash "$RUNNER_TEMP/line.sh" signed --from-source 2>&1 | tee "$RUNNER_TEMP/line.log" || fail "The one line didn't build with --from-source."
+          grep -qF "v$VERSION is built from source, as --from-source asks." "$RUNNER_TEMP/line.log" || fail "The one line didn't say it builds from source."
+          grep -q '^== Building' "$RUNNER_TEMP/line.log" || fail "The one line didn't build with --from-source."
+          got="$("$HERSIR_PREFIX/bin/hersir" --version | tail -n 1)" || fail "$HERSIR_PREFIX/bin/hersir --version failed: $got"
+          [ "$got" = "hersir $VERSION" ] || fail "hersir --version says $got, not hersir $VERSION."
+
+      - name: A wrong checksum, and -FromSource, build from source (get.ps1)
+        if: needs.version.outputs.only != 'true' && runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $line = "$env:RUNNER_TEMP\line.ps1"
+          $time = [Diagnostics.Stopwatch]::StartNew()
+          $out = @(& $line -Case 'wrong-sum')
+          $out | ForEach-Object { Write-Host $_ }
+          "The one line built from source in $([int]$time.Elapsed.TotalSeconds) seconds."
+          if ($out[-1] -ne 'returned 0') { "get.ps1 didn't build from source after a wrong checksum: it $($out[-1])"; exit 1 }
+          if (-not ($out | Where-Object { "$_".Contains("doesn't match its checksum in SHA256SUMS, so v$env:VERSION is built from source.") })) { "get.ps1 didn't say the checksum is wrong."; exit 1 }
+          if (-not ($out -match '^== Building')) { "get.ps1 didn't build."; exit 1 }
+          $out = @(& $line -Case 'signed' -Options '-FromSource')
+          $out | ForEach-Object { Write-Host $_ }
+          if ($out[-1] -ne 'returned 0') { "get.ps1 -FromSource didn't install: it $($out[-1])"; exit 1 }
+          if (-not ($out | Where-Object { "$_".Contains("v$env:VERSION is built from source, as -FromSource asks.") })) { "get.ps1 didn't say it builds from source."; exit 1 }
+          if (-not ($out -match '^== Building')) { "get.ps1 -FromSource didn't build."; exit 1 }
+          exit 0
+
+      # 4. An install from before GA-233 has Gizai.app where Hersir.app is now: the links, hersir-launch and the link in
+      # ~/Applications go into it (an install into ~/.local makes that link; one into another prefix, as here, doesn't).
+      # The update over it must replace them all and remove Gizai.app.
+      - name: Make it an install from before GA-233 (macOS)
+        if: needs.version.outputs.only != 'true' && runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -eu
+          lib="$HERSIR_PREFIX/lib/hersir"
+          mv "$lib/Hersir.app" "$lib/Gizai.app"
+          ln -sfn Gizai.app/Contents/MacOS/hersir "$lib/hersir"
+          ln -sfn Gizai.app/Contents/MacOS/hersir-mcp "$lib/hersir-mcp"
+          sed -i '' 's#/Hersir\.app/#/Gizai.app/#' "$lib/hersir-launch"
+          mkdir -p "$HOME/Applications"
+          ln -sfn "$lib/Gizai.app" "$HOME/Applications/Gizai.app"
+          "$HERSIR_PREFIX/bin/hersir" --version
+
+      # Over that install, what Hersir's own update does, in the source folder the one line made: build only, then
+      # install what was built. macOS's own bash 3.2, as on a Mac.
+      - name: Update over it (install.sh --build-only, then --skip-build)
+        if: needs.version.outputs.only != 'true' && runner.os != 'Windows'
+        shell: bash
+        run: |
+          cd "$XDG_DATA_HOME/hersir-src"
+          /bin/bash ./install.sh --build-only
+          /bin/bash ./install.sh --skip-build
+
+      # A new install has the hersir names alone: no lib/gizai, no gizai command, no gizai desktop entry or icons.
+      - name: What it installed (Linux)
+        if: needs.version.outputs.only != 'true' && runner.os == 'Linux'
+        shell: bash
+        run: |
+          fail() { echo "$*"; exit 1; }
+          lib="$HERSIR_PREFIX/lib/hersir"
+          icons="$XDG_DATA_HOME/icons/hicolor"
+          entry="$XDG_DATA_HOME/applications/hersir.desktop"
+          for program in hersir hersir-mcp hersir-launch; do
+            test -x "$lib/$program" || fail "$lib/$program is missing, or can't run."
+          done
+          link="$(readlink "$HERSIR_PREFIX/bin/hersir")" || fail "$HERSIR_PREFIX/bin/hersir is missing, or isn't a link."
+          [ "$link" = "$lib/hersir-launch" ] || fail "$HERSIR_PREFIX/bin/hersir links to $link, not to $lib/hersir-launch."
+          for line in "Exec=$lib/hersir-launch" "Name=Hersir" "Icon=hersir" "StartupWMClass=hersir"; do
+            grep -qFx "$line" "$entry" || fail "$entry has no line $line."
+          done
+          for size in 32 64 128 256 512; do
+            test -s "$icons/${size}x${size}/apps/hersir.png" || fail "$icons/${size}x${size}/apps/hersir.png is missing."
+          done
+          test -s "$icons/scalable/apps/hersir.svg" || fail "$icons/scalable/apps/hersir.svg is missing."
+          for path in "$HERSIR_PREFIX/lib/gizai" "$HERSIR_PREFIX/bin/gizai" "$XDG_DATA_HOME/applications/gizai.desktop" \
+            "$icons/scalable/apps/gizai.svg" "$icons"/{32x32,64x64,128x128,256x256,512x512}/apps/gizai.png; do
+            if [ -e "$path" ] || [ -L "$path" ]; then fail "A new install has $path, a name from before 0.17.0."; fi
+          done
+          want="hersir $(node -p 'require(process.argv[1]).version' "$GITHUB_WORKSPACE/src-tauri/tauri.conf.json")"
+          got="$("$HERSIR_PREFIX/bin/hersir" --version)" || fail "$HERSIR_PREFIX/bin/hersir --version failed: $got"
+          echo "hersir --version: $got"
+          [ "$got" = "$want" ] || fail "hersir --version says $got, and src-tauri/tauri.conf.json $want."
+
+      - name: What it installed (macOS)
+        if: needs.version.outputs.only != 'true' && runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -eu
+          fail() { echo "$*"; exit 1; }
+          lib="$HERSIR_PREFIX/lib/hersir"
+          app="$lib/Hersir.app"
+          test -x "$app/Contents/MacOS/hersir"
+          test -x "$app/Contents/MacOS/hersir-mcp"
+          codesign --verify --deep --strict "$app"
+          want="hersir $(node -p 'require(process.argv[1]).version' "$GITHUB_WORKSPACE/src-tauri/tauri.conf.json")"
+          got="$("$HERSIR_PREFIX/bin/hersir" --version)"
+          [ "$got" = "$want" ] || fail "hersir --version says $got, and src-tauri/tauri.conf.json $want."
+          "$lib/hersir" --version | grep -E '^hersir [0-9]+\.[0-9]+\.[0-9]+'
+          name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$app/Contents/Info.plist")"
+          [ "$name" = Hersir ] || fail "Hersir.app calls itself $name, not Hersir."
+          id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")"
+          [ "$id" = dev.hersir.app ] || fail "Hersir.app's id is $id, not dev.hersir.app."
+          for program in hersir hersir-mcp; do
+            link="$(readlink "$lib/$program")" || fail "$lib/$program isn't a link."
+            [ "$link" = "Hersir.app/Contents/MacOS/$program" ] || fail "$lib/$program links to $link, not into Hersir.app."
+          done
+          grep -qF "exec \"$app/Contents/MacOS/hersir\"" "$lib/hersir-launch" || fail "$lib/hersir-launch doesn't start Hersir.app."
+          if [ -e "$lib/Gizai.app" ] || [ -L "$lib/Gizai.app" ]; then fail "The update left $lib/Gizai.app."; fi
+          if [ -L "$HOME/Applications/Gizai.app" ]; then fail "The update left the link $HOME/Applications/Gizai.app."; fi
+          for path in "$HERSIR_PREFIX/lib/gizai" "$HERSIR_PREFIX/bin/gizai"; do
+            if [ -e "$path" ] || [ -L "$path" ]; then fail "A new install has $path, a name from before 0.17.0."; fi
+          done
+
+      # The one line's uninstall, with the signed release, removes the programs, the command and, on Linux, the desktop
+      # entry and the icons. It keeps the data folder: a file put there first must still be there.
+      - name: Uninstall with the one line (get.sh --uninstall)
+        if: needs.version.outputs.only != 'true' && runner.os != 'Windows'
+        shell: bash
+        run: |
+          fail() { echo "$*"; exit 1; }
+          mkdir -p "$GIZAI_DATA_DIR"
+          echo "The uninstall keeps this." > "$GIZAI_DATA_DIR/keep.txt"
+          # macOS: the links in ~/Applications that an install into ~/.local makes, to Hersir.app and (before GA-233)
+          # to Gizai.app
+          if [ "$RUNNER_OS" = macOS ]; then
+            mkdir -p "$HOME/Applications"
+            ln -sfn "$HERSIR_PREFIX/lib/hersir/Hersir.app" "$HOME/Applications/Hersir.app"
+            ln -sfn "$HERSIR_PREFIX/lib/gizai/Gizai.app" "$HOME/Applications/Gizai.app"
+          fi
+          bash "$RUNNER_TEMP/line.sh" signed --uninstall || fail "The one line didn't uninstall Hersir."
+          icons="$XDG_DATA_HOME/icons/hicolor"
+          for path in "$HERSIR_PREFIX/lib/hersir" "$HERSIR_PREFIX/bin/hersir" "$XDG_DATA_HOME/applications/hersir.desktop" \
+            "$icons/scalable/apps/hersir.svg" "$icons"/{32x32,64x64,128x128,256x256,512x512}/apps/hersir.png \
+            "$HOME/Applications/Hersir.app" "$HOME/Applications/Gizai.app"; do
+            if [ -e "$path" ] || [ -L "$path" ]; then fail "$path is still there after the uninstall."; fi
+          done
+          test -f "$GIZAI_DATA_DIR/keep.txt" || fail "The uninstall removed $GIZAI_DATA_DIR/keep.txt from the data folder."
+
+      # An install from before GA-233 has its Start menu shortcut as Gizai.lnk: the update over it must remove it.
+      - name: Make it an install from before GA-233 (Windows)
+        if: needs.version.outputs.only != 'true' && runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $menu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
+          Move-Item -LiteralPath (Join-Path $menu 'Hersir.lnk') -Destination (Join-Path $menu 'Gizai.lnk') -Force
+
+      # Over that install, what Hersir's own update does, in the source folder the one line made, with Windows
+      # PowerShell 5.1: build only, then install what was built.
+      - name: Update over it (install.ps1 -BuildOnly, then -SkipBuild)
+        if: needs.version.outputs.only != 'true' && runner.os == 'Windows'
+        shell: powershell
+        run: |
+          Set-Location -LiteralPath "$env:LOCALAPPDATA\hersir-src"
+          foreach ($step in @('-BuildOnly', '-SkipBuild')) {
+            powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 $step
+            if ($LASTEXITCODE -ne 0) { "install.ps1 $step failed"; exit 1 }
+          }
+
+      # The Start menu shortcut, Hersir.lnk, must carry Hersir's AppUserModelID, without which Windows shows none of its
+      # notifications. The update removed Gizai.lnk. A new install has the hersir names alone.
+      - name: What it installed (Windows)
+        if: needs.version.outputs.only != 'true' && runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $marker = Get-Content -LiteralPath "$env:HERSIR_PREFIX\hersir-installed.txt"
+          "installed: $marker"
+          if ("$marker" -notmatch '^hersir \d+\.\d+\.\d+') { 'hersir-installed.txt should say the version'; exit 1 }
+          if (-not (Test-Path -LiteralPath "$env:HERSIR_PREFIX\hersir-mcp.exe")) { 'hersir-mcp.exe is missing'; exit 1 }
+          foreach ($file in @('gizai.exe', 'gizai-mcp.exe', 'gizai-installed.txt')) {
+            if (Test-Path -LiteralPath "$env:HERSIR_PREFIX\$file") { "a new install has $file, a name from before 0.17.0"; exit 1 }
+          }
+          $menu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
+          $id = (New-Object -ComObject Shell.Application).NameSpace($menu).ParseName('Hersir.lnk').ExtendedProperty('System.AppUserModel.ID')
+          "shortcut app id: $id"
+          if ($id -ne 'dev.hersir.app') { 'the Start menu shortcut Hersir.lnk should carry dev.hersir.app'; exit 1 }
+          if (Test-Path -LiteralPath (Join-Path $menu 'Gizai.lnk')) { 'the update should have removed Gizai.lnk'; exit 1 }
+
+      # The one line's uninstall, with the signed release and its option as people give it one:
+      # & ([scriptblock]::Create(...)) -Uninstall. It removes Hersir.lnk and, from before GA-233, Gizai.lnk, and keeps
+      # the data folder: a file put there first must still be there.
+      - name: Uninstall with the one line (get.ps1 -Uninstall)
+        if: needs.version.outputs.only != 'true' && runner.os == 'Windows'
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path $env:GIZAI_DATA_DIR | Out-Null
+          Set-Content -LiteralPath "$env:GIZAI_DATA_DIR\keep.txt" -Value 'The uninstall keeps this.'
+          $menu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
+          Copy-Item -LiteralPath (Join-Path $menu 'Hersir.lnk') -Destination (Join-Path $menu 'Gizai.lnk') -Force
+          $out = @(& "$env:RUNNER_TEMP\line.ps1" -Case 'signed' -Options '-Uninstall')
+          $out | ForEach-Object { Write-Host $_ }
+          if ($out[-1] -ne 'returned 0') { "get.ps1 -Uninstall failed: it $($out[-1])"; exit 1 }
+          foreach ($file in @('hersir.exe', 'hersir-mcp.exe', 'hersir-installed.txt')) {
+            if (Test-Path -LiteralPath "$env:HERSIR_PREFIX\$file") { "$file should be gone"; exit 1 }
+          }
+          foreach ($link in @('Hersir.lnk', 'Gizai.lnk')) {
+            if (Test-Path -LiteralPath (Join-Path $menu $link)) { "the Start menu shortcut $link should be gone"; exit 1 }
+          }
+          if (-not (Test-Path -LiteralPath "$env:GIZAI_DATA_DIR\keep.txt")) { 'the uninstall removed keep.txt from the data folder'; exit 1 }
+          exit 0
+
+  # Hersir 0.16.0, installed with its own installer from its tag, then updated with this commit's source the way
+  # 0.16.0's own update does it (crates/gizai-agents/src/update.rs at v0.16.0), which can't change any more:
+  # 1. it gets the new source into the folder it built the last update in (here 0.16.0's own, with its target/),
+  #    without the files git doesn't keep there but target/, and checks the version in its Cargo.toml;
+  # 2. it builds: install.sh --build-only (Windows: install.ps1 -BuildOnly), without GIZAI_REPO, GIZAI_BRANCH,
+  #    GIZAI_PREFIX and GIZAI_DATA_DIR, with CARGO_TARGET_DIR in the source;
+  # 3. it installs: install.sh --skip-build (Windows: install.ps1 -SkipBuild) with GIZAI_PREFIX, the only name 0.16.0
+  #    knows, set to its prefix, and on Linux and macOS XDG_DATA_HOME=<prefix>/share;
+  # 4. it checks <prefix>/lib/gizai/gizai --version (Windows: <prefix>\gizai.exe), whose second word must be the new
+  #    version;
+  # 5. it restarts <prefix>/lib/gizai/gizai-launch, else <prefix>/lib/gizai/gizai (Windows: <prefix>\gizai.exe).
+  # The version stays 0.16.0 until the release's bump, so the checks read whole lines: "hersir 0.16.0" is the new
+  # build, "gizai 0.16.0" the old one. Then: both commands start the new Hersir, the app launcher (the Start menu) has
+  # one Hersir, the data folder is as it was, and the uninstall removes both layouts and keeps the data folder.
+  update:
+    name: update from 0.16.0 on ${{ matrix.system }}
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        # As for install above.
         include:
           - system: ubuntu-24.04
             runner: ubuntu-24.04
@@ -88,28 +857,22 @@ jobs:
           - system: windows-latest
             runner: windows-latest
     runs-on: ${{ matrix.runner }}
-    # An empty one runs the job on the runner itself, as does a version bump, which skips every step and so needs no
-    # image (pulling one could still fail).
     container: ${{ needs.version.outputs.only != 'true' && matrix.container || '' }}
-    timeout-minutes: 90
-    # A version bump skips every step, one by one, as in ci.yml: a job skipped with if: never reports its matrix's
-    # checks, and branch protection would wait for them.
+    # Two builds: 0.16.0's, then this commit's over it.
+    timeout-minutes: 120
+    env:
+      OLD: v0.16.0
+      OLD_REPO: https://github.com/Yotech-AI/hersir.git
     steps:
-      # Windows' git turns LF into CRLF on checkout; the source folder the one line makes keeps LF too.
       - name: Keep LF line endings
         if: runner.os == 'Windows'
         run: git config --global core.autocrlf false
 
-      # Once a step adds a folder to GITHUB_PATH (setup-node does), the runner gives a container's steps the PATH from
-      # the image's settings after the added folders. opensuse/tumbleweed's image sets none, so its steps would get
-      # node's folder alone and find no bash (exit code 127). So the PATH the container starts with goes there first,
-      # as one line, which keeps its order.
       - name: The container's PATH
         if: needs.version.outputs.only != 'true' && matrix.container
         shell: sh
         run: echo "$PATH" >> "$GITHUB_PATH"
 
-      # In a container the job runs as root, and the workspace belongs to the runner's user: git may use it all the same.
       - name: Package lists, and git, curl and bash
         if: needs.version.outputs.only != 'true' && runner.os == 'Linux'
         shell: sh
@@ -122,9 +885,6 @@ jobs:
       - uses: actions/checkout@v4
         if: needs.version.outputs.only != 'true'
 
-      # The system packages Gizai's build needs, installed with the line install.sh --check prints for this system
-      # (deps_command), as someone would copy it: only made non-interactive (-y, --noconfirm or -n) and, where the job
-      # runs as root, without sudo.
       - name: System packages, as install.sh --check names them
         if: needs.version.outputs.only != 'true' && runner.os == 'Linux'
         shell: bash
@@ -139,7 +899,6 @@ jobs:
           printf '\ninstall.sh --check says: %s\nRunning: %s\n' "$line" "$cmd"
           eval "$cmd" || { echo "The package line install.sh --check prints failed."; exit 1; }
 
-      # Node.js and Rust, which install.sh's check asks for. In a container, rust-toolchain installs rustup first.
       - uses: actions/setup-node@v4
         if: needs.version.outputs.only != 'true'
         with:
@@ -148,208 +907,201 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         if: needs.version.outputs.only != 'true'
 
-      # Everything the installs make goes into the runner's temp folder: the programs (GIZAI_PREFIX), the source folder
-      # the one line makes (XDG_DATA_HOME's gizai-src, on Windows LOCALAPPDATA's) and the data folder (GIZAI_DATA_DIR;
-      # on Linux $XDG_DATA_HOME/gizai, where it points too). From the shell's RUNNER_TEMP, which in a container is the
-      # container's own path.
+      # Linux and macOS: the prefix, with XDG_DATA_HOME as 0.16.0's update sets it, <prefix>/share, so 0.16.0's install
+      # and the update put the desktop entry in the same place. The data folder is 0.16.0's usual one: on Linux
+      # $XDG_DATA_HOME/gizai, on macOS ~/Library/Application Support/Gizai (the runner's own). The source folder plays
+      # the update's (0.16.0 keeps it in <data folder>/update/source; where it is makes no difference to the installer).
       - name: Scratch folders
         if: needs.version.outputs.only != 'true' && runner.os != 'Windows'
         shell: bash
         run: |
+          if [ "$RUNNER_OS" = macOS ]; then data="$HOME/Library/Application Support/Gizai"; else data="$RUNNER_TEMP/local/share/gizai"; fi
           {
-            echo "GIZAI_PREFIX=$RUNNER_TEMP/gizai"
-            echo "XDG_DATA_HOME=$RUNNER_TEMP/share"
-            echo "GIZAI_DATA_DIR=$RUNNER_TEMP/share/gizai"
+            echo "OLD_PREFIX=$RUNNER_TEMP/local"
+            echo "XDG_DATA_HOME=$RUNNER_TEMP/local/share"
+            echo "OLD_DATA=$data"
+            echo "UPDATE_SOURCE=$RUNNER_TEMP/source"
           } >> "$GITHUB_ENV"
 
-      # UTF-8 without a byte order mark, which Windows PowerShell's Out-File -Encoding utf8 would write.
+      # Windows: LOCALAPPDATA in the runner's temp folder, so 0.16.0 installs into its usual folder there,
+      # %LOCALAPPDATA%\Programs\Gizai. The data folder is 0.16.0's usual one, %APPDATA%\Gizai (the runner's own).
       - name: Scratch folders (Windows)
         if: needs.version.outputs.only != 'true' && runner.os == 'Windows'
         shell: powershell
         run: |
           $t = $env:RUNNER_TEMP
-          [IO.File]::AppendAllText($env:GITHUB_ENV, "GIZAI_PREFIX=$t\gizai`nGIZAI_DATA_DIR=$t\gizai-data`nLOCALAPPDATA=$t\localappdata`n")
+          [IO.File]::AppendAllText($env:GITHUB_ENV, "LOCALAPPDATA=$t\localappdata`nOLD_PREFIX=$t\localappdata\Programs\Gizai`nOLD_DATA=$env:APPDATA\Gizai`nUPDATE_SOURCE=$t\source`n")
 
-      # The one line as people run it, but from this pull request's commit: get.sh piped into sh (dash on Ubuntu,
-      # macOS's own sh). It gets the commit into $XDG_DATA_HOME/gizai-src and runs its install.sh --check, then
-      # install.sh, which builds Gizai and installs it.
-      - name: The one line (get.sh)
-        if: needs.version.outputs.only != 'true' && runner.os != 'Windows'
-        shell: bash
-        run: cat scripts/get.sh | GIZAI_REPO="$GITHUB_WORKSPACE" GIZAI_REF=HEAD sh
-
-      # An install from before GA-233 has Gizai.app where Hersir.app is now: lib/gizai's links, gizai-launch and the
-      # link in ~/Applications go into it (an install into ~/.local makes that link; one into another prefix, as here,
-      # doesn't). The update over it must replace them all and remove Gizai.app.
-      - name: Make it an install from before GA-233 (macOS)
-        if: needs.version.outputs.only != 'true' && runner.os == 'macOS'
+      # Something in the data folder, and its files' checksums: the update must leave them as they are.
+      - name: A data folder
+        if: needs.version.outputs.only != 'true'
         shell: bash
         run: |
-          set -eu
-          lib="$GIZAI_PREFIX/lib/gizai"
-          mv "$lib/Hersir.app" "$lib/Gizai.app"
-          ln -sfn Gizai.app/Contents/MacOS/gizai "$lib/gizai"
-          ln -sfn Gizai.app/Contents/MacOS/gizai-mcp "$lib/gizai-mcp"
-          sed -i '' 's#/Hersir\.app/#/Gizai.app/#' "$lib/gizai-launch"
-          mkdir -p "$HOME/Applications"
-          ln -sfn "$lib/Gizai.app" "$HOME/Applications/Gizai.app"
-          "$GIZAI_PREFIX/bin/gizai" --version
+          mkdir -p "$OLD_DATA/notes"
+          echo "Made before 0.16.0 was installed." > "$OLD_DATA/keep.txt"
+          echo "So was this." > "$OLD_DATA/notes/also.txt"
+          (cd "$OLD_DATA" && find . -type f | LC_ALL=C sort | while IFS= read -r f; do cksum "$f"; done) > "$RUNNER_TEMP/data-before.txt"
+          cat "$RUNNER_TEMP/data-before.txt"
 
-      # Over that install, what Gizai's own update does, in the source folder the one line made: build only, then
-      # install what was built. macOS's own bash 3.2, as on a Mac.
-      - name: Update over it (install.sh --build-only, then --skip-build)
-        if: needs.version.outputs.only != 'true' && runner.os != 'Windows'
-        shell: bash
-        run: |
-          cd "$XDG_DATA_HOME/gizai-src"
-          /bin/bash ./install.sh --build-only
-          /bin/bash ./install.sh --skip-build
-
-      - name: What it installed (Linux)
-        if: needs.version.outputs.only != 'true' && runner.os == 'Linux'
-        shell: bash
-        run: |
-          fail() { echo "$*"; exit 1; }
-          lib="$GIZAI_PREFIX/lib/gizai"
-          icons="$XDG_DATA_HOME/icons/hicolor"
-          for program in gizai gizai-mcp gizai-launch; do
-            test -x "$lib/$program" || fail "$lib/$program is missing, or can't run."
-          done
-          link="$(readlink "$GIZAI_PREFIX/bin/gizai")" || fail "$GIZAI_PREFIX/bin/gizai is missing, or isn't a link."
-          [ "$link" = "$lib/gizai-launch" ] || fail "$GIZAI_PREFIX/bin/gizai links to $link, not to $lib/gizai-launch."
-          grep -qFx "Exec=$lib/gizai-launch" "$XDG_DATA_HOME/applications/gizai.desktop" \
-            || fail "$XDG_DATA_HOME/applications/gizai.desktop has no line Exec=$lib/gizai-launch."
-          grep -qFx "Name=Hersir" "$XDG_DATA_HOME/applications/gizai.desktop" \
-            || fail "$XDG_DATA_HOME/applications/gizai.desktop has no line Name=Hersir."
-          for size in 32 64 128 256 512; do
-            test -s "$icons/${size}x${size}/apps/gizai.png" || fail "$icons/${size}x${size}/apps/gizai.png is missing."
-          done
-          test -s "$icons/scalable/apps/gizai.svg" || fail "$icons/scalable/apps/gizai.svg is missing."
-          want="gizai $(node -p 'require(process.argv[1]).version' "$GITHUB_WORKSPACE/src-tauri/tauri.conf.json")"
-          got="$("$GIZAI_PREFIX/bin/gizai" --version)" || fail "$GIZAI_PREFIX/bin/gizai --version failed: $got"
-          echo "gizai --version: $got"
-          [ "$got" = "$want" ] || fail "gizai --version says $got, and src-tauri/tauri.conf.json $want."
-
-      - name: What it installed (macOS)
-        if: needs.version.outputs.only != 'true' && runner.os == 'macOS'
-        shell: bash
-        run: |
-          set -eu
-          fail() { echo "$*"; exit 1; }
-          lib="$GIZAI_PREFIX/lib/gizai"
-          app="$lib/Hersir.app"
-          test -x "$app/Contents/MacOS/gizai"
-          test -x "$app/Contents/MacOS/gizai-mcp"
-          codesign --verify --deep --strict "$app"
-          "$GIZAI_PREFIX/bin/gizai" --version
-          "$lib/gizai" --version | grep -E '^gizai [0-9]+\.[0-9]+\.[0-9]+'
-          name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$app/Contents/Info.plist")"
-          [ "$name" = Hersir ] || fail "Hersir.app calls itself $name, not Hersir."
-          id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")"
-          [ "$id" = ai.gizai.app ] || fail "Hersir.app's id is $id, not ai.gizai.app."
-          for program in gizai gizai-mcp; do
-            link="$(readlink "$lib/$program")" || fail "$lib/$program isn't a link."
-            [ "$link" = "Hersir.app/Contents/MacOS/$program" ] || fail "$lib/$program links to $link, not into Hersir.app."
-          done
-          grep -qF "exec \"$app/Contents/MacOS/gizai\"" "$lib/gizai-launch" || fail "$lib/gizai-launch doesn't start Hersir.app."
-          if [ -e "$lib/Gizai.app" ] || [ -L "$lib/Gizai.app" ]; then fail "The update left $lib/Gizai.app."; fi
-          if [ -L "$HOME/Applications/Gizai.app" ]; then fail "The update left the link $HOME/Applications/Gizai.app."; fi
-
-      # The one line's uninstall removes the programs, the command and, on Linux, the desktop entry and the icons. It
-      # keeps the data folder: a file put there first must still be there.
-      - name: Uninstall with the one line (get.sh --uninstall)
+      - name: Install 0.16.0 (install.sh)
         if: needs.version.outputs.only != 'true' && runner.os != 'Windows'
         shell: bash
         run: |
           fail() { echo "$*"; exit 1; }
-          mkdir -p "$GIZAI_DATA_DIR"
-          echo "The uninstall keeps this." > "$GIZAI_DATA_DIR/keep.txt"
-          # macOS: the links in ~/Applications that an install into ~/.local makes, to Hersir.app and (before GA-233)
-          # to Gizai.app
-          if [ "$RUNNER_OS" = macOS ]; then
-            mkdir -p "$HOME/Applications"
-            ln -sfn "$GIZAI_PREFIX/lib/gizai/Hersir.app" "$HOME/Applications/Hersir.app"
-            ln -sfn "$GIZAI_PREFIX/lib/gizai/Gizai.app" "$HOME/Applications/Gizai.app"
-          fi
-          cat scripts/get.sh | GIZAI_REPO="$GITHUB_WORKSPACE" GIZAI_REF=HEAD sh -s -- --uninstall
-          icons="$XDG_DATA_HOME/icons/hicolor"
-          for path in "$GIZAI_PREFIX/lib/gizai" "$GIZAI_PREFIX/bin/gizai" "$XDG_DATA_HOME/applications/gizai.desktop" \
-            "$icons/scalable/apps/gizai.svg" "$icons"/{32x32,64x64,128x128,256x256,512x512}/apps/gizai.png \
-            "$HOME/Applications/Hersir.app" "$HOME/Applications/Gizai.app"; do
-            if [ -e "$path" ] || [ -L "$path" ]; then fail "$path is still there after the uninstall."; fi
-          done
-          test -f "$GIZAI_DATA_DIR/keep.txt" || fail "The uninstall removed $GIZAI_DATA_DIR/keep.txt from the data folder."
+          git clone --quiet --depth 1 --branch "$OLD" "$OLD_REPO" "$UPDATE_SOURCE"
+          cd "$UPDATE_SOURCE"
+          GIZAI_PREFIX="$OLD_PREFIX" /bin/bash ./install.sh
+          got="$("$OLD_PREFIX/bin/gizai" --version)"
+          [ "$got" = "gizai ${OLD#v}" ] || fail "0.16.0's install says $got."
+          test -x "$OLD_PREFIX/lib/gizai/gizai-launch" || fail "0.16.0 installed no lib/gizai/gizai-launch."
 
-      # The one line as people run it, but from this pull request's commit: get.ps1 from memory, as irm | iex runs it,
-      # in a Windows PowerShell 5.1 of its own. It gets the commit into $env:LOCALAPPDATA\gizai-src and runs its
-      # install.ps1 -Check, then install.ps1, which builds Gizai and installs it. Piped into iex, get.ps1 returns rather
-      # than exit, with its result in $LASTEXITCODE.
-      - name: The one line (get.ps1)
+      - name: Install 0.16.0 (install.ps1)
         if: needs.version.outputs.only != 'true' && runner.os == 'Windows'
         shell: powershell
         run: |
-          $env:GIZAI_REPO = $env:GITHUB_WORKSPACE; $env:GIZAI_REF = 'HEAD'
-          $iex = "$env:RUNNER_TEMP\iex-get-ps1.ps1"
-          Set-Content -LiteralPath $iex -Value 'Get-Content -LiteralPath scripts\get.ps1 -Raw | Invoke-Expression; "returned $LASTEXITCODE"'
-          powershell -NoProfile -ExecutionPolicy Bypass -File $iex | Tee-Object -Variable out
-          if (@($out)[-1] -ne 'returned 0') { "get.ps1 didn't install Gizai: it $(@($out)[-1])"; exit 1 }
-
-      # An install from before GA-233 has its Start menu shortcut as Gizai.lnk: the update over it must remove it.
-      - name: Make it an install from before GA-233 (Windows)
-        if: needs.version.outputs.only != 'true' && runner.os == 'Windows'
-        shell: powershell
-        run: |
-          $menu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
-          Move-Item -LiteralPath (Join-Path $menu 'Hersir.lnk') -Destination (Join-Path $menu 'Gizai.lnk') -Force
-
-      # Over that install, what Gizai's own update does, in the source folder the one line made, with Windows
-      # PowerShell 5.1: build only, then install what was built.
-      - name: Update over it (install.ps1 -BuildOnly, then -SkipBuild)
-        if: needs.version.outputs.only != 'true' && runner.os == 'Windows'
-        shell: powershell
-        run: |
-          Set-Location -LiteralPath "$env:LOCALAPPDATA\gizai-src"
-          foreach ($step in @('-BuildOnly', '-SkipBuild')) {
-            powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 $step
-            if ($LASTEXITCODE -ne 0) { "install.ps1 $step failed"; exit 1 }
+          git clone --quiet --depth 1 --branch $env:OLD $env:OLD_REPO $env:UPDATE_SOURCE
+          if ($LASTEXITCODE -ne 0) { 'Could not get 0.16.0'; exit 1 }
+          powershell -NoProfile -ExecutionPolicy Bypass -File "$env:UPDATE_SOURCE\install.ps1"
+          if ($LASTEXITCODE -ne 0) { "0.16.0's install.ps1 failed"; exit 1 }
+          foreach ($file in @('gizai.exe', 'gizai-mcp.exe', 'gizai-installed.txt')) {
+            if (-not (Test-Path -LiteralPath "$env:OLD_PREFIX\$file")) { "0.16.0 installed no $file in $env:OLD_PREFIX"; exit 1 }
           }
-
-      # The Start menu shortcut, Hersir.lnk, must carry Gizai's AppUserModelID, without which Windows shows none of its
-      # notifications. The update removed Gizai.lnk.
-      - name: What it installed (Windows)
-        if: needs.version.outputs.only != 'true' && runner.os == 'Windows'
-        shell: powershell
-        run: |
-          $marker = Get-Content -LiteralPath "$env:GIZAI_PREFIX\gizai-installed.txt"
-          "installed: $marker"
-          if ("$marker" -notmatch '^gizai \d+\.\d+\.\d+') { 'gizai-installed.txt should say the version'; exit 1 }
-          if (-not (Test-Path -LiteralPath "$env:GIZAI_PREFIX\gizai-mcp.exe")) { 'gizai-mcp.exe is missing'; exit 1 }
           $menu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
           $id = (New-Object -ComObject Shell.Application).NameSpace($menu).ParseName('Hersir.lnk').ExtendedProperty('System.AppUserModel.ID')
-          "shortcut app id: $id"
-          if ($id -ne 'ai.gizai.app') { 'the Start menu shortcut Hersir.lnk should carry ai.gizai.app'; exit 1 }
-          if (Test-Path -LiteralPath (Join-Path $menu 'Gizai.lnk')) { 'the update should have removed Gizai.lnk'; exit 1 }
+          "0.16.0's shortcut app id: $id"
 
-      # The one line's uninstall, with its option as people give it one: & ([scriptblock]::Create(...)) -Uninstall. It
-      # removes Hersir.lnk and, from before GA-233, Gizai.lnk, and keeps the data folder: a file put there first must
-      # still be there.
-      - name: Uninstall with the one line (get.ps1 -Uninstall)
+      # Steps 1 to 3, as 0.16.0 runs them.
+      - name: Update it as 0.16.0 does (install.sh --build-only, then --skip-build)
+        if: needs.version.outputs.only != 'true' && runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -eu
+          fail() { echo "$*"; exit 1; }
+          cd "$UPDATE_SOURCE"
+          git fetch --quiet --depth 1 --no-tags --force -- "$GITHUB_WORKSPACE" HEAD
+          git checkout --quiet --force --detach FETCH_HEAD
+          git clean -ffdxq --exclude=/target/
+          version="$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"$/\1/p' Cargo.toml)"
+          [ "$version" = "$(node -p 'require("./src-tauri/tauri.conf.json").version')" ] || fail "Cargo.toml says $version."
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          clean="env -u GIZAI_REPO -u GIZAI_BRANCH -u GIZAI_PREFIX -u GIZAI_DATA_DIR CARGO_TARGET_DIR=$PWD/target TAURI_TELEMETRY_DISABLED=1"
+          $clean bash ./install.sh --build-only
+          $clean GIZAI_PREFIX="$OLD_PREFIX" XDG_DATA_HOME="$OLD_PREFIX/share" bash ./install.sh --skip-build
+
+      - name: Update it as 0.16.0 does (install.ps1 -BuildOnly, then -SkipBuild)
         if: needs.version.outputs.only != 'true' && runner.os == 'Windows'
         shell: powershell
         run: |
-          New-Item -ItemType Directory -Force -Path $env:GIZAI_DATA_DIR | Out-Null
-          Set-Content -LiteralPath "$env:GIZAI_DATA_DIR\keep.txt" -Value 'The uninstall keeps this.'
+          Set-Location -LiteralPath $env:UPDATE_SOURCE
+          foreach ($git in @(@('fetch', '--quiet', '--depth', '1', '--no-tags', '--force', $env:GITHUB_WORKSPACE, 'HEAD'),
+              @('checkout', '--quiet', '--force', '--detach', 'FETCH_HEAD'), @('clean', '-ffdxq', '--exclude=/target/'))) {
+            git @git
+            if ($LASTEXITCODE -ne 0) { "git $($git -join ' ') failed"; exit 1 }
+          }
+          $version = node -p "require('./src-tauri/tauri.conf.json').version"
+          [IO.File]::AppendAllText($env:GITHUB_ENV, "VERSION=$version`n")
+          foreach ($name in @('GIZAI_REPO', 'GIZAI_BRANCH', 'GIZAI_PREFIX', 'GIZAI_DATA_DIR')) { Remove-Item -Path "env:$name" -ErrorAction SilentlyContinue }
+          $env:CARGO_TARGET_DIR = "$env:UPDATE_SOURCE\target"; $env:TAURI_TELEMETRY_DISABLED = '1'
+          powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\install.ps1 -BuildOnly
+          if ($LASTEXITCODE -ne 0) { 'install.ps1 -BuildOnly failed'; exit 1 }
+          $env:GIZAI_PREFIX = $env:OLD_PREFIX
+          powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\install.ps1 -SkipBuild
+          if ($LASTEXITCODE -ne 0) { 'install.ps1 -SkipBuild failed'; exit 1 }
+
+      # Steps 4 and 5, then both commands, the app launcher's entry, the data folder and the uninstall.
+      - name: What the update left (Linux, macOS)
+        if: needs.version.outputs.only != 'true' && runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -u
+          fail() { echo "$*"; exit 1; }
+          want="hersir $VERSION"
+          lib="$OLD_PREFIX/lib/gizai"
+          # the launchers start Hersir through a login shell on Linux: its last line is Hersir's
+          for program in "$lib/gizai" "$lib/gizai-launch" "$lib/hersir" "$lib/hersir-launch" "$OLD_PREFIX/bin/gizai" "$OLD_PREFIX/bin/hersir"; do
+            got="$("$program" --version | tail -n 1)" || fail "$program --version failed: $got"
+            echo "$program --version: $got"
+            [ "$got" = "$want" ] || fail "$program says $got, not $want: it doesn't start the new Hersir."
+          done
+          for program in hersir-mcp gizai-mcp; do test -x "$lib/$program" || fail "$lib/$program is missing, or can't run."; done
+          if [ -e "$OLD_PREFIX/lib/hersir" ]; then fail "The update made $OLD_PREFIX/lib/hersir: 0.16.0's install is to stay in $lib."; fi
+          if [ "$RUNNER_OS" = Linux ]; then
+            apps="$XDG_DATA_HOME/applications" icons="$XDG_DATA_HOME/icons/hicolor"
+            grep -qFx "Exec=$lib/hersir-launch" "$apps/hersir.desktop" || fail "$apps/hersir.desktop doesn't start $lib/hersir-launch."
+            test -s "$icons/scalable/apps/hersir.svg" || fail "$icons/scalable/apps/hersir.svg is missing."
+            for path in "$apps/gizai.desktop" "$icons/scalable/apps/gizai.svg" "$icons"/{32x32,64x64,128x128,256x256,512x512}/apps/gizai.png; do
+              if [ -e "$path" ]; then fail "The update left $path: the app launcher would show two Hersirs."; fi
+            done
+            ls "$apps"
+          else
+            app="$lib/Hersir.app"
+            id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")"
+            [ "$id" = dev.hersir.app ] || fail "Hersir.app's id is $id, not dev.hersir.app."
+            test -x "$app/Contents/MacOS/hersir" || fail "Hersir.app has no Contents/MacOS/hersir."
+            codesign --verify --deep --strict "$app"
+            if [ -e "$lib/Gizai.app" ]; then fail "The update left $lib/Gizai.app."; fi
+          fi
+          (cd "$OLD_DATA" && find . -type f | LC_ALL=C sort | while IFS= read -r f; do cksum "$f"; done) > "$RUNNER_TEMP/data-after.txt"
+          diff "$RUNNER_TEMP/data-before.txt" "$RUNNER_TEMP/data-after.txt" || fail "The update changed the data folder $OLD_DATA."
+
+      - name: What the update left (Windows)
+        if: needs.version.outputs.only != 'true' && runner.os == 'Windows'
+        shell: powershell
+        run: |
+          # hersir.exe is a window app: Start-Process waits for it, with its output in a file.
+          function Get-Said([string]$Exe) {
+            $out = "$env:RUNNER_TEMP\said.txt"
+            $p = Start-Process -FilePath $Exe -ArgumentList '--version' -NoNewWindow -Wait -PassThru -RedirectStandardOutput $out
+            if ($p.ExitCode -ne 0) { return "exit code $($p.ExitCode)" }
+            "$(Get-Content -LiteralPath $out -Raw)".Trim()
+          }
+          $want = "hersir $env:VERSION"
+          foreach ($exe in @('gizai.exe', 'hersir.exe')) {
+            $got = Get-Said "$env:OLD_PREFIX\$exe"
+            "$exe --version: $got"
+            if ($got -ne $want) { "$exe says $got, not ${want}: it doesn't start the new Hersir"; exit 1 }
+          }
+          foreach ($file in @('hersir-mcp.exe', 'gizai-mcp.exe', 'hersir-installed.txt', 'gizai-installed.txt')) {
+            if (-not (Test-Path -LiteralPath "$env:OLD_PREFIX\$file")) { "$file is missing in $env:OLD_PREFIX"; exit 1 }
+          }
+          if (Test-Path -LiteralPath "$env:LOCALAPPDATA\Programs\Hersir") { "The update made $env:LOCALAPPDATA\Programs\Hersir: 0.16.0's install is to stay where it is"; exit 1 }
           $menu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
-          Copy-Item -LiteralPath (Join-Path $menu 'Hersir.lnk') -Destination (Join-Path $menu 'Gizai.lnk') -Force
-          $env:GIZAI_REPO = $env:GITHUB_WORKSPACE; $env:GIZAI_REF = 'HEAD'
-          $iex = "$env:RUNNER_TEMP\iex-get-ps1-uninstall.ps1"
-          Set-Content -LiteralPath $iex -Value '& ([scriptblock]::Create((Get-Content -LiteralPath scripts\get.ps1 -Raw))) -Uninstall; "returned $LASTEXITCODE"'
-          powershell -NoProfile -ExecutionPolicy Bypass -File $iex | Tee-Object -Variable out
-          if (@($out)[-1] -ne 'returned 0') { "get.ps1 -Uninstall failed: it $(@($out)[-1])"; exit 1 }
-          foreach ($file in @('gizai.exe', 'gizai-mcp.exe', 'gizai-installed.txt')) {
-            if (Test-Path -LiteralPath "$env:GIZAI_PREFIX\$file") { "$file should be gone"; exit 1 }
+          $id = (New-Object -ComObject Shell.Application).NameSpace($menu).ParseName('Hersir.lnk').ExtendedProperty('System.AppUserModel.ID')
+          $target = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $menu 'Hersir.lnk')).TargetPath
+          "shortcut: $target, app id $id"
+          if ($id -ne 'dev.hersir.app') { 'the Start menu shortcut Hersir.lnk should carry dev.hersir.app'; exit 1 }
+          if ($target -ne "$env:OLD_PREFIX\hersir.exe") { "the Start menu shortcut Hersir.lnk should start $env:OLD_PREFIX\hersir.exe"; exit 1 }
+          if (Test-Path -LiteralPath (Join-Path $menu 'Gizai.lnk')) { 'the Start menu has a Gizai.lnk too'; exit 1 }
+
+      - name: The data folder is as it was (Windows)
+        if: needs.version.outputs.only != 'true' && runner.os == 'Windows'
+        shell: bash
+        run: |
+          (cd "$OLD_DATA" && find . -type f | LC_ALL=C sort | while IFS= read -r f; do cksum "$f"; done) > "$RUNNER_TEMP/data-after.txt"
+          diff "$RUNNER_TEMP/data-before.txt" "$RUNNER_TEMP/data-after.txt" || { echo "The update changed the data folder $OLD_DATA."; exit 1; }
+
+      # This commit's uninstall removes both layouts, lib/gizai with its gizai names too, and keeps the data folder.
+      - name: Uninstall (install.sh --uninstall)
+        if: needs.version.outputs.only != 'true' && runner.os != 'Windows'
+        shell: bash
+        run: |
+          fail() { echo "$*"; exit 1; }
+          HERSIR_PREFIX="$OLD_PREFIX" bash "$GITHUB_WORKSPACE/install.sh" --uninstall
+          for path in "$OLD_PREFIX/lib/gizai" "$OLD_PREFIX/lib/hersir" "$OLD_PREFIX/bin/gizai" "$OLD_PREFIX/bin/hersir" \
+            "$XDG_DATA_HOME/applications/hersir.desktop" "$XDG_DATA_HOME/applications/gizai.desktop"; do
+            if [ -e "$path" ] || [ -L "$path" ]; then fail "$path is still there after the uninstall."; fi
+          done
+          test -f "$OLD_DATA/keep.txt" || fail "The uninstall removed keep.txt from the data folder."
+
+      - name: Uninstall (install.ps1 -Uninstall)
+        if: needs.version.outputs.only != 'true' && runner.os == 'Windows'
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File "$env:GITHUB_WORKSPACE\install.ps1" -Uninstall
+          if ($LASTEXITCODE -ne 0) { 'install.ps1 -Uninstall failed'; exit 1 }
+          foreach ($file in @('hersir.exe', 'hersir-mcp.exe', 'hersir-installed.txt', 'gizai.exe', 'gizai-mcp.exe', 'gizai-installed.txt')) {
+            if (Test-Path -LiteralPath "$env:OLD_PREFIX\$file") { "$file should be gone"; exit 1 }
           }
-          foreach ($link in @('Hersir.lnk', 'Gizai.lnk')) {
-            if (Test-Path -LiteralPath (Join-Path $menu $link)) { "the Start menu shortcut $link should be gone"; exit 1 }
-          }
-          if (-not (Test-Path -LiteralPath "$env:GIZAI_DATA_DIR\keep.txt")) { 'the uninstall removed keep.txt from the data folder'; exit 1 }
+          $menu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
+          if (Test-Path -LiteralPath (Join-Path $menu 'Hersir.lnk')) { 'the Start menu shortcut Hersir.lnk should be gone'; exit 1 }
+          if (-not (Test-Path -LiteralPath "$env:OLD_DATA\keep.txt")) { 'the uninstall removed keep.txt from the data folder'; exit 1 }

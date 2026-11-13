@@ -46,12 +46,12 @@ fn list_with_text_gives_every_note_the_asker_may_read_with_its_text_and_list_giv
     let f = setup();
     memory::write(&f.db, &f.you(), "Standards/Rust style", "Use clippy. [[Deploy steps]]", None, None).unwrap();
     memory::write(&f.db, &f.you(), "Workflows/Deploy steps", "# Deploy steps\n\n## Rollback\n", None, None).unwrap();
-    memory::write(&f.db, &f.lead(), "Team Lead/Plans", "Private to the lead.", None, None).unwrap();
+    memory::write(&f.db, &f.lead(), "Chief/Plans", "Private to the lead.", None, None).unwrap();
 
     // a person reads every note, by path (case ignored), each with its text
     let all = memory::list_with_text(&f.db, &f.you()).unwrap();
     let paths: Vec<&str> = all.iter().map(|n| n.path.as_str()).collect();
-    assert_eq!(paths, ["Agents/Backend Agent/Notes", "Agents/QA Agent/Notes", "Standards/Rust style", "Team Lead/Plans", "Workflows/Deploy steps"]);
+    assert_eq!(paths, ["Agents/Backend Agent/Notes", "Agents/QA Agent/Notes", "Chief/Plans", "Standards/Rust style", "Workflows/Deploy steps"]);
     let style = all.iter().find(|n| n.path == "Standards/Rust style").unwrap();
     assert_eq!(style.body_md, "Use clippy. [[Deploy steps]]");
     assert_eq!(style.chars, style.body_md.len() as i64);
@@ -115,12 +115,12 @@ fn recent_lists_each_note_once_by_its_last_saved_version_newest_first_with_who_w
 fn recent_says_a_person_wrote_a_note_keeps_to_what_the_asker_may_read_and_to_the_limit() {
     let f = setup();
     memory::write(&f.db, &f.you(), "Lessons/Flaky tests", "Wait for the lock.", None, None).unwrap();
-    memory::write(&f.db, &f.lead(), "Team Lead/Plans", "Private to the lead.", None, None).unwrap();
-    f.stamp(&["Agents/QA Agent/Notes", "Agents/Backend Agent/Notes", "Lessons/Flaky tests", "Team Lead/Plans"]);
+    memory::write(&f.db, &f.lead(), "Chief/Plans", "Private to the lead.", None, None).unwrap();
+    f.stamp(&["Agents/QA Agent/Notes", "Agents/Backend Agent/Notes", "Lessons/Flaky tests", "Chief/Plans"]);
 
     let all = memory::recent(&f.db, &f.you(), 30).unwrap();
     assert_eq!(all.iter().map(|c| c.note.path.as_str()).collect::<Vec<_>>(),
-               ["Team Lead/Plans", "Lessons/Flaky tests", "Agents/Backend Agent/Notes", "Agents/QA Agent/Notes"]);
+               ["Chief/Plans", "Lessons/Flaky tests", "Agents/Backend Agent/Notes", "Agents/QA Agent/Notes"]);
     let flaky = &all[1];
     assert_eq!((flaky.author_id.as_deref(), flaky.author_name.as_deref(), flaky.author_kind.as_deref()), (Some(f.you.as_str()), Some("Jeffrey"), Some("person")));
 
@@ -130,7 +130,7 @@ fn recent_says_a_person_wrote_a_note_keeps_to_what_the_asker_may_read_and_to_the
 
     // at most `limit`, the newest; a limit of 0 still gives one
     let two: Vec<String> = memory::recent(&f.db, &f.you(), 2).unwrap().into_iter().map(|c| c.note.path).collect();
-    assert_eq!(two, ["Team Lead/Plans", "Lessons/Flaky tests"]);
+    assert_eq!(two, ["Chief/Plans", "Lessons/Flaky tests"]);
     assert_eq!(memory::recent(&f.db, &f.you(), 0).unwrap().len(), 1);
 }
 

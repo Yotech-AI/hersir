@@ -27,10 +27,10 @@ const FAKE_OUTSIDE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../crates/gizai
 const FAKE_CHAT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../crates/gizai-agents/tests/fake-claude-chat.py");
 const FAKE_RUN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../crates/gizai-agents/tests/fake-claude.sh");
 
-/// The shim binary: target/debug/gizai-mcp (built here when missing).
+/// The shim binary: target/debug/hersir-mcp, which the crate gizai-mcp builds (built here when missing).
 fn shim() -> PathBuf {
     static BUILT: std::sync::Once = std::sync::Once::new();
-    let path = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/debug/gizai-mcp"));
+    let path = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/debug/hersir-mcp"));
     BUILT.call_once(|| {
         if path.is_file() {
             return;
@@ -38,7 +38,7 @@ fn shim() -> PathBuf {
         let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
         let ok = std::process::Command::new(cargo).args(["build", "-q", "-p", "gizai-mcp"])
             .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/..")).status().map(|s| s.success()).unwrap_or(false);
-        assert!(ok && path.is_file(), "could not build gizai-mcp");
+        assert!(ok && path.is_file(), "could not build hersir-mcp (the crate gizai-mcp)");
     });
     path
 }
@@ -70,12 +70,12 @@ fn setup() -> T {
 
 /// The refusal a tool in `NOT_AFTER_OUTSIDE` gets after mcp__otus__search, word for word (the card's text).
 fn kept_text(name: &str) -> String {
-    format!("{name} wasn't run: this answer used mcp__otus__search, a tool from outside Hersir. Hersir keeps the call for the user to approve \
+    format!("{name} wasn't run: this chat used mcp__otus__search, a tool from outside Hersir. Hersir keeps the call for the user to approve \
              with one click. Tell them in a sentence what it does.")
 }
 
 /// GA-154: the last note once nothing waits any more and the Team Lead isn't answering, word for word (the card's text).
-const DONE: &str = "Nothing else waits for your OK. The Team Lead's answer above is done: send a message to go on.";
+const DONE: &str = "Nothing else waits for your OK. The Chief's answer above is done: send a message to go on.";
 
 /// "Save the note X" → "save the note X", as the notes say it after "Approved: ".
 fn lower_first(s: &str) -> String {
@@ -117,10 +117,11 @@ impl T {
         let all = pending::list(&self.st, thread).unwrap();
         serde_json::to_value(all.iter().find(|p| p.action.id == id).unwrap_or_else(|| panic!("{id} waits: {all:?}"))).unwrap()
     }
-    /// Gizai's notes in a chat: (text, meta).
+    /// Gizai's notes in a chat: (text, meta). Without the line a chat gets once when a tool from outside Gizai marks it
+    /// (GA-261, checked in outside_chat_mark_test).
     fn notes(&self, thread: &str) -> Vec<(String, Value)> {
         chat::messages(&self.st.db, thread).unwrap().into_iter().filter(|m| m.role == "system")
-            .map(|m| (m.body_md.unwrap_or_default(), m.meta.unwrap_or(Value::Null))).collect()
+            .map(|m| (m.body_md.unwrap_or_default(), m.meta.unwrap_or(Value::Null))).filter(|n| n.1["kind"] != "outside").collect()
     }
     fn waiting(&self, thread: &str) -> Vec<String> {
         pending::list(&self.st, thread).unwrap().into_iter().map(|p| p.action.id).collect()
@@ -184,7 +185,7 @@ async fn a_memory_write_after_an_outside_tool_waits_with_its_path_and_new_text_a
     // the chat waits for you in the Inbox
     let item = t.inbox_item(&thread).expect("in the Inbox");
     assert_eq!((item.notice.title.as_str(), item.notice.body.as_str(), item.notice.route.as_str()),
-               ("The Team Lead waits for your OK: Read the release notes in Otus and remember when they go out", "1 action to approve or discard",
+               ("The Chief waits for your OK: Read the release notes in Otus and remember when they go out", "1 action to approve or discard",
                 format!("#/chat/{thread}").as_str()));
     assert_eq!(chat::get_thread(&t.st.db, &thread).unwrap().pending_actions, 1);
 
@@ -242,7 +243,7 @@ async fn approving_a_note_write_after_the_note_changed_fails_with_its_usual_mess
     let id2 = t.keep(&thread, "memory_write", unversioned.clone()).await;
     assert_eq!(t.waiting(&thread), [id2.clone()], "the newer write for the same note replaced the older one");
     assert_eq!(gizai_core::pending::get(&t.st.db, &id).unwrap().status, "replaced");
-    assert_eq!(pending::approve(&t.st, &id).await.unwrap_err(), "It no longer waits: a newer call of the Team Lead's took its place.");
+    assert_eq!(pending::approve(&t.st, &id).await.unwrap_err(), "It no longer waits: a newer call of the Chief's took its place.");
     let w = t.view(&thread, &id2);
     assert_eq!(w["preview"]["warning"], "Standards/Rust style exists and the call gives no version, so approving fails and nothing is saved.");
     let usual = t.call(Some(&t.thread("Update it")), "memory_write", unversioned).await.unwrap_err();
@@ -255,7 +256,7 @@ async fn approving_a_note_write_after_the_note_changed_fails_with_its_usual_mess
     assert!(t.view(&thread, &id3)["preview"]["warning"].is_null(), "version 1 is current");
     t.write_note("Standards/Rust style", "Use thiserror and anyhow.", Some(1));
     let w = t.view(&thread, &id3);
-    assert_eq!(w["preview"]["warning"], "Standards/Rust style changed since the Team Lead read it (version 1; it is at version 2 now), so \
+    assert_eq!(w["preview"]["warning"], "Standards/Rust style changed since the Chief read it (version 1; it is at version 2 now), so \
         approving fails and nothing is saved.");
     // its usual message: what the same call gets in an answer without an outside tool
     let usual = t.call(Some(&t.thread("Update it")), "memory_write", stale).await.unwrap_err();
@@ -273,32 +274,154 @@ async fn approving_a_note_write_after_the_note_changed_fails_with_its_usual_mess
 #[tokio::test]
 async fn a_newer_write_for_the_same_note_replaces_the_older_whether_it_names_the_note_by_path_or_title() {
     let t = setup();
-    t.write_note("Team Lead/Notes", "# Notes\n\n## Working agreements\n\n- Ship on Tuesdays.\n", None);
+    t.write_note("Chief/Notes", "# Notes\n\n## Working agreements\n\n- Ship on Tuesdays.\n", None);
     let thread = t.marked("Read Otus and note what matters");
-    let first = t.keep(&thread, "memory_write", json!({"path": "team lead/notes.md", "body_md": "# Notes\n", "version": 1})).await;
+    let first = t.keep(&thread, "memory_write", json!({"path": "chief/notes.md", "body_md": "# Notes\n", "version": 1})).await;
     let other = t.keep(&thread, "memory_write", json!({"path": "Lessons/New", "body_md": "New."})).await;
     // by its title, the way a wikilink finds it
     let append = t.keep(&thread, "memory_append", json!({"note": "Notes", "heading": "Working agreements", "text": "- Fridays."})).await;
     assert_eq!(t.waiting(&thread), [other.clone(), append.clone()], "{first} was replaced");
     let v = t.view(&thread, &append);
-    assert_eq!(v["preview"]["line"], "Add to the note Team Lead/Notes");
+    assert_eq!(v["preview"]["line"], "Add to the note Chief/Notes");
     let f = fields(&v);
-    assert_eq!((field(&f, "Note").2.as_str(), field(&f, "Where").2.as_str()), ("Team Lead/Notes", "At the end of the section Working agreements"));
+    assert_eq!((field(&f, "Note").2.as_str(), field(&f, "Where").2.as_str()), ("Chief/Notes", "At the end of the section Working agreements"));
     assert_eq!(v["preview"]["text"], "- Fridays.");
     // a new note: by its path, whatever its case
     let newer = t.keep(&thread, "memory_write", json!({"path": "lessons/new.md", "body_md": "Newer."})).await;
     assert_eq!(t.waiting(&thread), [append, newer]);
 }
 
+/// GA-258 QA: the Chief's folder is Chief/ now, and a path in Team Lead/ still finds its note there, also in a call that
+/// waits for approval (an old habit, an older chat). A memory_write that names Team Lead/Notes saves a new version of
+/// Chief/Notes when approved, so its preview says so, with the version check, and a newer call for that note replaces it.
 #[tokio::test]
-async fn a_call_gizai_cant_keep_is_still_not_run_and_the_team_lead_asks_you_in_a_new_message() {
+async fn a_memory_write_naming_the_old_team_lead_folder_is_previewed_and_replaced_as_the_note_in_chief() {
+    let t = setup();
+    t.write_note("Chief/Notes", "# Notes\n\n- Ship on Tuesdays.\n", None);
+    let thread = t.marked("Read Otus and note what matters");
+    let old = t.keep(&thread, "memory_write", json!({"path": "Team Lead/Notes", "body_md": "# Notes\n", "version": 1})).await;
+    let v = t.view(&thread, &old);
+    assert_eq!(v["preview"]["line"], "Save a new version of the note Chief/Notes", "{v}");
+    assert!(v["preview"]["warning"].is_null(), "{v}");
+    t.write_note("Chief/Notes", "# Notes\n\n- Ship on Fridays.\n", Some(1));
+    assert_eq!(t.view(&thread, &old)["preview"]["warning"], "Chief/Notes changed since the Chief read it (version 1; it is at version 2 now), \
+        so approving fails and nothing is saved.");
+    let newer = t.keep(&thread, "memory_append", json!({"note": "Chief/Notes", "text": "- Fridays."})).await;
+    assert_eq!(t.waiting(&thread), [newer], "{old} was replaced");
+}
+
+/// The notes in the Chief's old folder, whatever their case: none after GA-258.
+fn in_team_lead(t: &T) -> i64 {
+    t.st.db.read(|c| Ok(c.query_row("SELECT count(*) FROM docs WHERE path LIKE 'Team Lead/%' AND deleted_at IS NULL", [], |r| r.get(0))?)).unwrap()
+}
+
+/// GA-258 QA, the fix round: a memory_write that names Team Lead/Notes waits as a new version of Chief/Notes, with its
+/// version check (no version, an older one, the current one) and a diff against Chief/Notes, whatever the path's case or
+/// `.md`; each newer call replaces the older one, and approving saves the next version of Chief/Notes and nothing in
+/// Team Lead/.
+#[tokio::test]
+async fn a_memory_write_to_team_lead_notes_waits_and_saves_as_the_next_version_of_chief_notes() {
+    let t = setup();
+    t.write_note("Chief/Notes", "# Notes\n\n- Ship on Tuesdays.\n", None);
+    t.write_note("Chief/Notes", "# Notes\n\n- Ship on Fridays.\n", Some(1));
+    let thread = t.marked("Read Otus and note what matters");
+    let none = t.keep(&thread, "memory_write", json!({"path": "Team Lead/Notes", "body_md": "# Notes\n"})).await;
+    let v = t.view(&thread, &none);
+    assert_eq!(v["preview"]["line"], "Save a new version of the note Chief/Notes", "{v}");
+    assert_eq!(v["preview"]["warning"], "Chief/Notes exists and the call gives no version, so approving fails and nothing is saved.");
+    let older = t.keep(&thread, "memory_write", json!({"path": "/team lead/notes.md", "body_md": "# Notes\n", "version": 1})).await;
+    assert_eq!(t.waiting(&thread), [older.clone()], "{none} was replaced");
+    assert_eq!(t.view(&thread, &older)["preview"]["warning"], "Chief/Notes changed since the Chief read it (version 1; it is at version 2 now), \
+        so approving fails and nothing is saved.");
+    let body = "# Notes\n\n- Ship on Fridays.\n- Release notes from Otus.\n";
+    let current = t.keep(&thread, "memory_write", json!({"path": "Team Lead/Notes", "body_md": body, "version": 2})).await;
+    assert_eq!(t.waiting(&thread), [current.clone()], "{older} was replaced");
+    let v = t.view(&thread, &current);
+    assert_eq!(v["preview"]["line"], "Save a new version of the note Chief/Notes");
+    assert!(v["preview"]["warning"].is_null(), "{v}");
+    let f = fields(&v);
+    assert_eq!(field(&f, "Note").2, "Chief/Notes");
+    assert_eq!((field(&f, "Version").1.as_deref(), field(&f, "Version").2.as_str()), (Some("2"), "3"));
+    let diff: Vec<(String, String)> = v["preview"]["diff"].as_array().unwrap().iter()
+        .map(|l| (l["kind"].as_str().unwrap().to_string(), l["text"].as_str().unwrap().to_string())).collect();
+    assert_eq!(diff, [("same", "# Notes"), ("same", ""), ("same", "- Ship on Fridays."), ("add", "- Release notes from Otus.")]
+        .map(|(k, s)| (k.to_string(), s.to_string())), "against Chief/Notes");
+    assert_eq!(t.note("Chief/Notes").unwrap().current_version, 2, "nothing saved yet");
+
+    let a = pending::approve(&t.st, &current).await.unwrap();
+    assert_eq!((a.status.as_str(), a.result_md.as_deref()),
+               ("approved", Some("Approved: save a new version of the note Chief/Notes. Saved as version 3.")));
+    let n = t.note("Chief/Notes").unwrap();
+    assert_eq!((n.path.as_str(), n.current_version, n.body_md.trim_end()), ("Chief/Notes", 3, body.trim_end()));
+    assert_eq!(in_team_lead(&t), 0, "nothing in Team Lead/");
+    assert!(memory::find(&t.st.db, "Team Lead/Notes").unwrap().is_none());
+}
+
+/// GA-258 QA, the fix round: a new note named in Team Lead/ (memory_write, or a memory_append that makes it) is previewed
+/// and keyed as its path in Chief/, where approving makes it; a memory_move to a Team Lead/ target shows the Chief/ path
+/// it lands at; and a memory_write preview tidies the path the way the write does.
+#[tokio::test]
+async fn new_notes_and_move_targets_named_in_team_lead_are_previewed_and_made_in_chief() {
+    let t = setup();
+    t.write_note("Decisions/Release day", "Fridays.", None);
+    memory::write(&t.st.db, &Who::Agent(t.backend.clone()), "Agents/Backend Agent/Cargo", "Use -j 8.", None, None).unwrap();
+    let thread = t.marked("Read Otus and keep what matters");
+    // memory_write: a new note
+    let plan = t.keep(&thread, "memory_write", json!({"path": "Team Lead/Plan", "body_md": "# Plan\n"})).await;
+    let v = t.view(&thread, &plan);
+    assert_eq!(v["preview"]["line"], "Make the note Chief/Plan", "{v}");
+    assert_eq!(field(&fields(&v), "Note").2, "Chief/Plan");
+    assert!(v["preview"]["diff"].is_null() && v["preview"]["warning"].is_null(), "{v}");
+    // a newer call for Chief/Plan, in either tool, replaces it
+    let plan2 = t.keep(&thread, "memory_write", json!({"path": "chief/Plan.md", "body_md": "# Plan\n\n- Ship.\n"})).await;
+    assert_eq!(t.waiting(&thread), [plan2.clone()], "{plan} was replaced");
+    // memory_append that makes a note
+    let ideas = t.keep(&thread, "memory_append", json!({"note": "Team Lead/Ideas", "text": "- Weekly digest."})).await;
+    let v = t.view(&thread, &ideas);
+    assert_eq!(v["preview"]["line"], "Make the note Chief/Ideas with this text", "{v}");
+    assert_eq!(field(&fields(&v), "Note").2, "Chief/Ideas");
+    let ideas2 = t.keep(&thread, "memory_append", json!({"note": "Chief/Ideas", "text": "- Weekly digest, on Mondays."})).await;
+    assert_eq!(t.waiting(&thread), [plan2.clone(), ideas2.clone()], "{ideas} was replaced");
+    // memory_move to the old folder, and to a whole path in it
+    let mv = t.keep(&thread, "memory_move", json!({"note": "Agents/Backend Agent/Cargo", "to": "Team Lead/"})).await;
+    let v = t.view(&thread, &mv);
+    assert_eq!(v["preview"]["line"], "Move the note Agents/Backend Agent/Cargo to Chief/Cargo", "{v}");
+    assert_eq!(field(&fields(&v), "To").2, "Chief/Cargo");
+    let cp = t.keep(&thread, "memory_move", json!({"note": "Decisions/Release day", "to": "Team Lead/Release", "copy": true})).await;
+    assert_eq!(t.view(&thread, &cp)["preview"]["line"], "Copy the note Decisions/Release day to Chief/Release");
+    // a write's path made tidy as the write makes it: a new version of Decisions/Release day, not a new note
+    let tidy = t.keep(&thread, "memory_write", json!({"path": " decisions/ Release  day ", "body_md": "Fridays, after the demo.", "version": 1})).await;
+    let v = t.view(&thread, &tidy);
+    assert_eq!(v["preview"]["line"], "Save a new version of the note Decisions/Release day", "{v}");
+    assert!(v["preview"]["warning"].is_null(), "{v}");
+
+    // approve each: they land where the previews said
+    for id in [&plan2, &ideas2, &mv, &cp, &tidy] {
+        let a = pending::approve(&t.st, id).await.unwrap();
+        assert_eq!(a.status, "approved", "{id}: {:?}", a.result_md);
+    }
+    let plan = t.note("Chief/Plan").unwrap();
+    assert_eq!((plan.path.as_str(), plan.current_version, plan.body_md.trim_end()), ("Chief/Plan", 1, "# Plan\n\n- Ship."));
+    let ideas = t.note("Chief/Ideas").unwrap();
+    assert_eq!((ideas.path.as_str(), ideas.body_md.trim_end()), ("Chief/Ideas", "# Ideas\n\n- Weekly digest, on Mondays."));
+    assert_eq!(t.note("Chief/Cargo").unwrap().body_md, "Use -j 8.");
+    assert!(memory::find(&t.st.db, "Agents/Backend Agent/Cargo").unwrap().is_none(), "moved");
+    assert_eq!(t.note("Chief/Release").unwrap().body_md, "Fridays.");
+    let d = t.note("Decisions/Release day").unwrap();
+    assert_eq!((d.current_version, d.body_md.as_str()), (2, "Fridays, after the demo."));
+    assert_eq!(in_team_lead(&t), 0, "nothing in Team Lead/");
+}
+
+#[tokio::test]
+async fn a_call_gizai_cant_keep_is_still_not_run_and_the_team_lead_tells_you_what_to_do_yourself() {
     let t = setup();
     // an answer in a chat that isn't in the database (gone meanwhile): the call can't be kept for it
     app_chat::mark_outside(&t.st, "no-such-chat", "mcp__otus__search");
     let e = t.call(Some("no-such-chat"), "set_agent_status", json!({"agent": "Backend Agent", "status": "paused"})).await.unwrap_err();
-    assert!(e.starts_with("set_agent_status wasn't run: this answer used mcp__otus__search, a tool from outside Hersir, and Hersir couldn't keep \
+    assert!(e.starts_with("set_agent_status wasn't run: this chat used mcp__otus__search, a tool from outside Hersir, and Hersir couldn't keep \
         the call for the user to approve ("), "{e}");
-    assert!(e.ends_with("). Tell the user what you would do and ask them to confirm it in a new message."), "{e}");
+    // GA-261: a new message in that chat would be kept again
+    assert!(e.ends_with("). Tell the user what you would do, so they can do it themselves in Hersir."), "{e}");
     assert_eq!(team::agent(&t.st.db, &t.backend).unwrap().status, "active", "not run");
     assert_eq!(t.rows(), 0);
 }
@@ -308,12 +431,12 @@ async fn a_call_gizai_cant_keep_is_still_not_run_and_the_team_lead_asks_you_in_a
 #[tokio::test]
 async fn every_tool_in_the_list_waits_with_a_readable_preview_and_approve_all_runs_them_as_the_team_lead() {
     let t = setup();
-    t.write_note("Team Lead/Notes", "# Notes\n\n## Working agreements\n\n- Ship on Tuesdays.\n", None);
+    t.write_note("Chief/Notes", "# Notes\n\n## Working agreements\n\n- Ship on Tuesdays.\n", None);
     memory::write(&t.st.db, &Who::Agent(t.backend.clone()), "Agents/Backend Agent/Cargo", "Use -j 8.", None, None).unwrap();
     let f = t.dir.path().join("brief.txt");
     std::fs::write(&f, "the brief").unwrap();
     let thread = t.marked(&format!("Look up the release notes in Otus and attach {} to KADE-1", f.display()));
-    let calls: [(&str, Value); 13] = [
+    let calls: [(&str, Value); 14] = [
         ("start_agent_run", json!({"task": "KADE-1", "agent": "Backend Agent"})),
         ("continue_agent_run", json!({"task": "KADE-1", "note": "Use JSON."})),
         ("create_agent", json!({"name": "Otus Agent", "role": "backend", "model": "opus"})),
@@ -324,9 +447,11 @@ async fn every_tool_in_the_list_waits_with_a_readable_preview_and_approve_all_ru
         ("attach_file", json!({"path": f.display().to_string(), "task": "KADE-1"})),
         ("update_checkout", json!({"project": "KADE"})),
         ("memory_write", json!({"path": "Lessons/Otus", "body_md": "Release notes go out on Fridays."})),
-        ("memory_append", json!({"note": "Team Lead/Notes", "heading": "Working agreements", "text": "- Otus says: Fridays."})),
+        ("memory_append", json!({"note": "Chief/Notes", "heading": "Working agreements", "text": "- Otus says: Fridays."})),
         ("memory_move", json!({"note": "Agents/Backend Agent/Cargo", "to": "Lessons/"})),
         ("merge_pull_request", json!({"task": "KADE-1"})),
+        // GA-261
+        ("comment_on_task", json!({"task": "KADE-1", "body_md": "Otus says: Fridays."})),
     ];
     assert_eq!(calls.iter().map(|(n, _)| *n).collect::<Vec<_>>(), tools::NOT_AFTER_OUTSIDE, "every tool in the list");
     let mut ids = vec![];
@@ -334,15 +459,15 @@ async fn every_tool_in_the_list_waits_with_a_readable_preview_and_approve_all_ru
         ids.push(t.keep(&thread, name, args.clone()).await);
     }
     assert_eq!(t.waiting(&thread), ids, "all kept, in the order tried");
-    assert_eq!(t.inbox_item(&thread).unwrap().notice.body, "13 actions to approve or discard");
+    assert_eq!(t.inbox_item(&thread).unwrap().notice.body, "14 actions to approve or discard");
     // each preview: a plain line (not the fallback) and what it is about
     let v: Vec<Value> = ids.iter().map(|id| t.view(&thread, id)).collect();
     let lines: Vec<&str> = v.iter().map(|x| x["preview"]["line"].as_str().unwrap()).collect();
     assert_eq!(lines, [
         "Start Backend Agent on KADE-1", "Continue the run on KADE-1", "Add the agent Otus Agent (backend)", "Change Backend Agent's settings",
         "Pause Backend Agent", "Add the column Otus after Review", "Change the column Testing", "Attach brief.txt to KADE-1 Export",
-        "Update KADE's linked folder to main as last fetched", "Make the note Lessons/Otus", "Add to the note Team Lead/Notes",
-        "Move the note Agents/Backend Agent/Cargo to Lessons/Cargo", "Merge KADE-1's pull request",
+        "Update KADE's linked folder to main as last fetched", "Make the note Lessons/Otus", "Add to the note Chief/Notes",
+        "Move the note Agents/Backend Agent/Cargo to Lessons/Cargo", "Merge KADE-1's pull request", "Comment on KADE-1",
     ]);
     for (x, (name, _)) in v.iter().zip(&calls) {
         assert!(!fields(x).is_empty(), "{name}: {x}");
@@ -372,12 +497,13 @@ async fn every_tool_in_the_list_waits_with_a_readable_preview_and_approve_all_ru
     let f11 = fields(&v[11]);
     assert_eq!((field(&f11, "From").2.as_str(), field(&f11, "To").2.as_str()), ("Agents/Backend Agent/Cargo", "Lessons/Cargo"));
     assert_eq!(field(&fields(&v[12]), "Pull request").2, "none Hersir knows of yet");
+    assert_eq!((field(&fields(&v[13]), "Card").2.as_str(), v[13]["preview"]["text"].as_str()), ("KADE-1 Export", Some("Otus says: Fridays.")));
     // nothing ran yet
     assert!(gizai_core::runs::list_for_agent(&t.st.db, &t.backend, 10).unwrap().is_empty());
     assert!(!team::all_agents(&t.st.db).unwrap().iter().any(|(_, m)| m.name == "Otus Agent"));
 
-    // you discard the run starts and the merge, and approve the rest at once
-    for i in [0, 1, 12] {
+    // you discard the run starts, the merge and the comment, and approve the rest at once
+    for i in [0, 1, 12, 13] {
         pending::discard(&t.st, &ids[i]).unwrap();
     }
     let usual_checkout = t.call(Some(&t.thread("Update KADE")), "update_checkout", json!({"project": "KADE"})).await.unwrap_err();
@@ -399,11 +525,12 @@ async fn every_tool_in_the_list_waits_with_a_readable_preview_and_approve_all_ru
     assert_eq!(said[5], "Approved: attach brief.txt to KADE-1 Export. Attached brief.txt.");
     assert_eq!(said[6], format!("Approved: update KADE's linked folder to main as last fetched. It failed: {}", usual_checkout.trim_end_matches('.')));
     assert_eq!(said[7], "Approved: make the note Lessons/Otus. Saved as version 1.");
-    assert_eq!(said[8], "Approved: add to the note Team Lead/Notes. Saved as version 2.");
+    assert_eq!(said[8], "Approved: add to the note Chief/Notes. Saved as version 2.");
     assert_eq!(said[9], "Approved: move the note Agents/Backend Agent/Cargo to Lessons/Cargo. It is at Lessons/Cargo now.");
     let notes: Vec<String> = t.notes(&thread).into_iter().map(|n| n.0).collect();
-    assert_eq!(notes[..3], ["Discarded: start Backend Agent on KADE-1.", "Discarded: continue the run on KADE-1.", "Discarded: merge KADE-1's pull request."]);
-    assert_eq!(notes[3..notes.len() - 1], said[..]);
+    assert_eq!(notes[..4], ["Discarded: start Backend Agent on KADE-1.", "Discarded: continue the run on KADE-1.", "Discarded: merge KADE-1's pull request.",
+                            "Discarded: comment on KADE-1."]);
+    assert_eq!(notes[4..notes.len() - 1], said[..]);
     assert_eq!(notes.last().unwrap(), DONE, "once, after the last call Approve all ran (GA-154)");
     // and it happened
     let be = team::agent(&t.st.db, &t.backend).unwrap();
@@ -415,13 +542,14 @@ async fn every_tool_in_the_list_waits_with_a_readable_preview_and_approve_all_ru
     let files = gizai_core::files::list(&t.st.db, "task", &task_id).unwrap();
     assert_eq!(files.len(), 1, "{files:?}");
     assert_eq!(t.note("Lessons/Otus").unwrap().body_md, "Release notes go out on Fridays.");
-    assert!(t.note("Team Lead/Notes").unwrap().body_md.contains("- Ship on Tuesdays.\n- Otus says: Fridays."));
+    assert!(t.note("Chief/Notes").unwrap().body_md.contains("- Ship on Tuesdays.\n- Otus says: Fridays."));
     assert!(memory::find(&t.st.db, "Lessons/Cargo").unwrap().is_some() && memory::find(&t.st.db, "Agents/Backend Agent/Cargo").unwrap().is_none());
     // as the Team Lead: memory's activity names it
     let lesson = memory::find(&t.st.db, "Lessons/Otus").unwrap().unwrap();
     assert_eq!(gizai_core::docs::versions(&t.st.db, &lesson.id).unwrap()[0].author_name.as_deref(), Some("Team Lead"));
     // the discarded ones didn't run
     assert!(gizai_core::runs::list_for_agent(&t.st.db, &t.backend, 10).unwrap().is_empty());
+    assert!(gizai_core::comments::list(&t.st.db, &task_id).unwrap().is_empty());
     assert!(t.waiting(&thread).is_empty() && t.inbox_item(&thread).is_none());
 }
 
@@ -601,7 +729,7 @@ async fn no_gizai_tool_lists_approves_or_discards_a_pending_action_and_a_board_c
                          ("set_agent_status", json!({"agent": "Backend Agent", "status": "paused"}))] {
         let r = tools::call_check(&t.st, &t.lead, &check, name, args).await;
         if let Err(e) = &r {
-            assert!(!e.contains("wasn't run: this answer used"), "{name}: {e}");
+            assert!(!e.contains("wasn't run: this chat used"), "{name}: {e}");
         }
     }
     let n = t.note("Lessons/Check").unwrap();
@@ -634,7 +762,7 @@ async fn pending_actions_survive_a_restart_and_one_approved_while_gizai_closed_c
     };
     data_lock::released(&data).await;
     let st = gizai_lib::open_state(data, Arc::new(|_| {})).unwrap();
-    assert!(app_chat::used_outside(&st, &thread).is_none(), "the answer's mark is gone with the old Gizai");
+    assert_eq!(app_chat::used_outside(&st, &thread).as_deref(), Some("mcp__otus__search"), "GA-261: the chat keeps its mark after a restart");
     let kept = pending::list(&st, &thread).unwrap();
     assert_eq!(kept.iter().map(|p| (p.action.id.as_str(), p.action.status.as_str())).collect::<Vec<_>>(), [(write_id.as_str(), "pending")]);
     assert_eq!(kept[0].preview.line, "Make the note Lessons/Otus");
@@ -645,7 +773,8 @@ async fn pending_actions_survive_a_restart_and_one_approved_while_gizai_closed_c
     let said = format!("Approved: pause Otus Backend. {}", pending::INTERRUPTED);
     assert_eq!((p.status.as_str(), p.result_md.as_deref()), ("failed", Some(said.as_str())));
     let notes: Vec<String> = chat::messages(&st.db, &thread).unwrap().into_iter().filter(|m| m.role == "system").map(|m| m.body_md.unwrap()).collect();
-    assert_eq!(notes, [said]);
+    assert_eq!(notes, ["This chat used search on the otus server, a tool from outside Hersir: from now on, what the Chief does here waits for your \
+                        Approve.".to_string(), said]);
     assert_eq!(pending::approve(&st, &pause_id).await.unwrap_err(), "It was approved already, so it doesn't run again.");
     let be = team::all_agents(&st.db).unwrap().into_iter().find(|(_, m)| m.name == "Otus Backend").unwrap().1;
     assert_eq!(be.status, "active", "it never ran");
@@ -679,8 +808,8 @@ async fn the_team_leads_next_answer_starts_with_what_you_approved_and_discarded_
     let t = setup();
     let st = t.st.clone();
     let _server = with_socket(&t);
-    t.write_note("Team Lead/Notes", "# Notes\n\n## Working agreements\n\n- Ship on Tuesdays.\n", None);
-    let append = r#"CALL memory_append {"note": "Team Lead/Notes", "heading": "Working agreements", "text": "- Release notes go out on Fridays."}"#;
+    t.write_note("Chief/Notes", "# Notes\n\n## Working agreements\n\n- Ship on Tuesdays.\n", None);
+    let append = r#"CALL memory_append {"note": "Chief/Notes", "heading": "Working agreements", "text": "- Release notes go out on Fridays."}"#;
     let (thread, s) = turn(&st, None, &format!("OUTSIDE Read the release notes in Otus and remember when they go out. {append}")).await;
     assert_eq!(s.status, "succeeded", "{s:?}");
     // the tool result the Team Lead saw is the card's text
@@ -707,7 +836,7 @@ async fn the_team_leads_next_answer_starts_with_what_you_approved_and_discarded_
     assert_eq!(s3.status, "succeeded", "{s3:?}");
     let you = gizai_core::users::list(&st.db).unwrap().into_iter().find(|p| p.id == st.you_id).unwrap().name;
     let line = format!("[Hersir: {you} decided on calls of yours that waited for their approval after a tool from outside Hersir:\n\
-        - Approved: add to the note Team Lead/Notes. Saved as version 2 (your memory_append call)\n\
+        - Approved: add to the note Chief/Notes. Saved as version 2 (your memory_append call)\n\
         - Discarded: pause Backend Agent (your set_agent_status call)]");
     let p = prompts(&st);
     let last = p.last().unwrap();
@@ -718,9 +847,12 @@ async fn the_team_leads_next_answer_starts_with_what_you_approved_and_discarded_
     let calls: Vec<Value> = std::fs::read_to_string(st.data_dir.join("chat/fake-calls.jsonl")).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect();
     let argv: Vec<String> = calls.last().unwrap()["argv"].as_array().unwrap().iter().map(|a| a.as_str().unwrap().to_string()).collect();
     let sys = &argv[argv.iter().position(|a| a == "--append-system-prompt").unwrap() + 1];
-    assert!(sys.contains(&format!("After a tool from outside Hersir, a call of yours that acts (runs, agents, columns, attach_file, update_checkout, \
-        memory's writes, merge_pull_request) isn't run: Hersir keeps it under your answer for {you} to approve with one click or discard. Say in a \
-        sentence what each such call does; don't make it again. A later message starts with what {you} decided, in square brackets.")), "{sys}");
+    assert!(sys.contains(&format!("Once this chat has used a tool from outside Hersir, for the rest of the chat a call of yours that acts (runs, \
+        agents, columns, attach_file, update_checkout, memory's writes, merge_pull_request, comments, a card's description, acceptance criteria, \
+        assignee or builds_on outside Auto columns, a project's repository, folder, branch or goal) isn't run: Hersir keeps it under your answer \
+        for {you} to approve with one click or discard. Say in a sentence what each such call does; don't make it again. A later message starts \
+        with what {you} decided, in square brackets. A card waiting on hold for {you}'s OK after such a tool comes off hold only by {you}, on the \
+        card or by approving your call.")), "{sys}");
     // heard: the answer after it doesn't hear it again
     assert!(pending::for_turn(&st, &thread).line.is_empty());
     let (_, s4) = turn(&st, Some(thread.clone()), "And now?").await;
@@ -730,27 +862,30 @@ async fn the_team_leads_next_answer_starts_with_what_you_approved_and_discarded_
 }
 
 #[tokio::test]
-async fn the_same_call_made_and_run_in_a_later_answer_clears_the_one_that_waits_so_approve_cant_make_it_twice() {
+async fn the_same_call_made_in_a_later_answer_is_the_one_that_waits_so_approve_cant_make_it_twice() {
     let t = setup();
     let st = t.st.clone();
     let _server = with_socket(&t);
-    let append = r#"CALL memory_append {"note": "Team Lead/Notes", "heading": "Working agreements", "text": "- Fridays."}"#;
+    let append = r#"CALL memory_append {"note": "Chief/Notes", "heading": "Working agreements", "text": "- Fridays."}"#;
     let (thread, s) = turn(&st, None, &format!("OUTSIDE Read Otus. {append}")).await;
     assert_eq!(s.status, "succeeded", "{s:?}");
     let id = pending::list(&st, &thread).unwrap()[0].action.id.clone();
-    let before = t.note("Team Lead/Notes").unwrap();
-    // you say yes in a message instead: the answer makes the same call, and it runs
+    let before = t.note("Chief/Notes").unwrap();
+    // you say yes in a message instead: GA-261: the chat stays marked, so the answer's same call isn't run, and it is the
+    // one that waits already (not kept twice)
     let (_, s) = turn(&st, Some(thread.clone()), &format!("Yes, save it. {append}")).await;
     assert_eq!(s.status, "succeeded", "{s:?}");
-    let after = t.note("Team Lead/Notes").unwrap();
+    let tool = chat::messages(&st.db, &thread).unwrap().into_iter().filter(|m| m.role == "tool").last().unwrap();
+    assert_eq!(tool.tool.as_ref().unwrap()["result"].as_str(), Some(kept_text("memory_append").as_str()));
+    assert_eq!(t.note("Chief/Notes").unwrap().current_version, before.current_version, "nothing saved yet");
+    assert_eq!(t.waiting(&thread), [id.clone()]);
+    // approving it saves it, once
+    assert_eq!(pending::approve(&st, &id).await.unwrap().status, "approved");
+    let after = t.note("Chief/Notes").unwrap();
     assert_eq!(after.current_version, before.current_version + 1);
     assert_eq!(after.body_md.matches("- Fridays.").count(), 1);
-    assert!(t.waiting(&thread).is_empty(), "no longer waiting");
-    let last = t.notes(&thread).pop().unwrap();
-    assert_eq!(last.0, "No longer waiting for your OK: add to the note Team Lead/Notes. The Team Lead made the same call itself in a later answer.");
-    assert_eq!(last.1["kind"], "pending_gone");
-    assert_eq!(pending::approve(&st, &id).await.unwrap_err(), "It no longer waits: a newer call of the Team Lead's took its place.");
-    assert_eq!(t.note("Team Lead/Notes").unwrap().current_version, after.current_version, "saved once");
+    assert_eq!(pending::approve(&st, &id).await.unwrap_err(), "It was approved already, so it doesn't run again.");
+    assert_eq!(t.note("Chief/Notes").unwrap().current_version, after.current_version, "saved once");
 }
 
 #[tokio::test]
@@ -960,13 +1095,13 @@ async fn the_closing_note_is_for_you_only_the_team_leads_next_answer_and_a_hand_
     let t = setup();
     let st = t.st.clone();
     let _server = with_socket(&t);
-    t.write_note("Team Lead/Notes", "# Notes\n\n## Working agreements\n\n- Ship on Tuesdays.\n", None);
-    let append = r#"CALL memory_append {"note": "Team Lead/Notes", "heading": "Working agreements", "text": "- Fridays."}"#;
+    t.write_note("Chief/Notes", "# Notes\n\n## Working agreements\n\n- Ship on Tuesdays.\n", None);
+    let append = r#"CALL memory_append {"note": "Chief/Notes", "heading": "Working agreements", "text": "- Fridays."}"#;
     let (thread, s) = turn(&st, None, &format!("OUTSIDE Read Otus. {append}")).await;
     assert_eq!(s.status, "succeeded", "{s:?}");
     let id = pending::list(&st, &thread).unwrap()[0].action.id.clone();
     pending::approve(&st, &id).await.unwrap();
-    let said = "Approved: add to the note Team Lead/Notes. Saved as version 2.";
+    let said = "Approved: add to the note Chief/Notes. Saved as version 2.";
     let notes = t.notes(&thread);
     assert_eq!(notes.iter().map(|n| n.0.as_str()).collect::<Vec<_>>(), [said, DONE]);
     assert_eq!(notes[1].1, json!({"kind": "pending_done", "run": s.run_id}), "the decided call's run");
@@ -979,7 +1114,7 @@ async fn the_closing_note_is_for_you_only_the_team_leads_next_answer_and_a_hand_
     let (_, s2) = turn(&st, Some(thread.clone()), "What did I decide?").await;
     assert_eq!(s2.status, "succeeded", "{s2:?}");
     let last = prompts(&st).pop().unwrap();
-    assert!(last.contains("decided on calls of yours") && last.contains("- Approved: add to the note Team Lead/Notes. Saved as version 2 (your memory_append call)"),
+    assert!(last.contains("decided on calls of yours") && last.contains("- Approved: add to the note Chief/Notes. Saved as version 2 (your memory_append call)"),
             "{last}");
     assert!(!last.contains("Nothing else waits") && !last.contains("answer above is done"), "{last}");
 
@@ -1025,11 +1160,12 @@ async fn two_decisions_in_a_chat_that_end_together_give_one_closing_note_after_b
 #[test]
 fn the_approve_paragraph_in_the_docs_says_a_last_note_says_the_answer_is_done() {
     let docs = include_str!("../../../docs/agent-tools.md");
-    let sentence = "When nothing waits any more and the Team Lead isn't answering, a last note says so: \"Nothing else waits for your OK. \
-                    The Team Lead's answer above is done: send a message to go on.\"";
+    // GA-256: the docs say Chief (the app's own text follows on the Rust texts' card)
+    let sentence = "When nothing waits any more and the Chief isn't answering, a last note says so: \"Nothing else waits for your OK. \
+                    The Chief's answer above is done: send a message to go on.\"";
     let approve = docs.lines().find(|l| l.trim_start().starts_with("**Approve** runs exactly that call")).expect("the Approve paragraph");
     // right after the sentence about the note that says what happened
-    assert!(approve.contains(&format!("\"Discarded: `<what>`.\", and the Team Lead's next answer in that chat starts with what you decided, in square \
+    assert!(approve.contains(&format!("\"Discarded: `<what>`.\", and the Chief's next answer in that chat starts with what you decided, in square \
                                        brackets. {sentence}")), "{approve}");
     assert_eq!(docs.matches(sentence).count(), 1);
 }
@@ -1065,9 +1201,9 @@ fn update_checkout_takes_stash_in_the_cards_words() {
     assert!(tool.description.contains("Changes nothing, and says why, with uncommitted changes unless stash is true, a merge or rebase in progress"),
             "{}", tool.description);
     assert_eq!(tool.input_schema["required"], json!(["project"]), "stash is optional");
-    let lead = include_str!("../../../docs/features/team-lead.md");
+    let lead = include_str!("../../../docs/features/chief.md");
     assert!(lead.contains("After your yes it updates the folder:\n\n- with uncommitted changes in tracked files, only if you agreed: put them \
-                           in git's stash first (git stash pop brings them back);\n- a fast-forward to main"), "the first bullet in docs/features/team-lead.md");
+                           in git's stash first (git stash pop brings them back);\n- a fast-forward to main"), "the first bullet in docs/features/chief.md");
     let docs = include_str!("../../../docs/agent-tools.md");
     assert!(docs.contains("- `update_checkout`: the project, the folder, and whether it stashes first;"), "docs/agent-tools.md");
 }

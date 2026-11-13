@@ -10,6 +10,8 @@ export const NO_CLI_TOOLS: CliTools = { webSearch: false, webFetch: false, fetch
 export const cliToolsFrom = (t?: CliTools | null): CliTools => ({
   webSearch: !!t?.webSearch, webFetch: !!t?.webFetch, fetchDomains: [...(t?.fetchDomains ?? [])], insecureCerts: !!t?.insecureCerts, builtin: [...(t?.builtin ?? [])],
   slashCommands: !!t?.slashCommands, screenshots: !!t?.screenshots,
+  // GA-271: Web on Allow for the Chief; left out is Ask for my OK, as in data saved before.
+  ...(t?.webTrusted ? { webTrusted: true } : {}),
 });
 
 /** Domains as typed (one per line, or separated by commas or spaces), each once. */
@@ -38,7 +40,7 @@ export function cliToolsToSave(t: CliTools, was: CliTools): CliToolsSave {
 }
 
 export function sameCliTools(a: CliTools, b: CliTools): boolean {
-  const norm = (t: CliTools) => JSON.stringify({ ...t, fetchDomains: t.webFetch ? t.fetchDomains : [], builtin: [...t.builtin].sort() });
+  const norm = (t: CliTools) => JSON.stringify({ ...t, fetchDomains: t.webFetch ? t.fetchDomains : [], builtin: [...t.builtin].sort(), webTrusted: !!t.webTrusted });
   return norm(a) === norm(b);
 }
 

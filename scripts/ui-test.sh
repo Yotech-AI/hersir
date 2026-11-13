@@ -34,6 +34,14 @@
 #     Recent is scrolled; Archive opens #/chats (Recent still there, Chat / Archive, the search focused, all 36 chats); a word
 #     from the oldest chat's Team Lead message finds only that chat, marked; "0%" matches literally; no match says so; the
 #     hit opens the chat, its title in the crumbs.
+# 10b. chat pins (GA-257), against prep_chats' 36 chats, in two starts on the same data: (a) nothing pinned; each chat on
+#     the left has its pin ("Pin to the top", label and tooltip) beside its link, hidden until the row is pointed at or
+#     focused; a click pins Chat 3, the focused pin of "Which database?" pressed pins it (the focus goes along), the top
+#     bar's pin pins Chat 5, the Archive's pins Chat 34 and Chat 35 (older than the 30 newest) and unpins Chat 34, and in a
+#     search Chat 35 is unpinned and pinned again (the search stays); Unpin on the left puts Chat 3 back in Recent at its
+#     place. Each time at once, without opening the chat: Pinned above Recent, the newest pin first, not again in Recent,
+#     Unpin on each, and the backend agrees. (b) A restart: the pins are still there; Chat 35 opened from Pinned and
+#     unpinned in its top bar leaves Pinned and isn't in Recent.
 # 11. appearance (GA-42), against prep_chats' data: #/settings/appearance opens Settings on the Appearance tab with Font, the
 #     three text sizes, Theme, Density and Reset to defaults (off); at the defaults nothing is on <html> and the sizes are the
 #     design system's; each font choice shows in its own font and every font loads from the app. Clicks pick the largest sizes:
@@ -56,7 +64,7 @@
 #     marked; a tag filters the tree; Ctrl+K finds a note. The missing link makes the note from a template, and then finds
 #     it; in its editor [[ lists notes and [[Note# their headings, and Ctrl+click on a link opens its note; KADE-1 opens
 #     the card; the agent's page shows only its folder (its search too, not Backend Agent 2's), and Recently changed says
-#     who wrote what; the Team Lead's page searches every note (path:"Team Lead" its own), the shared page none of theirs.
+#     who wrote what; the Team Lead's page searches every note (path:"Chief" its own), the shared page none of theirs.
 #     Then on the demo data (no agents, no notes): Shared notes and Set up the Team Lead in the sidebar, the page says
 #     what memory is, the tree has only the shared folders, and Set up the Team Lead opens the agent form.
 # 13. memory graph (GA-69), against prep_graph's 500 notes, in four starts on the same data: (a) #/memory/graph loads and
@@ -142,6 +150,30 @@
 #     made with its agents paused; Export with warnings lists each, Cancel and Escape save nothing, Export anyway saves; a
 #     bad file shows the refusal and Create team stays off; the Software team exported and made again from its file has the
 #     same columns and agents, names aside.
+# 23. chat terminal (GA-278), against prep_chats' Chief and chats, with /bin/sh in a scratch home folder with ~/Herd/chat-site
+#     and ~/Herd/chat-other, in two starts on the same WebKit storage: (a) Open terminal right before New chat opens the
+#     picker titled "Open terminal in" under it; a pick starts a terminal there in a panel on the right of the conversation at
+#     45% of the space right of the chat list, with the focus, its folder in mono under the tabs (pwd prints it) and its row
+#     in the sidebar; another pick adds a tab, + and Ctrl+Shift+` start one in the shown terminal's folder; the messages and
+#     the text box start at the left of their column while it shows and are centred again once it hides (the app drawn
+#     1920px wide, so the column is narrower than the conversation); × on sleep asks first (Cancel keeps it, Close ends it,
+#     the tab before shows), a middle click closes a waiting one; Hide keeps sleep 60 running, the rail on the right edge
+#     says 2 with its tooltip, and the rail, Ctrl+` and Ctrl+` from inside the terminal show and hide it; the left edge is a
+#     vertical separator between 360px of panel and 400px of conversation, a double click gives 45% back, ← and → move it 5%;
+#     another chat, New chat, the Archive (also at the left) and another page and back keep the panel, its tabs, the shown
+#     terminal and its width; Own page and back; the away texts; the app drawn 1000px wide hides the chat list while the
+#     panel shows; the largest text size and light in the 1280px window; closing the last tab hides the panel, no rail.
+#     (b) After a restart the panel opens at the width kept (55%).
+# 24. Open in terminal (GA-279), against prep_chats' Chief and prep_chat_terminal's chat, with /bin/sh in a scratch home
+#     folder with ~/Herd/doq-studio (and resources/embed-test in it), ~/Herd/shop, ~/Herd/kade-portal and ~/Herd/invoice-api:
+#     a row under each of the Chief's text messages that asks you to run a command and nowhere else (not under a tool call,
+#     a message that only mentions a command or a file, plain text, your messages): a quiet button per folder named, in the
+#     order named, at most 3, for a subfolder and an absolute path too; Open in terminal… for none. Right under the message,
+#     left-aligned with its text, the terminal icon, the folder in mono and its tooltip. A click opens the chat's terminal
+#     panel with a terminal in ~/Herd/doq-studio (pwd), with the focus, nothing typed; after Hide a second click shows the
+#     same one; while sleep 30 runs a click starts a new tab there, which the subfolder's button shows again; the second
+#     folder's button opens its own; Open in terminal… opens the picker titled "Open terminal in" under it and a pick opens
+#     the terminal there; beside the panel the row of three buttons wraps.
 # Makes .devdata/demo when it is missing, and builds the app when it is missing or stale (scripts/app-ready.sh).
 # usage: scripts/ui-test.sh
 set -uo pipefail
@@ -150,8 +182,8 @@ cd "$(dirname "$0")/.."
 source scripts/app-ready.sh
 gz_demo || { echo "could not make the demo data"; exit 1; }
 gz_app || { echo "could not build the app"; exit 1; }
-# The chat test needs gizai-mcp next to the app (a fresh checkout doesn't have it yet).
-(source scripts/env.sh && cargo build --release -q -p gizai-mcp) || { echo "could not build gizai-mcp"; exit 1; }
+# The chat test needs hersir-mcp next to the app (a fresh checkout doesn't have it yet; the crate gizai-mcp builds it).
+(source scripts/env.sh && cargo build --release -q -p gizai-mcp) || { echo "could not build hersir-mcp"; exit 1; }
 # Every test copy points Claude Code at the fake, so the agent form's model list never starts the real claude.
 fresh() { rm -rf .devdata/uitest && mkdir -p .devdata/uitest && cp -r .devdata/demo/. .devdata/uitest/
   python3 -c "import sqlite3,json,time,sys; c=sqlite3.connect('.devdata/uitest/gizai.db'); c.execute(\"insert or replace into settings(key,org_id,value_json,updated_at) values('claude_bin','',?,?)\", (json.dumps(sys.argv[1]), int(time.time()*1000))); c.commit()" "$PWD/crates/gizai-agents/tests/fake-claude.sh"; }
@@ -184,6 +216,11 @@ DATA=$PWD/.devdata/uitest ROUTE=projects MODE=open:project scripts/smoke-cage.sh
 fresh
 (source scripts/env.sh && cargo run -q -p gizai-core --example prep_chats -- .devdata/uitest "$PWD/crates/gizai-agents/tests/fake-claude.sh")
 DATA=$PWD/.devdata/uitest ROUTE=chat MODE=archive scripts/smoke-cage.sh || fail=1
+fresh
+(source scripts/env.sh && cargo run -q -p gizai-core --example prep_chats -- .devdata/uitest "$PWD/crates/gizai-agents/tests/fake-claude.sh")
+DATA=$PWD/.devdata/uitest ROUTE=chat MODE=pins-a scripts/smoke-cage.sh || fail=1
+# the same data: a restart
+DATA=$PWD/.devdata/uitest ROUTE=chat MODE=pins-b scripts/smoke-cage.sh || fail=1
 fresh
 (source scripts/env.sh && cargo run -q -p gizai-core --example prep_chats -- .devdata/uitest "$PWD/crates/gizai-agents/tests/fake-claude.sh")
 DATA=$PWD/.devdata/uitest ROUTE=settings/appearance MODE=appearance-set scripts/smoke-cage.sh || fail=1
@@ -293,4 +330,17 @@ cat > ".devdata/uitest-templates/Mobile team.gizai-team.json" <<'JSON'
 JSON
 printf '{ "format": "gizai-team", "format_version": 2, "name": "Too new", "columns": [], "agents": [] }\n' > .devdata/uitest-templates/bad.json
 DATA=$PWD/.devdata/uitest ROUTE=team MODE="templates:$PWD/.devdata/uitest-templates" TIMEOUT=120 scripts/smoke-cage.sh || fail=1
+fresh
+# GA-278: the Chat's terminal panel, with the Chief of prep_chats and two folders in ~/Herd; b is a restart on the same WebKit storage
+(source scripts/env.sh && cargo run -q -p gizai-core --example prep_chats -- .devdata/uitest "$PWD/crates/gizai-agents/tests/fake-claude.sh")
+rm -rf .devdata/uitest-home && mkdir -p .devdata/uitest-home/Herd/chat-site .devdata/uitest-home/Herd/chat-other
+DATA=$PWD/.devdata/uitest ROUTE=terminal MODE=terminal:chat-a GZ_SHELL=/bin/sh GZ_HOME=$PWD/.devdata/uitest-home TIMEOUT=150 scripts/smoke-cage.sh || fail=1
+DATA=$PWD/.devdata/uitest ROUTE=terminal MODE=terminal:chat-b GZ_SHELL=/bin/sh GZ_HOME=$PWD/.devdata/uitest-home TIMEOUT=60 scripts/smoke-cage.sh || fail=1
+fresh
+# GA-279: Open in terminal under a Chief answer, with the Chief of prep_chats, prep_chat_terminal's chat and four folders in ~/Herd
+(source scripts/env.sh && cargo run -q -p gizai-core --example prep_chats -- .devdata/uitest "$PWD/crates/gizai-agents/tests/fake-claude.sh")
+rm -rf .devdata/uitest-home && mkdir -p .devdata/uitest-home/Herd/doq-studio/resources/embed-test .devdata/uitest-home/Herd/shop \
+  .devdata/uitest-home/Herd/kade-portal .devdata/uitest-home/Herd/invoice-api
+(source scripts/env.sh && cargo run -q -p gizai-core --example prep_chat_terminal -- .devdata/uitest "$PWD/.devdata/uitest-home" > /dev/null)
+DATA=$PWD/.devdata/uitest ROUTE=terminal MODE=terminal:chat-run GZ_SHELL=/bin/sh GZ_HOME=$PWD/.devdata/uitest-home TIMEOUT=120 scripts/smoke-cage.sh || fail=1
 exit $fail

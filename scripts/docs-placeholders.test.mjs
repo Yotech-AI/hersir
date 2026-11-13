@@ -46,7 +46,7 @@ describe("no <word> outside code in the docs", () => {
     expect(vanishing("One<br>two, and <kbd>Ctrl</kbd>")).toEqual([]);
   });
   it("it covers docs/*.md and docs/features/*.md", () => {
-    for (const doc of ["docs/memory.md", "docs/settings.md", "docs/agent-tools.md", "docs/features/testing.md", "docs/features/team-lead.md"]) expect(DOCS).toContain(doc);
+    for (const doc of ["docs/memory.md", "docs/settings.md", "docs/agent-tools.md", "docs/features/testing.md", "docs/features/chief.md"]) expect(DOCS).toContain(doc);
   });
   it.each(DOCS)("%s", (doc) => {
     expect(vanishing(read(doc))).toEqual([]);
@@ -56,11 +56,11 @@ describe("no <word> outside code in the docs", () => {
 describe("the lines that had one show their word, in code", () => {
   it.each([
     ["docs/features/testing.md", '"Hersir pushed <code>&lt;branch&gt;</code> (3 commits)"'],
-    ["docs/features/team-lead.md", '"Needs <code>&lt;you&gt;</code>: why, the options, my advice"'],
+    ["docs/features/chief.md", '"Needs <code>&lt;you&gt;</code>: why, the options, my advice"'],
     ["docs/memory.md", '"Needs <code>&lt;you&gt;</code>: why"'],
     ["docs/memory.md", '" (<code>&lt;agent name&gt;</code>)" added'],
     ["docs/settings.md", "once set, Follow <code>&lt;project&gt;</code> under it goes back to that."],
-    ["docs/agent-tools.md", `"<code>&lt;tool&gt;</code> wasn't run: this answer used <code>&lt;outside tool&gt;</code>, a tool from outside Hersir.`],
+    ["docs/agent-tools.md", `"<code>&lt;tool&gt;</code> wasn't run: this chat used <code>&lt;outside tool&gt;</code>, a tool from outside Hersir.`],
     ["docs/agent-tools.md", '"Approved: <code>&lt;what&gt;</code>. <code>&lt;what happened&gt;</code>" (or "It failed: <code>&lt;the error&gt;</code>", in red) or "Discarded: <code>&lt;what&gt;</code>."'],
     ["docs/agent-tools.md", "after using <code>&lt;tool&gt;</code>, a tool from outside Hersir."],
     ["docs/HANDOFF-2026-10-07.md", '"Hersir pushed <code>&lt;branch&gt;</code> (<code>&lt;n&gt;</code> commits)"'],

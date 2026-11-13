@@ -1,12 +1,12 @@
 //! GA-148, the product tour (scripts/tour-capture.sh): the steps self-test takes stills of the screen before and after
-//! each click, and writes down what it clicked. Only when Gizai starts with a GIZAI_SELFTEST_MODE and GIZAI_TOUR_DIR
+//! each click, and writes down what it clicked. Only when Hersir starts with a HERSIR_SELFTEST_MODE and HERSIR_TOUR_DIR
 //! (the headless cage of the capture): without them both commands do nothing but say so.
 use std::path::PathBuf;
 
 /// The folder the stills and steps.json go to, while a tour is captured.
 fn dir() -> Result<PathBuf, String> {
-    let mode = std::env::var("GIZAI_SELFTEST_MODE").unwrap_or_default();
-    match std::env::var_os("GIZAI_TOUR_DIR") {
+    let mode = gizai_agents::env::var("HERSIR_SELFTEST_MODE").unwrap_or_default();
+    match gizai_agents::env::var_os("HERSIR_TOUR_DIR") {
         Some(d) if !d.is_empty() && !mode.is_empty() => Ok(PathBuf::from(d)),
         _ => Err("no tour is being captured".into()),
     }

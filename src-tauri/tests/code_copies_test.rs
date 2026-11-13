@@ -490,7 +490,7 @@ async fn update_checkout_leaves_the_linked_folder_alone_when_the_team_leads_fold
     // the linked folder set to read: refused, and nothing starts
     set_folders(&herd, "read");
     let e = tools::call_in(&st, &lead, Some(&thread), "update_checkout", json!({"project": "KADE"})).await.unwrap_err();
-    assert!(e.contains("is set to read in the Team Lead's folders") && e.contains("nothing changed"), "{e}");
+    assert!(e.contains("is set to read in the Chief's folders") && e.contains("nothing changed"), "{e}");
     tokio::time::sleep(Duration::from_millis(500)).await;
     assert_eq!(git_out(&herd, &["rev-parse", "HEAD"]), before, "the folder stays as it was");
     assert!(chat::messages(&st.db, &thread).unwrap().iter().all(|m| m.role != "system"), "no update ran");
@@ -641,7 +641,7 @@ async fn update_checkout_with_stash_stashes_nothing_when_something_else_is_in_th
     set_folders("read");
     let before = now();
     let e = tools::call_in(&st, &lead, Some(&thread), "update_checkout", json!({"project": "KADE", "stash": true})).await.unwrap_err();
-    assert!(e.contains("is set to read in the Team Lead's folders") && e.contains("nothing changed"), "{e}");
+    assert!(e.contains("is set to read in the Chief's folders") && e.contains("nothing changed"), "{e}");
     tokio::time::sleep(Duration::from_millis(500)).await;
     assert_eq!((now(), stashes(&herd).len()), (before, 0), "nothing stashed, nothing changed");
 
@@ -718,9 +718,10 @@ async fn when_a_step_after_the_stash_fails_the_chat_says_the_changes_are_in_gits
 
 // ---- GA-160: GA-156's stash where it meets GA-154's closing note, as 0.11.0 has them together ----
 
-/// Gizai's notes in a chat, oldest first.
+/// Gizai's notes in a chat, oldest first, without the line a chat gets once when a tool from outside Gizai marks it (GA-261).
 fn notes(st: &AppState, thread: &str) -> Vec<String> {
-    chat::messages(&st.db, thread).unwrap().into_iter().filter(|m| m.role == "system").filter_map(|m| m.body_md).collect()
+    chat::messages(&st.db, thread).unwrap().into_iter().filter(|m| m.role == "system" && m.meta.as_ref().is_none_or(|x| x["kind"] != "outside"))
+        .filter_map(|m| m.body_md).collect()
 }
 
 #[tokio::test]
@@ -741,7 +742,7 @@ async fn approving_a_kept_update_with_stash_stashes_ends_the_answer_with_the_clo
     let thread = chat::create_thread(&st.db, &st.you_id, &lead, "Look it up in Otus, then update my folder and stash my changes").unwrap();
     gizai_lib::chat::mark_outside(&st, &thread, "mcp__otus__search");
     let e = tools::call_in(&st, &lead, Some(&thread), "update_checkout", json!({"project": "KADE", "stash": true})).await.unwrap_err();
-    assert!(e.starts_with("update_checkout wasn't run: this answer used mcp__otus__search"), "{e}");
+    assert!(e.starts_with("update_checkout wasn't run: this chat used mcp__otus__search"), "{e}");
     let kept = gizai_lib::pending::list(&st, &thread).unwrap();
     assert_eq!(kept.len(), 1, "{kept:?}");
     tokio::time::sleep(Duration::from_millis(300)).await;

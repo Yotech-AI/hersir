@@ -10,6 +10,8 @@ makes one call to one of Gizai's tools, named in the prompt (stdin):
                                  with both tool uses (mcp__otus__search and the Gizai tool), as parallel calls can
   OUTSIDE_TOOL=<name>            (GA-55) with OUTSIDE: the outside tool is <name> instead, like WebSearch, WebFetch or
                                  mcp__chrome-devtools__navigate_page
+  OUTSIDE_TOO=<name>             (GA-271) with OUTSIDE: after the outside tool and before the Gizai call, the answer uses
+                                 a second outside tool <name> (its tool_use and tool_result), like mcp__linear__list
   LATE_MS=<n>                    (GA-77) with OUTSIDE_LATE or GIZAI_LATE: the stream shows the tool uses <n> ms after the
                                  call goes out, instead of 50
   GIZAI_LATE                     (GA-77) like OUTSIDE_LATE without the outside tool: the message shows only the Gizai tool
@@ -69,8 +71,10 @@ else:
     names = []
 ot = re.search(r"OUTSIDE_TOOL=(\S+)", prompt)
 outside = ot.group(1) if ot else "mcp__otus__search"
+t2 = re.search(r"OUTSIDE_TOO=(\S+)", prompt)
+too = t2.group(1) if t2 else None
 out({"type": "system", "subtype": "init", "session_id": sid, "model": "fake-model",
-     "tools": ["Read", outside] + ["mcp__gizai__" + n for n in names],
+     "tools": ["Read", outside] + ([too] if too else []) + ["mcp__gizai__" + n for n in names],
      "mcp_servers": [{"name": "gizai", "status": status}, {"name": "otus", "status": "connected"}]})
 
 m = re.search(r"CALL (\w+) (\{.*\})", prompt)
@@ -113,6 +117,10 @@ elif "NO_SHOW" in prompt:
 elif "OUTSIDE" in prompt:
     out({"type": "assistant", "message": {"role": "assistant", "content": [otus_use]}, "session_id": sid})
     out(otus_result)
+    if too:
+        out({"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "toolu_too", "name": too, "input": {}}]}, "session_id": sid})
+        out({"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_too",
+            "content": [{"type": "text", "text": "Nothing found."}], "is_error": False}]}, "session_id": sid})
     out({"type": "assistant", "message": {"role": "assistant", "content": [gizai_use]}, "session_id": sid})
     res = call()
 else:

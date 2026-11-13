@@ -215,7 +215,7 @@ fn is_stamped(name: &str, start: &str) -> bool {
 fn this_computers_settings_are_the_cards_list_and_every_other_and_every_orgs_setting_is_shared() {
     for key in ["claude_bin", "gh_bin", "clis", "mcp_servers", "mcp_tools", "mcp_last_run", "mcp_browser", "cli_tools_seen",
                 "cli_tools_asked", "editor_roots", "github_push_over", "claude_memory_imports", "runs_memory_gb",
-                "max_concurrent_runs", "agents_paused", "subscription_limits", "onboarding", "update_auto_check",
+                "runs_memory_per_run_gb", "max_concurrent_runs", "agents_paused", "subscription_limits", "onboarding", "update_auto_check",
                 "update_last_check", "notify_hold", "notify_waiting", "notify_lead_asks", "notify_lead_answered",
                 "notify_something_new", b::FOLDER_KEY, b::EVERY_KEY, b::ON_QUIT_KEY, b::KEEP_KEY, "last_restore"] {
         assert!(scope::this_computer(key), "{key} is this computer's");
@@ -561,15 +561,54 @@ fn this_computers_settings_keep_todays_values_and_shared_ones_come_from_the_snap
 }
 
 #[test]
+fn a_backup_and_restore_keep_memory_per_run_as_this_computers_setting() {
+    // GA-277: Memory per run is this computer's, like Memory for agent runs
+    let o = data();
+    o.set("runs_memory_gb", json!(12));
+    o.set("runs_memory_per_run_gb", json!(6));
+    let theirs = chosen(&o, "usb");
+    let m = o.snapshot(&theirs, Reason::Manual);
+
+    // a computer that has its own keeps it
+    let d = data();
+    d.set("runs_memory_gb", json!(16));
+    d.set("runs_memory_per_run_gb", json!(4));
+    let own = chosen(&d, "mine");
+    stage(&d, &theirs, &m.name, &own);
+    let (d, result) = d.restart();
+    assert!(result.unwrap().ok);
+    assert_eq!((d.get("runs_memory_gb"), d.get("runs_memory_per_run_gb")), (Some(json!(16)), Some(json!(4))));
+
+    // one that has none (a new computer) gets the backup's
+    let n = data();
+    assert_eq!(n.get("runs_memory_per_run_gb"), None);
+    let own = chosen(&n, "mine");
+    stage(&n, &theirs, &m.name, &own);
+    let (n, result) = n.restart();
+    assert!(result.unwrap().ok);
+    assert_eq!((n.get("runs_memory_gb"), n.get("runs_memory_per_run_gb")), (Some(json!(12)), Some(json!(6))));
+
+    // this computer's own backup, restored after Memory per run changed: what it has today stays
+    let usb = chosen(&o, "usb2");
+    let mine = o.snapshot(&usb, Reason::Manual);
+    o.set("runs_memory_per_run_gb", json!(5));
+    stage(&o, &usb, &mine.name, &usb);
+    let (o, result) = o.restart();
+    assert!(result.unwrap().ok);
+    assert_eq!(o.get("runs_memory_per_run_gb"), Some(json!(5)));
+}
+
+#[test]
 fn a_snapshot_with_an_older_schema_is_upgraded_at_the_start_with_the_upgrades_copy_in_backups() {
     let d = data();
     let a = d.attach("a.txt", b"in the snapshot");
     let usb = chosen(&d, "usb");
     let dir = b::backups_dir(&usb);
     let m = d.snapshot(&usb, Reason::Manual);
-    // the database as the Gizai before migration 21 made it
+    // the database as the Gizai before migration 22 made it
     repack(&dir, &m.name, |c| {
-        c.execute_batch(&format!("DROP TABLE task_builds_on; PRAGMA user_version = {};", db::SCHEMA_VERSION - 1)).unwrap();
+        c.execute_batch(&format!("ALTER TABLE tasks DROP COLUMN hold_kind; ALTER TABLE chat_threads DROP COLUMN outside_tool; PRAGMA user_version = {};",
+                                 db::SCHEMA_VERSION - 1)).unwrap();
     });
     let older = b::read_manifest(&dir, &m.name).unwrap();
     assert_eq!(older.schema_version, db::SCHEMA_VERSION - 1);
@@ -579,7 +618,7 @@ fn a_snapshot_with_an_older_schema_is_upgraded_at_the_start_with_the_upgrades_co
     assert_eq!(d.files_rows(), vec![a]);
     let (version, table): (i64, i64) = d.db.read(|c| {
         Ok((c.query_row("PRAGMA user_version", [], |r| r.get(0))?,
-            c.query_row("SELECT count(*) FROM sqlite_schema WHERE name = 'task_builds_on'", [], |r| r.get(0))?))
+            c.query_row("SELECT count(*) FROM pragma_table_info('chat_threads') WHERE name = 'outside_tool'", [], |r| r.get(0))?))
     }).unwrap();
     assert_eq!((version, table), (db::SCHEMA_VERSION, 1), "upgraded");
     let copies = backups_named(&d, &format!("gizai-before-v{}-", db::SCHEMA_VERSION));
@@ -596,7 +635,7 @@ fn a_restored_database_that_cant_be_opened_goes_to_restore_failed_and_gizai_star
     let usb = chosen(&d, "usb");
     let dir = b::backups_dir(&usb);
     let m = d.snapshot(&usb, Reason::Manual);
-    // it says the version before 21 but has 21's table: the upgrade fails
+    // it says the version before 22 but has 22's columns: the upgrade fails
     repack(&dir, &m.name, |c| c.execute_batch(&format!("PRAGMA user_version = {};", db::SCHEMA_VERSION - 1)).unwrap());
     d.attach("b.txt", b"only today");
     d.set("agents_paused", json!(false));

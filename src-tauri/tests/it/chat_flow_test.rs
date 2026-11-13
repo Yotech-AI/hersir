@@ -16,15 +16,15 @@ use serde_json::Value;
 
 const FAKE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../crates/gizai-agents/tests/fake-claude-chat.py");
 
-/// The shim binary: target/debug/gizai-mcp (built by `cargo test --workspace`; built here when missing).
+/// The shim binary: target/debug/hersir-mcp, which the crate gizai-mcp builds (built by `cargo test --workspace`; built here when missing).
 fn shim() -> PathBuf {
     static BUILT: std::sync::Once = std::sync::Once::new();
-    let path = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/debug/gizai-mcp"));
+    let path = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/debug/hersir-mcp"));
     BUILT.call_once(|| {
         let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
         let ok = std::process::Command::new(cargo).args(["build", "-q", "-p", "gizai-mcp"])
             .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/..")).status().map(|s| s.success()).unwrap_or(false);
-        assert!(ok && path.is_file(), "could not build gizai-mcp");
+        assert!(ok && path.is_file(), "could not build hersir-mcp (the crate gizai-mcp)");
     });
     path
 }
@@ -169,7 +169,7 @@ async fn chat_needs_an_active_chat_agent() {
     let m = team::agent(&t.st.db, &t.lead).unwrap();
     team::update_agent(&t.st.db, &t.st.you_id, &t.lead, AgentInput { name: m.name, role_key: m.role_key, chat_enabled: Some(false), ..Default::default() }).unwrap();
     let e = app_chat::send(&t.st, None, "hi".into(), None).await.unwrap_err();
-    assert!(e.contains("Set up the Team Lead"), "{e}");
+    assert!(e.contains("Set up the Chief first"), "{e}");
     assert!(chat::list_threads(&t.st.db).unwrap().is_empty(), "nothing is created when chat can't start");
     let e = app_chat::send(&t.st, None, "   ".into(), None).await.unwrap_err();
     assert!(!e.is_empty());
@@ -324,6 +324,25 @@ async fn the_system_prompt_names_each_copy_and_stays_the_same_while_the_commit_l
     let msgs = chat::messages(&t.st.db, &thread).unwrap();
     assert!(msgs.iter().all(|m| !m.body_md.as_deref().unwrap_or("").contains("[Hersir:")), "the line isn't saved as a chat message");
     assert_eq!(msgs.iter().filter(|m| m.role == "user").map(|m| m.body_md.clone().unwrap()).collect::<Vec<_>>(), ["what changed in KADE?", "and since then?"]);
+}
+
+#[tokio::test]
+async fn the_system_prompt_asks_for_the_folder_and_each_command_in_code_right_after_the_line_on_planning_work() {
+    // GA-279 QA: the Chief names the folder and the commands so that Open in terminal shows under its answer; {you} is you
+    let t = setup().await;
+    let (_, s) = t.turn(None, "how do I test GA-279?").await;
+    assert_eq!(s.status, "succeeded", "{s:?}");
+    let argv: Vec<String> = serde_json::from_value(t.calls()[0]["argv"].clone()).unwrap();
+    let sys = &argv[argv.iter().position(|a| a == "--append-system-prompt").unwrap() + 1];
+    let you = gizai_core::users::list(&t.st.db).unwrap().into_iter().find(|p| p.id == t.st.you_id).unwrap().name;
+    let line = format!("- When you ask {you} to run commands, first name the folder as its path in code (in `~/Herd/shop`:), then put each \
+                        command in code after the word Run, or in a sh code block. Hersir then shows Open in terminal under your answer, \
+                        which opens a terminal in that folder beside the chat.");
+    let lines: Vec<&str> = sys.lines().collect();
+    let plan = lines.iter().position(|l| l.starts_with("- Plan work as tasks")).unwrap_or_else(|| panic!("no line on planning work: {sys}"));
+    assert_eq!(lines[plan + 1], line, "right after the line on planning work, word for word");
+    assert_eq!(lines.iter().filter(|l| l.contains("Open in terminal")).count(), 1, "once: {sys}");
+    assert!(!sys.contains("{you}"), "the format argument is filled in: {sys}");
 }
 
 #[tokio::test]
@@ -502,6 +521,37 @@ fn argv_of(call: &Value) -> Vec<String> {
     serde_json::from_value(call["argv"].clone()).unwrap()
 }
 
+/// GA-255: the chat's prompt names the lead the Chief: "You are the Chief" for an agent named Chief (in any case, a new
+/// install's), "You are <name>, the Chief" for another name; its instructions (the lead's template) say the Chief too,
+/// and its Memory path is Chief/Notes (GA-258).
+#[tokio::test]
+async fn the_chats_prompt_says_you_are_the_chief_or_you_are_its_name_the_chief() {
+    let t = setup().await;
+    let sys_of = |call: &Value| {
+        let argv = argv_of(call);
+        argv[argv.iter().position(|a| a == "--append-system-prompt").unwrap() + 1].clone()
+    };
+    let rename = |name: &str| {
+        let m = team::agent(&t.st.db, &t.lead).unwrap();
+        team::update_agent(&t.st.db, &t.st.you_id, &t.lead, AgentInput { name: name.into(), role_key: m.role_key, ..Default::default() }).unwrap();
+    };
+    let mut prompts = vec![];
+    for name in ["Team Lead", "Chief", "chief", "Ada"] {
+        rename(name);
+        let (_, s) = t.turn(None, &format!("Hello from the chat with {name}")).await;
+        assert_eq!(s.status, "succeeded", "{name}: {s:?}");
+        prompts.push(sys_of(t.calls().last().unwrap()));
+    }
+    let start = |s: &str| s.split(" in Hersir: ").next().unwrap().to_string();
+    assert_eq!(prompts.iter().map(|s| start(s)).collect::<Vec<_>>(),
+               ["You are Team Lead, the Chief", "You are the Chief", "You are the Chief", "You are Ada, the Chief"]);
+    for sys in &prompts {
+        assert!(!sys.contains("the Team Lead"), "{sys}");
+        assert!(sys.contains("You are the Chief in Hersir's Software team.") && sys.contains("Chief may merge switch"), "its instructions: {sys}");
+        assert!(sys.contains("memory_append to Chief/Notes") && !sys.contains("Team Lead/"), "the Memory path is Chief/ (GA-258): {sys}");
+    }
+}
+
 fn notes_of(t: &T, thread: &str) -> Vec<String> {
     chat::messages(&t.st.db, thread).unwrap().into_iter().filter(|m| m.role == "system").map(|m| m.body_md.unwrap_or_default()).collect()
 }
@@ -628,7 +678,7 @@ async fn a_usage_limit_says_so_and_answer_on_another_account_sends_the_message_a
     let msgs = chat::messages(&t.st.db, &thread).unwrap();
     let note = msgs.last().unwrap();
     assert_eq!(note.role, "system");
-    assert_eq!(note.body_md.as_deref(), Some("Claude Code has hit its weekly limit, so the Team Lead couldn't answer. It resets Oct 9, 5pm (Europe/Amsterdam)."));
+    assert_eq!(note.body_md.as_deref(), Some("Claude Code has hit its weekly limit, so the Chief couldn't answer. It resets Oct 9, 5pm (Europe/Amsterdam)."));
     let meta = note.meta.clone().unwrap();
     assert_eq!((meta["kind"].as_str(), meta["cli"].as_str(), meta["limit"].as_str()), (Some("limit"), Some("claude_code"), Some("weekly limit")));
     assert_eq!(meta["messageIds"], serde_json::json!([msgs[0].id]));
@@ -649,7 +699,7 @@ async fn a_usage_limit_says_so_and_answer_on_another_account_sends_the_message_a
     let (other, s) = t.turn(None, "FAKE_CHAT_CRASH").await;
     assert_eq!(s.status, "failed");
     let last = chat::messages(&t.st.db, &other).unwrap().pop().unwrap();
-    assert!(last.body_md.unwrap().starts_with("The Team Lead couldn't answer:") && last.meta.is_none());
+    assert!(last.body_md.unwrap().starts_with("The Chief couldn't answer:") && last.meta.is_none());
 }
 
 #[tokio::test]

@@ -2,13 +2,17 @@
 //! - The release check asks GitHub for the latest release: 20 seconds after Gizai starts when one is due, then every
 //!   six hours while "Check for new releases" is on, and whenever you press Check now. What it found is kept, so the
 //!   notice shows from the start.
-//! - A release newer than this Gizai is offered as "Update to <version>". The update gets its source and builds it in
-//!   the background while Gizai stays usable. Then it backs up your data, installs the release with its own
-//!   install.sh, and offers a restart. A step that fails leaves the installed Gizai as it was and says why; the log in
-//!   <data folder>/update has everything.
-//! - Only a Gizai that install.sh installed (<prefix>/lib/gizai/gizai) updates itself, or on Windows one that
-//!   install.ps1 installed (<prefix>\gizai.exe). A dev or test build that runs from anywhere else never installs over
-//!   anything.
+//! - A signed release (one with hersir-X.Y.Z.sig) newer than this Gizai is offered as "Update to <version>"; one that
+//!   isn't signed yet is not. The update gets its source and checks the release's signature before anything of it
+//!   runs. Then it downloads the release's ready-made build for this system, or builds the source when there is none,
+//!   the download fails or its checksum is wrong, in the background while Gizai stays usable. Then it backs up your
+//!   data, installs the release with its own install.sh, and offers a restart. A step that fails leaves the installed
+//!   Gizai as it was and says why; the log in <data folder>/update has everything.
+//! - Only a Hersir that install.sh installed (<prefix>/lib/hersir/hersir, or <prefix>/lib/gizai for an install from
+//!   before 0.17.0) updates itself, or on Windows one that install.ps1 installed (<prefix>\hersir.exe, or gizai.exe). A
+//!   dev or test build that runs from anywhere else never installs over anything.
+//! - A Hersir from a package (the AUR, Homebrew or Scoop: `up::package_of`) never updates itself, wherever it runs from:
+//!   it says how its package manager updates it (GA-199). It still checks for new releases.
 //!
 //! Usable without a Tauri app (tests): the UI hears about changes through `AppState::notify`.
 use std::io::Write;
@@ -17,6 +21,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use gizai_agents::connection::Problem;
+use gizai_agents::release_sig;
 use gizai_agents::update::{self as up, Release, Stop, UpdateFailed};
 use gizai_core::{ids, repo_url, settings};
 use serde::{Deserialize, Serialize};
@@ -45,26 +50,40 @@ const LAST_CHECK: &str = "update_last_check";
 /// Where releases and their source come from.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Source {
-    /// The git repository a release's tag is fetched from: GIZAI_REPO, else Gizai's own.
+    /// The git repository a release's tag is fetched from: HERSIR_REPO, else Hersir's own.
     pub repo: String,
-    /// What the release check reads: GIZAI_RELEASES_URL, else GitHub's latest release of `repo`. None: `repo` isn't on
+    /// What the release check reads: HERSIR_RELEASES_URL, else GitHub's latest release of `repo`. None: `repo` isn't on
     /// GitHub and no URL was given.
     pub releases_url: Option<String>,
+    /// The allowed-signers file an update checks a release's signature with instead of the release keys built into
+    /// Hersir: HERSIR_RELEASE_SIGNERS, for tests that sign fake releases with a throwaway key. None: the built-in keys.
+    pub signers: Option<PathBuf>,
 }
 
 impl Source {
-    /// From GIZAI_REPO and GIZAI_RELEASES_URL (as install.sh reads GIZAI_REPO).
+    /// From HERSIR_REPO and HERSIR_RELEASES_URL (as install.sh reads HERSIR_REPO), or their names from before 0.17.0,
+    /// GIZAI_REPO and GIZAI_RELEASES_URL, and HERSIR_RELEASE_SIGNERS (it has no GIZAI_ name).
     pub fn from_env() -> Source {
-        let var = |name: &str| std::env::var(name).ok().map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
-        Source::new(&var("GIZAI_REPO").unwrap_or_else(|| up::REPO.to_string()), var("GIZAI_RELEASES_URL"))
+        let var = |name: &str| {
+            gizai_agents::os::hersir_var(name).map(|v| v.to_string_lossy().trim().to_string()).filter(|v| !v.is_empty())
+        };
+        let signers = std::env::var_os(release_sig::SIGNERS_VAR).filter(|v| !v.is_empty()).map(PathBuf::from);
+        Source::new(&var("REPO").unwrap_or_else(|| up::REPO.to_string()), var("RELEASES_URL")).with_signers(signers)
     }
 
+    /// Releases from `repo`, read at `releases_url`, checked with the built-in release keys.
     pub fn new(repo: &str, releases_url: Option<String>) -> Source {
         let releases_url = releases_url.or_else(|| {
             let link = repo_url::normalize(repo).ok().flatten().filter(|l| l.provider == "github")?;
             Some(up::latest_release_url(link.owner.as_deref()?, link.name.as_deref()?))
         });
-        Source { repo: repo.to_string(), releases_url }
+        Source { repo: repo.to_string(), releases_url, signers: None }
+    }
+
+    /// The same, with signatures checked against the keys in `file`, an allowed-signers file (None: the built-in ones).
+    pub fn with_signers(mut self, file: Option<PathBuf>) -> Source {
+        self.signers = file;
+        self
     }
 }
 
@@ -77,6 +96,8 @@ struct Inner {
     source: Source,
     /// The program that runs: its install prefix is where an update installs.
     exe: Option<PathBuf>,
+    /// The package manager it came from (`up::package_of`), or None. Only that package manager updates it.
+    package: Option<String>,
     /// A check runs now.
     checking: bool,
     /// The version the installed Gizai says it is, as the last check found it.
@@ -98,7 +119,8 @@ impl Default for Updates {
 
 impl Updates {
     pub fn new(source: Source, exe: Option<PathBuf>) -> Updates {
-        Updates { inner: Mutex::new(Inner { source, exe, checking: false, installed: None, job: None }) }
+        let package = exe.as_deref().and_then(up::package_of);
+        Updates { inner: Mutex::new(Inner { source, exe, package, checking: false, installed: None, job: None }) }
     }
 
     /// For tests: where releases come from.
@@ -106,9 +128,17 @@ impl Updates {
         self.lock().source = source;
     }
 
-    /// For tests: the program that runs (an update installs into its prefix, `<prefix>/lib/gizai/gizai`).
+    /// For tests: the program that runs (an update installs into its prefix, `<prefix>/lib/hersir/hersir`), and the
+    /// package it came from by its mark (`up::package_of`).
     pub fn set_exe(&self, exe: Option<PathBuf>) {
-        self.lock().exe = exe;
+        let mut inner = self.lock();
+        inner.package = exe.as_deref().and_then(up::package_of);
+        inner.exe = exe;
+    }
+
+    /// For tests: the package manager this Hersir came from, whatever its mark says (None: none).
+    pub fn set_package(&self, package: Option<&str>) {
+        self.lock().package = package.map(str::to_string);
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
@@ -134,8 +164,9 @@ pub struct LastCheck {
 pub struct UpdateJob {
     /// The version it installs.
     pub version: String,
-    /// While it runs: "source" (getting the source), "build", "backup", "install". When it has ended: "installed",
-    /// "failed" or "stopped".
+    /// While it runs: "source" (getting the source and checking the release's signature), "download" (the release's
+    /// ready-made build), "build" (when it builds the source instead), "backup", "install". When it has ended:
+    /// "installed", "failed" or "stopped".
     pub step: String,
     pub started_at: i64,
     pub ended_at: Option<i64>,
@@ -151,11 +182,14 @@ pub struct UpdateJob {
     /// While it runs and when it failed: whether the Gizai installed before is still in place, as it was. It is, unless
     /// the install step failed partway.
     pub unchanged: bool,
+    /// Why it builds the release from source rather than install its ready-made build: there is none for this system,
+    /// its download failed, its checksum is wrong. None: it downloaded the build, or hasn't got that far.
+    pub from_source: Option<String>,
 }
 
 impl UpdateJob {
     pub fn running(&self) -> bool {
-        matches!(self.step.as_str(), "source" | "build" | "backup" | "install")
+        matches!(self.step.as_str(), "source" | "download" | "build" | "backup" | "install")
     }
 }
 
@@ -173,8 +207,10 @@ pub struct UpdateStatus {
     pub checked_at: Option<i64>,
     pub latest: Option<Release>,
     pub problem: Option<Problem>,
-    /// The latest release, when it is newer than this Gizai.
+    /// The latest release, when it is newer than this Gizai and signed (it has hersir-X.Y.Z.sig).
     pub available: Option<Release>,
+    /// The latest release, when it is newer than this Gizai but not signed yet: it isn't offered.
+    pub unsigned: Option<Release>,
     /// The version that is installed already when it is newer than this Gizai (installed by an update, or by install.sh
     /// meanwhile): a restart starts it.
     pub installed: Option<String>,
@@ -182,6 +218,10 @@ pub struct UpdateStatus {
     pub install_to: Option<String>,
     /// …or why this Gizai can't update itself.
     pub cannot_install: Option<String>,
+    /// The package manager this Hersir came from (package_of), or None: an install script's Hersir, or a dev build.
+    pub package: Option<String>,
+    /// The command that updates it (package_update_command), or None.
+    pub update_command: Option<String>,
     /// The update that runs now, or the last one since Gizai started.
     pub job: Option<UpdateJob>,
     /// Where releases come from.
@@ -214,8 +254,12 @@ const INSTALLER: &str = "./install.sh";
 const INSTALLER: &str = r".\install.ps1";
 
 /// Where an update installs: the prefix install.sh (install.ps1 on Windows) installed this Gizai into. Else why it can't
-/// update itself.
+/// update itself. A package comes first: its Hersir may sit where an install script's would (the AUR's
+/// /usr/lib/hersir/hersir), and only its package manager updates it.
 fn install_prefix(inner: &Inner) -> Result<PathBuf, String> {
+    if let Some(package) = &inner.package {
+        return Err(package_text(package));
+    }
     let Some(exe) = &inner.exe else {
         return Err(format!("Hersir can't tell where it runs from, so it can't update itself. Install the new version with {INSTALLER}."));
     };
@@ -223,6 +267,18 @@ fn install_prefix(inner: &Inner) -> Result<PathBuf, String> {
         format!("This Hersir runs from {}, not from an install, so it doesn't update itself. Update its checkout with git, or install with {INSTALLER}.",
                 exe.display())
     })
+}
+
+/// Why a Hersir from `package` doesn't update itself, and how to update it (`up::package_update_command`).
+fn package_text(package: &str) -> String {
+    let from = match package {
+        "aur" => "the AUR",
+        "homebrew" => "Homebrew",
+        "scoop" => "Scoop",
+        _ => "a package",
+    };
+    let with = up::package_update_command(package).unwrap_or("the package manager that installed it");
+    format!("Hersir came from {from}, so it doesn't update itself. Update it with {with}, then restart Hersir.")
 }
 
 pub fn status(st: &AppState) -> UpdateStatus {
@@ -233,17 +289,21 @@ pub fn status(st: &AppState) -> UpdateStatus {
         Ok(p) => (Some(p.display().to_string()), None),
         Err(why) => (None, Some(why)),
     };
+    let newer = latest.clone().filter(|r| up::is_newer(&r.version, VERSION));
     UpdateStatus {
         current: VERSION.into(),
         auto_check: auto,
         checking: inner.checking,
         checked_at: last.as_ref().map(|l| l.at),
-        available: latest.clone().filter(|r| up::is_newer(&r.version, VERSION)),
+        available: newer.clone().filter(Release::signed),
+        unsigned: newer.filter(|r| !r.signed()),
         latest,
         problem: last.and_then(|l| l.problem),
         installed: inner.installed.clone().filter(|v| up::is_newer(v, VERSION)),
         install_to,
         cannot_install,
+        package: inner.package.clone(),
+        update_command: inner.package.as_deref().and_then(up::package_update_command).map(str::to_string),
         job: inner.job.as_ref().map(|j| j.status.clone()),
         repo: inner.source.repo.clone(),
     }
@@ -265,9 +325,9 @@ pub async fn check(st: &AppState) -> UpdateStatus {
     changed(st);
     let found = tokio::task::spawn_blocking(move || {
         let latest = match url {
-            Some(url) => up::latest_release(&url, &format!("gizai/{VERSION}"), CHECK_LIMIT),
+            Some(url) => up::latest_release(&url, &format!("hersir/{VERSION}"), CHECK_LIMIT),
             None => Err(Problem::new("Hersir doesn't know where this repository keeps its releases",
-                                     "Set GIZAI_RELEASES_URL, or GIZAI_REPO to a repository on GitHub.")),
+                                     "Set HERSIR_RELEASES_URL, or HERSIR_REPO to a repository on GitHub.")),
         };
         // a release that is installed already only needs a restart
         let installed = match (&latest, &prefix) {
@@ -303,14 +363,16 @@ impl Drop for Checking<'_> {
 }
 
 /// The automatic check: asks GitHub when Check for new releases is on and the last check is six hours old (an hour,
-/// when it didn't work). Returns whether it asked.
+/// when it didn't work), or when a Hersir from before GA-253 made it, which didn't keep whether the release is signed.
+/// Returns whether it asked.
 pub async fn tick(st: &AppState, now: i64) -> bool {
     if !auto_check(st) {
         return false;
     }
     let due = last_check(st).is_none_or(|l| {
         let wait = if l.problem.is_some() { RETRY_AFTER } else { CHECK_EVERY };
-        l.at > now || now - l.at >= wait.as_millis() as i64
+        let unknown = l.problem.is_none() && l.latest.as_ref().is_some_and(|r| r.assets.is_none());
+        unknown || l.at > now || now - l.at >= wait.as_millis() as i64
     });
     if due {
         check(st).await;
@@ -318,14 +380,21 @@ pub async fn tick(st: &AppState, now: i64) -> bool {
     due
 }
 
-/// Update to `version`, the newer release the check found: get its source, build it, back up your data and install it,
-/// in the background. Returns at once; the steps show in `status` (the UI hears of each one). An update that runs
-/// already is left to run.
+/// Update to `version`, the newer signed release the check found: get its source, check its signature, download its
+/// ready-made build or build it, back up your data and install it, in the background. Returns at once; the steps show
+/// in `status` (the UI hears of each one). An update that runs already is left to run. A package's Hersir never starts
+/// one: it says how its package manager updates it, whichever release.
 pub fn start(st: &AppState, version: &str) -> Result<UpdateStatus, String> {
     let now = status(st);
+    if let Some(why) = now.cannot_install.clone().filter(|_| now.package.is_some()) {
+        return Err(why);
+    }
+    if let Some(r) = now.unsigned.as_ref().filter(|r| r.version == version) {
+        return Err(format!("{} is out, but not signed yet: try again in a few minutes.", r.tag));
+    }
     let release = now.available.clone().filter(|r| r.version == version)
         .ok_or_else(|| format!("Hersir knows of no newer release {version}. Check for updates first."))?;
-    let (prefix, repo, stop) = {
+    let (prefix, source, stop) = {
         let mut inner = st.updates.lock();
         if inner.job.as_ref().is_some_and(|j| j.status.running()) {
             drop(inner);
@@ -336,15 +405,16 @@ pub fn start(st: &AppState, version: &str) -> Result<UpdateStatus, String> {
         let log = st.data_dir.join("update").join("update.log");
         inner.job = Some(Job {
             status: UpdateJob { version: release.version.clone(), step: "source".into(), started_at: ids::now_ms(), ended_at: None,
-                                log: log.display().to_string(), backup: None, problem: None, output: None, unchanged: true },
+                                log: log.display().to_string(), backup: None, problem: None, output: None, unchanged: true,
+                                from_source: None },
             stop: stop.clone(),
         });
-        (prefix, inner.source.repo.clone(), stop)
+        (prefix, inner.source.clone(), stop)
     };
     changed(st);
     let st2 = st.clone();
     std::thread::spawn(move || {
-        let ended = run(&st2, &release, &repo, &prefix, &stop);
+        let ended = run(&st2, &release, &source, &prefix, &stop);
         finish(&st2, ended);
     });
     Ok(status(st))
@@ -360,7 +430,7 @@ struct Done {
 /// How an update didn't work.
 struct Failed {
     failed: UpdateFailed,
-    /// Stopped (Stop, or Gizai quit) while it got the source or built.
+    /// Stopped (Stop, or Gizai quit) while it got the source, downloaded or built.
     stopped: bool,
     /// The Gizai installed before is still in place, as it was.
     unchanged: bool,
@@ -372,15 +442,17 @@ impl From<UpdateFailed> for Failed {
     }
 }
 
-/// The update's steps, one after the other; the first that fails ends it.
-fn run(st: &AppState, release: &Release, repo: &str, prefix: &std::path::Path, stop: &Stop) -> Result<Done, Failed> {
+/// The update's steps, one after the other; the first that fails ends it. Nothing of the release runs before its
+/// signature checks: not its installer, not a build, not its ready-made build.
+fn run(st: &AppState, release: &Release, from: &Source, prefix: &Path, stop: &Stop) -> Result<Done, Failed> {
     let dir = st.data_dir.join("update");
     let log = up::Log::create(&dir.join("update.log"))
         .map_err(|e| UpdateFailed::plain(format!("Can't write the update's log in {}: {e}", dir.display())))?;
     // a data folder given as a relative path works too: the installer runs in the source folder
-    let source = dir.canonicalize().unwrap_or(dir).join("source");
-    let version = &release.version;
-    log.say(&format!("== Updating Hersir {VERSION} to {version}: the release {} from {repo}, installed into {}", release.tag, prefix.display()));
+    let dir = dir.canonicalize().unwrap_or(dir);
+    let source = dir.join("source");
+    let (version, tag) = (&release.version, &release.tag);
+    log.say(&format!("== Updating Hersir {VERSION} to {version}: the release {tag} from {}, installed into {}", from.repo, prefix.display()));
     // Linux and macOS: Gizai's PATH with the login shell's. Windows gives every program the whole PATH already, and its
     // `bash` may be WSL's, which Gizai never uses.
     #[cfg(not(windows))]
@@ -388,17 +460,45 @@ fn run(st: &AppState, release: &Release, repo: &str, prefix: &std::path::Path, s
     #[cfg(windows)]
     let path = std::env::var_os("PATH").unwrap_or_default();
     let built = (|| {
-        up::get_source(repo, &release.tag, &source, &log, stop)?;
+        // the keys first: when HERSIR_RELEASE_SIGNERS holds none, nothing is fetched
+        let signers = release_sig::signers(from.signers.as_deref())
+            .map_err(|why| UpdateFailed::plain(format!("{why}, so Hersir doesn't install {tag}")))?;
+        up::get_source(&from.repo, tag, &source, &log, stop)?;
+        let keys = match &from.signers {
+            Some(file) => format!("the keys in {} ({}), not Hersir's own", release_sig::SIGNERS_VAR, file.display()),
+            None => "Hersir's own release keys".into(),
+        };
+        log.say(&format!("== Checking the signature of {tag} with {keys}"));
+        let sums = up::check_signature(release, &source, &dir, &signers, &log, stop)?;
         match up::source_version(&source) {
             Some(v) if &v == version => {}
             said => {
-                return Err(UpdateFailed::plain(format!("The source of {} says it is version {}, not {version}, so Hersir doesn't install it",
-                                                       release.tag, said.as_deref().unwrap_or("unknown"))));
+                return Err(UpdateFailed::plain(format!("The source of {tag} says it is version {}, not {version}, so Hersir doesn't install it",
+                                                       said.as_deref().unwrap_or("unknown"))));
             }
         }
-        step(st, "build", None);
-        log.say(&format!("== Building {version}"));
-        up::build(&source, Some(&path), &log, stop)?;
+        // the release's ready-made build for this system, else its source is built as before
+        let from_source = match up::build_name(version) {
+            None => Some(format!("There is no ready-made build for this system ({}), so Hersir builds {version} from source", up::system_name())),
+            Some(name) => match release.asset(&name) {
+                None => Some(format!("The release has no ready-made build for this system ({name}), so Hersir builds {version} from source")),
+                Some(asset) => {
+                    step(st, "download", None);
+                    log.say(&format!("== Downloading {name}"));
+                    match up::get_build(asset, version, &sums, &source, &dir, &log, stop) {
+                        Ok(()) => None,
+                        Err(f) if stop.asked() => return Err(f),
+                        Err(f) => Some(format!("{}, so Hersir builds {version} from source", f.what)),
+                    }
+                }
+            },
+        };
+        if let Some(why) = from_source {
+            log.say(&format!("== {why}"));
+            build_step(st, &why);
+            log.say(&format!("== Building {version}"));
+            up::build(&source, Some(&path), &log, stop)?;
+        }
         if stop.asked() {
             return Err(UpdateFailed::plain("Stopped"));
         }
@@ -446,6 +546,14 @@ fn step(st: &AppState, name: &str, backup: Option<&str>) {
     changed(st);
 }
 
+/// The update builds the release from source, for `why` (Settings → Updates says it).
+fn build_step(st: &AppState, why: &str) {
+    if let Some(job) = st.updates.lock().job.as_mut() {
+        job.status.from_source = Some(why.into());
+    }
+    step(st, "build", None);
+}
+
 fn finish(st: &AppState, ended: Result<Done, Failed>) {
     {
         let mut inner = st.updates.lock();
@@ -480,23 +588,24 @@ fn finish(st: &AppState, ended: Result<Done, Failed>) {
     changed(st);
 }
 
-/// Stops the update while it gets the source or builds; the installed Gizai stays as it is. The backup and the install
-/// take seconds, and always finish.
+/// Stops the update while it gets the source, downloads or builds; the installed Gizai stays as it is. The backup and
+/// the install take seconds, and always finish.
 pub fn stop(st: &AppState) -> UpdateStatus {
-    if let Some(job) = st.updates.lock().job.as_ref().filter(|j| matches!(j.status.step.as_str(), "source" | "build")) {
+    if let Some(job) = st.updates.lock().job.as_ref().filter(|j| matches!(j.status.step.as_str(), "source" | "download" | "build")) {
         job.stop.stop();
     }
     status(st)
 }
 
-/// When Gizai quits: an update that gets its source or builds stops with it (the source and build so far are kept).
+/// When Gizai quits: an update that gets its source, downloads or builds stops with it (the source and build so far
+/// are kept; a download that stopped is removed).
 pub fn on_exit(st: &AppState) {
     stop(st);
 }
 
 /// The restart after an update: a small shell in a session of its own waits until this Gizai has quit (at most ten
 /// minutes), then starts the installed one with its launcher. The caller quits Gizai the usual way next, which stops
-/// agents at work first. On Windows a hidden PowerShell, detached from Gizai, does the same with `<prefix>\gizai.exe`.
+/// agents at work first. On Windows a hidden PowerShell, detached from Gizai, does the same with `<prefix>\hersir.exe`.
 pub fn restart_command(st: &AppState) -> Result<std::process::Command, String> {
     let inner = st.updates.lock();
     let ready = inner.job.as_ref().is_some_and(|j| j.status.step == "installed")
@@ -523,24 +632,13 @@ pub fn start_again_command(st: &AppState) -> Result<std::process::Command, Strin
     Ok(start_after_quit(&program))
 }
 
-/// The installed Gizai a restart starts: its launcher (`<prefix>/lib/gizai/gizai-launch`, else `<prefix>/lib/gizai/gizai`),
-/// on Windows `<prefix>\gizai.exe`.
+/// The installed Hersir a restart starts: its launcher (`<prefix>/lib/hersir/hersir-launch`, else
+/// `<prefix>/lib/hersir/hersir`; in an install from before 0.17.0 those in `<prefix>/lib/gizai`), on Windows
+/// `<prefix>\hersir.exe` (else `gizai.exe`). See `up::restart_programs`.
 fn installed_program(inner: &Inner) -> Result<PathBuf, String> {
-    #[cfg(unix)]
-    {
-        let lib = install_prefix(inner)?.join("lib/gizai");
-        [lib.join("gizai-launch"), lib.join("gizai")].into_iter().find(|p| gizai_agents::os::executable(p))
-            .ok_or_else(|| format!("No Hersir is installed in {}", lib.display()))
-    }
-    #[cfg(windows)]
-    {
-        let prefix = install_prefix(inner)?;
-        let exe = prefix.join("gizai.exe");
-        if !gizai_agents::os::executable(&exe) {
-            return Err(format!("No Hersir is installed in {}", prefix.display()));
-        }
-        Ok(exe)
-    }
+    let prefix = install_prefix(inner)?;
+    up::restart_programs(&prefix).into_iter().find(|p| gizai_agents::os::executable(p))
+        .ok_or_else(|| format!("No Hersir is installed in {}", prefix.display()))
 }
 
 /// A small shell in a session of its own that waits until this Gizai has quit (at most ten minutes), then starts
@@ -567,7 +665,7 @@ while [ "$i" -lt 3000 ] && kill -0 "$1" 2>/dev/null; do
 done
 [ "$i" -lt 3000 ] && exec "$2""#;
         let mut cmd = std::process::Command::new("sh");
-        cmd.args(["-c", WAIT_THEN_START, "gizai-restart"]).arg(std::process::id().to_string()).arg(program)
+        cmd.args(["-c", WAIT_THEN_START, "hersir-restart"]).arg(std::process::id().to_string()).arg(program)
             .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
         // SAFETY: setsid(2) is a plain syscall, safe to make between fork and exec.
         unsafe {

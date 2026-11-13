@@ -179,11 +179,11 @@ fn an_identifier_that_is_no_card_or_a_card_of_a_removed_project_still_writes_not
     f.learned(&f.be, "MN-2", &["removed project"]);
     assert!(f.body("Agents/Backend Agent/Notes").ends_with(&format!("- {DAY} (MN-2): removed project\n")));
     assert!(f.note("Agents/Backend Agent/MN").is_none());
-    // the Team Lead's go in Team Lead/Notes, also on a project's card
+    // the Team Lead's go in Chief/Notes, also on a project's card
     f.card(&f.ga, "GA-5");
     f.learned(&f.lead, "GA-5", &["Jeffrey wants short summaries."]);
-    assert!(f.body("Team Lead/Notes").contains(&format!("## Learned\n\n- {DAY} (GA-5): Jeffrey wants short summaries.\n")));
-    assert!(f.note("Agents/Team Lead/GA").is_none() && f.note("Team Lead/GA").is_none());
+    assert!(f.body("Chief/Notes").contains(&format!("## Learned\n\n- {DAY} (GA-5): Jeffrey wants short summaries.\n")));
+    assert!(f.note("Agents/Team Lead/GA").is_none() && f.note("Chief/GA").is_none());
 }
 
 #[test]

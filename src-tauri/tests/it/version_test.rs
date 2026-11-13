@@ -35,7 +35,7 @@ fn every_version_file_says_the_workspace_version() {
 
 #[test]
 fn the_binary_reports_the_workspace_version() {
-    let out = std::process::Command::new(env!("CARGO_BIN_EXE_gizai")).arg("--version").output().unwrap();
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_hersir")).arg("--version").output().unwrap();
     assert!(out.status.success());
-    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), format!("gizai {}", env!("CARGO_PKG_VERSION")));
+    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), format!("hersir {}", env!("CARGO_PKG_VERSION")));
 }

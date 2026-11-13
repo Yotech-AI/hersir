@@ -1,9 +1,9 @@
 // GA-21 (and GA-27): the warning under Settings → Runs at once when the active agents' cards at once add up to more,
 // which agents count for it, and the warning by Quit Gizai completely. GA-202: the hint under Memory for agent runs, and
-// what Save settings refuses there before it asks the backend.
+// what Save settings refuses there before it asks the backend. GA-277: the same for Memory per run.
 import { describe, expect, it } from "vitest";
 import type { Member, Team, WorkflowState } from "../types";
-import { cardAgents, quitWarning, runsAtOnceWarning, runsMemoryError, runsMemoryHint } from "./settings";
+import { cardAgents, quitWarning, RUNS_MEMORY_PER_RUN_HINT, runsAtOnceWarning, runsMemoryError, runsMemoryHint, runsMemoryPerRunError } from "./settings";
 
 const member = (actorId: string, name: string, more: Partial<Member> = {}): Member => ({
   actorId, name, kind: "agent", roleKey: "backend", handle: name.toLowerCase().replace(/ /g, "-"), status: "active", isLead: false,
@@ -111,5 +111,20 @@ describe("what Save settings refuses in Memory for agent runs", () => {
   it("leaves the computer's memory as the most to the backend, and says nothing when the backend didn't send the field", () => {
     expect(runsMemoryError(10_000)).toBeNull();
     expect(runsMemoryError(undefined)).toBeNull();
+  });
+});
+
+// GA-277: the hint under Memory per run, word for word, and what Save settings refuses there before it asks the backend.
+describe("Memory per run (GA-277)", () => {
+  it("has the card's hint, word for word", () => {
+    expect(RUNS_MEMORY_PER_RUN_HINT).toBe("One run at most: its agent and everything it starts. Linux ends the biggest process of a run that reaches it, and the run goes on. Half of Memory for agent runs until you set it. Runs that start after you save get it.");
+  });
+  it("refuses anything but a whole number of GB from 2 up", () => {
+    for (const gb of [2, 3, 16, 32]) expect(runsMemoryPerRunError(gb)).toBeNull();
+    for (const gb of [0, 1, -4, 2.5, Number(""), Number.NaN]) expect(runsMemoryPerRunError(gb)).toBe("Memory per run is a whole number of GB, 2 or more.");
+  });
+  it("leaves Memory for agent runs as the most to the backend, and says nothing when the backend didn't send the field", () => {
+    expect(runsMemoryPerRunError(10_000)).toBeNull();
+    expect(runsMemoryPerRunError(undefined)).toBeNull();
   });
 });

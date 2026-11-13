@@ -344,3 +344,239 @@ fn a_worktrees_setup_command_runs_in_the_slice_and_a_failure_at_the_limit_says_s
     let failed = prepare_in(&main, &wt, &p, None, None, Some(&s.0)).unwrap_err();
     assert!(failed.why.contains("Linux ended a process in it at the memory limit for agent runs (Settings → Runs)"), "{failed:?}");
 }
+
+// ---- GA-277: Memory per run, a MemoryMax of its own for each scope ----
+
+#[test]
+fn memory_per_run_is_none_until_gizais_start_and_never_more_than_the_limit_of_all_runs_also_after_that_is_lowered() {
+    let m = RunsMemory::default();
+    assert_eq!(m.run_limit(), None);
+    m.set_run_limit(2 * GB);
+    assert_eq!(m.run_limit(), None, "nothing before Gizai's start: a test's Gizai keeps its processes outside systemd");
+    // enable only notes the slice's name and limit; nothing is set up until `slice`
+    let tmp = tempfile::tempdir().unwrap();
+    m.enable(&mem::slice_name(tmp.path()), 8 * GB);
+    assert_eq!(m.run_limit(), Some(2 * GB));
+    m.set_run_limit(12 * GB);
+    assert_eq!(m.run_limit(), Some(8 * GB), "never more than the limit of all runs together");
+    m.set_limit(6 * GB).unwrap();
+    assert_eq!(m.run_limit(), Some(6 * GB), "also after that is lowered");
+    m.set_run_limit(3 * GB);
+    assert_eq!(m.run_limit(), Some(3 * GB));
+    m.set_run_limit(0);
+    assert_eq!(m.run_limit(), None, "0 is none");
+    assert!(!m.enforced(), "nothing was set up");
+}
+
+#[test]
+fn an_oom_kill_marker_gives_its_count_and_whether_the_runs_own_limit_ended_the_process() {
+    use gizai_agents::process::{OOM_KILL, PER_RUN, oom_kill};
+    use gizai_agents::run_memory::OomKill;
+    assert_eq!((OOM_KILL, PER_RUN), ("oom_kill:", " per_run"));
+    assert_eq!(oom_kill("oom_kill:1"), Some(OomKill { count: 1, own_limit: false }), "all runs together (GA-202), as before");
+    assert_eq!(oom_kill("oom_kill:3 per_run"), Some(OomKill { count: 3, own_limit: true }), "the run's own limit");
+    for not in ["oom_kill:", "oom_kill: per_run", "oom_kill:x", "oom_kill:1 per run", "exit:0", "leftover:12 sleep", "", "oom_kill:-1"] {
+        assert_eq!(oom_kill(not), None, "{not:?}");
+    }
+}
+
+/// A shell command that adds its scope's cgroup folder, memory.max and memory.high, as a process in the scope reads
+/// them, to `out`.
+#[cfg(target_os = "linux")]
+fn record_scope(out: &Path) -> String {
+    format!("c=$(sed -n 's/^0:://p' /proc/self/cgroup); echo \"$c $(cat /sys/fs/cgroup$c/memory.max) $(cat /sys/fs/cgroup$c/memory.high)\" >> '{}'",
+            out.display())
+}
+
+/// The lines `record_scope` wrote: the cgroup folder, memory.max and memory.high.
+#[cfg(target_os = "linux")]
+fn recorded(out: &Path) -> Vec<(PathBuf, String, String)> {
+    std::fs::read_to_string(out).unwrap_or_default().lines().map(|l| {
+        let f: Vec<&str> = l.split(' ').collect();
+        (Path::new("/sys/fs/cgroup").join(f[0].trim_start_matches('/')), f[1].to_string(), f[2].to_string())
+    }).collect()
+}
+
+#[cfg(target_os = "linux")]
+fn read_trim(path: &Path) -> String {
+    std::fs::read_to_string(path).unwrap_or_default().trim().to_string()
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn with_a_limit_per_run_each_new_scope_gets_it_as_memory_max_in_whole_pages_without_memory_high_and_the_slice_keeps_its_own() {
+    let tmp = tempfile::tempdir().unwrap();
+    let Some(s) = own_slice(tmp.path(), 4 * GB) else { return };
+    let (max, high) = mem::limits_for(4 * GB);
+    let shown = systemctl_show(s.0.name());
+    assert_eq!(s.0.run_limit(), None, "a slice straight from set_up gives its scopes no limit of their own");
+    let sleep = |slice: &mem::Slice| {
+        let (mut cmd, scope) = slice.scoped_for("sleep".as_ref(), None).expect("sleep is installed");
+        let (child, tree) = gizai_agents::os::spawn_tree(cmd.arg("60").stdin(std::process::Stdio::null()), false).unwrap();
+        wait_until_runs(child.id(), "sleep");
+        assert_eq!(cgroup_of(child.id()), scope.dir(), "it runs in the scope Gizai named");
+        (child, tree, scope)
+    };
+    // a scope from before, without a limit of its own
+    let (mut before, before_tree, before_scope) = sleep(&s.0);
+    assert_eq!((read_trim(&before_scope.dir().join("memory.max")), read_trim(&before_scope.dir().join("memory.high"))), ("max".into(), "max".into()));
+
+    // 1 GB and 100 bytes: whole 4 KiB pages, as limits_for rounds
+    let per_run = s.0.with_run_limit(GB + 100);
+    assert_eq!(per_run.run_limit(), Some(GB));
+    assert_eq!((per_run.name(), per_run.dir()), (s.0.name(), s.0.dir()), "the same slice");
+    assert_eq!(s.0.run_limit(), None, "the slice it came from is unchanged");
+    let (mut one, one_tree, one_scope) = sleep(&per_run);
+    assert_eq!(read_trim(&one_scope.dir().join("memory.max")), GB.to_string(), "Memory per run is the scope's MemoryMax");
+    assert_eq!(read_trim(&one_scope.dir().join("memory.high")), "max", "and it has no MemoryHigh of its own");
+    // and a process in it reads the same
+    let out = tmp.path().join("scope");
+    let mut sh = per_run.command_for("sh".as_ref(), None).unwrap();
+    assert!(sh.arg("-c").arg(record_scope(&out)).status().unwrap().success());
+    let seen = recorded(&out);
+    assert_eq!((seen.len(), seen[0].1.as_str(), seen[0].2.as_str()), (1, GB.to_string().as_str(), "max"), "{seen:?}");
+    assert_eq!(seen[0].0.parent(), Some(s.0.dir()));
+
+    // another limit per run: new scopes get it, the ones that already run keep what they had
+    let (mut two, two_tree, two_scope) = sleep(&s.0.with_run_limit(2 * GB));
+    assert_eq!(read_trim(&two_scope.dir().join("memory.max")), (2 * GB).to_string());
+    assert_eq!(read_trim(&one_scope.dir().join("memory.max")), GB.to_string());
+    assert_eq!(read_trim(&before_scope.dir().join("memory.max")), "max");
+
+    // the slice keeps its MemoryMax, MemoryHigh (90%) and no swap
+    assert_eq!(s.0.limits(), (Some(max), Some(high)));
+    assert_eq!(read_trim(&s.0.dir().join("memory.swap.max")), "0");
+    assert_eq!(systemctl_show(s.0.name()), shown);
+    for (child, tree) in [(&mut before, before_tree), (&mut one, one_tree), (&mut two, two_tree)] {
+        tree.end(gizai_agents::os::End::Kill);
+        child.wait().unwrap();
+    }
+}
+
+/// A program that asks for 1 GB at once and touches all of it.
+#[cfg(target_os = "linux")]
+const ASKS_1_GB: &str = "b = b'x' * (1 << 30)";
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_process_that_grows_past_its_limit_per_run_is_ended_within_seconds_its_parent_and_another_scope_run_on_and_the_watch_says_it_was_its_own() {
+    use std::os::unix::process::ExitStatusExt;
+    let tmp = tempfile::tempdir().unwrap();
+    // all runs together 4 GB (MemoryHigh 3.6 GB), each run 512 MB: one runaway process never gets near the slice's
+    // MemoryHigh, where Linux would slow every run down
+    let Some(s) = own_slice(tmp.path(), 4 * GB) else { return };
+    let per_run = s.0.with_run_limit(GB / 2);
+    // another run in the slice
+    let mut other = per_run.command_for("sleep".as_ref(), None).unwrap();
+    let (mut other, other_tree) = gizai_agents::os::spawn_tree(other.arg("600").stdin(std::process::Stdio::null()), false).unwrap();
+    wait_until_runs(other.id(), "sleep");
+
+    // a run: a shell (its agent) that starts a command asking for 1 GB, and goes on after it
+    let out = tmp.path().join("after");
+    let script = format!("python3 -c \"{ASKS_1_GB}\"; echo $? > '{}'; sleep 1; echo done >> '{}'", out.display(), out.display());
+    let mut run = per_run.command_for("bash".as_ref(), None).unwrap();
+    run.args(["-c", &script]).stdin(std::process::Stdio::null());
+    let started = std::time::Instant::now();
+    let (mut run, _tree) = gizai_agents::os::spawn_tree(&mut run, false).unwrap();
+    let heard = std::sync::Arc::new(std::sync::Mutex::new(Vec::<mem::OomKill>::new()));
+    let h2 = heard.clone();
+    let watch = mem::OomWatch::start_by_limit(&per_run, run.id(), move |k| h2.lock().unwrap().push(k));
+    let until = started + Duration::from_secs(30);
+    while read_trim(&out).is_empty() {
+        assert!(std::time::Instant::now() < until, "the command was never ended");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let ended_after = started.elapsed();
+    assert_eq!(read_trim(&out), "137", "Linux ended the command (SIGKILL)");
+    assert!(ended_after < Duration::from_secs(10), "ended within seconds, not slowed down: {ended_after:?}");
+    // its parent, the run's own program, goes on (OOMPolicy=continue) and finishes as usual
+    let status = run.wait().unwrap();
+    assert_eq!((status.code(), status.signal()), (Some(0), None), "{status:?}");
+    assert_eq!(read_trim(&out), "137\ndone");
+    assert_eq!(watch.finish(), 1, "one process ended");
+    assert_eq!(*heard.lock().unwrap(), [mem::OomKill { count: 1, own_limit: true }], "at the run's own limit, heard as it happened");
+    // the slice's own limit was never reached: no oom at its level
+    let local = std::fs::read_to_string(s.0.dir().join("memory.events.local")).unwrap();
+    assert_eq!(mem::stat_value(&local, "oom"), Some(0), "{local}");
+    // the other run keeps running
+    assert!(alive(other.id()), "the process in the other scope keeps running");
+    other_tree.end(gizai_agents::os::End::Kill);
+    other.wait().unwrap();
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn when_the_limit_of_all_runs_together_ends_a_process_the_watch_says_it_wasnt_the_runs_own() {
+    use std::os::unix::process::ExitStatusExt;
+    let tmp = tempfile::tempdir().unwrap();
+    // a scope whose own limit (2 GB) is above the slice's (1 GB): the slice's is reached first
+    let Some(s) = own_slice(tmp.path(), GB) else { return };
+    let per_run = s.0.with_run_limit(2 * GB);
+    let mut big = per_run.command_for("python3".as_ref(), None).unwrap();
+    big.args(["-c", ASKS_2_GB]).stdin(std::process::Stdio::null());
+    let (mut big, _tree) = gizai_agents::os::spawn_tree(&mut big, false).unwrap();
+    let heard = std::sync::Arc::new(std::sync::Mutex::new(Vec::<mem::OomKill>::new()));
+    let h2 = heard.clone();
+    let watch = mem::OomWatch::start_by_limit(&per_run, big.id(), move |k| h2.lock().unwrap().push(k));
+    let status = big.wait().unwrap();
+    assert_eq!(status.signal(), Some(libc::SIGKILL), "{status:?}");
+    assert_eq!(watch.finish(), 1);
+    assert_eq!(*heard.lock().unwrap(), [mem::OomKill { count: 1, own_limit: false }], "the limit of all runs together");
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn a_cli_with_a_limit_per_run_runs_in_a_scope_with_it_and_its_events_say_linux_ended_a_process_at_the_runs_own_limit() {
+    use gizai_agents::process::{AFTER_RESULT, Caps, ClaudeLines, Exec, oom_kill, spawn_exec};
+    use gizai_agents::stream::RunEvent;
+    let tmp = tempfile::tempdir().unwrap();
+    let Some(s) = own_slice(tmp.path(), 4 * GB) else { return };
+    let per_run = s.0.with_run_limit(GB / 2);
+    // a CLI whose command (a test that hangs and grows) asks for 1 GB; the CLI itself goes on
+    let cli = tmp.path().join("cli.sh");
+    let fake = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fake-claude.sh");
+    let script = format!("#!/usr/bin/env bash\n{}\npython3 -c \"{ASKS_1_GB}\"\necho \"build: $?\" >&2\nexec '{fake}' \"$@\"\n",
+                         record_scope(&tmp.path().join("scope")));
+    assert!(std::process::Command::new("sh").args(["-c", "printf '%s' \"$1\" > \"$2\" && chmod +x \"$2\"", "sh", &script])
+        .arg(&cli).status().unwrap().success());
+    let exec = Exec { bin: cli, args: vec!["-p".into()], env: vec![], stdin: "p".into(), slice: Some(per_run) };
+    let log = tmp.path().join("r.jsonl");
+    let mut h = spawn_exec::<RunEvent, _>(&exec, tmp.path(), &log, Caps { max_time: Duration::from_secs(120), max_tool_calls: 80, after_result: AFTER_RESULT }, ClaudeLines).unwrap();
+    let mut evs = vec![];
+    while let Some(e) = h.events.recv().await {
+        evs.push(e);
+    }
+    let seen = recorded(&tmp.path().join("scope"));
+    assert_eq!(seen.len(), 1, "{seen:?}");
+    assert_eq!(seen[0].0.parent(), Some(s.0.dir()), "in a scope in the slice");
+    assert_eq!((seen[0].1.as_str(), seen[0].2.as_str()), ((GB / 2).to_string().as_str(), "max"), "with Memory per run and no MemoryHigh");
+    let others: Vec<&str> = evs.iter().filter_map(|e| match e { RunEvent::Other { raw_type } => Some(raw_type.as_str()), _ => None }).collect();
+    assert!(others.contains(&"oom_kill:1 per_run"), "{others:?}");
+    assert_eq!(others.iter().filter_map(|o| oom_kill(o)).map(|k| (k.count, k.own_limit)).collect::<Vec<_>>(), [(1, true)], "{others:?}");
+    assert_eq!(others.last(), Some(&"exit:0"), "the CLI itself finished: {others:?}");
+    assert!(std::fs::read_to_string(log.with_extension("stderr.log")).unwrap().contains("build: 137"));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_worktrees_setup_command_gets_the_limit_per_run_and_a_failure_there_says_it_was_its_own() {
+    use gizai_agents::prepare::{Prepare, prepare_in};
+    let tmp = tempfile::tempdir().unwrap();
+    let Some(s) = own_slice(tmp.path(), 4 * GB) else { return };
+    let per_run = s.0.with_run_limit(GB / 2);
+    let (main, wt) = (tmp.path().join("main"), tmp.path().join("wt"));
+    std::fs::create_dir_all(&main).unwrap();
+    std::fs::create_dir_all(&wt).unwrap();
+    let out = tmp.path().join("setup-scope");
+    let p = Prepare { copy: vec![], install: false, setup: Some(record_scope(&out)) };
+    prepare_in(&main, &wt, &p, None, None, Some(&per_run)).unwrap();
+    let seen = recorded(&out);
+    assert_eq!(seen.len(), 1, "{seen:?}");
+    assert_eq!(seen[0].0.parent(), Some(s.0.dir()));
+    assert_eq!((seen[0].1.as_str(), seen[0].2.as_str()), ((GB / 2).to_string().as_str(), "max"));
+
+    let p = Prepare { copy: vec![], install: false, setup: Some(format!("python3 -c \"{ASKS_1_GB}\"")) };
+    let failed = prepare_in(&main, &wt, &p, None, None, Some(&per_run)).unwrap_err();
+    assert!(failed.why.contains(": Linux ended a process in it at its memory limit per run (Settings → Runs → Memory per run)"), "{failed:?}");
+    assert!(!failed.why.contains("memory limit for agent runs"), "{failed:?}");
+}

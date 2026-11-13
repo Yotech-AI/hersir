@@ -316,7 +316,7 @@ const message = (i: number, role: string, body: string): ChatMessage => ({
   runId: role === "user" ? null : `r${i}`, toolName: null, tool: null, createdAt: T0 + i * 600_000,
 });
 const conversation = () => Array.from({ length: 12 }, (_, i) => i % 2 === 0 ? message(i, "user", `Question ${i}`) : message(i, "agent", `Answer ${i}: **done**.`));
-const composer = () => h.editors.get("Message the Team Lead")!;
+const composer = () => h.editors.get("Message the Chief")!;
 const typeInChat = async (text: string) => { await act(async () => { (composer().onChange as (v: string) => void)(text); }); };
 const sendButton = () => byLabel(container, "Send")[0];
 const chatState = (over: Record<string, unknown> = {}) => ({ messages: [], draft: "", tool: null, working: false, queue: [], pending: [], error: null,

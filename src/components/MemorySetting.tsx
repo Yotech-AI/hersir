@@ -13,8 +13,8 @@ export function MemorySetting({ say }: { say: (ok: boolean, text: string) => voi
   };
   return (
     <Field label="Memory" wide hint={on === false
-      ? "Off for every agent: runs, board checks and chat get no notes, and what runs learn is not kept. The Team Lead's memory tools still work."
-      : "Runs get their agent's notes and the team's notes on the card's project, client and role, and the Team Lead's chat gets its notes. An agent's form can turn it off for that agent."}>
+      ? "Off for every agent: runs, board checks and chat get no notes, and what runs learn is not kept. The Chief's memory tools still work."
+      : "Runs get their agent's notes and the team's notes on the card's project, client and role, and the Chief's chat gets its notes. An agent's form can turn it off for that agent."}>
       <label className="check"><input type="checkbox" checked={on !== false} disabled={on === null} onChange={(e) => flip(e.target.checked)} />Use memory</label>
     </Field>
   );

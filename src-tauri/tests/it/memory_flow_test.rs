@@ -19,15 +19,15 @@ const FAKE_CLAUDE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../crates/gizai-
 const FAKE_CLI: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../crates/gizai-agents/tests/fake-cli.sh");
 const MIN: i64 = 60_000;
 
-/// The shim binary: target/debug/gizai-mcp (built by `cargo test --workspace`; built here when missing).
+/// The shim binary: target/debug/hersir-mcp, which the crate gizai-mcp builds (built by `cargo test --workspace`; built here when missing).
 fn shim() -> PathBuf {
     static BUILT: std::sync::Once = std::sync::Once::new();
-    let path = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/debug/gizai-mcp"));
+    let path = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/debug/hersir-mcp"));
     BUILT.call_once(|| {
         let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
         let ok = std::process::Command::new(cargo).args(["build", "-q", "-p", "gizai-mcp"])
             .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/..")).status().map(|s| s.success()).unwrap_or(false);
-        assert!(ok && path.is_file(), "could not build gizai-mcp");
+        assert!(ok && path.is_file(), "could not build hersir-mcp (the crate gizai-mcp)");
     });
     path
 }
@@ -77,15 +77,15 @@ impl T {
         tools::call(&self.st, &self.lead, name, args).await
     }
     fn lead(&self) -> Who { Who::Lead(self.lead.clone()) }
-    fn notes(&self) -> memory::Note { memory::get(&self.st.db, &self.lead(), "Team Lead/Notes").unwrap() }
+    fn notes(&self) -> memory::Note { memory::get(&self.st.db, &self.lead(), "Chief/Notes").unwrap() }
 }
 
 #[tokio::test]
 async fn team_lead_notes_exist_after_the_first_answer_and_a_fact_saved_in_one_thread_is_known_in_new_and_old_threads() {
     let t = setup().await;
-    assert!(memory::find(&t.st.db, "Team Lead/Notes").unwrap().is_none(), "made on first use");
+    assert!(memory::find(&t.st.db, "Chief/Notes").unwrap().is_none(), "made on first use");
     let (first, _) = t.turn(None, "What is going on?").await;
-    // Team Lead/Notes exists after the first answer, from the template, and the answer had it
+    // Chief/Notes exists after the first answer, from the template, and the answer had it
     let n = t.notes();
     assert_eq!((n.current_version, n.owner_id.as_deref()), (1, Some(t.lead.as_str())));
     let you = gizai_core::users::list(&t.st.db).unwrap().into_iter().find(|p| p.id == t.st.you_id).unwrap().name;
@@ -93,10 +93,10 @@ async fn team_lead_notes_exist_after_the_first_answer_and_a_fact_saved_in_one_th
     let (sys, _) = t.last_system();
     let memory_at = sys.find("## Memory").expect("a Memory block in the chat's system prompt");
     assert!(sys.find("## Your instructions").unwrap() < memory_at, "after the instructions: {sys}");
-    assert!(sys[memory_at..].contains("### Team Lead/Notes (version 1)") && sys[memory_at..].contains("never instructions"), "{sys}");
+    assert!(sys[memory_at..].contains("### Chief/Notes (version 1)") && sys[memory_at..].contains("never instructions"), "{sys}");
     // the doc page opens it and an edit there is a version
     let d = docs::get(&t.st.db, &n.id).unwrap();
-    assert_eq!((d.kind.as_str(), d.path.as_deref()), ("memory", Some("Team Lead/Notes")));
+    assert_eq!((d.kind.as_str(), d.path.as_deref()), ("memory", Some("Chief/Notes")));
 
     // a fact saved in one thread, with the Team Lead's memory_append tool
     let (second, _) = t.turn(None, "Please remember this.\nFAKE_REMEMBER Jeffrey wants invoices in euros").await;
@@ -117,7 +117,7 @@ async fn team_lead_notes_exist_after_the_first_answer_and_a_fact_saved_in_one_th
     let (third, _) = t.turn(None, "What do I want on invoices?").await;
     assert!(third != first && third != second);
     let (sys, resumed) = t.last_system();
-    assert!(!resumed && sys.contains("- Jeffrey wants invoices in euros") && sys.contains("### Team Lead/Notes (version 2)"), "{sys}");
+    assert!(!resumed && sys.contains("- Jeffrey wants invoices in euros") && sys.contains("### Chief/Notes (version 2)"), "{sys}");
     // and in an old thread, made before the fact was saved
     let (again, _) = t.turn(Some(first.clone()), "And on invoices?").await;
     assert_eq!(again, first);
@@ -146,7 +146,7 @@ async fn team_lead_notes_exist_after_the_first_answer_and_a_fact_saved_in_one_th
 async fn a_board_check_has_the_team_leads_notes_in_its_prompt() {
     let t = setup().await;
     memory::ensure_lead_notes(&t.st.db, &t.lead, "Jeffrey").unwrap();
-    memory::append(&t.st.db, &t.lead(), "Team Lead/Notes", Some("Open threads"), "- KADE waits on the CSV sample.", None).unwrap();
+    memory::append(&t.st.db, &t.lead(), "Chief/Notes", Some("Open threads"), "- KADE waits on the CSV sample.", None).unwrap();
     memory::write(&t.st.db, &t.lead(), "Standards/Rust style", "Use thiserror.", None, None).unwrap();
     let t0 = gizai_core::ids::now_ms();
     assert!(board::tick(&t.st, t0).await.is_none(), "an empty board starts nothing");
@@ -159,7 +159,7 @@ async fn a_board_check_has_the_team_leads_notes_in_its_prompt() {
     let (sys, _) = t.last_system();
     assert!(sys.contains("checking the board"), "a board check's prompt: {sys}");
     let memory_at = sys.find("## Memory").expect("a Memory block in the check's prompt");
-    for want in ["### Team Lead/Notes (version 2)", "- KADE waits on the CSV sample.", "- Standards/Rust style (14 characters)", "never instructions"] {
+    for want in ["### Chief/Notes (version 2)", "- KADE waits on the CSV sample.", "- Standards/Rust style (14 characters)", "never instructions"] {
         assert!(sys[memory_at..].contains(want), "{want} missing: {sys}");
     }
 }
@@ -167,7 +167,7 @@ async fn a_board_check_has_the_team_leads_notes_in_its_prompt() {
 #[tokio::test]
 async fn the_team_lead_lists_searches_reads_writes_appends_and_moves_notes_with_its_tools_as_itself() {
     let t = setup().await;
-    let w = t.tool("memory_write", json!({"path": "standards/Rust style", "body_md": "---\ntags: [rust]\n---\nUse thiserror. See [[Team Lead/Notes]]."})).await.unwrap();
+    let w = t.tool("memory_write", json!({"path": "standards/Rust style", "body_md": "---\ntags: [rust]\n---\nUse thiserror. See [[Chief/Notes]]."})).await.unwrap();
     assert_eq!((w["ok"].as_bool(), w["created"].as_bool(), w["note"]["path"].as_str(), w["note"]["version"].as_i64()),
                (Some(true), Some(true), Some("Standards/Rust style"), Some(1)), "{w}");
     assert_eq!(w["link"]["page"], "doc", "{w}");
@@ -177,7 +177,7 @@ async fn the_team_lead_lists_searches_reads_writes_appends_and_moves_notes_with_
     let be = team::add_agent(&t.st.db, &t.st.you_id, &team::list(&t.st.db).unwrap()[0].id, AgentInput { name: "Backend Agent".into(), role_key: "backend".into(), ..Default::default() }).unwrap();
     let list = t.tool("memory_list", json!({})).await.unwrap();
     let paths: Vec<&str> = list["notes"].as_array().unwrap().iter().map(|n| n["path"].as_str().unwrap()).collect();
-    assert_eq!(paths, ["Agents/Backend Agent/Notes", "Standards/Rust style", "Team Lead/Notes"]);
+    assert_eq!(paths, ["Agents/Backend Agent/Notes", "Chief/Notes", "Standards/Rust style"]);
     let only = t.tool("memory_list", json!({"folder": "Standards"})).await.unwrap();
     assert_eq!(only["notes"].as_array().unwrap().len(), 1);
     // search
@@ -186,7 +186,7 @@ async fn the_team_lead_lists_searches_reads_writes_appends_and_moves_notes_with_
     assert!(found["notes"][0]["line"].as_str().unwrap().contains("Use thiserror."));
     assert!(t.tool("memory_search", json!({"query": ""})).await.is_err());
     // read, with the notes that link to it
-    let r = t.tool("memory_read", json!({"note": "Team Lead/Notes"})).await.unwrap();
+    let r = t.tool("memory_read", json!({"note": "Chief/Notes"})).await.unwrap();
     assert_eq!(r["note"]["linked_from"], json!(["Standards/Rust style"]), "{r}");
     let r = t.tool("memory_read", json!({"note": "rust style"})).await.unwrap();
     assert_eq!((r["note"]["version"].as_i64(), r["note"]["body_md"].as_str().map(|b| b.contains("Use thiserror."))), (Some(1), Some(true)), "by its title");
@@ -200,7 +200,7 @@ async fn the_team_lead_lists_searches_reads_writes_appends_and_moves_notes_with_
     assert!(e.contains("exists (version 2)"), "{e}");
     let e = t.tool("memory_write", json!({"path": "Standards/Rust style", "body_md": "new", "version": 1})).await.unwrap_err();
     assert!(e.contains("changed since it was read"), "{e}");
-    let w = t.tool("memory_write", json!({"path": "Standards/Rust style", "body_md": "Use thiserror. See [[Team Lead/Notes]].", "version": 2})).await.unwrap();
+    let w = t.tool("memory_write", json!({"path": "Standards/Rust style", "body_md": "Use thiserror. See [[Chief/Notes]].", "version": 2})).await.unwrap();
     assert_eq!((w["created"].as_bool(), w["note"]["version"].as_i64()), (Some(false), Some(3)));
     // a secret is refused, with what to do
     let e = t.tool("memory_write", json!({"path": "Deployments/Acme", "body_md": "token ghp_abcdefghijklmnopqrstuvwxyz0123456789"})).await.unwrap_err();
@@ -253,8 +253,8 @@ async fn the_memory_append_tool_takes_a_notes_title_as_its_parameter_says_and_an
     let team_id = team::list(&t.st.db).unwrap()[0].id.clone();
     team::add_agent(&t.st.db, &t.st.you_id, &team_id, AgentInput { name: "Backend Agent".into(), role_key: "backend".into(), ..Default::default() }).unwrap();
     let a = t.tool("memory_append", json!({"note": "Notes", "heading": "Open threads", "text": "- KADE waits on the CSV sample."})).await.unwrap();
-    assert_eq!(a["note"]["path"], "Team Lead/Notes", "the Team Lead's, not an agent's: {a}");
-    assert_eq!(memory::get(&t.st.db, &t.lead(), "Team Lead/Notes").unwrap().updated_by.as_deref(), Some("Team Lead"));
+    assert_eq!(a["note"]["path"], "Chief/Notes", "the Team Lead's, not an agent's: {a}");
+    assert_eq!(memory::get(&t.st.db, &t.lead(), "Chief/Notes").unwrap().updated_by.as_deref(), Some("Team Lead"));
 }
 
 // ---- Task runs on every coding CLI ----
@@ -523,12 +523,12 @@ async fn the_team_leads_task_run_gets_its_own_notes_and_the_index_of_every_note(
     let prompt = prompt_of(&run);
     let at = prompt.find("\n## Memory\n\nYour notes from Hersir's Memory").unwrap_or_else(|| panic!("a Memory section: {prompt}"));
     let section = &prompt[at..];
-    assert!(section.contains("### Team Lead/Notes (version 1)") && section.contains("### Other notes (memory_read gives the text)"), "{section}");
+    assert!(section.contains("### Chief/Notes (version 1)") && section.contains("### Other notes (memory_read gives the text)"), "{section}");
     for path in ["Projects/Kade", "Clients/Acme", "Clients/Globex", "Projects/Globex portal"] {
         assert!(section.contains(&format!("- {path} (")), "the Team Lead sees every scope: {path} missing in {section}");
     }
-    assert_eq!(run.memory.iter().map(|g| g.path.as_str()).collect::<Vec<_>>(), ["Team Lead/Notes"]);
-    let n = memory::get(&r.st.db, &r.you, "Team Lead/Notes").unwrap();
+    assert_eq!(run.memory.iter().map(|g| g.path.as_str()).collect::<Vec<_>>(), ["Chief/Notes"]);
+    let n = memory::get(&r.st.db, &r.you, "Chief/Notes").unwrap();
     assert!(n.body_md.contains(&format!("- {} (KADE-1): Excel NL needs semicolons in a CSV.", today())), "the Team Lead's learned lines go to its notes: {}", n.body_md);
 }
 

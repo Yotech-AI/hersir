@@ -2,8 +2,8 @@
 //! kept notes in that CLI's own memory folder, `projects/<project folder>/memory/` in its account's folder
 //! (CLAUDE_CONFIG_DIR, else ~/.claude): a Markdown file per note and `MEMORY.md` as their index. Only agents on that
 //! account saw them, and Gizai didn't show them. When Gizai starts, each such file it hasn't imported yet becomes a note
-//! in the Team Lead's folder, `Team Lead/Imported/<project folder>/<file name>`, with where it came from in its
-//! properties, and `Team Lead/Notes` gets an open thread to sort them with the user. They start there so no agent gets
+//! in the Chief's folder, `Chief/Imported/<project folder>/<file name>`, with where it came from in its
+//! properties, and `Chief/Notes` gets an open thread to sort them with the user. They start there so no agent gets
 //! them before someone has read them. Only the folders of Gizai's own places come in (`places`): Claude Code keeps a
 //! folder per path it works in, so the others are the user's own sessions elsewhere; they are only counted. The files
 //! are only read, never changed. Gizai's own runs start Claude Code with that memory off (gizai-agents'
@@ -24,7 +24,7 @@ const KEY: &str = "claude_memory_imports";
 const INDEX: &str = "MEMORY.md";
 /// A file larger than this is no note: it is skipped.
 pub const MAX_BYTES: u64 = 200_000;
-/// The open thread lists at most this many characters in `Team Lead/Notes`; a longer list goes in a note of its own in
+/// The open thread lists at most this many characters in `Chief/Notes`; a longer list goes in a note of its own in
 /// the import folder, linked from the thread.
 pub const LIST_MAX: usize = 2_000;
 /// Claude Code cuts a folder name in `projects/` at this many characters, with a hash of the path after it.
@@ -61,7 +61,7 @@ pub struct LeftOut {
 pub struct Report {
     pub imported: Vec<Imported>,
     pub skipped: Vec<Skipped>,
-    /// The note the list went in, when it was too long for `Team Lead/Notes`.
+    /// The note the list went in, when it was too long for `Chief/Notes`.
     pub list: Option<String>,
     /// The folders of other paths, counted when something came in or was skipped (else the report is empty).
     pub left_out: LeftOut,
@@ -114,7 +114,7 @@ pub fn claude_dirs(db: &Db, home: &str, inherited: &dyn Fn(&str) -> Option<Strin
 
 /// Gizai's places, the folders it starts Claude Code in, whose folders in an account's `projects/` are imported: each
 /// project's linked folder; each card's worktree (`<data dir>/worktrees/<KEY>/<card>`, of every card, and every folder
-/// there now); the Team Lead's code copies (`<data dir>/code/<KEY>`, of every project, and every folder there now) and
+/// there now); the Chief's code copies (`<data dir>/code/<KEY>`, of every project, and every folder there now) and
 /// its own working folder (`<data dir>/lead`). Claude Code keeps the memory of a run in a card's worktree in the folder
 /// of the project's linked folder, the repository the worktree belongs to.
 pub fn places(db: &Db, data_dir: &Path) -> Result<Vec<PathBuf>> {
@@ -199,11 +199,11 @@ fn fold(name: &str) -> String {
 /// Imports the Markdown files in `projects/*/memory/` of each account folder in `dirs` that weren't imported yet, except
 /// `MEMORY.md` (Claude Code's index of them) and the folders below, from the folders of Gizai's `places` only: the
 /// other folders are counted, never read. Each file becomes a note
-/// `Team Lead/Imported/<project folder>/<file name>` (` (2)` and on when two share that path), written by the Team Lead
+/// `Chief/Imported/<project folder>/<file name>` (` (2)` and on when two share that path), written by the Chief
 /// (by `you_id` when there is none): its text as it was, with where it came from at the top of its properties. A file
 /// with a secret in it, or that is no note (not text, too big, unreadable), is skipped: listed by its path, never its
 /// text, and tried again once it changed. What was imported and skipped, and how many other folders were left out, goes
-/// in `Team Lead/Notes` as an open thread, dated `day`, to sort with `you`. `home` shows as `~`.
+/// in `Chief/Notes` as an open thread, dated `day`, to sort with `you`. `home` shows as `~`.
 pub fn import(db: &Db, dirs: &[PathBuf], places: &[PathBuf], home: &str, you_id: &str, you: &str, day: &str) -> Result<Report> {
     let mut done: BTreeMap<String, Done> = settings::get(db, KEY)?.unwrap_or_default();
     let names = place_names(places, home);
@@ -312,7 +312,7 @@ fn note_for(w: &Writer, who: &Who, f: &Found) -> Result<std::result::Result<(Str
     let body = with_source(text, &f.account, &f.project, &f.file);
     if let Some(what) = memory::secret_in(&body) {
         // A private key's example (-----BEGIN … PRIVATE KEY-----) is what the check looks for itself: the reason goes in
-        // Team Lead/Notes without it, else that line would look like a secret too.
+        // Chief/Notes without it, else that line would look like a secret too.
         let what = match what.split_once(" (") {
             Some((kind, _)) if memory::secret_in(&what).is_some() => kind.to_string(),
             _ => what,
@@ -420,7 +420,7 @@ fn yaml(v: &str) -> String {
     if plain { v } else { format!("'{}'", v.replace('\'', "''")) }
 }
 
-/// Adds what was imported and skipped to `Team Lead/Notes` (made from its template when it isn't there) as an open
+/// Adds what was imported and skipped to `Chief/Notes` (made from its template when it isn't there) as an open
 /// thread, with the agents whose own instructions still keep notes in Claude Code's memory folder. A list longer than
 /// `LIST_MAX` goes in a note of its own in the import folder, linked from the thread: its path.
 fn thread(w: &Writer, who: &Who, you: &str, day: &str, r: &Report) -> Result<Option<String>> {
@@ -434,7 +434,7 @@ fn thread(w: &Writer, who: &Who, you: &str, day: &str, r: &Report) -> Result<Opt
     }
     let folder = format!("{LEAD}/{IMPORTED}");
     // The notes by the folder they came from, each linked by its path after the import folder (a move rewrites it),
-    // then the files skipped, by their path and why. Team Lead/Notes keeps no secret either: a path that looks like one
+    // then the files skipped, by their path and why. Chief/Notes keeps no secret either: a path that looks like one
     // isn't written, and a reason that would make its line look like one is left out.
     let mut groups: Vec<(&str, Vec<String>)> = vec![];
     for i in &r.imported {
@@ -485,7 +485,7 @@ with folder \"{folder}\" lists them.", if n == 1 { "" } else { "s" })
     }
     if r.left_out.folders > 0 {
         text.push_str(&format!("\n  - Left out, not read: {} of other paths, with {}. Claude Code keeps a folder per path it works in, and \
-only those of Hersir's places come in: a project's linked folder, a card's worktree, the Team Lead's code copies and its working folder.",
+only those of Hersir's places come in: a project's linked folder, a card's worktree, the Chief's code copies and its working folder.",
             count(r.left_out.folders, "folder"), count(r.left_out.notes, "note")));
     }
     // Agents made before this keep their own copy of their instructions, which may still say to keep notes there.

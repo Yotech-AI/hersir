@@ -1,15 +1,18 @@
-# Installs GizAi's latest release with hersir.dev's own one lines, as someone reading docs/install.md does, into a
+# Installs Hersir's latest release with hersir.dev's own one lines, as someone reading docs/install.md does, into a
 # scratch folder, on Ubuntu 24.04, macOS (Apple silicon) and Windows:
 #   curl -fsSL https://hersir.dev/install.sh | sh     (on Ubuntu first with --check, then the packages it names)
 #   irm https://hersir.dev/install.ps1 | iex          (in Windows PowerShell 5.1)
-# It passes when the installed Gizai is the latest release on GitHub, then uninstalls it with the same line. It uses
-# nothing from the checkout. It runs when a release is published, every week, by hand, and on a pull request that
-# changes this file. It signs, releases and uploads nothing.
+# It passes when the installed Hersir is the latest release on GitHub, then uninstalls it with the same line. It uses
+# nothing from the checkout. The line checks the release's signature with Hersir's own keys and installs its
+# ready-made build (GA-252): it sets up no Rust or Node.js, and on macOS and Windows the installed Hersir must have no
+# mark of a download from the internet. It runs when scripts/sign-release.sh starts it, once a release's signature is
+# uploaded (GA-260), every week, by hand, and on a pull request that changes this file; not when a release is
+# published, which isn't signed yet then. It signs, releases and uploads nothing.
+# A release from 0.17.0 on installs the hersir names (hersir, hersir.exe, hersir-installed.txt); an older one, the
+# gizai names, and it reads its prefix from GIZAI_PREFIX only, so the prefix goes under both names (GA-248).
 name: One-line install
 
 on:
-  release:
-    types: [published]
   schedule:
     - cron: "17 5 * * 1" # Mondays, 05:17 UTC
   workflow_dispatch:
@@ -34,13 +37,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     steps:
-      # Node.js and Rust, which the install's check asks for.
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - uses: dtolnay/rust-toolchain@stable
-
       # What the line must install: the latest release, as GitHub's own CLI names it, with the job's token. In a step
       # of its own, so the token stays out of what the line runs.
       - name: The latest release
@@ -54,18 +50,22 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
       # The line asks GitHub's API for the latest release without a login, which allows 60 calls an hour, and the
-      # runners share them. So when it stops at "Finding GizAi's latest release" (Could not read the latest release),
+      # runners share them. So when it stops at "Finding Hersir's latest release" (Could not read the latest release),
       # it is tried again a minute later, at most 3 times; after that the job fails and says why.
       - name: The one line (Linux, macOS)
         if: runner.os != 'Windows'
         shell: bash
         env:
-          GIZAI_PREFIX: ${{ runner.temp }}/gizai
+          HERSIR_PREFIX: ${{ runner.temp }}/hersir
+          GIZAI_PREFIX: ${{ runner.temp }}/hersir
           XDG_DATA_HOME: ${{ runner.temp }}/share
           GIZAI_DATA_DIR: ${{ runner.temp }}/share/gizai
           LATEST: ${{ steps.latest.outputs.tag }}
         run: |
           fail() { echo "$*"; exit 1; }
+          # The command a release installs: hersir from 0.17.0 on, gizai before.
+          v="${LATEST#v}"; major="${v%%.*}"; minor="${v#*.}"; minor="${minor%%.*}"
+          if [ "$major" -gt 0 ] || [ "$minor" -ge 17 ]; then name=hersir; else name=gizai; fi
           line() {
             for try in 1 2 3 4; do
               printf '\n$ %s\n' "$1"
@@ -73,7 +73,7 @@ jobs:
               eval "$1" 2>&1 | tee "$RUNNER_TEMP/line.log" || status=$?
               if [ "$status" = 0 ] || ! grep -q "Could not read the latest release" "$RUNNER_TEMP/line.log"; then return "$status"; fi
               if [ "$try" = 4 ]; then
-                fail "The one line could not read GizAi's latest release from GitHub's API, also not after trying again 3 times, a minute apart. GitHub allows 60 calls an hour without a login, and the runners share them: run this again later."
+                fail "The one line could not read Hersir's latest release from GitHub's API, also not after trying again 3 times, a minute apart. GitHub allows 60 calls an hour without a login, and the runners share them: run this again later."
               fi
               echo "Could not read the latest release: trying again in a minute ($try of 3)."
               sleep 60
@@ -92,14 +92,20 @@ jobs:
             fi
           fi
 
-          line 'curl -fsSL https://hersir.dev/install.sh | sh' || fail "The one line didn't install GizAi."
+          line 'curl -fsSL https://hersir.dev/install.sh | sh' || fail "The one line didn't install Hersir."
 
-          installed="$("$GIZAI_PREFIX/bin/gizai" --version)" || fail "$GIZAI_PREFIX/bin/gizai --version failed: $installed"
+          installed="$("$HERSIR_PREFIX/bin/$name" --version)" || fail "$HERSIR_PREFIX/bin/$name --version failed: $installed"
           echo "The latest release: $LATEST. Installed: $installed."
-          [ "$installed" = "gizai ${LATEST#v}" ] || fail "The one line installed $installed, not the latest release, $LATEST."
+          [ "$installed" = "$name ${LATEST#v}" ] || fail "The one line installed $installed, not the latest release, $LATEST."
+          # macOS: nothing in Hersir.app has a quarantine mark, which Gatekeeper would stop it for.
+          if [ "$RUNNER_OS" = macOS ]; then
+            app="$HERSIR_PREFIX/lib/hersir/Hersir.app"
+            if xattr -r -l "$app" | grep com.apple.quarantine; then fail "$app has a quarantine mark."; fi
+          fi
 
-          line 'curl -fsSL https://hersir.dev/install.sh | sh -s -- --uninstall' || fail "The one line didn't uninstall GizAi."
-          for path in "$GIZAI_PREFIX/lib/gizai" "$GIZAI_PREFIX/bin/gizai" "$XDG_DATA_HOME/applications/gizai.desktop"; do
+          line 'curl -fsSL https://hersir.dev/install.sh | sh -s -- --uninstall' || fail "The one line didn't uninstall Hersir."
+          for path in "$HERSIR_PREFIX/lib/hersir" "$HERSIR_PREFIX/bin/hersir" "$XDG_DATA_HOME/applications/hersir.desktop" \
+            "$HERSIR_PREFIX/lib/gizai" "$HERSIR_PREFIX/bin/gizai" "$XDG_DATA_HOME/applications/gizai.desktop"; do
             if [ -e "$path" ] || [ -L "$path" ]; then fail "$path is still there after the uninstall."; fi
           done
 
@@ -109,11 +115,14 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         env:
-          GIZAI_PREFIX: ${{ runner.temp }}\gizai
-          GIZAI_DATA_DIR: ${{ runner.temp }}\gizai-data
+          HERSIR_PREFIX: ${{ runner.temp }}\hersir
+          GIZAI_PREFIX: ${{ runner.temp }}\hersir
+          GIZAI_DATA_DIR: ${{ runner.temp }}\hersir-data
           LOCALAPPDATA: ${{ runner.temp }}\localappdata
           LATEST: ${{ steps.latest.outputs.tag }}
         run: |
+          # The names a release installs: hersir from 0.17.0 on, gizai before.
+          $name = if ([version]($env:LATEST -replace '^v', '') -ge [version]'0.17.0') { 'hersir' } else { 'gizai' }
           function Invoke-Line([string]$Line) {
             $wrapper = "$env:RUNNER_TEMP\line.ps1"
             Set-Content -LiteralPath $wrapper -Value ($Line + '; "returned $LASTEXITCODE"')
@@ -125,7 +134,7 @@ jobs:
               if ($returned -eq 'returned 0') { return }
               if (-not ($out -match 'Could not read the latest release')) { Write-Host "The one line failed: it $returned."; exit 1 }
               if ($try -eq 4) {
-                Write-Host "The one line could not read GizAi's latest release from GitHub's API, also not after trying again 3 times, a minute apart. GitHub allows 60 calls an hour without a login, and the runners share them: run this again later."
+                Write-Host "The one line could not read Hersir's latest release from GitHub's API, also not after trying again 3 times, a minute apart. GitHub allows 60 calls an hour without a login, and the runners share them: run this again later."
                 exit 1
               }
               Write-Host "Could not read the latest release: trying again in a minute ($try of 3)."
@@ -135,13 +144,17 @@ jobs:
 
           Invoke-Line 'irm https://hersir.dev/install.ps1 | iex'
 
-          $marker = "$env:GIZAI_PREFIX\gizai-installed.txt"
+          $marker = "$env:HERSIR_PREFIX\$name-installed.txt"
           if (-not (Test-Path -LiteralPath $marker)) { "The one line installed nothing: $marker is missing."; exit 1 }
           $installed = Get-Content -LiteralPath $marker
           "The latest release: $env:LATEST. Installed: $installed."
-          if ("$installed" -ne "gizai $($env:LATEST -replace '^v', '')") { "The one line installed $installed, not the latest release, $env:LATEST."; exit 1 }
+          if ("$installed" -ne "$name $($env:LATEST -replace '^v', '')") { "The one line installed $installed, not the latest release, $env:LATEST."; exit 1 }
+          # No Zone.Identifier stream on the programs, which SmartScreen would stop them for.
+          foreach ($exe in @("$name.exe", "$name-mcp.exe")) {
+            if (Get-Item -LiteralPath "$env:HERSIR_PREFIX\$exe" -Stream 'Zone.Identifier' -ErrorAction SilentlyContinue) { "$exe has a Zone.Identifier stream."; exit 1 }
+          }
 
           Invoke-Line '& ([scriptblock]::Create((irm https://hersir.dev/install.ps1))) -Uninstall'
-          foreach ($file in @('gizai.exe', 'gizai-mcp.exe', 'gizai-installed.txt')) {
-            if (Test-Path -LiteralPath "$env:GIZAI_PREFIX\$file") { "$file is still there after the uninstall."; exit 1 }
+          foreach ($file in @('hersir.exe', 'hersir-mcp.exe', 'hersir-installed.txt', 'gizai.exe', 'gizai-mcp.exe', 'gizai-installed.txt')) {
+            if (Test-Path -LiteralPath "$env:HERSIR_PREFIX\$file") { "$file is still there after the uninstall."; exit 1 }
           }

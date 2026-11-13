@@ -1,7 +1,8 @@
 // GA-232: the name from the backend. Every text the Rust side shows a person or an agent says Hersir, never Gizai or
 // GizAi: notifications, the tray, messages, errors and dialogs, the prompts, the role templates and the tools'
-// descriptions. What a text keeps is a code name (GIZAI_RESULT, the MCP server gizai, gizai/ branches, .gizai-tmp, the
-// backup and team template formats, the data folders). GA-233 renamed the app bundle and the window title to Hersir.
+// descriptions. What a text keeps is a code name (GIZAI_RESULT, the MCP server gizai, .gizai-tmp, the backup format, the
+// old data folders). GA-233 renamed the app bundle and the window title to Hersir. GA-249 gave the data folder, the
+// keychain service, new cards' branches and the team template format their hersir names, each still reading the gizai one.
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -78,12 +79,13 @@ describe("the name in the backend's texts (GA-232)", () => {
     expect(lib).toContain('MenuItem::with_id(app, "quit", "Quit Hersir completely", true, None::<&str>)');
     expect(lib).toContain('.tooltip("Hersir")');
     expect(lib).toContain('TrayIconBuilder::with_id("gizai")');
-    expect(lib).toContain('pub const APP_ID: &str = "ai.gizai.app";');
+    // GA-248: the app id is dev.hersir.app, and the notifications use install.sh's hersir icon and desktop entry
+    expect(lib).toContain('pub const APP_ID: &str = "dev.hersir.app";');
     const notes = read("src-tauri/src/notifications.rs");
     expect(notes.match(/appname\("Hersir"\)/g)).toHaveLength(2);
     expect(notes).not.toContain('appname("Gizai")');
-    expect(notes).toContain('.icon("gizai")');
-    expect(notes).toContain('Hint::DesktopEntry("gizai".into())');
+    expect(notes).toContain('.icon("hersir")');
+    expect(notes).toContain('Hint::DesktopEntry("hersir".into())');
   });
 
   it("with GA-233 in, the app bundle and the window title say Hersir too, and the gizai program stays", () => {
@@ -93,15 +95,31 @@ describe("the name in the backend's texts (GA-232)", () => {
     expect(read("crates/gizai-agents/src/update.rs")).toContain("Hersir asks GitHub for new releases with it.");
   });
 
-  it("the code names stay: GIZAI_RESULT, the MCP server gizai, gizai/ branches, .gizai-tmp and the backup and team template formats", () => {
+  it("the code names stay: GIZAI_RESULT, the MCP server gizai, .gizai-tmp and the backup format; GA-249's are hersir with the gizai one still read", () => {
     expect(read("crates/gizai-agents/src/outcome.rs")).toContain('.find(|l| l.starts_with("GIZAI_RESULT:"))');
     expect(read("crates/gizai-core/src/mcp_servers.rs")).toContain('pub const TAKEN: [&str; 2] = ["gizai", "chrome-devtools"];');
     expect(read("crates/gizai-agents/src/worktree.rs")).toContain('pub const TEMP_DIR: &str = ".gizai-tmp";');
     expect(read("crates/gizai-core/src/backups.rs")).toContain('pub const MARKER: &str = "gizai-backups.json";');
     expect(read("crates/gizai-core/src/backups.rs")).toContain('pub const FOLDER_NAME: &str = "Hersir backups";');
     expect(read("crates/gizai-core/src/backups.rs")).toContain('pub const OLD_FOLDER_NAME: &str = "Gizai backups";');
+    // GA-249: the team template format and file name are hersir's, and a gizai-team file is still read
     const templates = read("crates/gizai-core/src/templates.rs");
-    expect(templates).toContain('pub const FORMAT: &str = "gizai-team";');
-    expect(templates).toContain('pub const FILE_SUFFIX: &str = ".gizai-team.json";');
+    expect(templates).toContain('pub const FORMAT: &str = "hersir-team";');
+    expect(templates).toContain('pub const OLD_FORMAT: &str = "gizai-team";');
+    expect(templates).toContain('pub const FILE_SUFFIX: &str = ".hersir-team.json";');
+    expect(templates).toContain('pub const OLD_FILE_SUFFIX: &str = ".gizai-team.json";');
+    expect(templates).toContain("f == FORMAT || f == OLD_FORMAT");
+    // the keychain service is hersir, with gizai behind it
+    const secrets = read("crates/gizai-agents/src/secrets.rs");
+    expect(secrets).toContain('pub const SERVICE: &str = "hersir";');
+    expect(secrets).toContain('pub const OLD_SERVICE: &str = "gizai";');
+    // a new card's branch is hersir/; a card keeps the one it has (worktree::card_branch)
+    const worktree = read("crates/gizai-agents/src/worktree.rs");
+    expect(worktree).toContain('format!("hersir/{}-{s}", identifier.to_lowercase())');
+    expect(worktree).not.toMatch(/format!\("gizai\//);
+    // the files inside the data folder keep their names
+    const lib = read("src-tauri/src/lib.rs");
+    expect(lib).toContain('old.join("gizai.db")');
+    expect(lib).toMatch(/"gizai\.lock"/);
   });
 });

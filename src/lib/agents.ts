@@ -23,6 +23,18 @@ export function parseTools(text: string): string[] {
   return text.split("\n").map((t) => t.trim()).filter(Boolean);
 }
 
+/** GA-262: an allowed command is one rule: a tool name (letters, digits, `_` and `-`), optionally followed by one `( … )`
+ * with no `(`, `)` or `,` inside, and nothing after it (`one_rule` in crates/gizai-core/src/team.rs, which refuses the
+ * rest on save). Claude Code would read `Bash(ls:*) Bash(*)` as two rules, the second any command. */
+export function oneRule(entry: string): boolean {
+  return /^[A-Za-z0-9_-]+(\([^(),]*\))?$/.test(entry.trim());
+}
+
+/** Why an allowed command that isn't one rule is refused on save and left out of runs (`not_one_rule` in team.rs). */
+export function notOneRule(entry: string): string {
+  return `${entry.trim()} isn't one rule: write each command as its own entry, like Bash(npm test:*).`;
+}
+
 type RuleLike = { kind: string; matchLabelId?: string | null; matchStateId?: string | null; targetRole?: string | null };
 type TeamLike = { labels: { id: string; name: string }[]; states: { id: string; name: string }[] };
 
@@ -35,7 +47,7 @@ export function ruleSentence(r: RuleLike, team: TeamLike): string {
 /** The roles the agent form offers (any other key is allowed via "Other"). */
 export const ROLES = ["lead", "frontend", "backend", "design", "qa", "devops"];
 
-const ROLE_LABELS: Record<string, string> = { lead: "Team Lead", qa: "QA", devops: "DevOps" };
+const ROLE_LABELS: Record<string, string> = { lead: "Chief", qa: "QA", devops: "DevOps" };
 export function roleLabel(role: string): string {
   return ROLE_LABELS[role] ?? (role ? role[0].toUpperCase() + role.slice(1) : role);
 }
@@ -78,7 +90,8 @@ export function draftFrom(m?: Member | null, preset?: AgentPreset): AgentDraft {
     effort: m?.effort ?? "", maxRuns: String(m?.maxRuns ?? 1), cli: m?.adapter || "claude_code",
     boardCheck: !!m?.boardCheckMinutes, boardMinutes: String(m?.boardCheckMinutes ?? 15),
     folders: (m?.folders ?? []).map((f) => ({ path: f.path, access: f.access })),
-    mcp: (m?.tools?.mcp ?? []).map((s) => ({ serverId: s.serverId, on: s.on, toolsOff: [...s.toolsOff] })),
+    // GA-271: a server's Allow (the browser's too) comes back with the form, so Ask again is a change to save.
+    mcp: (m?.tools?.mcp ?? []).map((s) => ({ serverId: s.serverId, on: s.on, toolsOff: [...s.toolsOff], ...(s.trusted ? { trusted: true } : {}) })),
     cliTools: cliToolsFrom(m?.cliTools),
     memory: m?.useMemory !== false,
     memoryWith: m?.sharesMemoryWith ?? "",

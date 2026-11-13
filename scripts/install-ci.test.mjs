@@ -20,10 +20,13 @@ afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
 const read = (path) => readFileSync(join(ROOT, path), "utf8");
 
-// The script of a workflow's step, by its name: the block under its "run: |", without its indent.
-function stepRun(workflow, name) {
+// The script of a workflow's step, by its name: the block under its "run: |", without its indent. With job, that job's
+// step of that name (install.yml's build, install and update jobs each have a package step, GA-252).
+function stepRun(workflow, name, job) {
   const lines = read(workflow).split("\n");
-  const at = lines.findIndex((l) => l.trim() === `- name: ${name}`);
+  const from = job ? lines.indexOf(`  ${job}:`) : 0;
+  if (from < 0) throw new Error(`${workflow} has no job ${job}`);
+  const at = lines.findIndex((l, i) => i > from && l.trim() === `- name: ${name}`);
   if (at < 0) throw new Error(`${workflow} has no step named ${name}`);
   const keys = " ".repeat(lines[at].indexOf("-") + 2);
   let i = at + 1;
@@ -84,17 +87,18 @@ function runStep(script, dir, env) {
 }
 
 // install.sh from where it reads /etc/os-release to where it prints the package line, with that os-release file
-// instead: the check as it prints on a system missing WebKitGTK, then exit 1, as install.sh --check does.
-function checkPrinting(osRelease) {
+// instead: the check as it prints on a system missing WebKitGTK, then exit 1, as install.sh --check does. With
+// skipBuild, as install.sh --check --skip-build prints it, the line to run a ready-made build (GA-252).
+function checkPrinting(osRelease, skipBuild = false) {
   const lines = read("install.sh").split("\n");
   const from = lines.indexOf('distro=""');
-  const to = lines.indexOf('  say "  $(deps_command)"');
+  const to = lines.indexOf('  if [ "$SKIP_BUILD" = 1 ]; then say "  $(run_deps_command)"; else say "  $(deps_command)"; fi');
   expect(from).toBeGreaterThan(0);
   expect(lines[to + 1]).toBe("fi");
   return [
     "#!/usr/bin/env bash",
     lines.find((l) => l.startsWith("say() {")),
-    "missing_cmds=() missing_libs=(webkit2gtk-4.1)",
+    `SKIP_BUILD=${skipBuild ? 1 : 0} missing_cmds=() missing_libs=(webkit2gtk-4.1)`,
     ...lines.slice(from, to + 2).map((l) => l.replaceAll("/etc/os-release", osRelease)),
     "exit 1",
     "",
@@ -150,18 +154,19 @@ const SYSTEMS = [
   },
 ];
 
-// A folder with install.sh's check for this system and the stand-ins, for Install's package step.
-function packageStep({ system, osRelease, uid }) {
+// A folder with install.sh's check for this system and the stand-ins, for Install's package step. With skipBuild, the
+// check as install.sh --check --skip-build prints it.
+function packageStep({ system, osRelease, uid }, skipBuild = false) {
   const dir = mkdtempSync(join(scratch, `${system.replace("/", "-")}-`));
   writeFileSync(join(dir, "os-release"), osRelease);
-  writeFileSync(join(dir, "install.sh"), checkPrinting(join(dir, "os-release")));
+  writeFileSync(join(dir, "install.sh"), checkPrinting(join(dir, "os-release"), skipBuild));
   for (const name of ["sudo", "apt", "apt-get", "dnf", "pacman", "zypper"]) tool(join(dir, "bin"), name, RECORDS);
   tool(join(dir, "bin"), "id", `#!/bin/sh\nif [ "$1" = -u ]; then echo ${uid}; else exec /usr/bin/id "$@"; fi\n`);
   return dir;
 }
 
 describe.runIf(linux)("install.yml: the system packages, as install.sh --check names them", () => {
-  const script = stepRun(".github/workflows/install.yml", PACKAGES);
+  const script = stepRun(".github/workflows/install.yml", PACKAGES, "install");
 
   it("is a script with no expressions in it, so what runs here is what runs in CI", () => {
     expect(script).toContain("bash ./install.sh --check");
@@ -199,6 +204,93 @@ describe.runIf(linux)("install.yml: the system packages, as install.sh --check n
   });
 });
 
+// GA-252: before the build, each install job installs only what a ready-made build needs to run, with the line
+// install.sh --check --skip-build prints for that system (run_deps_command): no compiler, no -dev packages.
+const RUN_PACKAGES = "System packages to run Hersir, as install.sh --check --skip-build names them";
+const RUN_LINES = {
+  "ubuntu-24.04": {
+    printed: "sudo apt install libwebkit2gtk-4.1-0 libayatana-appindicator3-1 git openssh-client",
+    ran: ["sudo [apt] [install] [-y] [libwebkit2gtk-4.1-0] [libayatana-appindicator3-1] [git] [openssh-client]"],
+  },
+  fedora: {
+    printed: "sudo dnf install webkit2gtk4.1 libappindicator-gtk3 git openssh-clients",
+    ran: ["dnf [install] [-y] [webkit2gtk4.1] [libappindicator-gtk3] [git] [openssh-clients]"],
+  },
+  archlinux: {
+    printed: "sudo pacman -S --needed webkit2gtk-4.1 libayatana-appindicator git openssh",
+    ran: ["pacman [-S] [--noconfirm] [--needed] [webkit2gtk-4.1] [libayatana-appindicator] [git] [openssh]"],
+  },
+  "opensuse/tumbleweed": {
+    printed: "sudo zypper in libwebkit2gtk-4_1-0 libappindicator3-1 git openssh-clients",
+    ran: ["zypper [-n] [in] [libwebkit2gtk-4_1-0] [libappindicator3-1] [git] [openssh-clients]"],
+  },
+};
+
+describe.runIf(linux)("install.yml: the packages to run a ready-made build, as install.sh --check --skip-build names them (GA-252)", () => {
+  const script = stepRun(".github/workflows/install.yml", RUN_PACKAGES, "install");
+
+  it("is a script with no expressions in it, and runs install.sh --check --skip-build", () => {
+    expect(script).toContain("bash ./install.sh --check --skip-build");
+    expect(script).not.toContain("${{");
+  });
+
+  it.each(SYSTEMS)("on $system runs exactly the printed line to run Hersir, made non-interactive", (s) => {
+    const r = runStep(script, packageStep(s, true), {});
+    expect(r.status, r.out).toBe(0);
+    expect(r.out).toContain(`Install them with:\n  ${RUN_LINES[s.system].printed}\n`);
+    expect(r.out).toContain(`install.sh --check --skip-build says: ${RUN_LINES[s.system].printed}\n`);
+    expect(r.ran).toEqual(RUN_LINES[s.system].ran);
+  });
+
+  it("names no compiler, Rust, Node.js or development package", () => {
+    for (const { printed } of Object.values(RUN_LINES)) {
+      expect(printed).not.toMatch(/-dev\b|-devel\b|build-essential|base-devel|devel_basis|c-development|pkg-config|rust|node/);
+      expect(printed).toMatch(/openssh/);
+    }
+  });
+
+  it("fails, and says so, when the printed line fails or names nothing", () => {
+    const failed = runStep(script, packageStep(SYSTEMS[1], true), { FAIL_DNF: "1" });
+    expect(failed.status).toBe(1);
+    expect(failed.out).toContain("The package line install.sh --check --skip-build prints failed.");
+    const dir = packageStep(SYSTEMS[0], true);
+    writeFileSync(join(dir, "install.sh"), '#!/bin/sh\necho "Everything Hersir needs to run is here."\n');
+    const none = runStep(script, dir, {});
+    expect(none.status).toBe(1);
+    expect(none.out).toContain("install.sh --check --skip-build named no system packages to install.");
+  });
+
+  it("comes before Node.js, Rust and the build's packages, and the ready-made install before them too", () => {
+    const names = jobSteps(".github/workflows/install.yml", "install").map((s) => s.name);
+    const run = names.indexOf(RUN_PACKAGES);
+    const line = names.indexOf("The one line with the ready-made build (get.sh)");
+    const lineWindows = names.indexOf("The one line with the ready-made build (get.ps1)");
+    for (const later of ["actions/setup-node@v4", "dtolnay/rust-toolchain@stable", PACKAGES]) {
+      expect(names.indexOf(later)).toBeGreaterThan(Math.max(run, line, lineWindows));
+    }
+    expect(Math.min(run, line, lineWindows)).toBeGreaterThan(0);
+  });
+});
+
+describe("install.yml: the ready-made builds, packed as Release builds packs them (GA-252)", () => {
+  it.runIf(unix)("the build job installs its build packages with Release builds' own step", () => {
+    expect(stepRun(".github/workflows/install.yml", PACKAGES, "build")).toBe(
+      stepRun(".github/workflows/release-builds.yml", PACKAGES),
+    );
+  });
+
+  it("packs exactly the files --skip-build installs, and signs only with a throwaway key made in the job", () => {
+    const text = read(".github/workflows/install.yml");
+    expect(text).toContain("target/release/hersir target/release/hersir-mcp target/release/bundle/macos/Hersir.app");
+    expect(text).toContain("foreach ($p in @('hersir.exe', 'hersir-mcp.exe'))");
+    expect(text).toContain("ssh-keygen -q -t ed25519 -N '' -C 'Install test release key' -f \"$keys/test\"");
+    expect(text).toContain('rm -rf "$keys"');
+    // nothing reads a secret, and the release keys never come into it
+    expect(text).not.toMatch(/secrets\./);
+    expect(text).not.toContain(read("release-signers").split("\n")[0].split(" ")[3]);
+  });
+});
+
 describe("install.yml: when it runs, and a version bump", () => {
   const on = read(".github/workflows/install.yml").split("\njobs:")[0];
 
@@ -231,11 +323,15 @@ describe("install.yml: when it runs, and a version bump", () => {
   });
 });
 
-// install.yml's matrix: each system's keys, as written under its "- system:".
+// install.yml's install job's matrix: each system's keys, as written under its "- system:". (The build job has a
+// matrix of its own, the three ready-made builds, GA-252.)
 function matrix() {
   const systems = {};
   let at;
-  for (const line of read(".github/workflows/install.yml").split("\n")) {
+  const lines = read(".github/workflows/install.yml").split("\n");
+  const start = lines.indexOf("  install:");
+  const end = lines.findIndex((l, i) => i > start && /^ {2}\S/.test(l));
+  for (const line of lines.slice(start, end < 0 ? lines.length : end)) {
     const system = line.match(/^ {10}- system: (.+)$/);
     if (system) systems[(at = system[1])] = {};
     else if (at && /^ {12}\w+: /.test(line)) {
@@ -251,9 +347,10 @@ describe("install.yml: what a container gets before the package line", () => {
     const m = matrix();
     expect(Object.keys(m)).toEqual(["ubuntu-24.04", "fedora", "archlinux", "opensuse/tumbleweed", "macos-15", "windows-latest"]);
     expect(m["ubuntu-24.04"].start).toBeUndefined();
-    expect(m.fedora.start).toBe("dnf -y install --allowerasing git curl bash");
-    expect(m.archlinux.start).toBe("pacman -S --needed --noconfirm git curl bash");
-    expect(m["opensuse/tumbleweed"].start).toBe("zypper -n install git curl bash gawk");
+    // and OpenSSH's client, for ssh-keygen, with tar and gzip, to check and unpack a ready-made build (GA-252)
+    expect(m.fedora.start).toBe("dnf -y install --allowerasing git curl bash openssh-clients tar gzip");
+    expect(m.archlinux.start).toBe("pacman -S --needed --noconfirm git curl bash openssh tar gzip");
+    expect(m["opensuse/tumbleweed"].start).toBe("zypper -n install git curl bash gawk openssh-clients tar gzip");
     // the refresh only refreshes (or, on a rolling system, upgrades): it names no package
     expect(m["ubuntu-24.04"].refresh).toBe("sudo apt-get update");
     expect(m.fedora.refresh).toBe("dnf -y makecache");
@@ -294,7 +391,9 @@ const LINE = "The one line (Linux, macOS)";
 const FAKE_GET = `#!/bin/sh
 n=$(( $(cat "$RUNNER_TEMP/runs" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$RUNNER_TEMP/runs"
 echo "get.sh\${1:+ $1}" >> "$RAN"
-echo "== Finding GizAi's latest release"
+# a release from 0.17.0 on installs the hersir names and reads HERSIR_PREFIX first (GA-248); an older one, gizai and GIZAI_PREFIX
+case "$FAKE_VERSION" in 0.1[7-9].*|0.[2-9][0-9].*|[1-9]*) name=hersir P="\${HERSIR_PREFIX:-$GIZAI_PREFIX}" ;; *) name=gizai P="$GIZAI_PREFIX" ;; esac
+echo "== Finding Hersir's latest release"
 if [ "$n" -le "\${FAKE_API_FAILS:-0}" ]; then
   echo "Could not read the latest release from https://api.github.com/repos/Yotech-AI/hersir/releases/latest. Check your internet connection, then run this again."
   exit 1
@@ -306,13 +405,13 @@ case "$1" in
     echo "  sudo apt install libwebkit2gtk-4.1-dev build-essential"
     exit 1 ;;
   --uninstall)
-    rm -rf "$GIZAI_PREFIX/lib/gizai" "$GIZAI_PREFIX/bin/gizai" "$XDG_DATA_HOME/applications/gizai.desktop" ;;
+    rm -rf "$P/lib/$name" "$P/bin/$name" "$XDG_DATA_HOME/applications/$name.desktop" ;;
   *)
     if [ -n "\${FAKE_FAIL:-}" ]; then echo "$FAKE_FAIL"; exit 1; fi
-    mkdir -p "$GIZAI_PREFIX/lib/gizai" "$GIZAI_PREFIX/bin" "$XDG_DATA_HOME/applications"
-    printf '#!/bin/sh\\necho "gizai %s"\\n' "$FAKE_VERSION" > "$GIZAI_PREFIX/bin/gizai"
-    chmod +x "$GIZAI_PREFIX/bin/gizai"
-    echo "Exec=$GIZAI_PREFIX/lib/gizai/gizai-launch" > "$XDG_DATA_HOME/applications/gizai.desktop" ;;
+    mkdir -p "$P/lib/$name" "$P/bin" "$XDG_DATA_HOME/applications"
+    printf '#!/bin/sh\\necho "%s %s"\\n' "$name" "$FAKE_VERSION" > "$P/bin/$name"
+    chmod +x "$P/bin/$name"
+    echo "Exec=$P/lib/$name/$name-launch" > "$XDG_DATA_HOME/applications/$name.desktop" ;;
 esac
 `;
 
@@ -325,7 +424,9 @@ function oneLine(env) {
   const r = runStep(stepRun(".github/workflows/one-line.yml", LINE), dir, {
     RUNNER_OS: "macOS",
     RUNNER_TEMP: dir,
-    GIZAI_PREFIX: join(dir, "gizai"),
+    // the step's env gives the prefix under both names (GA-248)
+    HERSIR_PREFIX: join(dir, "hersir"),
+    GIZAI_PREFIX: join(dir, "hersir"),
     XDG_DATA_HOME: join(dir, "share"),
     GIZAI_DATA_DIR: join(dir, "share", "gizai"),
     LATEST: "v0.13.0",
@@ -353,8 +454,19 @@ describe.runIf(unix)("one-line.yml: hersir.dev's line on Linux and macOS", () =>
       "curl -fsSL https://hersir.dev/install.sh",
       "get.sh --uninstall",
     ]);
-    expect(existsSync(join(r.dir, "gizai", "bin", "gizai"))).toBe(false);
-    expect(existsSync(join(r.dir, "gizai", "lib", "gizai"))).toBe(false);
+    expect(existsSync(join(r.dir, "hersir", "bin", "gizai"))).toBe(false);
+    expect(existsSync(join(r.dir, "hersir", "lib", "gizai"))).toBe(false);
+  });
+
+  it("from 0.17.0 on, checks the hersir command a release installs, and its uninstall (GA-248)", () => {
+    const r = oneLine({ LATEST: "v0.17.0", FAKE_VERSION: "0.17.0" });
+    expect(r.status, r.out).toBe(0);
+    expect(r.out).toContain("The latest release: v0.17.0. Installed: hersir 0.17.0.");
+    expect(existsSync(join(r.dir, "hersir", "bin", "hersir"))).toBe(false);
+    expect(existsSync(join(r.dir, "hersir", "lib", "hersir"))).toBe(false);
+    const wrong = oneLine({ LATEST: "v1.0.0", FAKE_VERSION: "0.17.0" });
+    expect(wrong.status).toBe(1);
+    expect(wrong.out).toContain("The one line installed hersir 0.17.0, not the latest release, v1.0.0.");
   });
 
   it.runIf(linux)("on Ubuntu runs the check first, then the packages it names with apt -y, then the line", () => {
@@ -384,7 +496,7 @@ describe.runIf(unix)("one-line.yml: hersir.dev's line on Linux and macOS", () =>
     expect(r.ran.filter((l) => l.startsWith("sleep"))).toHaveLength(3);
     expect(r.out).not.toContain("(4 of 3)");
     expect(r.out.trimEnd().split("\n").at(-1)).toBe(
-      "The one line could not read GizAi's latest release from GitHub's API, also not after trying again 3 times, a minute apart. GitHub allows 60 calls an hour without a login, and the runners share them: run this again later.",
+      "The one line could not read Hersir's latest release from GitHub's API, also not after trying again 3 times, a minute apart. GitHub allows 60 calls an hour without a login, and the runners share them: run this again later.",
     );
   });
 
@@ -393,7 +505,7 @@ describe.runIf(unix)("one-line.yml: hersir.dev's line on Linux and macOS", () =>
     expect(r.status).toBe(1);
     expect(r.ran.filter((l) => l.startsWith("sleep"))).toEqual([]);
     expect(r.ran.filter((l) => l.startsWith("get.sh"))).toEqual(["get.sh"]);
-    expect(r.out).toContain("The one line didn't install GizAi.");
+    expect(r.out).toContain("The one line didn't install Hersir.");
   });
 
   it("fails when what it installed isn't the latest release", () => {
@@ -408,12 +520,25 @@ describe("one-line.yml: when it runs", () => {
   const text = read(".github/workflows/one-line.yml");
   const on = text.split("\njobs:")[0];
 
-  it('is "One-line install", on a published release, weekly, by hand, and on a pull request that changes it', () => {
+  // GA-252: the one line installs only a signed release, so it runs once sign-release.sh has uploaded the signature
+  // and starts it, not when the release is published, which isn't signed yet then.
+  it('is "One-line install", when sign-release.sh starts it, weekly, by hand, and on a pull request that changes it', () => {
     expect(text).toMatch(/^name: One-line install$/m);
-    expect(on).toContain("  release:\n    types: [published]\n");
+    expect(on).not.toContain("  release:");
     expect(on).toMatch(/ {2}schedule:\n {4}- cron: "\d+ \d+ \* \* \d"/);
     expect(on).toContain("  workflow_dispatch:\n");
     expect(on).toContain("  pull_request:\n    paths:\n      - .github/workflows/one-line.yml\n");
+    expect(read("scripts/sign-release.sh")).toMatch(/^github workflow run one-line\.yml --repo "\$REPO" \|\|$/m);
+  });
+
+  it("sets up no Rust or Node.js, so the line must install the ready-made build", () => {
+    expect(text).not.toContain("actions/setup-node");
+    expect(text).not.toContain("rust-toolchain");
+  });
+
+  it("checks that the installed Hersir has no mark of a download: no quarantine on macOS, no Zone.Identifier on Windows", () => {
+    expect(text).toContain('if xattr -r -l "$app" | grep com.apple.quarantine; then fail "$app has a quarantine mark."; fi');
+    expect(text).toContain("-Stream 'Zone.Identifier'");
   });
 
   it("runs on ubuntu-24.04, macos-15 and windows-latest, with nothing from the checkout", () => {
@@ -453,7 +578,9 @@ describe("the runners: macos-15, as GitHub retired the image before it", () => {
       expect(versions(text).every((v) => v === "15"), workflow).toBe(true);
       expect(text, workflow).not.toContain("macos-latest");
     }
-    expect(workflows.flatMap((w) => versions(read(w)))).toHaveLength(4);
+    // ci.yml's matrix, one-line.yml's, and install.yml's three jobs (the ready-made build, GA-252; install; and the
+    // update from 0.16.0, GA-248), the last two each with its system and runner
+    expect(workflows.flatMap((w) => versions(read(w)))).toHaveLength(7);
   });
 
   it("RELEASING.md names the checks as the workflows make them", () => {

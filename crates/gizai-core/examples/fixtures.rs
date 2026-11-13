@@ -1,6 +1,6 @@
 //! The fixtures of the browser mode (GA-185): GizAi's screens in a plain browser, answered by a fake backend (Tauri's
 //! mockIPC, `src/browser/`), from the demo data and what this adds to it:
-//! - the Team Lead, Frontend Agent, Backend Agent and QA Agent; the Frontend and QA Agents have the hidden browser and
+//! - the Chief, Frontend Agent, Backend Agent and QA Agent; the Frontend and QA Agents have the hidden browser and
 //!   Take screenshots on, the Backend Agent neither;
 //! - Groene Fiets webshop linked to GitHub, with a Preview command and the default screenshot sizes; Kade portal has no
 //!   Preview command;
@@ -350,11 +350,11 @@ fn main() {
             name: name.into(), role_key: role.into(), instructions_md: Some(seed::role_template(role)), allowed_tools: seed::role_tools(role),
             permission_mode: "acceptEdits".into(), chat_enabled: (role == "lead").then_some(true), max_runs: Some(1), ..Default::default()
         }).unwrap();
-        (add("Team Lead", "lead"), add("Frontend Agent", "frontend"), add("Backend Agent", "backend"), add("QA Agent", "qa"))
+        (add("Chief", "lead"), add("Frontend Agent", "frontend"), add("Backend Agent", "backend"), add("QA Agent", "qa"))
     });
     at(&db, now - 4 * DAY - HOUR, || {
         for a in [&fe, &qa] {
-            mcp_servers::set_agent_tools(&db, &you, a, AgentTools { mcp: vec![AgentServer { server_id: mcp_servers::BROWSER.into(), on: true, tools_off: vec![] }] })
+            mcp_servers::set_agent_tools(&db, &you, a, AgentTools { mcp: vec![AgentServer { server_id: mcp_servers::BROWSER.into(), on: true, tools_off: vec![], trusted: false }] })
                 .unwrap();
             mcp_servers::set_agent_screenshots(&db, &you, a, true).unwrap();
         }
@@ -556,7 +556,7 @@ fn main() {
     let num = |key: &str, default: u64| settings::get::<u64>(&db, key).ok().flatten().unwrap_or(default);
     c.insert("get_settings".into(), json!({
         "claudeBin": settings::get::<String>(&db, "claude_bin").ok().flatten(), "dataDir": DATA, "maxConcurrentRuns": num("max_concurrent_runs", 3),
-        "runsMemoryGb": 16, "computerMemoryGb": 32, "runsMemoryEnforced": true,
+        "runsMemoryGb": 16, "runsMemoryPerRunGb": 8, "runsMemoryPerRunShownGb": 8, "computerMemoryGb": 32, "runsMemoryEnforced": true,
         "agentsPaused": settings::get::<bool>(&db, "agents_paused").ok().flatten().unwrap_or(false),
         "maxRunUsd": settings::get::<f64>(&db, "max_run_usd").ok().flatten(), "maxRunMinutes": num("max_run_minutes", 90),
         "maxRunToolCalls": num("max_run_tool_calls", 200), "maxChatMinutes": num("max_chat_minutes", 15), "maxChatToolCalls": num("max_chat_tool_calls", 60),
@@ -572,7 +572,7 @@ fn main() {
         "latest": {"version": env!("CARGO_PKG_VERSION"), "tag": format!("v{}", env!("CARGO_PKG_VERSION")), "name": format!("Gizai {}", env!("CARGO_PKG_VERSION")),
                    "url": format!("https://github.com/Yotech-AI/hersir/releases/tag/v{}", env!("CARGO_PKG_VERSION")), "publishedAt": null, "notes": null},
         "problem": null, "available": null, "installed": null, "installTo": "/home/you/.local", "cannotInstall": null, "job": null,
-        "repo": "https://github.com/Yotech-AI/hersir.git"}));
+        "package": null, "updateCommand": null, "repo": "https://github.com/Yotech-AI/hersir.git"}));
     // Settings → General → Backups (contract BK, gizai-core's backups types): a folder in Dropbox, daily, Keep 10, and three
     // snapshots there, newest first: this computer's daily one and Back up now's, and another computer's, made by a newer
     // Hersir, so it can't be restored here.
@@ -684,7 +684,7 @@ fn main() {
     std::fs::write(out, serde_json::to_string_pretty(&file).unwrap() + "\n").unwrap();
     let ident = |id: &str| tasks::get(&db, id).unwrap().identifier;
     println!("fixtures written to {}", out.display());
-    println!("Frontend Agent {fe}\nBackend Agent {be}\nQA Agent {qa}\nTeam Lead {lead}");
+    println!("Frontend Agent {fe}\nBackend Agent {be}\nQA Agent {qa}\nChief {lead}");
     for (id, what) in [(&gfw2, "Review, six runs with the Screenshots section, PR #41"), (&kade2, "Testing, one set of 2"),
                        (&kade3, "Review, PR #17, no screenshots"), (&kade1, "no preview: Kade portal has no Preview command"),
                        (&gfw1, "the Backend Agent's: no browser"), (&gfw3, "its own Screenshots switch off"), (&gfw5, "To do, the Frontend Agent's, no run yet")] {

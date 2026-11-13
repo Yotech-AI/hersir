@@ -1,6 +1,6 @@
-//! Prepares a copy of the demo data for the UI graph test (GA-69): a paused Team Lead and Backend Agent (agents paused in
+//! Prepares a copy of the demo data for the UI graph test (GA-69): a paused Chief and Backend Agent (agents paused in
 //! Settings too, Claude Code pointed at the fake) and 500 notes. 480 are "Note 0" to "Note 479" spread over the shared
-//! folders and the Team Lead's; each links two or three others, every twelfth links Note 0 (a hub), every fortieth a note
+//! folders and the Chief's; each links two or three others, every twelfth links Note 0 (a hub), every fortieth a note
 //! that doesn't exist yet ("Missing <n>"), every tenth names KADE-1, every 25th mentions the Backend Agent and every
 //! eighth has a #topic tag. The other 20 are "Agent note 0" to "Agent note 19" in the Backend Agent's own folder: each
 //! links the next, names KADE-2 (never KADE-1) and links "Not here <n>", which doesn't exist.
@@ -9,7 +9,7 @@
 use gizai_core::memory::{self, Who};
 use gizai_core::{db::Db, model::*, seed::ensure_seed, settings, team};
 
-const FOLDERS: [&str; 9] = ["Decisions", "Workflows", "Standards", "Lessons", "Clients", "Projects", "Deployments", "Dependencies", "Team Lead"];
+const FOLDERS: [&str; 9] = ["Decisions", "Workflows", "Standards", "Lessons", "Clients", "Projects", "Deployments", "Dependencies", memory::LEAD];
 
 fn main() {
     let a: Vec<String> = std::env::args().collect();
@@ -23,7 +23,7 @@ fn main() {
         team::set_agent_status(&db, &s.you_id, &id, "paused").unwrap();
         id
     };
-    let lead = agent("Team Lead", "lead", Some(true));
+    let lead = agent("Chief", "lead", Some(true));
     let backend = agent("Backend Agent", "backend", None);
     memory::ensure_lead_notes(&db, &lead, "Jeffrey").unwrap();
     let handle = team::get(&db, &s.team_id).unwrap().members.into_iter().find(|m| m.actor_id == backend).unwrap().handle;

@@ -1,6 +1,7 @@
-//! What a call of a tool in `NOT_AFTER_OUTSIDE` would do, for a pending action (GA-102): one plain line, what it is
-//! about and what changes, and the text it saves or adds. Worked out when you look at it, from the board and memory as
-//! they are then; a call that can't work as things are now says why (`Preview::warning`). Reads only.
+//! What a call of a tool in `NOT_AFTER_OUTSIDE` (or one of `KEPT_SOMETIMES`, GA-261) would do, for a pending action
+//! (GA-102): one plain line, what it is about and what changes, and the text it saves or adds. Worked out when you look at
+//! it, from the board and memory as they are then; a call that can't work as things are now says why
+//! (`Preview::warning`). Reads only.
 use gizai_core::memory;
 use gizai_core::pending::{DiffLine, line_diff};
 use serde::Serialize;
@@ -51,10 +52,10 @@ fn card(t: &gizai_core::model::Task) -> String {
     format!("{} {}", t.identifier, short(&t.title, 60))
 }
 
-/// The pending call `tool` with `args`, as the Team Lead `actor` in the chat `thread` would make it.
+/// The pending call `tool` with `args`, as the Chief `actor` in the chat `thread` would make it.
 pub(crate) fn preview(st: &crate::AppState, actor: &str, thread: &str, tool: &str, args: &Value) -> Preview {
     let a = Args(args.as_object().cloned().unwrap_or_default());
-    let cx = Cx { st, actor, thread: Some(thread), check: None, from: None };
+    let cx = Cx { st, actor, thread: Some(thread), check: None, from: None, approved: false };
     let p = match tool {
         "memory_write" => memory_write(&cx, &a),
         "memory_append" => memory_append(&cx, &a),
@@ -69,6 +70,9 @@ pub(crate) fn preview(st: &crate::AppState, actor: &str, thread: &str, tool: &st
         "attach_file" => attach_file(&cx, &a),
         "update_checkout" => update_checkout(&cx, &a),
         "merge_pull_request" => merge_pull_request(&cx, &a),
+        "comment_on_task" => comment(&cx, &a),
+        "update_task" => update_task(&cx, &a),
+        "update_project" => update_project(&cx, &a),
         _ => Ok(Preview { line: format!("Call {tool}"), fields: plain_fields(&a.0), ..Default::default() }),
     };
     // A call whose own arguments are wrong still shows what it was called with, and why it fails.
@@ -83,18 +87,22 @@ fn plain_fields(args: &Map<String, Value>) -> Vec<Field> {
     })).collect()
 }
 
-/// The note `r` (path, title or id) as the Team Lead sees it, if it exists.
+/// The note `r` (path, title or id) as the Chief sees it, if it exists.
 fn note(cx: &Cx, r: &str) -> Option<memory::Note> {
     let who = super::memory::who(cx).ok()?;
     memory::get(cx.db(), &who, r).ok()
 }
 
-/// The note memory_write would save over, found as it finds it: by its path (case ignored, `.md` allowed) or its id, never
-/// by its title.
+/// The note memory_write would save over, found as it finds it (`memory::existing`): by its path (case ignored, `.md`
+/// allowed, the Chief's old `Team Lead/` as `Chief/`) or its id, never by its title.
 fn note_at(cx: &Cx, r: &str) -> Option<memory::Note> {
-    let p = r.trim().trim_matches('/');
-    let p = p.strip_suffix(".md").unwrap_or(p);
-    memory::find(cx.db(), p).ok().flatten().or_else(|| note(cx, r).filter(|n| n.id == r.trim()))
+    memory::existing(cx.db(), r).ok().flatten()
+}
+
+/// A note's path as a call gives it, in `Chief/` when it names the Chief's old folder (`Team Lead/Notes`): where approving
+/// puts the note.
+fn path_now(p: &str) -> String {
+    memory::old_lead_path(p).unwrap_or_else(|| p.to_string())
 }
 
 /// memory_write and memory_append: which note a call is for, so a newer pending call for the same note replaces the
@@ -106,13 +114,13 @@ pub(crate) fn note_key(st: &crate::AppState, actor: &str, thread: &str, tool: &s
         _ => return None,
     };
     let r = args.get(key)?.as_str()?.trim();
-    let cx = Cx { st, actor, thread: Some(thread), check: None, from: None };
+    let cx = Cx { st, actor, thread: Some(thread), check: None, from: None, approved: false };
     let found =if tool == "memory_write" { note_at(&cx, r) } else { note(&cx, r) };
     Some(match found {
         Some(n) => n.id,
         None => {
             let p = r.trim_matches('/');
-            p.strip_suffix(".md").unwrap_or(p).to_lowercase()
+            path_now(p.strip_suffix(".md").unwrap_or(p)).to_lowercase()
         }
     })
 }
@@ -125,7 +133,7 @@ fn memory_write(cx: &Cx, a: &Args) -> Result<Preview, String> {
         Some(n) => {
             let warning = match version {
                 None | Some(0) => Some(format!("{} exists and the call gives no version, so approving fails and nothing is saved.", n.path)),
-                Some(v) if v != n.current_version => Some(format!("{} changed since the Team Lead read it (version {v}; it is at version {} now), \
+                Some(v) if v != n.current_version => Some(format!("{} changed since the Chief read it (version {v}; it is at version {} now), \
                                                                     so approving fails and nothing is saved.", n.path, n.current_version)),
                 _ => None,
             };
@@ -133,7 +141,10 @@ fn memory_write(cx: &Cx, a: &Args) -> Result<Preview, String> {
                       fields: vec![field("Note", n.path.clone()), change("Version", n.current_version.to_string(), (n.current_version + 1).to_string())],
                       diff: Some(line_diff(&n.body_md, &body)), text: Some(body), warning }
         }
-        None => Preview { line: format!("Make the note {path}"), fields: vec![field("Note", path.clone())], text: Some(body), ..Default::default() },
+        None => {
+            let path = path_now(&path);
+            Preview { line: format!("Make the note {path}"), fields: vec![field("Note", path)], text: Some(body), ..Default::default() }
+        }
     })
 }
 
@@ -142,7 +153,10 @@ fn memory_append(cx: &Cx, a: &Args) -> Result<Preview, String> {
     let heading = a.opt("heading");
     let (line, path) = match note(cx, &r) {
         Some(n) => (format!("Add to the note {}", n.path), n.path),
-        None => (format!("Make the note {r} with this text"), r),
+        None => {
+            let p = path_now(&r);
+            (format!("Make the note {p} with this text"), p)
+        }
     };
     let mut fields = vec![field("Note", path)];
     fields.push(field("Where", match heading {
@@ -161,7 +175,7 @@ fn memory_move(cx: &Cx, a: &Args) -> Result<Preview, String> {
         None => (r.clone(), Some(format!("There is no note {r}, so approving fails."))),
     };
     // A folder (ending in /) keeps the note's title.
-    let to = if to.ends_with('/') { format!("{to}{}", memory::title_of(&from)) } else { to };
+    let to = path_now(&if to.ends_with('/') { format!("{to}{}", memory::title_of(&from)) } else { to });
     let verb = if copy { "Copy" } else { "Move" };
     Ok(Preview { line: format!("{verb} the note {from} to {to}"), fields: vec![field("From", from), field("To", to)], warning, ..Default::default() })
 }
@@ -204,6 +218,11 @@ fn continue_run(cx: &Cx, a: &Args) -> Result<Preview, String> {
     };
     if note.is_none() {
         fields.push(field("Note", "none"));
+    }
+    // A Continue takes the card's hold off (GA-261: GA-101's too, which only your Approve or you on the card may do).
+    if let Some(h) = &t.hold {
+        let now = t.hold_reason.as_deref().filter(|r| !r.trim().is_empty()).map(|r| format!("{h}: {r}")).unwrap_or_else(|| h.clone());
+        fields.push(change("Hold", now, "none: it comes off hold"));
     }
     Ok(Preview { line, fields, text: note, warning, ..Default::default() })
 }
@@ -416,6 +435,123 @@ fn merge_pull_request(cx: &Cx, a: &Args) -> Result<Preview, String> {
                  fields: vec![field("Card", card(&t)), field("Column", t.state_name.clone()), field("Pull request", pr)], ..Default::default() })
 }
 
+/// GA-261: a comment, with its card and its text.
+fn comment(cx: &Cx, a: &Args) -> Result<Preview, String> {
+    let t = resolve::task(cx, &a.req("task")?)?;
+    Ok(Preview { line: format!("Comment on {}", t.identifier), fields: vec![field("Card", card(&t)), field("Column", t.state_name.clone())],
+                 text: Some(a.text("body_md").unwrap_or_default()), ..Default::default() })
+}
+
+/// A person's or an agent's name, by its id.
+fn actor_name(cx: &Cx, id: &str) -> String {
+    gizai_core::team::agent(cx.db(), id).map(|m| m.name).ok()
+        .or_else(|| gizai_core::users::list(cx.db()).ok()?.into_iter().find(|p| p.id == id).map(|p| p.name))
+        .unwrap_or_else(|| id.to_string())
+}
+
+/// 0 none, 1 urgent, 2 high, 3 medium, 4 low.
+fn priority(p: i64) -> String {
+    match p {
+        1 => "urgent", 2 => "high", 3 => "medium", 4 => "low", 0 => "none",
+        _ => return p.to_string(),
+    }.into()
+}
+
+/// GA-261: a change to a card: each field it changes, old and new. Its new description comes below, with what changes
+/// line by line (else its acceptance criteria, when the description stays).
+fn update_task(cx: &Cx, a: &Args) -> Result<Preview, String> {
+    let t = resolve::task(cx, &a.req("task")?)?;
+    let mut fields = vec![field("Card", card(&t)), field("Column", t.state_name.clone())];
+    let new_text = |k: &str, now: &str| a.text(k).filter(|n| n.trim() != now.trim());
+    if let Some(title) = a.opt("title").filter(|n| *n != t.title) {
+        fields.push(change("Title", t.title.clone(), title));
+    }
+    let acceptance_now = t.acceptance_md.clone().unwrap_or_default();
+    let description = new_text("description_md", &t.description_md);
+    let acceptance = new_text("acceptance_md", &acceptance_now);
+    if let Some(d) = &description {
+        fields.push(field("Description", if d.is_empty() { "none: it is cleared" } else { "new text, below" }));
+    }
+    match &acceptance {
+        Some(ac) if description.is_some() => fields.push(change("Acceptance criteria", or_none(Some(acceptance_now.clone())), or_none(Some(ac.clone())))),
+        Some(ac) => fields.push(field("Acceptance criteria", if ac.is_empty() { "none: they are cleared" } else { "new text, below" })),
+        None => {}
+    }
+    if let Some(n) = a.text("assignee") {
+        let new = if n.is_empty() || n.eq_ignore_ascii_case("none") { "none".to_string() } else { actor_name(cx, &resolve::assignee(cx, &n)?) };
+        let now = t.assignee_name.clone().unwrap_or_else(|| "none".into());
+        if new != now {
+            fields.push(change("Assignee", now, new));
+        }
+    }
+    if let Some(refs) = a.list("builds_on") {
+        let now: Vec<String> = gizai_core::builds_on::of(cx.db(), &t.id).map(|b| b.builds_on).unwrap_or_default().into_iter().map(|l| l.identifier).collect();
+        let mut new: Vec<String> = vec![];
+        for r in &refs {
+            let id = resolve::task(cx, r)?.identifier;
+            if !new.contains(&id) {
+                new.push(id);
+            }
+        }
+        if new.len() != now.len() || new.iter().any(|i| !now.contains(i)) {
+            fields.push(change("Builds on", names(&now), names(&new)));
+        }
+    }
+    if let Some(p) = a.int("priority")?.filter(|p| *p != t.priority) {
+        fields.push(change("Priority", priority(t.priority), priority(p)));
+    }
+    if let Some(list) = a.list("labels") {
+        let now: Vec<String> = t.labels.iter().map(|l| l.name.clone()).collect();
+        let same = list.len() == now.len() && list.iter().all(|l| now.iter().any(|n| n.eq_ignore_ascii_case(l)));
+        if !same {
+            fields.push(change("Labels", names(&now), names(&list)));
+        }
+    }
+    let on_off = |on: bool| if on { "on" } else { "off" }.to_string();
+    if let Some(on) = a.flag("testing").filter(|on| *on != t.testing) {
+        fields.push(change("Testing", on_off(t.testing), on_off(on)));
+    }
+    let hold_now = t.hold.as_ref().map(|h| match t.hold_reason.as_deref().filter(|r| !r.trim().is_empty()) {
+        Some(r) => format!("{h}: {r}"),
+        None => h.clone(),
+    });
+    if a.flag("clear_hold") == Some(true) {
+        if let Some(now) = hold_now {
+            fields.push(change("Hold", now, "none: it comes off hold"));
+        }
+    } else if let Some(h) = a.opt("hold") {
+        let new = a.opt("hold_reason").map(|r| format!("{h}: {r}")).unwrap_or(h);
+        fields.push(change("Hold", hold_now.unwrap_or_else(|| "none".into()), new));
+    }
+    let (diff, text) = match (&description, &acceptance) {
+        (Some(d), _) if !d.is_empty() => (Some(line_diff(&t.description_md, d)), Some(d.clone())),
+        (None, Some(ac)) if !ac.is_empty() => (Some(line_diff(&acceptance_now, ac)), Some(ac.clone())),
+        _ => (None, None),
+    };
+    let warning = (fields.len() == 2).then(|| format!("Nothing on {} would change.", t.identifier));
+    Ok(Preview { line: format!("Change {}", t.identifier), fields, text, diff, warning })
+}
+
+/// GA-261: a change to a project: each field it changes, old and new (its repository, folder, main branch and goal among
+/// them), with its new goal below and what changes in it line by line. A call that can't work says why (`project_input`).
+fn update_project(cx: &Cx, a: &Args) -> Result<Preview, String> {
+    let p = resolve::project(cx, &a.req("project")?)?;
+    let (input, _) = super::write::project_input(cx, &p, a)?;
+    let mut fields = vec![field("Project", format!("{} ({})", p.name, p.key))];
+    let mut goal = None;
+    for c in super::write::project_changes(cx, &p, &input) {
+        if c.key == "goal_md" {
+            fields.push(field(c.label, if c.to.is_empty() { "none: it is cleared" } else { "new text, below" }));
+            goal = Some((c.from, c.to)).filter(|(_, to)| !to.is_empty());
+        } else {
+            fields.push(change(c.label, or_none(Some(c.from)), or_none(Some(c.to))));
+        }
+    }
+    let warning = (fields.len() == 1).then(|| format!("Nothing of {} would change.", p.name));
+    Ok(Preview { line: format!("Change the project {} ({})", p.name, p.key), fields, diff: goal.as_ref().map(|(from, to)| line_diff(from, to)),
+                 text: goal.map(|(_, to)| to), warning })
+}
+
 /// What an approved call did, from its result: a short sentence, like "Saved as version 4."
 pub(crate) fn done(tool: &str, result: &Value) -> String {
     let s = |p: &str| result.pointer(p).and_then(Value::as_str).map(str::to_string);
@@ -441,6 +577,12 @@ pub(crate) fn done(tool: &str, result: &Value) -> String {
         "add_column" | "set_column" => "The board's columns are saved.".into(),
         "attach_file" => format!("Attached {}.", s("/file/name").unwrap_or_else(|| "the file".into())),
         "update_checkout" => "The update started: its result comes as a message in this chat.".into(),
+        "comment_on_task" => "The comment is on the card.".into(),
+        "update_task" => "The card is saved.".into(),
+        "update_project" => match s("/done") {
+            Some(moved) => format!("The project is saved, and {moved}."),
+            None => "The project is saved.".into(),
+        },
         "merge_pull_request" => match (n("/pull_request/number"), s("/card")) {
             // "moved to Deploy", or "still in Review: …"
             (Some(num), Some(card)) => format!("Merged pull request #{num}. The card {}{card}.", if card.starts_with("moved") { "" } else { "is " }),

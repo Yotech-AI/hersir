@@ -16,7 +16,8 @@ const browserPage = (): Plugin => ({
 
 // Tauri expects a fixed dev port; production builds are served by Tauri's custom protocol.
 // `vite --mode browser` (npm run browser, GA-185): GizAi's screens in a plain browser with a fake backend (browser.html,
-// src/browser/), on 127.0.0.1 at the port a run's preview gets in GIZAI_PREVIEW_PORT (1430 without it). The build below
+// src/browser/), on 127.0.0.1 at the port a run's preview gets in HERSIR_PREVIEW_PORT (or GIZAI_PREVIEW_PORT, the name before
+// 0.17.0; 1430 without either). The build below
 // has only index.html, so the app never contains it.
 export default defineConfig(({ mode }) => ({
   plugins: mode === "browser" ? [react(), browserPage()] : [react()],
@@ -24,7 +25,7 @@ export default defineConfig(({ mode }) => ({
   ...(mode === "browser" ? { cacheDir: "node_modules/.vite-browser" } : {}),
   clearScreen: false,
   server: mode === "browser"
-    ? { host: "127.0.0.1", port: Number(process.env.GIZAI_PREVIEW_PORT) || 1430, strictPort: true, watch }
+    ? { host: "127.0.0.1", port: Number(process.env.HERSIR_PREVIEW_PORT || process.env.GIZAI_PREVIEW_PORT) || 1430, strictPort: true, watch }
     : { port: 1420, strictPort: true, watch },
   // Desktop app: local files, so a large chunk costs nothing over the network; what counts is the code a start parses.
   // GA-178: the pages but the board and the self-test load when first needed (App.tsx); GA-190: the drawers too

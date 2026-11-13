@@ -111,6 +111,8 @@ describe("the texts", () => {
       .filter(([, where]) => !/not drawn|\(2, 3, 4 likewise\)/.test(where))
       // the design names GizAi; the app says Hersir since GA-231
       .map(([, , text]) => text.trim().replace(/\*\*/g, "").replace(/\bGiz[Aa]i\b/g, "Hersir"))
+      // and it names the Team Lead; the app says Chief since GA-254 ("the Chief's chat", not "the Chief chat")
+      .map((t) => t.replace(/\bthe Team Lead chat\b/g, "the Chief's chat").replace(/\bTeam Lead\b/g, "Chief"))
       // a row naming several texts, or showing an example's shape, is checked by the page's tests instead
       .filter((t) => !/^(1, 2, 3, 4|Step 1 of 4.*|2 ticked: Next imports them.*|Your name · Team · .*|Not found: .*|Your Claude Code has no MCP servers yet\..*|Claude Code · Built in|Back to step 1: You and your team)$/.test(t));
     expect(texts.length).toBeGreaterThan(25);

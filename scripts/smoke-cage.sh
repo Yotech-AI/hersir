@@ -9,7 +9,7 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 GZ=$PWD
-BIN=${1:-$GZ/target/release/gizai}
+BIN=${1:-$GZ/target/release/hersir}
 DEV=$GZ/.devdata
 DATA=${DATA:-$DEV/data}; ROUTE=${ROUTE:-}; MODE=${MODE:-}; TIMEOUT=${TIMEOUT:-40}
 mkdir -p "$DEV/run" "$DATA" "$DEV/xdg"; chmod 700 "$DEV/run"

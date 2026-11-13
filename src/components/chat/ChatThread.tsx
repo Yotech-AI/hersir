@@ -54,8 +54,8 @@ function Composer({ box, files, onAddFiles, onRemoveFile, onSend, onStop, workin
       <PendingFileList paths={files} onRemove={onRemoveFile} disabled={disabled} compact />
       {/* While the Team Lead answers, Enter queues the message: it goes when the answer is done. */}
       <MarkdownEditor className="composer-editor" toolbar={false} value={value} onChange={setValue} onEnter={(md) => onSend(md)} disabled={disabled}
-        pickerUp handle={editor} ariaLabel="Message the Team Lead"
-        placeholder={working ? "Queue a message for when this answer is done…" : "Message the Team Lead…"} />
+        pickerUp handle={editor} ariaLabel="Message the Chief"
+        placeholder={working ? "Queue a message for when this answer is done…" : "Message the Chief…"} />
       <div className="composer-foot">
         <Popover up label="Add to this message" disabled={disabled} button={(open) => (
           <button type="button" className={`btn ghost sm icon-only composer-plus${open ? " on" : ""}`} disabled={disabled}
@@ -142,7 +142,8 @@ function groupHeight(g: Group): number {
   return g.items.reduce((h, m) => h + 30 + 22 * Math.ceil(Math.max(1, (m.bodyMd ?? "").length) / 90), 50);
 }
 
-export function ChatThread({ threadId, thread, agent }: { threadId: string | null; thread?: Thread; agent: Member }) {
+/** `youId`: you, for the folder picker of Open in terminal under the Team Lead's messages (GA-279). */
+export function ChatThread({ threadId, thread, agent, youId }: { threadId: string | null; thread?: Thread; agent: Member; youId?: string }) {
   const { messages, draft, tool, working, queue, error, setWorking, pending: calls } = useChat(threadId);
   // GA-102: the Team Lead's calls that wait for your approval in this chat, each under the answer that tried it.
   const waitingCalls = useMemo(() => (calls ?? []).filter((a) => a.threadId === threadId), [calls, threadId]);
@@ -305,7 +306,7 @@ export function ChatThread({ threadId, thread, agent }: { threadId: string | nul
               const g = groups[r.index]!;
               return (
                 <div key={r.key} className="chat-row" data-index={r.index} ref={virt.measureElement}>
-                  <MessageGroup g={g} agentRole={agent.roleKey} noteActions={noteActions}
+                  <MessageGroup g={g} agentRole={agent.roleKey} noteActions={noteActions} youId={youId}
                     live={r.index === groups.length - 1 && g.side === "agent" ? liveBits : undefined} after={g.side === "agent" ? callsUnder(g.key) : undefined} />
                 </div>
               );

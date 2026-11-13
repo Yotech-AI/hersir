@@ -2,7 +2,7 @@
 
 This is how a new version of Hersir reaches the people who use it. It is for people and for agents (the DevOps Agent releases when a card asks for it and names the version).
 
-In short: a release is a GitHub Release with a version tag, `vX.Y.Z`, on the `production` branch. Every installed Hersir asks GitHub for the latest release. When it finds a newer one, the sidebar shows **Update to X.Y.Z** above Company. Hersir updates from Releases only, never from `main`: a merge into `main` reaches people with the next release.
+In short: a release is a GitHub Release with a version tag, `vX.Y.Z`, on the `production` branch, which Jeffrey signs on their own computer with Hersir's release key ([step 5](#making-a-release)). Every installed Hersir asks GitHub for the latest release. When it finds a newer one that is signed, the sidebar shows **Update to X.Y.Z** above Company. Hersir updates from Releases only, never from `main`: a merge into `main` reaches people with the next release.
 
 ## Branches
 
@@ -54,7 +54,7 @@ Replace `X.Y.Z` with the new version.
 
    The label keeps the bump and the release's pull request (step 2) out of the release's list of changes (`.github/release.yml`). gh refuses to open a pull request with a label the repository doesn't have: until Jeffrey has made `release` (by hand, once), open both without `--label release` and say so on the card.
 
-   A pull request that changes nothing but the version skips the build and the tests, so its checks pass within a minute or two: `ubuntu-24.04`, `macos-15` and `windows-latest` from CI, and from Install `Version only?` and the six installs (step 2 names them), which the bump starts as it changes `src-tauri/tauri.conf.json`. Merge it as soon as they report:
+   A pull request that changes nothing but the version skips the build and the tests, so its checks pass within a minute or two: `ubuntu-24.04`, `macos-15` and `windows-latest` from CI, and from Install `Version only?`, the three ready-made builds, `signed test release` and the six installs (step 2 names them), which the bump starts as it changes `src-tauri/tauri.conf.json`. Merge it as soon as they report:
 
    ```sh
    gh pr view <number> --json statusCheckRollup --jq '.statusCheckRollup[] | "\(.name): \(.status) \(.conclusion)"'
@@ -62,9 +62,9 @@ Replace `X.Y.Z` with the new version.
 
    Each must say `COMPLETED SUCCESS`. The full check comes in step 2, on the release's pull request.
 
-   `scripts/version-only.mjs` decides, in each CI check's "Version only?" step and in Install's `Version only?` job: only these five files may change (the three above and the two lock files), and in them only Hersir's version, from one old version to one new version everywhere (in `Cargo.lock`, the versions of Hersir's own crates). Before you push, `node scripts/version-only.mjs origin/main HEAD` says the same, or what else changes. A pull request that changes anything else, a dependency in `Cargo.lock` say, gets the full checks of step 2, up to about 17 minutes: wait until they all say `COMPLETED SUCCESS` (the Windows install is the slowest). On a failure, don't release: the card goes back to whoever can fix it.
+   `scripts/version-only.mjs` decides, in each CI check's "Version only?" step and in Install's `Version only?` job: only these five files may change (the three above and the two lock files), and in them only Hersir's version, from one old version to one new version everywhere (in `Cargo.lock`, the versions of Hersir's own crates). Before you push, `node scripts/version-only.mjs origin/main HEAD` says the same, or what else changes. A pull request that changes anything else, a dependency in `Cargo.lock` say, gets the full checks of step 2, up to about an hour: wait until they all say `COMPLETED SUCCESS` (the Windows install is the slowest). On a failure, don't release: the card goes back to whoever can fix it.
 
-   Hersir checks the bump. An update installs nothing when the release's `Cargo.toml` says another version, and it checks `gizai --version` after installing. A forgotten bump would otherwise offer the same update forever.
+   Hersir checks the bump. An update installs nothing when the release's `Cargo.toml` says another version, and it checks `hersir --version` after installing. A forgotten bump would otherwise offer the same update forever.
 
 2. **Merge `main` into `production`** with a pull request and a merge commit (never squash or rebase). This pull request is the release's full check: CI and Install build, test and install exactly what goes to production, on Linux, macOS and Windows. Wait for all of it before you merge:
 
@@ -74,11 +74,13 @@ Replace `X.Y.Z` with the new version.
    gh pr merge <number> --merge
    ```
 
-   That's ten checks:
+   That's fourteen checks:
    - from CI, about 12 minutes: `ubuntu-24.04`, `macos-15` and `windows-latest`;
-   - from Install, which runs as the release changes `src-tauri/tauri.conf.json`: `Version only?`, then six installs through the one line, `install on ubuntu-24.04`, `install on fedora`, `install on archlinux`, `install on opensuse/tumbleweed`, `install on macos-15` and `install on windows-latest`. Each one builds Hersir in full, then again as an update, in 8 to 17 minutes (the Windows install is the slowest).
+   - from Install, which runs as the release changes `src-tauri/tauri.conf.json`: `Version only?`; the release's ready-made builds, made as Release builds makes them, `ready-made linux-x86_64`, `ready-made macos-arm64` and `ready-made windows-x86_64`, and `signed test release`, which signs them with a throwaway key; then six installs through the one line, `install on ubuntu-24.04`, `install on fedora`, `install on archlinux`, `install on opensuse/tumbleweed`, `install on macos-15` and `install on windows-latest`. Each install takes the ready-made build first, in about a minute, checks that releases whose signature doesn't check install nothing, then builds Hersir in full from source, and again as an update: 25 to 45 minutes in all (the Windows install is the slowest).
 
-   Each must say `COMPLETED SUCCESS`. A check that is still `IN_PROGRESS` needs a few more minutes. On a failure, don't release: the card goes back to whoever can fix it.
+   A release that changes `install.sh`, `install.ps1` or `.github/workflows/release-builds.yml` has six more checks, from Release builds, which on a pull request builds the archives of step 4 and uploads nothing: `What to build`, `build linux-x86_64`, `build macos-arm64`, `build windows-x86_64`, `SHA256SUMS` and `upload to the release`.
+
+   Each must say `COMPLETED SUCCESS`, except `upload to the release`, which a pull request skips: `COMPLETED SKIPPED`. A check that is still `IN_PROGRESS` needs a few more minutes. On a failure, don't release: the card goes back to whoever can fix it.
 
 3. **Create the release** on `production`, with the release card's notes ([Release notes](#release-notes)) above GitHub's list of the merged pull requests:
 
@@ -100,15 +102,41 @@ Replace `X.Y.Z` with the new version.
    curl -s https://api.github.com/repos/Yotech-AI/hersir/releases/latest | grep '"tag_name"'   # what Hersir reads: vX.Y.Z
    ```
 
-   Publishing the release also starts One-line install (`.github/workflows/one-line.yml`): hersir.dev's own lines install the new release on Ubuntu 24.04, macOS 15 and Windows, then uninstall it. Its jobs take 7 to 12 minutes and must be green on all three:
+   Publishing the release doesn't start One-line install (`.github/workflows/one-line.yml`) any more: the one line installs only a signed release, so signing it (step 5) starts it. Then hersir.dev's own lines install the new release's ready-made build on Ubuntu 24.04, macOS 15 and Windows, then uninstall it, in a few minutes. A red run is a `needs_decision` with what its log says (`gh run view <id> --log-failed`), not a new release.
+
+   Publishing the release starts Release builds (`.github/workflows/release-builds.yml`) too. It builds the release's tag with the release's own `install.sh --build-only` on Ubuntu 22.04 (x86_64) and macOS (Apple silicon), and `install.ps1 -BuildOnly` on Windows (x86_64). It checks that each build installs with `--skip-build` (`-SkipBuild`) and says the version, then attaches four files to the release with the workflow's own token. Each system builds Hersir in full, so give it about 20 minutes. Then its run must be green, and the release must have the four; once Jeffrey has signed it (step 5), it has five:
 
    ```sh
-   gh run list --workflow one-line.yml --event release --limit 1 --json headBranch,status,conclusion,url   # vX.Y.Z, completed, success
+   gh run list --workflow release-builds.yml --event release --limit 1 --json headBranch,status,conclusion,url   # vX.Y.Z, completed, success
+   gh release view vX.Y.Z --json assets --jq '.assets[].name'
    ```
 
-   A red run is a `needs_decision` with what its log says (`gh run view <id> --log-failed`), not a new release.
+   - `hersir-X.Y.Z-linux-x86_64.tar.gz`, `hersir-X.Y.Z-macos-arm64.tar.gz` and `hersir-X.Y.Z-windows-x86_64.zip`: each holds the files `install.sh --skip-build` (`install.ps1 -SkipBuild`) installs from a build, at the paths the build leaves them: `target/release/hersir` and `target/release/hersir-mcp`, on macOS also `target/release/bundle/macos/Hersir.app`, on Windows the two `.exe` files. Unpacked into the release's source, `--skip-build` installs them as if they had been built there.
+   - `SHA256SUMS`: one line per archive, `<sha256>  <file name>`, as `sha256sum` writes it. `sha256sum -c SHA256SUMS` checks the three.
+   - `hersir-X.Y.Z.sig`: the release's signature, which step 5 adds.
 
-   Every installed Hersir sees the release within six hours, or at once with Settings → Updates → Check now.
+   The one-line install and Update install this system's build once the release is signed (step 5): they check the signature first, then the build against `SHA256SUMS` ([How Hersir updates itself](#how-hersir-updates-itself)). Without a build for the system, or with one that doesn't match, they build the release's source, as before. A red run is a `needs_decision` with what its log says, not a new release. Without its builds the release has no `SHA256SUMS`, so it can't be signed (step 5): no Hersir offers it, and the one line doesn't install it. Once the cause is fixed, `gh workflow run release-builds.yml -f tag=vX.Y.Z` builds the release's tag again and attaches the four, replacing any it has. The same command gives a release from before this workflow its builds; whether to run it for one is Jeffrey's call. New builds make a new `SHA256SUMS`, so a release that was signed already needs signing again: `scripts/sign-release.sh vX.Y.Z --again` (step 5).
+
+   The DevOps Agent's part ends when the builds are uploaded: it asks Jeffrey to sign the release (step 5), with `needs_decision`. It never signs a release itself.
+
+5. **Sign it.** Jeffrey signs the release on their own computer, in a checkout of this repository, once Release builds has uploaded the four files of step 4. Until then no Hersir offers or installs the release.
+
+   ```sh
+   scripts/sign-release.sh vX.Y.Z
+   ```
+
+   - It reads the release from GitHub: its assets, the commit its tag points to and `production`'s latest commit. It stops, and says why, when the release has no `SHA256SUMS` or misses one of its three archives, or has `hersir-X.Y.Z.sig` already: `--again` signs it again and replaces it.
+   - It shows what it signs: the version, the commit with its subject, whether that is `production`'s latest commit, and `SHA256SUMS`. Then it asks `Sign vX.Y.Z? [y/N]`, and after `y` ssh-keygen asks for the release key's passphrase.
+   - What it signs, with `ssh-keygen -Y sign -n hersir-release` and the key in `HERSIR_RELEASE_KEY` (default `~/.ssh/hersir-release`), is this message, byte for byte: the line `hersir vX.Y.Z <commit>` and a newline, where `<commit>` is the 40-character id of the commit the tag points to, followed by the release's `SHA256SUMS` exactly as uploaded.
+   - It checks the new signature against `release-signers`, uploads it as the release's fifth asset, `hersir-X.Y.Z.sig`, checks that the release lists it, and starts One-line install, which must then be green on all three:
+
+     ```sh
+     gh run list --workflow one-line.yml --event workflow_dispatch --limit 1 --json headBranch,status,conclusion,url   # main, completed, success
+     ```
+
+   The keys are in [`release-signers`](../release-signers), at the repository's root, in OpenSSH's allowed-signers format: Jeffrey's release key, which signs every release, and a spare, kept offline, which signs only when the first is lost or leaked. The one-line install and Update carry the same two lines built in, and never take keys from a release. Before anything of a release runs (its `install.sh` or `install.ps1`, a build or a downloaded archive), they check `hersir-X.Y.Z.sig` against those keys, over that message with the commit of the tag as they fetched it. No signature, one that doesn't check, another key or another commit: nothing is installed, one line says why, and an installed Hersir stays as it is. Only then is an archive checked against `SHA256SUMS`. Update doesn't offer a release without its signature, and the one-line install says `vX.Y.Z isn't signed yet: try again in a few minutes.` For tests, `HERSIR_RELEASE_SIGNERS`, a file in the same format, replaces the built-in keys (and `release-signers` in `scripts/sign-release.sh`): CI and QA sign fake releases with a throwaway key, never with Jeffrey's.
+
+   Once it is signed, every installed Hersir sees the release within six hours, or at once with Settings → Updates → Check now.
 
 If `git push` asks for a username (the remote is an https address and git has no login for it), push over SSH with your keys:
 
@@ -136,7 +164,7 @@ Hersir 0.11.0 installs with one line on Linux, macOS and Windows, and is now ope
 
 - **Install with one line.** `curl -fsSL https://hersir.dev/install.sh | sh` on Linux and macOS, or `irm https://hersir.dev/install.ps1 | iex` in PowerShell on Windows 11. Run it again to update.
 - **Apache-2.0.** Hersir's licence is now the Apache License 2.0. Releases before it stay under MIT.
-- **The Team Lead can update a linked folder with uncommitted changes:** after your yes, it puts them in git's stash first.
+- **The Chief can update a linked folder with uncommitted changes:** after your yes, it puts them in git's stash first.
 - **The chat says when an answer is done** after your last Approve or Discard.
 - **Fixed:** long card titles no longer run over the rows in the folder picker and the sidebar's Editor list, a folder you open again keeps its place, and the sidebar's + and caret are centred.
 
@@ -147,7 +175,7 @@ Hersir 0.11.0 installs with one line on Linux, macOS and Windows, and is now ope
 
 **Who writes them:**
 
-1. **The Team Lead drafts** the share line and "What's new" in the release card's description, from the cards in Done since the last release. It knows the board and writes for people.
+1. **The Chief drafts** the share line and "What's new" in the release card's description, from the cards in Done since the last release. It knows the board and writes for people.
 2. **Jeffrey edits them, or leaves them as they are, and starts the DevOps Agent.** Starting it is his OK to release, as always.
 3. **The DevOps Agent** copies the notes from the card into `<notes.md>` (step 3), outside the repository's files, adds the format's Update line and All changes heading when they're missing, and publishes. When the card has no "What's new", it writes one from the merged pull requests and stops with `needs_decision`, so no notes go out unread.
 
@@ -156,7 +184,8 @@ Hersir 0.11.0 installs with one line on Linux, macOS and Windows, and is now ope
 - **Never move or delete a released tag, and never reuse a version.** An installed Hersir may have fetched it already. A mistake gets fixed with the next patch version.
 - **Never push to `production` directly or force a push.** Only the pull request from `main` changes it.
 - **Never tag `main` or a card's branch.** Release tags point at `production`.
-- **No binaries attached yet, and nothing signed.** Hersir builds every release from source on the computer it runs on: Linux, macOS (Apple silicon) and Windows. There is no Apple Developer account and no Windows certificate. Prebuilt binaries, installers and signing come later, when Hersir has paid features. Never set up an account or buy a certificate for it.
+- **Nothing signed beyond Hersir's own release key and the build's own signature, and never an account or a certificate.** Every release is signed with Hersir's release key, on Jeffrey's computer (step 5), and the one-line install and Update check that signature. Release builds (`.github/workflows/release-builds.yml`) attaches ready-made builds to every release: the release's own installers build them on GitHub's runners (step 4). Nothing in them is signed beyond what the build does itself: on macOS, the ad-hoc signature every Apple silicon build has. No Apple or Microsoft signature: there is no Apple Developer account and no Windows certificate, so never set up an account or buy a certificate for it. Never offer the builds as browser downloads either: a browser marks what it downloads, and Gatekeeper and SmartScreen stop an app with that mark that Apple or Microsoft hasn't signed. Installers and Apple's and Microsoft's signatures come later, when Hersir has paid features.
+- **The release keys stay on Jeffrey's computer.** The private keys of `release-signers` are on Jeffrey's computer and in their password manager, never on GitHub, in CI, in Hersir's data or with an agent, and they are never loaded into ssh-agent. Nothing in CI signs, and no agent signs a release. A lost or leaked key: the next release is signed with the spare, and its Hersir carries a new `release-signers`, without that key.
 
 ## How Hersir updates itself
 
@@ -165,46 +194,73 @@ Every release must keep this working, because the Hersir that updates runs the *
 - **The check.**
   - It runs 20 seconds after Hersir starts (when it is due), then every six hours while Settings → Updates → "Check for new releases automatically" is on. A check that didn't work tries again after an hour. Check now asks at any time.
   - It reads `https://api.github.com/repos/Yotech-AI/hersir/releases/latest` with curl, without a login. GitHub allows 60 such requests an hour per network, which is plenty.
+  - GitHub's answer lists the files attached to the release (`assets`, each with its `name` and `browser_download_url`). Only a release that has its signature, `hersir-X.Y.Z.sig`, is offered. One without it isn't, and Settings → Updates says `vX.Y.Z is out, but not signed yet.` until Jeffrey has signed it ([Making a release](#making-a-release), step 5) and a check finds it signed.
   - Nothing about the person or their work is sent.
-- **The notice.** When the latest release is newer than the Hersir that runs, the sidebar shows "Update to X.Y.Z" above Company. Settings → Updates shows the same, with the release notes.
-- **The update.** Pressing it runs these steps:
-  1. **Get the source:** a shallow fetch of the tag `vX.Y.Z` only, into `<data folder>/update/source`. git works only in that folder's own repository. The folder is kept with its `target/`, so later updates build faster.
-  2. **Check the version:** the source's `Cargo.toml` must say `X.Y.Z`.
-  3. **Build:** the release's own `./install.sh --build-only`, at low CPU priority. Hersir stays usable meanwhile. Every command's output goes to `<data folder>/update/update.log`. On Windows: `.\install.ps1 -BuildOnly`, run with Windows PowerShell (`-ExecutionPolicy Bypass`, as the script isn't signed), at below-normal priority.
-  4. **Back up the data:** `<data folder>/backups/gizai-before-update-<time>.db`.
-  5. **Install:** the release's own `./install.sh --skip-build`, with `GIZAI_PREFIX` set to where the running Hersir was installed (usually `~/.local`) and `XDG_DATA_HOME` set to `<prefix>/share`. So the desktop entry and icons go with the install: `~/.local/share` for the usual one, and never over yours for a test's scratch prefix. The installer backs up `<prefix>/share/gizai` again with the new build, then replaces the programs with a rename.
-     - macOS: the same `install.sh`. It backs up `~/Library/Application Support/Gizai` and replaces `Hersir.app` in `<prefix>/lib/gizai` with a rename.
-     - Windows: `.\install.ps1 -SkipBuild` with `GIZAI_PREFIX` (usually `%LOCALAPPDATA%\Programs\Gizai`). It backs up `%APPDATA%\Gizai`. Windows can't overwrite a program that runs, so it renames the running `gizai.exe` and `gizai-mcp.exe` aside (`.gizai.exe.old.<pid>`), moves the new ones in, and removes the old ones at the next install.
-  6. **Check:** `gizai --version` of the installed program must say `X.Y.Z`. Then the notice offers **Restart to use X.Y.Z**. Restart quits Hersir the usual way (agents at work are stopped first) and starts the installed one.
+- **The notice.** When the latest release is newer than the Hersir that runs, and signed, the sidebar shows "Update to X.Y.Z" above Company. Settings → Updates shows the same, with the release notes.
+- **The update.** Pressing it runs these steps. Every command's output, and each check, goes to `<data folder>/update/update.log`.
+  1. **Get the source:** a shallow fetch of the tag `vX.Y.Z` only, into `<data folder>/update/source`. git works only in that folder's own repository. The folder is kept with its `target/`, so a later build from source is faster.
+  2. **Check the signature,** before anything of the release runs: its installer, a build or its ready-made build. Hersir downloads `hersir-X.Y.Z.sig` and `SHA256SUMS` with curl into `<data folder>/update/`, and checks in Hersir itself (the `ssh-key` crate, never a program from PATH) that one of the keys built into Hersir from `release-signers` signed the release's message ([Making a release](#making-a-release), step 5): the line `hersir vX.Y.Z <commit>` and a newline, then `SHA256SUMS`, where `<commit>` is the commit of the tag as fetched (`refs/tags/vX.Y.Z^{commit}`, which the source must be at). No `.sig`, a signature that doesn't check (a changed `SHA256SUMS`, a tag on another commit) or one by another key: nothing builds or installs, the installed Hersir stays as it is, and Settings → Updates says why in one line.
+  3. **Check the version:** the source's `Cargo.toml` must say `X.Y.Z`.
+  4. **Download the build:** when the release has this system's archive (`hersir-X.Y.Z-linux-x86_64.tar.gz`, `hersir-X.Y.Z-macos-arm64.tar.gz` or `hersir-X.Y.Z-windows-x86_64.zip`), Hersir downloads it with curl into `<data folder>/update/` and checks its sha256 against the signed `SHA256SUMS`. It unpacks it in Hersir itself, only files under `target/release`, into `<data folder>/update/source`, where each one replaces the one of its name, and the unpacked `target/release/hersir --version` must say `hersir X.Y.Z`. No `cargo` or `npm` runs. The progress says Downloading X.Y.Z, and Stop ends it.
+  5. **Or build:** when the release has no archive for this system (an Intel Mac, Linux on arm64, a release without builds), the download fails, the checksum is wrong or the unpacked build doesn't run here, Hersir builds the checked source as before, and Settings → Updates says why. The build is the release's own `./install.sh --build-only`, at low CPU priority, and Hersir stays usable meanwhile. On Windows: `.\install.ps1 -BuildOnly`, run with Windows PowerShell (`-ExecutionPolicy Bypass`, as the script isn't signed with a certificate), at below-normal priority.
+  6. **Back up the data:** `<data folder>/backups/gizai-before-update-<time>.db`.
+  7. **Install:** the release's own `./install.sh --skip-build`, with the prefix the running Hersir was installed into (usually `~/.local`) in `HERSIR_PREFIX` and `GIZAI_PREFIX` (its name before 0.17.0), and `XDG_DATA_HOME` set to `<prefix>/share`. So the desktop entry and icons go with the install: `~/.local/share` for the usual one, and never over yours for a test's scratch prefix. The installer backs up the data folder there again with the new build, then replaces the programs with a rename. That is the folder Hersir uses ([Your data](install.md#your-data)): `<prefix>/share/hersir`, or `<prefix>/share/gizai` of an install from before 0.17.0 when it holds `gizai.db` and there is no hersir folder. The installer gets neither `HERSIR_DATA_DIR` nor `GIZAI_DATA_DIR`.
+     - macOS: the same `install.sh`. It backs up `~/Library/Application Support/Hersir`, or `~/Library/Application Support/Gizai` by the same rule, and replaces `Hersir.app` in `<prefix>/lib/hersir` with a rename.
+     - Windows: `.\install.ps1 -SkipBuild` with the prefix (usually `%LOCALAPPDATA%\Programs\Hersir`). It backs up `%APPDATA%\Hersir`, or `%APPDATA%\Gizai` by the same rule. Windows can't overwrite a program that runs, so it renames the running `hersir.exe` and `hersir-mcp.exe` aside (`.hersir.exe.old.<pid>`), moves the new ones in, and removes the old ones at the next install.
+     - An install from before 0.17.0 is updated where it is, in `<prefix>/lib/gizai` (Windows: `%LOCALAPPDATA%\Programs\Gizai`), and keeps its gizai names as links to the new programs (copies on Windows): [PLATFORMS.md](PLATFORMS.md#install-update-and-ci) says how.
+  8. **Check:** `hersir --version` of the installed program must say `hersir X.Y.Z`; an update reads the second word (0.16.0's own update reads `gizai --version`, which says `hersir X.Y.Z` too from 0.17.0 on). Then the notice offers **Restart to use X.Y.Z**. Restart quits Hersir the usual way (agents at work are stopped first) and starts the installed one: `hersir-launch`, on Windows `hersir.exe`.
 - **When a step fails,** nothing installed changes: the notice says the update failed, and Settings → Updates says why, with the end of the output, the log and Try again.
   - The installed version decides. When the installer fails after the new programs are in place (the icons, say), the update counts as installed, with what the installer said.
   - Only an install that stopped between its renames (seconds) can leave a mix. Settings → Updates then says to try again or to run `./install.sh`.
-- **Stop** ends the update while it gets the source or builds. Quitting Hersir does that too.
-- **So `install.sh` must keep these working:** `--build-only`, `--skip-build`, `GIZAI_PREFIX` and `XDG_DATA_HOME`, with macOS's own bash 3.2 and BSD tools too. **And `install.ps1`:** `-BuildOnly`, `-SkipBuild` and `GIZAI_PREFIX`, with Windows PowerShell 5.1 (what an update runs) and PowerShell 7. CI checks that both scripts parse and that their checks (`--check`, `-Check`) pass.
-- **The one-line installs run the release's installer too.** `scripts/get.sh` (`curl -fsSL https://hersir.dev/install.sh | sh`) and `scripts/get.ps1` (`irm https://hersir.dev/install.ps1 | iex`) are read from `production`: hersir.dev sends its two addresses on to them there, so they must keep their names and place. What they get themselves comes from GitHub, never from the website. They get the same tag as an update, shallow, into `~/.local/share/gizai-src` (`%LOCALAPPDATA%\gizai-src` on Windows), never into the data folder. Then they run its `install.sh --check` and `install.sh` (`install.ps1 -Check` and `install.ps1`), with the flags they were given. So `--check` and `-Check` must keep working too. CI checks that both scripts parse and runs their checks against the pull request's own commit.
-- **Only an installed Hersir updates itself.** That is a Hersir that runs as `<prefix>/lib/gizai/gizai` (on macOS also `<prefix>/lib/gizai/Hersir.app/Contents/MacOS/gizai`, when it starts from the Dock), or on Windows as a `gizai.exe` with `install.ps1`'s `gizai-installed.txt` next to it. A dev build (`scripts/run.sh`) or a test build says why it doesn't, and never installs anything.
+- **Stop** ends the update while it gets the source, checks the signature, downloads or builds. Quitting Hersir does that too. A download that stopped is removed; the source and a build so far are kept.
+- **So `install.sh` must keep these working:** `--build-only`, `--skip-build` (also from a release's archive unpacked into its source, as Release builds checks), `HERSIR_PREFIX`, `GIZAI_PREFIX` (what 0.16.0 and older set) and `XDG_DATA_HOME`, with macOS's own bash 3.2 and BSD tools too. **And `install.ps1`:** `-BuildOnly`, `-SkipBuild`, `HERSIR_PREFIX` and `GIZAI_PREFIX`, with Windows PowerShell 5.1 (what an update runs) and PowerShell 7. And for 0.16.0's own update, which can't change any more: after an install into its prefix, `<prefix>/lib/gizai/gizai --version` (`<prefix>\gizai.exe --version`) says the new version as its second word, and `<prefix>/lib/gizai/gizai-launch` starts the new Hersir. CI checks that both scripts parse and that their checks (`--check`, `-Check`) pass, and Install's update from 0.16.0 job runs that update on each system.
+- **The one-line installs run the release's installer too.** `scripts/get.sh` (`curl -fsSL https://hersir.dev/install.sh | sh`) and `scripts/get.ps1` (`irm https://hersir.dev/install.ps1 | iex`) are read from `production`: hersir.dev sends its two addresses on to them there, so they must keep their names and place. What they get themselves comes from GitHub, never from the website. They get the same tag as an update, shallow, into `~/.local/share/hersir-src` (`%LOCALAPPDATA%\hersir-src` on Windows; the `gizai-src` from before 0.17.0 becomes it), never into the data folder.
+  - **The signature first** (step 5): they download `hersir-X.Y.Z.sig` and `SHA256SUMS` and check them with `ssh-keygen -Y verify` against the keys built into them, the lines of `release-signers` (a test checks that they are the same), over `hersir vX.Y.Z <commit>` with the commit of the tag as fetched (`git rev-parse "refs/tags/vX.Y.Z^{commit}"`). Only then is the tag checked out, as that commit. get.ps1 takes Windows' own `ssh-keygen.exe`, else Git for Windows', and writes the message to a file as bytes, redirected into it. Without ssh-keygen they say so in one line and stop.
+  - **Then the ready-made build:** this system's archive, checked against `SHA256SUMS` and unpacked into the source folder, then its `install.sh --check --skip-build` and `install.sh --skip-build` (`install.ps1 -Check -SkipBuild` and `install.ps1 -SkipBuild`), with the flags they were given. Without an archive for the system, after a failed download or a wrong checksum, and with `--from-source` (`-FromSource`), one line says why and they run `install.sh --check` and `install.sh` (`install.ps1 -Check` and `install.ps1`), which build the checked source. With `--skip-build` (what is built in the source folder already), `--build-only` or `--uninstall` they download no build.
+  - So `--check` and `-Check` must keep working, and with `--skip-build` (`-SkipBuild`) name only what Hersir needs to run: git, ssh-keygen, on Linux WebKitGTK 4.1's library, on Windows WebView2. CI checks that both scripts parse and runs their checks against the pull request's own commit, and Install runs the whole line on six systems with a release signed with a test key.
+- **Only an installed Hersir updates itself.** That is a Hersir that runs as `<prefix>/lib/hersir/hersir` (on macOS also `<prefix>/lib/hersir/Hersir.app/Contents/MacOS/hersir`, when it starts from the Dock), or on Windows as a `hersir.exe` with `install.ps1`'s `hersir-installed.txt` next to it; in an install from before 0.17.0 the same in `<prefix>/lib/gizai`, or a `gizai.exe` or `hersir.exe` beside `gizai-installed.txt`. A dev build (`scripts/run.sh`) or a test build says why it doesn't, and never installs anything.
+- **The one-line installs run the release's installer too.** `scripts/get.sh` (`curl -fsSL https://hersir.dev/install.sh | sh`) and `scripts/get.ps1` (`irm https://hersir.dev/install.ps1 | iex`) are read from `production`: hersir.dev sends its two addresses on to them there, so they must keep their names and place. What they get themselves comes from GitHub, never from the website. They get the same tag as an update, shallow, into `~/.local/share/hersir-src` (`%LOCALAPPDATA%\hersir-src` on Windows; the `gizai-src` from before 0.17.0 becomes it), never into the data folder. Then they run its `install.sh --check` and `install.sh` (`install.ps1 -Check` and `install.ps1`), with the flags they were given. So `--check` and `-Check` must keep working too. CI checks that both scripts parse and runs their checks against the pull request's own commit.
+- **Only an installed Hersir updates itself.** That is a Hersir that runs as `<prefix>/lib/hersir/hersir` (on macOS also `<prefix>/lib/hersir/Hersir.app/Contents/MacOS/hersir`, when it starts from the Dock), or on Windows as a `hersir.exe` with `install.ps1`'s `hersir-installed.txt` next to it; in an install from before 0.17.0 the same in `<prefix>/lib/gizai`, or a `gizai.exe` or `hersir.exe` beside `gizai-installed.txt`. A dev build (`scripts/run.sh`) or a test build says why it doesn't, and never installs anything. A Hersir from a package (the AUR, Homebrew or Scoop) never updates itself: its package manager does. Hersir knows it by hersir-package.txt beside the program, or on macOS by running from Homebrew's Cellar or Caskroom.
 - **From a terminal** it works as before: `git pull` in a checkout of `production`, then `./install.sh` (on Windows `.\install.ps1`).
-- **Headless test and screenshot runs** (`GIZAI_SELFTEST` or `GIZAI_ROUTE` set) skip the automatic check, unless `GIZAI_RELEASES_URL` is set too.
-- **Settings for tests and forks:**
-  - `GIZAI_REPO`: the repository the tag is fetched from. Default `https://github.com/Yotech-AI/hersir.git`.
-  - `GIZAI_RELEASES_URL`: what the check reads. Default: GitHub's latest release of `GIZAI_REPO`. It also takes `http://` and `file://` addresses.
-  - The one-line installs read both too, and `GIZAI_REF`: a tag, branch or commit to get instead of the latest release.
+- **Headless test and screenshot runs** (`HERSIR_SELFTEST` or `HERSIR_ROUTE` set, or their `GIZAI_` names) skip the automatic check, unless `HERSIR_RELEASES_URL` is set too.
+- **Settings for tests and forks** (their names from before 0.17.0, `GIZAI_REPO`, `GIZAI_RELEASES_URL` and `GIZAI_REF`, still work; a `HERSIR_` one wins):
+  - `HERSIR_REPO`: the repository the tag is fetched from. Default `https://github.com/Yotech-AI/hersir.git`.
+  - `HERSIR_RELEASES_URL`: what the check reads. Default: GitHub's latest release of `HERSIR_REPO`. It also takes `http://` and `file://` addresses, and so do the addresses of its assets.
+  - `HERSIR_RELEASE_SIGNERS`: a file in the allowed-signers format whose keys the update and the one-line installs check a release's signature with, instead of the keys built into them. Only for tests, which sign fake releases with a throwaway key (below), never with Jeffrey's. It has no `GIZAI_` name.
+  - The one-line installs read `HERSIR_REPO` and `HERSIR_RELEASES_URL` too, and:
+    - `HERSIR_REF`: a branch or commit to get instead of the latest release. It isn't a release, so the line checks no signature (it says so in one line) and builds it from source.
+    - `HERSIR_BUILDS_URL` (`GIZAI_BUILDS_URL` is read too): where the release's `hersir-X.Y.Z.sig`, `SHA256SUMS` and archives are, as `<address>/<file name>`. Default: the release's downloads on GitHub, `https://github.com/Yotech-AI/hersir/releases/download/vX.Y.Z`. It also takes `http://` and `file://` addresses, so CI and QA can install Release builds' artifacts.
 
 ## Testing an update without touching a real Hersir
 
-Never test against the Hersir Jeffrey uses: not `./install.sh`, not `~/.local/lib/gizai`, not `~/.local/share/gizai`. Everything goes in one scratch folder, `$T` below.
+Never test against the Hersir Jeffrey uses: not `./install.sh`, not `~/.local/lib/gizai` or `~/.local/lib/hersir`, not `~/.local/share/gizai`. Everything goes in one scratch folder, `$T` below. And never sign a fake release with Jeffrey's release keys: a throwaway key signs it, and `HERSIR_RELEASE_SIGNERS` makes the scratch Hersir check with that key instead of its own.
 
 1. **A fake release.**
    - A git repository with a tag, for example `v9.9.9`. Its `Cargo.toml` must say `version = "9.9.9"` under `[workspace.package]`.
    - It needs an `install.sh` that takes `--build-only` and `--skip-build`. For a quick test, use a stub:
-     - `--build-only` writes `target/release/gizai` (a script that prints `gizai 9.9.9` for `--version` and a path for `--backup`) and `target/release/gizai-mcp`;
-     - `--skip-build` copies them to `$GIZAI_PREFIX/lib/gizai/`.
+     - `--build-only` writes `target/release/hersir` (a script that prints `hersir 9.9.9` for `--version` and a path for `--backup`) and `target/release/hersir-mcp`;
+     - `--skip-build` copies them to `$HERSIR_PREFIX/lib/hersir/`.
 
      For a real test, use a copy of this repository with the version bumped; its build takes minutes.
-   - A file shaped like GitHub's answer:
+   - Its assets, in `$T/assets`: the ready-made build for this system, with the two files the stub's `--build-only` writes (`target/release/hersir` saying `hersir 9.9.9`, and `target/release/hersir-mcp`), `SHA256SUMS`, and the signature, by a throwaway key:
+
+     ```sh
+     tar -czf "$T/assets/hersir-9.9.9-linux-x86_64.tar.gz" -C "$T/build" target/release/hersir target/release/hersir-mcp
+     (cd "$T/assets" && sha256sum hersir-9.9.9-linux-x86_64.tar.gz > SHA256SUMS)
+     ssh-keygen -q -t ed25519 -N '' -C 'throwaway release key' -f "$T/key"
+     printf 'hersir-release namespaces="hersir-release" %s\n' "$(cat "$T/key.pub")" > "$T/signers"
+     commit="$(git -C "$T/fake-repo" rev-parse 'v9.9.9^{commit}')"
+     { printf 'hersir v9.9.9 %s\n' "$commit"; cat "$T/assets/SHA256SUMS"; } > "$T/assets/hersir-9.9.9"
+     ssh-keygen -Y sign -f "$T/key" -n hersir-release "$T/assets/hersir-9.9.9"   # writes hersir-9.9.9.sig
+     ```
+
+   - A file shaped like GitHub's answer, `$T/latest.json`, with each asset's `file://` address (`$T` written out):
 
      ```json
-     {"tag_name": "v9.9.9", "name": "v9.9.9", "html_url": "https://github.com/Yotech-AI/hersir/releases/tag/v9.9.9", "draft": false, "prerelease": false, "body": "- What changed"}
+     {"tag_name": "v9.9.9", "name": "v9.9.9", "html_url": "https://github.com/Yotech-AI/hersir/releases/tag/v9.9.9", "draft": false, "prerelease": false, "body": "- What changed",
+      "assets": [{"name": "hersir-9.9.9-linux-x86_64.tar.gz", "browser_download_url": "file://$T/assets/hersir-9.9.9-linux-x86_64.tar.gz"},
+                 {"name": "SHA256SUMS", "browser_download_url": "file://$T/assets/SHA256SUMS"},
+                 {"name": "hersir-9.9.9.sig", "browser_download_url": "file://$T/assets/hersir-9.9.9.sig"}]}
      ```
 
 2. **A scratch install of this branch's build:**
@@ -213,21 +269,46 @@ Never test against the Hersir Jeffrey uses: not `./install.sh`, not `~/.local/li
    env -i HOME="$T/home" PATH="$PATH" ./install.sh --skip-build
    ```
 
-   This is what `scripts/test-install.sh` does. It puts the programs in `$T/home/.local/lib/gizai/`.
+   This is what `scripts/test-install.sh` does. It puts the programs in `$T/home/.local/lib/hersir/`.
 
 3. **Start that Hersir headless,** in `cage` the way `scripts/shot-cage.sh` starts one, but with these settings:
 
    ```sh
-   HOME="$T/home" XDG_DATA_HOME="$T/home/.local/share" GIZAI_DATA_DIR="$T/data" \
-     GIZAI_REPO="$T/fake-repo" GIZAI_RELEASES_URL="file://$T/latest.json" GIZAI_SKIP_ONBOARDING=1 \
-     "$T/home/.local/lib/gizai/gizai"
+   HOME="$T/home" XDG_DATA_HOME="$T/home/.local/share" HERSIR_DATA_DIR="$T/data" \
+     HERSIR_REPO="$T/fake-repo" HERSIR_RELEASES_URL="file://$T/latest.json" HERSIR_RELEASE_SIGNERS="$T/signers" \
+     HERSIR_SKIP_ONBOARDING=1 "$T/home/.local/lib/hersir/hersir"
    ```
 
+   To test the update of an install from before 0.17.0, install 0.16.0 into `$T/home/.local` first (`env -i HOME="$T/home" PATH="$PATH" ./install.sh` in a checkout of the `v0.16.0` tag), then update it the way 0.16.0 does: `./install.sh --build-only`, then `GIZAI_PREFIX="$T/home/.local" XDG_DATA_HOME="$T/home/.local/share" ./install.sh --skip-build` in this branch's checkout. CI's Install workflow does this on each system (its update from 0.16.0 job).
+
    - Hersir installs an update into the prefix it runs from: here `$T/home/.local`. The installer's desktop entry and icons go to `$T/home/.local/share`.
-   - `$T/data` is new, so `GIZAI_SKIP_ONBOARDING=1` skips the first start's onboarding ([docs/install.md](install.md#first-start)).
+   - `$T/data` is new, so `HERSIR_SKIP_ONBOARDING=1` skips the first start's onboarding ([docs/install.md](install.md#first-start)).
    - Keep `HOME` and `XDG_DATA_HOME` in the scratch folder anyway: other tools write there too.
    - A Hersir that runs from `target/release` never installs; it says why in Settings → Updates.
 
    Make the stub's `install.sh` fail to see the failure path: the old programs must stay in place, and Settings → Updates must say why.
 
-This is a Linux test, as the headless `cage` runs are. On macOS and Windows an update builds with the same steps and that system's installer. CI builds and tests Hersir there on every pull request, and an update on a real Mac and Windows PC is part of the check list in `docs/PLATFORMS.md`.
+   Each path of the update, from that release (Check now after each change):
+   - **The ready-made build:** as above. `update.log` shows the signature check, the download and its sha256, and no `--build-only`.
+   - **Not signed yet:** leave `hersir-9.9.9.sig` out of `latest.json`. Nothing is offered, and Settings → Updates says `v9.9.9 is out, but not signed yet.`
+   - **Nothing builds or installs:** sign with another throwaway key that isn't in `$T/signers`, change a byte of `SHA256SUMS` after signing, or move the tag to another commit (`git tag -f v9.9.9 <commit>` in the fake repository). Settings → Updates says why, in one line.
+   - **It builds from source:** change a byte of the archive after `SHA256SUMS` is written, or leave the archive out of `latest.json`. Settings → Updates says why it builds.
+
+This is a Linux test, as the headless `cage` runs are. On macOS and Windows an update takes the same steps, with that system's archive (`hersir-9.9.9-macos-arm64.tar.gz`, `hersir-9.9.9-windows-x86_64.zip`) and installer. CI builds and tests Hersir there on every pull request, and an update on a real Mac and Windows PC is part of the check list in `docs/PLATFORMS.md`.
+
+### Testing the one line with a fake signed release
+
+The one line installs only a release whose signature checks, so a test signs its fake release itself, with a throwaway key, never with Jeffrey's. Install (`.github/workflows/install.yml`) does this on every system; by hand, in `$T` as above:
+
+1. **A key and its allowed-signers file:** `$T/key` and `$T/signers`, made as in step 1 above.
+2. **The release's downloads,** in a folder, `$T/builds`: the archives (a Release builds run's artifacts, or archives packed the same way from a build of this branch), `SHA256SUMS` (`sha256sum <the three archives> > SHA256SUMS`), and the signature over the message: `{ printf 'hersir v9.9.9 %s\n' "<the tag's commit>"; cat SHA256SUMS; } > "$T/message"`, `ssh-keygen -Y sign -f "$T/key" -n hersir-release "$T/message"`, and `$T/message.sig` moved to `$T/builds/hersir-9.9.9.sig`.
+3. **A repository with the tag,** on that commit, and GitHub's answer as a file (step 1 above), `$T/latest.json`.
+4. **The line,** with `HOME`, `XDG_DATA_HOME` and `HERSIR_PREFIX` in `$T`:
+
+   ```sh
+   env -i HOME="$T/home" PATH="$PATH" HERSIR_PREFIX="$T/home/.local" HERSIR_REPO="$T/fake-repo" \
+     HERSIR_RELEASES_URL="file://$T/latest.json" HERSIR_BUILDS_URL="file://$T/builds" HERSIR_RELEASE_SIGNERS="$T/signers" \
+     sh scripts/get.sh
+   ```
+
+   Leave the signature out, sign with another key, change `SHA256SUMS` or move the tag to see each refusal; change an archive to see the build from source after a wrong checksum.

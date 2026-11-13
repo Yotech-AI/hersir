@@ -170,7 +170,7 @@ impl RunSetup {
         app_mcp::save_cli_tools(&self.st, &self.agent, t).unwrap();
     }
     fn browser(&self, on: bool) {
-        let mcp = if on { vec![AgentServer { server_id: core_mcp::BROWSER.into(), on: true, tools_off: vec![] }] } else { vec![] };
+        let mcp = if on { vec![AgentServer { server_id: core_mcp::BROWSER.into(), on: true, tools_off: vec![], trusted: false }] } else { vec![] };
         app_mcp::save_agent(&self.st, &self.agent, AgentTools { mcp }).unwrap();
     }
 }
@@ -392,7 +392,7 @@ async fn codex_and_gemini_agents_get_only_what_their_cli_takes_and_the_rest_is_r
     gizai_core::settings::set(&st.db, "claude_bin", &FAKE_RUN.to_string()).unwrap();
     gizai_core::settings::set(&st.db, "agents_paused", &true).unwrap();
     gizai_lib::test_task(&st, repo.to_str().unwrap(), "backend");
-    let browser_on = AgentTools { mcp: vec![AgentServer { server_id: core_mcp::BROWSER.into(), on: true, tools_off: vec![] }] };
+    let browser_on = AgentTools { mcp: vec![AgentServer { server_id: core_mcp::BROWSER.into(), on: true, tools_off: vec![], trusted: false }] };
     for (name, kind, ok, refused, flag) in [
         ("Codex", "codex", CliTools { web_search: true, ..Default::default() }, CliTools { web_fetch: true, ..Default::default() }, r#"web_search="live""#),
         ("Gemini", "gemini", CliTools { web_fetch: true, ..Default::default() }, CliTools { web_search: true, ..Default::default() }, "--allowed-tools=web_fetch"),
@@ -417,6 +417,8 @@ async fn codex_and_gemini_agents_get_only_what_their_cli_takes_and_the_rest_is_r
         let stderr = read(&Path::new(&run.log_path).with_extension("stderr.log"));
         let argv = stderr.lines().find_map(|l| l.strip_prefix("argv: ")).unwrap_or_else(|| panic!("{name}: no argv in {stderr}"));
         assert!(argv.contains(flag), "{name}: {argv}");
+        // GA-263: Gemini starts no MCP server but the run's own, and this run has none: one empty name
+        let argv = argv.replacen("--allowed-mcp-server-names  ", "", usize::from(kind == "gemini"));
         assert!(!argv.contains("mcp") && !argv.contains("chrome-devtools") && !argv.contains("--chrome"), "{name}: {argv}");
         // nothing written into the worktree for the CLI's settings
         let wt = PathBuf::from(run.worktree_path.unwrap());
@@ -529,7 +531,7 @@ async fn the_team_leads_chat_gets_the_browser_next_to_gizai_when_it_is_on() {
     let st = &t.st;
     let program = stand_in(&t._tmp.path().join("bin/chromium"));
     app_mcp::save_browser(st, BrowserEntry { version: "1.10.1".into(), program: program.display().to_string() }).unwrap();
-    app_mcp::save_agent(st, &t.lead, AgentTools { mcp: vec![AgentServer { server_id: core_mcp::BROWSER.into(), on: true, tools_off: vec![] }] }).unwrap();
+    app_mcp::save_agent(st, &t.lead, AgentTools { mcp: vec![AgentServer { server_id: core_mcp::BROWSER.into(), on: true, tools_off: vec![], trusted: false }] }).unwrap();
     let call = t.turn("Check the login page of kade.test").await;
     let argv = argv_in(&call);
     // the fake keeps the config's mcpServers
@@ -546,10 +548,10 @@ async fn the_team_leads_chat_gets_the_browser_next_to_gizai_when_it_is_on() {
 
 // ---- the Team Lead's rules ----
 
-/// The shim binary: target/debug/gizai-mcp (built here when missing).
+/// The shim binary: target/debug/hersir-mcp, which the crate gizai-mcp builds (built here when missing).
 fn shim() -> PathBuf {
     static BUILT: std::sync::Once = std::sync::Once::new();
-    let path = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/debug/gizai-mcp"));
+    let path = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/debug/hersir-mcp"));
     BUILT.call_once(|| {
         if path.is_file() {
             return;
@@ -557,7 +559,7 @@ fn shim() -> PathBuf {
         let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
         let ok = std::process::Command::new(cargo).args(["build", "-q", "-p", "gizai-mcp"])
             .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/..")).status().map(|s| s.success()).unwrap_or(false);
-        assert!(ok && path.is_file(), "could not build gizai-mcp");
+        assert!(ok && path.is_file(), "could not build hersir-mcp (the crate gizai-mcp)");
     });
     path
 }
@@ -601,7 +603,7 @@ async fn after_a_chat_answer_used_a_web_tool_or_the_browser_the_acting_tools_are
         assert_eq!(msgs.iter().map(|m| m.0.as_str()).collect::<Vec<_>>(), [tool, "mcp__gizai__set_agent_status"], "{msgs:?}");
         let (_, is_error, text) = &msgs[1];
         // GA-102: not run, but kept for the user to approve with one click
-        assert!(*is_error && text == &format!("set_agent_status wasn't run: this answer used {tool}, a tool from outside Hersir. Hersir keeps \
+        assert!(*is_error && text == &format!("set_agent_status wasn't run: this chat used {tool}, a tool from outside Hersir. Hersir keeps \
                 the call for the user to approve with one click. Tell them in a sentence what it does."), "{tool}: {msgs:?}");
         let kept = gizai_lib::pending::list(st, &thread).unwrap();
         assert!(kept.len() == 1 && kept[0].action.tool == "set_agent_status" && kept[0].action.outside_tool == tool, "{tool}: {kept:?}");

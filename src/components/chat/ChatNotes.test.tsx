@@ -42,4 +42,17 @@ describe("the chat's note that the tools didn't connect", () => {
   it("The Team Lead couldn't … stays a failure, as before", () => {
     expect(bad(render("The Team Lead couldn't answer: Claude Code exited."))).toBe(true);
   });
+
+  // GA-255: the backend says "The Chief couldn't answer" now; an older chat keeps "The Team Lead couldn't".
+  it("The Chief couldn't … is a failure too, as the backend says it since GA-255", () => {
+    expect(bad(render("The Chief couldn't answer: Claude Code exited."))).toBe(true);
+    expect(bad(render("The Chief couldn't answer: unknown error"))).toBe(true);
+  });
+
+  it("the Chief's name further on, or another agent's, doesn't make a note a failure", () => {
+    for (const text of ["Hersir says the Chief couldn't answer.", "The Chief answered.",
+                        "The Chiefs couldn't answer.", "The QA Agent couldn't answer."]) {
+      expect(bad(render(text)), text).toBe(false);
+    }
+  });
 });

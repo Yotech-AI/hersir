@@ -158,6 +158,8 @@ describe("the layer (band.css)", () => {
   it("is the only thing under the page: no other negative z-index in the app's styles", () => {
     expect(band.filter((r) => /^-/.test(r.decl.get("z-index") ?? "")).map((r) => [r.selector, r.decl.get("z-index")])).toEqual([
       [".band", "-1"], ["[data-band] .side::before", "-2"], ["[data-band] .chat-threads::before", "-2"], ["[data-band] .ed-side::before", "-2"],
+      // GA-278: the Chat's terminal rail, a side-coloured column like the chat list
+      ["[data-band] .chat-term-rail::before", "-2"],
     ]);
     for (const [file, css] of APP_CSS) expect([file, rules(css).filter((r) => /^-/.test(r.decl.get("z-index") ?? "")).map((r) => r.selector)]).toEqual([file, []]);
   });
@@ -171,9 +173,10 @@ describe("the layer (band.css)", () => {
 });
 
 describe("see-through and solid (GA-139 §5.2)", () => {
-  it("makes only body, the sidebar, the chat's threads and composer strip, the Editor's tree, the main column and the properties panel see-through", () => {
+  it("makes only body, the sidebar, the chat's threads, composer strip and terminal rail, the Editor's tree, the main column and the properties panel see-through", () => {
     const cleared = band.filter((r) => r.decl.get("background") === "none").map((r) => r.selector).sort();
-    expect(cleared).toEqual(["[data-band] .chat-composer", "[data-band] .chat-threads", "[data-band] .ed-side", "[data-band] .main", "[data-band] .props",
+    // GA-278 adds the Chat's terminal rail (the panel hidden with terminals), side-coloured as the chat list
+    expect(cleared).toEqual(["[data-band] .chat-composer", "[data-band] .chat-term-rail", "[data-band] .chat-threads", "[data-band] .ed-side", "[data-band] .main", "[data-band] .props",
       "[data-band] .side", "[data-band] body"].sort());
     // html keeps the canvas
     const htmlBg = APP_CSS.flatMap(([, css]) => rules(css)).find((r) => r.selector === "html" && r.decl.has("background"));
@@ -181,7 +184,7 @@ describe("see-through and solid (GA-139 §5.2)", () => {
   });
 
   it("keeps the side colour of the sidebar, the threads and the tree on a ::before under the band", () => {
-    for (const col of [".side", ".chat-threads", ".ed-side"]) {
+    for (const col of [".side", ".chat-threads", ".ed-side", ".chat-term-rail"]) {
       expect([col, decl(`[data-band] ${col}`).get("position")]).toEqual([col, "relative"]);
       const b = decl(`[data-band] ${col}::before`);
       expect([col, b.get("content"), b.get("position"), b.get("inset"), b.get("z-index"), b.get("background"), b.get("pointer-events")])

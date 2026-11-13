@@ -73,7 +73,7 @@ export default function App({ onboarding = false }: { onboarding?: boolean }) {
         // Dev hook for headless screenshots: GIZAI_SELFTEST_MODE=open:<drawer kind> opens that drawer.
         const kind = i.selftest_mode?.startsWith("open:") ? i.selftest_mode.slice(5) : null;
         if (kind === "task" || kind === "project" || kind === "client" || kind === "person") setDrawer({ kind });
-        if (kind === "agent-lead") setDrawer({ kind: "agent", preset: { name: "Team Lead", role: "lead", chat: true } });
+        if (kind === "agent-lead") setDrawer({ kind: "agent", preset: { name: "Chief", role: "lead", chat: true } });
         if (i.selftest_mode === "theme:light") document.documentElement.dataset.theme = "light";
         // GIZAI_SELFTEST_MODE=appearance:chat=20,ui=16.5,docs=20,font=inter,theme=light[;<step>…]: Settings → Appearance for
         // this start only (not kept), then the steps, as below.
@@ -102,7 +102,7 @@ export default function App({ onboarding = false }: { onboarding?: boolean }) {
             await exitApp(0);
             return;
           }
-          const { appearanceProbe, changesProbe, chatArchiveProbe, chatProbe, closeSaveProbe, docProbe, dragProbe, editorProbe, memoryEmptyProbe, memoryProbe, pasteProbe, runProbe, screenshotsProbe, teamProbe, terminalProbe, usageProbe } = await import("./selftest");
+          const { appearanceProbe, changesProbe, chatArchiveProbe, chatPinsProbe, chatProbe, closeSaveProbe, docProbe, dragProbe, editorProbe, memoryEmptyProbe, memoryProbe, pasteProbe, runProbe, screenshotsProbe, teamProbe, terminalProbe, usageProbe } = await import("./selftest");
           // GA-122: GIZAI_SELFTEST_MODE=close-save:<step> on route doc/<id> or memory/<id> (scripts/close-save-test.sh): the
           // probe types in the editor and reports; the script quits Gizai from outside, so the page doesn't.
           if (i.selftest_mode?.startsWith("close-save:")) {
@@ -172,6 +172,12 @@ export default function App({ onboarding = false }: { onboarding?: boolean }) {
             chats = await chatArchiveProbe();
             if (!chats.ok) errors.push(`chat archive probe: ${JSON.stringify(chats)}`);
           }
+          // GA-257: GIZAI_SELFTEST_MODE=pins-a, then pins-b (a restart) on route chat (prep_chats' chats; see chatPinsProbe)
+          let pins: Awaited<ReturnType<typeof chatPinsProbe>> | undefined;
+          if (i.start_route === "chat" && (i.selftest_mode === "pins-a" || i.selftest_mode === "pins-b")) {
+            pins = await chatPinsProbe(i.selftest_mode === "pins-b" ? "b" : "a");
+            if (!pins.ok) errors.push(`chat pins probe: ${JSON.stringify(pins)}`);
+          }
           let appearance: Awaited<ReturnType<typeof appearanceProbe>> | undefined;
           if (i.start_route === "settings/appearance" && (i.selftest_mode === "appearance-set" || i.selftest_mode === "appearance-kept")) {
             appearance = await appearanceProbe(i.selftest_mode === "appearance-kept" ? "kept" : "set");
@@ -200,7 +206,7 @@ export default function App({ onboarding = false }: { onboarding?: boolean }) {
             paste = await pasteProbe();
             if (!paste.ok) errors.push(`paste probe: ${JSON.stringify(paste)}`);
           }
-          await selftestReport({ ready: true, errors, version: i.version, columns: team?.states.length, clients: clients?.length, projects: projects?.length, tasks: tasks?.length, drag, editor, doc, team: teamUi, run, chat, usage, chats, appearance, memory, changes, screenshots, terminal, paste });
+          await selftestReport({ ready: true, errors, version: i.version, columns: team?.states.length, clients: clients?.length, projects: projects?.length, tasks: tasks?.length, drag, editor, doc, team: teamUi, run, chat, usage, chats, pins, appearance, memory, changes, screenshots, terminal, paste });
           await exitApp(0);
         }
       })
@@ -243,7 +249,7 @@ export default function App({ onboarding = false }: { onboarding?: boolean }) {
           {/* while a page's code loads the first time, the page area stays empty (no spinner); useRoute's transition keeps
               the page you came from until the next one is ready (GA-178) */}
           <Suspense fallback={null}>
-            {route.page === "chat" || route.page === "chats" ? <ChatPage id={route.id} archive={route.page === "chats"} />
+            {route.page === "chat" || route.page === "chats" ? <ChatPage id={route.id} archive={route.page === "chats"} youId={info?.you_id ?? ""} />
               : route.page === "inbox" ? <TasksPage key="inbox" inboxFor={info?.you_id ?? ""} onNewTask={newTask} />
               : route.page === "tasks" || route.page === "board" ? <TasksPage key={route.page} initialView={route.page === "board" ? "board" : undefined} onNewTask={newTask} />
               : route.page === "task" && route.id ? <TaskPage key={route.id} id={route.id} view={route.view === "changes" || route.view === "screenshots" ? route.view : "card"} run={route.run} youId={info?.you_id ?? ""} />

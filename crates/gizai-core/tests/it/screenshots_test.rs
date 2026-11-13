@@ -156,7 +156,7 @@ fn a_schema_18_database_opens_with_0019s_columns_and_index_and_keeps_its_rows() 
     v18_db(&path);
     let db = Db::open(&path).unwrap();
     db.read(|c| {
-        assert_eq!(c.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?, 21, "0019 ran (and GA-212's 0020 and GA-228's 0021 after it)");
+        assert_eq!(c.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?, 22, "0019 ran (and GA-212's 0020, GA-228's 0021 and GA-261's 0022 after it)");
         for (table, col, ty) in [("files", "caption", "TEXT"), ("files", "width", "INTEGER"), ("files", "height", "INTEGER"),
                                  ("runs", "screenshots_note", "TEXT"), ("tasks", "screenshots", "INTEGER"),
                                  ("projects", "screenshots_json", "TEXT"), ("projects", "preview_command", "TEXT"),
@@ -179,7 +179,7 @@ fn a_schema_18_database_opens_with_0019s_columns_and_index_and_keeps_its_rows() 
     // and opening it again changes nothing
     drop(db);
     let db = Db::open(&path).unwrap();
-    assert_eq!(db.read(|c| Ok(c.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?)).unwrap(), 21);
+    assert_eq!(db.read(|c| Ok(c.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?)).unwrap(), 22);
 }
 
 /// `SCHEMA_VERSION` (db.rs) names the schema the migrations give: `changes.schema_version` records it for every write, and
@@ -188,8 +188,8 @@ fn a_schema_18_database_opens_with_0019s_columns_and_index_and_keeps_its_rows() 
 fn schema_version_names_the_schema_the_migrations_give() {
     let db = Db::open_in_memory().unwrap();
     let v = db.read(|c| Ok(c.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?)).unwrap();
-    assert_eq!(v, 21, "0001..0021");
-    assert_eq!(db::SCHEMA_VERSION, v, "db::SCHEMA_VERSION is raised to 21 with GA-228's migration 0021");
+    assert_eq!(v, 22, "0001..0022");
+    assert_eq!(db::SCHEMA_VERSION, v, "db::SCHEMA_VERSION is raised to 22 with GA-261's migration 0022");
 }
 
 /// `Db::open` copies a database to backups/ before upgrading it (when its version is below `SCHEMA_VERSION`): a v0.12.0
@@ -204,7 +204,7 @@ fn a_schema_18_database_is_backed_up_before_0019_changes_it() {
         d.map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect()
     }).unwrap_or_default();
     assert_eq!(snaps.len(), 1, "one backup of the schema 18 database, taken before 0019 (and GA-212's 0020 and GA-228's 0021) upgraded it: {snaps:?}");
-    assert!(snaps[0].starts_with("gizai-before-v21-"), "{snaps:?}");
+    assert!(snaps[0].starts_with("gizai-before-v22-"), "{snaps:?}");
 }
 
 // ---- 2. insert_evidence ----
@@ -718,7 +718,7 @@ fn an_agent_takes_screenshots_by_its_roles_default_until_its_own_switch_is_saved
     assert_eq!(m::agent_screenshots(&b.db, &b.agent).unwrap(), None, "never set");
     let cli = m::set_cli_tools(&b.db, &b.you, &b.agent, CliTools { web_search: true, builtin: vec!["Bash".into()], ..Default::default() }).unwrap();
     let tools = m::set_agent_tools(&b.db, &b.you, &b.agent, AgentTools { mcp: vec![AgentServer { server_id: m::BROWSER.into(), on: true,
-        tools_off: vec![] }] }).unwrap();
+        tools_off: vec![], trusted: false }] }).unwrap();
 
     m::set_agent_screenshots(&b.db, &b.you, &b.agent, false).unwrap();
     assert_eq!(m::agent_screenshots(&b.db, &b.agent).unwrap(), Some(false));
