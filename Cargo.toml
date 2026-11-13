@@ -7,7 +7,7 @@ exclude = ["third_party/rusqlite_migration"]
 [workspace.package]
 edition = "2024"
 license = "Apache-2.0"
-version = "0.16.0"
+version = "0.17.0"
 
 [workspace.dependencies]
 # 0.41 at least: its bundled SQLite (libsqlite3-sys 0.39, SQLite 3.54) has the fix for RUSTSEC-2026-0459.
