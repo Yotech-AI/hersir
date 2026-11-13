@@ -47,6 +47,15 @@ The **Terminal** button in the Editor's top bar, between Fetch and Open in, show
 - Drag its edge to change its height, which is the same in every folder.
 - Ctrl+\` shows or hides the panel, and Ctrl+Shift+\` starts a terminal in it.
 
+### In the Chat
+
+**Open terminal** in the Chat page's top bar, right before New chat, starts a terminal in a folder you pick: a project's folder, a folder in ~/Herd or a card's worktree. It opens in a panel on the right of the conversation, so you can run what the Chief asks for without leaving the chat.
+
+- The panel's tabs are the terminals you opened in the chat, with + for another one in the same folder, **Own page** and **Hide**. Under the tabs is the folder the shown terminal runs in.
+- While the panel shows, the conversation moves to the left. Drag the panel's left edge to change its width, which is the same in every chat; a double-click gives the first width back. In a narrow window the chat list hides while the panel shows.
+- **Hide** keeps the shells running: a rail on the chat's right edge says how many terminals it has, and a click shows them again. Ctrl+\` shows or hides the panel, and Ctrl+Shift+\` starts a terminal in the shown terminal's folder.
+- Another chat, the Archive, or another page and back: the panel stays as it was. The chat's terminals are in the sidebar too, and run until you close them or quit Hersir.
+
 ### In the sidebar and on its own page
 
 Each terminal has a row in the sidebar, with what runs in it on the right, or "ended". It also has its own page:

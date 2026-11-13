@@ -27,6 +27,7 @@ On a new install, the first start ends in a welcome chat: the Chief welcomes you
 - **Pinned:** Pin to the top keeps a chat under Pinned, above Recent, until you unpin it, also when it is older than the 30 in Recent: for a chat you want to come back to. The pin button is beside each chat on the left (when you point at it or tab to it), in a chat's top bar and on each row of Archive; on a pinned chat it says Unpin. The chat pinned last is at the top. A pinned chat isn't listed again under Recent; Unpin puts it back there when it is one of the 30 newest, else it is in Archive. Pins are kept with your data, so they stay after a restart and are in backups.
 - **A long chat** opens and scrolls like a short one: only the messages in sight, and a few around them, are on the page. So the window's Find (Ctrl+F) only finds words in those; to find a message further up or down, search in Archive.
 - **Files:** + next to the text box adds files to a message (Add files, or drop them on the Chat page) or links an item. A message's files are kept with it; the Chief reads a copy of each in its own folder and can attach one to a task, project or client.
+- **A terminal beside the chat:** Open terminal, next to New chat, starts a terminal in a folder you pick, in a panel on the right of the conversation, so you can run the commands the Chief asks for without leaving the chat ([Terminals in the Chat](editor-and-terminal.md#in-the-chat)).
 
 ## Link anything with @
 

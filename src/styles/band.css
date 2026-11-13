@@ -28,9 +28,9 @@
 @media (max-height: 559px), (prefers-contrast: more), (forced-colors: active), print { .app > .band, .onb > .band { display: none; } }
 
 /* ---------- see-through: the canvases near the bottom ---------- */
-/* The sidebar, the chat's threads and the Editor's tree: their colour moves to a ::before under the band */
-[data-band] .side, [data-band] .chat-threads, [data-band] .ed-side { position: relative; background: none; }
-[data-band] .side::before, [data-band] .chat-threads::before, [data-band] .ed-side::before { content: ""; position: absolute; inset: 0; z-index: -2;
+/* The sidebar, the chat's threads, the chat's terminal rail and the Editor's tree: their colour moves to a ::before under the band */
+[data-band] .side, [data-band] .chat-threads, [data-band] .ed-side, [data-band] .chat-term-rail { position: relative; background: none; }
+[data-band] .side::before, [data-band] .chat-threads::before, [data-band] .ed-side::before, [data-band] .chat-term-rail::before { content: ""; position: absolute; inset: 0; z-index: -2;
   background: var(--side); pointer-events: none; }
 /* The main column, the chat's composer strip (the box in it stays solid) and the properties panel: html's bg is theirs */
 [data-band] .main, [data-band] .chat-composer, [data-band] .props { background: none; }

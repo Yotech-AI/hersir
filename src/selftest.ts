@@ -3314,6 +3314,8 @@ export async function terminalProbe(folder: string) {
   if (folder === "rows") return editorRowsProbe();
   // GA-157: MODE=terminal:order-a and terminal:order-b run the probe of the Editor list's order, before and after a restart
   if (folder === "order-a" || folder === "order-b") return editorOrderProbe(folder === "order-a" ? "a" : "b");
+  // GA-278: MODE=terminal:chat-a and terminal:chat-b run the probe of the Chat's terminal panel, before and after a restart
+  if (folder === "chat-a" || folder === "chat-b") return chatTerminalProbe(folder === "chat-a" ? "a" : "b");
   const errors: string[] = [];
   const out: Record<string, unknown> = {};
   const check = (ok: unknown, what: string) => { if (!ok) errors.push(what); };
@@ -3885,6 +3887,397 @@ async function terminalPanelProbe(phase: "a" | "b", card: string) {
   await sleep(1500);
   return done();
 }
+
+// ---------- the Chat's terminal panel (GA-278) ----------
+// GIZAI_SELFTEST_MODE=terminal:chat-a, then terminal:chat-b, on route terminal (scripts/ui-test.sh: prep_chats' Chief and
+// chats, /bin/sh as the shell, a scratch home folder with ~/Herd/chat-site and ~/Herd/chat-other), two starts on the same
+// WebKit storage. (a) Open terminal right before New chat opens the picker titled "Open terminal in" under it; a pick starts
+// a terminal there in a panel on the right of the conversation, with the focus, its folder under the tabs and its row in the
+// sidebar; another pick adds a tab; + starts one in the shown terminal's folder; the messages and the text box start at the
+// left of their column while the panel shows (at 45% of the space right of the chat list), and are centred again once it
+// hides; × asks first while a program runs, the next tab shows; Hide keeps a running sleep 60 going, and the rail (with the
+// number) and Ctrl+` show it again; Ctrl+` from inside the terminal; the drag handle between 360px of panel and 400px of
+// conversation, a double click and ← →; another chat, New chat, the Archive and another page and back keep the panel, its tabs
+// and the shown terminal; Own page and back; a narrow window hides the chat list; the largest text size and light; closing the
+// last tab hides the panel. (b) After the restart: the width kept.
+
+const CHAT_SHARE = "gizai.chat.panel";
+
+async function chatTerminalProbe(phase: "a" | "b") {
+  const errors: string[] = [];
+  const out: Record<string, unknown> = { phase };
+  const check = (ok: unknown, what: string) => { if (!ok) errors.push(what); };
+  const done = () => ({ ok: errors.length === 0, errors, ...out });
+
+  const folders = await editorFolders();
+  const site = folders.find((f) => f.kind === "root" && f.name === "chat-site");
+  const other = folders.find((f) => f.kind === "root" && f.name === "chat-other");
+  if (!site || !other) { errors.push(`no folders chat-site and chat-other (${folders.map((f) => `${f.kind} ${f.name}`).join(", ")})`); return done(); }
+  if (phase === "a") localStorage.removeItem(CHAT_SHARE);
+
+  const chat = () => q<HTMLElement>("div.chat");
+  const panel = () => q<HTMLElement>(".chat > .chat-term");
+  const rail = () => q<HTMLButtonElement>(".chat > .chat-term-rail");
+  const openBtn = () => [...document.querySelectorAll<HTMLButtonElement>(".topbar .actions > button")].find((b) => textOf(b) === "Open terminal") ?? null;
+  const shownTab = () => q(".chat-term .term-tab[aria-selected=true]")?.getAttribute("data-term") ?? null;
+  const tabIds = () => [...document.querySelectorAll(".chat-term .term-tab")].map((t) => t.getAttribute("data-term") ?? "");
+  const wd = (el: Element | null | undefined) => el?.getBoundingClientRect().width ?? 0;
+  const r1 = (n: number) => Math.round(n * 10) / 10;
+  /** The panel's share of the space right of the chat list (the conversation and the panel), in %. */
+  const shareNow = () => { const p = wd(panel()), c = wd(q(".chat > .chat-main")); return p + c ? (p / (p + c)) * 100 : 0; };
+  const sizes = () => ({ chat: r1(wd(chat())), list: r1(wd(q(".chat > .chat-threads"))), talk: r1(wd(q(".chat > .chat-main"))), panel: r1(wd(panel())), share: r1(shareNow()) });
+  /** Where each .chat-col of the conversation starts and ends against its column: left-aligned or centred. */
+  const cols = () => [...document.querySelectorAll<HTMLElement>(".chat > .chat-main .chat-col")].map((c) => {
+    const m = c.closest(".chat-main")!.getBoundingClientRect(), r = c.getBoundingClientRect();
+    return { left: r1(r.left - m.left), right: r1(m.right - r.right), w: r1(r.width) };
+  });
+  const atLeft = () => { const c = cols(); return c.length > 0 && c.every((x) => Math.abs(x.left) <= 1); };
+  const centred = () => { const c = cols(); return c.length > 0 && c.every((x) => Math.abs(x.left - x.right) <= 1.5); };
+  // The cage's window is 1280px wide, which leaves the panel 12px between its limits (772px right of the chat list: 360px
+  // of panel, 400px of conversation) and the conversation narrower than its 760px column. The app is drawn 1920px wide for
+  // the width and the alignment, and at the window's own width for the narrow window, the largest text size and light.
+  const app = q<HTMLElement>(".app");
+  const wide = (on: boolean) => { if (app) app.style.width = on ? "1920px" : ""; return sleep(250); };
+  await wide(true);
+  const viewInPanel = (id: string) => waitFor(() => { const v = probeView(id); return v && v.renderer !== "none" && panel()?.contains(v.term.element ?? null) ? v : null; }, 10000);
+  /** Ctrl+` (Ctrl+Shift+` with shift) on the page, outside the terminal. */
+  const backquote = (shift = false) => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: shift ? "~" : "`", code: "Backquote", keyCode: 192, ctrlKey: true, shiftKey: shift, bubbles: true, cancelable: true }));
+  const pwdIn = async (term: Terminal, path: string) => {
+    await waitFor(() => termLines(term).some((l) => l.trim()), 10000); // the prompt
+    await sleep(300);
+    termType(term, "pwd\r");
+    // the path may wrap in a narrow panel: the screen's lines joined
+    return waitFor(() => (termLines(term).map((l) => l.trimEnd()).join("").includes(`pwd${path}`) ? path : null), 5000);
+  };
+  /** Open terminal, then a folder in its picker; the new terminal's id once its tab shows. */
+  const pick = async (name: string) => {
+    const before = tabIds();
+    openBtn()?.click();
+    const picker = await waitFor(() => q('.ed-picker[aria-label="Open terminal in"]'));
+    const opt = await waitFor(() => [...(picker?.querySelectorAll<HTMLElement>(".opt") ?? [])].find((o) => textOf(o.querySelector(".label")) === name), 8000);
+    if (!opt) return null;
+    opt.click();
+    return waitFor(() => { const t = shownTab(); return t && !before.includes(t) ? t : null; }, 10000);
+  };
+  const toChat = async (hash: string) => {
+    window.location.hash = hash;
+    return waitFor(() => (openBtn() && chat() ? true : null), 8000);
+  };
+
+  if (phase === "b") {
+    // after a restart: the width kept, and no terminal (quitting ended them)
+    const kept = Number(localStorage.getItem(CHAT_SHARE));
+    out.kept = kept;
+    check(kept >= 54 && kept <= 56, `the width kept before the restart is still there (${localStorage.getItem(CHAT_SHARE)})`);
+    if (!(await toChat("#/chat"))) { errors.push("no Open terminal on the Chat page"); return done(); }
+    check(!panel() && !rail() && (await terminalList()).length === 0, "after a restart the chat has no terminals, no panel and no rail");
+    const id = await pick("chat-site");
+    if (!id || !(await viewInPanel(id))) { errors.push(`no terminal opened after the restart: ${textOf(q(".ed-row-note"))}`); return done(); }
+    await sleep(250);
+    out.afterRestart = sizes();
+    check(Math.abs(shareNow() - kept) < 0.6, `after the restart the panel has the kept width (${JSON.stringify(out.afterRestart)}, kept ${kept})`);
+    for (const s of await terminalList()) await Promise.race([terminalClose(s.id).catch(() => {}), sleep(3000)]);
+    return done();
+  }
+
+  // 1. Open terminal, right before New chat; the picker titled "Open terminal in" under it
+  if (!(await toChat("#/chat"))) { errors.push("no Open terminal on the Chat page"); return done(); }
+  const acts = [...(openBtn()?.parentElement?.children ?? [])].map((el) => textOf(el));
+  out.topBar = acts;
+  check(acts.indexOf("Open terminal") >= 0 && acts[acts.indexOf("Open terminal") + 1] === "New chat", `Open terminal is right before New chat (${acts.join(" | ")})`);
+  check(openBtn()?.className === "btn sm" && !!openBtn()?.querySelector("svg.lucide-terminal"), "Open terminal is a btn sm with the terminal icon");
+  check(!panel() && !rail() && atLeft() === false && centred(), `without terminals no panel, no rail, the conversation centred (${JSON.stringify(cols())})`);
+  openBtn()?.click();
+  const picker = await waitFor(() => q('.ed-picker[aria-label="Open terminal in"]'));
+  out.picker = { title: textOf(picker?.querySelector(".ed-picker-title")), top: r1(picker?.getBoundingClientRect().top ?? 0), button: r1(openBtn()?.getBoundingClientRect().bottom ?? 0) };
+  check(textOf(picker?.querySelector(".ed-picker-title")) === "Open terminal in", `the picker is titled Open terminal in (${JSON.stringify(out.picker)})`);
+  check(picker && picker.getBoundingClientRect().top >= (openBtn()?.getBoundingClientRect().bottom ?? 1e9) - 1, `the picker opens under the button (${JSON.stringify(out.picker)})`);
+  document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true, cancelable: true }));
+  picker?.querySelector<HTMLElement>("input")?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true, cancelable: true }));
+  await waitFor(() => (!q(".ed-picker") ? true : null), 2000);
+
+  // 2. a pick starts a terminal there, in the panel on the right, with the focus; its folder under the tabs; its sidebar row
+  const id1 = await pick("chat-site");
+  if (!id1) { errors.push(`picking chat-site opened no terminal: ${textOf(q(".ed-row-note"))}`); return done(); }
+  const v1 = await viewInPanel(id1);
+  if (!v1) { errors.push("the terminal's view didn't show in the chat's panel"); return done(); }
+  const term = v1.term;
+  check(!q(".ed-picker"), "the picker closes after a pick that starts");
+  await sleep(300);
+  out.opened = { ...sizes(), cls: chat()?.className, cols: term.cols, rows: term.rows };
+  check(chat()?.className === "chat has-term" && panel() && wd(q(".chat > .chat-threads")) > 0, `the panel is the chat's third column, the chat list still there (${JSON.stringify(out.opened)})`);
+  check((panel()?.getBoundingClientRect().left ?? 0) >= (q(".chat > .chat-main")?.getBoundingClientRect().right ?? 1e9) - 1, "the panel is on the right of the conversation");
+  check(Math.abs(shareNow() - 45) < 0.6, `the panel opens at 45% of the space right of the chat list (${JSON.stringify(out.opened)})`);
+  check(await waitFor(() => (document.activeElement === term.textarea ? true : null), 2000), "the new terminal has the focus");
+  check(textOf(q(".chat-term-where")) === site.path && /Mono|monospace/.test(getComputedStyle(q(".chat-term-where")!).fontFamily),
+    `the panel shows the terminal's folder in mono (${textOf(q(".chat-term-where"))}, ${q(".chat-term-where") ? getComputedStyle(q(".chat-term-where")!).fontFamily : ""})`);
+  check(await waitFor(() => q(`.side [aria-label="Terminal"] a[data-term="${CSS.escape(id1)}"]`), 3000), "the sidebar's Terminal section lists it");
+  out.left = cols();
+  check(atLeft(), `while the panel shows, the messages and the text box start at the left of their column (${JSON.stringify(out.left)})`);
+  out.pwd = await pwdIn(term, site.id);
+  check(out.pwd, `pwd prints chat-site's folder ${site.id} (screen: ${JSON.stringify(termLines(term, true).filter(Boolean).slice(-4))})`);
+  check(term.cols >= 30 && term.rows >= 10, `the terminal fits the panel (${term.cols} × ${term.rows})`);
+
+  // 3. another pick adds a tab, shown, with the focus; + starts one in the shown terminal's folder
+  const id2 = await pick("chat-other");
+  const v2 = id2 ? await viewInPanel(id2) : null;
+  check(v2 && same2(tabIds(), [id1, id2]), `another pick adds a tab (${tabIds().join(", ")})`);
+  if (!id2 || !v2) return done();
+  check(await waitFor(() => (document.activeElement === v2.term.textarea ? true : null), 2000), "the picked terminal has the focus");
+  check(textOf(q(".chat-term-where")) === other.path, `the folder follows the shown terminal (${textOf(q(".chat-term-where"))})`);
+  const plus = q<HTMLButtonElement>('.chat-term .term-tabs button[aria-label="New terminal in chat-other"]');
+  check(plus?.title === "New terminal in chat-other (Ctrl+Shift+`)" && plus.getAttribute("aria-disabled") !== "true", `+ says where (${plus?.title})`);
+  const own = q<HTMLButtonElement>('.chat-term button[aria-label="Own page"]'), hide = q<HTMLButtonElement>('.chat-term button[aria-label="Hide"]');
+  check(hide?.title === "Hide the terminal (Ctrl+`): its shells keep running" && !!own, `Hide's tooltip is the card's (${hide?.title})`);
+  plus?.click();
+  const id3 = await waitFor(() => { const t = shownTab(); return t && t !== id1 && t !== id2 ? t : null; }, 10000);
+  const v3 = id3 ? await viewInPanel(id3) : null;
+  check(v3 && (await terminalList()).find((s) => s.id === id3)?.folder === other.id, "+ starts another terminal in the shown terminal's folder");
+  // Ctrl+Shift+` too
+  await sleep(300);
+  out.plusBefore = q('.chat-term .term-tabs button[aria-label^="New terminal in"]')?.getAttribute("aria-disabled") ?? "on";
+  backquote(true);
+  const id4 = await waitFor(() => { const t = shownTab(); return t && ![id1, id2, id3].includes(t) ? t : null; }, 10000);
+  out.ctrlShift = { tabs: tabIds().length, open: (await terminalList()).length, failed: textOf(q(".chat-term .ed-bar.failed")), plus: out.plusBefore, focus: document.activeElement?.className };
+  check(id4 && (await terminalList()).find((s) => s.id === id4)?.folder === other.id && tabIds().length === 4, `Ctrl+Shift+\` starts one there too (${JSON.stringify(out.ctrlShift)})`);
+
+  // 4. × on a tab with a program running asks first; Cancel keeps it; Close ends it and the next tab shows. A middle click
+  // on a waiting one closes it at once.
+  if (id4) await viewInPanel(id4);
+  const t4 = id4 ? probeView(id4)?.term : null;
+  if (t4 && id3 && id4) {
+    await waitFor(() => termLines(t4).some((l) => l.trim()), 10000);
+    await sleep(300);
+    termType(t4, "sleep 60\r");
+    const busy = await waitFor(() => (textOf(q(`.chat-term .term-tab[data-term="${CSS.escape(id4)}"] .prog`)) === "sleep" ? true : null), 6000);
+    check(busy, `the tab says what runs in it (${textOf(q(`.chat-term .term-tab[data-term="${CSS.escape(id4)}"]`))})`);
+    // the second tab picked first, so the next after the closed one is a tab after it
+    q<HTMLElement>(`.chat-term .term-tab[data-term="${CSS.escape(id3)}"]`)?.click();
+    await waitFor(() => (shownTab() === id3 ? true : null), 2000);
+    q<HTMLElement>(`.chat-term .term-tab[data-term="${CSS.escape(id4)}"]`)?.click();
+    await waitFor(() => (shownTab() === id4 ? true : null), 2000);
+    q<HTMLButtonElement>(`.chat-term .term-tab[data-term="${CSS.escape(id4)}"] .x`)?.click();
+    const ask = await waitFor(() => q(".ed-ask"), 2000);
+    out.ask = textOf(ask);
+    check(ask && /sleep is still running in .+\. Close it and end sleep\?/.test(textOf(ask)), `× asks first while a program runs (${out.ask})`);
+    if (ask) buttonByText(ask, "Cancel")?.click();
+    await sleep(300);
+    check(tabIds().includes(id4) && !(await terminalList()).find((s) => s.id === id4)?.ended, "Cancel keeps it running");
+    q<HTMLButtonElement>(`.chat-term .term-tab[data-term="${CSS.escape(id4)}"] .x`)?.click();
+    const ask2 = await waitFor(() => q(".ed-ask"), 2000);
+    if (ask2) buttonByText(ask2, "Close")?.click();
+    check(await waitFor(() => (!tabIds().includes(id4) ? true : null), 5000), "Close closes it");
+    check(shownTab() === id3, `the tab before it shows, as it was the last (${shownTab()})`);
+    // middle click on a waiting tab (id2, not shown) closes it at once
+    q<HTMLElement>(`.chat-term .term-tab[data-term="${CSS.escape(id2)}"]`)?.dispatchEvent(new MouseEvent("auxclick", { button: 1, bubbles: true, cancelable: true }));
+    check(await waitFor(() => (!tabIds().includes(id2) && !q(".ed-ask") ? true : null), 5000), "a middle click closes a waiting terminal without asking");
+    check(same2(tabIds(), [id1, id3]) && shownTab() === id3, `the shown tab stays (${tabIds().join(", ")} shown ${shownTab()})`);
+
+    // the keys between tabs: Ctrl+PgUp and Ctrl+PgDn from inside the terminal (it lets them through), ← and → on a tab;
+    // F2 renames a tab in place
+    const t3 = probeView(id3)?.term;
+    t3?.focus();
+    t3?.textarea?.dispatchEvent(termKeyEvent("keydown", { key: "PageUp", code: "PageUp", keyCode: 33, ctrlKey: true }));
+    check(await waitFor(() => (shownTab() === id1 ? true : null), 2000), `Ctrl+PgUp from inside the terminal shows the tab before (${shownTab()})`);
+    await waitFor(() => (document.activeElement === term.textarea ? true : null), 2000);
+    term.textarea?.dispatchEvent(termKeyEvent("keydown", { key: "PageDown", code: "PageDown", keyCode: 34, ctrlKey: true }));
+    check(await waitFor(() => (shownTab() === id3 ? true : null), 2000), `Ctrl+PgDn shows the next tab (${shownTab()})`);
+    const tabOf = (id: string) => q<HTMLElement>(`.chat-term .term-tab[data-term="${CSS.escape(id)}"]`);
+    tabOf(id3)?.focus();
+    if (tabOf(id3)) keyOn(tabOf(id3)!, "ArrowLeft");
+    // the picked terminal then takes the focus, as a tab picked in the Editor's panel does
+    check(await waitFor(() => (shownTab() === id1 ? true : null), 2000), `← on a tab shows the one before (${shownTab()}, ${JSON.stringify({ id1, id3 })})`);
+    tabOf(id1)?.focus();
+    if (tabOf(id1)) keyOn(tabOf(id1)!, "ArrowRight");
+    check(await waitFor(() => (shownTab() === id3 ? true : null), 2000), `→ shows the next one (${shownTab()})`);
+    if (tabOf(id3)) keyOn(tabOf(id3)!, "F2");
+    const nameIn = await waitFor(() => tabOf(id3)?.querySelector<HTMLInputElement>("input.name-in") ?? null, 2000);
+    if (nameIn) {
+      typeInto(nameIn, "chat build");
+      nameIn.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true, cancelable: true }));
+    }
+    check(nameIn && (await waitFor(() => (textOf(tabOf(id3)?.querySelector(".name")) === "chat build" ? true : null), 4000)), `F2 renames the tab (${textOf(tabOf(id3))})`);
+  }
+
+  // 5. Hide: the shells keep running (sleep 60 in the first), the rail with the number, the conversation centred; the rail
+  // and Ctrl+` show it again; Ctrl+` from inside the terminal hides it
+  q<HTMLElement>(`.chat-term .term-tab[data-term="${CSS.escape(id1)}"]`)?.click();
+  await waitFor(() => (shownTab() === id1 && panel()?.contains(term.element ?? null) ? true : null), 3000);
+  termType(term, "sleep 60\r");
+  await sleep(1200);
+  q<HTMLButtonElement>('.chat-term button[aria-label="Hide"]')?.click();
+  check(await waitFor(() => (!panel() && rail() ? true : null), 2000), "Hide hides the panel and the rail shows");
+  out.rail = { cls: chat()?.className, n: textOf(rail()?.querySelector(".n")), title: rail()?.title, w: r1(wd(rail())), right: r1((chat()?.getBoundingClientRect().right ?? 0) - (rail()?.getBoundingClientRect().right ?? 0)) };
+  check(chat()?.className === "chat has-rail" && textOf(rail()?.querySelector(".n")) === "2" && rail()?.title === "Show the terminal (Ctrl+`)" && !!rail()?.querySelector("svg.lucide-terminal"),
+    `the rail has the terminal icon, the number and its tooltip (${JSON.stringify(out.rail)})`);
+  check(wd(rail()) <= 48 && Math.abs(Number((out.rail as { right: number }).right)) <= 1, `the rail is narrow, on the chat's right edge (${JSON.stringify(out.rail)})`);
+  out.centredAgain = cols();
+  check(centred(), `hidden, the conversation is centred as before (${JSON.stringify(out.centredAgain)})`);
+  const running = (await terminalList()).find((s) => s.id === id1);
+  check(running && !running.ended && running.busy === "sleep", `its shell keeps running sleep 60 (${JSON.stringify(running && { busy: running.busy, ended: running.ended })})`);
+  rail()?.click();
+  check(await waitFor(() => (panel()?.contains(term.element ?? null) && shownTab() === id1 ? true : null), 3000), "the rail shows the panel again, on the same terminal");
+  check(await waitFor(() => (document.activeElement === term.textarea ? true : null), 2000), "shown again, the terminal has the focus");
+  term.textarea?.dispatchEvent(termKeyEvent("keydown", { key: "`", code: "Backquote", keyCode: 192, ctrlKey: true }));
+  check(await waitFor(() => (!panel() && rail() ? true : null), 2000), "Ctrl+` hides the panel from inside the terminal");
+  backquote();
+  check(await waitFor(() => (panel()?.contains(term.element ?? null) ? true : null), 3000), "Ctrl+` shows it again");
+  check((await terminalList()).find((s) => s.id === id1)?.busy === "sleep", "sleep 60 is still running");
+  term.input("\x03", true); // Ctrl+C ends the sleep
+  await sleep(300);
+
+  // 6. the drag handle: the panel's left edge, a vertical separator; between 360px of panel and 400px of conversation; a
+  // double click gives 45% back; ← and → move it 5%; kept
+  const handle = q<HTMLElement>(".chat-term > .term-handle");
+  if (!handle) { errors.push("no drag handle on the panel's left edge"); return done(); }
+  out.handle = { w: wd(handle), cursor: getComputedStyle(handle).cursor, orientation: handle.getAttribute("aria-orientation"), label: handle.getAttribute("aria-label"), now: handle.getAttribute("aria-valuenow"),
+    left: r1((handle.getBoundingClientRect().left) - (panel()?.getBoundingClientRect().left ?? 0)) };
+  check(handle.getAttribute("role") === "separator" && handle.getAttribute("aria-orientation") === "vertical" && getComputedStyle(handle).cursor === "col-resize" && wd(handle) <= 1.5
+    && Math.abs(handle.getBoundingClientRect().left - (panel()?.getBoundingClientRect().left ?? 0)) <= 1, `the handle is the panel's left edge, a vertical separator (${JSON.stringify(out.handle)})`);
+  const drag = async (dx: number) => {
+    const r = handle.getBoundingClientRect();
+    const x = r.left + r.width / 2, y = r.top + r.height / 2;
+    handle.dispatchEvent(pe("pointerdown", x, y));
+    for (let i = 1; i <= 4; i++) { handle.dispatchEvent(pe("pointermove", x + (dx * i) / 4, y)); await nextFrame(); }
+    handle.dispatchEvent(pe("pointerup", x + dx, y));
+    await sleep(150);
+    return sizes();
+  };
+  const start = sizes();
+  const grown = await drag(-80);
+  check(Math.abs(grown.panel - start.panel - 80) <= 2 && Math.abs(start.talk - grown.talk - 80) <= 2, `dragging the edge left 80px widens the panel 80px (${JSON.stringify({ start, grown })})`);
+  check(Math.abs(Number(localStorage.getItem(CHAT_SHARE)) - shareNow()) < 0.2, `the width is kept when the pointer lets go (${localStorage.getItem(CHAT_SHARE)})`);
+  const widest = await drag(-5000);
+  const narrow = await drag(5000);
+  out.drag = { start, grown, widest, narrow };
+  check(Math.abs(widest.talk - 400) <= 1.5, `dragging far left leaves the conversation 400px (${JSON.stringify(widest)})`);
+  check(Math.abs(narrow.panel - 360) <= 1.5, `dragging far right stops at 360px of panel (${JSON.stringify(narrow)})`);
+  handle.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
+  await sleep(200);
+  out.doubleClick = { ...sizes(), kept: localStorage.getItem(CHAT_SHARE), now: handle.getAttribute("aria-valuenow") };
+  check(Math.abs(shareNow() - 45) < 0.6 && localStorage.getItem(CHAT_SHARE) === "45" && handle.getAttribute("aria-valuenow") === "45", `a double click gives 45% back (${JSON.stringify(out.doubleClick)})`);
+  handle.focus();
+  keyOn(handle, "ArrowLeft");
+  await sleep(150);
+  out.arrowLeft = { share: r1(shareNow()), now: handle.getAttribute("aria-valuenow") };
+  check(Math.abs(shareNow() - 50) < 0.6 && handle.getAttribute("aria-valuenow") === "50", `← widens it 5% (${JSON.stringify(out.arrowLeft)})`);
+  keyOn(handle, "ArrowRight");
+  await sleep(150);
+  check(Math.abs(shareNow() - 45) < 0.6, `→ narrows it 5% (${r1(shareNow())})`);
+  keyOn(handle, "ArrowUp");
+  await sleep(150);
+  check(Math.abs(shareNow() - 45) < 0.6, "↑ doesn't move the left edge");
+  await sleep(200);
+  check(Math.abs(term.cols - (out.opened as { cols: number }).cols) <= 2, `back at 45% the terminal has the columns it opened with (${term.cols}, ${(out.opened as { cols: number }).cols})`);
+
+  // 7. another chat, New chat, the Archive, another page and back: the panel, its tabs and the shown terminal stay
+  const tabsNow = tabIds(), shown = shownTab(), shareKept = r1(shareNow());
+  const stays = (where: string) => {
+    const ok = panel()?.contains(term.element ?? null) && same2(tabIds(), tabsNow) && shownTab() === shown && Math.abs(shareNow() - shareKept) < 0.6;
+    check(ok, `${where}: the panel, its tabs and the shown terminal stay (${tabIds().join(", ")} shown ${shownTab()}, ${r1(shareNow())}%)`);
+  };
+  const recent = q<HTMLAnchorElement>(".chat-threads-list a.th[href^='#/chat/']");
+  recent?.click();
+  await waitFor(() => (/^#\/chat\/.+/.test(location.hash) && q(".chat-msg") ? true : null), 5000);
+  await sleep(300);
+  stays("another chat");
+  out.otherChat = cols();
+  check(atLeft(), `in another chat the messages start at the left too (${JSON.stringify(out.otherChat)})`);
+  await toChat("#/chat");
+  await sleep(300);
+  stays("New chat");
+  q<HTMLAnchorElement>(".chat-threads-foot a.th")?.click();
+  await waitFor(() => (location.hash === "#/chats" && q(".chat-archive") ? true : null), 5000);
+  await sleep(300);
+  stays("the Archive");
+  const arch = [...document.querySelectorAll<HTMLElement>(".chat-archive .chat-col")].map((c) => r1(c.getBoundingClientRect().left - c.closest(".chat-archive")!.getBoundingClientRect().left));
+  out.archive = arch;
+  check(arch.length > 0 && arch.every((x) => Math.abs(x) <= 1), `beside the panel the Archive starts at the left (${JSON.stringify(arch)})`);
+  window.location.hash = "#/tasks";
+  await sleep(700);
+  check(!panel() && (await terminalList()).filter((s) => tabsNow.includes(s.id) && !s.ended).length === tabsNow.length, "on another page the chat's terminals keep running");
+  check(q(`.side [aria-label="Terminal"] a[data-term="${CSS.escape(id1)}"]`), "and the sidebar lists them");
+  await toChat("#/chat");
+  check(await waitFor(() => (panel()?.contains(term.element ?? null) ? true : null), 5000), "back on the Chat page the view is in the panel again");
+  await sleep(200);
+  stays("another page and back");
+
+  // 8. Own page: the same view on #/terminal/<id>; back on Chat the panel shows it again
+  const ownName = (await terminalList()).find((s) => s.id === id1)?.name ?? "";
+  check(q<HTMLButtonElement>('.chat-term button[aria-label="Own page"]')?.title === `Open ${ownName} on its own page`, "Own page's tooltip names the terminal");
+  q<HTMLButtonElement>('.chat-term button[aria-label="Own page"]')?.click();
+  const onPage = await waitFor(() => (location.hash === `#/terminal/${encodeURIComponent(id1)}` && q(".term-page .term-place")?.contains(term.element ?? null) ? true : null), 5000);
+  check(onPage, `Own page shows the terminal on #/terminal/<id> (${location.hash})`);
+  await toChat("#/chat");
+  check(await waitFor(() => (panel()?.contains(term.element ?? null) && shownTab() === id1 ? true : null), 5000), "back on Chat the panel shows it again");
+  // the Terminal page asking for it shows the chat's away text in the panel
+  const box = document.createElement("div");
+  box.style.cssText = "position:fixed;right:0;bottom:0;width:520px;height:240px;display:flex;flex-direction:column;z-index:100";
+  document.body.appendChild(box);
+  const root = createRoot(box);
+  root.render(createElement(TerminalView, { id: id1, place: { kind: "page" } }));
+  const away = await waitFor(() => (box.contains(term.element ?? null) ? q(".chat-term .term-away") : null), 3000);
+  check(away && textOf(away) === `${ownName} is on its own page.Show here`, `the panel shows Show here while the page has it (${textOf(away)})`);
+  if (away) buttonByText(away, "Show here")?.click();
+  check(await waitFor(() => (panel()?.contains(term.element ?? null) ? true : null), 3000), "Show here brings it back to the panel");
+  out.awayChat = textOf(box.querySelector(".term-away"));
+  check(out.awayChat === `${ownName} is in the Chat's terminal panel.Show here`, `the other place says it is in the Chat's terminal panel (${out.awayChat})`);
+  root.unmount();
+  box.remove();
+
+  // 9. a narrow window: the chat list hides while the panel shows, and comes back with the panel hidden
+  if (app) {
+    app.style.width = "1000px";
+    const gone = await waitFor(() => (chat()?.classList.contains("no-list") ? true : null), 2000);
+    await sleep(200);
+    out.narrow = { ...sizes(), cls: chat()?.className, threads: getComputedStyle(q(".chat > .chat-threads")!).display, scroll: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+    check(gone && getComputedStyle(q(".chat > .chat-threads")!).display === "none" && wd(panel()) >= 359.5 && wd(q(".chat > .chat-main")) > 0,
+      `in a narrow window the chat list hides while the panel shows, and the panel fits (${JSON.stringify(out.narrow)})`);
+    q<HTMLButtonElement>('.chat-term button[aria-label="Hide"]')?.click();
+    await waitFor(() => (rail() ? true : null), 2000);
+    check(getComputedStyle(q(".chat > .chat-threads")!).display !== "none", "with the panel hidden the chat list is back");
+    rail()?.click();
+    await waitFor(() => (panel() ? true : null), 2000);
+    await wide(true);
+    check(await waitFor(() => (!chat()?.classList.contains("no-list") && getComputedStyle(q(".chat > .chat-threads")!).display !== "none" ? true : null), 2000), "a wide window shows the chat list again beside the panel");
+  }
+
+  // 10. the largest text size, then light: the panel fits, nothing scrolls sideways
+  const look = getAppearance();
+  await wide(false);
+  setAppearance({ ui: 16.5, chat: 20, docs: 20 }, false);
+  await sleep(500);
+  out.largest = { ...sizes(), list: wd(q(".chat > .chat-threads")), scroll: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+  check(panel() && wd(panel()) >= 359.5 && wd(q(".chat > .chat-main")) >= 399.5 && document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+    `at the largest text size the panel fits (${JSON.stringify(out.largest)}, ${chat()?.className})`);
+  setAppearance({ theme: "light" }, false);
+  await sleep(300);
+  out.light = { bg: getComputedStyle(panel()!).backgroundColor, term: String(term.options.theme?.background) };
+  check(panel() && getComputedStyle(panel()!).backgroundColor !== "rgba(0, 0, 0, 0)", `in light the panel draws (${JSON.stringify(out.light)})`);
+  setAppearance(look, false);
+  await wide(true);
+
+  // 11. closing the last tabs hides the panel, and nothing is left on the right; the width for the restart: 55%
+  // the panel was drawn again since step 6 (hidden, other pages): its handle now
+  const edge = q<HTMLElement>(".chat-term > .term-handle");
+  edge?.focus();
+  for (let i = 0; i < 2; i++) { if (edge) keyOn(edge, "ArrowLeft"); await sleep(150); }
+  out.kept = localStorage.getItem(CHAT_SHARE);
+  check(localStorage.getItem(CHAT_SHARE) === "55", `← twice keeps 55% (${out.kept})`);
+  for (const t of tabIds()) {
+    q<HTMLButtonElement>(`.chat-term .term-tab[data-term="${CSS.escape(t)}"] .x`)?.click();
+    const ask = await waitFor(() => q(".ed-ask"), 600);
+    if (ask) buttonByText(ask, "Close")?.click();
+    await waitFor(() => (!tabIds().includes(t) ? true : null), 5000);
+  }
+  check(await waitFor(() => (!panel() && !rail() && chat()?.className === "chat" ? true : null), 3000), `closing the last tab hides the panel, with no rail (${chat()?.className})`);
+  check(centred(), `and the conversation is centred again (${JSON.stringify(cols())})`);
+  for (const s of await terminalList()) await Promise.race([terminalClose(s.id).catch(() => {}), sleep(3000)]);
+  await wide(false);
+  await sleep(1500); // WebKit writes localStorage to disk a moment later
+  return done();
+}
+const same2 = (a: unknown[], b: unknown[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 
 // GIZAI_SELFTEST_MODE=steps:<step>;<step>… (scripts/shot-cage.sh, scripts/tour-capture.sh), run after
 // the start route opens. A step is one of:
