@@ -54,7 +54,8 @@ function ThreadRow({ t, on, live, pins }: { t: Thread; on: boolean; live: ChatSt
   );
 }
 
-/** `archive`: Chat → Archive (#/chats) instead of a conversation. `youId`: you, for Open terminal's folder picker. */
+/** `archive`: Chat → Archive (#/chats) instead of a conversation. `youId`: you, for the folder picker of Open terminal and of
+ *  Open in terminal under a message. */
 export function ChatPage({ id, archive = false, youId = "" }: { id?: string; archive?: boolean; youId?: string }) {
   const agent = useData(() => chatAgent().then((a) => ({ a })));
   const threads = useData(() => listChatThreads(RECENT_MAX));
@@ -111,7 +112,7 @@ export function ChatPage({ id, archive = false, youId = "" }: { id?: string; arc
               </div>
             )}
           </aside>
-          {archive ? <ChatArchive live={live} pins={pins} /> : <ChatThread threadId={id ?? null} thread={thread} agent={lead} />}
+          {archive ? <ChatArchive live={live} pins={pins} /> : <ChatThread threadId={id ?? null} thread={thread} agent={lead} youId={youId} />}
           <ChatTerminals />
         </div>
       )}
