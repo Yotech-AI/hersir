@@ -327,6 +327,25 @@ async fn the_system_prompt_names_each_copy_and_stays_the_same_while_the_commit_l
 }
 
 #[tokio::test]
+async fn the_system_prompt_asks_for_the_folder_and_each_command_in_code_right_after_the_line_on_planning_work() {
+    // GA-279 QA: the Chief names the folder and the commands so that Open in terminal shows under its answer; {you} is you
+    let t = setup().await;
+    let (_, s) = t.turn(None, "how do I test GA-279?").await;
+    assert_eq!(s.status, "succeeded", "{s:?}");
+    let argv: Vec<String> = serde_json::from_value(t.calls()[0]["argv"].clone()).unwrap();
+    let sys = &argv[argv.iter().position(|a| a == "--append-system-prompt").unwrap() + 1];
+    let you = gizai_core::users::list(&t.st.db).unwrap().into_iter().find(|p| p.id == t.st.you_id).unwrap().name;
+    let line = format!("- When you ask {you} to run commands, first name the folder as its path in code (in `~/Herd/shop`:), then put each \
+                        command in code after the word Run, or in a sh code block. Hersir then shows Open in terminal under your answer, \
+                        which opens a terminal in that folder beside the chat.");
+    let lines: Vec<&str> = sys.lines().collect();
+    let plan = lines.iter().position(|l| l.starts_with("- Plan work as tasks")).unwrap_or_else(|| panic!("no line on planning work: {sys}"));
+    assert_eq!(lines[plan + 1], line, "right after the line on planning work, word for word");
+    assert_eq!(lines.iter().filter(|l| l.contains("Open in terminal")).count(), 1, "once: {sys}");
+    assert!(!sys.contains("{you}"), "the format argument is filled in: {sys}");
+}
+
+#[tokio::test]
 async fn stray_turn_configs_are_removed_at_start_up() {
     let dir = tempfile::tempdir().unwrap();
     let data = dir.path().join("data");
