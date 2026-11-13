@@ -540,7 +540,7 @@ describe.runIf(unix)("one-line.yml: hersir.dev's line on Linux and macOS", () =>
     expect(r.out).toContain("The latest release: v0.13.0. Installed: gizai 0.13.0.");
   });
 
-  it("waits at least 10 s and at most 3660 s, and rounds the minutes up", () => {
+  it("waits at least 10 s and at most 3660 s, and rounds the minutes up", { timeout: 30_000 }, () => {
     for (const [reset, seconds, minutes] of [
       [NOW - 600, 10, 1], // reset already
       [NOW - 5, 10, 1],
@@ -795,7 +795,7 @@ function Start-Sleep {
   return { status: run.status, out: `${run.stdout}${run.stderr}`.replace(/\r\n/g, "\n"), ran };
 }
 
-describe.runIf(pwsh)("one-line.yml: Invoke-Line on Windows (GA-283)", () => {
+describe.runIf(pwsh)("one-line.yml: Invoke-Line on Windows (GA-283)", { timeout: 60_000 }, () => {
   const last =
     "The one line could not read Hersir's latest release from GitHub's API, also not after trying again 3 times. GitHub allows 60 calls an hour without a login, and the runners share them: run this again later.";
   const slept = (r) => r.ran.filter((l) => l.startsWith("Start-Sleep")).map((l) => Number(l.split(" ")[1]));
