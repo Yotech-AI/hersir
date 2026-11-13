@@ -3316,6 +3316,8 @@ export async function terminalProbe(folder: string) {
   if (folder === "order-a" || folder === "order-b") return editorOrderProbe(folder === "order-a" ? "a" : "b");
   // GA-278: MODE=terminal:chat-a and terminal:chat-b run the probe of the Chat's terminal panel, before and after a restart
   if (folder === "chat-a" || folder === "chat-b") return chatTerminalProbe(folder === "chat-a" ? "a" : "b");
+  // GA-279: MODE=terminal:chat-run runs the probe of Open in terminal under a Chief answer
+  if (folder === "chat-run") return chatRunProbe();
   const errors: string[] = [];
   const out: Record<string, unknown> = {};
   const check = (ok: unknown, what: string) => { if (!ok) errors.push(what); };
@@ -4277,7 +4279,174 @@ async function chatTerminalProbe(phase: "a" | "b") {
   await sleep(1500); // WebKit writes localStorage to disk a moment later
   return done();
 }
-const same2 = (a: unknown[], b: unknown[]) => a.length === b.length && a.every((x, i) => x === b[i]);
+
+// ---------- Open in terminal under a Chief answer (GA-279) ----------
+// GIZAI_SELFTEST_MODE=terminal:chat-run on route terminal (scripts/ui-test.sh: prep_chats' Chief, prep_chat_terminal's chat
+// "How do I test GA-279?", /bin/sh as the shell, a scratch home folder with ~/Herd/doq-studio and resources/embed-test in it,
+// ~/Herd/shop, ~/Herd/kade-portal and ~/Herd/invoice-api). Under each of the Chief's text messages that asks you to run a
+// command, and only there (not under a tool call, a message that only mentions commands or files, plain text or yours): one
+// quiet button per folder it names, in the order named and at most 3, right under the message and left-aligned with it;
+// Open in terminal… for none. A click opens the chat's terminal panel with a terminal in the folder (pwd prints it), with
+// the focus, and nothing typed; a second click shows the same one while it waits; while a program runs in it a click starts
+// a new tab there, which a click under the message that names a subfolder shows again; the second folder's button opens its
+// own; Open in terminal… opens the picker titled "Open terminal in" under it, and a pick opens a terminal there. In the
+// narrow conversation beside the panel the row of three buttons wraps.
+async function chatRunProbe() {
+  const errors: string[] = [];
+  const out: Record<string, unknown> = {};
+  const check = (ok: unknown, what: string) => { if (!ok) errors.push(what); };
+  const done = () => ({ ok: errors.length === 0, errors, ...out });
+
+  const folders = await editorFolders();
+  const named = (name: string) => folders.find((f) => f.kind === "root" && f.name === name);
+  const doq = named("doq-studio"), shop = named("shop"), kade = named("kade-portal");
+  if (!doq || !shop || !kade) { errors.push(`no folders doq-studio, shop and kade-portal (${folders.map((f) => `${f.kind} ${f.name}`).join(", ")})`); return done(); }
+  const thread = (await listChatThreads(50)).find((t) => t.title === "How do I test GA-279?");
+  if (!thread) { errors.push("no chat How do I test GA-279?"); return done(); }
+  window.location.hash = `#/chat/${thread.id}`;
+
+  const texts = () => [...document.querySelectorAll<HTMLElement>(".chat-main .chat-group.agent .chat-msg.agent:not(.draft)")];
+  const rowAfter = (m: Element) => { const n = m.nextElementSibling; return n?.classList.contains("msg-term") ? n as HTMLElement : null; };
+  const buttonsIn = (row: Element | null) => [...(row?.querySelectorAll<HTMLButtonElement>(".msg-term-row > button") ?? [])];
+  const labelsOf = (row: Element | null) => buttonsIn(row).map((b) => textOf(b));
+  const message = (start: string) => texts().find((m) => textOf(m).startsWith(start)) ?? null;
+  const panel = () => q<HTMLElement>(".chat > .chat-term");
+  const shownTab = () => q(".chat-term .term-tab[aria-selected=true]")?.getAttribute("data-term") ?? null;
+  const tabIds = () => [...document.querySelectorAll(".chat-term .term-tab")].map((t) => t.getAttribute("data-term") ?? "");
+  const r1 = (n: number) => Math.round(n * 10) / 10;
+  const viewInPanel = (id: string) => waitFor(() => { const v = probeView(id); return v && v.renderer !== "none" && panel()?.contains(v.term.element ?? null) ? v : null; }, 10000);
+  const pwdIn = async (term: Terminal, path: string) => {
+    await waitFor(() => termLines(term).some((l) => l.trim()), 10000); // the prompt
+    await sleep(300);
+    termType(term, "pwd\r");
+    return waitFor(() => (termLines(term).map((l) => l.trimEnd()).join("").includes(`pwd${path}`) ? path : null), 5000);
+  };
+  /** The chat's terminals seen so far (a hidden panel has no tabs in the page). */
+  const seen: string[] = [];
+  /** A click on a button under a message; the terminal shown then, once its view is in the panel: a new one once it started
+   *  (a few seconds at most), else the one the panel shows. */
+  const press = async (b: HTMLButtonElement | undefined) => {
+    b?.click();
+    const fresh = await waitFor(() => { const t = shownTab(); return t && panel() && !seen.includes(t) ? t : null; }, 4000);
+    const id = fresh ?? (panel() ? shownTab() : null);
+    if (!id) return null;
+    const v = await viewInPanel(id);
+    if (!v) return null;
+    if (fresh) seen.push(fresh);
+    return { id, term: v.term, isNew: !!fresh };
+  };
+
+  // 1. the rows: under the Chief's text messages that ask you to run a command, one button per folder named, in order
+  const why = await waitFor(() => message("Before you test"), 8000);
+  if (!why) { errors.push(`the chat's messages didn't show (${texts().length})`); return done(); }
+  await waitFor(() => (labelsOf(rowAfter(why)).length > 0 ? true : null), 5000);
+  const open = (path: string) => `Open in terminal${path}`;
+  const rows = texts().map((m) => [textOf(m).slice(0, 18), rowAfter(m) ? labelsOf(rowAfter(m)) : null]);
+  out.rows = rows;
+  const want = [
+    ["Before you test, i", [open(doq.path)]],
+    ["QA ran npm test on", null],
+    [`In ${doq.path}/resou`.slice(0, 18), [open(doq.path)]],
+    [`In ${doq.id}`.slice(0, 18), [open(doq.path)]],
+    ["Run composer insta", ["Open in terminal…"]],
+    [`In ${shop.path}: run`.slice(0, 18), [open(shop.path), open(doq.path)]],
+    ["Run npm ci in ~/He", [open(doq.path), open(shop.path), open(kade.path)]],
+    ["All done: GA-279 i", null],
+  ];
+  check(JSON.stringify(rows) === JSON.stringify(want), `the rows under the Chief's messages (${JSON.stringify(rows)}, want ${JSON.stringify(want)})`);
+  check(!q(".chat-main .tool-card .msg-term") && !q(".chat-main .tool-card + .msg-term") && !q(".chat-main .chat-group.user .msg-term"),
+    "no row under a tool call or under your messages");
+  check(document.querySelectorAll(".chat-main .msg-term").length === 6, `six rows in the chat (${document.querySelectorAll(".chat-main .msg-term").length})`);
+
+  // 2. the button: quiet, the terminal icon, the folder in mono, its tooltip; right under the message and left-aligned with it
+  const b = buttonsIn(rowAfter(why))[0]!;
+  const mono = b.querySelector<HTMLElement>(".mono");
+  const msgBox = why.getBoundingClientRect(), rowBox = rowAfter(why)!.getBoundingClientRect(), icon = b.querySelector("svg")?.getBoundingClientRect();
+  const firstText = why.querySelector("p")?.getBoundingClientRect();
+  const monoFont = mono ? getComputedStyle(mono).fontFamily : "";
+  out.button = { cls: b.className, title: b.title, mono: textOf(mono), font: monoFont, gap: r1(rowBox.top - msgBox.bottom),
+    iconLeft: r1(icon?.left ?? 0), textLeft: r1(firstText?.left ?? 0), height: r1(b.getBoundingClientRect().height) };
+  check(b.className === "btn ghost sm" && b.title === `Open a terminal in ${doq.path} beside the chat` && !!b.querySelector("svg.lucide-terminal"),
+    `Open in terminal is a btn ghost sm with the terminal icon and its tooltip (${JSON.stringify(out.button)})`);
+  check(textOf(mono) === doq.path && /Mono|monospace/.test(monoFont), `the folder in mono (${JSON.stringify(out.button)})`);
+  check(Math.abs(rowBox.top - msgBox.bottom) <= 8, `the row is right under the message (${JSON.stringify(out.button)})`);
+  check(icon && firstText && Math.abs(icon.left - firstText.left) <= 12, `the button is left-aligned with the message's text (${JSON.stringify(out.button)})`);
+
+  // 3. a click: the chat's terminal panel with a terminal in ~/Herd/doq-studio, with the focus; nothing typed into it
+  check(!panel(), "no panel before the click");
+  const t1 = await press(b);
+  if (!t1) { errors.push(`the click opened no terminal: ${textOf(rowAfter(why)?.querySelector(".msg-term-why"))}`); return done(); }
+  check(t1.isNew && tabIds().length === 1, `a new tab (${tabIds().join(", ")})`);
+  check(await waitFor(() => (document.activeElement === t1.term.textarea ? true : null), 2000), "the terminal has the focus");
+  check(textOf(q(".chat-term-where")) === doq.path, `the panel shows the folder (${textOf(q(".chat-term-where"))})`);
+  await waitFor(() => termLines(t1.term).some((l) => l.trim()), 10000);
+  await sleep(500);
+  out.screenAtStart = termLines(t1.term).filter((l) => l.trim());
+  check(!termLines(t1.term).join("\n").match(/artisan|npm/), `nothing typed or run in it (${JSON.stringify(out.screenAtStart)})`);
+  out.pwd = await pwdIn(t1.term, doq.id);
+  check(out.pwd, `pwd prints ${doq.id} (screen: ${JSON.stringify(termLines(t1.term, true).filter(Boolean).slice(-4))})`);
+
+  // 4. a second click shows the same terminal while it waits for a command, also after Hide
+  q<HTMLButtonElement>(".chat-term button[aria-label^='Hide'], .chat-term button[title^='Hide']")?.click();
+  await waitFor(() => (!panel() ? true : null), 2000);
+  out.hidden = !panel();
+  (document.activeElement as HTMLElement | null)?.blur();
+  const again = await press(buttonsIn(rowAfter(why))[0]);
+  check(again && again.id === t1.id && !again.isNew && tabIds().length === 1, `a second click shows the same terminal (${again?.id}, ${tabIds().join(", ")}, hidden first: ${out.hidden})`);
+  check(await waitFor(() => (document.activeElement === t1.term.textarea ? true : null), 2000), "with the focus");
+
+  // 5. while a program runs in it, a click starts a new tab in that folder; the message that names a subfolder shows that one
+  termType(t1.term, "sleep 30\r");
+  // the backend notes the program that runs a moment later
+  let busy: unknown = null;
+  for (let i = 0; i < 50 && !busy; i++) { busy = (await terminalList()).find((s) => s.id === t1.id)?.busy ?? null; if (!busy) await sleep(100); }
+  out.busy = busy;
+  check(busy, `sleep 30 runs in it (${JSON.stringify(out.busy)})`);
+  const t2 = await press(buttonsIn(rowAfter(why))[0]);
+  check(t2 && t2.isNew && same2(tabIds(), [t1.id, t2.id]), `while a program runs, a click starts a new tab (${tabIds().join(", ")})`);
+  if (!t2) return done();
+  check(await pwdIn(t2.term, doq.id), `the new tab is in ${doq.id}`);
+  const sub = message(`In ${doq.path}/resou`.slice(0, 18));
+  const t3 = await press(sub ? buttonsIn(rowAfter(sub))[0] : undefined);
+  check(t3 && t3.id === t2.id && !t3.isNew, `the message naming a subfolder shows the waiting terminal in ${doq.path} (${t3?.id}, ${tabIds().join(", ")})`);
+
+  // 6. the second folder's button opens its own terminal
+  const two = message(`In ${shop.path}: run`.slice(0, 18));
+  const t4 = await press(two ? buttonsIn(rowAfter(two))[0] : undefined);
+  check(t4 && t4.isNew && textOf(q(".chat-term-where")) === shop.path, `${shop.path}'s button opens a terminal there (${textOf(q(".chat-term-where"))})`);
+  if (t4) check(await pwdIn(t4.term, shop.id), `pwd prints ${shop.id}`);
+
+  // 7. Open in terminal… opens the picker titled "Open terminal in" under it; a pick opens a terminal there
+  const none = message("Run composer insta");
+  const pickBtn = none ? buttonsIn(rowAfter(none))[0] : undefined;
+  check(pickBtn?.className === "btn ghost sm" && !!pickBtn.querySelector("svg.lucide-terminal"), "Open in terminal… is a btn ghost sm with the terminal icon");
+  pickBtn?.click();
+  const picker = await waitFor(() => q('.ed-picker[aria-label="Open terminal in"]'), 3000);
+  out.picker = { title: textOf(picker?.querySelector(".ed-picker-title")), top: r1(picker?.getBoundingClientRect().top ?? 0), button: r1(pickBtn?.getBoundingClientRect().bottom ?? 0) };
+  check(picker && textOf(picker.querySelector(".ed-picker-title")) === "Open terminal in", `the picker is titled Open terminal in (${JSON.stringify(out.picker)})`);
+  check(picker && pickBtn && picker.getBoundingClientRect().top >= pickBtn.getBoundingClientRect().bottom - 1, `the picker opens under the button (${JSON.stringify(out.picker)})`);
+  const opt = await waitFor(() => [...(picker?.querySelectorAll<HTMLElement>(".opt") ?? [])].find((o) => textOf(o.querySelector(".label")) === "kade-portal"), 8000);
+  const before = tabIds();
+  opt?.click();
+  const t5id = await waitFor(() => { const t = shownTab(); return t && !before.includes(t) ? t : null; }, 10000);
+  check(t5id && !q(".ed-picker") && textOf(q(".chat-term-where")) === kade.path, `a pick opens a terminal in kade-portal and closes the picker (${textOf(q(".chat-term-where"))})`);
+
+  // 8. beside the panel the conversation is narrow: the row of three buttons wraps, and none runs out of it
+  await sleep(300);
+  const three = message("Run npm ci in ~/He");
+  const threeRow = three ? rowAfter(three)?.querySelector<HTMLElement>(".msg-term-row") ?? null : null;
+  const boxes = buttonsIn(threeRow?.parentElement ?? null).map((x) => x.getBoundingClientRect());
+  const rowRect = threeRow?.getBoundingClientRect();
+  out.narrow = { conversation: r1(q(".chat > .chat-main")?.getBoundingClientRect().width ?? 0), row: r1(rowRect?.width ?? 0),
+    tops: boxes.map((x) => r1(x.top)), rights: boxes.map((x) => r1(x.right)), wrap: threeRow ? getComputedStyle(threeRow).flexWrap : "" };
+  check(threeRow && getComputedStyle(threeRow).flexWrap === "wrap", `the row wraps (${JSON.stringify(out.narrow)})`);
+  check(boxes.length === 3 && new Set(boxes.map((x) => Math.round(x.top))).size > 1, `three buttons on more than one line beside the panel (${JSON.stringify(out.narrow)})`);
+  check(rowRect && boxes.every((x) => x.right <= rowRect.right + 1), `no button runs out of the row (${JSON.stringify(out.narrow)})`);
+
+  for (const s of await terminalList()) await Promise.race([terminalClose(s.id).catch(() => {}), sleep(3000)]);
+  return done();
+}
+const same2 =(a: unknown[], b: unknown[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 
 // GIZAI_SELFTEST_MODE=steps:<step>;<step>… (scripts/shot-cage.sh, scripts/tour-capture.sh), run after
 // the start route opens. A step is one of:

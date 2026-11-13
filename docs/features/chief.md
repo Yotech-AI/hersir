@@ -28,6 +28,7 @@ On a new install, the first start ends in a welcome chat: the Chief welcomes you
 - **A long chat** opens and scrolls like a short one: only the messages in sight, and a few around them, are on the page. So the window's Find (Ctrl+F) only finds words in those; to find a message further up or down, search in Archive.
 - **Files:** + next to the text box adds files to a message (Add files, or drop them on the Chat page) or links an item. A message's files are kept with it; the Chief reads a copy of each in its own folder and can attach one to a task, project or client.
 - **A terminal beside the chat:** Open terminal, next to New chat, starts a terminal in a folder you pick, in a panel on the right of the conversation, so you can run the commands the Chief asks for without leaving the chat ([Terminals in the Chat](editor-and-terminal.md#in-the-chat)).
+- **Open in terminal under an answer:** when the Chief asks you to run commands (in code after Run, or in a sh code block), **Open in terminal** shows under its answer, with the folder the answer names, such as `~/Herd/shop`: a project's folder or a folder in your Editor folders, also when it names a folder or a file inside one. A click opens a terminal in that folder beside the chat; a second click shows the same one while it waits for a command. An answer that names no such folder has Open in terminal…, which asks for the folder. It never types or runs anything for you: the terminal starts in the folder and waits for you.
 
 ## Link anything with @
 

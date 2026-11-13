@@ -164,6 +164,16 @@
 #     terminal and its width; Own page and back; the away texts; the app drawn 1000px wide hides the chat list while the
 #     panel shows; the largest text size and light in the 1280px window; closing the last tab hides the panel, no rail.
 #     (b) After a restart the panel opens at the width kept (55%).
+# 24. Open in terminal (GA-279), against prep_chats' Chief and prep_chat_terminal's chat, with /bin/sh in a scratch home
+#     folder with ~/Herd/doq-studio (and resources/embed-test in it), ~/Herd/shop, ~/Herd/kade-portal and ~/Herd/invoice-api:
+#     a row under each of the Chief's text messages that asks you to run a command and nowhere else (not under a tool call,
+#     a message that only mentions a command or a file, plain text, your messages): a quiet button per folder named, in the
+#     order named, at most 3, for a subfolder and an absolute path too; Open in terminal… for none. Right under the message,
+#     left-aligned with its text, the terminal icon, the folder in mono and its tooltip. A click opens the chat's terminal
+#     panel with a terminal in ~/Herd/doq-studio (pwd), with the focus, nothing typed; after Hide a second click shows the
+#     same one; while sleep 30 runs a click starts a new tab there, which the subfolder's button shows again; the second
+#     folder's button opens its own; Open in terminal… opens the picker titled "Open terminal in" under it and a pick opens
+#     the terminal there; beside the panel the row of three buttons wraps.
 # Makes .devdata/demo when it is missing, and builds the app when it is missing or stale (scripts/app-ready.sh).
 # usage: scripts/ui-test.sh
 set -uo pipefail
@@ -326,4 +336,11 @@ fresh
 rm -rf .devdata/uitest-home && mkdir -p .devdata/uitest-home/Herd/chat-site .devdata/uitest-home/Herd/chat-other
 DATA=$PWD/.devdata/uitest ROUTE=terminal MODE=terminal:chat-a GZ_SHELL=/bin/sh GZ_HOME=$PWD/.devdata/uitest-home TIMEOUT=150 scripts/smoke-cage.sh || fail=1
 DATA=$PWD/.devdata/uitest ROUTE=terminal MODE=terminal:chat-b GZ_SHELL=/bin/sh GZ_HOME=$PWD/.devdata/uitest-home TIMEOUT=60 scripts/smoke-cage.sh || fail=1
+fresh
+# GA-279: Open in terminal under a Chief answer, with the Chief of prep_chats, prep_chat_terminal's chat and four folders in ~/Herd
+(source scripts/env.sh && cargo run -q -p gizai-core --example prep_chats -- .devdata/uitest "$PWD/crates/gizai-agents/tests/fake-claude.sh")
+rm -rf .devdata/uitest-home && mkdir -p .devdata/uitest-home/Herd/doq-studio/resources/embed-test .devdata/uitest-home/Herd/shop \
+  .devdata/uitest-home/Herd/kade-portal .devdata/uitest-home/Herd/invoice-api
+(source scripts/env.sh && cargo run -q -p gizai-core --example prep_chat_terminal -- .devdata/uitest "$PWD/.devdata/uitest-home" > /dev/null)
+DATA=$PWD/.devdata/uitest ROUTE=terminal MODE=terminal:chat-run GZ_SHELL=/bin/sh GZ_HOME=$PWD/.devdata/uitest-home TIMEOUT=120 scripts/smoke-cage.sh || fail=1
 exit $fail
