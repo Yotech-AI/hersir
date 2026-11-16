@@ -140,6 +140,12 @@ pub fn resume_pull(st: &AppState, agent_id: &str) {
 
 /// Pauses the agent's pull. True when this paused it; false when an earlier failure already had (its reason stays).
 fn pause_pull(st: &AppState, agent_id: &str, why: &str) -> bool {
+    pause_pull_logged(st, agent_id, why, why)
+}
+
+/// `pause_pull`, with Hersir's log saying why in `logged`'s words rather than `why`'s: a worktree that couldn't be
+/// prepared names a failed setup command there rather than shows its text, which `why` keeps (GA-281).
+fn pause_pull_logged(st: &AppState, agent_id: &str, why: &str, logged: &str) -> bool {
     let mut paused = st.runs.pull_paused.lock().unwrap();
     if paused.contains_key(agent_id) {
         return false;
@@ -147,9 +153,9 @@ fn pause_pull(st: &AppState, agent_id: &str, why: &str) -> bool {
     paused.insert(agent_id.to_string(), why.to_string());
     // after the lock is let go, so nothing in the line can poison it
     drop(paused);
-    // Hersir's log gets the reason's first line, without what looks like a secret (GA-281): its further lines can be a
-    // failed setup command's output, which stays on the card.
-    eprintln!("gizai: agent {agent_id} stops taking cards until you start or edit it: {}", redact::hidden(redact::first_line(why)));
+    // Hersir's log gets the first line, without what looks like a secret (GA-281): further lines can be a failed
+    // command's output, which stays on the card.
+    eprintln!("gizai: agent {agent_id} stops taking cards until you start or edit it: {}", redact::hidden(redact::first_line(logged)));
     true
 }
 
@@ -669,18 +675,25 @@ pub fn suggest(st: &AppState, task_id: &str) -> Option<String> {
 }
 
 /// Why a run didn't start: a start that can't work (Claude Code missing, a wrong model, no repository, …), a card already
-/// put on hold for it (preparing its worktree failed), a start that only has to wait (the run limit, a paused agent, the
-/// agent's budget, …), or anything else.
+/// put on hold for it (Gemini and a .gemini/ folder), a worktree that couldn't be prepared, a start that only has to wait
+/// (the run limit, a paused agent, the agent's budget, …), or anything else.
 enum StartError {
     Card(String),
     Held(String),
+    /// Preparing the card's worktree failed (`prepare_worktree`): as `Held` when the agent that was to start put the card
+    /// on hold (`held`), else as `Card`. The card and the app get `reason`; Hersir's log gets `logged`, which names the
+    /// project's setup command rather than shows its text (GA-281).
+    Unprepared { reason: String, logged: String, held: bool },
     Wait(String),
     Other(String),
 }
 
 impl StartError {
     fn message(self) -> String {
-        match self { StartError::Card(m) | StartError::Held(m) | StartError::Wait(m) | StartError::Other(m) => m }
+        match self {
+            StartError::Card(m) | StartError::Held(m) | StartError::Wait(m) | StartError::Other(m) => m,
+            StartError::Unprepared { reason, .. } => reason,
+        }
     }
 }
 
@@ -885,21 +898,28 @@ async fn start_background(st: &AppState, task_id: &str, agent_id: &str, trigger:
     let started = start_inner(st, task_id, Some(agent_id.to_string()), None, trigger, resume, claim, &mut checked).await;
     let out = match started {
         Ok((_, done)) => Some(done),
-        Err(StartError::Card(reason)) => {
-            if pause_pull(st, agent_id, &reason) {
-                hold_card(st, agent_id, task_id, &reason);
-            } else {
-                eprintln!("gizai: {trigger} start of an agent failed while its pull was paused, the card waits: {}",
-                          redact::hidden(redact::first_line(&reason)));
-            }
-            None
-        }
+        Err(StartError::Card(reason)) => { cant_start(st, agent_id, task_id, trigger, &reason, &reason); None }
         Err(StartError::Held(reason)) => { pause_pull(st, agent_id, &reason); None }
+        // Hersir's log gets `logged`: a failed setup command named, not shown (GA-281)
+        Err(StartError::Unprepared { reason, logged, held: false }) => { cant_start(st, agent_id, task_id, trigger, &reason, &logged); None }
+        Err(StartError::Unprepared { reason, logged, held: true }) => { pause_pull_logged(st, agent_id, &reason, &logged); None }
         Err(StartError::Wait(_)) => None,
         Err(StartError::Other(reason)) => { eprintln!("gizai: {trigger} start of an agent failed: {}", redact::hidden(&reason)); None }
     };
     drop(checked);
     out
+}
+
+/// A start nobody watches that can't work on the card: the agent stops taking cards and the card goes on hold with
+/// `reason`, or, when another card's failure paused the agent meanwhile, the card only waits. Hersir's log gets `logged`
+/// for why (`pause_pull_logged`).
+fn cant_start(st: &AppState, agent_id: &str, task_id: &str, trigger: &str, reason: &str, logged: &str) {
+    if pause_pull_logged(st, agent_id, reason, logged) {
+        hold_card(st, agent_id, task_id, reason);
+    } else {
+        eprintln!("gizai: {trigger} start of an agent failed while its pull was paused, the card waits: {}",
+                  redact::hidden(redact::first_line(logged)));
+    }
 }
 
 /// Puts the card on hold "blocked" with the reason, as `actor` (the agent that couldn't start), so Jeffrey sees why.
@@ -985,13 +1005,12 @@ async fn prepare_worktree(st: &AppState, holder: Option<&str>, task: &Task, proj
         }
         Err(failed) => {
             let reason = format!("Preparing its worktree failed: {failed}");
-            match holder {
-                Some(agent_id) => {
-                    hold_card(st, agent_id, &task.id, &reason);
-                    Err(StartError::Held(reason))
-                }
-                None => Err(StartError::Card(reason)),
+            if let Some(agent_id) = holder {
+                hold_card(st, agent_id, &task.id, &reason);
             }
+            // the project's setup command named, not shown: its text can hold a secret as a plain argument (GA-281)
+            let logged = format!("Preparing its worktree failed: {}", failed.logged());
+            Err(StartError::Unprepared { reason, logged, held: holder.is_some() })
         }
     }
 }
