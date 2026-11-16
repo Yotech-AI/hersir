@@ -107,6 +107,10 @@
 .term-host { position: absolute; inset: 0; }
 .term-host .xterm { height: 100%; }
 .term-host .xterm .xterm-viewport { background-color: var(--term-bg); }
+/* xterm.js draws its own scrollbar (its colours: lib/terminals.ts, scroll-thumb and scroll-thumb-hover): the islands' thumb,
+   a size-scroll pill 2px from the edge, as the app's own scrollbars (components.css). Its width and place are inline
+   styles, so these need !important. */
+.term-host .xterm .xterm-scrollable-element > .scrollbar.vertical > .slider { left: auto !important; right: 2px; width: var(--size-scroll) !important; border-radius: var(--radius-pill); }
 .term-place .term-away { flex: 1; }
 
 /* ---------- the Terminal page with no terminal (TF0; TF1 adds the tabs, the full top bar and the ended states above) ---------- */
