@@ -149,8 +149,8 @@ describe("the window: the background and the islands", () => {
     expect(app.get("padding")).toBe("var(--island-gap)");
     expect(app.get("gap")).toBe("var(--island-gap)");
     expect(app.get("height")).toBe("100vh");
-    // the glass is card 3's: nothing transparent yet
-    expect(Object.values(css).join("\n")).not.toMatch(/html\.glass|--glass-(from|to|glow)\)/);
+    // the glass (card 3, GA-292) is only under html.glass: glassCss.test.ts
+    for (const r of all.filter((x) => /--glass-(from|to|glow)\)/.test([...x.decl.values()].join(";")))) expect(r.selector).toMatch(/^html\.glass\b/);
   });
 
   it("draws the sidebar as an island: island fill, island-radius, no border, no shadow", () => {
@@ -277,7 +277,8 @@ describe("the mountains are gone from the window (the gradient took their place)
     expect(read("src/App.tsx")).not.toMatch(/\bBand\b|"band"/);
     for (const f of APP_STYLES) expect([f, /\.band\b|data-band/.test((css[f] ?? "").replace(/\/\*[\s\S]*?\*\//g, ""))]).toEqual([f, false]);
     const code = (path: string) => read(path).replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
-    expect(code("src/components/AppearanceSettings.tsx")).not.toMatch(/mountains|band|Background/i);
+    // its Background section holds the glass now (GA-292), with no word of the mountains
+    expect(code("src/components/AppearanceSettings.tsx")).not.toMatch(/mountains|band/i);
     expect(read("src/lib/appearance.ts")).not.toMatch(/dataset\.band/);
   });
 
@@ -305,9 +306,9 @@ describe("design/README.md's Visual foundations", () => {
     expect(vf).not.toContain("Separate regions with 1px borders");
     expect(vf).not.toMatch(/mountains along the bottom of the window \(`band-\*`/);
   });
-  it("and docs/settings.md's Appearance no longer lists the mountains", () => {
+  it("and docs/settings.md's Appearance no longer lists the mountains (it has the glass, GA-292)", () => {
     const settings = read("docs/settings.md");
-    expect(settings).toContain("| Appearance | The font, text sizes, theme and density |");
+    expect(settings).toContain("| Appearance | The font, text sizes, theme and density, and the glass behind the islands |");
     expect(settings).not.toMatch(/Mountains/);
   });
 });
