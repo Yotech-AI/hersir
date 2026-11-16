@@ -1,15 +1,17 @@
-import { lazy, startTransition, Suspense, useEffect, useState } from "react";
+import { lazy, startTransition, Suspense, useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { TriangleAlert, X } from "lucide-react";
 import { appInfo, exitApp, getDoc, getTask, getTeam, listRuns, saveDoc, updateTask, listClients, listProjects, listTasks, selftestReport, tourStill, tourSteps } from "./api";
 import { href, useRoute, type Route } from "./router";
 import type { AppInfo } from "./types";
 import { Sidebar } from "./components/Sidebar";
+import { SidebarToolbar } from "./components/SidebarToolbar";
 import { CommandPalette } from "./components/CommandPalette";
 import { CloseGuard } from "./components/CloseGuard";
 import { TasksPage } from "./pages/TasksPage";
 import { DrawerHost, type DrawerReq } from "./lib/drawers";
 import { appearanceOf, setAppearance, toggleDensity, toggleTheme } from "./lib/appearance";
 import { startTerminals } from "./lib/terminals";
+import { isSidebarKey, useSidebarClosed } from "./lib/sidebar";
 import { watchAway } from "./lib/windowFocus";
 
 // GA-178: Gizai opens on the board or the Inbox (TasksPage); every other page loads when it is first opened.
@@ -43,6 +45,22 @@ export default function App({ onboarding = false }: { onboarding?: boolean }) {
   const [setup, setSetup] = useState(onboarding);
   /** Why finishing the onboarding opened no Team Lead chat, above the page until it is closed. */
   const [note, setNote] = useState<string | null>(null);
+  // GA-291: the sidebar closes to a small toolbar at the top left (kept on this computer); the toolbar's width, so the
+  // page's top bar starts after it
+  const [sideClosed, setSideClosed] = useSidebarClosed();
+  const [toolsWidth, setToolsWidth] = useState(0);
+  const sideFocus = useRef(false);
+  /** Closes or opens the sidebar. When the focus was in what goes (the sidebar or the toolbar), it moves to the button
+   *  that brings it back (Show sidebar or Close sidebar), so it isn't lost; else it stays where it was. */
+  const sideTo = useCallback((next: boolean | ((was: boolean) => boolean)) => {
+    sideFocus.current = !!(document.activeElement as Element | null)?.closest?.(".side, .side-tools");
+    setSideClosed(next);
+  }, [setSideClosed]);
+  useEffect(() => {
+    if (!sideFocus.current) return;
+    sideFocus.current = false;
+    document.querySelector<HTMLElement>("[data-side-toggle]")?.focus();
+  }, [sideClosed]);
 
   // the open terminals and their views live as long as the window, not a page (GA-135)
   useEffect(() => { startTerminals(); }, []);
@@ -53,6 +71,14 @@ export default function App({ onboarding = false }: { onboarding?: boolean }) {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return; // handled by an editor (Ctrl+K makes a link there)
       if (document.querySelector(".onb")) return; // the first start's onboarding, without the app's keys (GA-164)
+      // Ctrl+\ (Cmd+\ on macOS) closes and opens the sidebar from any page (GA-291); in a terminal it is the shell's (its
+      // quit signal), as Ctrl+B is there: xterm.js takes it first, and Cmd+\ there stays the terminal's too
+      if (isSidebarKey(e)) {
+        if ((e.target as Element | null)?.closest?.(".xterm")) return;
+        e.preventDefault();
+        sideTo((was) => !was);
+        return;
+      }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPalette((p) => !p); return; }
       const t = e.target as HTMLElement;
       if (t.closest("input, textarea, select, [contenteditable], .cm-editor") || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -62,7 +88,7 @@ export default function App({ onboarding = false }: { onboarding?: boolean }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [sideTo]);
 
   useEffect(() => {
     appInfo()
@@ -236,8 +262,11 @@ export default function App({ onboarding = false }: { onboarding?: boolean }) {
   return (
     <DrawerHost request={drawer} setRequest={setDrawer}>
       {/* the window (design/islands): the sidebar and the page as islands on the background's gradient */}
-      <div className="app">
-        <Sidebar youId={info?.you_id ?? ""} dataLabel={info?.data_label} dataDir={info?.data_dir} route={route} onSearch={() => setPalette(true)} onNewTask={() => newTask()} />
+      {/* closed (GA-291), the sidebar island goes and the toolbar sits at the top left, in the top bar's row (app.css) */}
+      <div className={`app${sideClosed ? " side-closed" : ""}`} style={sideClosed ? { "--side-tools": `${toolsWidth}px` } as CSSProperties : undefined}>
+        {sideClosed
+          ? <SidebarToolbar youId={info?.you_id ?? ""} onShow={() => sideTo(false)} onSearch={() => setPalette(true)} onNewTask={() => newTask()} onWidth={setToolsWidth} />
+          : <Sidebar youId={info?.you_id ?? ""} dataLabel={info?.data_label} dataDir={info?.data_dir} route={route} onSearch={() => setPalette(true)} onNewTask={() => newTask()} onClose={() => sideTo(true)} />}
         {/* the page's top bar sits on the background over the island (app.css: .page-island .topbar) */}
         <main className="main"><div className="page-island">
           {error && <div className="error-banner">{error}</div>}

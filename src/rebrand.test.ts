@@ -73,7 +73,8 @@ describe("Quit: the same words as the tray (GA-232)", () => {
 
 describe("the code's names stay (GA-231): settings, drafts and open tabs survive an update", () => {
   it("the appearance's keys", () => {
-    expect(KEYS).toEqual({ font: "gizai-font", chat: "gizai-size-chat", ui: "gizai-size-ui", docs: "gizai-size-docs", theme: "gizai-theme", density: "gizai-density" });
+    expect(KEYS).toEqual({ font: "gizai-font", chat: "gizai-size-chat", ui: "gizai-size-ui", docs: "gizai-size-docs", theme: "gizai-theme", density: "gizai-density",
+      glass: "gizai-glass" });
     // GA-290: the mountains' switch went with the islands; its key keeps its gizai name, so an older Hersir's is found and taken out
     expect(GONE_KEYS).toEqual(["gizai-band"]);
   });

@@ -43,6 +43,20 @@ export async function dragProbe(from = "To do", to = "In progress") {
   const card = await waitFor(() => document.querySelector(`[data-col="${from}"] .card`) as HTMLElement | null);
   const target = document.querySelector(`[data-col="${to}"] .col-body`) as HTMLElement | null;
   if (!card || !target) return { moved: false, error: `no card in ${from} or no ${to} column` };
+  // GA-293 QA (design/islands: Tasks as a board, frame 273:1172): the view toolbar is the page island's header, 44px high at
+  // its top, no line under it, padding 0 8; the columns sit 12px in and 4px under it. Checked before the drag; a miss makes
+  // the probe fail with what it saw in `island`.
+  const island = (() => {
+    const page = document.querySelector(".main > .page-island"), bar = document.querySelector(".page-island > .toolbar.island-toolbar"), col = document.querySelector(".board > .col");
+    if (!page || !bar || !col) return { ok: false, error: `no ${!page ? "page island" : !bar ? "island-toolbar" : "column"}` };
+    const p = page.getBoundingClientRect(), b = bar.getBoundingClientRect(), c = col.getBoundingClientRect(), cs = getComputedStyle(bar);
+    const seen = { bar_top: Math.round((b.top - p.top) * 10) / 10, bar_h: Math.round(b.height * 10) / 10, bar_line: cs.borderBottomWidth, bar_bg: cs.backgroundColor, bar_pad: `${cs.paddingLeft} ${cs.paddingRight}`,
+      col_in: Math.round((c.left - p.left) * 10) / 10, col_under: Math.round((c.top - b.bottom) * 10) / 10 };
+    const ok = Math.abs(seen.bar_top) <= 0.6 && Math.abs(seen.bar_h - 44) <= 0.6 && seen.bar_line === "0px" && seen.bar_bg === "rgba(0, 0, 0, 0)" && seen.bar_pad === "8px 8px"
+      && Math.abs(seen.col_in - 12) <= 0.6 && Math.abs(seen.col_under - 4) <= 0.6;
+    return { ok, ...seen };
+  })();
+  if (!island.ok) return { moved: false, error: "the board's island (GA-293)", island };
   const identifier = card.dataset.card ?? "";
   const r = card.getBoundingClientRect(), cr = target.getBoundingClientRect();
   const x0 = r.left + r.width / 2, y0 = r.top + r.height / 2, x1 = cr.left + cr.width / 2, y1 = cr.top + 40;
@@ -1486,6 +1500,214 @@ function appFonts(): [string, string] {
   return fams;
 }
 
+// ---------- GA-291 QA: the sidebar closes to a small toolbar at the top left (design/islands → A sidebar that closes) ----------
+const SIDE_KEPT = "gizai.sidebar.closed";
+type Rect = { l: number; t: number; r: number; b: number; w: number; h: number };
+const sideRect = (el: Element | null | undefined): Rect | null => {
+  const r = el?.getBoundingClientRect();
+  return r ? { l: Math.round(r.left), t: Math.round(r.top), r: Math.round(r.right), b: Math.round(r.bottom), w: Math.round(r.width), h: Math.round(r.height) } : null;
+};
+/** Ctrl+\ (or what `more` makes of it) as the WebView sends it, on `target`; whether something took it (preventDefault). */
+const sideKey = (target: EventTarget, more: KeyboardEventInit = {}) => {
+  const e = new KeyboardEvent("keydown", { key: "\\", code: "Backslash", ctrlKey: true, bubbles: true, cancelable: true, ...more });
+  // xterm.js reads the legacy keyCode (220 for \), which KeyboardEventInit can't set
+  Object.defineProperty(e, "keyCode", { get: () => 220 });
+  Object.defineProperty(e, "which", { get: () => 220 });
+  target.dispatchEvent(e);
+  return e.defaultPrevented;
+};
+/** The sidebar open: Close sidebar on New task's row, at the top right of the island. */
+const sideOpenState = () => {
+  const side = q(".side"), top = q(".side .side-main > .side-top"), close = q<HTMLElement>('.side .side-top > button.tool[aria-label="Close sidebar"]'), nt = q(".side .side-top > .nav-item");
+  const list = q(".side .side-main");
+  return { side: sideRect(side), side_id: side?.id ?? null, scrollbar: list ? list.offsetWidth - list.clientWidth : null, first_row: !!top && q(".side .side-main")?.firstElementChild === top, new_task: sideRect(nt), new_task_kbd: textOf(q(".kbd", nt ?? undefined)),
+    close: close ? { ...sideRect(close)!, title: close.title, expanded: close.getAttribute("aria-expanded"), controls: close.getAttribute("aria-controls"),
+      icon: close.querySelector("svg")?.getAttribute("class") ?? "", toggle: close.hasAttribute("data-side-toggle"), fill: getComputedStyle(close).backgroundColor } : null,
+    inbox: textOf(q('.side a.nav-item[href="#/inbox"] .count')), tools: !!q(".side-tools"), app: q(".app")?.className ?? null, kept: localStorage.getItem(SIDE_KEPT) };
+};
+const sideOpenOk = (s: ReturnType<typeof sideOpenState>) => !!s.side && !!s.close && !!s.new_task && s.side_id === "sidebar" && s.first_row && s.new_task_kbd === "N"
+  && s.close.w === 28 && s.close.h === 28 && s.close.l - s.new_task.r === 4 && Math.abs((s.close.t + s.close.b) - (s.new_task.t + s.new_task.b)) <= 2
+  && s.scrollbar !== null && s.side.r - s.close.r === 10 + s.scrollbar && s.close.title === "Close sidebar (Ctrl+\\)" && s.close.expanded === "true" && s.close.controls === "sidebar"
+  && s.close.icon.includes("lucide-panel-left-close") && s.close.toggle && s.close.fill === "rgba(0, 0, 0, 0)" && !s.tools && s.app === "app" && s.kept === null;
+/** The sidebar closed: the toolbar at the top left, the page's top bar after it, the page the width of the window. */
+const sideClosedState = () => {
+  const app = q(".app"), tools = q(".side-tools"), bar = q(".page-island .topbar"), page = q(".main > .page-island");
+  const items = tools ? [...tools.querySelectorAll<HTMLElement>(":scope > .tool")] : [];
+  const t = sideRect(tools);
+  const kids = bar ? [...bar.querySelectorAll(":scope > *, .actions > *")].filter((x) => x.getBoundingClientRect().width > 0) : [];
+  const b = bar?.getBoundingClientRect();
+  return { side: !!q(".side"), app_class: app?.className ?? null, app: sideRect(app), tools: t, tools_bg: tools ? getComputedStyle(tools).backgroundColor : null,
+    group: tools ? [tools.getAttribute("role"), tools.getAttribute("aria-label")] : null,
+    items: items.map((el) => ({ tag: el.tagName.toLowerCase(), label: el.getAttribute("aria-label"), title: el.title, ...sideRect(el)!, icon: (el.querySelector("svg")?.getAttribute("class") ?? "").replace(/lucide |icon/g, "").trim(),
+      fill: getComputedStyle(el).backgroundColor, href: el.getAttribute("href") })),
+    count: textOf(q(".side-tools .count")), bar: sideRect(bar), bar_pad: bar ? getComputedStyle(bar).paddingLeft : null, first: sideRect(kids[0]), page: sideRect(page),
+    bar_over: bar ? bar.scrollWidth - bar.clientWidth : null,
+    // what of the top bar runs under the toolbar, or out of the top bar's sides
+    under: t ? kids.filter((x) => { const r = x.getBoundingClientRect(); return r.left < t.r - 0.5 && r.right > t.l && r.top < t.b && r.bottom > t.t; }).map((x) => textOf(x).slice(0, 24) || String(x.className)) : ["no toolbar"],
+    outside: b ? kids.filter((x) => { const r = x.getBoundingClientRect(); return r.left < b.left - 0.5 || r.right > b.right + 0.5; }).map((x) => textOf(x).slice(0, 24) || String(x.className)) : ["no top bar"],
+    kept: localStorage.getItem(SIDE_KEPT) };
+};
+type SideClosed = ReturnType<typeof sideClosedState>;
+/** Closed as the notes draw it, with the Inbox showing `inbox` (the sidebar's count), in a top bar row `row` px high. */
+const sideClosedOk = (s: SideClosed | null, inbox: string, row = 44) => {
+  if (!s || s.side || s.app_class !== "app side-closed" || !s.app || !s.tools || !s.bar || !s.first || !s.page) return false;
+  const [show, add, search, box] = s.items;
+  const mid = (r: Rect) => r.t + r.b;
+  return s.items.length === 4 && !!show && !!add && !!search && !!box
+    && JSON.stringify(s.group) === '["group","Sidebar actions"]' && s.tools_bg === "rgba(0, 0, 0, 0)"
+    && JSON.stringify(s.items.map((i) => i.label)) === JSON.stringify(["Show sidebar", "New task", "Search", inbox ? `Inbox, ${inbox} need you` : "Inbox"])
+    && JSON.stringify(s.items.map((i) => i.title)) === JSON.stringify(["Show sidebar (Ctrl+\\)", "New task (N)", "Search (Ctrl K)", inbox ? `Inbox (${inbox} need you)` : "Inbox"])
+    && JSON.stringify(s.items.map((i) => i.icon)) === JSON.stringify(["lucide-panel-left-open", "lucide-square-pen", "lucide-search", "lucide-inbox"])
+    && s.count === inbox && box.href === "#/inbox" && box.tag === "a"
+    // 6px from the window's edges, as tall as the top bar's row and in it, the buttons 28px, centred, 2px apart
+    && s.tools.l === s.app.l + 6 && s.tools.t === s.app.t + 6 && s.tools.h === row && s.bar.t === s.tools.t && s.bar.h === row
+    && s.items.every((i) => i.h === 28 && i.w >= 28 && Math.abs(mid(i) - mid(s.tools!)) <= 1 && i.fill === "rgba(0, 0, 0, 0)")
+    && [show, add, search].every((i) => i.w === 28) && show.l === s.tools.l && box.r === s.tools.r
+    && s.items.slice(1).every((i, n) => Math.abs(i.l - s.items[n]!.r - 2) <= 1)
+    // the top bar starts where the toolbar ends, and its crumbs 12px after it; nothing of it runs under the toolbar or out
+    && s.bar.l - s.tools.r >= 0 && s.bar.l - s.tools.r <= 1 && s.bar_pad === "12px" && s.first.l - s.tools.r >= 12 && s.first.l - s.tools.r <= 13 && s.under.length === 0 && s.outside.length === 0 && (s.bar_over ?? 9) <= 1
+    // the page's island takes the sidebar's width: 6px from the window's left and right edges
+    && s.page.l === s.app.l + 6 && s.page.r === s.app.r - 6 && s.page.t === s.app.t + 6 + row
+    && s.kept === "1";
+};
+
+/** GA-291 at the defaults (dark), in the "set" phase of the appearance probe; it leaves the sidebar open on Settings →
+ *  Appearance. The sidebar open has Close sidebar at the top right, on New task's row (28px, panel-left-close, its
+ *  tooltip, aria-expanded, aria-controls #sidebar). A click on it (with the keyboard focus on it) closes it, kept at once,
+ *  and the focus moves to Show sidebar. Closed, on every page (but #/terminal: it starts a shell) and again at 900 × 600:
+ *  no sidebar, the toolbar 6px from the window's top left, in the top bar's 44px row, Show sidebar, New task, Search and
+ *  the Inbox with the sidebar's count, the notes' tooltips and icons, 28px buttons 2px apart; the top bar from its right
+ *  edge, the crumbs 12px after it, nothing under it or cut off; the page's island the window's width. Search opens the
+ *  palette, New task the New task drawer, the Inbox the Inbox. Ctrl+\ opens and closes it, also from a text field; not
+ *  Ctrl+Shift+\ or Ctrl+Alt+\; in a terminal (xterm.js with the app's key filter, no shell) the key goes to the terminal
+ *  as its quit signal (\x1c) and the sidebar stays. Show sidebar, with the focus on it, opens it and the focus moves to
+ *  Close sidebar. (A start with the sidebar closed is left to SidebarClose.test.tsx and AppSidebarKey.test.tsx: App's
+ *  self-test start wants the sidebar's rows, so leaving it closed for the next start would fail every start after it.) */
+async function sidebarCloseProbe() {
+  const tasks = await listTasks().catch(() => []);
+  const task = tasks.find((t) => t.identifier === "KADE-1") ?? tasks[0];
+  await goTo("#/inbox", ".page-island .topbar");
+  await sleep(600);
+  const open = sideOpenState();
+  const inbox = open.inbox;
+  // 1. Close sidebar, from the keyboard focus
+  const closeBtn = q<HTMLElement>('.side [aria-label="Close sidebar"]');
+  closeBtn?.focus();
+  closeBtn?.click();
+  await sleep(200); await nextFrame();
+  const closed = { ...sideClosedState(), focus: document.activeElement?.getAttribute("aria-label") ?? null };
+  // 2. every page, at the window's size, then at 900 × 600
+  const PAGES = ["#/inbox", "#/tasks", "#/board", ...(task ? [`#/task/${task.id}`] : []), "#/chat", "#/chats", "#/projects", "#/clients", "#/team", "#/users", "#/usage",
+    "#/memory/shared", "#/editor", "#/settings/general", "#/settings/appearance"];
+  const visit = async (hash: string) => {
+    if (hash === "#/tasks" || hash === "#/board") await showTasks(hash === "#/tasks" ? "list" : "board"); else await goTo(hash, ".page-island .topbar .crumbs, .page-island .topbar");
+    await sleep(250); await nextFrame();
+  };
+  const pages: Record<string, SideClosed> = {}, small: Record<string, SideClosed> = {};
+  for (const hash of PAGES) { await visit(hash); pages[hash] = sideClosedState(); }
+  const appEl = q<HTMLElement>(".app");
+  if (appEl) { appEl.style.width = "900px"; appEl.style.height = "600px"; }
+  for (const hash of PAGES) { await visit(hash); small[hash] = sideClosedState(); }
+  if (appEl) { appEl.style.width = ""; appEl.style.height = ""; }
+  await sleep(200);
+  // 3. the toolbar's buttons do what the sidebar's do
+  await goTo("#/projects", ".page-island .topbar");
+  const toolBtn = (label: string) => q<HTMLElement>(`.side-tools [aria-label="${label}"]`);
+  toolBtn("Search")?.click();
+  const palette = !!(await waitFor(() => q('.pal[role="dialog"]'), 3000));
+  q<HTMLElement>(".pal-backdrop")?.click();
+  await sleep(250);
+  toolBtn("New task")?.click();
+  const drawer = textOf(q("h2", (await waitFor(() => q('.drawer[role="dialog"]'), 3000)) ?? undefined));
+  q<HTMLElement>('.drawer [aria-label="Close"]')?.click();
+  await sleep(300);
+  q<HTMLElement>(".side-tools a.tool")?.click();
+  const toInbox = !!(await waitFor(() => (location.hash === "#/inbox" ? true : null), 3000));
+  await sleep(300);
+  const buttons = { palette, palette_gone: !q(".pal"), drawer, drawer_gone: !q(".drawer"), inbox: toInbox, still_closed: !q(".side") && !!q(".side-tools") };
+  // 4. the keys
+  (document.activeElement as HTMLElement | null)?.blur?.();
+  const keys: Record<string, unknown> = {};
+  /** The key on `target`, then what shows once React has drawn it. */
+  const pressOn = async (target: EventTarget, more: KeyboardEventInit = {}) => {
+    const took = sideKey(target, more);
+    await sleep(150); await nextFrame();
+    return { took, side: !!q(".side"), tools: !!q(".side-tools"), kept: localStorage.getItem(SIDE_KEPT) };
+  };
+  keys.open = await pressOn(document.body);
+  keys.close = await pressOn(document.body);
+  await showTasks("list");
+  const field = q<HTMLInputElement>('.page-island input.search-input[aria-label="Search tasks"]');
+  field?.focus();
+  const before = field?.value;
+  keys.field_open = { field: !!field, focused: document.activeElement === field, ...(field ? await pressOn(field) : {}) };
+  keys.field_close = { ...(field ? await pressOn(field) : {}), same_text: field?.value === before };
+  (document.activeElement as HTMLElement | null)?.blur?.();
+  keys.shift = await pressOn(document.body, { shiftKey: true, key: "|" });
+  keys.alt = await pressOn(document.body, { altKey: true });
+  keys.plain = await pressOn(document.body, { ctrlKey: false });
+  // a terminal: xterm.js as the app's terminals make it (lib/terminals: termKey lets Gizai's own keys through), no shell
+  const term: Record<string, unknown> = {};
+  const host = document.createElement("div");
+  host.style.cssText = "position:fixed;left:300px;top:200px;width:400px;height:200px;z-index:50";
+  document.body.appendChild(host);
+  try {
+    const { Terminal: XTerm } = await import("@xterm/xterm");
+    const { termKey } = await import("./lib/terminals");
+    const xt = new XTerm({ cols: 40, rows: 8 });
+    xt.attachCustomKeyEventHandler((e) => !termKey(e, "linux", xt.hasSelection()));
+    const sent: string[] = [];
+    xt.onData((d) => sent.push(d));
+    xt.open(host);
+    await sleep(200);
+    xt.textarea?.focus();
+    term.in_xterm = !!xt.textarea?.closest(".xterm");
+    term.closed_took = xt.textarea ? sideKey(xt.textarea) : null;
+    await sleep(150);
+    term.closed_side = !!q(".side");
+    term.closed_sent = sent.map((d) => [...d].map((c) => c.charCodeAt(0)));
+    sideKey(document.body); // open it, and try again from the terminal
+    await sleep(150);
+    xt.textarea?.focus();
+    term.open_took = xt.textarea ? sideKey(xt.textarea) : null;
+    await sleep(150);
+    term.open_side = !!q(".side");
+    term.sent = sent.map((d) => [...d].map((c) => c.charCodeAt(0)));
+    xt.dispose();
+  } catch (e) { term.error = String(e); }
+  host.remove();
+  keys.term = term;
+  // 5. Show sidebar, from the keyboard focus (close it first with the key)
+  if (q(".side")) sideKey(document.body);
+  await sleep(150);
+  const showBtn = q<HTMLElement>('.side-tools [aria-label="Show sidebar"]');
+  showBtn?.focus();
+  showBtn?.click();
+  await sleep(200); await nextFrame();
+  const shown = { side: !!q(".side"), tools: !!q(".side-tools"), kept: localStorage.getItem(SIDE_KEPT), focus: document.activeElement?.getAttribute("aria-label") ?? null };
+  (document.activeElement as HTMLElement | null)?.blur?.();
+  await goTo("#/settings/appearance", '.settings-panel[aria-label="Appearance"]');
+
+  const k = keys as Record<string, Record<string, unknown>>;
+  const openOk = sideOpenOk(open);
+  const closedOk = sideClosedOk(closed, inbox) && closed.focus === "Show sidebar";
+  const pagesFailing = PAGES.filter((h) => !sideClosedOk(pages[h] ?? null, inbox));
+  const smallFailing = PAGES.filter((h) => !sideClosedOk(small[h] ?? null, inbox) || small[h]!.app!.w !== 900 || small[h]!.app!.h !== 600);
+  const buttonsOk = buttons.palette && buttons.palette_gone && buttons.drawer === "New task" && buttons.drawer_gone && buttons.inbox && buttons.still_closed;
+  const keysOk = k.open!.took === true && k.open!.side === true && k.open!.tools === false && k.open!.kept === null
+    && k.close!.took === true && k.close!.side === false && k.close!.tools === true && k.close!.kept === "1"
+    && k.field_open!.field === true && k.field_open!.focused === true && k.field_open!.took === true && k.field_open!.side === true
+    && k.field_close!.took === true && k.field_close!.side === false && k.field_close!.same_text === true
+    && ["shift", "alt", "plain"].every((n) => k[n]!.took === false && k[n]!.side === false && k[n]!.tools === true && k[n]!.kept === "1");
+  const termOk = term.in_xterm === true && term.closed_side === false && term.open_side === true
+    && JSON.stringify(term.closed_sent) === "[[28]]" && JSON.stringify(term.sent) === "[[28],[28]]";
+  const shownOk = shown.side && !shown.tools && shown.kept === null && shown.focus === "Close sidebar";
+  const ok = openOk && closedOk && pagesFailing.length === 0 && smallFailing.length === 0 && buttonsOk && keysOk && termOk && shownOk;
+  return { ok, open_ok: openOk, closed_ok: closedOk, pages_failing: pagesFailing, small_failing: smallFailing, buttons_ok: buttonsOk, keys_ok: keysOk, term_ok: termOk, shown_ok: shownOk,
+    open, closed, buttons, keys, shown, pages: Object.fromEntries(pagesFailing.map((h) => [h, pages[h]])), small: Object.fromEntries(smallFailing.map((h) => [h, small[h]])),
+    sample: { inbox: pages["#/inbox"], small_tasks: small["#/tasks"], small_chat: small["#/chat"] } };
+}
+
 /** GA-42, against prep_chats' data (the demo plus a paused Team Lead and 36 chats). Phase "set": Settings → Appearance opens
  * on its own tab with Font, the three text sizes, Theme, Density and Reset to defaults; at the defaults nothing is on <html> and
  * the sizes are the design system's; each font choice shows in its own font and every font loads from the app (bundled).
@@ -1493,11 +1715,16 @@ function appFonts(): [string, string] {
  * reading text grows fully, titles half, small things at most 1px; rows grow so nothing is cut off; the chat column, the
  * sidebar and board columns get wider; in a 1280 px window nothing scrolls sideways on the task list, board, task page and
  * chat, in dark and in light. Then Compact, and each font everywhere at once. It leaves Geist, light, compact and the
- * largest sizes kept. Phase "kept" (the next start): they are all still there, and Reset to defaults brings everything back. */
+ * largest sizes kept. Phase "kept" (the next start): they are all still there, and Reset to defaults brings everything back.
+ * GA-292: the tab ends with Background → Glass; in the cage (Linux, not Hyprland: no blur) its checkbox is off and disabled
+ * with the no-blur hint, and the window stays plain. */
 export async function appearanceProbe(phase: "set" | "kept") {
   if (!(await waitFor(() => appearancePanel(), 6000))) return { ok: false, error: "Settings → Appearance did not open", page: textOf(q(".main")).slice(0, 300) };
   await sleep(300);
   if (phase === "kept") return appearanceKeptProbe();
+  // GA-291 QA: the sidebar closes, at the defaults; it leaves the sidebar open on Settings → Appearance
+  const sidebar = await sidebarCloseProbe();
+  await sleep(300);
 
   // The tab, its controls, and the default look.
   const tabs = { labels: textsOf('.tabs[role="tablist"] button[role="tab"]'), selected: textOf(q('.tabs button[aria-selected="true"]')),
@@ -1522,9 +1749,22 @@ export async function appearanceProbe(phase: "set" | "kept") {
     && defaults.save === 30 && defaults.tab === 13.5 && defaults.bubble === 13.5 && defaults.agent === 15 && defaults.docs === 15 && defaults.docs_h3 === 15.5
     && JSON.stringify(defaults.pressed) === JSON.stringify({ chat: ["15"], ui: ["13.5"], docs: ["15"], theme: ["Dark"], density: ["Comfortable"] })
     && defaults.nav.family === "Atkinson Hyperlegible Next";
-  // GA-290: the window in islands at the defaults (Settings has a top bar), in dark; the mountains' checkbox is gone
-  const islands = { dark: islandsState(), checkboxes: panel.querySelectorAll('input[type="checkbox"]').length };
-  const islandsOk = islandsOn(islands.dark, "dark", 44) && islands.checkboxes === 0 && !JSON.stringify(controls.sections).includes("Background");
+  // GA-290: the window in islands at the defaults (Settings has a top bar), in dark; the mountains' checkbox is gone.
+  // GA-292: Background → Glass in its place, with its one checkbox. The cage isn't Hyprland (no HYPRLAND_INSTANCE_SIGNATURE)
+  // and WebKitGTK's user agent is Linux's: no blur, so the checkbox is off and disabled with the no-blur hint, and the window
+  // stays plain (no html.glass, html and body opaque, .app's opaque gradient as islandsOn checks).
+  const glassField = [...panel.querySelectorAll(".field")].find((f) => textOf(f.querySelector(":scope > label")) === "Glass") ?? null;
+  const glassBox = glassField ? q<HTMLInputElement>('input[type="checkbox"]', glassField) : null;
+  const islands = { dark: islandsState(), checkboxes: panel.querySelectorAll('input[type="checkbox"]').length,
+    glass: { label: textOf(glassBox?.closest("label")), checked: glassBox?.checked ?? null, disabled: glassBox?.disabled ?? null,
+      hint: textOf(glassField ? q(".hint", glassField) : null), html_glass: document.documentElement.classList.contains("glass"),
+      html_bg: getComputedStyle(document.documentElement).backgroundColor, body_bg: getComputedStyle(document.body).backgroundColor,
+      linux_ua: !/Macintosh|Mac OS X|Windows/.test(navigator.userAgent), kept: localStorage.getItem("gizai-glass") } };
+  const islandsOk = islandsOn(islands.dark, "dark", 44) && islands.checkboxes === 1 && controls.sections[controls.sections.length - 1] === "Background"
+    && islands.glass.label === "Show the desktop through the background" && islands.glass.checked === false && islands.glass.disabled === true
+    && islands.glass.hint === "Your system doesn't blur windows behind Hersir, so the background stays plain."
+    && !islands.glass.html_glass && islands.glass.html_bg === ISLANDS.dark.island && islands.glass.body_bg === ISLANDS.dark.island
+    && islands.glass.linux_ua && islands.glass.kept === null;
 
   // Tabs work like the Usage page's, in the address; an edit not saved yet survives a switch to another tab and back.
   const tabTo = async (label: string) => {
@@ -1732,8 +1972,8 @@ export async function appearanceProbe(phase: "set" | "kept") {
   await sleep(1500); // WebKit writes localStorage to disk a moment later
 
   const ok = tabOk && switchingOk && controlsOk && defaultsOk && choicesOk && bigOk && growsOk(dark) && growsOk(lightPages) && editorsOk && lightOk && compactOk && fontsOk
-    && islandsOk && bandLeftOk && barsOk && smallOk;
-  return { ok, phase, tab_ok: tabOk, switching_ok: switchingOk, controls_ok: controlsOk, defaults_ok: defaultsOk, choices_ok: choicesOk, big_ok: bigOk, dark_ok: growsOk(dark),
+    && islandsOk && bandLeftOk && barsOk && smallOk && sidebar.ok;
+  return { ok, phase, sidebar_ok: sidebar.ok, sidebar, tab_ok: tabOk, switching_ok: switchingOk, controls_ok: controlsOk, defaults_ok: defaultsOk, choices_ok: choicesOk, big_ok: bigOk, dark_ok: growsOk(dark),
     light_pages_ok: growsOk(lightPages), editors_ok: editorsOk, light_ok: lightOk, compact_ok: compactOk, fonts_ok: fontsOk, islands_ok: islandsOk, band_left_ok: bandLeftOk, bars_ok: barsOk, small_ok: smallOk,
     bars_failing: BAR_PAGES.filter((h) => !barOk(bars[h])), small_failing: BAR_PAGES.filter((h) => !fitsOk(small[h])), small_known: [...SMALL_KNOWN],
     tabs, switching, controls, defaults, choices, loads, small0, row0, col0, big, dark, light, light_pages: lightPages, editors, compact, fonts, islands, bars, small,
@@ -3314,7 +3554,7 @@ function termLines(term: Terminal, onScreen = false): string[] {
 }
 
 /** A key as the web view sends it to xterm.js's text field: keydown, then keypress when keydown didn't take it. */
-function termKeyEvent(type: "keydown" | "keypress", init: { key: string; code: string; keyCode: number; charCode?: number; ctrlKey?: boolean; shiftKey?: boolean }) {
+function termKeyEvent(type: "keydown" | "keypress", init: { key: string; code: string; keyCode: number; charCode?: number; ctrlKey?: boolean; shiftKey?: boolean; altKey?: boolean }) {
   const e = new KeyboardEvent(type, { bubbles: true, cancelable: true, ...init });
   const want: Record<string, number> = { keyCode: init.keyCode, which: init.keyCode, charCode: init.charCode ?? 0 };
   for (const k of Object.keys(want)) if ((e as unknown as Record<string, number>)[k] !== want[k]) Object.defineProperty(e, k, { get: () => want[k] });
@@ -3632,7 +3872,7 @@ async function terminalPanelProbe(phase: "a" | "b", card: string) {
   const btn = () => q<HTMLButtonElement>(".topbar .term-btn");
   const panel = () => q<HTMLElement>(".ed-main > .term-panel");
   const ht = (el: Element | null | undefined) => el?.getBoundingClientRect().height ?? 0;
-  const sizes = () => ({ col: Math.round(ht(q(".ed-main")) * 10) / 10, panel: Math.round(ht(panel()) * 10) / 10, code: Math.round(ht(q(".ed-main > .ed-code")) * 10) / 10 });
+  const sizes = () => ({ col: Math.round(ht(q(".ed-main")) * 10) / 10, panel: Math.round(ht(panel()) * 10) / 10, code: Math.round(ht(q(".ed-main > .ed-code-island > .ed-code")) * 10) / 10 }); // GA-293: the code is in the code island
   const shareNow = () => { const s = sizes(); return s.col ? (s.panel / s.col) * 100 : 0; };
   const openFolder = async (f: { id: string; name: string }) => {
     window.location.hash = `#/editor/${encodeURIComponent(f.id)}`;
@@ -3707,8 +3947,12 @@ async function terminalPanelProbe(phase: "a" | "b", card: string) {
   check(list1.length === 1 && list1[0]?.id === id, `one terminal in the folder, in TF0's store (${list1.map((s) => s.name).join(", ")})`);
   const name = list1[0]?.name ?? "";
   out.tabsHeight = ht(q(".term-panel .term-tabs"));
-  check(Math.abs(Number(out.tabsHeight) - 32) < 0.6, `the panel's tabs are 32px high (${out.tabsHeight})`);
-  const own = buttonByText(panel()!, "Own page"), hide = buttonByText(panel()!, "Hide");
+  // GA-293 (design/islands: An island's header): the panel's tabs are its island's header, size-island-head (40) high
+  check(Math.abs(Number(out.tabsHeight) - 40) < 0.6, `the panel's tabs are its island's header, 40px high (${out.tabsHeight})`);
+  // GA-293: Own page and Hide are the header's icon buttons (26 × 26), named by their aria-label
+  const own = q<HTMLButtonElement>('.term-panel .acts button[aria-label="Own page"]'), hide = q<HTMLButtonElement>('.term-panel .acts button[aria-label="Hide"]');
+  out.headButtons = [...document.querySelectorAll<HTMLElement>(".term-panel .island-head > .acts > .btn")].map((b) => { const r = b.getBoundingClientRect(); return `${b.getAttribute("aria-label")} ${Math.round(r.width)}x${Math.round(r.height)}`; });
+  check(JSON.stringify(out.headButtons) === JSON.stringify([`New terminal in ${card} 26x26`, "Own page 26x26", "Hide 26x26"]), `New terminal, Own page and Hide are 26px icon buttons on the header's right (${JSON.stringify(out.headButtons)})`);
   check(own?.title === `Open ${name} on its own page` && hide?.title === "Hide the terminal (Ctrl+`): its shells keep running", `the panel has Own page and Hide (${own?.title} | ${hide?.title})`);
   const plus = q<HTMLButtonElement>(`.term-panel .term-tabs button[aria-label="New terminal in ${card}"]`);
   check(plus?.title === `New terminal in ${card} (Ctrl+Shift+\`)` && plus.getAttribute("aria-disabled") !== "true", `+ is on, saying where (${plus?.title})`);
@@ -3740,7 +3984,7 @@ async function terminalPanelProbe(phase: "a" | "b", card: string) {
   // 5. with the focus in the terminal, Ctrl+W, Ctrl+P and Ctrl+B go to the shell and none reaches the Editor; Ctrl+Shift+F
   // finds in the terminal. A file is open first, so Ctrl+W has a tab to close.
   q<HTMLElement>('.ed-side [role=treeitem][data-path="README.md"]')?.click();
-  const fileTab = () => q('.ed-main > .ed-tabs [role=tab][data-path="README.md"]');
+  const fileTab = () => q('.ed-main > .ed-code-island > .ed-tabs [role=tab][data-path="README.md"]'); // GA-293: in the code island's header
   check(await waitFor(fileTab, 3000), "README.md opens in a tab");
   await sleep(200);
   term.focus();
@@ -3771,7 +4015,42 @@ async function terminalPanelProbe(phase: "a" | "b", card: string) {
   const handle = q<HTMLElement>(".term-panel > .term-handle");
   if (!handle) { errors.push("no drag handle"); return done(); }
   out.handle = { h: ht(handle), grab: getComputedStyle(handle, "::before").height, cursor: getComputedStyle(handle).cursor, now: handle.getAttribute("aria-valuenow") };
-  check(ht(handle) === 1 && getComputedStyle(handle, "::before").height === "6px" && getComputedStyle(handle).cursor === "row-resize", `the handle is a 1px line with a 6px grab area and the row-resize pointer (${JSON.stringify(out.handle)})`);
+  // GA-293 (design/islands: The gap as a resize handle): the handle is the whole 6px gap between the code island and the
+  // panel's island, the glass showing through it at rest (no fill, no line), with the row-resize pointer
+  check(ht(handle) === 6 && getComputedStyle(handle, "::before").height === "6px" && getComputedStyle(handle).cursor === "row-resize", `the handle is the 6px gap, all of it the grab area, with the row-resize pointer (${JSON.stringify(out.handle)})`);
+  const islandBox = (el: Element | null) => { if (!el) return null; const r = el.getBoundingClientRect(), cs = getComputedStyle(el); return { top: Math.round(r.top * 10) / 10, bottom: Math.round(r.bottom * 10) / 10, left: Math.round(r.left * 10) / 10, right: Math.round(r.right * 10) / 10, bg: cs.backgroundColor, radius: cs.borderRadius, border: cs.borderWidth, shadow: cs.boxShadow }; };
+  const codeIsland = islandBox(q(".ed-main > .ed-code-island")), termIsland = islandBox(q(".term-panel > .term-panel-in")), filesIsland = islandBox(q(".ed > .ed-side")), gap = islandBox(handle);
+  const pageIsland = q(".main > .page-island"), status = islandBox(q(".ed-code-island > .ed-status")), selTab = q(".ed-code-island > .ed-tabs > .ed-tab[aria-selected=true]");
+  const restLine = getComputedStyle(handle, "::after").backgroundColor;
+  const isl = { files: filesIsland, code: codeIsland, term: termIsland, gap, status, rest: { bg: gap?.bg, line: restLine }, page: pageIsland ? getComputedStyle(pageIsland).backgroundColor : null,
+    tab: selTab ? { bg: getComputedStyle(selTab).backgroundColor, radius: getComputedStyle(selTab).borderRadius, shadow: getComputedStyle(selTab).boxShadow, h: ht(selTab) } : null };
+  out.islands = isl;
+  const isIsland = (b: ReturnType<typeof islandBox>) => !!b && b.bg === "rgb(24, 26, 28)" && b.radius === "10px" && b.border === "0px" && b.shadow === "none";
+  check(isIsland(filesIsland) && isIsland(codeIsland) && isIsland(termIsland), `the files panel, the code and the terminal panel are islands: island fill, radius 10, no border, no shadow (${JSON.stringify(out.islands)})`);
+  check(!!filesIsland && !!codeIsland && !!termIsland && !!gap && Math.abs(codeIsland.left - filesIsland.right - 6) <= 0.6 && Math.abs(termIsland.top - codeIsland.bottom - 6) <= 0.6
+    && Math.abs(gap.top - codeIsland.bottom) <= 0.6 && Math.abs(gap.bottom - termIsland.top) <= 0.6 && Math.abs(termIsland.left - codeIsland.left) <= 0.6 && Math.abs(termIsland.right - codeIsland.right) <= 0.6,
+    `the islands are 6px apart and the handle is the gap between the code and the terminal panel (${JSON.stringify(out.islands)})`);
+  check(isl.page === "rgba(0, 0, 0, 0)" && isl.rest.bg === "rgba(0, 0, 0, 0)" && (restLine === "rgba(0, 0, 0, 0)" || restLine === "transparent"),
+    `the page's own island gives way and the gap shows the background at rest (${JSON.stringify(isl.rest)}, page ${isl.page})`);
+  check(!!status && !!codeIsland && Math.abs(status.bottom - codeIsland.bottom) <= 0.6, `the status bar is at the code island's bottom, above the terminal panel (${JSON.stringify(status)})`);
+  check(isl.tab?.bg === "rgb(46, 49, 56)" && isl.tab.radius === "6px" && isl.tab.shadow === "none" && Math.abs(isl.tab.h - 28) < 0.6,
+    `the open file's tab is a pill in selected, 28px high, radius 6, without the accent line (${JSON.stringify(isl.tab)})`);
+  // dragging: the 2px accent line across the gap's middle and accent-soft across the whole gap (radius 4), the pointer kept
+  {
+    const r = handle.getBoundingClientRect();
+    handle.dispatchEvent(pe("pointerdown", r.left + r.width / 2, r.top + r.height / 2));
+    await nextFrame();
+    const after = getComputedStyle(handle, "::after");
+    const dr = { cls: handle.className, bg: getComputedStyle(handle).backgroundColor, radius: getComputedStyle(handle).borderRadius, line: after.backgroundColor, lineH: after.height, lineTop: after.top,
+      lineW: after.width, w: Math.round(r.width), col: q(".ed-main")?.classList.contains("is-dragging") };
+    out.dragging = dr;
+    handle.dispatchEvent(pe("pointerup", r.left + r.width / 2, r.top + r.height / 2));
+    await sleep(150);
+    check(/\bis-drag\b/.test(dr.cls) && dr.bg === "rgba(111, 151, 255, 0.14)" && dr.radius === "4px" && dr.line === "rgb(111, 151, 255)" && dr.lineH === "2px" && dr.lineTop === "2px"
+      && Math.abs(parseFloat(dr.lineW) - r.width) <= 0.6 && dr.col === true,
+      `while dragged the gap is accent-soft (radius 4) with the 2px accent line across its middle, the column is-dragging (${JSON.stringify(dr)})`);
+    check(!handle.classList.contains("is-drag") && getComputedStyle(handle).backgroundColor === "rgba(0, 0, 0, 0)", "letting go puts the gap back at rest");
+  }
   check(handle.getAttribute("role") === "separator" && handle.getAttribute("aria-label") === "Terminal panel's height" && handle.getAttribute("aria-valuenow") === "30",
     "the handle is a separator named Terminal panel's height, at 30");
   const drag = async (dy: number) => {
@@ -3862,7 +4141,7 @@ async function terminalPanelProbe(phase: "a" | "b", card: string) {
   // 9. Own page: the same view moves to #/terminal/<id>, with the same screen
   check(shownTab() === id, "the panel still shows the first terminal");
   const lines = termLines(term).filter((l) => l.trim()).slice(-3);
-  buttonByText(panel()!, "Own page")?.click();
+  q<HTMLButtonElement>('.term-panel .acts button[aria-label="Own page"]')?.click(); // GA-293: an icon button
   const onPage = await waitFor(() => (window.location.hash === `#/terminal/${encodeURIComponent(id)}` && q(".term-page .term-place")?.contains(term.element ?? null) ? true : null), 5000);
   check(onPage && probeView(id)?.term === term, `Own page shows the same terminal on its own page, #/terminal/<id> (${window.location.hash})`);
   check(lines.every((l) => termLines(term).some((x) => x.trim() === l.trim())) && termLines(term).some((l) => l.trim() === kade.id), "with the same screen: what it printed in the panel is there");
@@ -3929,18 +4208,24 @@ async function terminalPanelProbe(phase: "a" | "b", card: string) {
   return done();
 }
 
-// ---------- the Chat's terminal panel (GA-278) ----------
+// ---------- the Chat's side island and its tool strip (GA-296; GA-278's terminal panel before it) ----------
 // GIZAI_SELFTEST_MODE=terminal:chat-a, then terminal:chat-b, on route terminal (scripts/ui-test.sh: prep_chats' Chief and
 // chats, /bin/sh as the shell, a scratch home folder with ~/Herd/chat-site and ~/Herd/chat-other), two starts on the same
-// WebKit storage. (a) Open terminal right before New chat opens the picker titled "Open terminal in" under it; a pick starts
-// a terminal there in a panel on the right of the conversation, with the focus, its folder under the tabs and its row in the
-// sidebar; another pick adds a tab; + starts one in the shown terminal's folder; the messages and the text box start at the
-// left of their column while the panel shows (at 45% of the space right of the chat list), and are centred again once it
-// hides; × asks first while a program runs, the next tab shows; Hide keeps a running sleep 60 going, and the rail (with the
-// number) and Ctrl+` show it again; Ctrl+` from inside the terminal; the drag handle between 360px of panel and 400px of
-// conversation, a double click and ← →; another chat, New chat, the Archive and another page and back keep the panel, its tabs
-// and the shown terminal; Own page and back; a narrow window hides the chat list; the largest text size and light; closing the
-// last tab hides the panel. (b) After the restart: the width kept.
+// WebKit storage. (a) In chat A: the chat list and the conversation are islands (island fill, island-radius, no border, 6px
+// apart, no line above the text box), the page's own island gives way; the top bar has one Open (panel-right, a chevron)
+// right before New chat, whose menu has New terminal, opening the picker titled "Open terminal in" under Open while the
+// chat has no terminal; a pick starts a terminal in the side island right of the conversation (45% of the room right of the
+// chat list), with the focus, its folder in mono, and the tool strip at the window's right edge: the Terminal icon with its
+// count, selected (a pill in the island's fill), its tooltip "Terminal, 1 open (Ctrl+`)"; New terminal in… adds a tab; the
+// island's + (a menu) and Ctrl+Shift+` start one in the shown terminal's folder; × asks while a program runs; middle click,
+// Ctrl+PgUp, Ctrl+PgDn, ← → and F2 on the tabs; Hide keeps sleep 600 running and the strip stays (none selected); a click on
+// the icon shows the island, a click on the selected icon hides it; Ctrl+` (also from inside the terminal) and Alt+1 do the
+// same; Alt+1 inside the terminal reaches the shell; Alt+2, Alt+3 and Alt+4 do nothing yet; the icon's right-click menu
+// (and the context menu key): its head, Hide or Show, Close all; the drag handle in the gap left of the island between 360px
+// of island and 400px of conversation; chat B shows none of A's tabs (and its own one), New chat and the Archive none,
+// another page and back: A's tabs are there, sleep 600 still running; Own page closes the tab here; a narrow window hides
+// the chat list first and the strip stays; the largest text size and light; Close all asks while sleep runs, then closes
+// every terminal of the chat: no island, no strip. (b) After the restart: the width kept.
 
 const CHAT_SHARE = "gizai.chat.panel";
 
@@ -3954,19 +4239,33 @@ async function chatTerminalProbe(phase: "a" | "b") {
   const site = folders.find((f) => f.kind === "root" && f.name === "chat-site");
   const other = folders.find((f) => f.kind === "root" && f.name === "chat-other");
   if (!site || !other) { errors.push(`no folders chat-site and chat-other (${folders.map((f) => `${f.kind} ${f.name}`).join(", ")})`); return done(); }
+  const threads = await listChatThreads(50);
+  const chatA = threads[0], chatB = threads[1];
+  if (!chatA || !chatB) { errors.push(`prep_chats' chats are missing (${threads.length})`); return done(); }
   if (phase === "a") localStorage.removeItem(CHAT_SHARE);
 
   const chat = () => q<HTMLElement>("div.chat");
-  const panel = () => q<HTMLElement>(".chat > .chat-term");
-  const rail = () => q<HTMLButtonElement>(".chat > .chat-term-rail");
-  const openBtn = () => [...document.querySelectorAll<HTMLButtonElement>(".topbar .actions > button")].find((b) => textOf(b) === "Open terminal") ?? null;
-  const shownTab = () => q(".chat-term .term-tab[aria-selected=true]")?.getAttribute("data-term") ?? null;
-  const tabIds = () => [...document.querySelectorAll(".chat-term .term-tab")].map((t) => t.getAttribute("data-term") ?? "");
+  const island = () => q<HTMLElement>(".chat > .chat-side");
+  const strip = () => q<HTMLElement>(".chat > .chat-strip");
+  const termIcon = () => q<HTMLButtonElement>('.chat > .chat-strip .strip-btn[data-kind="terminal"]');
+  const openBtn = () => q<HTMLButtonElement>(".topbar .actions > button.chat-open");
+  const menuOf = (label: string) => q<HTMLElement>(`.pop[role="menu"][aria-label="${label}"]`);
+  /** A menu's items: their own words (without the key), the key, disabled, danger. */
+  const itemsOf = (m: Element | null) => [...(m?.querySelectorAll<HTMLButtonElement>(".opt") ?? [])].map((b) => ({
+    label: (b.childNodes[0]?.textContent ?? "").trim(), kbd: textOf(b.querySelector(".kbd")), off: b.disabled, danger: b.classList.contains("danger") }));
+  const itemIn = (m: Element | null, label: string) => [...(m?.querySelectorAll<HTMLButtonElement>(".opt") ?? [])].find((b) => (b.childNodes[0]?.textContent ?? "").trim() === label) ?? null;
+  const closeMenus = () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true, cancelable: true }));
+  const shownTab = () => q(".chat-side .term-tab[aria-selected=true]")?.getAttribute("data-term") ?? null;
+  const tabIds = () => [...document.querySelectorAll(".chat-side .term-tab")].map((t) => t.getAttribute("data-term") ?? "");
+  const tabOf = (id: string) => q<HTMLElement>(`.chat-side .term-tab[data-term="${CSS.escape(id)}"]`);
   const wd = (el: Element | null | undefined) => el?.getBoundingClientRect().width ?? 0;
   const r1 = (n: number) => Math.round(n * 10) / 10;
-  /** The panel's share of the space right of the chat list (the conversation and the panel), in %. */
-  const shareNow = () => { const p = wd(panel()), c = wd(q(".chat > .chat-main")); return p + c ? (p / (p + c)) * 100 : 0; };
-  const sizes = () => ({ chat: r1(wd(chat())), list: r1(wd(q(".chat > .chat-threads"))), talk: r1(wd(q(".chat > .chat-main"))), panel: r1(wd(panel())), share: r1(shareNow()) });
+  /** The island's share of the room right of the chat list (the conversation and the island), in %. */
+  const shareNow = () => { const p = wd(island()), c = wd(q(".chat > .chat-main")); return p + c ? (p / (p + c)) * 100 : 0; };
+  const sizes = () => ({ chat: r1(wd(chat())), list: r1(wd(q(".chat > .chat-threads"))), talk: r1(wd(q(".chat > .chat-main"))), island: r1(wd(island())),
+    strip: r1(wd(strip())), share: r1(shareNow()) });
+  /** The strip's Terminal icon: pressed, its count, label and tooltip. */
+  const iconState = () => { const b = termIcon(); return b ? { pressed: b.getAttribute("aria-pressed"), n: textOf(b.querySelector(".n")), label: b.getAttribute("aria-label"), title: b.title } : null; };
   /** Where each .chat-col of the conversation starts and ends against its column: left-aligned or centred. */
   const cols = () => [...document.querySelectorAll<HTMLElement>(".chat > .chat-main .chat-col")].map((c) => {
     const m = c.closest(".chat-main")!.getBoundingClientRect(), r = c.getBoundingClientRect();
@@ -3974,26 +4273,30 @@ async function chatTerminalProbe(phase: "a" | "b") {
   });
   const atLeft = () => { const c = cols(); return c.length > 0 && c.every((x) => Math.abs(x.left) <= 1); };
   const centred = () => { const c = cols(); return c.length > 0 && c.every((x) => Math.abs(x.left - x.right) <= 1.5); };
-  // The cage's window is 1280px wide, which leaves the panel 12px between its limits (772px right of the chat list: 360px
-  // of panel, 400px of conversation) and the conversation narrower than its 760px column. The app is drawn 1920px wide for
-  // the width and the alignment, and at the window's own width for the narrow window, the largest text size and light.
+  // The cage's window is 1280px wide, which leaves the island no room between its limits beside the chat list. The app is
+  // drawn 1920px wide for the width and the alignment, and narrower for the narrow window, the largest text size and light.
   const app = q<HTMLElement>(".app");
   const wide = (on: boolean) => { if (app) app.style.width = on ? "1920px" : ""; return sleep(250); };
   await wide(true);
-  const viewInPanel = (id: string) => waitFor(() => { const v = probeView(id); return v && v.renderer !== "none" && panel()?.contains(v.term.element ?? null) ? v : null; }, 10000);
+  const viewInIsland = (id: string) => waitFor(() => { const v = probeView(id); return v && v.renderer !== "none" && island()?.contains(v.term.element ?? null) ? v : null; }, 10000);
   /** Ctrl+` (Ctrl+Shift+` with shift) on the page, outside the terminal. */
   const backquote = (shift = false) => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: shift ? "~" : "`", code: "Backquote", keyCode: 192, ctrlKey: true, shiftKey: shift, bubbles: true, cancelable: true }));
+  /** Alt+<n> (Option on macOS) on the page, outside the terminal. */
+  const altDigit = (n: number) => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: String(n), code: `Digit${n}`, keyCode: 48 + n, altKey: true, bubbles: true, cancelable: true }));
   const pwdIn = async (term: Terminal, path: string) => {
     await waitFor(() => termLines(term).some((l) => l.trim()), 10000); // the prompt
     await sleep(300);
     termType(term, "pwd\r");
-    // the path may wrap in a narrow panel: the screen's lines joined
+    // the path may wrap in a narrow island: the screen's lines joined
     return waitFor(() => (termLines(term).map((l) => l.trimEnd()).join("").includes(`pwd${path}`) ? path : null), 5000);
   };
-  /** Open terminal, then a folder in its picker; the new terminal's id once its tab shows. */
-  const pick = async (name: string) => {
+  /** Open's menu, then `item` (New terminal, or New terminal in…), then a folder in the picker; the new terminal's id once
+   *  its tab shows. */
+  const pick = async (name: string, item = "New terminal") => {
     const before = tabIds();
     openBtn()?.click();
+    const m = await waitFor(() => menuOf("Open beside the chat"), 2000);
+    itemIn(m, item)?.click();
     const picker = await waitFor(() => q('.ed-picker[aria-label="Open terminal in"]'));
     const opt = await waitFor(() => [...(picker?.querySelectorAll<HTMLElement>(".opt") ?? [])].find((o) => textOf(o.querySelector(".label")) === name), 8000);
     if (!opt) return null;
@@ -4004,118 +4307,164 @@ async function chatTerminalProbe(phase: "a" | "b") {
     window.location.hash = hash;
     return waitFor(() => (openBtn() && chat() ? true : null), 8000);
   };
+  const A = `#/chat/${encodeURIComponent(chatA.id)}`, B = `#/chat/${encodeURIComponent(chatB.id)}`;
 
   if (phase === "b") {
     // after a restart: the width kept, and no terminal (quitting ended them)
     const kept = Number(localStorage.getItem(CHAT_SHARE));
     out.kept = kept;
     check(kept >= 54 && kept <= 56, `the width kept before the restart is still there (${localStorage.getItem(CHAT_SHARE)})`);
-    if (!(await toChat("#/chat"))) { errors.push("no Open terminal on the Chat page"); return done(); }
-    check(!panel() && !rail() && (await terminalList()).length === 0, "after a restart the chat has no terminals, no panel and no rail");
+    if (!(await toChat(A))) { errors.push("no Open on the Chat page"); return done(); }
+    check(!island() && !strip() && (await terminalList()).length === 0, "after a restart the chat has no terminals, no island and no strip");
     const id = await pick("chat-site");
-    if (!id || !(await viewInPanel(id))) { errors.push(`no terminal opened after the restart: ${textOf(q(".ed-row-note"))}`); return done(); }
+    if (!id || !(await viewInIsland(id))) { errors.push(`no terminal opened after the restart: ${textOf(q(".ed-row-note"))}`); return done(); }
     await sleep(250);
     out.afterRestart = sizes();
-    check(Math.abs(shareNow() - kept) < 0.6, `after the restart the panel has the kept width (${JSON.stringify(out.afterRestart)}, kept ${kept})`);
+    check(Math.abs(shareNow() - kept) < 0.6, `after the restart the island has the kept width (${JSON.stringify(out.afterRestart)}, kept ${kept})`);
     for (const s of await terminalList()) await Promise.race([terminalClose(s.id).catch(() => {}), sleep(3000)]);
     return done();
   }
 
-  // 1. Open terminal, right before New chat; the picker titled "Open terminal in" under it
-  if (!(await toChat("#/chat"))) { errors.push("no Open terminal on the Chat page"); return done(); }
+  // 1. chat A in islands; the top bar's Open, right before New chat
+  if (!(await toChat(A))) { errors.push("no Open on the Chat page"); return done(); }
+  await waitFor(() => q(".chat-msg"), 5000);
+  const look = (el: Element | null) => { const cs = el ? getComputedStyle(el) : null; return cs ? { bg: cs.backgroundColor, radius: cs.borderTopLeftRadius,
+    border: [cs.borderTopWidth, cs.borderRightWidth, cs.borderBottomWidth, cs.borderLeftWidth].join(" ") } : null; };
+  const rectOf = (el: Element | null) => { const r = el?.getBoundingClientRect(); return r ? { l: r1(r.left), t: r1(r.top), r: r1(r.right), b: r1(r.bottom) } : null; };
+  const ISLAND_DARK = "rgb(24, 26, 28)", ISLAND_LIGHT = "rgb(255, 255, 255)";
+  const isIsland = (l: ReturnType<typeof look>, fill = ISLAND_DARK) => !!l && l.bg === fill && l.radius === "10px" && l.border === "0px 0px 0px 0px";
+  const list0 = q(".chat > .chat-threads"), talk0 = q(".chat > .chat-main"), page0 = q(".main > .page-island");
+  out.islandsBefore = { list: look(list0), talk: look(talk0), page: look(page0), composer: getComputedStyle(q(".chat-composer") ?? document.body).borderTopWidth,
+    gap: r1((talk0?.getBoundingClientRect().left ?? 0) - (list0?.getBoundingClientRect().right ?? 0)), listR: rectOf(list0), talkR: rectOf(talk0), pageR: rectOf(page0) };
+  check(isIsland(look(list0)) && isIsland(look(talk0)), `the chat list and the conversation are islands (${JSON.stringify(out.islandsBefore)})`);
+  check(look(page0)?.bg === "rgba(0, 0, 0, 0)", `the page's own island gives way to the chat's, on the background (${JSON.stringify(look(page0))})`);
+  check(Math.abs(Number((out.islandsBefore as { gap: number }).gap) - 6) <= 0.5, `the chat list and the conversation are 6px apart (${JSON.stringify(out.islandsBefore)})`);
+  check(getComputedStyle(q(".chat-composer") ?? document.body).borderTopWidth === "0px", "no line above the text box");
   const acts = [...(openBtn()?.parentElement?.children ?? [])].map((el) => textOf(el));
   out.topBar = acts;
-  check(acts.indexOf("Open terminal") >= 0 && acts[acts.indexOf("Open terminal") + 1] === "New chat", `Open terminal is right before New chat (${acts.join(" | ")})`);
-  check(openBtn()?.className === "btn sm" && !!openBtn()?.querySelector("svg.lucide-terminal"), "Open terminal is a btn sm with the terminal icon");
-  check(!panel() && !rail() && atLeft() === false && centred(), `without terminals no panel, no rail, the conversation centred (${JSON.stringify(cols())})`);
-  openBtn()?.click();
+  check(acts.indexOf("Open") >= 0 && acts[acts.indexOf("Open") + 1] === "New chat" && !acts.includes("Open terminal"), `one Open right before New chat, no Open terminal (${acts.join(" | ")})`);
+  const ob = openBtn();
+  out.openButton = { cls: ob?.className, title: ob?.title, popup: ob?.getAttribute("aria-haspopup"), icons: [...(ob?.querySelectorAll("svg") ?? [])].map((s) => s.getAttribute("class")) };
+  check(ob && /\bbtn\b/.test(ob.className) && ob.title === "Open a terminal, a file or the board beside the chat" && ob.getAttribute("aria-haspopup") === "menu"
+    && !!ob.querySelector("svg.lucide-panel-right") && !!ob.querySelector("svg.lucide-chevron-down"), `Open has panel-right, a chevron, its tooltip and a menu (${JSON.stringify(out.openButton)})`);
+  check(!island() && !strip() && chat()?.className === "chat" && centred(), `without anything open no island, no strip, the conversation centred (${chat()?.className}, ${JSON.stringify(cols())})`);
+  ob?.click();
+  const menu0 = await waitFor(() => menuOf("Open beside the chat"), 2000);
+  out.openMenu = itemsOf(menu0);
+  check(JSON.stringify(itemsOf(menu0)) === JSON.stringify([{ label: "New terminal", kbd: "Ctrl+Shift+`", off: false, danger: false }]),
+    `with no terminal in the chat, Open's menu has New terminal (${JSON.stringify(out.openMenu)})`);
+  itemIn(menu0, "New terminal")?.click();
   const picker = await waitFor(() => q('.ed-picker[aria-label="Open terminal in"]'));
   out.picker = { title: textOf(picker?.querySelector(".ed-picker-title")), top: r1(picker?.getBoundingClientRect().top ?? 0), button: r1(openBtn()?.getBoundingClientRect().bottom ?? 0) };
-  check(textOf(picker?.querySelector(".ed-picker-title")) === "Open terminal in", `the picker is titled Open terminal in (${JSON.stringify(out.picker)})`);
-  check(picker && picker.getBoundingClientRect().top >= (openBtn()?.getBoundingClientRect().bottom ?? 1e9) - 1, `the picker opens under the button (${JSON.stringify(out.picker)})`);
-  document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true, cancelable: true }));
+  check(textOf(picker?.querySelector(".ed-picker-title")) === "Open terminal in", `New terminal opens the picker titled Open terminal in (${JSON.stringify(out.picker)})`);
+  check(picker && picker.getBoundingClientRect().top >= (openBtn()?.getBoundingClientRect().bottom ?? 1e9) - 1, `the picker opens under Open (${JSON.stringify(out.picker)})`);
+  closeMenus();
   picker?.querySelector<HTMLElement>("input")?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true, cancelable: true }));
   await waitFor(() => (!q(".ed-picker") ? true : null), 2000);
 
-  // 2. a pick starts a terminal there, in the panel on the right, with the focus; its folder under the tabs; its sidebar row
+  // 2. a pick starts a terminal in the side island, with the focus; the strip with the Terminal icon, 1, selected
   const id1 = await pick("chat-site");
   if (!id1) { errors.push(`picking chat-site opened no terminal: ${textOf(q(".ed-row-note"))}`); return done(); }
-  const v1 = await viewInPanel(id1);
-  if (!v1) { errors.push("the terminal's view didn't show in the chat's panel"); return done(); }
+  const v1 = await viewInIsland(id1);
+  if (!v1) { errors.push("the terminal's view didn't show in the chat's side island"); return done(); }
   const term = v1.term;
   check(!q(".ed-picker"), "the picker closes after a pick that starts");
   await sleep(300);
-  out.opened = { ...sizes(), cls: chat()?.className, cols: term.cols, rows: term.rows };
-  check(chat()?.className === "chat has-term" && panel() && wd(q(".chat > .chat-threads")) > 0, `the panel is the chat's third column, the chat list still there (${JSON.stringify(out.opened)})`);
-  check((panel()?.getBoundingClientRect().left ?? 0) >= (q(".chat > .chat-main")?.getBoundingClientRect().right ?? 1e9) - 1, "the panel is on the right of the conversation");
-  check(Math.abs(shareNow() - 45) < 0.6, `the panel opens at 45% of the space right of the chat list (${JSON.stringify(out.opened)})`);
+  out.opened = { ...sizes(), cls: chat()?.className, cols: term.cols, rows: term.rows, icon: iconState() };
+  check(chat()?.className === "chat has-side has-strip" && island() && wd(q(".chat > .chat-threads")) > 0, `the side island and the strip are the chat's last columns, the chat list still there (${JSON.stringify(out.opened)})`);
+  check(Math.abs(shareNow() - 45) < 0.6, `the island opens at 45% of the room right of the chat list (${JSON.stringify(out.opened)})`);
   check(await waitFor(() => (document.activeElement === term.textarea ? true : null), 2000), "the new terminal has the focus");
   check(textOf(q(".chat-term-where")) === site.path && /Mono|monospace/.test(getComputedStyle(q(".chat-term-where")!).fontFamily),
-    `the panel shows the terminal's folder in mono (${textOf(q(".chat-term-where"))}, ${q(".chat-term-where") ? getComputedStyle(q(".chat-term-where")!).fontFamily : ""})`);
+    `the island shows the terminal's folder in mono (${textOf(q(".chat-term-where"))})`);
   check(await waitFor(() => q(`.side [aria-label="Terminal"] a[data-term="${CSS.escape(id1)}"]`), 3000), "the sidebar's Terminal section lists it");
   out.left = cols();
-  check(atLeft(), `while the panel shows, the messages and the text box start at the left of their column (${JSON.stringify(out.left)})`);
+  check(atLeft(), `while the island shows, the messages and the text box start at the left of their column (${JSON.stringify(out.left)})`);
+  // the islands: the conversation, the island (its inner box) and the strip, 6px apart; the strip at the window's right edge
+  const talk = q(".chat > .chat-main"), inner = q(".chat > .chat-side > .chat-side-in"), stripEl = strip(), btn = termIcon();
+  const appRight = app?.getBoundingClientRect().right ?? window.innerWidth;
+  out.layout = { talk: rectOf(talk), island: rectOf(inner), strip: rectOf(stripEl), button: rectOf(btn), appRight: r1(appRight), islandLook: look(inner),
+    btnLook: btn ? { bg: getComputedStyle(btn).backgroundColor, color: getComputedStyle(btn).color, h: r1(btn.getBoundingClientRect().height), w: r1(btn.getBoundingClientRect().width) } : null,
+    stripRole: [stripEl?.getAttribute("role"), stripEl?.getAttribute("aria-label"), stripEl?.getAttribute("aria-orientation")] };
+  const L = out.layout as Record<string, { l: number; t: number; r: number; b: number } | null>;
+  check(isIsland(look(inner)), `the side island is an island (${JSON.stringify(look(inner))})`);
+  check(L.talk && L.island && L.strip && Math.abs(L.island.l - L.talk.r - 6) <= 0.5 && Math.abs(L.strip.l - L.island.r - 6) <= 0.5 && L.island.t === L.talk.t && L.island.b === L.talk.b,
+    `the conversation, the island and the strip are 6px apart, the island as tall as the conversation (${JSON.stringify(out.layout)})`);
+  check(L.strip && Math.abs(appRight - 6 - L.strip.r) <= 0.5 && Math.abs(L.strip.r - L.strip.l - 28) <= 0.5 && L.strip.t === L.talk?.t,
+    `the strip is 28px wide on the window's right edge, 6px in, from the islands' top (${JSON.stringify(out.layout)})`);
+  check(JSON.stringify(L.stripRole) === JSON.stringify(["toolbar", "Beside the chat", "vertical"]), `the strip is a vertical toolbar Beside the chat (${JSON.stringify(L.stripRole)})`);
+  const btnLook = (out.layout as { btnLook: { bg: string; h: number; w: number } | null }).btnLook;
+  check(btnLook && btnLook.bg === ISLAND_DARK && btnLook.h === 42 && btnLook.w === 28 && !!btn?.querySelector("svg.lucide-terminal"),
+    `the Terminal icon is a 28 × 42 button, selected: a pill in the island's fill (${JSON.stringify(btnLook)})`);
+  check(JSON.stringify(iconState()) === JSON.stringify({ pressed: "true", n: "1", label: "Terminal, 1 open", title: "Terminal, 1 open (Ctrl+`)" }),
+    `the Terminal icon says 1, selected, with its label and tooltip (${JSON.stringify(iconState())})`);
   out.pwd = await pwdIn(term, site.id);
   check(out.pwd, `pwd prints chat-site's folder ${site.id} (screen: ${JSON.stringify(termLines(term, true).filter(Boolean).slice(-4))})`);
-  check(term.cols >= 30 && term.rows >= 10, `the terminal fits the panel (${term.cols} × ${term.rows})`);
+  check(term.cols >= 30 && term.rows >= 10, `the terminal fits the island (${term.cols} × ${term.rows})`);
 
-  // 3. another pick adds a tab, shown, with the focus; + starts one in the shown terminal's folder
-  const id2 = await pick("chat-other");
-  const v2 = id2 ? await viewInPanel(id2) : null;
-  check(v2 && same2(tabIds(), [id1, id2]), `another pick adds a tab (${tabIds().join(", ")})`);
+  // 3. New terminal in… adds a tab, shown, with the focus; the island's header; + and Ctrl+Shift+` start one in the shown
+  // terminal's folder
+  openBtn()?.click();
+  const menu1 = await waitFor(() => menuOf("Open beside the chat"), 2000);
+  out.openMenu1 = itemsOf(menu1);
+  check(JSON.stringify(itemsOf(menu1).map((i) => i.label)) === JSON.stringify(["New terminal", "New terminal in…"]), `with a terminal, Open's menu has New terminal and New terminal in… (${JSON.stringify(out.openMenu1)})`);
+  closeMenus();
+  await waitFor(() => (!menuOf("Open beside the chat") ? true : null), 2000);
+  const id2 = await pick("chat-other", "New terminal in…");
+  const v2 = id2 ? await viewInIsland(id2) : null;
+  check(v2 && same2(tabIds(), [id1, id2]), `New terminal in… adds a tab at the end (${tabIds().join(", ")})`);
   if (!id2 || !v2) return done();
   check(await waitFor(() => (document.activeElement === v2.term.textarea ? true : null), 2000), "the picked terminal has the focus");
   check(textOf(q(".chat-term-where")) === other.path, `the folder follows the shown terminal (${textOf(q(".chat-term-where"))})`);
-  const plus = q<HTMLButtonElement>('.chat-term .term-tabs button[aria-label="New terminal in chat-other"]');
-  check(plus?.title === "New terminal in chat-other (Ctrl+Shift+`)" && plus.getAttribute("aria-disabled") !== "true", `+ says where (${plus?.title})`);
-  const own = q<HTMLButtonElement>('.chat-term button[aria-label="Own page"]'), hide = q<HTMLButtonElement>('.chat-term button[aria-label="Hide"]');
-  check(hide?.title === "Hide the terminal (Ctrl+`): its shells keep running" && !!own, `Hide's tooltip is the card's (${hide?.title})`);
+  check(JSON.stringify(iconState()) === JSON.stringify({ pressed: "true", n: "2", label: "Terminal, 2 open", title: "Terminal, 2 open (Ctrl+`)" }), `the strip says 2 (${JSON.stringify(iconState())})`);
+  const plus = q<HTMLButtonElement>('.chat-side .island-head button[aria-label="Open beside the chat"]');
+  const own = q<HTMLButtonElement>('.chat-side .island-head button[aria-label="Own page"]'), hide = q<HTMLButtonElement>('.chat-side .island-head button[aria-label="Hide"]');
+  out.head = { tabs: q(".chat-side .island-tabs")?.getAttribute("aria-label"), plus: [plus?.title, plus?.getAttribute("aria-haspopup")], own: own?.title, hide: hide?.title };
+  check(q(".chat-side .island-tabs[role=tablist]")?.getAttribute("aria-label") === "Beside the chat" && plus?.title === "Open beside the chat" && plus.getAttribute("aria-haspopup") === "menu"
+    && hide?.title === "Hide (Ctrl+`): terminals keep running" && !!own, `the header: the tabs Beside the chat, + (a menu), Own page and Hide with the notes' tooltips (${JSON.stringify(out.head)})`);
   plus?.click();
+  const plusMenu = await waitFor(() => menuOf("Open beside the chat"), 2000);
+  check(itemsOf(plusMenu)[0]?.label === "New terminal", `+ opens a menu with New terminal (${JSON.stringify(itemsOf(plusMenu))})`);
+  itemIn(plusMenu, "New terminal")?.click();
   const id3 = await waitFor(() => { const t = shownTab(); return t && t !== id1 && t !== id2 ? t : null; }, 10000);
-  const v3 = id3 ? await viewInPanel(id3) : null;
-  check(v3 && (await terminalList()).find((s) => s.id === id3)?.folder === other.id, "+ starts another terminal in the shown terminal's folder");
-  // Ctrl+Shift+` too
+  const v3 = id3 ? await viewInIsland(id3) : null;
+  check(v3 && (await terminalList()).find((s) => s.id === id3)?.folder === other.id, "+ → New terminal starts another terminal in the shown terminal's folder");
   await sleep(300);
-  out.plusBefore = q('.chat-term .term-tabs button[aria-label^="New terminal in"]')?.getAttribute("aria-disabled") ?? "on";
   backquote(true);
   const id4 = await waitFor(() => { const t = shownTab(); return t && ![id1, id2, id3].includes(t) ? t : null; }, 10000);
-  out.ctrlShift = { tabs: tabIds().length, open: (await terminalList()).length, failed: textOf(q(".chat-term .ed-bar.failed")), plus: out.plusBefore, focus: document.activeElement?.className };
-  check(id4 && (await terminalList()).find((s) => s.id === id4)?.folder === other.id && tabIds().length === 4, `Ctrl+Shift+\` starts one there too (${JSON.stringify(out.ctrlShift)})`);
+  out.ctrlShift = { tabs: tabIds().length, open: (await terminalList()).length, failed: textOf(q(".chat-side .ed-bar.failed")), icon: iconState() };
+  check(id4 && (await terminalList()).find((s) => s.id === id4)?.folder === other.id && tabIds().length === 4 && iconState()?.n === "4",
+    `Ctrl+Shift+\` starts one there too, and the strip says 4 (${JSON.stringify(out.ctrlShift)})`);
 
-  // 4. × on a tab with a program running asks first; Cancel keeps it; Close ends it and the next tab shows. A middle click
-  // on a waiting one closes it at once.
-  if (id4) await viewInPanel(id4);
+  // 4. × on a tab with a program running asks first; Cancel keeps it; Close ends it and the tab before shows. A middle click
+  // on a waiting one closes it at once. Then the keys between tabs and F2.
+  if (id4) await viewInIsland(id4);
   const t4 = id4 ? probeView(id4)?.term : null;
   if (t4 && id3 && id4) {
     await waitFor(() => termLines(t4).some((l) => l.trim()), 10000);
     await sleep(300);
-    termType(t4, "sleep 60\r");
-    const busy = await waitFor(() => (textOf(q(`.chat-term .term-tab[data-term="${CSS.escape(id4)}"] .prog`)) === "sleep" ? true : null), 6000);
-    check(busy, `the tab says what runs in it (${textOf(q(`.chat-term .term-tab[data-term="${CSS.escape(id4)}"]`))})`);
-    // the second tab picked first, so the next after the closed one is a tab after it
-    q<HTMLElement>(`.chat-term .term-tab[data-term="${CSS.escape(id3)}"]`)?.click();
+    termType(t4, "sleep 600\r");
+    const busy = await waitFor(() => (textOf(tabOf(id4)?.querySelector(".prog")) === "sleep" ? true : null), 6000);
+    check(busy, `the tab says what runs in it (${textOf(tabOf(id4))})`);
+    tabOf(id3)?.click();
     await waitFor(() => (shownTab() === id3 ? true : null), 2000);
-    q<HTMLElement>(`.chat-term .term-tab[data-term="${CSS.escape(id4)}"]`)?.click();
+    tabOf(id4)?.click();
     await waitFor(() => (shownTab() === id4 ? true : null), 2000);
-    q<HTMLButtonElement>(`.chat-term .term-tab[data-term="${CSS.escape(id4)}"] .x`)?.click();
+    tabOf(id4)?.querySelector<HTMLButtonElement>(".x")?.click();
     const ask = await waitFor(() => q(".ed-ask"), 2000);
     out.ask = textOf(ask);
     check(ask && /sleep is still running in .+\. Close it and end sleep\?/.test(textOf(ask)), `× asks first while a program runs (${out.ask})`);
     if (ask) buttonByText(ask, "Cancel")?.click();
     await sleep(300);
     check(tabIds().includes(id4) && !(await terminalList()).find((s) => s.id === id4)?.ended, "Cancel keeps it running");
-    q<HTMLButtonElement>(`.chat-term .term-tab[data-term="${CSS.escape(id4)}"] .x`)?.click();
+    tabOf(id4)?.querySelector<HTMLButtonElement>(".x")?.click();
     const ask2 = await waitFor(() => q(".ed-ask"), 2000);
     if (ask2) buttonByText(ask2, "Close")?.click();
     check(await waitFor(() => (!tabIds().includes(id4) ? true : null), 5000), "Close closes it");
-    check(shownTab() === id3, `the tab before it shows, as it was the last (${shownTab()})`);
-    // middle click on a waiting tab (id2, not shown) closes it at once
-    q<HTMLElement>(`.chat-term .term-tab[data-term="${CSS.escape(id2)}"]`)?.dispatchEvent(new MouseEvent("auxclick", { button: 1, bubbles: true, cancelable: true }));
+    check(shownTab() === id3, `the tab before shows, as it was the last (${shownTab()})`);
+    tabOf(id2)?.dispatchEvent(new MouseEvent("auxclick", { button: 1, bubbles: true, cancelable: true }));
     check(await waitFor(() => (!tabIds().includes(id2) && !q(".ed-ask") ? true : null), 5000), "a middle click closes a waiting terminal without asking");
-    check(same2(tabIds(), [id1, id3]) && shownTab() === id3, `the shown tab stays (${tabIds().join(", ")} shown ${shownTab()})`);
+    check(same2(tabIds(), [id1, id3]) && shownTab() === id3 && iconState()?.n === "2", `the shown tab stays, the strip says 2 (${tabIds().join(", ")} shown ${shownTab()}, ${JSON.stringify(iconState())})`);
 
-    // the keys between tabs: Ctrl+PgUp and Ctrl+PgDn from inside the terminal (it lets them through), ← and → on a tab;
-    // F2 renames a tab in place
     const t3 = probeView(id3)?.term;
     t3?.focus();
     t3?.textarea?.dispatchEvent(termKeyEvent("keydown", { key: "PageUp", code: "PageUp", keyCode: 33, ctrlKey: true }));
@@ -4123,11 +4472,9 @@ async function chatTerminalProbe(phase: "a" | "b") {
     await waitFor(() => (document.activeElement === term.textarea ? true : null), 2000);
     term.textarea?.dispatchEvent(termKeyEvent("keydown", { key: "PageDown", code: "PageDown", keyCode: 34, ctrlKey: true }));
     check(await waitFor(() => (shownTab() === id3 ? true : null), 2000), `Ctrl+PgDn shows the next tab (${shownTab()})`);
-    const tabOf = (id: string) => q<HTMLElement>(`.chat-term .term-tab[data-term="${CSS.escape(id)}"]`);
     tabOf(id3)?.focus();
     if (tabOf(id3)) keyOn(tabOf(id3)!, "ArrowLeft");
-    // the picked terminal then takes the focus, as a tab picked in the Editor's panel does
-    check(await waitFor(() => (shownTab() === id1 ? true : null), 2000), `← on a tab shows the one before (${shownTab()}, ${JSON.stringify({ id1, id3 })})`);
+    check(await waitFor(() => (shownTab() === id1 ? true : null), 2000), `← on a tab shows the one before (${shownTab()})`);
     tabOf(id1)?.focus();
     if (tabOf(id1)) keyOn(tabOf(id1)!, "ArrowRight");
     check(await waitFor(() => (shownTab() === id3 ? true : null), 2000), `→ shows the next one (${shownTab()})`);
@@ -4140,41 +4487,89 @@ async function chatTerminalProbe(phase: "a" | "b") {
     check(nameIn && (await waitFor(() => (textOf(tabOf(id3)?.querySelector(".name")) === "chat build" ? true : null), 4000)), `F2 renames the tab (${textOf(tabOf(id3))})`);
   }
 
-  // 5. Hide: the shells keep running (sleep 60 in the first), the rail with the number, the conversation centred; the rail
-  // and Ctrl+` show it again; Ctrl+` from inside the terminal hides it
-  q<HTMLElement>(`.chat-term .term-tab[data-term="${CSS.escape(id1)}"]`)?.click();
-  await waitFor(() => (shownTab() === id1 && panel()?.contains(term.element ?? null) ? true : null), 3000);
-  termType(term, "sleep 60\r");
+  // 5. Hide: sleep 600 keeps running in the first, the strip stays with none selected, the conversation centred; a click on
+  // the icon shows the island again, a click on the selected icon hides it; Ctrl+` and Alt+1, also from inside the terminal
+  tabOf(id1)?.click();
+  await waitFor(() => (shownTab() === id1 && island()?.contains(term.element ?? null) ? true : null), 3000);
+  termType(term, "sleep 600\r");
   await sleep(1200);
-  q<HTMLButtonElement>('.chat-term button[aria-label="Hide"]')?.click();
-  check(await waitFor(() => (!panel() && rail() ? true : null), 2000), "Hide hides the panel and the rail shows");
-  out.rail = { cls: chat()?.className, n: textOf(rail()?.querySelector(".n")), title: rail()?.title, w: r1(wd(rail())), right: r1((chat()?.getBoundingClientRect().right ?? 0) - (rail()?.getBoundingClientRect().right ?? 0)) };
-  check(chat()?.className === "chat has-rail" && textOf(rail()?.querySelector(".n")) === "2" && rail()?.title === "Show the terminal (Ctrl+`)" && !!rail()?.querySelector("svg.lucide-terminal"),
-    `the rail has the terminal icon, the number and its tooltip (${JSON.stringify(out.rail)})`);
-  check(wd(rail()) <= 48 && Math.abs(Number((out.rail as { right: number }).right)) <= 1, `the rail is narrow, on the chat's right edge (${JSON.stringify(out.rail)})`);
+  q<HTMLButtonElement>('.chat-side button[aria-label="Hide"]')?.click();
+  check(await waitFor(() => (!island() && strip() ? true : null), 2000), "Hide hides the island and the strip stays");
+  // the app is drawn wider than the window, so it may have scrolled sideways since: its right edge now
+  out.hidden = { cls: chat()?.className, icon: iconState(), strip: rectOf(strip()), talk: rectOf(q(".chat > .chat-main")), appR: r1(app?.getBoundingClientRect().right ?? window.innerWidth),
+    bg: termIcon() ? getComputedStyle(termIcon()!).backgroundColor : null };
+  check(chat()?.className === "chat has-strip" && JSON.stringify(iconState()) === JSON.stringify({ pressed: "false", n: "2", label: "Terminal, 2 open", title: "Terminal, 2 open (Ctrl+`)" })
+    && (out.hidden as { bg: string }).bg === "rgba(0, 0, 0, 0)", `hidden: the strip with the Terminal icon, 2, none selected and no fill (${JSON.stringify(out.hidden)})`);
+  const H = out.hidden as { strip: { l: number; r: number } | null; talk: { r: number } | null; appR: number };
+  check(H.strip && H.talk && Math.abs(H.strip.l - H.talk.r - 6) <= 0.5 && Math.abs(H.appR - 6 - H.strip.r) <= 0.5, `the conversation reaches the strip, 6px before it, on the window's edge (${JSON.stringify(out.hidden)})`);
   out.centredAgain = cols();
   check(centred(), `hidden, the conversation is centred as before (${JSON.stringify(out.centredAgain)})`);
   const running = (await terminalList()).find((s) => s.id === id1);
-  check(running && !running.ended && running.busy === "sleep", `its shell keeps running sleep 60 (${JSON.stringify(running && { busy: running.busy, ended: running.ended })})`);
-  rail()?.click();
-  check(await waitFor(() => (panel()?.contains(term.element ?? null) && shownTab() === id1 ? true : null), 3000), "the rail shows the panel again, on the same terminal");
+  check(running && !running.ended && running.busy === "sleep", `its shell keeps running sleep 600 (${JSON.stringify(running && { busy: running.busy, ended: running.ended })})`);
+  termIcon()?.click();
+  check(await waitFor(() => (island()?.contains(term.element ?? null) && shownTab() === id1 ? true : null), 3000), "a click on the Terminal icon shows the island again, on the same terminal");
+  check(iconState()?.pressed === "true", "and selects the icon");
   check(await waitFor(() => (document.activeElement === term.textarea ? true : null), 2000), "shown again, the terminal has the focus");
-  term.textarea?.dispatchEvent(termKeyEvent("keydown", { key: "`", code: "Backquote", keyCode: 192, ctrlKey: true }));
-  check(await waitFor(() => (!panel() && rail() ? true : null), 2000), "Ctrl+` hides the panel from inside the terminal");
+  termIcon()?.click();
+  check(await waitFor(() => (!island() && strip() ? true : null), 2000), "a click on the selected icon hides the island");
+  check((await terminalList()).find((s) => s.id === id1)?.busy === "sleep", "sleep 600 is still running");
   backquote();
-  check(await waitFor(() => (panel()?.contains(term.element ?? null) ? true : null), 3000), "Ctrl+` shows it again");
-  check((await terminalList()).find((s) => s.id === id1)?.busy === "sleep", "sleep 60 is still running");
-  term.input("\x03", true); // Ctrl+C ends the sleep
+  check(await waitFor(() => (island()?.contains(term.element ?? null) ? true : null), 3000), "Ctrl+` shows it again");
+  await waitFor(() => (document.activeElement === term.textarea ? true : null), 2000);
+  term.textarea?.dispatchEvent(termKeyEvent("keydown", { key: "`", code: "Backquote", keyCode: 192, ctrlKey: true }));
+  check(await waitFor(() => (!island() && strip() ? true : null), 2000), "Ctrl+` hides it from inside the terminal");
+  altDigit(1);
+  check(await waitFor(() => (island()?.contains(term.element ?? null) ? true : null), 3000), "Alt+1 shows it");
+  await waitFor(() => (document.activeElement === term.textarea ? true : null), 2000);
+  // Alt+1 inside the terminal reaches the shell: the island stays
+  term.textarea?.dispatchEvent(termKeyEvent("keydown", { key: "1", code: "Digit1", keyCode: 49, altKey: true }));
+  await sleep(400);
+  check(island() && iconState()?.pressed === "true", "Alt+1 inside the terminal reaches the shell: the island stays");
+  (document.activeElement as HTMLElement | null)?.blur();
+  altDigit(1);
+  check(await waitFor(() => (!island() && strip() ? true : null), 2000), "Alt+1 on the page hides it");
+  altDigit(1);
+  await waitFor(() => (island() ? true : null), 2000);
+  (document.activeElement as HTMLElement | null)?.blur();
+  const before234 = { cls: chat()?.className, tabs: tabIds().join(","), icons: [...document.querySelectorAll(".chat-strip .strip-btn")].map((b) => b.getAttribute("data-kind")) };
+  altDigit(2); altDigit(3); altDigit(4);
   await sleep(300);
+  const after234 = { cls: chat()?.className, tabs: tabIds().join(","), icons: [...document.querySelectorAll(".chat-strip .strip-btn")].map((b) => b.getAttribute("data-kind")) };
+  out.alt234 = { before234, after234 };
+  check(JSON.stringify(before234) === JSON.stringify(after234) && JSON.stringify(after234.icons) === JSON.stringify(["terminal"]), `Alt+2, Alt+3 and Alt+4 do nothing yet (${JSON.stringify(out.alt234)})`);
+  check((await terminalList()).find((s) => s.id === id1)?.busy === "sleep", "sleep 600 is still running after the keys");
 
-  // 6. the drag handle: the panel's left edge, a vertical separator; between 360px of panel and 400px of conversation; a
-  // double click gives 45% back; ← and → move it 5%; kept
-  const handle = q<HTMLElement>(".chat-term > .term-handle");
-  if (!handle) { errors.push("no drag handle on the panel's left edge"); return done(); }
-  out.handle = { w: wd(handle), cursor: getComputedStyle(handle).cursor, orientation: handle.getAttribute("aria-orientation"), label: handle.getAttribute("aria-label"), now: handle.getAttribute("aria-valuenow"),
-    left: r1((handle.getBoundingClientRect().left) - (panel()?.getBoundingClientRect().left ?? 0)) };
-  check(handle.getAttribute("role") === "separator" && handle.getAttribute("aria-orientation") === "vertical" && getComputedStyle(handle).cursor === "col-resize" && wd(handle) <= 1.5
-    && Math.abs(handle.getBoundingClientRect().left - (panel()?.getBoundingClientRect().left ?? 0)) <= 1, `the handle is the panel's left edge, a vertical separator (${JSON.stringify(out.handle)})`);
+  // 6. the icon's right-click menu: its head, Hide (on show) or Show with its key (hidden), a line, Close all in danger; the
+  // context menu key opens it too; Show shows
+  const ib = termIcon()!;
+  const br = ib.getBoundingClientRect();
+  ib.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: br.left + 10, clientY: br.top + 10, button: 2 }));
+  const cm = await waitFor(() => menuOf("Terminal · 2 open"), 2000);
+  out.stripMenu = { head: textOf(cm?.querySelector(".pop-head")), items: itemsOf(cm), sep: !!cm?.querySelector(".sep"), at: rectOf(cm) };
+  check(cm && textOf(cm.querySelector(".pop-head")) === "Terminal · 2 open" && JSON.stringify(itemsOf(cm)) === JSON.stringify([
+    { label: "Hide", kbd: "", off: false, danger: false }, { label: "Close all", kbd: "", off: false, danger: true }]) && !!cm.querySelector(".sep"),
+  `the right-click menu: Terminal · 2 open, Hide, a line, Close all in danger (${JSON.stringify(out.stripMenu)})`);
+  check(cm && Math.abs(cm.getBoundingClientRect().top - (br.top + 10)) <= 1 && cm.getBoundingClientRect().right <= window.innerWidth, `the menu opens at the pointer, inside the window (${JSON.stringify(out.stripMenu)})`);
+  itemIn(cm, "Hide")?.click();
+  check(await waitFor(() => (!island() && strip() && !menuOf("Terminal · 2 open") ? true : null), 2000), "the menu's Hide hides the island");
+  termIcon()?.focus();
+  termIcon()?.dispatchEvent(new KeyboardEvent("keydown", { key: "ContextMenu", code: "ContextMenu", bubbles: true, cancelable: true }));
+  const cm2 = await waitFor(() => menuOf("Terminal · 2 open"), 2000);
+  out.stripMenuHidden = { items: itemsOf(cm2), at: rectOf(cm2), icon: rectOf(termIcon()) };
+  check(cm2 && JSON.stringify(itemsOf(cm2).map((i) => [i.label, i.kbd])) === JSON.stringify([["Show", "Ctrl+`"], ["Close all", ""]]),
+    `the context menu key opens it; hidden it has Show with its key (${JSON.stringify(out.stripMenuHidden)})`);
+  check(cm2 && cm2.getBoundingClientRect().right <= (termIcon()?.getBoundingClientRect().left ?? 0) + 1, `from the keyboard it opens left of the button (${JSON.stringify(out.stripMenuHidden)})`);
+  itemIn(cm2, "Show")?.click();
+  check(await waitFor(() => (island()?.contains(term.element ?? null) ? true : null), 3000), "the menu's Show shows the island");
+
+  // 7. the drag handle: the gap left of the island, a vertical separator; between 360px of island and 400px of conversation;
+  // a double click gives 45% back; ← and → move it 5%
+  const handle = q<HTMLElement>(".chat-side > .term-handle");
+  if (!handle) { errors.push("no drag handle on the island's left edge"); return done(); }
+  const hr = handle.getBoundingClientRect(), ir = (q(".chat > .chat-side > .chat-side-in") ?? handle).getBoundingClientRect(), cr = q(".chat > .chat-main")!.getBoundingClientRect();
+  out.handle = { w: r1(hr.width), l: r1(hr.left), r: r1(hr.right), islandL: r1(ir.left), talkR: r1(cr.right), cursor: getComputedStyle(handle).cursor, label: handle.getAttribute("aria-label"), now: handle.getAttribute("aria-valuenow") };
+  check(handle.getAttribute("role") === "separator" && handle.getAttribute("aria-orientation") === "vertical" && getComputedStyle(handle).cursor === "col-resize"
+    && Math.abs(hr.left - cr.right) <= 0.5 && Math.abs(hr.right - ir.left) <= 0.5, `the handle is the gap between the conversation and the island, a vertical separator (${JSON.stringify(out.handle)})`);
   const drag = async (dx: number) => {
     const r = handle.getBoundingClientRect();
     const x = r.left + r.width / 2, y = r.top + r.height / 2;
@@ -4186,13 +4581,14 @@ async function chatTerminalProbe(phase: "a" | "b") {
   };
   const start = sizes();
   const grown = await drag(-80);
-  check(Math.abs(grown.panel - start.panel - 80) <= 2 && Math.abs(start.talk - grown.talk - 80) <= 2, `dragging the edge left 80px widens the panel 80px (${JSON.stringify({ start, grown })})`);
+  check(Math.abs(grown.island - start.island - 80) <= 2 && Math.abs(start.talk - grown.talk - 80) <= 2, `dragging the edge left 80px widens the island 80px (${JSON.stringify({ start, grown })})`);
   check(Math.abs(Number(localStorage.getItem(CHAT_SHARE)) - shareNow()) < 0.2, `the width is kept when the pointer lets go (${localStorage.getItem(CHAT_SHARE)})`);
   const widest = await drag(-5000);
   const narrow = await drag(5000);
   out.drag = { start, grown, widest, narrow };
   check(Math.abs(widest.talk - 400) <= 1.5, `dragging far left leaves the conversation 400px (${JSON.stringify(widest)})`);
-  check(Math.abs(narrow.panel - 360) <= 1.5, `dragging far right stops at 360px of panel (${JSON.stringify(narrow)})`);
+  check(Math.abs(narrow.island - 360) <= 1.5, `dragging far right stops at 360px of island (${JSON.stringify(narrow)})`);
+  check(Math.abs(widest.strip - 28) <= 0.5 && Math.abs(narrow.strip - 28) <= 0.5, "the strip keeps its 28px while dragging");
   handle.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
   await sleep(200);
   out.doubleClick = { ...sizes(), kept: localStorage.getItem(CHAT_SHARE), now: handle.getAttribute("aria-valuenow") };
@@ -4200,118 +4596,212 @@ async function chatTerminalProbe(phase: "a" | "b") {
   handle.focus();
   keyOn(handle, "ArrowLeft");
   await sleep(150);
-  out.arrowLeft = { share: r1(shareNow()), now: handle.getAttribute("aria-valuenow") };
-  check(Math.abs(shareNow() - 50) < 0.6 && handle.getAttribute("aria-valuenow") === "50", `← widens it 5% (${JSON.stringify(out.arrowLeft)})`);
+  check(Math.abs(shareNow() - 50) < 0.6 && handle.getAttribute("aria-valuenow") === "50", `← widens it 5% (${r1(shareNow())})`);
   keyOn(handle, "ArrowRight");
   await sleep(150);
   check(Math.abs(shareNow() - 45) < 0.6, `→ narrows it 5% (${r1(shareNow())})`);
-  keyOn(handle, "ArrowUp");
-  await sleep(150);
-  check(Math.abs(shareNow() - 45) < 0.6, "↑ doesn't move the left edge");
   await sleep(200);
   check(Math.abs(term.cols - (out.opened as { cols: number }).cols) <= 2, `back at 45% the terminal has the columns it opened with (${term.cols}, ${(out.opened as { cols: number }).cols})`);
 
-  // 7. another chat, New chat, the Archive, another page and back: the panel, its tabs and the shown terminal stay
-  const tabsNow = tabIds(), shown = shownTab(), shareKept = r1(shareNow());
-  const stays = (where: string) => {
-    const ok = panel()?.contains(term.element ?? null) && same2(tabIds(), tabsNow) && shownTab() === shown && Math.abs(shareNow() - shareKept) < 0.6;
-    check(ok, `${where}: the panel, its tabs and the shown terminal stay (${tabIds().join(", ")} shown ${shownTab()}, ${r1(shareNow())}%)`);
+  // 8. tabs per chat: chat B shows none of A's (no island, no strip), and its own terminal only; New chat and the Archive
+  // none; back in A (also from another page) its tabs, the shown one and its width are there, and sleep 600 still runs
+  const tabsA = tabIds(), shownA = shownTab(), shareA = r1(shareNow());
+  const backInA = (where: string) => {
+    const ok = island()?.contains(term.element ?? null) && same2(tabIds(), tabsA) && shownTab() === shownA && Math.abs(shareNow() - shareA) < 0.6 && iconState()?.n === String(tabsA.length);
+    check(ok, `${where}: back in chat A its tabs, the shown terminal and the width are there (${tabIds().join(", ")} shown ${shownTab()}, ${r1(shareNow())}%, ${JSON.stringify(iconState())})`);
   };
-  const recent = q<HTMLAnchorElement>(".chat-threads-list a.th[href^='#/chat/']");
-  recent?.click();
-  await waitFor(() => (/^#\/chat\/.+/.test(location.hash) && q(".chat-msg") ? true : null), 5000);
+  const nothingOpen = (where: string) => check(!island() && !strip() && chat()?.className === "chat" && !q(".chat-side .term-tab"),
+    `${where} shows none of chat A's tabs: no island, no strip (${chat()?.className}, ${tabIds().join(", ")})`);
+  await toChat(B);
+  await waitFor(() => (location.hash === B && q(".chat-msg") ? true : null), 5000);
   await sleep(300);
-  stays("another chat");
-  out.otherChat = cols();
-  check(atLeft(), `in another chat the messages start at the left too (${JSON.stringify(out.otherChat)})`);
+  nothingOpen("chat B");
+  check(centred(), `chat B's conversation is centred (${JSON.stringify(cols())})`);
+  const stillA = (await terminalList()).filter((s) => tabsA.includes(s.id) && !s.ended);
+  check(stillA.length === tabsA.length && stillA.find((s) => s.id === id1)?.busy === "sleep", `chat A's terminals keep running while chat B shows (${JSON.stringify(stillA.map((s) => [s.name, s.busy]))})`);
+  const idB = await pick("chat-site");
+  const vB = idB ? await viewInIsland(idB) : null;
+  out.chatB = { tabs: tabIds(), icon: iconState() };
+  check(vB && same2(tabIds(), [idB]) && iconState()?.n === "1", `a terminal opened in chat B is its only tab (${JSON.stringify(out.chatB)})`);
   await toChat("#/chat");
   await sleep(300);
-  stays("New chat");
+  nothingOpen("New chat");
   q<HTMLAnchorElement>(".chat-threads-foot a.th")?.click();
   await waitFor(() => (location.hash === "#/chats" && q(".chat-archive") ? true : null), 5000);
   await sleep(300);
-  stays("the Archive");
-  const arch = [...document.querySelectorAll<HTMLElement>(".chat-archive .chat-col")].map((c) => r1(c.getBoundingClientRect().left - c.closest(".chat-archive")!.getBoundingClientRect().left));
-  out.archive = arch;
-  check(arch.length > 0 && arch.every((x) => Math.abs(x) <= 1), `beside the panel the Archive starts at the left (${JSON.stringify(arch)})`);
+  nothingOpen("the Archive");
+  await toChat(A);
+  check(await waitFor(() => (island()?.contains(term.element ?? null) ? true : null), 5000), "back in chat A the view is in the island again");
+  await sleep(300);
+  backInA("from chat B, New chat and the Archive");
+  check(!tabIds().includes(idB ?? "-"), "chat B's terminal isn't among chat A's tabs");
+  check((await terminalList()).find((s) => s.id === id1)?.busy === "sleep", "back in chat A sleep 600 still runs");
   window.location.hash = "#/tasks";
   await sleep(700);
-  check(!panel() && (await terminalList()).filter((s) => tabsNow.includes(s.id) && !s.ended).length === tabsNow.length, "on another page the chat's terminals keep running");
+  check(!island() && !strip() && (await terminalList()).filter((s) => tabsA.includes(s.id) && !s.ended).length === tabsA.length, "on another page the chat's terminals keep running");
   check(q(`.side [aria-label="Terminal"] a[data-term="${CSS.escape(id1)}"]`), "and the sidebar lists them");
-  await toChat("#/chat");
-  check(await waitFor(() => (panel()?.contains(term.element ?? null) ? true : null), 5000), "back on the Chat page the view is in the panel again");
+  await toChat(A);
+  check(await waitFor(() => (island()?.contains(term.element ?? null) ? true : null), 5000), "back on the Chat page the view is in chat A's island");
   await sleep(200);
-  stays("another page and back");
-
-  // 8. Own page: the same view on #/terminal/<id>; back on Chat the panel shows it again
-  const ownName = (await terminalList()).find((s) => s.id === id1)?.name ?? "";
-  check(q<HTMLButtonElement>('.chat-term button[aria-label="Own page"]')?.title === `Open ${ownName} on its own page`, "Own page's tooltip names the terminal");
-  q<HTMLButtonElement>('.chat-term button[aria-label="Own page"]')?.click();
-  const onPage = await waitFor(() => (location.hash === `#/terminal/${encodeURIComponent(id1)}` && q(".term-page .term-place")?.contains(term.element ?? null) ? true : null), 5000);
-  check(onPage, `Own page shows the terminal on #/terminal/<id> (${location.hash})`);
+  backInA("from another page");
+  // chat B's own terminal: back there it shows, and × closes it (no program runs): its island and strip go
+  await toChat(B);
+  await waitFor(() => (idB && tabOf(idB) ? true : null), 5000);
+  check(idB && same2(tabIds(), [idB]) && iconState()?.n === "1", `back in chat B its own terminal shows (${tabIds().join(", ")})`);
+  if (idB) tabOf(idB)?.querySelector<HTMLButtonElement>(".x")?.click();
+  check(await waitFor(() => (!island() && !strip() && chat()?.className === "chat" ? true : null), 5000), `closing chat B's last tab hides its island, and the strip goes (${chat()?.className})`);
+  await toChat(A);
+  await waitFor(() => (island()?.contains(term.element ?? null) ? true : null), 5000);
+  await sleep(200);
+  backInA("after chat B closed its own");
+  // New chat has its own tabs until the first message makes the chat, which takes them; New chat is empty again then
   await toChat("#/chat");
-  check(await waitFor(() => (panel()?.contains(term.element ?? null) && shownTab() === id1 ? true : null), 5000), "back on Chat the panel shows it again");
-  // the Terminal page asking for it shows the chat's away text in the panel
+  await sleep(300);
+  const idN = await pick("chat-other");
+  const vN = idN ? await viewInIsland(idN) : null;
+  check(vN && same2(tabIds(), [idN]), `a terminal opened in New chat is its tab (${tabIds().join(", ")})`);
+  // prep_chats leaves the Chief paused, which turns the text box off: active for this message, paused again after
+  await setAgentStatus(chatA.agentId, "active");
+  const box0 = await waitFor(() => (q(".composer-box") && !q(".composer-box.disabled") ? composer() : null), 5000);
+  if (box0 && idN) {
+    typeIn(box0, "GA-296 side island");
+    enter(box0);
+    const made = await waitFor(() => { const m = /^#\/chat\/(.+)$/.exec(location.hash); return m && m[1] !== encodeURIComponent(chatA.id) && m[1] !== encodeURIComponent(chatB.id) ? m[1] : null; }, 8000);
+    await sleep(400);
+    out.adopted = { made, tabs: tabIds(), icon: iconState() };
+    check(made && same2(tabIds(), [idN]) && iconState()?.n === "1", `the chat New chat's first message made takes its terminal (${JSON.stringify(out.adopted)})`);
+    await toChat("#/chat");
+    await sleep(300);
+    nothingOpen("New chat after its first message");
+    if (made) {
+      await toChat(`#/chat/${made}`);
+      await waitFor(() => tabOf(idN), 5000);
+      tabOf(idN)?.querySelector<HTMLButtonElement>(".x")?.click();
+      await waitFor(() => (!island() ? true : null), 5000);
+    }
+  } else check(false, `no text box in New chat, or no terminal (${idN})`);
+  await setAgentStatus(chatA.agentId, "paused").catch(() => {});
+  for (const s of await terminalList()) if (s.id === idN) await Promise.race([terminalClose(s.id).catch(() => {}), sleep(3000)]);
+  await toChat(A);
+  await waitFor(() => (island()?.contains(term.element ?? null) ? true : null), 5000);
+  await sleep(200);
+  backInA("after New chat");
+
+  // 9. Own page: the shown tab on its own page, #/terminal/<id>; its tab closes here, its shell keeps running. While another
+  // place has a terminal of the island, the island offers Show here.
+  if (id3 && tabIds().includes(id3)) {
+    tabOf(id3)?.click();
+    await waitFor(() => (shownTab() === id3 ? true : null), 2000);
+    const ownName = (await terminalList()).find((s) => s.id === id3)?.name ?? "";
+    check(q<HTMLButtonElement>('.chat-side button[aria-label="Own page"]')?.title === `Open ${ownName} on its own page`, `Own page's tooltip names the tab (${q<HTMLButtonElement>('.chat-side button[aria-label="Own page"]')?.title})`);
+    const t3 = probeView(id3)?.term;
+    q<HTMLButtonElement>('.chat-side button[aria-label="Own page"]')?.click();
+    const onPage = await waitFor(() => (location.hash === `#/terminal/${encodeURIComponent(id3)}` && q(".term-page .term-place")?.contains(t3?.element ?? null) ? true : null), 5000);
+    check(onPage, `Own page shows the terminal on #/terminal/<id> (${location.hash})`);
+    await toChat(A);
+    await waitFor(() => (island() ? true : null), 5000);
+    await sleep(200);
+    check(!tabIds().includes(id3) && same2(tabIds(), [id1]) && iconState()?.n === "1", `back in the chat its tab is gone (${tabIds().join(", ")}, ${JSON.stringify(iconState())})`);
+    check((await terminalList()).find((s) => s.id === id3 && !s.ended), "and its shell still runs, on its own page");
+  }
+  const ownName1 = (await terminalList()).find((s) => s.id === id1)?.name ?? "";
   const box = document.createElement("div");
   box.style.cssText = "position:fixed;right:0;bottom:0;width:520px;height:240px;display:flex;flex-direction:column;z-index:100";
   document.body.appendChild(box);
   const root = createRoot(box);
   root.render(createElement(TerminalView, { id: id1, place: { kind: "page" } }));
-  const away = await waitFor(() => (box.contains(term.element ?? null) ? q(".chat-term .term-away") : null), 3000);
-  check(away && textOf(away) === `${ownName} is on its own page.Show here`, `the panel shows Show here while the page has it (${textOf(away)})`);
+  const away = await waitFor(() => (box.contains(term.element ?? null) ? q(".chat-side .term-away") : null), 3000);
+  check(away && textOf(away) === `${ownName1} is on its own page.Show here`, `the island shows Show here while the page has it (${textOf(away)})`);
   if (away) buttonByText(away, "Show here")?.click();
-  check(await waitFor(() => (panel()?.contains(term.element ?? null) ? true : null), 3000), "Show here brings it back to the panel");
+  check(await waitFor(() => (island()?.contains(term.element ?? null) ? true : null), 3000), "Show here brings it back to the island");
   out.awayChat = textOf(box.querySelector(".term-away"));
-  check(out.awayChat === `${ownName} is in the Chat's terminal panel.Show here`, `the other place says it is in the Chat's terminal panel (${out.awayChat})`);
   root.unmount();
   box.remove();
 
-  // 9. a narrow window: the chat list hides while the panel shows, and comes back with the panel hidden
+  // 10. narrow windows: the chat list hides first while the island shows, the conversation keeps 400px while the island has
+  // its 360, and the strip stays; hidden, the list is back where it fits
   if (app) {
-    app.style.width = "1000px";
-    const gone = await waitFor(() => (chat()?.classList.contains("no-list") ? true : null), 2000);
-    await sleep(200);
-    out.narrow = { ...sizes(), cls: chat()?.className, threads: getComputedStyle(q(".chat > .chat-threads")!).display, scroll: document.documentElement.scrollWidth - document.documentElement.clientWidth };
-    check(gone && getComputedStyle(q(".chat > .chat-threads")!).display === "none" && wd(panel()) >= 359.5 && wd(q(".chat > .chat-main")) > 0,
-      `in a narrow window the chat list hides while the panel shows, and the panel fits (${JSON.stringify(out.narrow)})`);
-    q<HTMLButtonElement>('.chat-term button[aria-label="Hide"]')?.click();
-    await waitFor(() => (rail() ? true : null), 2000);
-    check(getComputedStyle(q(".chat > .chat-threads")!).display !== "none", "with the panel hidden the chat list is back");
-    rail()?.click();
-    await waitFor(() => (panel() ? true : null), 2000);
+    const at = async (w: number) => { app.style.width = `${w}px`; await sleep(300); const s = sizes(); return { w, ...s, cls: chat()?.className,
+      threads: getComputedStyle(q(".chat > .chat-threads")!).display, stripR: r1(strip()?.getBoundingClientRect().right ?? 0),
+      appR: r1(app.getBoundingClientRect().right), scroll: document.documentElement.scrollWidth - document.documentElement.clientWidth }; };
+    const n1100 = await at(1100);
+    check(n1100.cls?.includes("no-list") && n1100.threads === "none" && n1100.talk >= 399.5 && n1100.island >= 359.5 && Math.abs(n1100.strip - 28) <= 0.5
+      && Math.abs(n1100.appR - 6 - n1100.stripR) <= 0.5, `1100px wide: the chat list hides, the conversation keeps 400px, the island 360px, the strip stays at the edge (${JSON.stringify(n1100)})`);
+    const n1000 = await at(1000);
+    const n900 = await at(900);
+    out.narrow = { n1100, n1000, n900 };
+    check([n1000, n900].every((n) => n.cls?.includes("no-list") && n.threads === "none" && Math.abs(n.strip - 28) <= 0.5 && Math.abs(n.appR - 6 - n.stripR) <= 0.5),
+      `narrower still the list stays hidden and the strip stays at the edge (${JSON.stringify(out.narrow)})`);
+    q<HTMLButtonElement>('.chat-side button[aria-label="Hide"]')?.click();
+    await waitFor(() => (!island() ? true : null), 2000);
+    const h1000 = await at(1000);
+    out.narrowHidden = h1000;
+    check(h1000.threads !== "none" && h1000.talk >= 399.5 && Math.abs(h1000.strip - 28) <= 0.5, `1000px wide with the island hidden: the chat list is back, the conversation has 400px, the strip stays (${JSON.stringify(h1000)})`);
+    const h900 = await at(900);
+    out.narrowHidden900 = h900;
+    check(h900.talk >= 399.5 && Math.abs(h900.strip - 28) <= 0.5 && (h900.threads === "none") === !!h900.cls?.includes("no-list"),
+      `900px wide with the island hidden: the conversation keeps 400px (the list hides when it must), the strip stays (${JSON.stringify(h900)})`);
+    termIcon()?.click();
+    await waitFor(() => (island() ? true : null), 2000);
     await wide(true);
-    check(await waitFor(() => (!chat()?.classList.contains("no-list") && getComputedStyle(q(".chat > .chat-threads")!).display !== "none" ? true : null), 2000), "a wide window shows the chat list again beside the panel");
+    check(await waitFor(() => (!chat()?.classList.contains("no-list") && getComputedStyle(q(".chat > .chat-threads")!).display !== "none" ? true : null), 2000), "a wide window shows the chat list again beside the island");
   }
 
-  // 10. the largest text size, then light: the panel fits, nothing scrolls sideways
-  const look = getAppearance();
+  // 11. the largest text size, then light: the island and the strip fit, nothing scrolls sideways; in light the island and
+  // the selected pill are white
+  const looks = getAppearance();
   await wide(false);
   setAppearance({ ui: 16.5, chat: 20, docs: 20 }, false);
   await sleep(500);
-  out.largest = { ...sizes(), list: wd(q(".chat > .chat-threads")), scroll: document.documentElement.scrollWidth - document.documentElement.clientWidth };
-  check(panel() && wd(panel()) >= 359.5 && wd(q(".chat > .chat-main")) >= 399.5 && document.documentElement.scrollWidth <= document.documentElement.clientWidth,
-    `at the largest text size the panel fits (${JSON.stringify(out.largest)}, ${chat()?.className})`);
+  out.largest = { ...sizes(), cls: chat()?.className, scroll: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+  check(island() && wd(island()) >= 359.5 && wd(q(".chat > .chat-main")) >= 399.5 && Math.abs(wd(strip()) - 28) <= 0.5 && document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+    `at the largest text size the island, the conversation and the strip fit (${JSON.stringify(out.largest)})`);
   setAppearance({ theme: "light" }, false);
   await sleep(300);
-  out.light = { bg: getComputedStyle(panel()!).backgroundColor, term: String(term.options.theme?.background) };
-  check(panel() && getComputedStyle(panel()!).backgroundColor !== "rgba(0, 0, 0, 0)", `in light the panel draws (${JSON.stringify(out.light)})`);
-  setAppearance(look, false);
+  out.light = { island: getComputedStyle(q(".chat-side-in")!).backgroundColor, pill: termIcon() ? getComputedStyle(termIcon()!).backgroundColor : null, list: getComputedStyle(q(".chat-threads")!).backgroundColor };
+  check(JSON.stringify(out.light) === JSON.stringify({ island: ISLAND_LIGHT, pill: ISLAND_LIGHT, list: ISLAND_LIGHT }), `in light the islands and the selected pill are white (${JSON.stringify(out.light)})`);
+  setAppearance(looks, false);
   await wide(true);
 
-  // 11. closing the last tabs hides the panel, and nothing is left on the right; the width for the restart: 55%
-  // the panel was drawn again since step 6 (hidden, other pages): its handle now
-  const edge = q<HTMLElement>(".chat-term > .term-handle");
+  // 12. the width for the restart: 55%; Close all on the strip asks while sleep 600 runs (Cancel keeps them), then closes
+  // every terminal of the chat: no island, no strip
+  const edge = q<HTMLElement>(".chat-side > .term-handle");
   edge?.focus();
   for (let i = 0; i < 2; i++) { if (edge) keyOn(edge, "ArrowLeft"); await sleep(150); }
   out.kept = localStorage.getItem(CHAT_SHARE);
   check(localStorage.getItem(CHAT_SHARE) === "55", `← twice keeps 55% (${out.kept})`);
-  for (const t of tabIds()) {
-    q<HTMLButtonElement>(`.chat-term .term-tab[data-term="${CSS.escape(t)}"] .x`)?.click();
-    const ask = await waitFor(() => q(".ed-ask"), 600);
-    if (ask) buttonByText(ask, "Close")?.click();
-    await waitFor(() => (!tabIds().includes(t) ? true : null), 5000);
-  }
-  check(await waitFor(() => (!panel() && !rail() && chat()?.className === "chat" ? true : null), 3000), `closing the last tab hides the panel, with no rail (${chat()?.className})`);
+  // a fresh sleep in the first (the one from step 5 may have ended), then a second terminal, so Close all has two
+  term.input("\x03", true);
+  await sleep(300);
+  termType(term, "sleep 600\r");
+  for (let i = 0; i < 60; i++) { if ((await terminalList()).find((s) => s.id === id1)?.busy === "sleep") break; await sleep(100); }
+  const mine = tabIds();
+  backquote(true);
+  const id5 = await waitFor(() => { const t = shownTab(); return t && !mine.includes(t) ? t : null; }, 10000);
+  const all = tabIds();
+  check(id5 && all.length === 2 && (await terminalList()).find((s) => s.id === id1)?.busy === "sleep", `two terminals before Close all, sleep 600 in one (${all.join(", ")})`);
+  const ib2 = termIcon()!;
+  const b2 = ib2.getBoundingClientRect();
+  ib2.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: b2.left + 10, clientY: b2.top + 10, button: 2 }));
+  const cm3 = await waitFor(() => menuOf(`Terminal · ${all.length} open`), 2000);
+  itemIn(cm3, "Close all")?.click();
+  const askAll = await waitFor(() => q('.ed-ask[aria-label="Close all terminals"]'), 2000);
+  out.askAll = textOf(askAll?.querySelector("p"));
+  check(askAll && new RegExp(`^sleep is still running in ${ownName1.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\. Close it and end sleep\\?$`).test(String(out.askAll)),
+    `Close all asks today's question while sleep runs (${out.askAll})`);
+  if (askAll) buttonByText(askAll, "Cancel")?.click();
+  await sleep(400);
+  check(same2(tabIds(), all) && (await terminalList()).filter((s) => all.includes(s.id) && !s.ended).length === all.length, "Cancel keeps them all running");
+  const ib3 = termIcon()!;
+  const b3 = ib3.getBoundingClientRect();
+  ib3.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: b3.left + 10, clientY: b3.top + 10, button: 2 }));
+  const cm4 = await waitFor(() => menuOf(`Terminal · ${all.length} open`), 2000);
+  itemIn(cm4, "Close all")?.click();
+  const askAll2 = await waitFor(() => q('.ed-ask[aria-label="Close all terminals"]'), 2000);
+  if (askAll2) buttonByText(askAll2, "Close")?.click();
+  check(await waitFor(() => (!island() && !strip() && chat()?.className === "chat" ? true : null), 5000), `Close all closes every terminal of the chat: no island, no strip (${chat()?.className})`);
+  const left = (await terminalList()).filter((s) => all.includes(s.id));
+  check(left.length === 0, `and ends them (${JSON.stringify(left.map((s) => s.name))})`);
   check(centred(), `and the conversation is centred again (${JSON.stringify(cols())})`);
   for (const s of await terminalList()) await Promise.race([terminalClose(s.id).catch(() => {}), sleep(3000)]);
   await wide(false);
@@ -4325,7 +4815,7 @@ async function chatTerminalProbe(phase: "a" | "b") {
 // ~/Herd/shop, ~/Herd/kade-portal and ~/Herd/invoice-api). Under each of the Chief's text messages that asks you to run a
 // command, and only there (not under a tool call, a message that only mentions commands or files, plain text or yours): one
 // quiet button per folder it names, in the order named and at most 3, right under the message and left-aligned with it;
-// Open in terminal… for none. A click opens the chat's terminal panel with a terminal in the folder (pwd prints it), with
+// Open in terminal… for none. A click opens the chat's side island with a terminal in the folder (pwd prints it), with
 // the focus, and nothing typed; a second click shows the same one while it waits; while a program runs in it a click starts
 // a new tab there, which a click under the message that names a subfolder shows again; the second folder's button opens its
 // own; Open in terminal… opens the picker titled "Open terminal in" under it, and a pick opens a terminal there. In the
@@ -4349,9 +4839,9 @@ async function chatRunProbe() {
   const buttonsIn = (row: Element | null) => [...(row?.querySelectorAll<HTMLButtonElement>(".msg-term-row > button") ?? [])];
   const labelsOf = (row: Element | null) => buttonsIn(row).map((b) => textOf(b));
   const message = (start: string) => texts().find((m) => textOf(m).startsWith(start)) ?? null;
-  const panel = () => q<HTMLElement>(".chat > .chat-term");
-  const shownTab = () => q(".chat-term .term-tab[aria-selected=true]")?.getAttribute("data-term") ?? null;
-  const tabIds = () => [...document.querySelectorAll(".chat-term .term-tab")].map((t) => t.getAttribute("data-term") ?? "");
+  const panel = () => q<HTMLElement>(".chat > .chat-side");
+  const shownTab = () => q(".chat-side .term-tab[aria-selected=true]")?.getAttribute("data-term") ?? null;
+  const tabIds = () => [...document.querySelectorAll(".chat-side .term-tab")].map((t) => t.getAttribute("data-term") ?? "");
   const r1 = (n: number) => Math.round(n * 10) / 10;
   const viewInPanel = (id: string) => waitFor(() => { const v = probeView(id); return v && v.renderer !== "none" && panel()?.contains(v.term.element ?? null) ? v : null; }, 10000);
   const pwdIn = async (term: Terminal, path: string) => {
@@ -4411,11 +4901,15 @@ async function chatRunProbe() {
   check(Math.abs(rowBox.top - msgBox.bottom) <= 8, `the row is right under the message (${JSON.stringify(out.button)})`);
   check(icon && firstText && Math.abs(icon.left - firstText.left) <= 12, `the button is left-aligned with the message's text (${JSON.stringify(out.button)})`);
 
-  // 3. a click: the chat's terminal panel with a terminal in ~/Herd/doq-studio, with the focus; nothing typed into it
+  // 3. a click: the chat's side island with a terminal in ~/Herd/doq-studio, with the focus; nothing typed into it
   check(!panel(), "no panel before the click");
   const t1 = await press(b);
   if (!t1) { errors.push(`the click opened no terminal: ${textOf(rowAfter(why)?.querySelector(".msg-term-why"))}`); return done(); }
   check(t1.isNew && tabIds().length === 1, `a new tab (${tabIds().join(", ")})`);
+  // GA-296: the strip shows the Terminal icon with its count, selected
+  const stripIcon = q<HTMLButtonElement>('.chat > .chat-strip .strip-btn[data-kind="terminal"]');
+  out.strip = { pressed: stripIcon?.getAttribute("aria-pressed"), n: textOf(stripIcon?.querySelector(".n")), title: stripIcon?.title };
+  check(JSON.stringify(out.strip) === JSON.stringify({ pressed: "true", n: "1", title: "Terminal, 1 open (Ctrl+`)" }), `the strip shows Terminal, 1, selected (${JSON.stringify(out.strip)})`);
   check(await waitFor(() => (document.activeElement === t1.term.textarea ? true : null), 2000), "the terminal has the focus");
   check(textOf(q(".chat-term-where")) === doq.path, `the panel shows the folder (${textOf(q(".chat-term-where"))})`);
   await waitFor(() => termLines(t1.term).some((l) => l.trim()), 10000);
@@ -4426,7 +4920,7 @@ async function chatRunProbe() {
   check(out.pwd, `pwd prints ${doq.id} (screen: ${JSON.stringify(termLines(t1.term, true).filter(Boolean).slice(-4))})`);
 
   // 4. a second click shows the same terminal while it waits for a command, also after Hide
-  q<HTMLButtonElement>(".chat-term button[aria-label^='Hide'], .chat-term button[title^='Hide']")?.click();
+  q<HTMLButtonElement>(".chat-side button[aria-label='Hide']")?.click();
   await waitFor(() => (!panel() ? true : null), 2000);
   out.hidden = !panel();
   (document.activeElement as HTMLElement | null)?.blur();

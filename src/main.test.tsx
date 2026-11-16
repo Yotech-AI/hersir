@@ -1,6 +1,7 @@
 // GA-164 QA: how Gizai starts. main.tsx asks onboarding_pending before it draws anything, so the board doesn't show for a
 // moment before the onboarding; it hands the answer to App, and when the question fails the app opens as it always did.
-// React DOM, App, the api and the appearance are fakes; each test loads main.tsx again.
+// React DOM, App, the api, the appearance and the glass are fakes; each test loads main.tsx again. GA-292: the glass behind
+// the islands starts right after the appearance, before anything is drawn (lib/glass.ts, tested on its own).
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactElement } from "react";
 
@@ -13,6 +14,7 @@ vi.mock("./api", () => ({ onboardingPending: () => { h.log.push("onboardingPendi
 vi.mock("react-dom/client", () => ({ default: { createRoot: (el: unknown) => ({ render: (tree: ReactElement) => { h.log.push(`render into ${String((el as { id: string }).id)}`); h.rendered.push(tree); } }) } }));
 vi.mock("./App", () => ({ default: function App() { return null; } }));
 vi.mock("./lib/appearance", () => ({ getAppearance: () => ({}), applyAppearance: () => { h.log.push("appearance"); } }));
+vi.mock("./lib/glass", () => ({ startGlass: () => { h.log.push("glass"); } }));
 vi.stubGlobal("document", { documentElement: {}, getElementById: (id: string) => ({ id }) });
 
 beforeEach(() => {
@@ -34,11 +36,11 @@ describe("main.tsx", () => {
     h.pending = new Promise((r) => { answer = r; });
     await import("./main");
     await settle();
-    expect(h.log).toEqual(["appearance", "onboardingPending"]);
+    expect(h.log).toEqual(["appearance", "glass", "onboardingPending"]);
     expect(h.rendered).toEqual([]);
     answer(true);
     await settle();
-    expect(h.log).toEqual(["appearance", "onboardingPending", "render into root"]);
+    expect(h.log).toEqual(["appearance", "glass", "onboardingPending", "render into root"]);
     expect(appProps()).toEqual({ name: "App", props: { onboarding: true } });
   });
 

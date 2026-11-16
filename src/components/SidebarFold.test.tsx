@@ -151,7 +151,10 @@ describe("the carets on Agents and Memory (GA-90)", () => {
   });
   it("are only on Terminal (GA-136), Editor (GA-113), Agents and Memory: Work, Projects and Company have none", () => {
     const page = html();
-    expect(page.match(/aria-expanded=/g)).toHaveLength(4);
+    // GA-291: Close sidebar has aria-expanded too (it controls the whole sidebar, #sidebar); the carets are the rest
+    expect(page.match(/aria-expanded=/g)).toHaveLength(5);
+    expect(page.match(/aria-expanded="true" aria-controls="sidebar"/g)).toHaveLength(1);
+    expect(page.match(/aria-expanded="(true|false)" aria-controls="side-/g)).toHaveLength(4);
     expect(page.match(/lucide-chevron-(down|up)/g)).toHaveLength(4);
     expect([...page.matchAll(/aria-controls="side-(\w+)"/g)].map((m) => m[1])).toEqual(["terminal", "editor", "agents", "memory"]);
     expect(head(page, "Work")).toBe('<div class="nav-section"><div class="nav-label">Work</div>');
@@ -160,7 +163,7 @@ describe("the carets on Agents and Memory (GA-90)", () => {
   it("are buttons, so Tab reaches them and Enter or Space clicks them", () => {
     const page = html();
     expect(page).not.toMatch(/tabindex="-1"/);
-    expect(tree().filter((el) => el.type === "button" && el.props["aria-controls"]).map((el) => typeof el.props.onClick)).toEqual(["function", "function", "function", "function"]);
+    expect(tree().filter((el) => el.type === "button" && String(el.props["aria-controls"] ?? "").startsWith("side-")).map((el) => typeof el.props.onClick)).toEqual(["function", "function", "function", "function"]);
   });
 });
 
