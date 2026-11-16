@@ -1,14 +1,20 @@
 //! Text from outside Hersir as Hersir's own log may show it (GA-281): users send us that log (`src-tauri/src/logs.rs`),
-//! so a password, key or token in git's or gh's words, in a command's error or in a project's setup command is left out
-//! first (`hidden`). Plain text work, the same on every system.
+//! so a password, key or token in git's or gh's words or in a command's error is left out first (`hidden`). A project's
+//! setup command, which can hold a secret as a plain argument that no rule here can tell from other words, isn't shown
+//! there at all: the log names it "the setup command" (`prepare::SETUP_COMMAND`). Plain text work, the same on every
+//! system.
 
-/// Starts of tokens that are secret wherever they stand, each with how many of a token's characters (letters, digits, `_`
-/// and `-`) must follow it before it counts as one: GitHub's (personal, fine-grained, OAuth, user, app and refresh
-/// tokens), GitLab's, Anthropic's and OpenAI's (`sk-`), Slack's, Atlassian's API tokens (Bitbucket's too) and AWS's
-/// access keys.
-const TOKEN_STARTS: [(&str, usize); 15] = [
-    ("ghp_", 20), ("gho_", 20), ("ghu_", 20), ("ghs_", 20), ("ghr_", 20), ("github_pat_", 20), ("glpat-", 16),
-    ("sk-", 20), ("xoxb-", 10), ("xoxp-", 10), ("xoxa-", 10), ("xoxr-", 10), ("xoxs-", 10), ("ATATT", 20), ("AKIA", 16),
+/// Starts of tokens that are secret wherever they stand, each with how many of a token's characters must follow it before
+/// it counts as one, and which characters a token has besides letters and digits: GitHub's (personal, fine-grained,
+/// OAuth, user, app and refresh tokens), GitLab's, Anthropic's and OpenAI's (`sk-`), Slack's, Atlassian's API tokens
+/// (Bitbucket's too) and AWS's access keys with `_` and `-`, and npm's access tokens, `npm_` and 36 letters and digits
+/// only, so npm's own variables (`npm_config_yes`, `npm_package_dependencies_typescript_eslint_parser`) and folders
+/// named `npm_…` hold none.
+const TOKEN_STARTS: [(&str, usize, &str); 16] = [
+    ("ghp_", 20, "_-"), ("gho_", 20, "_-"), ("ghu_", 20, "_-"), ("ghs_", 20, "_-"), ("ghr_", 20, "_-"),
+    ("github_pat_", 20, "_-"), ("glpat-", 16, "_-"), ("sk-", 20, "_-"), ("xoxb-", 10, "_-"), ("xoxp-", 10, "_-"),
+    ("xoxa-", 10, "_-"), ("xoxr-", 10, "_-"), ("xoxs-", 10, "_-"), ("ATATT", 20, "_-"), ("AKIA", 16, "_-"),
+    ("npm_", 36, ""),
 ];
 
 /// A word holding one of these (in any case) names a secret: the value after it is left out when `=` or `:` comes
@@ -31,8 +37,8 @@ pub const LEFT_OUT: &str = "***";
 ///   over HTTP and HTTPS, also `git+https` as npm and pip take it (`https://***@github.com`), and one whose user name
 ///   is a token (`user_is_token`: `https://<token>:x-oauth-basic@github.com` becomes `https://***@github.com`);
 ///   `ssh://git@host` and `git@host:owner/repo` stay as they are;
-/// - tokens by their known start (`TOKEN_STARTS`: `ghp_***`, `github_pat_***`, `sk-***` …) and JSON web tokens (`eyJ***`),
-///   at a word's start or after a character other than a letter or digit in it (`//ghp_***`);
+/// - tokens by their known start (`TOKEN_STARTS`: `ghp_***`, `github_pat_***`, `sk-***`, `npm_***` …) and JSON web
+///   tokens (`eyJ***`), at a word's start or after a character other than a letter or digit in it (`//ghp_***`);
 /// - the whole value after a name that names a secret (`SECRET_NAMES`, `SECRET_ENDS`) and `=` or `:` (`PASSWORD=***`,
 ///   `APP_KEY=***`, `"token": "***"`), or after such a flag and a space (`--password ***`), whatever characters it holds:
 ///   a quoted one up to its closing quote (`'***'`), one in braces or brackets up to the one that closes them, one after
@@ -401,8 +407,8 @@ fn bracketed_end(text: &str, at: usize, open: char) -> Option<usize> {
 /// `word` with a token in it left out up to the word's end, after its known start (`TOKEN_STARTS`: `ghp_***`) or the
 /// `eyJ` of a JSON web token. A token starts the word or follows a character in it other than an ASCII letter or digit:
 /// in an address (`//ghp_***`), a path, or text without spaces such as Chinese (`令牌ghp_***`); `risk-free` and `task-…`
-/// hold none. A known start needs `after` of a token's characters (letters, digits, `_` and `-`) right after it, so
-/// `sk-hynix/repo.git` in a path is no token either.
+/// hold none. A known start needs `after` of a token's characters (letters, digits and those it names, `_` and `-` for
+/// most) right after it, so `sk-hynix/repo.git` in a path and `npm_package_name` are no token either.
 fn token_hidden(word: &str) -> String {
     // the dots from `n` to the word's end, for a JSON web token
     let mut dots = word.matches('.').count();
@@ -410,12 +416,12 @@ fn token_hidden(word: &str) -> String {
     for (n, c) in word.char_indices() {
         if before.is_none_or(|b: char| !b.is_ascii_alphanumeric()) {
             let rest = &word[n..];
-            let known = TOKEN_STARTS.iter().find(|&&(start, after)| {
+            let known = TOKEN_STARTS.iter().find(|&&(start, after, also)| {
                 rest.starts_with(start)
-                    && rest[start.len()..].chars().take_while(|&c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+                    && rest[start.len()..].chars().take_while(|&c| c.is_ascii_alphanumeric() || also.contains(c))
                                                   .take(after).count() == after
             });
-            if let Some((start, _)) = known {
+            if let Some((start, ..)) = known {
                 return format!("{}{start}{LEFT_OUT}", &word[..n]);
             }
             // a JSON web token: three parts with dots between, the first a JSON object's start in base64
