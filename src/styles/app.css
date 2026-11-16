@@ -22,6 +22,16 @@ html, body, #root { height: 100%; margin: 0; }
 .content { flex: 1; overflow: auto; min-height: 0; }
 .split { display: flex; flex: 1; min-height: 0; }
 .split > .content { min-width: 0; }
+/* A card's page in islands (GA-294, design/islands-pages): the page's island gives way to the card's own, on the
+   background. The card island (its header holds Card, Changes and Screenshots as island tabs; changes.css) takes the room;
+   Properties, while it shows, is an island of its own on its right, size-props wide, the full height, island-gap apart.
+   Its header is an island header with a title (t-body-strong, 6px in) and Close properties; its rows scroll under it. */
+.page-island:has(> .task-page) { background: none; border-radius: 0; }
+.task-page { display: flex; gap: var(--island-gap); flex: 1; min-width: 0; min-height: 0; }
+.card-island { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; overflow: hidden; border-radius: var(--island-radius); background: var(--island); }
+.task-page > .props { display: flex; flex-direction: column; overflow: hidden; border-left: 0; border-radius: var(--island-radius); background: var(--island); }
+.task-page > .props > .props-head { flex: none; height: var(--size-island-head); padding: 0 6px 0 12px; border-bottom: 0; font-size: var(--fs); line-height: 20px; }
+.task-page > .props > .props-body { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 12px 24px 14px; }
 
 /* ---------- old names kept for a few call sites ---------- */
 :root { --cordon: var(--live); --cordon-soft: var(--live-soft); --error: var(--danger); --font: var(--font-sans); --mono: var(--font-mono); }
@@ -316,7 +326,7 @@ a.member:hover { border-color: var(--line-2); }
 .kv .k { color: var(--text-3); }
 
 /* ---------- narrow windows ---------- */
-@media (max-width: 1100px) { .props { display: none; } }
+@media (max-width: 1100px) { .props, .task-page > .props { display: none; } }
 
 /* ---------- task list and board extras ---------- */
 .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
@@ -330,6 +340,9 @@ a.member:hover { border-color: var(--line-2); }
 .board-wrap { display: flex; flex: 1; min-height: 0; overflow: hidden; }
 .board-wrap .board { flex: 1; }
 .toolbar .search-input { width: 220px; height: calc(28px + var(--ui-box, 0px)); }
+/* In the Inbox the list starts 14px under Run this for me (design/islands-pages: padding 14 12 24); a group head keeps its
+   6px above */
+.inbox-list .task-list { padding-top: 8px; }
 .md-edit-box { margin-left: 0; }
 .composer .md-editor { background: var(--raised); }
 
