@@ -43,6 +43,20 @@ export async function dragProbe(from = "To do", to = "In progress") {
   const card = await waitFor(() => document.querySelector(`[data-col="${from}"] .card`) as HTMLElement | null);
   const target = document.querySelector(`[data-col="${to}"] .col-body`) as HTMLElement | null;
   if (!card || !target) return { moved: false, error: `no card in ${from} or no ${to} column` };
+  // GA-293 QA (design/islands: Tasks as a board, frame 273:1172): the view toolbar is the page island's header, 44px high at
+  // its top, no line under it, padding 0 8; the columns sit 12px in and 4px under it. Checked before the drag; a miss makes
+  // the probe fail with what it saw in `island`.
+  const island = (() => {
+    const page = document.querySelector(".main > .page-island"), bar = document.querySelector(".page-island > .toolbar.island-toolbar"), col = document.querySelector(".board > .col");
+    if (!page || !bar || !col) return { ok: false, error: `no ${!page ? "page island" : !bar ? "island-toolbar" : "column"}` };
+    const p = page.getBoundingClientRect(), b = bar.getBoundingClientRect(), c = col.getBoundingClientRect(), cs = getComputedStyle(bar);
+    const seen = { bar_top: Math.round((b.top - p.top) * 10) / 10, bar_h: Math.round(b.height * 10) / 10, bar_line: cs.borderBottomWidth, bar_bg: cs.backgroundColor, bar_pad: `${cs.paddingLeft} ${cs.paddingRight}`,
+      col_in: Math.round((c.left - p.left) * 10) / 10, col_under: Math.round((c.top - b.bottom) * 10) / 10 };
+    const ok = Math.abs(seen.bar_top) <= 0.6 && Math.abs(seen.bar_h - 44) <= 0.6 && seen.bar_line === "0px" && seen.bar_bg === "rgba(0, 0, 0, 0)" && seen.bar_pad === "8px 8px"
+      && Math.abs(seen.col_in - 12) <= 0.6 && Math.abs(seen.col_under - 4) <= 0.6;
+    return { ok, ...seen };
+  })();
+  if (!island.ok) return { moved: false, error: "the board's island (GA-293)", island };
   const identifier = card.dataset.card ?? "";
   const r = card.getBoundingClientRect(), cr = target.getBoundingClientRect();
   const x0 = r.left + r.width / 2, y0 = r.top + r.height / 2, x1 = cr.left + cr.width / 2, y1 = cr.top + 40;
@@ -3858,7 +3872,7 @@ async function terminalPanelProbe(phase: "a" | "b", card: string) {
   const btn = () => q<HTMLButtonElement>(".topbar .term-btn");
   const panel = () => q<HTMLElement>(".ed-main > .term-panel");
   const ht = (el: Element | null | undefined) => el?.getBoundingClientRect().height ?? 0;
-  const sizes = () => ({ col: Math.round(ht(q(".ed-main")) * 10) / 10, panel: Math.round(ht(panel()) * 10) / 10, code: Math.round(ht(q(".ed-main > .ed-code")) * 10) / 10 });
+  const sizes = () => ({ col: Math.round(ht(q(".ed-main")) * 10) / 10, panel: Math.round(ht(panel()) * 10) / 10, code: Math.round(ht(q(".ed-main > .ed-code-island > .ed-code")) * 10) / 10 }); // GA-293: the code is in the code island
   const shareNow = () => { const s = sizes(); return s.col ? (s.panel / s.col) * 100 : 0; };
   const openFolder = async (f: { id: string; name: string }) => {
     window.location.hash = `#/editor/${encodeURIComponent(f.id)}`;
@@ -3933,8 +3947,12 @@ async function terminalPanelProbe(phase: "a" | "b", card: string) {
   check(list1.length === 1 && list1[0]?.id === id, `one terminal in the folder, in TF0's store (${list1.map((s) => s.name).join(", ")})`);
   const name = list1[0]?.name ?? "";
   out.tabsHeight = ht(q(".term-panel .term-tabs"));
-  check(Math.abs(Number(out.tabsHeight) - 32) < 0.6, `the panel's tabs are 32px high (${out.tabsHeight})`);
-  const own = buttonByText(panel()!, "Own page"), hide = buttonByText(panel()!, "Hide");
+  // GA-293 (design/islands: An island's header): the panel's tabs are its island's header, size-island-head (40) high
+  check(Math.abs(Number(out.tabsHeight) - 40) < 0.6, `the panel's tabs are its island's header, 40px high (${out.tabsHeight})`);
+  // GA-293: Own page and Hide are the header's icon buttons (26 × 26), named by their aria-label
+  const own = q<HTMLButtonElement>('.term-panel .acts button[aria-label="Own page"]'), hide = q<HTMLButtonElement>('.term-panel .acts button[aria-label="Hide"]');
+  out.headButtons = [...document.querySelectorAll<HTMLElement>(".term-panel .island-head > .acts > .btn")].map((b) => { const r = b.getBoundingClientRect(); return `${b.getAttribute("aria-label")} ${Math.round(r.width)}x${Math.round(r.height)}`; });
+  check(JSON.stringify(out.headButtons) === JSON.stringify([`New terminal in ${card} 26x26`, "Own page 26x26", "Hide 26x26"]), `New terminal, Own page and Hide are 26px icon buttons on the header's right (${JSON.stringify(out.headButtons)})`);
   check(own?.title === `Open ${name} on its own page` && hide?.title === "Hide the terminal (Ctrl+`): its shells keep running", `the panel has Own page and Hide (${own?.title} | ${hide?.title})`);
   const plus = q<HTMLButtonElement>(`.term-panel .term-tabs button[aria-label="New terminal in ${card}"]`);
   check(plus?.title === `New terminal in ${card} (Ctrl+Shift+\`)` && plus.getAttribute("aria-disabled") !== "true", `+ is on, saying where (${plus?.title})`);
@@ -3966,7 +3984,7 @@ async function terminalPanelProbe(phase: "a" | "b", card: string) {
   // 5. with the focus in the terminal, Ctrl+W, Ctrl+P and Ctrl+B go to the shell and none reaches the Editor; Ctrl+Shift+F
   // finds in the terminal. A file is open first, so Ctrl+W has a tab to close.
   q<HTMLElement>('.ed-side [role=treeitem][data-path="README.md"]')?.click();
-  const fileTab = () => q('.ed-main > .ed-tabs [role=tab][data-path="README.md"]');
+  const fileTab = () => q('.ed-main > .ed-code-island > .ed-tabs [role=tab][data-path="README.md"]'); // GA-293: in the code island's header
   check(await waitFor(fileTab, 3000), "README.md opens in a tab");
   await sleep(200);
   term.focus();
@@ -3997,7 +4015,42 @@ async function terminalPanelProbe(phase: "a" | "b", card: string) {
   const handle = q<HTMLElement>(".term-panel > .term-handle");
   if (!handle) { errors.push("no drag handle"); return done(); }
   out.handle = { h: ht(handle), grab: getComputedStyle(handle, "::before").height, cursor: getComputedStyle(handle).cursor, now: handle.getAttribute("aria-valuenow") };
-  check(ht(handle) === 1 && getComputedStyle(handle, "::before").height === "6px" && getComputedStyle(handle).cursor === "row-resize", `the handle is a 1px line with a 6px grab area and the row-resize pointer (${JSON.stringify(out.handle)})`);
+  // GA-293 (design/islands: The gap as a resize handle): the handle is the whole 6px gap between the code island and the
+  // panel's island, the glass showing through it at rest (no fill, no line), with the row-resize pointer
+  check(ht(handle) === 6 && getComputedStyle(handle, "::before").height === "6px" && getComputedStyle(handle).cursor === "row-resize", `the handle is the 6px gap, all of it the grab area, with the row-resize pointer (${JSON.stringify(out.handle)})`);
+  const islandBox = (el: Element | null) => { if (!el) return null; const r = el.getBoundingClientRect(), cs = getComputedStyle(el); return { top: Math.round(r.top * 10) / 10, bottom: Math.round(r.bottom * 10) / 10, left: Math.round(r.left * 10) / 10, right: Math.round(r.right * 10) / 10, bg: cs.backgroundColor, radius: cs.borderRadius, border: cs.borderWidth, shadow: cs.boxShadow }; };
+  const codeIsland = islandBox(q(".ed-main > .ed-code-island")), termIsland = islandBox(q(".term-panel > .term-panel-in")), filesIsland = islandBox(q(".ed > .ed-side")), gap = islandBox(handle);
+  const pageIsland = q(".main > .page-island"), status = islandBox(q(".ed-code-island > .ed-status")), selTab = q(".ed-code-island > .ed-tabs > .ed-tab[aria-selected=true]");
+  const restLine = getComputedStyle(handle, "::after").backgroundColor;
+  const isl = { files: filesIsland, code: codeIsland, term: termIsland, gap, status, rest: { bg: gap?.bg, line: restLine }, page: pageIsland ? getComputedStyle(pageIsland).backgroundColor : null,
+    tab: selTab ? { bg: getComputedStyle(selTab).backgroundColor, radius: getComputedStyle(selTab).borderRadius, shadow: getComputedStyle(selTab).boxShadow, h: ht(selTab) } : null };
+  out.islands = isl;
+  const isIsland = (b: ReturnType<typeof islandBox>) => !!b && b.bg === "rgb(24, 26, 28)" && b.radius === "10px" && b.border === "0px" && b.shadow === "none";
+  check(isIsland(filesIsland) && isIsland(codeIsland) && isIsland(termIsland), `the files panel, the code and the terminal panel are islands: island fill, radius 10, no border, no shadow (${JSON.stringify(out.islands)})`);
+  check(!!filesIsland && !!codeIsland && !!termIsland && !!gap && Math.abs(codeIsland.left - filesIsland.right - 6) <= 0.6 && Math.abs(termIsland.top - codeIsland.bottom - 6) <= 0.6
+    && Math.abs(gap.top - codeIsland.bottom) <= 0.6 && Math.abs(gap.bottom - termIsland.top) <= 0.6 && Math.abs(termIsland.left - codeIsland.left) <= 0.6 && Math.abs(termIsland.right - codeIsland.right) <= 0.6,
+    `the islands are 6px apart and the handle is the gap between the code and the terminal panel (${JSON.stringify(out.islands)})`);
+  check(isl.page === "rgba(0, 0, 0, 0)" && isl.rest.bg === "rgba(0, 0, 0, 0)" && (restLine === "rgba(0, 0, 0, 0)" || restLine === "transparent"),
+    `the page's own island gives way and the gap shows the background at rest (${JSON.stringify(isl.rest)}, page ${isl.page})`);
+  check(!!status && !!codeIsland && Math.abs(status.bottom - codeIsland.bottom) <= 0.6, `the status bar is at the code island's bottom, above the terminal panel (${JSON.stringify(status)})`);
+  check(isl.tab?.bg === "rgb(46, 49, 56)" && isl.tab.radius === "6px" && isl.tab.shadow === "none" && Math.abs(isl.tab.h - 28) < 0.6,
+    `the open file's tab is a pill in selected, 28px high, radius 6, without the accent line (${JSON.stringify(isl.tab)})`);
+  // dragging: the 2px accent line across the gap's middle and accent-soft across the whole gap (radius 4), the pointer kept
+  {
+    const r = handle.getBoundingClientRect();
+    handle.dispatchEvent(pe("pointerdown", r.left + r.width / 2, r.top + r.height / 2));
+    await nextFrame();
+    const after = getComputedStyle(handle, "::after");
+    const dr = { cls: handle.className, bg: getComputedStyle(handle).backgroundColor, radius: getComputedStyle(handle).borderRadius, line: after.backgroundColor, lineH: after.height, lineTop: after.top,
+      lineW: after.width, w: Math.round(r.width), col: q(".ed-main")?.classList.contains("is-dragging") };
+    out.dragging = dr;
+    handle.dispatchEvent(pe("pointerup", r.left + r.width / 2, r.top + r.height / 2));
+    await sleep(150);
+    check(/\bis-drag\b/.test(dr.cls) && dr.bg === "rgba(111, 151, 255, 0.14)" && dr.radius === "4px" && dr.line === "rgb(111, 151, 255)" && dr.lineH === "2px" && dr.lineTop === "2px"
+      && Math.abs(parseFloat(dr.lineW) - r.width) <= 0.6 && dr.col === true,
+      `while dragged the gap is accent-soft (radius 4) with the 2px accent line across its middle, the column is-dragging (${JSON.stringify(dr)})`);
+    check(!handle.classList.contains("is-drag") && getComputedStyle(handle).backgroundColor === "rgba(0, 0, 0, 0)", "letting go puts the gap back at rest");
+  }
   check(handle.getAttribute("role") === "separator" && handle.getAttribute("aria-label") === "Terminal panel's height" && handle.getAttribute("aria-valuenow") === "30",
     "the handle is a separator named Terminal panel's height, at 30");
   const drag = async (dy: number) => {
@@ -4088,7 +4141,7 @@ async function terminalPanelProbe(phase: "a" | "b", card: string) {
   // 9. Own page: the same view moves to #/terminal/<id>, with the same screen
   check(shownTab() === id, "the panel still shows the first terminal");
   const lines = termLines(term).filter((l) => l.trim()).slice(-3);
-  buttonByText(panel()!, "Own page")?.click();
+  q<HTMLButtonElement>('.term-panel .acts button[aria-label="Own page"]')?.click(); // GA-293: an icon button
   const onPage = await waitFor(() => (window.location.hash === `#/terminal/${encodeURIComponent(id)}` && q(".term-page .term-place")?.contains(term.element ?? null) ? true : null), 5000);
   check(onPage && probeView(id)?.term === term, `Own page shows the same terminal on its own page, #/terminal/<id> (${window.location.hash})`);
   check(lines.every((l) => termLines(term).some((x) => x.trim() === l.trim())) && termLines(term).some((l) => l.trim() === kade.id), "with the same screen: what it printed in the panel is there");

@@ -131,7 +131,8 @@ describe("a card's page", () => {
 
 describe("the bin icon", () => {
   const tasksPage = (inboxFor?: string) => renderToStaticMarkup(<TasksPage inboxFor={inboxFor} onNewTask={() => {}} />);
-  const bin = '<button class="btn ghost icon-only" aria-label="Archived cards" title="Archived cards">';
+  // GA-293: in the island's header (the view toolbar) it is a 26px icon button, as the header's other actions
+  const bin = '<button class="btn ghost sm icon-only" aria-label="Archived cards" title="Archived cards">';
 
   it("is on the Tasks page at the top right, after Filters and Sort, in both views", () => {
     const html = tasksPage();

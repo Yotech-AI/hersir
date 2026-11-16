@@ -43,8 +43,8 @@ Your own shell in any of those folders, as many as you like. Each terminal runs 
 
 The **Terminal** button in the Editor's top bar, between Fetch and Open in, shows a terminal panel under the code. When the folder has no terminal yet, it starts one in the folder's root.
 
-- The panel's tabs are the folder's terminals, with +, **Own page** and **Hide**.
-- Drag its edge to change its height, which is the same in every folder.
+- The panel's tabs are the folder's terminals, with **New terminal** (+), **Own page** and **Hide** on the right.
+- Drag the gap between the code and the panel to change its height, which is the same in every folder.
 - Ctrl+\` shows or hides the panel, and Ctrl+Shift+\` starts a terminal in it.
 
 ### In the Chat

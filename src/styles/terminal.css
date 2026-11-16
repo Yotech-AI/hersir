@@ -73,18 +73,36 @@
 .term-away { display: flex; align-items: center; justify-content: center; gap: var(--space-3); height: 100%; color: var(--text-3); font-family: var(--font-sans); font-size: var(--fs); }
 .term-away .icon { color: var(--text-3); }
 
-/* ---------- the Editor's terminal panel: in the code column, between the code and the status bar ---------- */
+/* ---------- the Editor's terminal panel: in the code column, an island under the code island (GA-293) ---------- */
 /* Its height is a share of the column (.ed-main), 30% the first time, kept in localStorage gizai.editor.panel; the code keeps
-   at least size-term-code-min, the panel at least size-term-panel-min (its tabs and 4 lines). */
-.term-panel { display: flex; flex-direction: column; flex: 0 1 var(--term-share, var(--size-term-panel)); min-height: var(--size-term-panel-min); background: var(--term-bg); }
-.ed-main.has-term .ed-code { min-height: var(--size-term-code-min); }
-/* The drag handle is the panel's top border: a 1px line in line, with a size-handle grab area centred on it. Hover and
-   dragging: 2px of accent; focus: 2px of focus. role="separator", aria-orientation="horizontal", the share in aria-valuenow. */
+   at least size-term-code-min, the panel at least size-term-panel-min (its tabs and 4 lines). The panel is the gap above
+   it, which is its drag handle, and its island (.term-panel-in): the header (its tabs, then New terminal, Own page and
+   Hide) and the terminal on term-bg (= island). */
+.term-panel { display: flex; flex-direction: column; flex: 0 1 var(--term-share, var(--size-term-panel)); min-height: var(--size-term-panel-min); }
+.term-panel-in { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; border-radius: var(--island-radius); background: var(--island); }
+.island-head.term-tabs > .acts { position: static; margin-left: 0; padding: 0; background: none; box-shadow: none; }
+.island-tabs > .ed-tab.term-tab .x { margin-left: 0; }
+/* the code island keeps room for its header, the code's least height and the status bar */
+.ed-main.has-term > .ed-code-island { min-height: calc(var(--size-island-head) + var(--size-term-code-min) + var(--size-statusbar)); }
+/* The drag handle: a 1px line in line, with a size-handle grab area centred on it. Hover and dragging: 2px of accent;
+   focus: 2px of focus. role="separator", aria-orientation="horizontal", the share in aria-valuenow. The Chat's terminal
+   panel has it upright on its left edge (below); the Editor's is the gap above the panel's island (GA-293, below). */
 .term-handle { position: relative; z-index: 2; flex: none; height: 1px; background: var(--line); cursor: row-resize; touch-action: none; }
 .term-handle::before { content: ""; position: absolute; left: 0; right: 0; top: calc((var(--size-handle) - 1px) / -2); height: var(--size-handle); }
 .term-handle:hover, .term-handle.is-drag { background: var(--accent); box-shadow: 0 -1px 0 var(--accent); }
 .term-handle:focus-visible { outline: none; background: var(--focus); box-shadow: 0 -1px 0 var(--focus); }
 .ed-main.is-dragging, .ed-main.is-dragging * { cursor: row-resize; user-select: none; }
+/* In islands (GA-293, design/islands: The gap as a resize handle): the Editor's handle is the whole gap above the panel's
+   island, size-handle (= island-gap) high, the glass showing through it at rest; hover: a 2px accent line across the gap's
+   middle, the islands' full width, round ends; dragging: the line and accent-soft across the whole gap (radius 4); keyboard
+   focus: the line in focus. */
+.term-panel > .term-handle { height: var(--size-handle); border-radius: 4px; background: transparent; box-shadow: none; }
+.term-panel > .term-handle::before { top: 0; height: 100%; }
+.term-panel > .term-handle::after { content: ""; position: absolute; left: 0; right: 0; top: calc(50% - 1px); height: 2px; border-radius: 1px; }
+.term-panel > .term-handle:hover, .term-panel > .term-handle:focus-visible { background: transparent; box-shadow: none; }
+.term-panel > .term-handle:hover::after, .term-panel > .term-handle.is-drag::after { background: var(--accent); }
+.term-panel > .term-handle.is-drag { background: var(--accent-soft); box-shadow: none; }
+.term-panel > .term-handle:focus-visible::after { background: var(--focus); }
 
 /* The handle on a panel's left edge (the Chat's terminal panel, GA-278): the same line, upright, its grab area centred on it */
 .term-handle[aria-orientation="vertical"] { width: 1px; height: auto; cursor: col-resize; }
