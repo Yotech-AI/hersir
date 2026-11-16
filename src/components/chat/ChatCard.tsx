@@ -162,7 +162,7 @@ function CardView({ id, identifier }: { id: string; identifier: string }) {
       <div className="chat-card-body" ref={bodyRef}>
         <div className="chat-card-head t-small">
           <StatusIcon category={task.stateCategory} hold={task.hold} title={task.hold ? "On hold" : task.stateName} />
-          <span className="t-id id">{identifier}</span>
+          <span className="t-id id">{task.identifier}</span>
           {task.projectName && <span className="proj"><span className="dot" style={{ background: task.projectColor ?? "var(--text-3)" }} />{task.projectName}</span>}
           {live && <span className="badge live"><span className="pulse" />Live</span>}
         </div>
