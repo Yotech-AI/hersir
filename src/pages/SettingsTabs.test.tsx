@@ -108,7 +108,11 @@ beforeEach(() => { calls.length = 0; went.length = 0; });
 describe("Settings' tabs", () => {
   it("look like the Usage page's: a tablist with an icon and a label per tab, in the card's order", () => {
     const html = render();
-    expect(html).toContain('<div class="tabs" role="tablist" aria-label="Settings">');
+    // GA-295 (design/islands-settings: Settings): Island tabs in the island's header, right under the top bar and above the
+    // scrolling form, with Save settings still in the top bar
+    expect(html).toContain('</div><div class="island-head settings-head"><div class="tabs island-tabs" role="tablist" aria-label="Settings">');
+    expect(html.indexOf('class="island-head settings-head"')).toBeLessThan(html.indexOf('<div class="content">'));
+    expect(html.slice(0, html.indexOf('class="island-head'))).toContain('<div class="actions"><button class="btn primary">Save settings</button></div>');
     const tabs = [...html.matchAll(/<button class="tab" role="tab" aria-selected="(true|false)"><svg[^>]*class="lucide[^"]*icon"[^>]*>.*?<\/svg>([^<]+)<\/button>/g)];
     expect(tabs.map((m) => m[2])).toEqual(LABELS);
     // the tabs come before the panels
