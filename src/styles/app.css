@@ -28,7 +28,8 @@ html, body, #root { height: 100%; margin: 0; }
    the local graph (Graph keeps the one island). */
 .page-island:has(> .split.doc-split), .page-island:has(> .split.memory.islands) { background: none; border-radius: 0; }
 .split.doc-split, .split.memory.islands { gap: var(--island-gap); }
-.doc-split > *, .memory.islands > * { min-height: 0; overflow-y: auto; border-radius: var(--island-radius); background: var(--island); }
+/* the panes by name: a drawer the note opens (a version) is a child too, and keeps its own look */
+.doc-split > :is(.doc, .props), .memory.islands > :is(.mem-files, .mem-note, .mem-side, .mem-local) { min-height: 0; overflow-y: auto; border-radius: var(--island-radius); background: var(--island); }
 .doc-split > .props { border-left: 0; }
 .doc-split > .props > .props-body { padding: 0 6px 16px; }
 .doc-split > .doc > .error-banner { margin: 12px 20px 0; }
@@ -649,7 +650,7 @@ a.member:hover { border-color: var(--line-2); }
 
 .mem-note { flex: 1; min-width: 0; overflow-y: auto; }
 /* The note's island: the note bar is its header (size-island-head, no line under it) and stays; the note scrolls under it */
-.mem-note.open { display: flex; flex-direction: column; overflow: hidden; }
+.mem-note.open, .memory.islands > .mem-note.open { display: flex; flex-direction: column; overflow: hidden; }
 .mem-note-body { flex: 1; min-height: 0; overflow-y: auto; }
 .mem-note-body > .error-banner, .mem-note > .error-banner { margin: 6px 20px 0; }
 .mem-note-bar { display: flex; flex: none; align-items: center; gap: 8px; height: var(--size-island-head); padding: 0 6px 0 14px; font-size: var(--fs-sm); }
