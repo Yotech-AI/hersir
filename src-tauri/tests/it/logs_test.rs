@@ -100,8 +100,10 @@ fn open_logs_folder_opens_exactly_the_logs_folder_in_the_data_folder() {
     let data = Path::new("/home/you/.local/share/hersir");
     assert_eq!(folder(data), PathBuf::from("/home/you/.local/share/hersir/logs"));
     assert_eq!(logs::FOLDER, "logs");
-    // and get_logs_info names the same folder
-    assert_eq!(info(data, None).folder, "/home/you/.local/share/hersir/logs");
+    // and get_logs_info names the same folder, as the system writes it (`\` before logs on Windows)
+    let named = info(data, None).folder;
+    assert_eq!(PathBuf::from(&named), folder(data));
+    assert_eq!(named, folder(data).display().to_string());
 }
 
 #[test]
