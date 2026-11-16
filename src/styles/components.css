@@ -774,16 +774,16 @@ button.label-pill[aria-pressed="true"] { border-color: var(--accent); color: var
 
 /* ---------- the left panel: Files or Search, Go to file, then the tree (size-tree wide; Ctrl+B folds it) ---------- */
 /* In islands (GA-293): an island of its own; its header (size-island-head, padding 0 6px) is Files or Search with Fold the
-   file tree; Go to file is a plain row under it (no box), then the tree. */
+   file tree; then Go to file and the tree. Go to file stays a box on raised, as the notes' token table says (the frame
+   draws it as a plain row), 6px in, as the header's controls are. */
 .ed-side { display: flex; flex-direction: column; flex: none; width: var(--size-tree); min-height: 0; overflow: hidden; border-radius: var(--island-radius); background: var(--island); }
 .ed-side[hidden] { display: none; }
 .ed-side-top { display: flex; flex: none; align-items: center; gap: var(--space-1); height: var(--size-island-head); padding: 0 6px; }
 .ed-side-top .seg { flex: 1; }
 .ed-side-top .seg button { display: inline-flex; flex: 1; justify-content: center; align-items: center; gap: 5px; }
-.ed-goto { display: flex; flex: none; align-items: center; gap: var(--space-2); width: 100%; height: calc(30px + var(--ui-box, 0px)); padding: 0 var(--space-2);
-  border: 0; background: none; color: var(--text-3); font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; }
-.ed-goto:hover { background: var(--hover); color: var(--text-2); }
-.ed-goto:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.ed-goto { display: flex; flex: none; align-items: center; gap: var(--space-2); width: calc(100% - 12px); height: calc(30px + var(--ui-box, 0px)); margin: 0 6px var(--space-1); padding: 0 var(--space-2);
+  border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--raised); color: var(--text-3); font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; }
+.ed-goto:hover { border-color: var(--text-3); color: var(--text-2); }
 .ed-goto .kbd { margin-left: auto; }
 /* The folder's name over its tree, with New file, New folder and Fold every folder */
 .ed-tree-head { display: flex; align-items: center; gap: 2px; height: calc(32px + var(--ui-box, 0px)); padding: 0 var(--space-1) 0 var(--space-3); color: var(--text-3);
