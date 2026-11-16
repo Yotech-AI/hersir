@@ -3,10 +3,11 @@ import type { LucideIcon } from "lucide-react";
 
 export type TabDef<T extends string> = readonly [T, LucideIcon, string];
 
-/** `open` is the tab whose panel the page shows; `onOpen` is called with the tab clicked. */
-export function Tabs<T extends string>({ tabs, open, onOpen, label }: { tabs: readonly TabDef<T>[]; open: T; onOpen: (tab: T) => void; label?: string }) {
+/** `open` is the tab whose panel the page shows; `onOpen` is called with the tab clicked. `island` draws them as Island tabs
+ *  in an island's header (design/islands-settings: Settings' and Usage's tabs), the open one a pill, with no line under them. */
+export function Tabs<T extends string>({ tabs, open, onOpen, label, island }: { tabs: readonly TabDef<T>[]; open: T; onOpen: (tab: T) => void; label?: string; island?: boolean }) {
   return (
-    <div className="tabs" role="tablist" aria-label={label}>
+    <div className={island ? "tabs island-tabs" : "tabs"} role="tablist" aria-label={label}>
       {tabs.map(([k, I, l]) => (
         <button key={k} className="tab" role="tab" aria-selected={open === k} onClick={() => onOpen(k)}><I className="icon" />{l}</button>
       ))}

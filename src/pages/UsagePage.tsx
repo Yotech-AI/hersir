@@ -247,18 +247,21 @@ export function UsagePage() {
   return (
     <>
       <div className="topbar"><div className="crumbs"><b>Usage</b>{!limits && u && <span className="faint">{periodDays(u.since, u.until)}</span>}</div></div>
-      <div className="toolbar">
-        {limits ? <span className="faint">The newest numbers each coding CLI reported in your agents' runs and chat turns</span> : <>
-          <div className="chips" role="group" aria-label="Period">{PERIODS.map((p) => (
-            <button key={p.key} className={`chip${period === p.key ? " on" : ""}`} aria-pressed={period === p.key} onClick={() => setPeriod(p.key)}>{p.label}</button>))}</div>
-          <span className="spacer" />
-          <span className="faint usage-utc" title="Days and months start at midnight UTC, like the agents' monthly budgets">UTC days</span>
-        </>}
+      {/* the island's header: the four tabs as Island tabs, and right of them what the toolbar held (design/islands-settings: Usage) */}
+      <div className="island-head usage-head">
+        <Tabs island tabs={TABS} open={tab} onOpen={setTab} />
+        <div className="toolbar usage-tools">
+          {limits ? <span className="faint ellipsis">The newest numbers each coding CLI reported in your agents' runs and chat turns</span> : <>
+            <div className="chips" role="group" aria-label="Period">{PERIODS.map((p) => (
+              <button key={p.key} className={`chip${period === p.key ? " on" : ""}`} aria-pressed={period === p.key} onClick={() => setPeriod(p.key)}>{p.label}</button>))}</div>
+            <span className="spacer" />
+            <span className="faint usage-utc" title="Days and months start at midnight UTC, like the agents' monthly budgets">UTC days</span>
+          </>}
+        </div>
       </div>
       {!limits && error && <div className="error-banner">{error}</div>}
       <div className="content">
         <div className="page usage-page">
-          <Tabs tabs={TABS} open={tab} onOpen={setTab} />
           {limits ? (
             <div role="tabpanel" className="usage-tab"><SubscriptionTab /></div>
           ) : u && u.total.runs === 0 ? (

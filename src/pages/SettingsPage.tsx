@@ -79,8 +79,11 @@ export function SettingsPage({ tab }: { tab?: string } = {}) {
     <>
       <div className="topbar"><div className="crumbs"><b>Settings</b></div>
         <div className="actions"><button className="btn primary" onClick={() => save()}>Save settings</button></div></div>
+      {/* the island's header holds the six tabs as Island tabs (design/islands-settings: Settings); the open tab's form scrolls under it */}
+      <div className="island-head settings-head">
+        <Tabs island tabs={TABS} open={open} onOpen={(t) => go({ page: "settings", id: t })} label="Settings" />
+      </div>
       <div className="content"><div className="page settings-page" style={{ maxWidth: 1100 }}>
-        <Tabs tabs={TABS} open={open} onOpen={(t) => go({ page: "settings", id: t })} label="Settings" />
         {msg && <div className={msg.ok ? "ok-banner" : "error-banner"} role="status" style={{ margin: 0 }}>{msg.text}</div>}
         <div {...panel("general")}>
           <QuitSettings />

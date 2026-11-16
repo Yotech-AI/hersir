@@ -334,6 +334,26 @@ button.label-pill[aria-pressed="true"] { border-color: var(--accent); color: var
 .tab:hover { color: var(--text); }
 .tab[aria-selected="true"], .tab.on { color: var(--text); border-bottom-color: var(--text); }
 .tab .n { color: var(--text-3); }
+/* An island's header (design/islands: An island's header; GA-295 for Memory, a doc, Users, Usage, Settings and the terminal
+   page): size-island-head high, padding 0 6px, items 2px apart, no line under it. Left a title (t-body-strong, text, 6px in)
+   or Island tabs; right the island's actions (App/Icon button, 26 × 26). The same values as the Editor's (GA-293) and the
+   Chat's side island (GA-296). A page's toolbar as the header is 44 high, as the Tasks board's (.island-head.bar). */
+.island-head { display: flex; flex: none; align-items: center; gap: 2px; height: var(--size-island-head); padding: 0 6px; }
+.island-head.bar { height: 44px; gap: 8px; padding: 0 8px; }
+.island-head > .island-title { flex: 1; min-width: 0; padding-left: 6px; overflow: hidden; color: var(--text); font-size: var(--fs); font-weight: 600; line-height: 20px; text-overflow: ellipsis; white-space: nowrap; }
+.island-head > .acts { display: flex; flex: none; align-items: center; gap: 2px; margin-left: auto; }
+.island-head > .acts .btn.icon-only { width: 26px; height: 26px; }
+/* Island tabs: size-island-tab high, radius 6, padding 0 6px 0 10px, 6px between icon and name, the name t-label. Default no
+   fill, name text-2, icon 14px text-3; hover fill hover, name text, icon text-2; the open one a pill in selected, which
+   replaces the tab's 2px underline (and the row's line goes). */
+.tabs.island-tabs { flex: 0 1 auto; flex-wrap: nowrap; align-items: center; gap: 2px; min-width: 0; height: 100%; overflow-x: auto; overflow-y: hidden; border-bottom: 0; scrollbar-width: none; }
+.tabs.island-tabs::-webkit-scrollbar { display: none; }
+.island-tabs > .tab { flex: none; gap: 6px; height: var(--size-island-tab); margin: 0; padding: 0 6px 0 10px; border: 0; border-radius: var(--radius); color: var(--text-2); font-size: var(--fs-sm); font-weight: 500; white-space: nowrap; }
+.island-tabs > .tab:hover { background: var(--hover); color: var(--text); }
+.island-tabs > .tab[aria-selected="true"] { background: var(--selected); color: var(--text); }
+.island-tabs > .tab > .icon { width: 14px; height: 14px; color: var(--text-3); }
+.island-tabs > .tab:hover > .icon, .island-tabs > .tab[aria-selected="true"] > .icon { color: var(--text-2); }
+.island-tabs > .tab:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 
 /* ---------- markdown editor: toolbar + live-preview surface ---------- */
 .md-editor { border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--raised); }
