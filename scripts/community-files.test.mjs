@@ -425,6 +425,11 @@ const RECORDS = /^docs\/(research|superpowers)\//;
 const OLDER_LINES = "- Older install lines with gizai.app keep working.";
 // The old name, spelled any way the docs had it: GizAi, Gizai, GizAI or Giz AI (Figma's file Giz-AI and giz.ai aren't it).
 const OLD = /Giz ?[Aa][Ii]/;
+// GA-290 brings the islands' design notes onto main as they are on their design branches (GA-284 to GA-288): they name
+// Figma's variable collections (GizAi colour, GizAi size, a GizAi variable) outside backticks, and the Chat's note says
+// Gizai's once for the app's own keys. Only those, and only in those four notes.
+const AS_DRAWN = /^design\/islands(-chat|-pages|-settings)?\/README\.md$/;
+const AS_DRAWN_NAMES = /GizAi (colour|size|variables?)|are Gizai's there/g;
 // The old name the docs keep, in backticks or a code block, as the code has it (or Figma, for the app's variables, and
 // Homebrew, whose class for gizai.rb is Gizai): the data folders on macOS and Windows, the install folder on Windows
 // and the backups folder an older Hersir made, which is still found (GA-246; Hersir makes Hersir backups now).
@@ -480,7 +485,8 @@ describe("one name: Hersir in the docs, and Gizai only in the names the code kee
     const left = [];
     for (const doc of NAMED_DOCS) {
       withoutCode(read(doc)).split("\n").forEach((line, i) => {
-        if (OLD.test(line.replace(/`[^`]*`/g, "").split(OLD_NAME).join(""))) left.push(`${doc}:${i + 1}: ${line.trim().slice(0, 120)}`);
+        const prose = line.replace(/`[^`]*`/g, "").split(OLD_NAME).join("");
+        if (OLD.test(AS_DRAWN.test(doc) ? prose.replace(AS_DRAWN_NAMES, "") : prose)) left.push(`${doc}:${i + 1}: ${line.trim().slice(0, 120)}`);
       });
     }
     expect(left).toEqual([]);
