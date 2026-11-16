@@ -39,7 +39,14 @@ describe("the term-* tokens (design/terminal/new-tokens.json)", () => {
     expect(td.size.tokens.length).toBe(5);
     const colours = tokensJson.color.tokens;
     const at = colours.findIndex((t) => t.name === "git-deleted") + 1;
-    expect(colours.slice(at, at + 22)).toEqual(td.color.tokens);
+    // GA-290: the islands (design/islands, round 3) lift term-selection in dark from #283350 to #374260 (a step up from the
+    // island), and term-bright-black keeps text-3's old value, which its usage now says
+    const islands = td.color.tokens.map((t) => t.name === "term-selection" ? { ...t, value: { dark: "#374260", light: "#dae1f9" } }
+      : t.name === "term-bright-black" ? { ...t, usage: "ANSI 8: grey text, such as hints, a shell's suggestions and dim lines. text-3's old value: a terminal colour, kept when text-3 was lifted for the islands." }
+      : t);
+    expect(td.color.tokens.find((t) => t.name === "term-selection")?.value).toEqual({ dark: "#283350", light: "#dae1f9" });
+    expect(colours.slice(at, at + 22)).toEqual(islands);
+    expect(colours.find((t) => t.name === "term-bright-black")?.value).toEqual({ dark: "#7f838d", light: "#636772" });
     const sizes = tokensJson.size.tokens;
     // GA-143 put the band's two sizes right after size-statusbar, as GA-139's new-tokens.json says; TD's five follow them
     const sat = sizes.findIndex((t) => t.name === "size-band-min") + 1;

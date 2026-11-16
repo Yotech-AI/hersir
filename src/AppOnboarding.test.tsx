@@ -140,7 +140,6 @@ vi.mock("./components/Sidebar", async () => {
   const { createElement } = await import("react");
   return { Sidebar: ({ route }: { route: { page: string } }) => createElement("nav", { className: "sidebar" }, `at ${route.page}`) };
 });
-vi.mock("./components/Band", () => ({ Band: () => null }));
 vi.mock("./components/CommandPalette", async () => {
   const { createElement } = await import("react");
   return { CommandPalette: ({ open }: { open: boolean }) => (open ? createElement("div", { className: "palette" }, "palette") : null) };

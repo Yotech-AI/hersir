@@ -79,7 +79,7 @@ export const codeEditorTheme = EditorView.theme({
   ".cm-searchMatch": { borderRadius: "2px", backgroundColor: "var(--accent-soft)" },
   ".cm-searchMatch.cm-searchMatch-selected": { boxShadow: "inset 0 0 0 1px var(--accent)" },
   ".cm-selectionMatch": { backgroundColor: "var(--hover)" },
-  ".cm-tooltip": { border: "1px solid var(--line-2)", borderRadius: "var(--radius)", backgroundColor: "var(--overlay)", color: "var(--text)", boxShadow: "var(--shadow-pop)" },
+  ".cm-tooltip": { border: "1px solid var(--line-2)", borderRadius: "var(--radius)", backgroundColor: "var(--float)", color: "var(--text)", boxShadow: "var(--shadow-pop)" },
   ".cm-panels": { backgroundColor: "var(--raised)", color: "var(--text)" },
   ".cm-panels.cm-panels-top": { borderBottom: "1px solid var(--line)" },
   ".cm-panels.cm-panels-bottom": { borderTop: "1px solid var(--line)" },

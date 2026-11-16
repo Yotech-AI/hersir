@@ -8,8 +8,17 @@ html, body { background: var(--bg); color: var(--text); font-family: var(--font-
 .mono { font-family: var(--font-mono); }
 .muted { color: var(--text-2); }
 .faint { color: var(--text-3); }
-.kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border: 1px solid var(--line-2); border-radius: var(--radius-s); font-family: var(--font-mono); font-size: 10.5px; color: var(--text-2); background: var(--bg); }
+.kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border: 1px solid var(--line-2); border-radius: var(--radius-s); font-family: var(--font-mono); font-size: 10.5px; color: var(--text-2); background: var(--raised); }
 .icon { width: 16px; height: 16px; flex: none; stroke-width: 1.75; }
+
+/* ---------- scrollbars (design/islands): no track, a size-scroll (6px) pill 2px from the scroller's edge and at least 4px
+   from its ends, so it keeps clear of an island's round corners; scroll-thumb at rest, scroll-thumb-hover under the
+   pointer and while dragged. Sideways (the board) the same, 6px high. The 10px is the thumb and its 2px either side. */
+::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-track { margin: 2px; }
+::-webkit-scrollbar-thumb { min-width: 24px; min-height: 24px; border: 2px solid transparent; border-radius: var(--radius-pill); background-color: var(--scroll-thumb); background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover, ::-webkit-scrollbar-thumb:active { background-color: var(--scroll-thumb-hover); }
 .icon.sm { width: 14px; height: 14px; }
 .icon.lg { width: 20px; height: 20px; }
 
@@ -35,13 +44,13 @@ html, body { background: var(--bg); color: var(--text); font-family: var(--font-
 .link:disabled:hover { color: var(--text-2); }
 
 /* segmented control: list / board, theme */
-.seg { display: inline-flex; padding: 2px; gap: 2px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--bg); }
+.seg { display: inline-flex; padding: 2px; gap: 2px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--raised); }
 .seg button { display: grid; place-items: center; height: 24px; min-width: 28px; padding: 0 6px; border: 0; border-radius: var(--radius-s); background: transparent; color: var(--text-3); cursor: pointer; font: inherit; font-size: var(--fs-sm); }
 .seg button:hover { color: var(--text); }
 .seg button[aria-pressed="true"], .seg button.on { background: var(--selected); color: var(--text); }
 
 /* ---------- inputs ---------- */
-.input, .select, .textarea { width: 100%; height: calc(34px + var(--ui-box, 0px)); padding: 0 10px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--bg); color: var(--text); font: inherit; font-size: var(--fs); }
+.input, .select, .textarea { width: 100%; height: calc(34px + var(--ui-box, 0px)); padding: 0 10px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--raised); color: var(--text); font: inherit; font-size: var(--fs); }
 .input::placeholder, .textarea::placeholder { color: var(--text-3); }
 .input:hover, .select:hover, .textarea:hover { border-color: var(--text-3); }
 .input:focus, .select:focus, .textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
@@ -58,6 +67,17 @@ html, body { background: var(--bg); color: var(--text); font-family: var(--font-
 .input-group > .input, .input-group > .select { flex: 1; }
 .check { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; color: var(--text); }
 .check input { width: 15px; height: 15px; accent-color: var(--accent); margin: 0; }
+/* a checkbox (design/islands): raised with a line-2 border, as an input; on, accent with an on-accent tick */
+input[type="checkbox"] { appearance: none; display: inline-grid; place-content: center; flex: none; width: 15px; height: 15px; margin: 0; border: 1px solid var(--line-2);
+  border-radius: var(--radius-s); background: var(--raised); color: var(--on-accent); vertical-align: -2px; cursor: pointer; }
+input[type="checkbox"]::before { content: ""; width: 9px; height: 9px; background: currentColor; clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0, 43% 62%); visibility: hidden; }
+input[type="checkbox"]:checked { border-color: var(--accent); background: var(--accent); }
+input[type="checkbox"]:checked::before { visibility: visible; }
+input[type="checkbox"]:hover { border-color: var(--text-3); }
+input[type="checkbox"]:checked:hover { border-color: var(--accent-hover); background: var(--accent-hover); }
+input[type="checkbox"]:disabled { opacity: .45; cursor: default; }
+input[type="checkbox"]:disabled:hover { border-color: var(--line-2); }
+input[type="checkbox"]:checked:disabled:hover { border-color: var(--accent); background: var(--accent); }
 .swatches { display: flex; gap: 8px; }
 .swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; }
 .swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--text); }
@@ -79,14 +99,14 @@ html, body { background: var(--bg); color: var(--text); font-family: var(--font-
 /* ---------- drawer: every create / edit form opens here, from the right, at least 1024px wide ---------- */
 .scrim { position: fixed; inset: 0; background: var(--scrim); z-index: 40; animation: gz-fade .16s ease-out; }
 .drawer { position: fixed; top: 0; right: 0; bottom: 0; z-index: 41; width: min(var(--size-drawer), calc(100vw - 48px)); display: flex; flex-direction: column;
-  background: var(--overlay); border-left: 1px solid var(--line-2); box-shadow: var(--shadow-drawer); animation: gz-slide .2s cubic-bezier(.2, .8, .2, 1); }
+  background: var(--float); border-left: 1px solid var(--line-2); box-shadow: var(--shadow-drawer); animation: gz-slide .2s cubic-bezier(.2, .8, .2, 1); }
 .drawer.wide { width: min(1280px, calc(100vw - 48px)); }
 .drawer-head { display: flex; align-items: flex-start; gap: 12px; padding: 18px 28px 16px; border-bottom: 1px solid var(--line); }
 .drawer-head .titles { flex: 1; min-width: 0; }
 .drawer-head h2 { margin: 0; font-size: var(--fs-lg); font-weight: 650; letter-spacing: -.01em; }
 .drawer-head p { margin: 4px 0 0; color: var(--text-3); font-size: var(--fs-sm); }
 .drawer-body { flex: 1; overflow-y: auto; padding: 24px 28px 40px; }
-.drawer-foot { display: flex; align-items: center; gap: 8px; padding: 14px 28px; border-top: 1px solid var(--line); background: var(--overlay); }
+.drawer-foot { display: flex; align-items: center; gap: 8px; padding: 14px 28px; border-top: 1px solid var(--line); background: var(--float); }
 .drawer-foot .hint { margin-right: auto; color: var(--text-3); font-size: var(--fs-xs); }
 @keyframes gz-slide { from { transform: translateX(32px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes gz-fade { from { opacity: 0; } to { opacity: 1; } }
@@ -94,15 +114,16 @@ html, body { background: var(--bg); color: var(--text); font-family: var(--font-
 
 /* ---------- a question to answer before anything else (closing Gizai with unsaved text, GA-122) ---------- */
 .ask-scrim { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 24px; background: var(--scrim); animation: gz-fade .16s ease-out; }
-.ask { width: min(460px, 100%); padding: 20px 22px 16px; border: 1px solid var(--line-2); border-radius: var(--radius-xl); background: var(--overlay); box-shadow: var(--shadow-pop); }
+.ask { width: min(460px, 100%); padding: 20px 22px 16px; border: 1px solid var(--line-2); border-radius: var(--radius-xl); background: var(--float); box-shadow: var(--shadow-pop); }
 .ask h2 { margin: 0 0 6px; font-size: var(--fs-lg); font-weight: 650; letter-spacing: -.01em; line-height: 1.35; overflow-wrap: anywhere; }
 .ask p { margin: 0; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.45; }
 .ask-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 @media (prefers-reduced-motion: reduce) { .ask-scrim { animation: none; } }
 
 /* ---------- sidebar ---------- */
-.side { display: flex; flex-direction: column; width: var(--size-side); height: 100%; background: var(--side); border-right: 1px solid var(--line); overflow: hidden; }
-.side-main { display: flex; flex-direction: column; gap: 2px; flex: 1; min-height: 0; padding: 10px 10px 14px; overflow-y: auto; }
+/* an island (design/islands): island fill, island-radius, no border; app.css places it island-gap from the window's edges */
+.side { display: flex; flex-direction: column; width: var(--size-side); height: 100%; border-radius: var(--island-radius); background: var(--island); overflow: hidden; }
+.side-main { display: flex; flex-direction: column; gap: 2px; flex: 1; min-height: 0; padding: 6px 10px 14px; overflow-y: auto; }
 .side-foot { display: flex; flex-direction: column; flex-shrink: 0; gap: 8px; padding: 0 10px 12px; border-top: 1px solid var(--line); }
 .side-foot .nav-section { margin-top: 8px; }
 .data-tag { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px; border: 1px dashed var(--line-2); border-radius: var(--radius); color: var(--text-2); font-size: var(--fs-sm); }
@@ -141,12 +162,18 @@ html, body { background: var(--bg); color: var(--text); font-family: var(--font-
 :root[data-away] .pulse::after, :root[data-away] .caret, :root[data-away] .icon.spin { animation-play-state: paused; }
 
 /* ---------- top bar and view toolbar ---------- */
-.topbar { display: flex; align-items: center; gap: 12px; height: var(--size-topbar); padding: 0 20px; border-bottom: 1px solid var(--line); }
+/* The top bar sits on the background (design/islands), over the page's island, with no fill and no border. On the
+   background faint text is text-2 (text-3 falls under 3:1 there), and buttons have no fill until hovered (canvas-hover,
+   translucent): a secondary button keeps its line-2 border, a ghost stays ghost. A chip with coloured text (the Chief's)
+   sits on island. */
+.topbar { display: flex; align-items: center; gap: 12px; height: var(--size-topbar); padding: 0 4px 0 12px; }
+.topbar .btn:not(.primary):not(.danger) { background-color: transparent; }
+.topbar .btn:not(.primary):not(.danger):hover, .topbar select.chip:hover { background-color: var(--canvas-hover); color: var(--text); }
 .crumbs { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: var(--fs); color: var(--text-2); }
 .crumbs a { color: var(--text-2); text-decoration: none; }
 .crumbs a:hover { color: var(--text); }
 .crumbs b { color: var(--text); font-weight: 600; }
-.crumbs .sep { color: var(--text-3); }
+.crumbs .sep { color: var(--text-2); }
 .topbar .actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .toolbar { display: flex; align-items: center; gap: 8px; padding: 12px 20px; }
 .toolbar .spacer { flex: 1; }
@@ -309,7 +336,7 @@ button.label-pill[aria-pressed="true"] { border-color: var(--accent); color: var
 .tab .n { color: var(--text-3); }
 
 /* ---------- markdown editor: toolbar + live-preview surface ---------- */
-.md-editor { border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--bg); }
+.md-editor { border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--raised); }
 .md-editor:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .md-toolbar { display: flex; align-items: center; gap: 2px; height: 38px; padding: 0 6px; border-bottom: 1px solid var(--line); overflow-x: auto; }
 .md-toolbar button { display: grid; place-items: center; width: 30px; height: 28px; border: 0; border-radius: var(--radius-s); background: none; color: var(--text-2); cursor: pointer; flex: none; }
@@ -390,7 +417,7 @@ button.label-pill[aria-pressed="true"] { border-color: var(--accent); color: var
 .empty .btn { margin-top: 6px; }
 
 /* ---------- toast ---------- */
-.toast { position: fixed; right: 20px; bottom: 20px; z-index: 60; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid var(--line-2); border-radius: var(--radius-l); background: var(--overlay); box-shadow: var(--shadow-pop); }
+.toast { position: fixed; right: 20px; bottom: 20px; z-index: 60; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid var(--line-2); border-radius: var(--radius-l); background: var(--float); box-shadow: var(--shadow-pop); }
 
 /* ---------- chat (ChatMessage, ToolCard, ChatSetup) ---------- */
 .chat-col { max-width: calc(760px * var(--chat-scale, 1)); margin: 0 auto; padding: 24px; }
@@ -581,7 +608,7 @@ button.label-pill[aria-pressed="true"] { border-color: var(--accent); color: var
 .setup-card p { margin: 0; line-height: 1.55; }
 .setup-card .small { font-size: var(--fs-sm); }
 .setup-icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: var(--radius-l); background: var(--accent-soft); color: var(--accent); }
-.lead-chip { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px 0 6px; border: 1px solid var(--line); border-radius: var(--radius-pill); color: var(--text); text-decoration: none; font-size: var(--fs-sm); font-weight: 500; }
+.lead-chip { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px 0 6px; border: 1px solid var(--line); border-radius: var(--radius-pill); background: var(--island); color: var(--text); text-decoration: none; font-size: var(--fs-sm); font-weight: 500; }
 .lead-chip:hover { background: var(--hover); }
 
 /* ---------- org chart (OrgChart) ---------- */
@@ -717,7 +744,7 @@ button.label-pill[aria-pressed="true"] { border-color: var(--accent); color: var
 .ed-side-top .seg { flex: 1; }
 .ed-side-top .seg button { display: inline-flex; flex: 1; justify-content: center; align-items: center; gap: 5px; }
 .ed-goto { display: flex; align-items: center; gap: var(--space-2); width: calc(100% - 2 * var(--space-2)); height: calc(30px + var(--ui-box, 0px)); margin: var(--space-2) var(--space-2) 0; padding: 0 var(--space-2);
-  border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--bg); color: var(--text-3); font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; }
+  border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--raised); color: var(--text-3); font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; }
 .ed-goto:hover { border-color: var(--text-3); color: var(--text-2); }
 .ed-goto .kbd { margin-left: auto; }
 /* The folder's name over its tree, with New file, New folder and Fold every folder */

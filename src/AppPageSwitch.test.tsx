@@ -131,7 +131,6 @@ vi.mock("./components/Sidebar", async () => {
   const { createElement } = await import("react");
   return { Sidebar: ({ route }: { route: { page: string } }) => createElement("nav", { className: "sidebar" }, `at ${route.page}`) };
 });
-vi.mock("./components/Band", () => ({ Band: () => null }));
 vi.mock("./components/CommandPalette", async () => {
   const { createElement } = await import("react");
   return { CommandPalette: ({ open }: { open: boolean }) => (open ? createElement("div", { className: "palette" }, "palette") : null) };
@@ -189,8 +188,12 @@ async function start(at: string, info: Record<string, unknown> = {}, ready = () 
 }
 /** The text a node shows: React hides what a Suspense fallback replaces with display: none, and keeps it in the DOM. */
 const visible = (n: FakeNode): string => n.nodeType === 3 ? n.nodeValue ?? "" : n.style.display === "none" ? "" : n.childNodes.map(visible).join("");
-/** The page area (App's <main>): the text it shows, "" when it is empty. */
-const pageArea = () => container.all().find((n) => n.nodeName === "MAIN")!;
+/** The page area: the page's island in App's <main> (GA-290, design/islands), "" when it is empty. */
+const pageArea = () => {
+  const main = container.all().find((n) => n.nodeName === "MAIN")!;
+  expect(main.childNodes.map((n) => n.attrs.get("class"))).toEqual(["page-island"]);
+  return main.childNodes[0]!;
+};
 const shown = () => visible(pageArea());
 const sidebar = () => visible(container.all().find((n) => n.nodeName === "NAV")!);
 const byClass = (c: string) => container.all().filter((n) => n.attrs.get("class") === c);

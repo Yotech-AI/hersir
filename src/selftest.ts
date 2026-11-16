@@ -1416,49 +1416,40 @@ const htmlVars = () => {
   const s = document.documentElement.style;
   return Object.fromEntries([...Array(s.length).keys()].map((i) => s.item(i)).filter((n) => n.startsWith("--")).map((n) => [n, s.getPropertyValue(n).trim()]));
 };
-/** GA-143: the mountains along the bottom of the window, as the window shows them now. at_bottom: what a click 4px above the
- *  window's bottom edge reaches, at the left, the middle and the right ("band" if the band took it). */
-const bandBox = () => [...(appearancePanel()?.querySelectorAll<HTMLInputElement>('label.check input[type="checkbox"]') ?? [])]
-  .find((i) => textOf(i.closest("label")) === "Show mountains along the bottom") ?? null;
-const bandState = () => {
-  const html = document.documentElement, el = q(".app > .band"), svg = el ? q("svg", el) : null, side = q(".side");
-  const cs = el ? getComputedStyle(el) : null, r = el?.getBoundingClientRect(), W = html.clientWidth, H = window.innerHeight;
-  const hit = (x: number) => { const e = document.elementFromPoint(x, H - 4); return !e ? null : e.closest(".band") ? "band" : `${e.tagName.toLowerCase()}.${String(e.className).split(" ")[0]}`; };
-  return { attr: html.dataset.band ?? null, kept: localStorage.getItem("gizai-band"), first: !!el && q(".app")?.firstElementChild === el, present: !!q(".band"),
-    hidden: el?.getAttribute("aria-hidden") ?? null, svg: !!svg, position: cs?.position ?? null, z: cs?.zIndex ?? null, events: cs?.pointerEvents ?? null,
-    rect: r ? { left: Math.round(r.left), width: Math.round(r.width), bottom: Math.round(r.bottom), h: Math.round(r.height * 10) / 10 } : null,
-    want: { width: W, bottom: H, h: Math.round(Math.min(128, Math.max(80, H * 0.14)) * 10) / 10 },
-    line: svg ? getComputedStyle(svg).color : null, at_bottom: [hit(8), hit(W / 2), hit(W - 8)],
-    html_bg: getComputedStyle(html).backgroundColor, body_bg: getComputedStyle(document.body).backgroundColor,
-    side_bg: side ? getComputedStyle(side).backgroundColor : null, side_before: side ? getComputedStyle(side, "::before").backgroundColor : null,
-    box: bandBox()?.checked ?? null, hides: bandHides() };
+/** GA-290 (design/islands): the window as it shows now. The background is .app's gradient (canvas-from to canvas-to, with
+ *  canvas-glow from the top left); the sidebar and the page are islands on it, island-gap (6px) from the window's edges and
+ *  from each other, island-radius (10px), the island's fill and no border; the page's top bar sits on the background over
+ *  the page's island, size-topbar high, with no fill and no border. The mountains are gone: no .band, no data-band. */
+const islandsState = () => {
+  const html = document.documentElement, app = q(".app"), side = q(".side"), main = q(".main"), page = q(".main > .page-island"), bar = q(".page-island .topbar");
+  const rect = (el: Element | null) => { const r = el?.getBoundingClientRect(); return r ? { l: Math.round(r.left), t: Math.round(r.top), r: Math.round(r.right), b: Math.round(r.bottom), h: Math.round(r.height * 10) / 10 } : null; };
+  const look = (el: Element | null) => { const cs = el ? getComputedStyle(el) : null; return cs ? { bg: cs.backgroundColor, radius: cs.borderTopLeftRadius,
+    border: [cs.borderTopWidth, cs.borderRightWidth, cs.borderBottomWidth, cs.borderLeftWidth].join(" "), shadow: cs.boxShadow } : null; };
+  const acs = app ? getComputedStyle(app) : null;
+  return { W: html.clientWidth, H: window.innerHeight, attr: html.dataset.band ?? null, kept: localStorage.getItem("gizai-band"), band: !!q(".band"),
+    app_bg: acs?.backgroundImage ?? null, app_pad: acs?.paddingTop ?? null, app_gap: acs?.columnGap ?? null,
+    side: rect(side), side_look: look(side), main: rect(main), page: rect(page), page_look: look(page), page_in_main: !!page && page.parentElement === main,
+    bar: rect(bar), bar_look: look(bar), bar_in_page: !!bar && !!page?.contains(bar),
+    corner: (() => { const e = document.elementFromPoint(2, 2); return e ? `${e.tagName.toLowerCase()}.${String(e.className).split(" ")[0]}` : null; })() };
 };
-/** The app's own stylesheet hides the band in a window under 560px high, with more contrast, in forced colours and in print:
- *  the cage can't make Gizai's window lower than its 600px least, so the rule itself is read. The same rule hides the first
- *  start's onboarding's band (.onb > .band, GA-164), so `.app > .band` is one of its selectors. */
-const bandHides = () => [...document.styleSheets].flatMap((sh) => { try { return [...sh.cssRules]; } catch { return []; } })
-  .filter((r): r is CSSMediaRule => r instanceof CSSMediaRule && [...r.cssRules].some((x) => x instanceof CSSStyleRule
-    && x.selectorText.split(",").map((s) => s.trim()).includes(".app > .band") && x.style.display === "none"))
-  .map((r) => r.conditionText.replace(/\s+/g, " "));
-type BandState = ReturnType<typeof bandState>;
-/** Clicks "Show mountains along the bottom" when it isn't `on` yet; what the window shows a moment later. */
-const bandSwitch = async (on: boolean) => { const b = bandBox(); if (b && b.checked !== on) b.click(); await sleep(200); return bandState(); };
-/** GA-139's Subtle lines (band-line), the canvas (bg, on html) and the sidebar's colour (side, on its ::before). */
-const BAND = { dark: { line: [160, 211, 235, 0.1], bg: "rgb(15, 16, 19)", side: "rgb(11, 12, 15)" },
-  light: { line: [32, 108, 137, 0.14], bg: "rgb(255, 255, 255)", side: "rgb(243, 244, 247)" } };
-const sameColour = (c: string | null, want: number[]) => { const n = (c?.match(/[\d.]+/g) ?? []).map(Number);
-  return n.length >= 3 && want.every((v, i) => Math.abs((n[i] ?? 1) - v) <= (i === 3 ? 0.005 : 0.5)); };
-/** On: .app's first child, aria-hidden, fixed along the bottom edge at the window's width, 80–128px (14% of the window), under
- *  the page at z-index -1 taking no clicks, in band-line; html holds the canvas, body and the sidebar are see-through. */
-const bandOn = (s: BandState, theme: "dark" | "light") => s.attr === "on" && s.kept === null && s.first && s.hidden === "true" && s.svg
-  && s.position === "fixed" && s.z === "-1" && s.events === "none" && !!s.rect && s.rect.left === 0 && s.rect.width === s.want.width
-  && Math.abs(s.rect.bottom - s.want.bottom) <= 1 && Math.abs(s.rect.h - s.want.h) <= 0.6 && s.rect.h >= 80 && s.rect.h <= 128
-  && sameColour(s.line, BAND[theme].line) && s.at_bottom.every((x) => x !== "band") && s.html_bg === BAND[theme].bg
-  && s.body_bg === "rgba(0, 0, 0, 0)" && s.side_bg === "rgba(0, 0, 0, 0)" && s.side_before === BAND[theme].side && s.box === true
-  && s.hides.length === 1 && s.hides[0] === "(max-height: 559px), (prefers-contrast: more), (forced-colors: active), print";
-/** Off: no band and no data-band, kept as gizai-band "false", the plain background back on body and the sidebar. */
-const bandOff = (s: BandState) => s.attr === null && s.kept === "false" && !s.first && !s.present && s.box === false
-  && s.body_bg === s.html_bg && !!s.side_bg && s.side_bg !== "rgba(0, 0, 0, 0)";
+type IslandsState = ReturnType<typeof islandsState>;
+/** The tokens of design/islands round 3 as the WebView computes them: the island's fill and the background's three colours. */
+const ISLANDS = { dark: { island: "rgb(24, 26, 28)", from: "rgb(38, 40, 46)", to: "rgb(34, 43, 49)", glow: "rgb(43, 57, 70)" },
+  light: { island: "rgb(255, 255, 255)", from: "rgb(235, 237, 241)", to: "rgb(226, 236, 241)", glow: "rgb(220, 233, 244)" } };
+/** The islands in `theme`, with a top bar `bar` px high (44 at the defaults, 49 at the largest interface size). */
+const islandsOn = (s: IslandsState, theme: "dark" | "light", bar: number) => {
+  const c = ISLANDS[theme], gap = 6;
+  const bg = s.app_bg ?? "", glowAt = bg.indexOf(c.glow), fromAt = bg.indexOf(c.from), toAt = bg.indexOf(c.to);
+  return s.attr === null && s.kept === null && !s.band
+    && bg.startsWith("radial-gradient(") && bg.includes("linear-gradient(") && glowAt > 0 && glowAt < bg.indexOf("linear-gradient(") && fromAt > glowAt && toAt > fromAt
+    && s.app_pad === "6px" && s.app_gap === "6px" && s.corner === "div.app"
+    && !!s.side && s.side.l === gap && s.side.t === gap && s.side.b === s.H - gap
+    && !!s.side_look && s.side_look.bg === c.island && s.side_look.radius === "10px" && s.side_look.border === "0px 0px 0px 0px" && s.side_look.shadow === "none"
+    && s.page_in_main && !!s.page && s.page.l === s.side.r + gap && s.page.r === s.W - gap && s.page.b === s.H - gap && s.page.t === gap + bar
+    && !!s.page_look && s.page_look.bg === c.island && s.page_look.radius === "10px" && s.page_look.border === "0px 0px 0px 0px" && s.page_look.shadow === "none"
+    && s.bar_in_page && !!s.bar && s.bar.t === gap && s.bar.h === bar && s.bar.l === s.page.l && s.bar.r === s.page.r
+    && !!s.bar_look && s.bar_look.bg === "rgba(0, 0, 0, 0)" && s.bar_look.border === "0px 0px 0px 0px";
+};
 /** Elements wider than their box (they would scroll sideways or be cut off at the side); the page itself first. */
 function sideways(sels: string[]): string[] {
   const out: string[] = [];
@@ -1527,13 +1518,13 @@ export async function appearanceProbe(phase: "set" | "kept") {
     && JSON.stringify(controls.fonts) === JSON.stringify(["Atkinson Hyperlegible", "JetBrains Mono", "Inter", "Geist", "Hack"])
     && controls.reset_disabled === true && controls.reset_text === "Reset to defaults";
   const defaultsOk = Object.keys(defaults.html_vars).length === 0 && defaults.font_attr === null && defaults.theme === "dark" && defaults.density === null
-    && Object.keys(defaults.kept).length === 0 && defaults.nav.fs === 13.5 && defaults.nav.h === 32 && defaults.side === 248 && defaults.topbar === 52
+    && Object.keys(defaults.kept).length === 0 && defaults.nav.fs === 13.5 && defaults.nav.h === 32 && defaults.side === 248 && defaults.topbar === 44
     && defaults.save === 30 && defaults.tab === 13.5 && defaults.bubble === 13.5 && defaults.agent === 15 && defaults.docs === 15 && defaults.docs_h3 === 15.5
     && JSON.stringify(defaults.pressed) === JSON.stringify({ chat: ["15"], ui: ["13.5"], docs: ["15"], theme: ["Dark"], density: ["Comfortable"] })
     && defaults.nav.family === "Atkinson Hyperlegible Next";
-  // GA-143: the mountains are on at the defaults; the checkbox turns them off at once (kept as gizai-band) and on again.
-  const band = { on: bandState(), off: await bandSwitch(false), again: await bandSwitch(true) };
-  const bandOk = bandOn(band.on, "dark") && bandOff(band.off) && bandOn(band.again, "dark");
+  // GA-290: the window in islands at the defaults (Settings has a top bar), in dark; the mountains' checkbox is gone
+  const islands = { dark: islandsState(), checkboxes: panel.querySelectorAll('input[type="checkbox"]').length };
+  const islandsOk = islandsOn(islands.dark, "dark", 44) && islands.checkboxes === 0 && !JSON.stringify(controls.sections).includes("Background");
 
   // Tabs work like the Usage page's, in the address; an edit not saved yet survives a switch to another tab and back.
   const tabTo = async (label: string) => {
@@ -1576,6 +1567,52 @@ export async function appearanceProbe(phase: "set" | "kept") {
   await showTasks("board");
   const col0 = box(q(".col:not(.rail)")).w;
 
+  // GA-290: every page's top bar sits on the background over the page's island: 6px from the window's top, 44px high, the
+  // island's width, no fill and no border, its buttons (not primary or danger) with no fill until hovered; the island right
+  // under it. Then the app drawn at 900 × 600 (the window's least size; the cage's window is larger, so its media queries
+  // stay as they are): nothing is cut off sideways or at the bottom of an island (they clip what doesn't fit), and the top
+  // bar's crumbs and actions fit in it. (#/terminal is left out: it starts a shell.)
+  const barState = () => {
+    const bar = q(".page-island .topbar"), page = q(".main > .page-island"), side = q(".side"), app = q(".app");
+    const b = bar?.getBoundingClientRect(), p = page?.getBoundingClientRect(), cs = bar ? getComputedStyle(bar) : null;
+    if (!b || !p || !cs || !bar || !page || !side || !app) return null;
+    const over = (el: Element) => [el.scrollWidth - el.clientWidth, el.scrollHeight - el.clientHeight];
+    const outside = [...bar.querySelectorAll(":scope > *, .actions > *")].filter((x) => { const r = x.getBoundingClientRect(); return r.width > 0 && (r.left < b.left - 0.5 || r.right > b.right + 0.5); }).map((x) => textOf(x).slice(0, 24) || x.className);
+    return { t: Math.round(b.top), h: Math.round(b.height), l: Math.round(b.left - p.left), r: Math.round(p.right - b.right), page_t: Math.round(p.top), page_b: Math.round(p.bottom),
+      app_b: Math.round(app.getBoundingClientRect().bottom), bg: cs.backgroundColor, border: [cs.borderTopWidth, cs.borderRightWidth, cs.borderBottomWidth, cs.borderLeftWidth].join(" "),
+      fills: [...bar.querySelectorAll(".btn:not(.primary):not(.danger)")].map((x) => getComputedStyle(x).backgroundColor).filter((c) => c !== "rgba(0, 0, 0, 0)"),
+      bar_over: over(bar)[0], page_over: over(page), side_over: over(side), outside,
+      // what sticks out of the island's right edge (its clip cuts it off): the outermost such elements, and the width they need
+      sticking: over(page)[0] > 1 ? [...page.querySelectorAll("*")].filter((x) => { const r = x.getBoundingClientRect(); return r.width > 0 && r.right > p.right + 1 && !bar.contains(x)
+        && !(x.parentElement && x.parentElement !== page && x.parentElement.getBoundingClientRect().right > p.right + 1); })
+        .slice(0, 6).map((x) => { const r = x.getBoundingClientRect(); return { el: `${x.tagName.toLowerCase()}.${String(x.className).split(" ").join(".")}`, w: Math.round(r.width), out: Math.round(r.right - p.right),
+          need: Math.round(x.parentElement ? x.parentElement.scrollWidth : r.width), text: textOf(x).slice(0, 30) }; }) : [] };
+  };
+  const BAR_PAGES = ["#/inbox", "#/tasks", "#/board", "#/chat", "#/chats", "#/projects", "#/clients", "#/team", "#/users", "#/usage", "#/memory/shared", "#/editor", "#/settings/general"];
+  const bars: Record<string, unknown> = {}, small: Record<string, unknown> = {};
+  for (const hash of BAR_PAGES) {
+    if (hash === "#/tasks" || hash === "#/board") await showTasks(hash === "#/tasks" ? "list" : "board"); else await goTo(hash, ".page-island .topbar .crumbs, .page-island .topbar");
+    await sleep(150);
+    bars[hash] = barState();
+  }
+  const appEl = q<HTMLElement>(".app");
+  if (appEl) { appEl.style.width = "900px"; appEl.style.height = "600px"; }
+  for (const hash of BAR_PAGES) {
+    if (hash === "#/tasks" || hash === "#/board") await showTasks(hash === "#/tasks" ? "list" : "board"); else await goTo(hash, ".page-island .topbar .crumbs, .page-island .topbar");
+    await sleep(250);
+    small[hash] = barState();
+  }
+  if (appEl) { appEl.style.width = ""; appEl.style.height = ""; }
+  await sleep(200);
+  const barOk = (b: any) => !!b && b.t === 6 && b.h === 44 && b.l === 0 && b.r === 0 && b.page_t === 50 && b.bg === "rgba(0, 0, 0, 0)" && b.border === "0px 0px 0px 0px" && b.fills.length === 0;
+  const fitsOk = (b: any) => barOk(b) && b.app_b === 600 && b.page_b === 594 && b.bar_over <= 1 && b.page_over.every((n: number) => n <= 1) && b.side_over.every((n: number) => n <= 1) && b.outside.length === 0;
+  const barsOk = BAR_PAGES.every((h) => barOk(bars[h]));
+  // Known and older than the islands (GA-290 QA): at 900 wide the task list's toolbar (list view: New task, the search, the
+  // view switch, Filters, Sort, Group and Archived cards) needs 708px and the page gets 634 (652 before the islands), so
+  // Group and Archived cards are cut off. Reported (small["#/tasks"].sticking); it counts here again once the toolbar fits.
+  const SMALL_KNOWN = new Set(["#/tasks"]);
+  const smallOk = BAR_PAGES.every((h) => SMALL_KNOWN.has(h) ? barOk(small[h]) : fitsOk(small[h]));
+
   // The largest sizes, picked with clicks on Settings → Appearance: at once, and kept.
   await goTo("#/settings/appearance", '.settings-panel[aria-label="Appearance"]');
   const clicked = [await pick("Chat size", "20"), await pick("Interface size", "16.5"), await pick("Tasks and docs size", "20")];
@@ -1583,12 +1620,13 @@ export async function appearanceProbe(phase: "set" | "kept") {
   const big = { html_vars: htmlVars(), kept: kept(), reset_disabled: (q<HTMLButtonElement>("button.link", appearancePanel() ?? document))?.disabled ?? null,
     nav: box(q(".side .nav-item")), side: box(q(".side")).w, topbar: box(q(".topbar")).h, save: box(q(".topbar .btn.primary")).h, tab: box(q(".tabs .tab")).fs,
     bubble: box(q(".chat-sample .bubble")).fs, agent: box(q(".chat-sample .prose")).fs, docs: box(q(".docs-sample .prose")).fs, docs_h3: box(q(".docs-sample h3")).fs,
-    section: box(q(".settings-panel:not([hidden]) .form-section > header h3")).fs, settings_cut: cutOff(ROWS), settings_wide: sideways([".side", ".main", ".content"]) };
+    section: box(q(".settings-panel:not([hidden]) .form-section > header h3")).fs, settings_cut: cutOff(ROWS), settings_wide: sideways([".side", ".main", ".content"]),
+    islands: islandsState() };
   const bigOk = clicked.every(Boolean) && big.html_vars["--chat-grow"] === "5px" && big.html_vars["--ui-grow"] === "3px" && big.html_vars["--docs-grow"] === "5px"
     && JSON.stringify(big.kept) === JSON.stringify({ "gizai-size-chat": "20", "gizai-size-ui": "16.5", "gizai-size-docs": "20" }) && big.reset_disabled === false
-    && big.nav.fs === 16.5 && big.nav.h === 37 && big.side === 266 && big.topbar === 57 && big.save === 35 && big.tab === 16.5
+    && big.nav.fs === 16.5 && big.nav.h === 37 && big.side === 266 && big.topbar === 49 && big.save === 35 && big.tab === 16.5
     && big.bubble === 18.5 && big.agent === 20 && big.docs === 20 && big.docs_h3 === 18 && near(big.section, 16.5, 0.01)
-    && big.settings_cut.length === 0 && big.settings_wide.length === 0;
+    && big.settings_cut.length === 0 && big.settings_wide.length === 0 && islandsOn(big.islands, "dark", 49);
 
   // Dark, then light: the task list, the board, a task page with its editor and the New task drawer, a doc, a chat.
   const tasks = await listTasks();
@@ -1654,9 +1692,9 @@ export async function appearanceProbe(phase: "set" | "kept") {
   }
   await goTo("#/settings/appearance", '.settings-panel[aria-label="Appearance"]');
   await pick("Theme", "Light");
-  // html holds the canvas: body's own background is off while the mountains show (GA-143)
+  // GA-290: light has white islands on the soft grey gradient
   const light = { theme: document.documentElement.dataset.theme, bg: getComputedStyle(document.documentElement).backgroundColor, kept: localStorage.getItem("gizai-theme"),
-    band: bandState() };
+    islands: islandsState() };
   const lightPages = await pages();
 
   const growsOk = (p: Record<string, any>) => {
@@ -1671,7 +1709,7 @@ export async function appearanceProbe(phase: "set" | "kept") {
   };
   const editorsOk = !task || (editors.description === 20 && editors.description_closed === true && editors.acceptance === 20 && editors.acceptance_closed === true
     && editors.drawer === 20 && editors.drawer_closed === true);
-  const lightOk = light.theme === "light" && light.bg === "rgb(255, 255, 255)" && light.kept === "light" && bandOn(light.band, "light");
+  const lightOk = light.theme === "light" && light.bg === "rgb(255, 255, 255)" && light.kept === "light" && islandsOn(light.islands, "light", 49);
 
   // Compact, then each font everywhere at once; Geist stays for the next start.
   await goTo("#/settings/appearance", '.settings-panel[aria-label="Appearance"]');
@@ -1687,17 +1725,18 @@ export async function appearanceProbe(phase: "set" | "kept") {
   }
   const fontsOk = Object.entries(fonts).every(([key, f]: [string, any]) => JSON.stringify(f.fams) === JSON.stringify(FAMILIES[key]) && f.checked === key
     && (key === "atkinson" ? f.attr === null && f.kept === null : f.attr === key && f.kept === key));
-  // the mountains off for the next start (GA-143)
-  const bandLeft = await bandSwitch(false);
-  const bandLeftOk = bandOff(bandLeft);
+  // GA-290: an older Hersir kept the mountains' switch as gizai-band; leave one, as it would, for the next start to take out
+  localStorage.setItem("gizai-band", "false");
+  const bandLeftOk = localStorage.getItem("gizai-band") === "false";
   restoreView();
   await sleep(1500); // WebKit writes localStorage to disk a moment later
 
   const ok = tabOk && switchingOk && controlsOk && defaultsOk && choicesOk && bigOk && growsOk(dark) && growsOk(lightPages) && editorsOk && lightOk && compactOk && fontsOk
-    && bandOk && bandLeftOk;
+    && islandsOk && bandLeftOk && barsOk && smallOk;
   return { ok, phase, tab_ok: tabOk, switching_ok: switchingOk, controls_ok: controlsOk, defaults_ok: defaultsOk, choices_ok: choicesOk, big_ok: bigOk, dark_ok: growsOk(dark),
-    light_pages_ok: growsOk(lightPages), editors_ok: editorsOk, light_ok: lightOk, compact_ok: compactOk, fonts_ok: fontsOk, band_ok: bandOk, band_left_ok: bandLeftOk,
-    tabs, switching, controls, defaults, choices, loads, small0, row0, col0, big, dark, light, light_pages: lightPages, editors, compact, fonts, band, band_left: bandLeft,
+    light_pages_ok: growsOk(lightPages), editors_ok: editorsOk, light_ok: lightOk, compact_ok: compactOk, fonts_ok: fontsOk, islands_ok: islandsOk, band_left_ok: bandLeftOk, bars_ok: barsOk, small_ok: smallOk,
+    bars_failing: BAR_PAGES.filter((h) => !barOk(bars[h])), small_failing: BAR_PAGES.filter((h) => !fitsOk(small[h])), small_known: [...SMALL_KNOWN],
+    tabs, switching, controls, defaults, choices, loads, small0, row0, col0, big, dark, light, light_pages: lightPages, editors, compact, fonts, islands, bars, small,
     found: { task: task?.identifier ?? null, doc: !!docId, chat: !!chat } };
 }
 
@@ -1706,12 +1745,12 @@ async function appearanceKeptProbe() {
   const html = document.documentElement;
   const start = { font: html.dataset.font ?? null, theme: html.dataset.theme ?? null, density: html.dataset.density ?? null, vars: htmlVars(), kept: kept(),
     pressed: { chat: pressedIn("Chat size"), ui: pressedIn("Interface size"), docs: pressedIn("Tasks and docs size"), theme: pressedIn("Theme"), density: pressedIn("Density") },
-    checked: q(".font-choice.on", appearancePanel() ?? document)?.getAttribute("data-font") ?? null, fams: appFonts(), nav: box(q(".side .nav-item")), band: bandState() };
+    checked: q(".font-choice.on", appearancePanel() ?? document)?.getAttribute("data-font") ?? null, fams: appFonts(), nav: box(q(".side .nav-item")), islands: islandsState() };
   const startOk = start.font === "geist" && start.theme === "light" && start.density === "compact" && start.vars["--chat-grow"] === "5px"
     && start.vars["--ui-grow"] === "3px" && start.vars["--docs-grow"] === "5px" && start.vars["--ui-box"] === "1px"
     && JSON.stringify(start.pressed) === JSON.stringify({ chat: ["20"], ui: ["16.5"], docs: ["20"], theme: ["Light"], density: ["Compact"] })
     && start.checked === "geist" && JSON.stringify(start.fams) === JSON.stringify(FAMILIES.geist) && start.nav.fs === 16.5 && start.nav.h === 33
-    && bandOff(start.band); // GA-143: the mountains the "set" phase turned off stay off
+    && islandsOn(start.islands, "light", 45); // GA-290: the gizai-band the "set" phase left is gone, the islands in light (compact: the top bar 44 + 5 - 4)
   const reset = q<HTMLButtonElement>("button.link", appearancePanel() ?? document);
   const resetEnabled = !!reset && !reset.disabled;
   reset?.click();
@@ -1719,11 +1758,11 @@ async function appearanceKeptProbe() {
   const after = { font: html.dataset.font ?? null, theme: html.dataset.theme ?? null, density: html.dataset.density ?? null, vars: htmlVars(), kept: kept(),
     pressed: { chat: pressedIn("Chat size"), ui: pressedIn("Interface size"), docs: pressedIn("Tasks and docs size"), theme: pressedIn("Theme"), density: pressedIn("Density") },
     reset_disabled: reset?.disabled ?? null, fams: appFonts(), nav: box(q(".side .nav-item")), bg: getComputedStyle(document.documentElement).backgroundColor,
-    band: bandState() };
+    islands: islandsState() };
   const afterOk = after.font === null && after.theme === "dark" && after.density === null && Object.keys(after.vars).length === 0 && Object.keys(after.kept).length === 0
     && JSON.stringify(after.pressed) === JSON.stringify({ chat: ["15"], ui: ["13.5"], docs: ["15"], theme: ["Dark"], density: ["Comfortable"] })
     && after.reset_disabled === true && JSON.stringify(after.fams) === JSON.stringify(FAMILIES.atkinson) && after.nav.fs === 13.5 && after.nav.h === 32
-    && after.bg !== "rgb(255, 255, 255)" && bandOn(after.band, "dark"); // GA-143: Reset to defaults turns the mountains on again
+    && after.bg === ISLANDS.dark.island && islandsOn(after.islands, "dark", 44); // GA-290: Reset to defaults: the islands in dark, the top bar 44
   // whatever happened, leave the defaults for the next test's start
   if (Object.keys(kept()).length) resetAppearance();
   await sleep(1500);

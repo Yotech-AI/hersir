@@ -111,7 +111,10 @@ describe("the colours", () => {
   it("are D1's values, after c-grey in design/tokens.json, and tokens.css is made from it", () => {
     const names = tokensJson.color.tokens.map((x) => x.name);
     const at = names.indexOf("c-grey") + 1;
-    expect(tokensJson.color.tokens.slice(at, at + d1.tokens.length)).toEqual(d1.tokens);
+    // GA-290: the islands (design/islands, round 3) lift diff-fold in dark from #16181e to #202228, a step up from the island
+    const islands = d1.tokens.map((x) => x.name === "diff-fold" ? { ...x, value: { dark: "#202228", light: "#f1f3f8" } } : x);
+    expect(d1.tokens.find((x) => x.name === "diff-fold")?.value).toEqual({ dark: "#16181e", light: "#f1f3f8" });
+    expect(tokensJson.color.tokens.slice(at, at + d1.tokens.length)).toEqual(islands);
     expect(d1.tokens.map((x) => x.name).sort()).toEqual([...SYN.map((s) => `syn-${s}`), ...DIFF_TEXT, "diff-add-soft", "diff-del-soft", "diff-add-strong", "diff-del-strong", "diff-fold"].sort());
     expect(tokensFile).toBe(tokensCss(tokensJson));
   });

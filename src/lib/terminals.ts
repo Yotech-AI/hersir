@@ -94,7 +94,7 @@ export const THEME_TOKENS: [keyof ITheme, string][] = [
   ["brightBlack", "term-bright-black"], ["brightRed", "term-bright-red"], ["brightGreen", "term-bright-green"],
   ["brightYellow", "term-bright-yellow"], ["brightBlue", "term-bright-blue"], ["brightMagenta", "term-bright-magenta"],
   ["brightCyan", "term-bright-cyan"], ["brightWhite", "term-bright-white"],
-  ["scrollbarSliderBackground", "line-2"], ["scrollbarSliderHoverBackground", "text-3"], ["scrollbarSliderActiveBackground", "text-3"],
+  ["scrollbarSliderBackground", "scroll-thumb"], ["scrollbarSliderHoverBackground", "scroll-thumb-hover"], ["scrollbarSliderActiveBackground", "scroll-thumb-hover"],
 ];
 export function themeFrom(read: (token: string) => string): ITheme {
   const theme: Record<string, string> = {};

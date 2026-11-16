@@ -153,9 +153,10 @@ describe("what each tab has", () => {
     const t = text(of("General"));
     for (const s of ["Data folder", "/home/you/.local/share/gizai/worktrees", "Run logs", "Worktrees of finished cards", "the old worktrees"]) expect(t).toContain(s);
   });
-  it("Appearance: Font, the three text sizes, Theme and Density, Background (the mountains, GA-143), and Reset to defaults", () => {
-    expect(sections(of("Appearance"))).toEqual(["Font", "Text size", "Theme and density", "Background"]);
-    expect(text(of("Appearance"))).toContain("Show mountains along the bottom");
+  it("Appearance: Font, the three text sizes, Theme and Density, and Reset to defaults (the mountains' Background went with the islands, GA-290)", () => {
+    expect(sections(of("Appearance"))).toEqual(["Font", "Text size", "Theme and density"]);
+    expect(text(of("Appearance"))).not.toContain("Show mountains along the bottom");
+    expect(of("Appearance")).not.toContain("type=\"checkbox\"");
     const a = of("Appearance");
     for (const l of ["Font", "Chat size", "Interface size", "Tasks and docs size", "Theme", "Density"]) expect(a).toContain(`aria-label="${l}"`);
     expect(text(a)).toContain("Reset to defaults");
@@ -181,7 +182,7 @@ describe("what each tab has", () => {
   });
   it("every section is on exactly one tab", () => {
     const all = sections(html);
-    expect(all).toEqual(["Quit", "Updates", "Editor folders", "Data", "Backups", "Font", "Text size", "Theme and density", "Background", "Notifications", "Coding CLIs", "Runs", "MCP servers", "GitHub", "Bitbucket"]);
+    expect(all).toEqual(["Quit", "Updates", "Editor folders", "Data", "Backups", "Font", "Text size", "Theme and density", "Notifications", "Coding CLIs", "Runs", "MCP servers", "GitHub", "Bitbucket"]);
   });
 });
 
