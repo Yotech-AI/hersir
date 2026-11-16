@@ -10,9 +10,17 @@ const TOKEN_STARTS: [(&str, usize); 15] = [
     ("sk-", 20), ("xoxb-", 10), ("xoxp-", 10), ("xoxa-", 10), ("xoxr-", 10), ("xoxs-", 10), ("ATATT", 20), ("AKIA", 16),
 ];
 
-/// A word holding one of these (in any case) names a secret: the word after it is its value when `=` or `:` comes
+/// A word holding one of these (in any case) names a secret: the value after it is left out when `=` or `:` comes
 /// between (`TOKEN=…`, `"api_key": "…"`, `Authorization: …`), or a space after a flag (`--password …`).
-const SECRET_NAMES: [&str; 7] = ["token", "secret", "password", "passwd", "apikey", "api_key", "authorization"];
+const SECRET_NAMES: [&str; 12] = ["token", "secret", "password", "passwd", "passphrase", "credential", "authorization",
+                                  "apikey", "api_key", "api-key", "cookie", "webhook"];
+
+/// A word ending in one of these (in any case) names a secret too: `OPENAI_KEY`, `APP_KEY`, `apiKey`, `MYSQL_PWD`,
+/// `DB_PASS`, `COMPOSER_AUTH`.
+const SECRET_ENDS: [&str; 4] = ["key", "pwd", "pass", "auth"];
+
+/// The quotes a value can stand in.
+const QUOTES: [char; 3] = ['\'', '"', '`'];
 
 /// What stands where something was left out.
 pub const LEFT_OUT: &str = "***";
@@ -21,8 +29,13 @@ pub const LEFT_OUT: &str = "***";
 /// - the password in a URL (`https://me:***@host`), and a URL's whole login over HTTP and HTTPS, where it is a token
 ///   (`https://***@github.com`); `ssh://git@host` and `git@host:owner/repo` stay as they are;
 /// - tokens by their known start (`TOKEN_STARTS`: `ghp_***`, `github_pat_***`, `sk-***` …) and JSON web tokens (`eyJ***`);
-/// - the value after a name with a secret in it (`SECRET_NAMES`) and `=` or `:` (`PASSWORD=***`, `"token": "***"`), or
-///   after such a flag and a space (`--password ***`), and the word after `Bearer` or `Basic`.
+/// - the whole value after a name that names a secret (`SECRET_NAMES`, `SECRET_ENDS`) and `=` or `:` (`PASSWORD=***`,
+///   `APP_KEY=***`, `"token": "***"`), or after such a flag and a space (`--password ***`), whatever characters it holds:
+///   up to a space or the line's end, a quoted one up to its closing quote (`'***'`), and one in braces or brackets up
+///   to the one that closes them (`value_end`);
+/// - the value after `Bearer` or `Basic`, and both words after `Authorization:` (`Authorization: *** ***`);
+/// - mysql's and mariadb's password stuck to `-p` (`-p***`), and the password in a login after `-u` or `--user`, as curl
+///   takes it (`-u me:***`).
 ///
 /// Everything else stays as it was, line breaks included.
 pub fn hidden(text: &str) -> String {
@@ -68,51 +81,238 @@ fn hide_url_logins(text: &str) -> String {
     out
 }
 
-/// `text` with secret words left out: tokens by their start, and the value after a secret's name, a flag or a scheme.
+/// `text` with secret words left out: tokens by their start, and the values `secret_value` finds, each whole.
 fn hide_words(text: &str) -> String {
-    let is_word = |c: char| c.is_alphanumeric() || "_-.~+/".contains(c);
-    // the text in runs of word characters and of the rest, in order
-    let mut runs: Vec<(bool, &str)> = vec![];
-    let mut start = 0;
-    let mut kind = None;
-    for (j, c) in text.char_indices() {
-        let w = is_word(c);
-        if kind != Some(w) {
-            if let Some(k) = kind {
-                runs.push((k, &text[start..j]));
-            }
-            start = j;
-            kind = Some(w);
-        }
-    }
-    if let Some(k) = kind {
-        runs.push((k, &text[start..]));
-    }
+    // mysql's and mariadb's password sticks to its flag (`-pS3cret`), which means other things elsewhere
+    let lower = text.to_ascii_lowercase();
+    let mysql = lower.contains("mysql") || lower.contains("mariadb");
     let mut out = String::with_capacity(text.len());
-    let mut hide_next = false;
-    for (n, (word, part)) in runs.iter().enumerate() {
-        if !word {
-            out.push_str(part);
+    let mut i = 0;
+    while let Some(c) = text[i..].chars().next() {
+        if !is_word(c) {
+            out.push(c);
+            i += c.len_utf8();
             continue;
         }
-        if hide_next {
-            out.push_str(LEFT_OUT);
-        } else {
-            out.push_str(&token_hidden(part));
-        }
-        let between = match runs.get(n + 1) {
-            Some((false, s)) => *s,
-            _ => "",
+        let end = text[i..].find(|c: char| !is_word(c)).map_or(text.len(), |n| i + n);
+        let word = &text[i..end];
+        let Some((mut at, mut quote)) = secret_value(text, i, end, mysql) else {
+            out.push_str(&token_hidden(word));
+            i = end;
+            continue;
         };
-        let lower = part.to_ascii_lowercase();
-        let names_secret = SECRET_NAMES.iter().any(|name| lower.contains(name));
-        let assigns = between.contains(['=', ':']) && between.chars().all(|c| " \t=:'\"".contains(c));
-        let spaced = !between.is_empty() && between.chars().all(|c| c == ' ' || c == '\t');
-        hide_next = (names_secret && assigns)
-            || (names_secret && part.starts_with('-') && spaced)
-            || ((lower == "bearer" || lower == "basic") && spaced);
+        if at < end {
+            // `-pS3cret`
+            out.push_str(&text[i..at]);
+        } else {
+            out.push_str(&token_hidden(word));
+            out.push_str(&text[end..at]);
+        }
+        let outer = outer_quote(text, i, at);
+        // after `Authorization:` its scheme and then its credentials go, and after a value `Bearer` or `Basic` the next one
+        let mut and_next = word.to_ascii_lowercase().contains("authorization");
+        loop {
+            let stop = value_end(text, at, quote, outer);
+            let value = &text[at..stop];
+            if !value.is_empty() {
+                out.push_str(LEFT_OUT);
+            }
+            i = stop;
+            if quote.is_some() || !(and_next || is_scheme(value)) {
+                break;
+            }
+            and_next = false;
+            let next = text.len() - text[i..].trim_start_matches([' ', '\t']).len();
+            match text[next..].chars().next() {
+                Some(c) if next > i && c != '\n' && c != '\r' && Some(c) != outer => {
+                    (at, quote) = opening(text, next);
+                    out.push_str(&text[i..at]);
+                }
+                _ => break,
+            }
+        }
     }
     out
+}
+
+/// Whether `c` belongs in a word, as names, flags, paths and tokens have them.
+fn is_word(c: char) -> bool {
+    c.is_alphanumeric() || "_-.~+/".contains(c)
+}
+
+/// Whether a word in lower case names a secret (`SECRET_NAMES`, `SECRET_ENDS`).
+fn names_secret(lower: &str) -> bool {
+    SECRET_NAMES.iter().any(|name| lower.contains(name)) || SECRET_ENDS.iter().any(|end| lower.ends_with(end))
+}
+
+/// Whether `word` is an Authorization scheme that a secret follows.
+fn is_scheme(word: &str) -> bool {
+    word.eq_ignore_ascii_case("bearer") || word.eq_ignore_ascii_case("basic")
+}
+
+/// Where the secret value after the word `text[start..end]` starts, if one follows it, and the quote it starts after:
+/// - after a word that names a secret and `=` or `:` (`assignment`);
+/// - after a flag that names a secret and spaces: `--password …`, `--api-key '…'`;
+/// - after `Bearer` or `Basic` and spaces;
+/// - in a text about mysql or mariadb, the password stuck to `-p`: `-pS3cret`, `-p'…'`;
+/// - after `-u` or `--user`, the password after a login's `:`: `-u me:…`.
+fn secret_value(text: &str, start: usize, end: usize, mysql: bool) -> Option<(usize, Option<char>)> {
+    let word = &text[start..end];
+    let rest = &text[end..];
+    if names_secret(&word.to_ascii_lowercase()) {
+        if let Some(n) = assignment(rest) {
+            return Some(opening(text, end + n));
+        }
+        if word.starts_with('-') && let Some(n) = spaced(rest) {
+            return Some(opening(text, end + n));
+        }
+    }
+    if is_scheme(word) && let Some(n) = spaced(rest) {
+        return Some(opening(text, end + n));
+    }
+    if mysql && word.starts_with("-p") && !word.starts_with("--") && text[start + 2..].starts_with(|c: char| !c.is_whitespace()) {
+        return Some(opening(text, start + 2));
+    }
+    if word == "-u" || word == "--user" {
+        let n = spaced(rest).or_else(|| (word == "--user" && rest.starts_with('=')).then_some(1))?;
+        let (at, quote) = opening(text, end + n);
+        let login_end = value_end(text, at, quote, outer_quote(text, start, at));
+        let colon = text[at..login_end].find(':')?;
+        return Some((at + colon + 1, quote));
+    }
+    None
+}
+
+/// Where a value starts after a word that names a secret, when `=` or `:` (also `=>` and `:=`) follows it: after the
+/// word's closing quote and spaces, if any, the sign, and spaces (`=`, `: `, `": "`, `' => '`). A `:` needs a space or a
+/// quote after it, as in YAML, JSON and headers, so `key:generate` and `token:***@host` hold no value; `==` is none.
+fn assignment(rest: &str) -> Option<usize> {
+    let n = rest.len() - rest.trim_start_matches([' ', '\t', '\'', '"', '`']).len();
+    let after = &rest[n..];
+    let sign = if after.starts_with("=>") || after.starts_with(":=") {
+        2
+    } else if (after.starts_with('=') && !after.starts_with("=="))
+        || (after.starts_with(':') && after[1..].starts_with([' ', '\t', '\'', '"', '`'])) {
+        1
+    } else {
+        return None;
+    };
+    Some(rest.len() - rest[n + sign..].trim_start_matches([' ', '\t']).len())
+}
+
+/// Where a value starts after the spaces `rest` starts with, when something follows them on the same line.
+fn spaced(rest: &str) -> Option<usize> {
+    let n = rest.len() - rest.trim_start_matches([' ', '\t']).len();
+    (n > 0 && rest[n..].starts_with(|c: char| c != '\n' && c != '\r')).then_some(n)
+}
+
+/// `at`, or the place after the quote at `at` that a value starts with, and that quote.
+fn opening(text: &str, at: usize) -> (usize, Option<char>) {
+    match text[at..].chars().next() {
+        Some(q) if QUOTES.contains(&q) => (at + 1, Some(q)),
+        _ => (at, None),
+    }
+}
+
+/// The quote around the value at `at` after the word at `start`, which ends the value: the one right before that word,
+/// when nothing in between closes it (`'Authorization: Bearer …'`), else a `"` or `` ` `` the line opened before the
+/// value and didn't close (`sh -c "… TOKEN=…"`).
+fn outer_quote(text: &str, start: usize, at: usize) -> Option<char> {
+    if let Some(q) = text[..start].chars().next_back().filter(|c| QUOTES.contains(c)) && !text[start..at].contains(q) {
+        return Some(q);
+    }
+    let line = &text[text[..at].rfind('\n').map_or(0, |n| n + 1)..at];
+    ['"', '`'].into_iter().find(|&q| unclosed(line, q))
+}
+
+/// Whether `line` leaves a `q` open: an odd number of them, one after `\` not counted.
+fn unclosed(line: &str, q: char) -> bool {
+    let (mut open, mut escaped) = (false, false);
+    for c in line.chars() {
+        if escaped {
+            escaped = false;
+        } else if c == '\\' {
+            escaped = true;
+        } else if c == q {
+            open = !open;
+        }
+    }
+    open
+}
+
+/// Where the value at `at` ends, whatever characters it holds:
+/// - one that started after the quote `quote`, at its closing quote (`closing`), also on a later line; without one, at
+///   the text's end;
+/// - one in braces or brackets (`{"token": …}`), after the one that closes them; without one, at the text's end;
+/// - any other at a space or a line's end, or at `outer`, the quote it stands in. A quoted part in it and a character
+///   after `\` are part of it (`PASSWORD=ab'c d'`, `ab\ c`), and so is a quote with no partner on its line, unless the
+///   value ends right after it: that one closes a quote around the value (`sh -c "… TOKEN=abc"`).
+fn value_end(text: &str, at: usize, quote: Option<char>, outer: Option<char>) -> usize {
+    if let Some(q) = quote {
+        return closing(text, at, q, false).unwrap_or(text.len());
+    }
+    if let Some(open @ ('{' | '[')) = text[at..].chars().next() {
+        return bracketed_end(text, at, open).unwrap_or(text.len());
+    }
+    let mut n = at;
+    while let Some(c) = text[n..].chars().next() {
+        if c.is_whitespace() || Some(c) == outer {
+            return n;
+        }
+        let mut next = n + c.len_utf8();
+        if c == '\\' {
+            next += text[next..].chars().next().map_or(0, char::len_utf8);
+        } else if QUOTES.contains(&c) {
+            match closing(text, next, c, true) {
+                Some(k) => next = k + 1,
+                None if text[next..].chars().next().is_none_or(char::is_whitespace) => return n,
+                None => {}
+            }
+        }
+        n = next;
+    }
+    text.len()
+}
+
+/// Where the quote `q` that opened before `from` closes: at the next `q`, one after `\` not counted in `"…"` and
+/// `` `…` ``; with `same_line`, only on the same line.
+fn closing(text: &str, from: usize, q: char, same_line: bool) -> Option<usize> {
+    let mut escaped = false;
+    for (n, c) in text[from..].char_indices() {
+        if escaped {
+            escaped = false;
+        } else if c == q {
+            return Some(from + n);
+        } else if same_line && c == '\n' {
+            return None;
+        } else {
+            escaped = c == '\\' && q != '\'';
+        }
+    }
+    None
+}
+
+/// The end of the braces or brackets that `open` at `at` opens, with quoted parts in them skipped: after the one that
+/// closes them.
+fn bracketed_end(text: &str, at: usize, open: char) -> Option<usize> {
+    let close = if open == '{' { '}' } else { ']' };
+    let mut depth = 0usize;
+    let mut n = at;
+    while let Some(c) = text[n..].chars().next() {
+        let mut next = n + c.len_utf8();
+        if c == '"' {
+            next = closing(text, next, c, false)? + 1;
+        } else if c == open {
+            depth += 1;
+        } else if c == close {
+            depth -= 1;
+            if depth == 0 {
+                return Some(next);
+            }
+        }
+        n = next;
+    }
+    None
 }
 
 /// `word`, or its known start and `***` when it is a token (`TOKEN_STARTS`, a JSON web token).
