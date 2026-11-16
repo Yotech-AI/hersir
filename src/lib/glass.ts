@@ -1,12 +1,14 @@
 // The glass behind the islands (GA-292; design/islands/README.md → The glass, and design/islands-settings/README.md →
 // Appearance: the glass switch). The window is see-through (src-tauri/tauri.conf.json: transparent). With the glass on,
 // the page paints the gradient at 92% in dark and 86% in light (glass-from, glass-to, glass-glow) and the system blurs the
-// desktop behind it: vibrancy on macOS, Mica on Windows 11, and on Hyprland the compositor's own blur (when it is on). The islands and what floats stay solid. Otherwise the background is GA-290's opaque gradient and the window's
-// effects are cleared.
+// desktop behind it: vibrancy on macOS, Mica on Windows 11, and on Hyprland the compositor's own blur (when it is on).
+// The islands and what floats stay solid. Otherwise the background is GA-290's opaque gradient and the window's effects
+// are cleared.
 //
 // The glass is on when Settings → Appearance's switch is on (lib/appearance.ts: glass), the system gives a blur (not
-// Windows 10, not Linux other than Hyprland), and the system doesn't ask for reduced transparency (prefers-reduced-transparency, where the web view knows
-// it). html.glass is the page's side (app.css). A change of any of the three shows at once, without a restart.
+// Windows 10, not Linux other than Hyprland), and the system doesn't ask for reduced transparency
+// (prefers-reduced-transparency, where the web view knows it). html.glass is the page's side (app.css). A change of any
+// of the three shows at once, without a restart.
 import { useEffect, useState } from "react";
 import { Effect, EffectState, type Effects } from "@tauri-apps/api/window";
 import { glassSupport, setWindowEffects } from "../api";
