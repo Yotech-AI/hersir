@@ -24,6 +24,17 @@ export const tourSteps = (json: unknown) => invoke<void>("tour_steps", { json: J
  *  self-test run; macOS and Windows have no such command. */
 export const selftestPaste = (command: "Paste" | "PasteGlobalSelection" | null, clipboard?: string) =>
   invoke<number>("selftest_paste", { command, clipboard: clipboard ?? null });
+/** GA-281: the panic hook's self-test. Panics on Hersir's main thread a moment after it resolves, so Hersir's log gets a
+ *  `panic:` line with a backtrace, and Hersir most likely ends there, as after a crash. Refused outside a self-test run. */
+export const selftestPanic = () => invoke<void>("selftest_panic");
+
+// ---- Hersir's own log (GA-281): one file per start in <data folder>/logs ----
+/** The logs folder, this start's log, and the previous start that ended unexpectedly, until it is dismissed. */
+export const getLogsInfo = () => invoke<T.LogsInfo>("get_logs_info");
+/** Opens the logs folder in the system's file manager. */
+export const openLogsFolder = () => invoke<void>("open_logs_folder");
+/** Dismisses the unexpected end: getLogsInfo's unexpectedEnd is null from then on, also after a restart. */
+export const dismissUnexpectedEnd = () => invoke<void>("dismiss_unexpected_end");
 
 // The first start's onboarding (GA-162, GA-164): it waits on a new install until it is finished or skipped.
 export const onboardingPending = () => invoke<boolean>("onboarding_pending");
