@@ -477,7 +477,37 @@ button.label-pill[aria-pressed="true"] { border-color: var(--accent); color: var
 .msg-files-error { margin-top: 4px; text-align: right; font-size: var(--fs-xs); color: var(--warning); }
 /* A link to a Gizai item (the @ picker's): a chip with its name, in editors and wherever the text is shown */
 .item-chip, .prose a.item-chip { padding: 1px 6px; border-radius: 5px; background: var(--accent-soft); color: var(--accent); font-size: .94em; text-decoration: none; cursor: pointer; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
-.item-chip:hover, .prose a.item-chip:hover { background: var(--selected); color: var(--accent-hover); }
+.item-chip:hover, .prose a.item-chip:hover, a.item-chip[aria-describedby] { background: var(--selected); color: var(--accent-hover); }
+/* The chip's hover card (GA-287; design/islands/README.md → The chip's hover card): it floats, solid, in a portal on body */
+.chip-card { position: fixed; z-index: 1000; top: 0; left: 0; box-sizing: border-box; width: 300px; max-width: calc(100vw - 16px);
+  display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-3) 10px;
+  background: var(--float); border: 1px solid var(--line-2); border-radius: var(--radius-l); box-shadow: var(--shadow-pop);
+  color: var(--text); text-align: left; white-space: normal; cursor: default; }
+.chip-card p { margin: 0; }
+.chip-card-head { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.chip-card-id { color: var(--text-3); }
+.chip-card-title { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
+.chip-card-title > .avatar { margin-top: 1px; }
+.chip-card-title > .chip-card-dot { margin-top: 6px; }
+.chip-card-name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; min-width: 0; color: var(--text); }
+.chip-card-key { margin-left: 6px; color: var(--text-3); }
+.chip-card-rows { display: flex; flex-direction: column; gap: var(--space-1); margin: 0; }
+.chip-card-row { display: flex; align-items: flex-start; gap: var(--space-2); min-width: 0; }
+.chip-card-row dt { flex: none; width: 56px; color: var(--text-3); }
+.chip-card-row dd { flex: 1; display: flex; flex-direction: column; min-width: 0; margin: 0; }
+.chip-card-val { display: flex; align-items: flex-start; gap: 6px; min-width: 0; color: var(--text); overflow-wrap: break-word; }
+.chip-card-val > span:last-child { min-width: 0; }
+.chip-card-val.none { color: var(--text-2); }
+.chip-card-val.live { color: var(--live); }
+.chip-card-val.anywhere { overflow-wrap: anywhere; }
+.chip-card-val > .avatar { margin-top: 0; }
+.chip-card-val > .st { margin-top: 1px; }
+.chip-card-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; }
+.chip-card-val > .chip-card-dot { margin-top: 5px; }
+.chip-card-live { flex: none; width: 6px; height: 6px; margin-top: 6px; border-radius: 50%; background: var(--live); }
+.chip-card-hold { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; color: var(--needs); }
+.chip-card-note { color: var(--text-2); }
+.chip-card-foot { color: var(--text-3); }
 .pop.up { top: auto; bottom: calc(100% + 6px); }
 .pop.item-picker { position: fixed; z-index: 1000; width: 360px; max-width: calc(100vw - 16px); max-height: 300px; }
 .item-picker .opt { min-width: 0; }
