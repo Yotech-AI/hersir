@@ -255,7 +255,7 @@ pub fn remove_agent(db: &Db, actor: &str, state_id: &str, agent_id: &str) -> Res
 /// The columns an agent with this role usually works, as places in `cols`: a team's columns in board order, each as its
 /// category and the place of its next column. Builders (every role but lead, qa and devops) get the first To do column
 /// and the Work column it links to (else the first In progress column), QA the first Testing column, DevOps the first
-/// Deploy column, the Team Lead none. A new agent lands on them (`place_new_agent`), and so do the built-in team
+/// Deploy column, the Chief none. A new agent lands on them (`place_new_agent`), and so do the built-in team
 /// template's agents (`templates`), so that template never drifts from a new install.
 pub(crate) fn role_columns(cols: &[(&str, Option<usize>)], role: &str) -> Vec<usize> {
     let first = |category: &str| cols.iter().position(|(c, _)| *c == category);

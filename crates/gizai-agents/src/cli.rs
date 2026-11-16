@@ -1,7 +1,7 @@
 //! The coding CLIs an agent can run on: Claude Code, Codex, Gemini, or any other program. For each kind, the command
 //! line of one headless task run and how its output turns into the same `RunEvent`s the Run panel shows.
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
@@ -75,9 +75,13 @@ pub struct TaskRun {
     /// Claude Code style, e.g. `Bash(git status:*)`.
     pub allowed_tools: Vec<String>,
     pub max_budget_usd: Option<f64>,
-    /// Folders outside the worktree the agent must be able to write: the repository's git folder, where a worktree's
-    /// commits go (Codex's sandbox only lets it write the worktree).
+    /// Folders outside the worktree the agent must be able to write: the parts of the repository's git folder that a
+    /// commit in the worktree writes (`worktree::commit_dirs`: `objects`, `refs`, `logs` and its own `worktrees/<name>`),
+    /// never the git folder itself, its `config` or its `hooks` (Codex's sandbox only lets it write the worktree).
     pub writable_dirs: Vec<String>,
+    /// The names of the run's own MCP servers (the agent's, agent form → Tools). Gemini starts no other server, not even
+    /// one of your own settings (`--allowed-mcp-server-names`); none: no server at all.
+    pub mcp_servers: Vec<String>,
     /// The agent's own folders (agent form → Folders) that are there: see `task_exec` for what each CLI gets.
     pub folders: Vec<RunFolder>,
     /// The run's temp folder, short and outside the worktree (`worktree::prepare_run_temp`), or `<worktree>/.gizai-tmp`
@@ -85,8 +89,9 @@ pub struct TaskRun {
     /// and change it like one of the agent's folders (see `task_exec`). None when Gizai couldn't make either.
     pub temp_dir: Option<String>,
     /// The git settings that send the agent's own push to the project's repository the way Gizai pushes
-    /// (`connection::PushOver::run_config`): every CLI gets them as GIT_CONFIG_COUNT, GIT_CONFIG_KEY_<n> and
-    /// GIT_CONFIG_VALUE_<n> (`task_exec`). Empty: none.
+    /// (`connection::PushOver::run_config`), and in Codex's sandbox `rerere.enabled=false` (its commits can't make the
+    /// git folder's `rr-cache`, see `worktree::commit_dirs`): every CLI gets them as GIT_CONFIG_COUNT, GIT_CONFIG_KEY_<n>
+    /// and GIT_CONFIG_VALUE_<n> (`task_exec`). Empty: none.
     pub git_config: Vec<(String, String)>,
     /// Claude Code: the run's MCP config file (`mcp_run`), with the agent's MCP servers on.
     pub mcp_config: Option<PathBuf>,
@@ -205,9 +210,9 @@ fn toml_str(s: &str) -> String {
 }
 
 /// `codex exec --json … -` (a new session) or `codex exec resume --json … <session> -`; the prompt comes on stdin.
-/// The sandbox is set with `-c`, which both forms take: "workspace-write" (the default) may write the worktree and the
-/// repository's git folder and use the network (for fetches and pushes), "read-only" changes nothing, and
-/// "danger-full-access" runs without a sandbox.
+/// The sandbox is set with `-c`, which both forms take: "workspace-write" (the default) may write the worktree and what
+/// a commit writes in the repository's git folder (`TaskRun::writable_dirs`; not its config or hooks, GA-263) and use
+/// the network (for fetches and pushes), "read-only" changes nothing, and "danger-full-access" runs without a sandbox.
 fn codex_args(run: &TaskRun) -> Vec<String> {
     let mut a: Vec<String> = vec!["exec".into()];
     if run.resume {
@@ -229,7 +234,11 @@ fn codex_args(run: &TaskRun) -> Vec<String> {
         _ => {
             a.extend(["-c".into(), r#"sandbox_mode="workspace-write""#.into()]);
             a.extend(["-c".into(), "sandbox_workspace_write.network_access=true".into()]);
-            // The repository's git folder, the agent's read and change folders and the run's temp folder.
+            // What a commit writes in the repository's git folder (`objects`, `refs`, `logs`, the worktree's own
+            // `worktrees/<name>`), the agent's read and change folders and the run's temp folder. Never the git folder
+            // itself: an agent could put a hook or a program setting in its config or hooks, which your own git in your
+            // checkout would run, outside any sandbox. Codex 0.163.0 keeps `worktrees/<name>` read-only under a writable
+            // git folder (it protects the folder the worktree's .git points at), but not when it is a writable root itself.
             let roots: Vec<String> = run.writable_dirs.iter().chain(run.folders.iter().filter(|f| f.change).map(|f| &f.path))
                 .chain(&run.temp_dir).map(|d| toml_str(d)).collect();
             if !roots.is_empty() {
@@ -258,11 +267,31 @@ pub fn gemini_tool(claude_tool: &str) -> Option<String> {
     (!cmd.is_empty()).then(|| format!("run_shell_command({cmd})"))
 }
 
+/// Why Hersir doesn't start a Gemini run in a worktree with a `.gemini` (`gemini_folder`, GA-263): the card goes on hold
+/// "blocked" with it.
+pub const GEMINI_FOLDER: &str = "This repository has a .gemini folder, whose settings could start programs outside the agent's \
+                                 allowed commands: remove it from the branch, or run the card on Claude Code or Codex.";
+
+/// Whether the worktree at `wt` has a `.gemini` (a folder, or a file or link by that name): Gemini would load what is in
+/// it in every run (see `gemini_args`).
+pub fn gemini_folder(wt: &Path) -> bool {
+    std::fs::symlink_metadata(wt.join(".gemini")).is_ok()
+}
+
 /// `gemini --output-format stream-json …`, headless; the prompt comes on stdin and `-p` only adds a last line after it.
 /// The approval mode: "auto_edit" (the default: edits, plus the allowed commands), "yolo" (anything), "plan" (read-only)
 /// or "default" (asks, which a headless run can't, so it is refused).
+///
+/// `--skip-trust` stays (checked with Gemini CLI 0.65.0): folder trust is on unless your settings turn it off, and a
+/// headless run in a folder you haven't trusted stops at once (FatalUntrustedWorkspaceError). A trusted worktree's
+/// `.gemini/` loads with it: settings that start MCP servers, hooks and tool commands, and its commands, skills and
+/// policies. So a worktree with a `.gemini` doesn't get a Gemini run (`gemini_folder`, GA-263). No extension runs
+/// (`--extensions none`), and no MCP server but the run's own (`TaskRun::mcp_servers`): with none the list is one empty
+/// name, which no server has, as Gemini allows every server for an empty list.
 fn gemini_args(run: &TaskRun) -> Vec<String> {
-    let mut a: Vec<String> = ["--output-format", "stream-json", "--skip-trust"].iter().map(|s| s.to_string()).collect();
+    let mut a: Vec<String> = ["--output-format", "stream-json", "--skip-trust", "--extensions", "none", "--allowed-mcp-server-names"]
+        .iter().map(|s| s.to_string()).collect();
+    a.push(run.mcp_servers.join(","));
     if let Some(m) = &run.model {
         a.extend(["--model".into(), m.clone()]);
     }

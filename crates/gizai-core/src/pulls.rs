@@ -141,7 +141,7 @@ pub fn note_cleanup(db: &Db, task_id: &str, sentence: &str) -> Result<()> {
     db.write(None, |w| w.update("tasks", task_id, json!({"cleanup": sentence})))
 }
 
-/// Notes in the card's activity that `actor` (the Team Lead's merge_pull_request, GA-86) merged its pull request `url`,
+/// Notes in the card's activity that `actor` (the Chief's merge_pull_request, GA-86) merged its pull request `url`,
 /// with `head` as its latest commit. The card itself changes only when the PR check sees the merge (`merged`), as when
 /// you merge.
 pub fn note_merged_by(db: &Db, actor: &str, task_id: &str, url: &str, head: &str) -> Result<()> {
@@ -149,7 +149,7 @@ pub fn note_merged_by(db: &Db, actor: &str, task_id: &str, url: &str, head: &str
 }
 
 /// A release under way in the project (GA-86): one of its cards in a Deploy column, assigned to an agent with role
-/// devops (a release card, like "Release Gizai v0.6.0"). Main mustn't move under it, so the Team Lead doesn't merge
+/// devops (a release card, like "Release Gizai v0.6.0"). Main mustn't move under it, so the Chief doesn't merge
 /// then. The card's identifier and the agent's name.
 pub fn release_under_way(db: &Db, project_id: &str) -> Result<Option<(String, String)>> {
     db.read(|c| release_in(c, project_id))

@@ -266,7 +266,7 @@ async fn a_pull_request_that_meets_every_rule_is_merged_with_a_merge_commit_and_
     let shown = t.shown.lock().unwrap().clone();
     assert_eq!(shown.len(), 1, "{shown:?}");
     assert_eq!((shown[0].title.as_str(), shown[0].body.as_str(), shown[0].route.clone()),
-               ("The Team Lead merged KADE-1's pull request #7", "Export invoices as CSV", format!("#/task/{}", t.task)));
+               ("The Chief merged KADE-1's pull request #7", "Export invoices as CSV", format!("#/task/{}", t.task)));
     assert_eq!(shown[0].kind, notifications::Kind::LeadMerged);
     // merged: a second call is refused (not in Review) and merges nothing more
     let e = t.merge().await.unwrap_err();
@@ -284,7 +284,7 @@ async fn the_merge_notifies_once_the_inboxs_own_merged_and_waits_for_deploy_noti
     assert_eq!(t.task().state_name, "Deploy");
     assert!(notifications::look(&t.st).is_empty(), "the Inbox's deploy notice doesn't come as well");
     let titles: Vec<String> = t.shown.lock().unwrap().iter().map(|n| n.title.clone()).collect();
-    assert_eq!(titles, ["The Team Lead merged KADE-1's pull request #7"]);
+    assert_eq!(titles, ["The Chief merged KADE-1's pull request #7"]);
 }
 
 #[tokio::test]
@@ -331,7 +331,7 @@ async fn refused_when_the_projects_team_lead_may_merge_switch_is_off() {
     let t = setup().await;
     t.set_switch(false);
     let e = t.merge().await.unwrap_err();
-    t.refused(&e, "KADE doesn't let you merge: its Team Lead may merge switch is off", "Review");
+    t.refused(&e, "KADE doesn't let you merge: its Chief may merge switch is off", "Review");
     assert!(t.gh_calls().is_empty(), "gh never asked");
 }
 
@@ -542,18 +542,29 @@ async fn refused_when_the_card_is_on_hold() {
 // ---- chat answers and board checks ----
 
 #[tokio::test]
-async fn refused_after_an_outside_tool_in_the_same_chat_answer_and_allowed_in_the_next_message() {
+async fn refused_after_an_outside_tool_in_the_same_chat_answer_and_kept_in_the_next_message_too() {
     let t = setup().await;
     assert!(tools::NOT_AFTER_OUTSIDE.contains(&"merge_pull_request"));
     let thread = gizai_core::chat::create_thread(&t.st.db, &t.st.you_id, &t.lead, "Merge KADE-1").unwrap();
     gizai_core::chat::add_message(&t.st.db, gizai_core::chat::NewMessage { thread_id: thread.clone(), role: "user".into(),
         author_id: Some(t.st.you_id.clone()), body_md: Some("Look it up in Otus, then merge KADE-1".into()), ..Default::default() }).unwrap();
     gizai_lib::chat::mark_outside(&t.st, &thread, "mcp__otus__search");
+    let kept = "merge_pull_request wasn't run: this chat used mcp__otus__search, a tool from outside Hersir. Hersir keeps the call \
+        for the user to approve with one click. Tell them in a sentence what it does.";
     let e = tools::call_in(&t.st, &t.lead, Some(&thread), "merge_pull_request", json!({"task": "KADE-1"})).await.unwrap_err();
     // GA-102: not run, but kept for you to approve with one click
-    assert_eq!(e, "merge_pull_request wasn't run: this answer used mcp__otus__search, a tool from outside Hersir. Hersir keeps the call \
-        for the user to approve with one click. Tell them in a sentence what it does.");
+    assert_eq!(e, kept);
     assert_eq!(gizai_lib::pending::list(&t.st, &thread).unwrap().iter().map(|p| p.action.tool.as_str()).collect::<Vec<_>>(), ["merge_pull_request"]);
+    // GA-261: the next message in that chat ("ok, merge it", no outside tool) is kept too, not run: the chat stays marked
+    gizai_core::chat::add_message(&t.st.db, gizai_core::chat::NewMessage { thread_id: thread.clone(), role: "user".into(),
+        author_id: Some(t.st.you_id.clone()), body_md: Some("ok, merge it".into()), ..Default::default() }).unwrap();
+    let e = tools::call_in(&t.st, &t.lead, Some(&thread), "merge_pull_request", json!({"task": "KADE-1"})).await.unwrap_err();
+    assert_eq!(e, kept);
+    assert_eq!(gizai_lib::pending::list(&t.st, &thread).unwrap().len(), 1, "the same call that waits already: kept once");
+    // and another acting call there waits too
+    let e = tools::call_in(&t.st, &t.lead, Some(&thread), "comment_on_task", json!({"task": "KADE-1", "body_md": "Merging."})).await.unwrap_err();
+    assert!(e.starts_with("comment_on_task wasn't run: this chat used mcp__otus__search"), "{e}");
+    assert_eq!(gizai_lib::pending::list(&t.st, &thread).unwrap().len(), 2);
     assert!(t.gh_calls().is_empty(), "gh never asked: {:?}", t.gh_calls());
     assert_eq!(t.task().state_name, "Review");
     assert!(t.lead_comments().is_empty());
@@ -656,9 +667,9 @@ async fn the_switch_is_off_by_default_and_only_a_person_sets_it_update_project_c
     for (k, v) in [("lead_may_merge", json!(true)), ("team_lead_may_merge", json!(true)), ("leadMayMerge", json!(true)), ("may_merge", json!(true)),
                    ("lead_may_merge", json!(false))] {
         let e = tools::call(&st, &lead, "update_project", json!({"project": "KADE", k: v})).await.unwrap_err();
-        assert!(e.contains("Team Lead may merge can't be switched from chat") && e.contains("Nothing changed"), "{k}: {e}");
+        assert!(e.contains("Chief may merge can't be switched from chat") && e.contains("Nothing changed"), "{k}: {e}");
         let e = tools::call(&st, &lead, "create_project", json!({"name": "Shop", "key": "SHOP", k: v})).await.unwrap_err();
-        assert!(e.contains("Team Lead may merge can't be switched from chat"), "{k}: {e}");
+        assert!(e.contains("Chief may merge can't be switched from chat"), "{k}: {e}");
     }
     assert!(!projects::get(&st.db, &id).unwrap().lead_may_merge);
     assert!(projects::list(&st.db).unwrap().iter().all(|p| p.key != "SHOP"), "no project made");
@@ -692,7 +703,7 @@ async fn the_switch_is_off_by_default_and_only_a_person_sets_it_update_project_c
 #[test]
 fn the_lead_role_template_and_the_tool_describe_the_rules() {
     let lead = gizai_core::seed::role_template("lead");
-    for part in ["merge_pull_request", "Team Lead may merge", "In a board check, merge each card in Review that it allows",
+    for part in ["merge_pull_request", "Chief may merge", "In a board check, merge each card in Review that it allows",
                  "Never work around a refusal", "Releases and deploys stay the user's"] {
         assert!(lead.contains(part), "{part:?} in the lead's template");
     }
@@ -701,7 +712,7 @@ fn the_lead_role_template_and_the_tool_describe_the_rules() {
     assert!(!tool.read_only);
     assert!(tool.description.contains("qa_pass"), "{}", tool.description);
     let docs = include_str!("../../../docs/agent-tools.md");
-    for part in ["## The Team Lead merges pull requests", "merge_pull_request", "Team Lead may merge", "--merge --match-head-commit",
+    for part in ["## The Chief merges pull requests", "merge_pull_request", "Chief may merge", "--merge --match-head-commit",
                  "A Bitbucket project is refused", "No release is under way", "Not after an outside tool"] {
         assert!(docs.contains(part), "{part:?} in docs/agent-tools.md");
     }
@@ -723,11 +734,13 @@ async fn kept_merge(t: &T) -> (String, String) {
 }
 
 /// GA-154: the last note once nothing waits for your OK any more in the chat and the Team Lead isn't answering there.
-const DONE: &str = "Nothing else waits for your OK. The Team Lead's answer above is done: send a message to go on.";
+const DONE: &str = "Nothing else waits for your OK. The Chief's answer above is done: send a message to go on.";
 
 /// Gizai's notes in a chat.
 fn chat_notes(t: &T, thread: &str) -> Vec<String> {
-    gizai_core::chat::messages(&t.st.db, thread).unwrap().into_iter().filter(|m| m.role == "system").map(|m| m.body_md.unwrap_or_default()).collect()
+    // GA-261: the line a chat gets once when a tool from outside Hersir marks it is checked in outside_chat_mark_test
+    gizai_core::chat::messages(&t.st.db, thread).unwrap().into_iter().filter(|m| m.role == "system" && m.meta.as_ref().is_none_or(|x| x["kind"] != "outside"))
+        .map(|m| m.body_md.unwrap_or_default()).collect()
 }
 
 /// The refusal a merge of KADE-1 gets in a chat answer without an outside tool, as things are now.
@@ -778,7 +791,7 @@ async fn approving_a_kept_merge_with_the_projects_switch_off_is_refused_and_merg
     assert_eq!(a.status, "failed");
     let said = a.result_md.unwrap();
     assert!(said.starts_with("Approved: merge KADE-1's pull request. It failed: ")
-            && said.contains("KADE doesn't let you merge: its Team Lead may merge switch is off"), "{said}");
+            && said.contains("KADE doesn't let you merge: its Chief may merge switch is off"), "{said}");
     assert_eq!(chat_notes(&t, &thread), [said.as_str(), DONE], "then the closing note (GA-154)");
     assert!(!t.gh_calls().iter().any(|c| c.starts_with("pr merge")), "{:?}", t.gh_calls());
     assert_eq!(t.task().state_name, "Review");

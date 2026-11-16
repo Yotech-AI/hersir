@@ -13,7 +13,7 @@
 # tables in its pull request (--compare). Its numbers are for comparing before and after: the cage draws in a 1280 × 720
 # headless output, not on your screen.
 # Scenarios: start board chat memory runlog idle editor lead (the default: all eight; see perfProbe for what each measures).
-# Builds the app when it is missing or stale (scripts/app-ready.sh) and gizai-mcp next to it (the chat's fake Team Lead
+# Builds the app when it is missing or stale (scripts/app-ready.sh) and hersir-mcp next to it (the chat's fake Team Lead
 # calls Gizai's tools), and makes the data once in .devdata/perf/base (prep_perf, with a git repository for KADE's run and
 # one of 20,000 files for the Editor); again when prep_perf.rs is newer than it, or after rm -rf .devdata/perf/base.
 # Env: RUNS=<n> runs per scenario (default 5); WEBKIT_ENV='NAME=value …' extra environment for the app, e.g. to compare
@@ -35,7 +35,7 @@ done
 RUNS=${RUNS:-5}
 source scripts/app-ready.sh
 gz_app || { echo "could not build the app"; exit 1; }
-(source scripts/env.sh && cargo build --release -q -p gizai-mcp) || { echo "could not build gizai-mcp"; exit 1; }
+(source scripts/env.sh && cargo build --release -q -p gizai-mcp) || { echo "could not build hersir-mcp"; exit 1; }
 
 PERF=$GZ/.devdata/perf
 BASE=$PERF/base; IDS=$PERF/base.ids; REPO=$PERF/repo; EDITOR=$PERF/editor
@@ -115,7 +115,7 @@ for s in $SCENARIOS; do
       GIZAI_SKIP_ONBOARDING=1 \
       XDG_DATA_HOME="$XDG/data" XDG_CACHE_HOME="$XDG/cache" XDG_CONFIG_HOME="$XDG/config" \
       __EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json ${WEBKIT_ENV:-} \
-      timeout -k 5 "$(limit "$s")" dbus-run-session -- cage -- "$RUNNER" "$dir" "$GZ/target/release/gizai" > "$dir/cage.log" 2>&1
+      timeout -k 5 "$(limit "$s")" dbus-run-session -- cage -- "$RUNNER" "$dir" "$GZ/target/release/hersir" > "$dir/cage.log" 2>&1
     if [ -s "$dir/report.json" ]; then echo done; else echo "no report (see $dir/cage.log)"; fi
   done
 done

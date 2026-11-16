@@ -44,7 +44,7 @@ const Card = memo(function Card({ task, onOpen, onArchive, working, shots, waits
       <div className="top"><span className="id">{task.identifier}</span>
         {task.prUrl && <span className={`badge ${pullBadge(task.prState).cls}`} title={`Pull request: ${pullBadge(task.prState).text.toLowerCase()} on ${hostName(task.prUrl)}`}>{pullLabel(task.prUrl)}</span>}
         {!!shots && task.stateCategory === "review" && <BoardShotSign taskId={task.id} count={shots} />}
-        {task.hold && (task.withLead ? <span className="badge live" title="Its question is with the Team Lead">Team Lead</span>
+        {task.hold && (task.withLead ? <span className="badge live" title="Its question is with the Chief">Chief</span>
           : <span className="badge needs">On hold</span>)}{task.priority > 0 && <PriorityIcon priority={task.priority} />}
         {onArchive && (
           // Its own pointer and key events stay here: pressing it neither starts a drag nor opens the card.

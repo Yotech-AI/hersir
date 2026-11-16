@@ -19,7 +19,7 @@ Background, only when the card needs it:
 
 - **Never touch the Hersir Jeffrey uses.**
   - Don't run `./install.sh`.
-  - Don't start `~/.local/bin/gizai` or anything in `~/.local/lib/gizai`.
+  - Don't start `~/.local/bin/hersir`, `~/.local/bin/gizai` or anything in `~/.local/lib/hersir` or `~/.local/lib/gizai` (an install from before 0.17.0 keeps that folder and gets the hersir names in it).
   - Don't open, copy or change `~/.local/share/gizai`: that is his real data, and an older build refuses a newer database.
   - Test Hersir's own update only with a scratch install and a fake release, with `HOME` and `XDG_DATA_HOME` in the scratch folder too (`docs/RELEASING.md` → Testing an update).
 - **Never start a GUI on Jeffrey's screen.** UI tests run headless in `cage` (`scripts/ui-test.sh`, `scripts/shot-cage.sh`).

@@ -1,6 +1,7 @@
 // GA-102: what the Team Lead couldn't do after a tool from outside Gizai, under the answer that tried it: each call with one
 // plain line about what it does, a preview, and Approve and Discard; Approve all when there are several. Approve runs exactly
 // that call, once, with every other rule in force; Discard runs nothing. Either way a note in the chat says what happened.
+// GA-261: a chat stays marked once it used such a tool, so a later answer's calls wait too: the line says "This chat used".
 import { useState } from "react";
 import { ArrowRight, Check, CircleAlert, X } from "lucide-react";
 import { approvePendingAction, approvePendingActions, discardPendingAction } from "../../api";
@@ -56,7 +57,7 @@ export function PendingActions({ actions, onError }: { actions: PendingAction[];
     <section className="pending-actions" aria-label="Waiting for your OK">
       <div className="pa-head">
         <span className="badge needs">Waiting for your OK</span>
-        <span className="pa-why" title={outside}>This answer used {outsideLabel(outside)}, a tool from outside Hersir, so Hersir didn't run {actions.length === 1 ? "this" : "these"}.</span>
+        <span className="pa-why" title={outside}>This chat used {outsideLabel(outside)}, a tool from outside Hersir, so Hersir didn't run {actions.length === 1 ? "this" : "these"}.</span>
         {waiting.length > 1 && (
           <BusyButton className="btn sm primary" pending={pending} name="all" busyLabel="Approving…" icon={<Check className="icon" />}
             title="Runs each of these, in this order" onClick={() => pending.act("all", () => approvePendingActions(waiting.map((a) => a.id)), fail)}>

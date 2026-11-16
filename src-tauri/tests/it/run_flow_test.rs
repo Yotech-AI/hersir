@@ -13,6 +13,12 @@ fn git_repo(dir: &std::path::Path) -> std::path::PathBuf {
     repo
 }
 
+fn git(dir: &std::path::Path, args: &[&str]) -> String {
+    let o = std::process::Command::new("git").args(["-c", "user.email=t@t", "-c", "user.name=t"]).args(args).current_dir(dir).output().unwrap();
+    assert!(o.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&o.stderr));
+    String::from_utf8(o.stdout).unwrap().trim().to_string()
+}
+
 #[tokio::test]
 async fn fake_claude_run_moves_card_to_testing() {
     let tmp = tempfile::tempdir().unwrap();
@@ -25,9 +31,40 @@ async fn fake_claude_run_moves_card_to_testing() {
     assert_eq!(gizai_core::tasks::get(&st.db, &task).unwrap().state_name, "Testing");
     let run = &gizai_core::runs::list_for_task(&st.db, &task).unwrap()[0];
     assert_eq!((run.cost_usd_micros, run.input_tokens), (420_000, 38_000));
-    assert!(run.branch.as_deref().unwrap().starts_with("gizai/kade-1-"));
+    assert!(run.branch.as_deref().unwrap().starts_with("hersir/kade-1-"), "GA-249: a new card's branch is hersir/");
     assert!(std::path::Path::new(run.worktree_path.as_deref().unwrap()).join(".git").exists());
     assert_eq!(gizai_lib::runs::events_for(&st, &run.id).len(), 7, "6 log lines → 7 events, replayed from the log");
+}
+
+/// GA-249: a card that has a gizai/ branch from before 0.17.0 keeps it. Here its worktree was removed and its title
+/// changed since, so a branch named after the title now would be another one.
+#[tokio::test]
+async fn a_card_with_a_gizai_branch_from_before_0_17_runs_on_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let st = gizai_lib::test_state(tmp.path());
+    let repo = git_repo(tmp.path());
+    let task = gizai_lib::test_task(&st, repo.to_str().unwrap(), "backend");
+    let old = "gizai/kade-1-as-0-16-named-it";
+    git(&repo, &["branch", old, "main"]);
+    let scratch = tmp.path().join("scratch");
+    git(&repo, &["worktree", "add", "-q", scratch.to_str().unwrap(), old]);
+    std::fs::write(scratch.join("work.txt"), "from 0.16.0\n").unwrap();
+    git(&scratch, &["add", "work.txt"]);
+    git(&scratch, &["commit", "-q", "-m", "work from 0.16.0"]);
+    git(&repo, &["worktree", "remove", scratch.to_str().unwrap()]);
+    let work = git(&repo, &["rev-parse", old]);
+    st.db.write(None, |w| { w.conn().execute("UPDATE tasks SET branch=?2 WHERE id=?1", [task.as_str(), old])?; Ok(()) }).unwrap();
+
+    let s = gizai_lib::runs::run_once(&st, &task, None, Some(FAKE.into())).await.unwrap();
+    assert_eq!(s.status, "succeeded", "{:?}", s.error);
+    let run = &gizai_core::runs::list_for_task(&st.db, &task).unwrap()[0];
+    assert_eq!(run.branch.as_deref(), Some(old), "the run is on the card's own branch");
+    assert_eq!(gizai_core::tasks::get(&st.db, &task).unwrap().branch.as_deref(), Some(old), "the card keeps it");
+    let wt = std::path::PathBuf::from(run.worktree_path.as_deref().unwrap());
+    assert_eq!(git(&wt, &["branch", "--show-current"]), old);
+    git(&wt, &["merge-base", "--is-ancestor", &work, "HEAD"]);
+    assert!(wt.join("work.txt").is_file(), "with its work from before");
+    assert_eq!(git(&repo, &["branch", "--list", "hersir/*"]), "", "no hersir/ branch made");
 }
 
 #[tokio::test]

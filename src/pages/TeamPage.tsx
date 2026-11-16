@@ -234,7 +234,7 @@ export function TeamPage() {
             onDragCancel={() => { setDragging(null); setOverId(null); }}>
             <section>
               <div className="section-head"><h3>Organisation</h3><span className="faint" style={{ fontSize: "var(--fs-sm)" }}>
-                {agents.length === 0 ? "Start with the Team Lead: the agent you chat with. Click an empty spot to add an agent there."
+                {agents.length === 0 ? "Start with the Chief: the agent you chat with. Click an empty spot to add an agent there."
                   : "Click an agent to open it, an empty spot to add one; drag an agent onto a column below to put it there"}</span></div>
               <div className="panel org-panel">
                 <OrgChart members={team.members} teamId={team.id} branches={team.branches} onError={setErr}

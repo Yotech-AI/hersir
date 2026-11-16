@@ -1,8 +1,8 @@
-//! Prepares a copy of the demo data for the UI Chat archive test (GA-46): a paused Team Lead with Chat on (agents paused in
+//! Prepares a copy of the demo data for the UI Chat archive test (GA-46): a paused Chief with Chat on (agents paused in
 //! Settings too, Claude Code pointed at the fake) and 36 chats, more than Recent's 30. "Chat 1" … "Chat 35", Chat n's last
-//! activity n hours ago, each with a message of yours; the oldest, Chat 35, has the Team Lead's "The old flamingo plan is in
+//! activity n hours ago, each with a message of yours; the oldest, Chat 35, has the Chief's "The old flamingo plan is in
 //! the docs."; Chat 34 has "We are 50% done"; Chat 33 has "flamingo" only in a tool call and in Gizai's note, which the search
-//! skips. The newest is a Team Lead question, "Which database?", half an hour ago (labelled Question).
+//! skips. The newest is a Chief question, "Which database?", half an hour ago (labelled Question).
 //! usage: cargo run -p gizai-core --example prep_chats -- <data dir> <fake claude>
 use gizai_core::{chat, db::Db, ids, model::*, seed::ensure_seed, settings, team};
 use serde_json::json;
@@ -15,7 +15,7 @@ fn main() {
     settings::set(&db, "claude_bin", fake).unwrap();
     settings::set(&db, "agents_paused", &true).unwrap();
     let lead = team::add_agent(&db, &s.you_id, &s.team_id,
-        AgentInput { name: "Team Lead".into(), role_key: "lead".into(), chat_enabled: Some(true), ..Default::default() }).unwrap();
+        AgentInput { name: "Chief".into(), role_key: "lead".into(), chat_enabled: Some(true), ..Default::default() }).unwrap();
     team::set_agent_status(&db, &s.you_id, &lead, "paused").unwrap();
 
     let say = |thread: &str, role: &str, body: &str| {

@@ -268,7 +268,7 @@ pub async fn rename_doc(app: AppHandle, st: State<'_, AppState>, id: String, tit
 }
 
 // ---- memory (GA-19; the Memory page is GA-68) ----
-/// An agent's own notes in Memory: the Team Lead's `Team Lead/Notes` (made the first time), another agent's
+/// An agent's own notes in Memory: the Chief's `Chief/Notes` (made the first time), another agent's
 /// `Agents/<name>/Notes`, or for an agent that shares another agent's folder (GA-96) that folder's; None when it has none.
 #[tauri::command]
 pub async fn agent_notes(app: AppHandle, st: State<'_, AppState>, agent_id: String) -> R<Option<gizai_core::memory::Note>> {
@@ -344,7 +344,7 @@ pub async fn set_memory_enabled(app: AppHandle, st: State<'_, AppState>, on: boo
     changed(&app, "settings");
     Ok(())
 }
-/// Agents ask the Team Lead before you (Settings → Runs, GA-70): on unless switched off.
+/// Agents ask the Chief before you (Settings → Runs, GA-70): on unless switched off.
 #[tauri::command]
 pub async fn ask_lead_enabled(st: State<'_, AppState>) -> R<bool> { off(&st, |st| Ok(gizai_core::questions::enabled(&st.db))).await }
 #[tauri::command]
@@ -708,7 +708,7 @@ pub async fn subscription_limits(st: State<'_, AppState>) -> R<Vec<gizai_core::l
     off(&st, crate::limits::subscription).await
 }
 
-// ---- chat with the Team Lead ----
+// ---- chat with the Chief ----
 use crate::chat;
 
 /// The chats, newest activity first: the `limit` newest (Chat → Recent), or all of them (the Inbox).
@@ -724,7 +724,26 @@ pub async fn list_chat_threads(st: State<'_, AppState>, limit: Option<usize>) ->
 pub async fn get_chat_thread(st: State<'_, AppState>, thread_id: String) -> R<gizai_core::chat::ChatThread> {
     off(&st, move |st| gizai_core::chat::get_thread(&st.db, &thread_id).map_err(e)).await
 }
-/// Chat → Archive: the chats whose title or messages (yours and the Team Lead's) hold `query`; all of them for an empty one.
+/// Chat → Pinned (GA-257): the pinned chats, the most recently pinned first, also those older than the ones in Recent.
+#[tauri::command]
+pub async fn pinned_chats(st: State<'_, AppState>) -> R<Vec<gizai_core::chat::ChatThread>> {
+    off(&st, |st| gizai_core::chat::pinned_threads(&st.db).map_err(e)).await
+}
+/// Pin to the top on a chat: it shows under Pinned, at the top, until it is unpinned.
+#[tauri::command]
+pub async fn pin_chat(app: AppHandle, st: State<'_, AppState>, thread_id: String) -> R<()> {
+    off(&st, move |st| gizai_core::chat::set_pinned(&st.db, &thread_id, true).map_err(e)).await?;
+    changed(&app, "chat_pins");
+    Ok(())
+}
+/// Unpin on a chat: it leaves Pinned (and is in Recent again when it is one of the 30 newest).
+#[tauri::command]
+pub async fn unpin_chat(app: AppHandle, st: State<'_, AppState>, thread_id: String) -> R<()> {
+    off(&st, move |st| gizai_core::chat::set_pinned(&st.db, &thread_id, false).map_err(e)).await?;
+    changed(&app, "chat_pins");
+    Ok(())
+}
+/// Chat → Archive: the chats whose title or messages (yours and the Chief's) hold `query`; all of them for an empty one.
 #[tauri::command]
 pub async fn search_chat_threads(st: State<'_, AppState>, query: String) -> R<Vec<gizai_core::chat::ThreadHit>> {
     off(&st, move |st| gizai_core::chat::search_threads(&st.db, &query).map_err(e)).await
@@ -734,7 +753,7 @@ pub async fn chat_messages(st: State<'_, AppState>, thread_id: String) -> R<Vec<
     off(&st, move |st| gizai_core::chat::messages(&st.db, &thread_id).map_err(e)).await
 }
 /// Sends a message (in a new thread when `thread_id` is None, which runs on `cli` when one was picked under the text box)
-/// with the `files` added to it (paths; the text may be empty then) and starts the Team Lead's answer; while it is
+/// with the `files` added to it (paths; the text may be empty then) and starts the Chief's answer; while it is
 /// answering in the thread, the message is queued with its files. Returns the thread id.
 #[tauri::command]
 pub async fn send_chat(st: State<'_, AppState>, thread_id: Option<String>, text: String, cli: Option<String>, files: Option<Vec<String>>) -> R<String> {
@@ -776,7 +795,7 @@ pub async fn item_id(st: State<'_, AppState>, kind: String, key: String) -> R<St
         _ => Ok(key),
     }).await
 }
-/// The chat's queued messages: they wait while the Team Lead answers.
+/// The chat's queued messages: they wait while the Chief answers.
 #[tauri::command]
 pub async fn chat_queue(st: State<'_, AppState>, thread_id: String) -> R<Vec<gizai_core::chat::QueuedMessage>> {
     off(&st, move |st| chat::queue(st, &thread_id)).await
@@ -790,7 +809,7 @@ pub async fn remove_queued_chat(st: State<'_, AppState>, id: String) -> R<()> { 
 /// Send now: the chat's queued messages go together (after the answer being written, if there is one).
 #[tauri::command]
 pub async fn send_chat_queue(st: State<'_, AppState>, thread_id: String) -> R<()> { chat::send_queue(&st, &thread_id, None).await.map(|_| ()) }
-/// Runs on under the text box: the chat's next answers run on `cli` (None: on the Team Lead's Runs on).
+/// Runs on under the text box: the chat's next answers run on `cli` (None: on the Chief's Runs on).
 #[tauri::command]
 pub async fn set_chat_cli(st: State<'_, AppState>, thread_id: String, cli: Option<String>) -> R<gizai_core::chat::ChatThread> {
     off(&st, move |st| chat::set_cli(st, &thread_id, cli.as_deref())).await
@@ -819,15 +838,15 @@ pub async fn chat_live(st: State<'_, AppState>) -> R<Vec<chat::ChatStatus>> { Ok
 /// The agent that answers on the Chat page, if any.
 #[tauri::command]
 pub async fn chat_agent(st: State<'_, AppState>) -> R<Option<team::Member>> { off(&st, |st| team::chat_agent(&st.db).map_err(e)).await }
-/// × on a Team Lead chat in the Inbox: it no longer waits for you (it stays in Chat → Recent).
+/// × on a Chief chat in the Inbox: it no longer waits for you (it stays in Chat → Recent).
 #[tauri::command]
 pub async fn dismiss_chat(app: AppHandle, st: State<'_, AppState>, thread_id: String) -> R<()> {
     off(&st, move |st| gizai_core::chat::dismiss(&st.db, &st.you_id, &thread_id).map_err(e)).await?;
     changed(&app, "chat_threads");
     Ok(())
 }
-/// GA-102: the Team Lead's calls that wait for your approval in a chat (after a tool from outside Gizai), each with what
-/// it would do now. Only these commands, for you, list, approve or discard them; no tool of the Team Lead's does.
+/// GA-102: the Chief's calls that wait for your approval in a chat (after a tool from outside Gizai), each with what
+/// it would do now. Only these commands, for you, list, approve or discard them; no tool of the Chief's does.
 #[tauri::command]
 pub async fn pending_actions(st: State<'_, AppState>, thread_id: String) -> R<Vec<crate::pending::PendingView>> {
     off(&st, move |st| crate::pending::list(st, &thread_id)).await
@@ -850,8 +869,8 @@ pub async fn discard_pending_action(st: State<'_, AppState>, id: String) -> R<gi
 /// Whether the first start's onboarding waits: true on a new install until it is finished or skipped.
 #[tauri::command]
 pub async fn onboarding_pending(st: State<'_, AppState>) -> R<bool> { off(&st, |st| Ok(crate::onboarding::pending(st))).await }
-/// Finishes the onboarding: your name, the team's and the agents' coding CLI, then the Team Lead's welcome chat. Returns
-/// that chat's id; None when the Team Lead can't answer.
+/// Finishes the onboarding: your name, the team's and the agents' coding CLI, then the Chief's welcome chat. Returns
+/// that chat's id; None when the Chief can't answer.
 #[tauri::command]
 pub async fn finish_onboarding(st: State<'_, AppState>, input: gizai_core::onboarding::OnboardingInput) -> R<Option<String>> {
     Ok(crate::onboarding::finish(&st, input).await?.map(|(thread_id, _answer)| thread_id))
@@ -1119,8 +1138,8 @@ pub async fn agent_cli_tools(st: State<'_, AppState>, agent_id: Option<String>, 
     blocking(move || crate::mcp_servers::tools_view(&st, agent_id.as_deref(), &cli_id)).await
 }
 
-/// Saves the agent's Web and Built-in tool switches, and its Take screenshots of what it built (GA-182). Only you: no Team
-/// Lead tool calls this.
+/// Saves the agent's Web and Built-in tool switches, and its Take screenshots of what it built (GA-182). Only you: no
+/// Chief tool calls this.
 #[tauri::command]
 pub async fn save_agent_cli_tools(app: AppHandle, st: State<'_, AppState>, agent_id: String, tools: crate::mcp_servers::CliToolsInput)
     -> R<crate::mcp_servers::SavedCliTools> {

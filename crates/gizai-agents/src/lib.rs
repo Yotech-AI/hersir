@@ -1,8 +1,8 @@
 //! Agent runtime pieces: the coding CLIs (Claude Code, Codex, Gemini, others) and their command lines, stream parsing, outcomes, git worktrees and how they are prepared,
-//! the Team Lead's read-only copies of the projects' code,
+//! the Chief's read-only copies of the projects' code,
 //! a card's changes from git, pull requests (gh, and Bitbucket's REST API), the connection to GitHub and Bitbucket (pushes over SSH or HTTPS, gh's
 //! login), prompts and process control,
-//! Gizai's own updates (the release check, building and installing a release), and terminals (your shell in a
+//! Gizai's own updates (the release check, a release's signature, downloading or building and installing a release), and terminals (your shell in a
 //! pseudo-terminal). Never imports Tauri.
 pub mod behind;
 pub mod bitbucket;
@@ -15,6 +15,7 @@ pub mod cli;
 pub mod connection;
 pub mod copies;
 pub mod editor;
+pub mod env;
 pub mod github;
 pub mod mcp_client;
 pub mod mcp_import;
@@ -28,6 +29,7 @@ pub mod prepare;
 pub mod preview;
 pub mod process;
 pub mod prompt;
+pub mod release_sig;
 pub mod run_memory;
 pub mod screenshots;
 pub mod secrets;

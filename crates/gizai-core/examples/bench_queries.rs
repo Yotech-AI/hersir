@@ -1,8 +1,8 @@
 //! Times Gizai's hot core functions on prep_perf's data, without a window (GA-188, docs/research/performance.md §7 part
 //! 4 and F3): each one 30 times after a warm-up, and prints one JSON line per query, like
-//! {"name":"tasks.list","runs":30,"median_us":4200,"p95_us":5100}. The queries are what the window and the Team Lead's
+//! {"name":"tasks.list","runs":30,"median_us":4200,"p95_us":5100}. The queries are what the window and the Chief's
 //! tools read most: the task list with each filter they use (the window's list_tasks sends none, filters in the page and
-//! gets the lean list without acceptance criteria, tasks::list_lean since GA-191; the Team Lead's tools get the full one,
+//! gets the lean list without acceptance criteria, tasks::list_lean since GA-191; the Chief's tools get the full one,
 //! with none to find a card, or a project and open cards, then a column or an assignee in Rust), the bin, the Inbox, a
 //! card, its comments and activity, the project list, the team (the window's lean one without the agents' instructions,
 //! and the tools' full one), the chat list, a big chat, Usage, Memory, and the whole board check, the longest read.
@@ -42,7 +42,7 @@ fn main() {
     let kade = projects::list(&db).unwrap().into_iter().find(|p| p.key == "KADE").expect("no project KADE: run prep_perf first").id;
     let kade1 = tasks::get(&db, &tasks::id_of(&db, "KADE-1").unwrap()).unwrap();
     let backend = kade1.assignee_id.clone().expect("KADE-1 has no assignee: run prep_perf first");
-    let lead = team::chat_agent(&db).unwrap().expect("no Team Lead with Chat on").actor_id;
+    let lead = team::chat_agent(&db).unwrap().expect("no Chief with Chat on").actor_id;
     let in_progress = team::get(&db, &s.team_id).unwrap().states.into_iter().find(|st| st.category == "in_progress").unwrap().name;
     let (big, first_run): (String, i64) = db.read(|c| Ok((
         c.query_row("SELECT thread_id FROM chat_messages GROUP BY thread_id ORDER BY count(*) DESC LIMIT 1", [], |r| r.get(0))?,

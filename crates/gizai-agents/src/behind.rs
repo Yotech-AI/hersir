@@ -43,7 +43,7 @@ pub struct FolderMain {
     /// What Update will do, in the plan's words ("move main 3 commits to 319bf0b and run npm ci"); else why it can't,
     /// as the sentence after "Update can't run:"; while an update runs, what it does.
     pub update_says: String,
-    /// An update of the folder runs now: from the Editor, or from the Team Lead's chat.
+    /// An update of the folder runs now: from the Editor, or from the Chief's chat.
     pub updating: bool,
 }
 

@@ -218,7 +218,7 @@ export type AppInfo = { version: string; data_dir: string; selftest: boolean; yo
  *  for the Backend, Frontend, QA and DevOps Agents (null: they stay where the seed put them). */
 export type OnboardingInput = { youName: string; teamName: string; agentsCli: string | null };
 export type Doc = { id: string; projectId?: string | null; title: string; bodyMd: string; currentVersion: number; updatedAt: number;
-  /** "memory" for a memory note (GA-19), with its path like "Team Lead/Notes"; "doc" for a project's. */
+  /** "memory" for a memory note (GA-19), with its path like "Chief/Notes"; "doc" for a project's. */
   kind?: string; path?: string | null };
 export type DocVersion = { version: number; authorName?: string | null; createdAt: number };
 export type FileRow = { id: string; name: string; mime?: string | null; sizeBytes: number; sha256: string; createdAt: number };
@@ -313,7 +313,7 @@ export type LeadAnswer = {
 };
 /** A memory note a run's prompt was given: its path, its length and how much of it the prompt showed (less when cut). */
 export type GivenNote = { path: string; chars: number; shown: number };
-/** A note in Gizai's Memory (GA-19): a doc of kind memory, with a path like "Team Lead/Notes". */
+/** A note in Gizai's Memory (GA-19): a doc of kind memory, with a path like "Chief/Notes". */
 export type MemoryNote = { id: string; path: string; scope: "shared" | "agent"; ownerId?: string | null; bodyMd: string; currentVersion: number;
   updatedAt: number; updatedBy?: string | null; chars: number };
 /** What saving a memory note did. */
@@ -371,6 +371,11 @@ export type Settings = { claudeBin?: string | null; dataDir: string; maxConcurre
    *  until set. Read-only next to it: the computer's memory in GB (0 when the system doesn't say), and whether the system
    *  enforces the limit (Linux with a systemd user session; elsewhere Gizai only waits for free memory before a run). */
   runsMemoryGb?: number; computerMemoryGb?: number; runsMemoryEnforced?: boolean;
+  /** Settings → Runs → Memory per run (GA-277), in GB: one run at most, half of Memory for agent runs until set (and it
+   *  follows that), never more than Memory for agent runs. Sent back unchanged, it keeps what was saved. Next to it, to be
+   *  sent back as it came: Memory per run as get_settings gave it, so a save tells a value the page showed (also after
+   *  another save changed it) from one someone typed. */
+  runsMemoryPerRunGb?: number; runsMemoryPerRunShownGb?: number;
   /** Settings → Runs: the limits of an answer of the Team Lead (also a board check and its look at a question). */
   maxChatMinutes: number; maxChatToolCalls: number;
   /** The GitHub CLI; null = found when needed. */
@@ -516,10 +521,17 @@ export type BitbucketStatus = {
 };
 
 // ---- updates: Settings → Updates and the notice above Company ----
-/** A release on GitHub: `version` "0.1.6" from the tag "v0.1.6"; `url` is its page, `notes` its Markdown notes. */
-export type Release = { version: string; tag: string; name?: string | null; url?: string | null; publishedAt?: string | null; notes?: string | null };
-/** While an update runs: source (getting it), build, backup, install. When it has ended: installed, failed, stopped. */
-export type UpdateStep = "source" | "build" | "backup" | "install" | "installed" | "failed" | "stopped";
+/** A release on GitHub: `version` "0.1.6" from the tag "v0.1.6"; `url` is its page, `notes` its Markdown notes.
+ * `assets`: the files attached to it (its ready-made builds, SHA256SUMS, its signature hersir-X.Y.Z.sig); null when a
+ * Hersir from before GA-253 found it. */
+export type Release = {
+  version: string; tag: string; name?: string | null; url?: string | null; publishedAt?: string | null; notes?: string | null;
+  assets?: { name: string; url: string }[] | null;
+};
+/** While an update runs: source (getting it and checking its signature), download (its ready-made build), build (from
+ * source, when there is no ready-made build or it didn't work), backup, install. When it has ended: installed, failed,
+ * stopped. */
+export type UpdateStep = "source" | "download" | "build" | "backup" | "install" | "installed" | "failed" | "stopped";
 export type UpdateJob = {
   version: string; step: UpdateStep; startedAt: number; endedAt?: number | null;
   /** Its log: every command and what it said. */
@@ -531,6 +543,8 @@ export type UpdateJob = {
   problem?: string | null; output?: string | null;
   /** When it failed: whether the Gizai installed before is still in place, as it was (unless the install failed partway). */
   unchanged: boolean;
+  /** Why it builds from source instead of installing the release's ready-made build, in a sentence without its full stop. */
+  fromSource?: string | null;
 };
 export type UpdateStatus = {
   /** This Gizai's version. */
@@ -540,12 +554,18 @@ export type UpdateStatus = {
   checking: boolean;
   /** The last check: when, the latest release it found, and why it didn't work. */
   checkedAt?: number | null; latest?: Release | null; problem?: GithubProblem | null;
-  /** The latest release when it is newer than this Gizai. */
+  /** The latest release when it is newer than this Gizai and signed: only that one is offered. */
   available?: Release | null;
+  /** The latest release when it is newer than this Gizai but not signed yet. */
+  unsigned?: Release | null;
   /** A newer version that is installed already: a restart starts it. */
   installed?: string | null;
   /** Where an update installs, or why this Gizai can't update itself (a dev build). */
   installTo?: string | null; cannotInstall?: string | null;
+  /** The package manager this Hersir came from ("aur", "homebrew", "scoop", …), or null: an install script's Hersir or a dev build. */
+  package?: string | null;
+  /** The command that updates a package's Hersir ("yay -Syu"), or null. */
+  updateCommand?: string | null;
   /** The update that runs now, or the last one since Gizai started. */
   job?: UpdateJob | null;
   /** Where releases come from. */
@@ -702,6 +722,8 @@ export type McpToolView = {
   hints: McpHints; hintsSent: string[];
   /** low | medium | high */
   risk: string; summary: string; notes: string[];
+  /** GA-262: why runs leave it out, never allowing it ("left out: its name isn't a plain tool name"); null when they don't. */
+  leftOut?: string | null;
 };
 export type McpListed = { serverName: string; serverVersion: string; listedAt: number; tools: McpToolView[] };
 export type McpServerView = McpServer & {
@@ -720,7 +742,12 @@ export type McpCandidate = {
 };
 export type McpScan = { servers: McpCandidate[]; problems: string[] };
 export type McpPick = { key: string; name: string };
-export type AgentServer = { serverId: string; on: boolean; toolsOff: string[] };
+export type AgentServer = {
+  serverId: string; on: boolean; toolsOff: string[];
+  /** GA-271, for an agent with Chat on (the Chief): After the Chief uses it, Allow (true) or Ask for my OK (false or left out,
+   *  as in data saved before). With Allow, its tools don't mark a chat as having used a tool from outside Hersir. */
+  trusted?: boolean;
+};
 export type AgentTools = { mcp: AgentServer[] };
 export type AgentServerView = {
   serverId: string; name: string; transport: string; on: boolean; toolsOff: string[]; signIn: string;
@@ -739,6 +766,9 @@ export type CliTools = {
   builtin: string[];
   /** Slash commands and skills (Claude Code's SlashCommand and Skill, one switch): on, its task runs may use them. */
   slashCommands: boolean;
+  /** GA-271, for an agent with Chat on (the Chief): After the Chief uses it, Allow (true) or Ask for my OK (false or left out,
+   *  as in data saved before) for Web. With Allow, WebSearch and WebFetch don't mark a chat. */
+  webTrusted?: boolean;
   /** Take screenshots of what it built (GA-182, contract CP; agent form → Tools, under the browser). An agent's saved
    *  tools carry it (its role's default until set). */
   screenshots: boolean;               // only with the browser on; a new agent's default: true for frontend, design and qa (SB1)

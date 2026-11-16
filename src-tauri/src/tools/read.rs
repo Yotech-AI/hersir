@@ -31,14 +31,14 @@ fn task_line(t: &Task) -> Value {
     v
 }
 
-/// A file on a client, project or task larger than this isn't copied into the Team Lead's folder (GA-207).
+/// A file on a client, project or task larger than this isn't copied into the Chief's folder (GA-207).
 const LEAD_COPY_MAX_BYTES: i64 = 100 << 20;
 
-/// One copy into the Team Lead's folder at a time: two calls at once would both write the same copy, and the second
+/// One copy into the Chief's folder at a time: two calls at once would both write the same copy, and the second
 /// can't open it (a copy is read-only, as its blob is).
 static LEAD_COPYING: Mutex<()> = Mutex::new(());
 
-/// The files of a client, project or task, each with `path`: a copy in the Team Lead's own folder to read with Read
+/// The files of a client, project or task, each with `path`: a copy in the Chief's own folder to read with Read
 /// (`chat::lead_file_path`, GA-207), made off the async threads the first time and reused after that. A file larger
 /// than 100 MB isn't copied (`note`), and one that can't be copied says why (`error`): both have no path, and the
 /// other files still come.
@@ -114,7 +114,7 @@ pub(crate) fn overview(cx: &Cx) -> Result<Value, String> {
     }))
 }
 
-/// The chats the Team Lead started that wait for the user's answer, newest first.
+/// The chats the Chief started that wait for the user's answer, newest first.
 fn lead_chats(cx: &Cx) -> Result<Vec<Value>, String> {
     Ok(gizai_core::chat::waiting_lead_chats(cx.db()).map_err(err)?.into_iter().map(|t| json!({
         "title": t.title, "kind": t.kind, "tasks": t.tasks, "since": ymd(t.updated_at),
@@ -251,10 +251,12 @@ pub(crate) async fn get_task(cx: &Cx<'_>, a: &Args) -> Result<Value, String> {
         "id": t.id, "task": t.identifier, "title": t.title, "project": t.project_name, "column": t.state_name, "priority": t.priority,
         "assignee": t.assignee_name, "labels": t.labels.iter().map(|l| l.name.clone()).collect::<Vec<_>>(), "hold": t.hold,
         "hold_reason": t.hold_reason, "testing": t.testing, "description_md": t.description_md, "acceptance_md": t.acceptance_md, "branch": t.branch,
-        // GA-70: its question is with you (the Team Lead's run on it answers or asks the user).
+        // GA-70: its question is with you (the Chief's run on it answers or asks the user).
         "with_team_lead": t.with_lead,
         // GA-111: pinned to a person who does it by hand (Open in editor): no agent takes it until they hand it over.
         "by_hand": t.by_hand,
+        // GA-261: on hold for the user's OK after a tool from outside Hersir (GA-101): only the user takes that hold off.
+        "waiting_for_ok": t.waits_for_your_ok(),
         "created": ymd(t.created_at), "updated": ymd(t.updated_at),
         "archived": t.archived_at.is_some(), "archived_on": t.archived_at.map(ymd), "archived_by": t.archived_by,
         "builds_on": builds_on, "needed_by": needed_by,

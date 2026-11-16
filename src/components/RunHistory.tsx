@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { ChevronRight, FileDiff } from "lucide-react";
 import { runCommits, runEvents } from "../api";
 import { commitCount, elapsed, formatCost, formatTokens, lastAgentText, leadText, resumeCommand, runReason, toolCalls, triggerName } from "../lib/runs";
+import { roleLabel } from "../lib/agents";
 import { relTime } from "../lib/format";
 import { href } from "../router";
 import type { Commit, Run, SeqEvent } from "../types";
@@ -53,7 +54,7 @@ function RunRow({ r }: { r: Run }) {
     <div className={`run-row${open ? " open" : ""}`} id={`run-${r.id}`}>
       <div className="panel-row run-line"><button className="run-open" aria-expanded={open} onClick={toggle}>
         <ChevronRight className="icon sm chev" />{outcomeBadge(r)}<span className="chip-id">{r.id.slice(-8)}</span>
-        <span className="grow">{r.agentName} <span className="faint">· {r.roleKey} · {triggerName(r)}</span>
+        <span className="grow">{r.agentName} <span className="faint">· {roleLabel(r.roleKey ?? "")} · {triggerName(r)}</span>
           {commits && commits.length > 0 && <span className="faint"> · {commitCount(commits.length)}</span>}{reason && <span className="faint"> · {reason}</span>}
           {/* The badge says it while the Team Lead has the question, or answered it. */}
           {r.lead && !["asking", "answering", "answered"].includes(r.lead.state)
@@ -79,7 +80,7 @@ function RunRow({ r }: { r: Run }) {
             <dt>Tool calls</dt><dd>{events ? toolCalls(events) : "…"}</dd>
             <dt>Tokens</dt><dd>{formatTokens(r.inputTokens)} in, {formatTokens(r.outputTokens)} out</dd>
             <dt>Cost</dt><dd>{formatCost(r.costUsdMicros)}</dd>
-            {r.lead?.runId && <><dt>Team Lead's look</dt><dd>{formatCost(r.lead.costUsdMicros)}, on the Team Lead's budget{r.lead.note && !r.lead.learned ? ` · answer kept in ${r.lead.note}` : ""}</dd></>}
+            {r.lead?.runId && <><dt>Chief's look</dt><dd>{formatCost(r.lead.costUsdMicros)}, on the Chief's budget{r.lead.note && !r.lead.learned ? ` · answer kept in ${r.lead.note}` : ""}</dd></>}
             {r.branch && <><dt>Branch</dt><dd className="mono">{r.branch}</dd></>}
             {r.baseSha && <><dt>Started at commit</dt><dd className="mono">{r.baseSha.slice(0, 9)}</dd></>}
             {r.headSha && <><dt>Ended at commit</dt><dd className="mono">{r.headSha.slice(0, 9)}</dd></>}

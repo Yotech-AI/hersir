@@ -1,5 +1,5 @@
-// A place for a terminal (GA-135, TF0; design §3 and §5): the Terminal page has one, and the Editor's terminal panel
-// (TF2). When this place shows the terminal, the terminal's one view moves in, fits it and sends the size; when another
+// A place for a terminal (GA-135, TF0; design §3 and §5): the Terminal page has one, the Editor's terminal panel (TF2) and
+// the Chat's terminal panel (GA-278). When this place shows the terminal, the terminal's one view moves in, fits it and sends the size; when another
 // place asked for it later, this place says where it is, with Show here. Find (Ctrl+Shift+F, Cmd+F on macOS) floats at
 // the top right, so the terminal keeps its size; the Terminal page's ⋯ → Find opens it too (findAsk, GA-136).
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -14,6 +14,7 @@ import {
 export function awayText(s: TerminalSession, shown: TerminalPlace | null): string {
   if (shown?.kind === "page") return `${s.name} is on its own page.`;
   if (shown?.kind === "panel") return `${s.name} is in ${folderNameOf(s)}'s Editor.`;
+  if (shown?.kind === "chat") return `${s.name} is in the Chat's terminal panel.`;
   return `${s.name} isn't shown anywhere.`;
 }
 

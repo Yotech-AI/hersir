@@ -1,5 +1,5 @@
 //! First start (GA-162): a new install asks your name and your team's name, which coding CLI the agents run on and
-//! whether to import MCP servers, then opens the Team Lead's chat with a welcome message. The seed has made everything
+//! whether to import MCP servers, then opens the Chief's chat with a welcome message. The seed has made everything
 //! already (`seed::ensure_seed_with_agents`), so a closed or skipped onboarding still leaves a working app: finishing only
 //! renames, moves the agents to a CLI and starts the chat (the app starts it, with `WELCOME`).
 use serde::{Deserialize, Serialize};
@@ -54,7 +54,7 @@ fn clear_in(w: &Writer) -> Result<bool> {
 /// on the first team, the Backend, Frontend, QA and DevOps Agents on `agents_cli`, and the onboarding no longer waits.
 /// The names are trimmed. Moved agents get the CLI's permission default and its own model and effort, as the seed gives
 /// them: acceptEdits on Claude Code, the CLI's own default on the others (Codex's workspace-write sandbox, Gemini's
-/// auto_edit, none on Other). The Team Lead stays where it is, on Claude Code, where the chat runs. Nothing to set up,
+/// auto_edit, none on Other). The Chief stays where it is, on Claude Code, where the chat runs. Nothing to set up,
 /// an empty name and an unknown CLI fail and change nothing. Starting the welcome chat is the app's.
 pub fn finish(db: &Db, you_id: &str, input: &OnboardingInput) -> Result<()> {
     let you_name = input.you_name.trim();
@@ -101,7 +101,7 @@ pub fn finish(db: &Db, you_id: &str, input: &OnboardingInput) -> Result<()> {
 
         if let Some((cli_id, kind)) = cli {
             let mode = clis::permission_modes(&kind).first().copied().unwrap_or_default();
-            // Every default agent's role but the Team Lead's; the agent with Chat stays too.
+            // Every default agent's role but the Chief's; the agent with Chat stays too.
             let roles: Vec<&str> = seed::DEFAULT_AGENTS.iter().map(|(_, role)| *role).filter(|r| *r != "lead").collect();
             let agents: Vec<String> = {
                 let mut st = c.prepare(

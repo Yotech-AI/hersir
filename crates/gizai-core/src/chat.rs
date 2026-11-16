@@ -1,8 +1,8 @@
-//! Chat with the Team Lead: threads (one Claude Code session each, on the coding CLI the chat runs on), their messages,
-//! and the messages that wait while the Team Lead answers (the queue). A turn's process, stream and tools live in the app;
+//! Chat with the Chief: threads (one Claude Code session each, on the coding CLI the chat runs on), their messages,
+//! and the messages that wait while the Chief answers (the queue). A turn's process, stream and tools live in the app;
 //! this is only the record, and the hand-over a new session gets.
 use rusqlite::OptionalExtension;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use serde::Serialize;
 use serde_json::Value;
 
@@ -27,24 +27,24 @@ pub struct ChatThread {
     pub cost_usd_micros: i64,
     pub input_tokens: i64,
     pub output_tokens: i64,
-    /// Who started it: you, or the Team Lead during a board check.
+    /// Who started it: you, or the Chief during a board check.
     pub created_by: Option<String>,
-    /// A chat the Team Lead started: question | approval. None: your own chat.
+    /// A chat the Chief started: question | approval. None: your own chat.
     pub kind: Option<String>,
-    /// The cards a Team Lead chat is about (ids), and their identifiers.
+    /// The cards a Chief chat is about (ids), and their identifiers.
     pub task_ids: Vec<String>,
     pub tasks: Vec<String>,
     /// You sent a message in it.
     pub answered_at: Option<i64>,
     /// You dismissed it in the Inbox.
     pub dismissed_at: Option<i64>,
-    /// A Team Lead chat that still waits for you: it is in the Inbox.
+    /// A Chief chat that still waits for you: it is in the Inbox.
     pub waiting: bool,
-    /// The chat's own Runs on (a coding CLI's id); None: it follows the Team Lead's (agent form → Runs on).
+    /// The chat's own Runs on (a coding CLI's id); None: it follows the Chief's (agent form → Runs on).
     pub cli: Option<String>,
     /// The coding CLI whose account holds `session_id`: another one can't resume it.
     pub session_cli: Option<String>,
-    /// GA-102: the Team Lead's calls that wait for your approval in it (`pending`). While there are any, the chat waits
+    /// GA-102: the Chief's calls that wait for your approval in it (`pending`). While there are any, the chat waits
     /// for you in the Inbox, whoever started it.
     pub pending_actions: i64,
 }
@@ -156,13 +156,13 @@ fn thread_row(r: &rusqlite::Row) -> rusqlite::Result<ChatThread> {
                     cli: r.get(14)?, session_cli: r.get(15)?, pending_actions: r.get(16)? })
 }
 
-/// The chats with calls of the Team Lead's that wait for your approval (GA-102), newest activity first: they wait for
+/// The chats with calls of the Chief's that wait for your approval (GA-102), newest activity first: they wait for
 /// you in the Inbox. The database picks them (GA-191).
 pub fn chats_with_pending(db: &Db) -> Result<Vec<ChatThread>> {
     threads_where(db, "id IN (SELECT thread_id FROM pending_actions WHERE status = 'pending')", None)
 }
 
-/// Fills in the identifiers of the cards Team Lead chats are about: one lookup for all the chats' cards (GA-191).
+/// Fills in the identifiers of the cards Chief chats are about: one lookup for all the chats' cards (GA-191).
 fn with_tasks(c: &rusqlite::Connection, mut threads: Vec<ChatThread>) -> Result<Vec<ChatThread>> {
     let ids: Vec<&String> = threads.iter().flat_map(|t| &t.task_ids).collect();
     if ids.is_empty() {
@@ -181,7 +181,7 @@ pub fn create_thread(db: &Db, you: &str, agent_id: &str, first_text: &str) -> Re
     create_thread_on(db, you, agent_id, first_text, None)
 }
 
-/// A new chat of yours that runs on `cli` (picked under the text box before its first message); None: on the Team Lead's.
+/// A new chat of yours that runs on `cli` (picked under the text box before its first message); None: on the Chief's.
 pub fn create_thread_on(db: &Db, you: &str, agent_id: &str, first_text: &str, cli: Option<&str>) -> Result<String> {
     let title = title_from(first_text);
     let cli = chat_cli(db, cli)?;
@@ -198,7 +198,7 @@ pub fn create_thread_on(db: &Db, you: &str, agent_id: &str, first_text: &str, cl
     })
 }
 
-/// A chat's own pick of coding CLI, checked: it is in Settings and can run the Team Lead's chat. None or empty: none.
+/// A chat's own pick of coding CLI, checked: it is in Settings and can run the Chief's chat. None or empty: none.
 fn chat_cli(db: &Db, cli: Option<&str>) -> Result<Option<String>> {
     let Some(id) = cli.map(str::trim).filter(|c| !c.is_empty()) else { return Ok(None) };
     let c = crate::clis::get(db, id)?;
@@ -208,7 +208,7 @@ fn chat_cli(db: &Db, cli: Option<&str>) -> Result<Option<String>> {
     Ok(Some(c.id))
 }
 
-/// Runs on under the text box: the chat's next answers run on `cli`; None: on the Team Lead's Runs on again.
+/// Runs on under the text box: the chat's next answers run on `cli`; None: on the Chief's Runs on again.
 pub fn set_cli(db: &Db, you: &str, thread_id: &str, cli: Option<&str>) -> Result<ChatThread> {
     let cli = chat_cli(db, cli)?;
     db.write(Some(you), |w| {
@@ -221,7 +221,7 @@ pub fn set_cli(db: &Db, you: &str, thread_id: &str, cli: Option<&str>) -> Result
     get_thread(db, thread_id)
 }
 
-/// The coding CLI a chat's next answer runs on: its own pick, else the Team Lead's Runs on (`lead_adapter`), also when
+/// The coding CLI a chat's next answer runs on: its own pick, else the Chief's Runs on (`lead_adapter`), also when
 /// its pick has been removed from Settings.
 pub fn runs_on(db: &Db, thread: &ChatThread, lead_adapter: Option<&str>) -> Result<crate::clis::Cli> {
     if let Some(c) = thread.cli.as_deref().and_then(|id| crate::clis::get(db, id).ok()) {
@@ -255,7 +255,7 @@ fn threads_where(db: &Db, filter: &str, limit: Option<usize>) -> Result<Vec<Chat
     })
 }
 
-/// A chat the Archive finds, with the newest of its messages (yours or the Team Lead's) whose text matches. No message:
+/// A chat the Archive finds, with the newest of its messages (yours or the Chief's) whose text matches. No message:
 /// only its title matches, or there was nothing to search for.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -277,7 +277,7 @@ fn like_pattern(text: &str) -> String {
     p
 }
 
-/// Chat → Archive: the chats whose title, or the text of one of your messages or the Team Lead's, holds `query` (case
+/// Chat → Archive: the chats whose title, or the text of one of your messages or the Chief's, holds `query` (case
 /// ignored for A to Z), newest activity first, each once. Tool calls, Gizai's notes and deleted chats and messages are
 /// left out. An empty query lists every chat.
 pub fn search_threads(db: &Db, query: &str) -> Result<Vec<ThreadHit>> {
@@ -313,7 +313,72 @@ pub fn get_thread(db: &Db, id: &str) -> Result<ChatThread> {
     })
 }
 
-/// The chats the Team Lead started that still wait for you (the Inbox), newest activity first. The database picks them
+/// GA-261: the first tool from outside Hersir the chat used (an MCP server of the Chief's own, the web, the browser), like
+/// `mcp__otus__search`, if any (`mark_outside`): from then on what the Chief does there waits for your Approve. A new chat
+/// has none, and a chat that has one keeps it.
+pub fn outside_tool(db: &Db, thread_id: &str) -> Result<Option<String>> {
+    db.read(|c| Ok(c.query_row("SELECT outside_tool FROM chat_threads WHERE id=?1", [thread_id], |r| r.get::<_, Option<String>>(0))
+        .optional()?.flatten()))
+}
+
+/// GA-261: the chat used `tool`, a tool from outside Hersir: it is marked for good, with the first such tool it used. True
+/// when this marked it (it wasn't marked before).
+pub fn mark_outside(db: &Db, thread_id: &str, tool: &str) -> Result<bool> {
+    db.write(None, |w| {
+        let n = w.conn().execute("UPDATE chat_threads SET outside_tool=?2 WHERE id=?1 AND outside_tool IS NULL", rusqlite::params![thread_id, tool])?;
+        if n > 0 {
+            w.update("chat_threads", thread_id, serde_json::json!({"outsideTool": tool}))?;
+        }
+        Ok(n > 0)
+    })
+}
+
+/// Chat → Pinned (GA-257): the setting that holds the pinned chats' ids, the most recently pinned first. A setting, so pins
+/// need no change to the schema, and they are in backups with the rest of the database.
+pub const PINS: &str = "chat_pins";
+
+/// Of `ids`, those of the chats that exist.
+fn existing(c: &rusqlite::Connection, ids: &[String]) -> Result<HashSet<String>> {
+    let mut st = c.prepare_cached("SELECT id FROM chat_threads WHERE deleted_at IS NULL AND id IN (SELECT value FROM json_each(?1))")?;
+    Ok(st.query_map([serde_json::to_string(ids)?], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?)
+}
+
+/// Chat → Pinned: the pinned chats, the most recently pinned first, also those older than the ones in Recent. A pin of a
+/// chat that no longer exists is left out.
+pub fn pinned_threads(db: &Db) -> Result<Vec<ChatThread>> {
+    db.read(|c| {
+        let pins: Vec<String> = crate::settings::get_in(c, PINS)?.unwrap_or_default();
+        if pins.is_empty() {
+            return Ok(vec![]);
+        }
+        let mut st = c.prepare(&format!(
+            "SELECT {THREAD_COLS} FROM chat_threads WHERE deleted_at IS NULL AND id IN (SELECT value FROM json_each(?1))"))?;
+        let mut found = st.query_map([serde_json::to_string(&pins)?], thread_row)?.collect::<rusqlite::Result<Vec<_>>>()?;
+        found.sort_by_key(|t| pins.iter().position(|id| *id == t.id));
+        with_tasks(c, found)
+    })
+}
+
+/// Pin to the top (`pinned`) or Unpin on a chat: a chat pinned now goes to the top of Pinned. Pins of chats that no longer
+/// exist drop out; pinning a chat that doesn't exist fails. Returns the pinned chats' ids, the newest pin first.
+pub fn set_pinned(db: &Db, thread_id: &str, pinned: bool) -> Result<Vec<String>> {
+    db.write(None, |w| {
+        let mut pins: Vec<String> = crate::settings::get_in(w.conn(), PINS)?.unwrap_or_default();
+        pins.retain(|id| id != thread_id);
+        if pinned {
+            pins.insert(0, thread_id.to_string());
+        }
+        let exists = existing(w.conn(), &pins)?;
+        if pinned && !exists.contains(thread_id) {
+            return Err(Error::NotFound(format!("chat {thread_id}")));
+        }
+        pins.retain(|id| exists.contains(id));
+        crate::settings::set_in(w, PINS, &pins)?;
+        Ok(pins)
+    })
+}
+
+/// The chats the Chief started that still wait for you (the Inbox), newest activity first. The database picks them
 /// (GA-191), as `thread_row` tells `waiting`.
 pub fn waiting_lead_chats(db: &Db) -> Result<Vec<ChatThread>> {
     threads_where(db, "kind IS NOT NULL AND answered_at IS NULL AND dismissed_at IS NULL", None)
@@ -321,13 +386,13 @@ pub fn waiting_lead_chats(db: &Db) -> Result<Vec<ChatThread>> {
 
 pub const LEAD_KINDS: [&str; 2] = ["question", "approval"];
 
-/// The Team Lead asks you something in a chat (`start_chat`): `body_md` is its first message, saved as the agent's.
-/// One waiting Team Lead chat per card: when one of `task_ids` already has one, the message goes there instead (it
+/// The Chief asks you something in a chat (`start_chat`): `body_md` is its first message, saved as the agent's.
+/// One waiting Chief chat per card: when one of `task_ids` already has one, the message goes there instead (it
 /// moves to the top again, and its cards are joined). Returns the chat's id and whether it was a new chat.
 pub fn start_lead_chat(db: &Db, agent_id: &str, title: &str, kind: &str, task_ids: &[String], body_md: &str, run_id: Option<&str>)
     -> Result<(String, bool)> {
     if !LEAD_KINDS.contains(&kind) {
-        return Err(Error::Invalid(format!("a Team Lead chat is a question or an approval, not {kind}")));
+        return Err(Error::Invalid(format!("a chat the Chief starts is a question or an approval, not {kind}")));
     }
     if body_md.trim().is_empty() {
         return Err(Error::Invalid("write the first message (body_md)".into()));
@@ -365,7 +430,7 @@ pub fn start_lead_chat(db: &Db, agent_id: &str, title: &str, kind: &str, task_id
     Ok((id, new))
 }
 
-/// You dismissed a Team Lead chat in the Inbox: it stays in Chat → Recent, no longer waiting.
+/// You dismissed a Chief chat in the Inbox: it stays in Chat → Recent, no longer waiting.
 pub fn dismiss(db: &Db, you: &str, thread_id: &str) -> Result<()> {
     db.write(Some(you), |w| {
         let n = w.conn().execute("UPDATE chat_threads SET dismissed_at=COALESCE(dismissed_at, ?2) WHERE id=?1 AND deleted_at IS NULL",
@@ -450,7 +515,7 @@ pub(crate) fn insert_message(w: &Writer, m: &NewMessage) -> Result<String> {
         return Err(Error::NotFound(format!("chat {}", m.thread_id)));
     }
     if m.role == "user" {
-        // You answered a Team Lead chat: it leaves the Inbox.
+        // You answered a Chief chat: it leaves the Inbox.
         c.execute("UPDATE chat_threads SET answered_at=?2 WHERE id=?1 AND kind IS NOT NULL AND answered_at IS NULL", rusqlite::params![m.thread_id, now])?;
     }
     c.execute(
@@ -511,7 +576,7 @@ pub fn reset_session(db: &Db, thread_id: &str) -> Result<()> {
 }
 
 /// What a chat says when Gizai stopped while an answer was being written (it crashed, or the computer went off).
-pub const INTERRUPTED: &str = "Interrupted: Hersir closed before the Team Lead finished this answer.";
+pub const INTERRUPTED: &str = "Interrupted: Hersir closed before the Chief finished this answer.";
 
 /// About how long (characters) the conversation a new session is handed may be.
 pub const HANDOVER_CAP: usize = 40_000;
@@ -546,11 +611,11 @@ fn tool_target(input: &Value) -> String {
     }
 }
 
-/// What a note of Gizai's in a chat is about when it says what you decided on a call of the Team Lead's that waited for
+/// What a note of Gizai's in a chat is about when it says what you decided on a call of the Chief's that waited for
 /// you (GA-102): `meta.kind`.
 pub const DECISION_NOTE: &str = "pending";
 
-/// Whether `m` is a note of Gizai's that says what you decided on a call of the Team Lead's that waited for you.
+/// Whether `m` is a note of Gizai's that says what you decided on a call of the Chief's that waited for you.
 pub fn is_decision_note(m: &ChatMessage) -> bool {
     m.role == "system" && m.meta.as_ref().and_then(|v| v.get("kind")).and_then(Value::as_str) == Some(DECISION_NOTE)
 }
@@ -582,10 +647,10 @@ fn handover_entry(m: &ChatMessage) -> Option<String> {
 }
 
 /// The conversation so far, for a new session that can't resume the chat's old one (the chat moved to another coding
-/// CLI, whose account doesn't have it, or the session is gone): your messages and the Team Lead's, oldest first, and per
+/// CLI, whose account doesn't have it, or the session is gone): your messages and the Chief's, oldest first, and per
 /// tool call its name, what it was called on (the card, doc or file) and the start of its result, so the new session
 /// knows what was looked up and can look it up again. Gizai's own notes are left out, except those that say what you
-/// decided on a call of the Team Lead's that waited for you (`is_decision_note`). When it is longer than `cap`
+/// decided on a call of the Chief's that waited for you (`is_decision_note`). When it is longer than `cap`
 /// characters, the oldest messages go first and the first line says how many went.
 pub fn handover(messages: &[ChatMessage], cap: usize) -> String {
     let entries: Vec<String> = messages.iter().filter_map(handover_entry).map(|e| shorten_keep_lines(&e, cap)).collect();
@@ -617,7 +682,7 @@ fn shorten_keep_lines(s: &str, n: usize) -> String {
 }
 
 /// The text a turn sends for messages that go together (the queue): one as it is; several oldest first, with a line
-/// that says they were written while the Team Lead answered.
+/// that says they were written while the Chief answered.
 pub fn joined(texts: &[String]) -> String {
     match texts {
         [one] => one.clone(),
@@ -625,7 +690,7 @@ pub fn joined(texts: &[String]) -> String {
     }
 }
 
-/// A message you sent while the Team Lead was answering: it waits in the chat's queue until the answer is done.
+/// A message you sent while the Chief was answering: it waits in the chat's queue until the answer is done.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QueuedMessage {
@@ -678,7 +743,7 @@ fn queue_text(text: &str, has_files: bool) -> Result<String> {
     Ok(text.to_string())
 }
 
-/// Queues a message while the Team Lead answers: it goes when the answer is done.
+/// Queues a message while the Chief answers: it goes when the answer is done.
 pub fn enqueue(db: &Db, you: &str, thread_id: &str, text: &str) -> Result<QueuedMessage> {
     enqueue_with_files(db, you, thread_id, text, &[])
 }

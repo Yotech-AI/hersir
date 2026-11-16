@@ -150,7 +150,7 @@ fn clean_all(clis: Vec<Cli>) -> Result<Vec<Cli>> {
     Ok(out)
 }
 
-/// Why a CLI can't run the Team Lead's chat, or None when it can: chat needs Claude Code's MCP and stream support, so it
+/// Why a CLI can't run the Chief's chat, or None when it can: chat needs Claude Code's MCP and stream support, so it
 /// runs on the Claude Code entries (the built-in one and other accounts of it).
 pub fn chat_problem(cli: &Cli) -> Option<String> {
     (cli.kind != "claude_code").then(|| "the chat runs on Claude Code only".to_string())

@@ -6,7 +6,8 @@
 #   argv       its arguments, one per line
 #   prompt     the prompt it read from stdin
 #   pwd        the folder it runs in (the card's worktree)
-#   env        NAME=value for each of GIZAI_PREVIEW_PORT, GIZAI_PREVIEW_URL, GIZAI_PREVIEW_DIR, PORT, TMPDIR it has
+#   env        NAME=value for each of GIZAI_PREVIEW_PORT, GIZAI_PREVIEW_URL, GIZAI_PREVIEW_DIR, their HERSIR_PREVIEW_* names
+#              (GA-249), PORT and TMPDIR it has
 #   answered   yes/no: whether something answered on 127.0.0.1:$GIZAI_PREVIEW_PORT when it started (only with that port)
 #   answer     what an HTTP GET / on that port answered (only when it answered)
 #   preview.log  a copy of $GIZAI_PREVIEW_DIR/preview.log as it was when it started (only when there was one)
@@ -35,7 +36,7 @@ printf '%s\n' "$@" > "$out/argv"
 printf '%s' "$prompt" > "$out/prompt"
 printf '%s' "$PWD" > "$out/pwd"
 : > "$out/env"
-for name in GIZAI_PREVIEW_PORT GIZAI_PREVIEW_URL GIZAI_PREVIEW_DIR PORT TMPDIR; do
+for name in GIZAI_PREVIEW_PORT GIZAI_PREVIEW_URL GIZAI_PREVIEW_DIR HERSIR_PREVIEW_PORT HERSIR_PREVIEW_URL HERSIR_PREVIEW_DIR PORT TMPDIR; do
   if [ -n "${!name+set}" ]; then
     printf '%s=%s\n' "$name" "${!name}" >> "$out/env"
   fi

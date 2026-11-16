@@ -1,24 +1,24 @@
 // Prevents an extra console window on Windows in release.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-/// The help, with where your data lives on this system.
+/// The help, with where your data lives on this system: Hersir's folder, and the one of an install from before 0.17.0.
 macro_rules! help {
-    ($data:literal) => {
+    ($data:literal, $old:literal) => {
         concat!("Hersir: clients, projects and tasks, worked on by local AI agents.
 
-Usage: gizai [--version | --help | --backup [name]]
+Usage: hersir [--version | --help | --backup [name]]
 
 Without options it opens the app (one at a time: starting it again brings the open window forward).
---backup  saves a snapshot of your data in <data folder>/backups (gizai-<name>-<time>.db, name \"manual\" by default) and prints where. Your data lives in ", $data, " (GIZAI_DATA_DIR overrides it).")
+--backup  saves a snapshot of your data in <data folder>/backups (gizai-<name>-<time>.db, name \"manual\" by default) and prints where. Your data lives in ", $data, ", or in ", $old, " for an install from before 0.17.0 that keeps it there (HERSIR_DATA_DIR or GIZAI_DATA_DIR overrides it).")
     };
 }
 
 #[cfg(not(any(target_os = "macos", windows)))]
-const HELP: &str = help!("~/.local/share/gizai");
+const HELP: &str = help!("~/.local/share/hersir", "~/.local/share/gizai");
 #[cfg(target_os = "macos")]
-const HELP: &str = help!("~/Library/Application Support/Gizai");
+const HELP: &str = help!("~/Library/Application Support/Hersir", "~/Library/Application Support/Gizai");
 #[cfg(windows)]
-const HELP: &str = help!(r"%APPDATA%\Gizai");
+const HELP: &str = help!(r"%APPDATA%\Hersir", r"%APPDATA%\Gizai");
 
 fn main() {
     // macOS: the CLIs your shell finds, also when Gizai starts from the Dock (first, before any thread starts).
@@ -29,7 +29,8 @@ fn main() {
         attach_console();
     }
     if args.iter().any(|a| a == "--version" || a == "-V") {
-        println!("gizai {}", env!("CARGO_PKG_VERSION"));
+        // "hersir X.Y.Z": an update reads the version as the second word (0.16.0's own update too, GA-248)
+        println!("hersir {}", env!("CARGO_PKG_VERSION"));
         return;
     }
     if args.iter().any(|a| a == "--help" || a == "-h") {
@@ -40,7 +41,7 @@ fn main() {
         let label = args.get(i + 1).map(String::as_str).unwrap_or("manual");
         match gizai_lib::backup_data_dir(&gizai_lib::data_dir(), label) {
             Ok(p) => println!("{}", p.display()),
-            Err(e) => { eprintln!("gizai: {e}"); std::process::exit(1); }
+            Err(e) => { eprintln!("hersir: {e}"); std::process::exit(1); }
         }
         return;
     }

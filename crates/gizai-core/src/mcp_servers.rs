@@ -1,7 +1,7 @@
 //! MCP servers (Settings → MCP servers): one list for all agents, each switched on per agent with a switch per tool
 //! (`AgentTools`, in the agent's `mcp_extra_json`). A server is a command (stdio) or an address (http, sse). Its
 //! environment values, header values and sign-in tokens are secrets: they live in the OS keychain, and this list keeps
-//! only their names. Only you change any of it, in Settings and the agent form: the Team Lead's tools can't.
+//! only their names. Only you change any of it, in Settings and the agent form: the Chief's tools can't.
 use std::collections::BTreeMap;
 
 use rusqlite::OptionalExtension;
@@ -83,6 +83,10 @@ pub struct AgentServer {
     pub on: bool,
     /// Its tools switched off, by name; none = all of them on.
     pub tools_off: Vec<String>,
+    /// GA-271, for an agent with Chat on (the Chief): After the Chief uses it, Allow (true) or Ask for my OK (false). With
+    /// Allow its tools (`mcp__<its name>__…`, the browser's too) don't mark a chat as having used a tool from outside
+    /// Hersir. Ask until you choose Allow, also in data saved before it.
+    pub trusted: bool,
 }
 
 impl AgentTools {
@@ -94,6 +98,11 @@ impl AgentTools {
     /// Whether the built-in browser (Chrome DevTools MCP) is on.
     pub fn browser_on(&self) -> bool {
         self.servers_on().any(|s| s.server_id == BROWSER)
+    }
+
+    /// GA-271: the servers on with After the Chief uses it on Allow, by server id (`BROWSER` for the browser).
+    pub fn trusted_on(&self) -> impl Iterator<Item = &str> {
+        self.servers_on().filter(|s| s.trusted).map(|s| s.server_id.as_str())
     }
 }
 
@@ -115,6 +124,10 @@ pub struct CliTools {
     /// Slash commands and skills (Built-in tools), on Claude Code only: its task runs go without `--disable-slash-commands`
     /// and get `SlashCommand` and `Skill`. Never in chat.
     pub slash_commands: bool,
+    /// GA-271, for an agent with Chat on (the Chief): After the Chief uses it, Allow (true) or Ask for my OK (false) for Web.
+    /// With Allow, `WebSearch` and `WebFetch` don't mark a chat as having used a tool from outside Hersir. Ask until you
+    /// choose Allow, also in data saved before it.
+    pub web_trusted: bool,
 }
 
 impl CliTools {
@@ -186,7 +199,7 @@ pub fn agent_screenshots(db: &Db, agent_id: &str) -> Result<Option<bool>> {
     })
 }
 
-/// Saves the agent's Take screenshots of what it built (agent form → Tools; never the Team Lead), keeping its other
+/// Saves the agent's Take screenshots of what it built (agent form → Tools; never the Chief), keeping its other
 /// switches.
 pub fn set_agent_screenshots(db: &Db, actor: &str, agent_id: &str, on: bool) -> Result<()> {
     write_extra(db, actor, agent_id, "screenshots", Value::Bool(on), serde_json::json!({"screenshots": on}))
@@ -445,7 +458,7 @@ fn write_extra(db: &Db, actor: &str, agent_id: &str, key: &str, value: Value, ch
     })
 }
 
-/// Saves the agent's tool settings (agent form → Tools; never the Team Lead). Servers that aren't in the list (or the
+/// Saves the agent's tool settings (agent form → Tools; never the Chief). Servers that aren't in the list (or the
 /// built-in browser) are dropped; an agent on Codex, Gemini or another CLI can't have one on (`mcp_not_on`).
 pub fn set_agent_tools(db: &Db, actor: &str, agent_id: &str, tools: AgentTools) -> Result<AgentTools> {
     let servers = list(db)?;
@@ -458,7 +471,7 @@ pub fn set_agent_tools(db: &Db, actor: &str, agent_id: &str, tools: AgentTools) 
         let mut off: Vec<String> = s.tools_off.into_iter().map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect();
         off.sort();
         off.dedup();
-        clean.mcp.push(AgentServer { server_id: s.server_id, on: s.on, tools_off: off });
+        clean.mcp.push(AgentServer { server_id: s.server_id, on: s.on, tools_off: off, trusted: s.trusted });
     }
     let cli = agent_cli(db, agent_id)?;
     if mcp_not_on(&cli.kind).is_some() && clean.servers_on().next().is_some() {
@@ -466,7 +479,8 @@ pub fn set_agent_tools(db: &Db, actor: &str, agent_id: &str, tools: AgentTools) 
                                           agent_name(db, agent_id)?, cli.name)));
     }
     let on: Vec<&str> = clean.servers_on().map(|s| s.server_id.as_str()).collect();
-    write_extra(db, actor, agent_id, "mcp", serde_json::to_value(&clean.mcp)?, serde_json::json!({"mcp_servers_on": on}))?;
+    let trusted: Vec<&str> = clean.mcp.iter().filter(|s| s.trusted).map(|s| s.server_id.as_str()).collect();
+    write_extra(db, actor, agent_id, "mcp", serde_json::to_value(&clean.mcp)?, serde_json::json!({"mcp_servers_on": on, "mcp_servers_trusted": trusted}))?;
     Ok(clean)
 }
 
@@ -485,11 +499,11 @@ pub fn valid_tool_name(n: &str) -> bool {
     !n.is_empty() && n.len() <= 64 && !n.starts_with("mcp__") && n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
-/// Saves the agent's CLI tools (agent form → Tools → Web and Built-in tools; never the Team Lead). Domains and names are
+/// Saves the agent's CLI tools (agent form → Tools → Web and Built-in tools; never the Chief). Domains and names are
 /// cleaned; one that can't be used is refused with why.
 pub fn set_cli_tools(db: &Db, actor: &str, agent_id: &str, tools: CliTools) -> Result<CliTools> {
     let mut clean = CliTools { web_search: tools.web_search, web_fetch: tools.web_fetch, insecure_certs: tools.insecure_certs,
-                               slash_commands: tools.slash_commands, ..Default::default() };
+                               slash_commands: tools.slash_commands, web_trusted: tools.web_trusted, ..Default::default() };
     for raw in tools.fetch_domains.iter().filter(|d| !d.trim().is_empty()) {
         let d = clean_domain(raw).ok_or_else(|| Error::Invalid(format!("\"{}\" isn't a domain: write it like docs.rs or *.example.com", raw.trim())))?;
         if !clean.fetch_domains.contains(&d) {
@@ -508,7 +522,7 @@ pub fn set_cli_tools(db: &Db, actor: &str, agent_id: &str, tools: CliTools) -> R
     agent_cli(db, agent_id)?;
     let change = serde_json::json!({"web_search": clean.web_search, "web_fetch": clean.web_fetch, "fetch_domains": clean.fetch_domains,
                                     "insecure_certs": clean.insecure_certs, "builtin_tools_on": clean.builtin,
-                                    "slash_commands": clean.slash_commands});
+                                    "slash_commands": clean.slash_commands, "web_trusted": clean.web_trusted});
     write_extra(db, actor, agent_id, "cli", serde_json::to_value(&clean)?, change)?;
     Ok(clean)
 }

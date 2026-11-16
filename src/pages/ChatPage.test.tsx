@@ -86,7 +86,7 @@ describe("Chat → Recent", () => {
     expect(list).toContain(">Question<");
     expect(list).toContain(">Approval<");
     expect(list).toContain('class="badge outline"');
-    expect(list).toContain(">Team Lead<");
+    expect(list).toContain(">Chief<");
   });
 
   it("has Archive under the list, with the History icon, outside the part that scrolls", () => {
@@ -172,6 +172,7 @@ describe("the Archive's list", () => {
     const html = archive({ query: "zebra", hits: [] });
     expect(html).toContain("No chats match “zebra”.");
     expect(html).not.toContain("No chats yet");
+    expect(html).toContain("The search looks in chat titles and in your messages and the Chief&#x27;s, not in tool calls or Hersir&#x27;s notes.");
   });
 
   it("shows no empty state while the first answer is on its way", () => {
@@ -190,7 +191,7 @@ describe("the Archive's list", () => {
     expect(rows[0]).toContain(">Question<");
     expect(rows[1]).toContain(">Approval<");
     expect(rows[2]).not.toContain("badge");
-    expect(rows[3]).toContain(">Team Lead<");
+    expect(rows[3]).toContain(">Chief<");
     expect(rows[0]).toContain(">Chat 0<");
     expect(rows[0]).toContain(">just now<");
     expect(rows[1]).toContain(">5h ago<");
@@ -225,5 +226,16 @@ describe("the Archive's list", () => {
     const rows = html.split('class="archive-row"').slice(1);
     expect(rows[0]).toContain('class="pulse"');
     expect(rows[1]).not.toContain("pulse");
+  });
+});
+
+describe("the Chat page without a Chief (GA-254)", () => {
+  it("asks you to set up the Chief", () => {
+    answers.chatAgent = () => atOnce(null);
+    const html = page();
+    expect(html).toContain("<h2>Chat with your Chief</h2>");
+    expect(html).toContain("To start chatting, set up the Chief: an agent with Chat turned on.");
+    expect(html).toMatch(/<button class="btn primary"><svg[^>]*lucide-crown[^>]*>.*?<\/svg>Set up the Chief<\/button>/);
+    expect(html).not.toContain("Team Lead");
   });
 });

@@ -35,8 +35,10 @@ pub mod tools;
 mod tour;
 mod unsaved;
 pub mod update;
+pub mod webview_storage;
 pub mod worktrees;
 
+use gizai_agents::env;
 use gizai_core::db::Db;
 use serde::Serialize;
 use std::path::PathBuf;
@@ -58,10 +60,10 @@ pub struct AppState {
     pub temp_base: PathBuf,
     /// Where the MCP server for chat turns listens (see `mcp::socket_path`).
     pub mcp_socket: PathBuf,
-    /// The `gizai-mcp` shim Claude Code starts in a chat turn (None: not found next to Gizai).
+    /// The `hersir-mcp` shim Claude Code starts in a chat turn (None: not found next to Gizai).
     pub mcp_shim: Option<PathBuf>,
     pub chat: Arc<chat::ChatManager>,
-    /// The Team Lead's read-only copies of the projects' code (see `code`).
+    /// The Chief's read-only copies of the projects' code (see `code`).
     pub code: Arc<code::Copies>,
     /// Pull requests being opened or checked on GitHub (see `pulls`).
     pub pulls: Arc<pulls::PullChecks>,
@@ -75,7 +77,7 @@ pub struct AppState {
     pub updates: Arc<update::Updates>,
     /// Held while this Gizai runs: one Gizai per data folder (see `lock_data_dir`).
     pub _lock: Arc<std::fs::File>,
-    /// Where MCP servers' secrets live: the OS keychain, or a file standing in for it (GIZAI_FAKE_KEYCHAIN) in tests.
+    /// Where MCP servers' secrets live: the OS keychain, or a file standing in for it (HERSIR_FAKE_KEYCHAIN) in tests.
     pub keychain: Arc<dyn gizai_agents::secrets::Keychain>,
     /// MCP servers' sign-ins in that keychain, refreshed one at a time per server.
     pub tokens: Arc<gizai_agents::oauth::TokenStore>,
@@ -103,7 +105,7 @@ pub struct AppInfo {
     pub selftest: bool,
     pub you_id: String,
     pub start_route: Option<String>,
-    /// Which extra self-test to run (GIZAI_SELFTEST_MODE), e.g. "run".
+    /// Which extra self-test to run (HERSIR_SELFTEST_MODE), e.g. "run".
     pub selftest_mode: Option<String>,
     /// Set when this Gizai runs on data other than the usual folder (a dev build, a test): see `data_label`.
     pub data_label: Option<String>,
@@ -115,22 +117,22 @@ async fn app_info(st: tauri::State<'_, AppState>) -> Result<AppInfo, String> {
     Ok(AppInfo {
         version: env!("CARGO_PKG_VERSION").into(),
         data_dir: st.data_dir.display().to_string(),
-        selftest: std::env::var("GIZAI_SELFTEST").is_ok(),
+        selftest: env::var("HERSIR_SELFTEST").is_some(),
         you_id: st.you_id.clone(),
-        start_route: std::env::var("GIZAI_ROUTE").ok().filter(|r| !r.is_empty()),
-        selftest_mode: std::env::var("GIZAI_SELFTEST_MODE").ok().filter(|m| !m.is_empty()),
+        start_route: env::var("HERSIR_ROUTE").filter(|r| !r.is_empty()),
+        selftest_mode: env::var("HERSIR_SELFTEST_MODE").filter(|m| !m.is_empty()),
         data_label: data_label(&st.data_dir),
     })
 }
 
-/// Writes the UI's self-test report (used by scripts/smoke-cage.sh). No-op unless GIZAI_SELFTEST is set. The file is
+/// Writes the UI's self-test report (used by scripts/smoke-cage.sh). No-op unless HERSIR_SELFTEST is set. The file is
 /// written off the main thread.
 #[tauri::command]
 async fn selftest_report(json: String) -> Result<(), String> {
-    match std::env::var("GIZAI_SELFTEST") {
-        Ok(path) => tauri::async_runtime::spawn_blocking(move || std::fs::write(path, json)).await.map_err(|e| e.to_string())?
+    match env::var("HERSIR_SELFTEST") {
+        Some(path) => tauri::async_runtime::spawn_blocking(move || std::fs::write(path, json)).await.map_err(|e| e.to_string())?
             .map_err(|e| e.to_string()),
-        Err(_) => Ok(()),
+        None => Ok(()),
     }
 }
 
@@ -146,34 +148,49 @@ fn exit_app(app: AppHandle, code: i32) {
     app.exit(code);
 }
 
-/// Gizai's identifier (tauri.conf.json's): the macOS app bundle's id, and on Windows the AppUserModelID its Start menu
-/// shortcut and notifications carry.
-pub const APP_ID: &str = "ai.gizai.app";
+/// Hersir's identifier (tauri.conf.json's): the macOS app bundle's id, on Windows the AppUserModelID its Start menu
+/// shortcut and notifications carry, and on Linux the start of the single-instance name (`instance_id`). It was
+/// ai.gizai.app before 0.17.0 (GA-248; see `webview_storage`).
+pub const APP_ID: &str = "dev.hersir.app";
 
-/// The data folder: GIZAI_DATA_DIR, else the usual one.
+/// The data folder: HERSIR_DATA_DIR, else GIZAI_DATA_DIR, else the usual one.
 pub fn data_dir() -> PathBuf {
-    match std::env::var("GIZAI_DATA_DIR") {
-        Ok(d) if !d.is_empty() => d.into(),
+    match env::var("HERSIR_DATA_DIR") {
+        Some(d) if !d.is_empty() => d.into(),
         _ => default_data_dir(),
     }
 }
 
-/// The data of the Gizai you use: `$XDG_DATA_HOME/gizai`, else `~/.local/share/gizai`. On macOS `~/Library/Application
-/// Support/Gizai`, on Windows `%APPDATA%\Gizai`.
+/// The data of the Hersir you use (GA-249): the `hersir` folder when it exists, else the `gizai` folder of a version
+/// before 0.17.0 when it holds Hersir's data (its gizai.db), else a new `hersir` folder (`data_dir_names`). Nothing is
+/// moved or copied: an install whose data is in the gizai folder keeps it there.
 pub fn default_data_dir() -> PathBuf {
+    let [new, old] = data_dir_names();
+    if !new.exists() && old.join("gizai.db").is_file() { old } else { new }
+}
+
+/// The usual data folder's two names, Hersir's and the one before 0.17.0: `$XDG_DATA_HOME/hersir` and `…/gizai`, else
+/// `~/.local/share/hersir` and `…/gizai`. On macOS `~/Library/Application Support/Hersir` and `…/Gizai`, on Windows
+/// `%APPDATA%\Hersir` and `%APPDATA%\Gizai`.
+pub fn data_dir_names() -> [PathBuf; 2] {
     #[cfg(target_os = "macos")]
-    return PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".into())).join("Library/Application Support/Gizai");
+    {
+        let home = PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".into()));
+        return [home.join("Library/Application Support/Hersir"), home.join("Library/Application Support/Gizai")];
+    }
     // Windows has no HOME: APPDATA is <your profile>\AppData\Roaming
     #[cfg(windows)]
-    return std::env::var_os("APPDATA").filter(|a| !a.is_empty()).map(PathBuf::from)
-        .unwrap_or_else(|| std::env::home_dir().unwrap_or_else(|| ".".into()).join("AppData").join("Roaming"))
-        .join("Gizai");
+    {
+        let base = std::env::var_os("APPDATA").filter(|a| !a.is_empty()).map(PathBuf::from)
+            .unwrap_or_else(|| std::env::home_dir().unwrap_or_else(|| ".".into()).join("AppData").join("Roaming"));
+        return [base.join("Hersir"), base.join("Gizai")];
+    }
     #[cfg(not(any(target_os = "macos", windows)))]
     {
         let base = std::env::var("XDG_DATA_HOME")
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".into())).join(".local/share"));
-        base.join("gizai")
+        [base.join("hersir"), base.join("gizai")]
     }
 }
 
@@ -186,7 +203,7 @@ pub fn data_dir_key(dir: &std::path::Path) -> String {
 /// The D-Bus name that keeps Gizai to one window per data folder, so a test Gizai with its own data can run
 /// next to the one you use.
 pub fn instance_id(dir: &std::path::Path) -> String {
-    format!("ai.gizai.app.d{}", data_dir_key(dir))
+    format!("{APP_ID}.d{}", data_dir_key(dir))
 }
 
 /// A short name shown in the window title and sidebar when Gizai runs on data other than the usual folder.
@@ -258,7 +275,7 @@ pub fn housekeeping(db: &Db, dir: &std::path::Path) {
 /// Opens (and on first start seeds) the database in `dir`. Runs a previous Gizai left behind are marked interrupted.
 /// A first start is a new install: it gets the five default agents, on Codex when only Codex is installed
 /// (`gizai_core::seed::ensure_seed_with_agents`), and the onboarding waits (`onboarding`), unless
-/// GIZAI_SKIP_ONBOARDING=1.
+/// HERSIR_SKIP_ONBOARDING=1.
 pub fn open_state(dir: PathBuf, notify: Arc<dyn Fn(runs::Note) + Send + Sync>) -> Result<AppState, String> {
     open_data(dir, notify, true)
 }
@@ -282,8 +299,24 @@ fn open_data(dir: PathBuf, notify: Arc<dyn Fn(runs::Note) + Send + Sync>, defaul
     } else {
         gizai_core::seed::ensure_seed(&db, &display_name())
     }.map_err(|e| e.to_string())?;
-    // A script on a new, empty data folder (GIZAI_SKIP_ONBOARDING=1) starts as if the onboarding was skipped.
+    // A script on a new, empty data folder (HERSIR_SKIP_ONBOARDING=1) starts as if the onboarding was skipped.
     onboarding::skip_at_start(&db);
+    // GA-255, once: a lead agent still named as a new install named it before is named Chief now.
+    match gizai_core::seed::old_lead_to_chief(&db, &seed.you_id) {
+        Ok(0) => {}
+        Ok(n) => eprintln!("gizai: named {n} lead agents Chief (they had the old default name)"),
+        Err(e) => eprintln!("gizai: naming the lead agent Chief failed: {e}"),
+    }
+    // Memory (GA-258), once: the Chief's notes move from Team Lead/ to Chief/ and the links to them follow, after a backup
+    // of the database (backups/gizai-before-chief-folder-<time>.db). When it fails, nothing moves: the next start tries again.
+    match gizai_core::memory::lead_folder_to_chief(&db, &seed.you_id, || backup_data_dir(&dir, "before-chief-folder").map(|_| ())) {
+        Ok(Some(m)) if m.moved + m.relinked + m.instructions > 0 => {
+            eprintln!("gizai: moved {} of the Chief's notes from Team Lead/ to Chief/ ({} with a new name, as Chief/ had their name already); \
+                       rewrote the links in {} notes and docs, and Team Lead/ in {} agents' instructions", m.moved, m.renamed.len(), m.relinked, m.instructions);
+        }
+        Ok(_) => {}
+        Err(e) => eprintln!("gizai: moving the Chief's notes from Team Lead/ to Chief/ failed, so they stay where they are: {e}"),
+    }
     // Memory (GA-96): a group of agents sharing one folder whose owner was removed goes on with its next agent.
     if let Err(e) = gizai_core::memory::ensure_groups(&db, &seed.you_id) {
         eprintln!("gizai: handing shared memory folders on failed: {e}");
@@ -322,9 +355,9 @@ fn open_data(dir: PathBuf, notify: Arc<dyn Fn(runs::Note) + Send + Sync>, defaul
         }
     }
     let _ = gizai_core::runs::recover_interrupted(&db);
-    // Questions that waited for the Team Lead (GA-70): its run on them is gone, so they go to you.
+    // Questions that waited for the Chief (GA-70): its run on them is gone, so they go to you.
     if let Err(e) = gizai_core::questions::recover(&db) {
-        eprintln!("gizai: sending the questions that waited for the Team Lead to the Inbox failed: {e}");
+        eprintln!("gizai: sending the questions that waited for the Chief to the Inbox failed: {e}");
     }
     // Messages queued in a chat wait for Send now: the answer they waited for is gone.
     let _ = gizai_core::chat::hold_all_queues(&db);
@@ -343,7 +376,7 @@ fn open_data(dir: PathBuf, notify: Arc<dyn Fn(runs::Note) + Send + Sync>, defaul
                   desktop: notifications::Desktop::silent(), inbox: Arc::new(notifications::Watch::default()),
                   terminals: Arc::new(gizai_agents::terminal::Terminals::default()), streams: Arc::new(stream::Streams::default()),
                   backups: Arc::new(backups::Backups::default()), restores: Arc::new(restore::Restores::default()) };
-    // GA-102: the Team Lead's calls that wait for your approval stay waiting; one approved while Gizai closed counts as
+    // GA-102: the Chief's calls that wait for your approval stay waiting; one approved while Gizai closed counts as
     // failed, so it never runs twice, and its chat says so.
     pending::at_start(&st);
     timed.part("the calls that wait for approval");
@@ -510,7 +543,7 @@ pub fn test_state(dir: &std::path::Path) -> AppState {
         st.mcp_socket = mcp::socket_path(&st.data_dir);
     }
     // Never the real keychain in tests: one in memory, unless the test names a file for it.
-    if std::env::var_os("GIZAI_FAKE_KEYCHAIN").is_none() {
+    if env::var_os("HERSIR_FAKE_KEYCHAIN").is_none() {
         st.keychain = Arc::new(gizai_agents::secrets::MemoryKeychain::default());
         st.tokens = Arc::new(gizai_agents::oauth::TokenStore::new(st.keychain.clone()));
     }
@@ -548,6 +581,8 @@ pub fn test_task(st: &AppState, repo: &str, label: &str) -> String {
 pub fn run() {
     let dir = data_dir();
     let _ = std::fs::create_dir_all(&dir); // so the instance id names the folder the same way from the first start
+    // The window's storage from before the app id was dev.hersir.app comes along, before the window opens (GA-248).
+    webview_storage::carry_at_start(&dir);
     // Windows: Gizai's identity (the Start menu shortcut has it too): its notifications show as Gizai's, and the taskbar
     // groups its window with the shortcut. Before any window opens.
     #[cfg(windows)]
@@ -566,7 +601,7 @@ pub fn run() {
         .build());
     // macOS and Windows: the plugin keys the instance by the app's identifier, not by the data folder, so with it a second
     // Gizai on any data would only bring the first one's window forward and quit. Only the Gizai on the usual data uses
-    // it; one on other data (GIZAI_DATA_DIR: a dev build, a test) runs next to it, and a second one on that same data
+    // it; one on other data (HERSIR_DATA_DIR: a dev build, a test) runs next to it, and a second one on that same data
     // stops at the data folder's lock ("Gizai is already running with the data in …").
     #[cfg(not(target_os = "linux"))]
     let builder = match data_label(&dir) {
@@ -583,9 +618,9 @@ pub fn run() {
             app.exit(0);
         }
     });
-    // The benchmark harness (GA-188, scripts/perf.sh): in a perf run (GIZAI_SELFTEST_MODE=perf:…) the page counts its
+    // The benchmark harness (GA-188, scripts/perf.sh): in a perf run (HERSIR_SELFTEST_MODE=perf:…) the page counts its
     // backend calls from the first one (src/lib/perf.ts). The init script runs before any of the page's own scripts.
-    let perf_run = std::env::var("GIZAI_SELFTEST_MODE").is_ok_and(|m| m.starts_with("perf:"));
+    let perf_run = env::var("HERSIR_SELFTEST_MODE").is_some_and(|m| m.starts_with("perf:"));
     let builder = if perf_run {
         builder.plugin(tauri::plugin::Builder::<_, ()>::new("gizai-perf").js_init_script("window.__GIZAI_PERF__ = true;").build())
     } else {
@@ -601,7 +636,7 @@ pub fn run() {
                 let _ = w.set_title(&format!("Hersir ({label} data)"));
             }
             // Headless test and screenshot runs.
-            let test_run = ["GIZAI_SELFTEST", "GIZAI_ROUTE"].iter().any(|v| std::env::var_os(v).is_some());
+            let test_run = ["HERSIR_SELFTEST", "HERSIR_ROUTE"].iter().any(|v| env::var_os(v).is_some());
             let mut state = match open_state(dir.clone(), ui_notifier(app.handle().clone())) {
                 Ok(s) => s,
                 Err(e) => {
@@ -640,7 +675,7 @@ pub fn run() {
                     }
                 });
             }
-            // The Team Lead's copies of the projects' code: the missing ones are made now, so the first answer rarely
+            // The Chief's copies of the projects' code: the missing ones are made now, so the first answer rarely
             // waits for them, and copies that no longer belong go.
             {
                 let st = state.clone();
@@ -661,7 +696,7 @@ pub fn run() {
             // The release check: 20 seconds after start, then every ten minutes, Gizai asks GitHub for the latest
             // release when a check is due (Check for new releases is on, and the last check is six hours old).
             // Headless test and screenshot runs don't ask GitHub, unless they point the check at a fake release.
-            if !test_run || std::env::var_os("GIZAI_RELEASES_URL").is_some() {
+            if !test_run || gizai_agents::os::hersir_var("RELEASES_URL").is_some() {
                 let st = state.clone();
                 tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(update::FIRST_CHECK_AFTER).await;
@@ -713,7 +748,7 @@ pub fn run() {
                 });
             }
             // Once a minute the agents take cards that had to wait (the run limit was full, Gizai just started), and the
-            // Team Lead checks the board when its interval has passed; only new findings start it. The cards start on
+            // Chief checks the board when its interval has passed; only new findings start it. The cards start on
             // their own (GA-191): the board check doesn't wait for a card's fetch and install.
             tauri::async_runtime::spawn(async move {
                 let mut tick = tokio::time::interval(std::time::Duration::from_secs(60));
@@ -756,7 +791,8 @@ pub fn run() {
             commands::continue_after_run_for_me, commands::stop_run,
             commands::list_runs, commands::run_events, commands::run_commits, commands::live_runs, commands::suggest_agent, commands::get_agent, commands::claude_models, commands::list_clis, commands::save_clis, commands::find_clis, commands::agent_stats, commands::agent_runs, commands::agent_next_task,
             commands::usage_summary, commands::subscription_limits,
-            commands::list_chat_threads, commands::get_chat_thread, commands::search_chat_threads, commands::chat_messages, commands::send_chat, commands::stop_chat, commands::chat_live, commands::chat_agent,
+            commands::list_chat_threads, commands::get_chat_thread, commands::pinned_chats, commands::pin_chat, commands::unpin_chat,
+            commands::search_chat_threads, commands::chat_messages, commands::send_chat, commands::stop_chat, commands::chat_live, commands::chat_agent,
             commands::dismiss_chat, commands::chat_queue, commands::edit_queued_chat, commands::remove_queued_chat, commands::send_chat_queue,
             commands::check_files, commands::item_id,
             commands::set_chat_cli, commands::answer_chat_on, commands::chat_clis,

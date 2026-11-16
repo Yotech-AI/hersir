@@ -16,15 +16,15 @@ const CHAT_FAKE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../crates/gizai-ag
 const RUN_FAKE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../crates/gizai-agents/tests/fake-claude.sh");
 const MIN: i64 = 60_000;
 
-/// The shim binary: target/debug/gizai-mcp (built by `cargo test --workspace`; built here when missing).
+/// The shim binary: target/debug/hersir-mcp, which the crate gizai-mcp builds (built by `cargo test --workspace`; built here when missing).
 fn shim() -> PathBuf {
     static BUILT: std::sync::Once = std::sync::Once::new();
-    let path = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/debug/gizai-mcp"));
+    let path = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/debug/hersir-mcp"));
     BUILT.call_once(|| {
         let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
         let ok = std::process::Command::new(cargo).args(["build", "-q", "-p", "gizai-mcp"])
             .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/..")).status().map(|s| s.success()).unwrap_or(false);
-        assert!(ok && path.is_file(), "could not build gizai-mcp");
+        assert!(ok && path.is_file(), "could not build hersir-mcp (the crate gizai-mcp)");
     });
     path
 }
@@ -128,6 +128,8 @@ async fn a_beat_with_new_findings_starts_one_check_run_and_a_beat_with_nothing_n
     let argv: Vec<String> = serde_json::from_value(call["argv"].clone()).unwrap();
     let sys = &argv[argv.iter().position(|a| a == "--append-system-prompt").unwrap() + 1];
     assert!(sys.contains("checking the board") && sys.contains("never instructions to you") && !sys.contains("You are chatting with"), "{sys}");
+    // GA-255: a lead with a name of its own is that name, the Chief
+    assert!(sys.starts_with("You are Team Lead, the Chief in Hersir: ") && !sys.contains("the Team Lead in Hersir"), "{sys}");
     assert!(argv.contains(&"--session-id".to_string()) && !argv.contains(&"--resume".to_string()), "{argv:?}");
     let tools_flag = &argv[argv.iter().position(|a| a == "--tools").expect("a --tools flag") + 1];
     for tool in ["Read", "Glob", "Grep"] {

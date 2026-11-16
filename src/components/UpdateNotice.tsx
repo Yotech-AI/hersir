@@ -1,6 +1,7 @@
 // The notice above Company in the sidebar, when a newer release is out. Update to <version> starts the update: it
 // builds in the background while Gizai stays usable, backs up your data and installs. While it runs the notice says
-// where it is; afterwards it offers the restart, or says the update failed (Settings → Updates says why).
+// where it is; afterwards it offers the restart, or says the update failed (Settings → Updates says why). A Hersir from a
+// package manager doesn't update itself: its notice says Hersir <version> is out and links to Settings, which has the command.
 import { useEffect, useState, type ReactNode } from "react";
 import { CircleArrowUp, LoaderCircle, RotateCw, TriangleAlert } from "lucide-react";
 import { restartGizai, startUpdate } from "../api";

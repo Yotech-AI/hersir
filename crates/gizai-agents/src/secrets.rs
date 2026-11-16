@@ -1,6 +1,7 @@
-//! Secrets Gizai keeps for you, like the sign-ins of MCP servers: in your keychain (the Secret Service on Linux, like GNOME
-//! Keyring or KeePassXC), each under a key like `mcp/<server id>/oauth`, never in Gizai's database.
-//! Headless UI tests and QA runs use a file in its place (GIZAI_FAKE_KEYCHAIN), unit tests memory.
+//! Secrets Hersir keeps for you, like the sign-ins of MCP servers: in your keychain (the Secret Service on Linux, like GNOME
+//! Keyring or KeePassXC), each under a key like `mcp/<server id>/oauth`, never in Hersir's database. Since 0.17.0 under
+//! the service `hersir`, with the ones saved under `gizai` before still found (`WithOld`, GA-249).
+//! Headless UI tests and QA runs use a file in its place (HERSIR_FAKE_KEYCHAIN), unit tests memory.
 //! Errors are plain sentences and never hold a value.
 use std::collections::{BTreeMap, HashMap};
 use std::io::{ErrorKind, Write};
@@ -9,8 +10,11 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError};
 
-/// The keychain service every Gizai secret is saved under; the key is the account name.
-pub const SERVICE: &str = "gizai";
+/// The keychain service every Hersir secret is saved under; the key is the account name.
+pub const SERVICE: &str = "hersir";
+
+/// The service Hersir saved its secrets under before 0.17.0, still read (`WithOld`).
+pub const OLD_SERVICE: &str = "gizai";
 
 /// What Gizai says when there is no Secret Service to keep its secrets.
 pub const NOT_RUNNING: &str = "No keychain is running (Secret Service): start one, like GNOME Keyring or KeePassXC";
@@ -25,19 +29,26 @@ pub trait Keychain: Send + Sync {
     fn delete(&self, key: &str) -> Result<(), String>;
 }
 
-/// The OS keychain (Secret Service on Linux) through the keyring crate: service "gizai", the key as the user/account name.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct OsKeychain;
+/// The OS keychain (Secret Service on Linux) through the keyring crate: one service (`SERVICE`, `OLD_SERVICE`), the key
+/// as the user/account name.
+#[derive(Debug, Clone, Copy)]
+pub struct OsKeychain {
+    service: &'static str,
+}
 
 impl OsKeychain {
-    fn entry(key: &str) -> Result<keyring::Entry, String> {
-        keyring::Entry::new(SERVICE, key).map_err(os_error)
+    pub fn new(service: &'static str) -> Self {
+        OsKeychain { service }
+    }
+
+    fn entry(&self, key: &str) -> Result<keyring::Entry, String> {
+        keyring::Entry::new(self.service, key).map_err(os_error)
     }
 }
 
 impl Keychain for OsKeychain {
     fn get(&self, key: &str) -> Result<Option<String>, String> {
-        match Self::entry(key)?.get_password() {
+        match self.entry(key)?.get_password() {
             Ok(value) => Ok(Some(value)),
             Err(keyring::Error::NoEntry) => Ok(None),
             Err(e) => Err(os_error(e)),
@@ -45,11 +56,11 @@ impl Keychain for OsKeychain {
     }
 
     fn set(&self, key: &str, value: &str) -> Result<(), String> {
-        Self::entry(key)?.set_password(value).map_err(os_error)
+        self.entry(key)?.set_password(value).map_err(os_error)
     }
 
     fn delete(&self, key: &str) -> Result<(), String> {
-        match Self::entry(key)?.delete_credential() {
+        match self.entry(key)?.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
             Err(e) => Err(os_error(e)),
         }
@@ -87,6 +98,39 @@ fn os_error(e: keyring::Error) -> String {
 /// org.freedesktop.secrets.
 fn not_running(said: &str) -> bool {
     ["no secret service provider", "ServiceUnknown", "was not provided by any", "DBus.Error.Spawn"].iter().any(|s| said.contains(s))
+}
+
+/// Hersir's keychain since 0.17.0 (GA-249): `new` (the service `hersir`) with `old` (`gizai`, before 0.17.0) behind it.
+/// A secret found only in `old` is used, and saved in `new` too; it stays in `old`, so an older Hersir still finds it
+/// after a downgrade. Saving saves in `new`; deleting deletes in both.
+#[derive(Debug, Default)]
+pub struct WithOld<N, O> {
+    pub new: N,
+    pub old: O,
+}
+
+impl<N: Keychain, O: Keychain> Keychain for WithOld<N, O> {
+    fn get(&self, key: &str) -> Result<Option<String>, String> {
+        if let Some(value) = self.new.get(key)? {
+            return Ok(Some(value));
+        }
+        let Some(value) = self.old.get(key)? else { return Ok(None) };
+        // When this fails the secret still works, from `old`, and the next get tries again.
+        if let Err(e) = self.new.set(key, &value) {
+            eprintln!("gizai: saving a secret under the keychain service {SERVICE} too failed: {e}");
+        }
+        Ok(Some(value))
+    }
+
+    fn set(&self, key: &str, value: &str) -> Result<(), String> {
+        self.new.set(key, value)
+    }
+
+    fn delete(&self, key: &str) -> Result<(), String> {
+        let new = self.new.delete(key);
+        let old = self.old.delete(key);
+        new.and(old)
+    }
 }
 
 /// In memory, for tests.
@@ -202,10 +246,11 @@ impl Keychain for FileKeychain {
     }
 }
 
-/// GIZAI_FAKE_KEYCHAIN=<file> → FileKeychain, else OsKeychain.
+/// HERSIR_FAKE_KEYCHAIN=<file> (or GIZAI_FAKE_KEYCHAIN) → FileKeychain, else the OS keychain: service `hersir`, with
+/// `gizai` behind it (`WithOld`).
 pub fn from_env() -> Arc<dyn Keychain> {
-    match std::env::var_os("GIZAI_FAKE_KEYCHAIN") {
+    match crate::env::var_os("HERSIR_FAKE_KEYCHAIN") {
         Some(path) if !path.is_empty() => Arc::new(FileKeychain::new(PathBuf::from(path))),
-        _ => Arc::new(OsKeychain),
+        _ => Arc::new(WithOld { new: OsKeychain::new(SERVICE), old: OsKeychain::new(OLD_SERVICE) }),
     }
 }

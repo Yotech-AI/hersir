@@ -10,10 +10,10 @@
 //! Update (`gizai_agents::behind`).
 //! - Main is where the project's cards start (`git::start_point`) for a project's folder or a card's worktree, and the
 //!   origin remote's default branch for another folder. Fetch fetches it as a card start does (at most 60 s), but not
-//!   again within a minute of a fetch that worked: the Editor's, a card start's, the Team Lead's copies' or your own.
+//!   again within a minute of a fetch that worked: the Editor's, a card start's, the Chief's copies' or your own.
 //! - Update runs in the background: `checkout`'s checks without switching branch, then its fast-forward, and an install
 //!   only for a lock file that changed; never the setup command, never while a card's worktree is prepared from the
-//!   folder (`code::folder_lock`), one update per folder at a time (`code::begin_update`, shared with the Team Lead's).
+//!   folder (`code::folder_lock`), one update per folder at a time (`code::begin_update`, shared with the Chief's).
 //!   Its end goes to the screen as `editor-updated`.
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -216,7 +216,7 @@ pub fn main(st: &AppState, folder: &str) -> R<FolderMain> {
 }
 
 /// Fetches main the way a card start does (at most 60 s), then says how the folder stands (`main`). Not again within a
-/// minute of a fetch that worked (the Editor's, a card start's, the Team Lead's copies' or your own); a Fetch that
+/// minute of a fetch that worked (the Editor's, a card start's, the Chief's copies' or your own); a Fetch that
 /// waited for another one of the same repository takes what that one found. A folder without a main (outside git,
 /// without a remote) has nothing to fetch.
 pub fn fetch(st: &AppState, folder: &str) -> R<FolderMain> {
@@ -243,7 +243,7 @@ pub fn fetch(st: &AppState, folder: &str) -> R<FolderMain> {
             match fetched {
                 Ok(()) => {
                     s.fetched = Fetched { ok_at: Some(SystemTime::now()), failed: None };
-                    // the Team Lead's copy of the project needn't fetch again for a minute either
+                    // the Chief's copy of the project needn't fetch again for a minute either
                     if let Some(p) = &project {
                         crate::code::fetched(st, &p.key);
                     }
@@ -257,7 +257,7 @@ pub fn fetch(st: &AppState, folder: &str) -> R<FolderMain> {
 }
 
 /// Starts Update in the background: checks first (`behind::plan`) and returns what it will do, or why not (nothing
-/// changed). One update per folder at a time, the Team Lead's included. Its turn comes once no card's worktree is being
+/// changed). One update per folder at a time, the Chief's included. Its turn comes once no card's worktree is being
 /// prepared from the folder (`code::folder_lock`); everything is checked again then, and `checkout::update` runs. Its
 /// end goes to the screen as `editor-updated` (`Note::EditorUpdated`), when the folder no longer counts as updating.
 pub async fn update(st: &AppState, folder: &str) -> R<String> {

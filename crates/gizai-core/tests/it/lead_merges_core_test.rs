@@ -41,13 +41,13 @@ fn migration_0015_adds_the_switch_off_for_every_existing_project_after_a_backup(
     let path = v14_db(dir.path());
     let db = Db::open(&path).unwrap();
     // 0015, and GA-96's 0016 (agents share a memory folder), GA-102's 0017 (pending actions), GA-180's 0018 (indexes),
-    // GA-182's 0019 (screenshots) and GA-212's 0020 (Test runs at once) and GA-228's 0021 (Builds on) after it in the same step
-    assert_eq!(db::SCHEMA_VERSION, 21);
+    // GA-182's 0019 (screenshots) and GA-212's 0020 (Test runs at once) and GA-228's 0021 (Builds on) and GA-261's 0022 after it in the same step
+    assert_eq!(db::SCHEMA_VERSION, 22);
     let (v, broken): (i64, i64) = db.read(|c| Ok((c.query_row("PRAGMA user_version", [], |r| r.get(0))?,
         c.query_row("SELECT count(*) FROM pragma_foreign_key_check", [], |r| r.get(0))?))).unwrap();
-    assert_eq!((v, broken), (21, 0), "schema 21, foreign keys intact");
+    assert_eq!((v, broken), (22, 0), "schema 22, foreign keys intact");
     let snaps: Vec<String> = std::fs::read_dir(dir.path().join("backups")).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
-    assert!(snaps.len() == 1 && snaps[0].starts_with("gizai-before-v21-"), "{snaps:?}");
+    assert!(snaps.len() == 1 && snaps[0].starts_with("gizai-before-v22-"), "{snaps:?}");
     // the column: NOT NULL, 0 by default, 0 for both old projects
     let (notnull, default): (i64, Option<String>) = db.read(|c| Ok(c.query_row(
         "SELECT \"notnull\", dflt_value FROM pragma_table_info('projects') WHERE name = 'lead_may_merge'", [], |r| Ok((r.get(0)?, r.get(1)?)))?)).unwrap();
@@ -109,7 +109,7 @@ fn only_a_person_sets_team_lead_may_merge_and_other_changes_keep_it() {
     for agent in [&lead, &be] {
         for on in [true, false] {
             let e = projects::update(&f.db, agent, &f.project, f.input(Some(on))).unwrap_err().to_string();
-            assert!(e.contains("Team Lead may merge is switched only by a person") && e.contains("Nothing changed"), "{e}");
+            assert!(e.contains("Chief may merge is switched only by a person") && e.contains("Nothing changed"), "{e}");
         }
         let e = projects::create(&f.db, agent, ProjectInput { name: "Shop".into(), key: "SHOP".into(), lead_may_merge: Some(false),
             ..Default::default() }).unwrap_err().to_string();

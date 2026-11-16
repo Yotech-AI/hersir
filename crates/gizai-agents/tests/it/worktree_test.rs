@@ -20,7 +20,7 @@ fn creates_then_reuses_a_worktree_and_rejects_non_repos() {
     let base = tmp.path().join("wt");
     let a = worktree::ensure(&repo, &base, "KADE-41", "Export invoices as CSV!", "main").unwrap();
     assert!(a.created && a.path.join(".git").exists());
-    assert_eq!(a.branch, "gizai/kade-41-export-invoices-as-csv");
+    assert_eq!(a.branch, "hersir/kade-41-export-invoices-as-csv", "GA-249: a new card's branch starts with hersir/");
     let b = worktree::ensure(&repo, &base, "KADE-41", "Export invoices as CSV!", "main").unwrap();
     assert!(!b.created);
     assert_eq!(b.branch, a.branch);
@@ -37,7 +37,48 @@ fn reuses_an_existing_branch_after_the_worktree_was_removed() {
     git(&repo, &["worktree", "remove", "--force", a.path.to_str().unwrap()]);
     let b = worktree::ensure(&repo, &base, "GFW-7", "Mollie webhook", "main").unwrap();
     assert!(b.created);
-    assert_eq!(b.branch, "gizai/gfw-7-mollie-webhook");
+    assert_eq!(b.branch, "hersir/gfw-7-mollie-webhook");
+}
+
+#[test]
+fn a_new_cards_branch_is_hersir_and_a_card_keeps_the_branch_it_has() {
+    assert_eq!(worktree::branch_name("GA-249", "Hersir everywhere (2 of 2)"), "hersir/ga-249-hersir-everywhere-2-of-2");
+    assert_eq!(worktree::branch_name("GA-7", "!!!"), "hersir/ga-7");
+    // no branch yet (or an empty one): a new hersir/ one
+    assert_eq!(worktree::card_branch(None, "KADE-41", "Export invoices"), "hersir/kade-41-export-invoices");
+    assert_eq!(worktree::card_branch(Some(" "), "KADE-41", "Export invoices"), "hersir/kade-41-export-invoices");
+    // the branch it has, from before 0.17.0 too, also after its title changed
+    assert_eq!(worktree::card_branch(Some("gizai/kade-41-export-invoices"), "KADE-41", "Export invoices as CSV"), "gizai/kade-41-export-invoices");
+    assert_eq!(worktree::card_branch(Some("hersir/kade-41-old-title"), "KADE-41", "New title"), "hersir/kade-41-old-title");
+    assert_eq!(worktree::card_branch(Some("feature/by-hand"), "KADE-41", "x"), "feature/by-hand");
+}
+
+#[test]
+fn a_card_with_a_gizai_branch_from_before_0_17_keeps_it_after_its_worktree_was_removed_and_its_title_changed() {
+    let tmp = real_tempdir();
+    let repo = repo(tmp.path());
+    let base = tmp.path().join("wt");
+    // the card's worktree as 0.16.0 made it: on gizai/<id>-<slug>, with a commit of its own
+    let old = "gizai/gfw-7-mollie-webhook";
+    git(&repo, &["worktree", "add", "-q", "-b", old, base.join("GFW-7").to_str().unwrap(), "main"]);
+    commit_file(&base.join("GFW-7"), "webhook.php", "<?php\n");
+    let work = rev(&repo, old);
+
+    // its worktree is there: ensure_on reuses it, on its branch
+    let branch = worktree::card_branch(Some(old), "GFW-7", "Mollie webhook");
+    let a = worktree::ensure_on(&repo, &base, "GFW-7", &branch, "main").unwrap();
+    assert!(!a.created);
+    assert_eq!((a.path.clone(), a.branch.as_str()), (base.join("GFW-7"), old));
+
+    // removed, and the card's title changed since: made again on the same gizai/ branch, with its work
+    git(&repo, &["worktree", "remove", "--force", a.path.to_str().unwrap()]);
+    let branch = worktree::card_branch(Some(old), "GFW-7", "Mollie webhooks and refunds");
+    let b = worktree::ensure_on(&repo, &base, "GFW-7", &branch, "main").unwrap();
+    assert!(b.created);
+    assert_eq!(b.branch, old);
+    assert_eq!(rev(&b.path, "HEAD"), work, "its own commits, not a new branch off main");
+    assert!(b.path.join("webhook.php").is_file());
+    assert!(!has_branch(&repo, "hersir/gfw-7-mollie-webhooks-and-refunds") && !has_branch(&repo, "hersir/gfw-7-mollie-webhook"), "no hersir/ branch made");
 }
 
 #[test]
@@ -259,7 +300,7 @@ fn a_new_card_takes_over_a_finished_cards_worktree_on_its_own_clean_branch() {
     let b = worktree::reuse(&repo, &a.path, &base, "KADE-2", "Next card", "main", &keep).unwrap();
 
     assert_eq!(b.path, base.join("KADE-2"));
-    assert_eq!(b.branch, "gizai/kade-2-next-card");
+    assert_eq!(b.branch, "hersir/kade-2-next-card");
     assert!(b.created, "a taken-over worktree counts as new for the card: it is prepared");
     assert_eq!(b.reused, Some(worktree::Reused { from: a.path.clone(), head: old_head }));
     assert!(!a.path.exists(), "the finished card's folder moved");
@@ -283,11 +324,25 @@ fn a_new_card_takes_over_a_finished_cards_worktree_on_its_own_clean_branch() {
 fn a_card_that_already_has_a_branch_takes_over_on_that_branch() {
     let tmp = real_tempdir();
     let (repo, base, a) = finished_card_worktree(tmp.path());
-    git(&repo, &["branch", "gizai/kade-2-next-card", "main"]);
+    git(&repo, &["branch", "hersir/kade-2-next-card", "main"]);
     commit_file(&repo, "main-only.txt", "x\n");
     let b = worktree::reuse(&repo, &a.path, &base, "KADE-2", "Next card", "main", &[]).unwrap();
-    assert_eq!(rev(&b.path, "HEAD"), rev(&repo, "gizai/kade-2-next-card"), "its own branch as it was, not main");
+    assert_eq!(rev(&b.path, "HEAD"), rev(&repo, "hersir/kade-2-next-card"), "its own branch as it was, not main");
     assert!(!b.path.join("target").exists(), "nothing kept when the keep list is empty");
+}
+
+#[test]
+fn a_card_with_a_gizai_branch_from_before_0_17_takes_over_on_that_branch() {
+    let tmp = real_tempdir();
+    let (repo, base, a) = finished_card_worktree(tmp.path());
+    git(&repo, &["branch", "gizai/kade-2-next-card", "main"]);
+    commit_file(&repo, "main-only.txt", "x\n");
+    // as worktrees::take_over does it: on the card's own branch (worktree::card_branch), its title changed since
+    let branch = worktree::card_branch(Some("gizai/kade-2-next-card"), "KADE-2", "Next card, renamed");
+    let b = worktree::reuse_on(&repo, &a.path, &base, "KADE-2", &branch, "main", &[]).unwrap();
+    assert_eq!(b.branch, "gizai/kade-2-next-card");
+    assert_eq!(rev(&b.path, "HEAD"), rev(&repo, "gizai/kade-2-next-card"), "its own branch as it was, not main");
+    assert!(!has_branch(&repo, "hersir/kade-2-next-card-renamed") && !has_branch(&repo, "hersir/kade-2-next-card"));
 }
 
 #[test]
@@ -634,7 +689,7 @@ fn together<T: Send>(n: usize, job: impl Fn(usize) -> T + Sync) -> Vec<T> {
 }
 
 /// The card's own test. Without the lock it fails only now and then on a fast disk (`failed to read
-/// .git/worktrees/…/commondir`): the tests in `one_at_a_time` fail every time.
+/// .git/worktrees/…/commondir`): the tests in `one_at_a_time` and `tests/worktree_lock_test.rs` fail every time.
 #[test]
 fn cards_of_one_repository_that_start_at_the_same_moment_each_get_their_own_worktree_and_branch() {
     const CARDS: usize = 8;
@@ -673,7 +728,7 @@ fn one_card_started_from_several_threads_gets_one_worktree() {
         // an existing one
         let again = start();
         assert!(again.iter().all(|w| !w.created), "{again:?}");
-        assert!(first.iter().chain(&again).all(|w| w.path == base.join("KADE-1") && w.branch == "gizai/kade-1-one-card"), "{first:?} {again:?}");
+        assert!(first.iter().chain(&again).all(|w| w.path == base.join("KADE-1") && w.branch == "hersir/kade-1-one-card"), "{first:?} {again:?}");
     });
 }
 
@@ -693,7 +748,7 @@ fn one_card_takes_over_a_finished_worktree_and_the_others_get_their_own() {
         assert_eq!(cards.iter().filter(|w| w.reused.is_some()).count(), 1, "{cards:?}");
         for (i, w) in cards.iter().enumerate() {
             assert_eq!(w.path, base.join(format!("CARD-{i}")));
-            assert_eq!(w.branch, format!("gizai/card-{i}-side-by-side"));
+            assert_eq!(w.branch, format!("hersir/card-{i}-side-by-side"));
             assert_eq!(rev(&w.path, "HEAD"), rev(&repo, "main"));
         }
         assert!(!a.path.exists(), "the finished card's folder moved");
@@ -782,31 +837,19 @@ fn every_worktree_command_at_once_on_one_repository() {
     });
 }
 
-/// These tests hold the lock open with a shell script that git runs, so they fail every time without it, on any disk.
-/// While the script waits, what takes the lock can't finish, however slow the machine is.
+/// This test holds the lock's other side open with a setup command that waits for the test, so it fails every time
+/// without it, on any disk. The tests that hold up the git command under the lock itself are in
+/// `tests/worktree_lock_test.rs`: since GA-263 Hersir's git runs no hook or fsmonitor of the repository that could do it.
 #[cfg(unix)]
 mod one_at_a_time {
     use super::*;
-    use gizai_agents::copies;
     use gizai_agents::prepare::{self, Prepare};
     use std::path::Path;
     use std::thread::ScopedJoinHandle;
     use std::time::{Duration, Instant};
 
-    /// How long a command that should wait for its turn gets to show it doesn't.
-    const PAUSE: Duration = Duration::from_millis(500);
     /// How long a command that should go ahead may take. Shorter than the gate holds: it fails, it doesn't pass late.
     const SOON: Duration = Duration::from_secs(60);
-
-    /// Writes an executable script through a child sh, so a fork elsewhere in the test process never holds it open
-    /// for writing ("Text file busy").
-    fn write_script(path: &Path, script: &str) {
-        use std::io::Write;
-        let mut sh = Command::new("sh").args(["-c", r#"cat > "$1" && chmod 755 "$1""#, "sh"]).arg(path)
-            .stdin(std::process::Stdio::piped()).spawn().unwrap();
-        sh.stdin.take().unwrap().write_all(script.as_bytes()).unwrap();
-        assert!(sh.wait().unwrap().success(), "can't write {}", path.display());
-    }
 
     /// Shell lines that hold up what runs them until the test opens the gate (at most 2 minutes), and files to say so.
     struct Gate(std::path::PathBuf);
@@ -821,25 +864,6 @@ mod one_at_a_time {
         fn lines(&self) -> String {
             let d = self.0.display();
             format!("touch '{d}/held'\ni=0\nwhile [ ! -e '{d}/go' ] && [ $i -lt 2400 ]; do sleep 0.05; i=$((i+1)); done\n")
-        }
-
-        /// In the post-checkout hook, which `git worktree add` and a branch switch run: the last thing they do.
-        fn on_checkout(tmp: &Path, repo: &Path) -> Gate {
-            let gate = Gate::new(tmp);
-            write_hook(repo, &gate.lines());
-            gate
-        }
-
-        /// In the `git clean` of a take-over to the folder `wt`. Git runs the `core.fsmonitor` program when a command reads
-        /// the index, also a clean; the switch before it runs the post-checkout hook, and the clean is the next one there.
-        fn on_clean(tmp: &Path, repo: &Path, wt: &Path) -> Gate {
-            let gate = Gate::new(tmp);
-            let (switched, monitor) = (gate.0.join("switched"), gate.0.join("fsmonitor"));
-            write_hook(repo, &format!("touch '{}'\n", switched.display()));
-            write_script(&monitor, &format!("#!/bin/sh\nif [ -e '{}' ] && [ \"$(pwd -P)\" = '{}' ]; then\n{}fi\nexit 1\n",
-                                            switched.display(), wt.display(), gate.lines()));
-            git(repo, &["config", "core.fsmonitor", monitor.to_str().unwrap()]);
-            gate
         }
 
         fn wait_until_held(&self) {
@@ -861,183 +885,12 @@ mod one_at_a_time {
         }
     }
 
-    fn write_hook(repo: &Path, lines: &str) {
-        std::fs::create_dir_all(repo.join(".git/hooks")).unwrap();
-        write_script(&repo.join(".git/hooks/post-checkout"), &format!("#!/bin/sh\n{lines}"));
-    }
-
     fn finishes_soon<T>(thread: &ScopedJoinHandle<T>) -> bool {
         let since = Instant::now();
         while !thread.is_finished() && since.elapsed() < SOON {
             std::thread::sleep(Duration::from_millis(10));
         }
         thread.is_finished()
-    }
-
-    #[test]
-    fn worktree_adds_and_branch_switches_of_one_repository_never_overlap() {
-        no_hang(|| {
-            let tmp = real_tempdir();
-            let (repo, base, _) = finished_card_worktree(tmp.path());
-            let finished: Vec<_> = (0..4).map(|i| worktree::ensure(&repo, &base, &format!("DONE-{i}"), "t", "main").unwrap().path).collect();
-            let log = tmp.path().join("turns");
-            write_hook(&repo, &format!("echo start >> '{l}'\nsleep 0.05\necho end >> '{l}'\n", l = log.display()));
-            let started = together(8, |i| match finished.get(i) {
-                Some(from) => worktree::reuse(&repo, from, &base, &format!("TOOK-{i}"), "t", "main", &[]),
-                None => worktree::ensure(&repo, &base, &format!("NEW-{i}"), "t", "main"),
-            });
-            for s in started {
-                s.unwrap();
-            }
-            assert_eq!(std::fs::read_to_string(&log).unwrap(), "start\nend\n".repeat(8));
-        });
-    }
-
-    #[test]
-    fn every_worktree_command_waits_for_the_add_that_is_running_by_any_spelling_of_the_repository() {
-        no_hang(|| {
-            let tmp = real_tempdir();
-            let (repo, base, finished) = finished_card_worktree(tmp.path());
-            let card = worktree::ensure(&repo, &base, "KADE-2", "To remove", "main").unwrap();
-            let other = worktree::ensure(&repo, &base, "KADE-3", "Stays", "main").unwrap();
-            let code = tmp.path().join("code");
-            std::fs::create_dir(&code).unwrap();
-            let copy = code.join("OLD");
-            copies::sync(&repo, &copy, "main").unwrap();
-            let (dots, link) = (repo.join("..").join("repo"), tmp.path().join("link"));
-            std::os::unix::fs::symlink(&repo, &link).unwrap();
-            let gate = Gate::on_checkout(tmp.path(), &repo);
-            std::thread::scope(|s| {
-                let holder = s.spawn(|| worktree::ensure(&repo, &base, "HOLD-1", "Holds the lock", "main"));
-                gate.wait_until_held();
-                let waiting: Vec<(&str, ScopedJoinHandle<Result<(), gizai_agents::AgentError>>)> = vec![
-                    ("worktree_of", s.spawn(|| worktree::worktree_of(&repo, "x").map(drop))),
-                    ("checked_out", s.spawn(|| worktree::checked_out(&repo).map(drop))),
-                    ("ensure", s.spawn(|| worktree::ensure(&repo, &base, "KADE-4", "t", "main").map(drop))),
-                    ("reuse", s.spawn(|| worktree::reuse(&repo, &finished.path, &base, "KADE-5", "t", "main", &[]).map(drop))),
-                    ("remove_worktree", s.spawn(|| worktree::remove_worktree(&repo, &card.path))),
-                    ("copies::sync", s.spawn(|| copies::sync(&repo, &code.join("NEW"), "main").map(drop))),
-                    // lists from the copy's own folder, so this is one of the repository's worktrees asking too
-                    ("copies::remove", s.spawn(|| copies::remove(&copy, &code))),
-                    ("through ..", s.spawn(|| worktree::worktree_of(&dots, "x").map(drop))),
-                    ("through a link", s.spawn(|| worktree::worktree_of(&link, "x").map(drop))),
-                    ("from a worktree", s.spawn(|| worktree::worktree_of(&other.path, "x").map(drop))),
-                ];
-                std::thread::sleep(PAUSE);
-                let early: Vec<&str> = waiting.iter().filter(|(_, t)| t.is_finished()).map(|(what, _)| *what).collect();
-                let holder_early = holder.is_finished();
-                gate.open();
-                holder.join().unwrap().unwrap();
-                for (what, t) in waiting {
-                    t.join().unwrap().unwrap_or_else(|e| panic!("{what}: {e}"));
-                }
-                assert!(early.is_empty() && !holder_early, "didn't wait for another card's worktree add: {early:?}");
-            });
-        });
-    }
-
-    #[test]
-    fn a_take_overs_branch_switch_holds_the_lock() {
-        no_hang(|| {
-            let tmp = real_tempdir();
-            let (repo, base, a) = finished_card_worktree(tmp.path());
-            let gate = Gate::on_checkout(tmp.path(), &repo);
-            std::thread::scope(|s| {
-                let holder = s.spawn(|| worktree::reuse(&repo, &a.path, &base, "KADE-2", "Next card", "main", &[]));
-                gate.wait_until_held();
-                let list = s.spawn(|| worktree::worktree_of(&repo, "x"));
-                std::thread::sleep(PAUSE);
-                let early = list.is_finished();
-                gate.open();
-                assert!(holder.join().unwrap().unwrap().reused.is_some());
-                list.join().unwrap().unwrap();
-                assert!(!early, "a list went ahead during a take-over's branch switch");
-            });
-        });
-    }
-
-    #[test]
-    fn a_copys_worktree_add_holds_the_lock() {
-        no_hang(|| {
-            let tmp = real_tempdir();
-            let repo = repo(tmp.path());
-            let gate = Gate::on_checkout(tmp.path(), &repo);
-            std::thread::scope(|s| {
-                let holder = s.spawn(|| copies::sync(&repo, &tmp.path().join("code").join("NEW"), "main"));
-                gate.wait_until_held();
-                let list = s.spawn(|| worktree::worktree_of(&repo, "x"));
-                std::thread::sleep(PAUSE);
-                let early = list.is_finished();
-                gate.open();
-                holder.join().unwrap().unwrap();
-                list.join().unwrap().unwrap();
-                assert!(!early, "a list went ahead during a copy's worktree add");
-            });
-        });
-    }
-
-    #[test]
-    fn cards_of_another_repository_do_not_wait() {
-        no_hang(|| {
-            let tmp = real_tempdir();
-            let (one, two) = (tmp.path().join("one"), tmp.path().join("two"));
-            std::fs::create_dir(&one).unwrap();
-            std::fs::create_dir(&two).unwrap();
-            let busy = repo(&one);
-            let (free, base, finished) = finished_card_worktree(&two);
-            let card = worktree::ensure(&free, &base, "KADE-2", "To remove", "main").unwrap();
-            let code = two.join("code");
-            std::fs::create_dir(&code).unwrap();
-            let copy = code.join("OLD");
-            copies::sync(&free, &copy, "main").unwrap();
-            let gate = Gate::on_checkout(&one, &busy);
-            std::thread::scope(|s| {
-                let holder = s.spawn(|| worktree::ensure(&busy, &one.join("wt"), "HOLD-1", "Holds the lock", "main"));
-                gate.wait_until_held();
-                let others = s.spawn(|| {
-                    assert!(worktree::ensure(&free, &base, "KADE-3", "t", "main").unwrap().created);
-                    assert!(worktree::reuse(&free, &finished.path, &base, "KADE-4", "t", "main", &[]).unwrap().reused.is_some());
-                    worktree::checked_out(&free).unwrap();
-                    worktree::worktree_of(&free, "x").unwrap();
-                    worktree::remove_worktree(&free, &card.path).unwrap();
-                    copies::sync(&free, &code.join("NEW"), "main").unwrap();
-                    copies::remove(&copy, &code).unwrap();
-                });
-                let finished_first = finishes_soon(&others);
-                let holder_early = holder.is_finished();
-                gate.open();
-                holder.join().unwrap().unwrap();
-                others.join().unwrap();
-                assert!(finished_first, "a card of another repository waited for this one's worktree add");
-                assert!(!holder_early, "the worktree add didn't wait for the gate");
-            });
-        });
-    }
-
-    #[test]
-    fn a_take_overs_git_clean_runs_outside_the_lock() {
-        no_hang(|| {
-            let tmp = real_tempdir();
-            let (repo, base, a) = finished_card_worktree(tmp.path());
-            let wt = base.join("KADE-2");
-            let gate = Gate::on_clean(tmp.path(), &repo, &wt);
-            std::thread::scope(|s| {
-                let taking = s.spawn(|| worktree::reuse(&repo, &a.path, &base, "KADE-2", "Next card", "main", &[]));
-                gate.wait_until_held();
-                let others = s.spawn(|| {
-                    assert!(worktree::ensure(&repo, &base, "KADE-3", "t", "main").unwrap().created);
-                    worktree::worktree_of(&repo, "x").unwrap();
-                });
-                let finished_first = finishes_soon(&others);
-                // the clean hadn't run yet: the last card's ignored files are still there
-                let log_still_there = wt.join("debug.log").is_file();
-                gate.open();
-                assert!(taking.join().unwrap().unwrap().reused.is_some());
-                others.join().unwrap();
-                assert!(finished_first, "another card waited for a take-over's git clean");
-                assert!(log_still_there && !wt.join("debug.log").exists(), "the gate didn't hold up the clean");
-            });
-        });
     }
 
     #[test]

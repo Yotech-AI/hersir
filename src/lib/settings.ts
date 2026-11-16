@@ -1,5 +1,5 @@
-// Settings: the warning under "Runs at once" (was GA-27), the hint under "Memory for agent runs" (GA-202), and the
-// warning by Quit Gizai completely (GA-21).
+// Settings: the warning under "Runs at once" (was GA-27), the hint under "Memory for agent runs" (GA-202) and "Memory per
+// run" (GA-277), and the warning by Quit Gizai completely (GA-21).
 import type { Settings, Team } from "../types";
 
 /** An agent that takes cards, with its cards at once. */
@@ -47,6 +47,17 @@ export function runsMemoryHint(s: Pick<Settings, "computerMemoryGb" | "runsMemor
 export function runsMemoryError(gb: number | undefined): string | null {
   if (gb === undefined || (Number.isInteger(gb) && gb >= 2)) return null;
   return "Memory for agent runs is a whole number of GB, 2 or more.";
+}
+
+/** The hint under "Memory per run" (GA-277). */
+export const RUNS_MEMORY_PER_RUN_HINT = "One run at most: its agent and everything it starts. Linux ends the biggest process of a run that reaches it, and the run goes on. Half of Memory for agent runs until you set it. Runs that start after you save get it.";
+
+/** Why "Memory per run" can't be saved as it is, or null: a whole number of GB, 2 or more. The backend checks Memory
+ *  for agent runs as the most, as only it knows whether the value changed: one left as it was may stay above a Memory
+ *  for agent runs lowered later. Null too when the backend didn't send the field. */
+export function runsMemoryPerRunError(gb: number | undefined): string | null {
+  if (gb === undefined || (Number.isInteger(gb) && gb >= 2)) return null;
+  return "Memory per run is a whole number of GB, 2 or more.";
 }
 
 /** The warning by Quit Gizai completely: what stops, and how many runs and chat answers it stops when some are at work. */

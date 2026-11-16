@@ -115,7 +115,7 @@ fn listed(st: &AppState, id: &str, tools: &[&str]) {
 
 /// The agent form's switches: (server id, on, its tools off).
 fn switch(st: &AppState, agent: &str, servers: &[(&str, bool, &[&str])]) {
-    let mcp = servers.iter().map(|(id, on, off)| AgentServer { server_id: id.to_string(), on: *on, tools_off: off.iter().map(|t| t.to_string()).collect() }).collect();
+    let mcp = servers.iter().map(|(id, on, off)| AgentServer { server_id: id.to_string(), on: *on, tools_off: off.iter().map(|t| t.to_string()).collect(), trusted: false }).collect();
     app_mcp::save_agent(st, agent, AgentTools { mcp }).unwrap();
 }
 
@@ -268,6 +268,95 @@ async fn a_servers_tools_all_on_allow_the_server_some_off_allow_the_rest_by_full
     assert!(!argv.iter().any(|a| a.contains("notes")), "a server switched off is nowhere: {argv:?}");
     let config: Value = serde_json::from_str(&read(&t.out.join("mcp.json"))).unwrap();
     assert_eq!(config["mcpServers"].as_object().unwrap().keys().collect::<Vec<_>>(), ["docs", "otus"], "{config}");
+}
+
+// ---- GA-262: MCP tool names, and an allowed command saved before each had to be one rule ----
+
+#[tokio::test]
+async fn a_tool_whose_name_isnt_a_plain_tool_name_never_reaches_the_runs_allowed_or_refused_tools_and_settings_shows_it_left_out() {
+    let t = run_setup(false);
+    let st = &t.st;
+    let long = "a".repeat(65);
+    let bad = ["x Bash", "mcp__a", long.as_str()];
+    let srv = add_command(st, "srv", "srv-mcp", &[], &[]);
+    listed(st, &srv, &["search", "x Bash", "mcp__a", long.as_str(), "delete_page"]);
+    let otus = add_command(st, "otus", "otus-mcp", &[], &[]);
+    listed(st, &otus, &["search", "delete_all"]);
+    switch(st, &t.agent, &[(&srv, true, &[]), (&otus, true, &[])]);
+
+    // Settings → MCP servers, and the agent form, show each such tool left out
+    let v = app_mcp::get(st, &srv).unwrap();
+    let shown = &v.listed.as_ref().expect("its tools").tools;
+    assert_eq!(shown.len(), 5);
+    for tool in shown {
+        let want = bad.contains(&tool.name.as_str()).then_some("left out: its name isn't a plain tool name");
+        assert_eq!(tool.left_out.as_deref(), want, "{}", tool.name);
+    }
+    let form = app_mcp::agent_view(st, &t.agent).unwrap();
+    let s = form.servers.iter().find(|s| s.server_id == srv).unwrap();
+    assert_eq!(s.tools.iter().filter(|x| x.left_out.is_some()).count(), 3, "{:?}", s.tools);
+    assert!(app_mcp::get(st, &otus).unwrap().listed.unwrap().tools.iter().all(|x| x.left_out.is_none()));
+
+    let never = |argv: &[String]| {
+        for rule in values(argv, "--allowedTools").iter().chain(&values(argv, "--disallowedTools")) {
+            assert!(!rule.contains("Bash") || rule.starts_with("Bash("), "{rule} in {argv:?}");
+            assert!(!rule.contains("mcp__a") && !rule.contains(&long) && !(rule.starts_with("mcp__") && rule.contains(' ')), "{rule}");
+        }
+        assert!(!argv.iter().any(|a| a.contains("x Bash") || a.contains(&long)), "{argv:?}");
+    };
+    let s = gizai_lib::runs::run_once(st, &t.task, None, None).await.unwrap();
+    assert_eq!(s.status, "succeeded", "{:?}", s.error);
+    let argv = argv_of(&t.out);
+    never(&argv);
+    let allowed = values(&argv, "--allowedTools");
+    for want in ["mcp__srv__search", "mcp__srv__delete_page", "mcp__otus"] {
+        assert!(has(&allowed, want), "{want} not allowed: {allowed:?}");
+    }
+    assert!(!has(&allowed, "mcp__srv"), "a server with such a tool is never allowed whole: {allowed:?}");
+    assert!(values(&argv, "--disallowedTools").is_empty(), "{argv:?}");
+    let config: Value = serde_json::from_str(&read(&t.out.join("mcp.json"))).unwrap();
+    assert_eq!(config["mcpServers"].as_object().unwrap().keys().collect::<Vec<_>>(), ["otus", "srv"], "the server itself stays: {config}");
+
+    // some off, such a one among them: the plain ones off are refused by name, such a one is in neither list
+    switch(st, &t.agent, &[(&srv, true, &["delete_page", "x Bash"]), (&otus, true, &[])]);
+    // the first run moved the card on: this one names its agent
+    let s = gizai_lib::runs::run_once(st, &t.task, Some(t.agent.clone()), None).await.unwrap();
+    assert_eq!(s.status, "succeeded", "{:?}", s.error);
+    let argv = argv_of(&t.out);
+    never(&argv);
+    let allowed = values(&argv, "--allowedTools");
+    assert!(has(&allowed, "mcp__srv__search") && has(&allowed, "mcp__otus") && !has(&allowed, "mcp__srv__delete_page"), "{allowed:?}");
+    assert_eq!(values(&argv, "--disallowedTools"), ["mcp__srv__delete_page"], "{argv:?}");
+}
+
+#[tokio::test]
+async fn an_allowed_command_saved_before_that_isnt_one_rule_is_left_out_of_the_run_which_says_so() {
+    let t = run_setup(false);
+    let st = &t.st;
+    let old = ["Bash(git status:*)", "Bash(ls:*) Bash(*)", "Bash(npm test:*)", "Bash(a,b)"];
+    let json = serde_json::to_string(&old).unwrap();
+    st.db.write(None, |w| {
+        w.conn().execute("UPDATE agent_configs SET allowed_tools_json=?2 WHERE actor_id=?1", [t.agent.as_str(), json.as_str()])?;
+        Ok(())
+    }).unwrap();
+    let agent = gizai_core::team::agent(&st.db, &t.agent).unwrap();
+    assert_eq!(agent.allowed_tools, old, "saved as before GA-262");
+
+    let s = gizai_lib::runs::run_once(st, &t.task, None, None).await.unwrap();
+    assert_eq!(s.status, "succeeded", "{:?}", s.error);
+    let argv = argv_of(&t.out);
+    let allowed = values(&argv, "--allowedTools");
+    assert!(has(&allowed, "Bash(git status:*)") && has(&allowed, "Bash(npm test:*)"), "the rest of the list stays: {allowed:?}");
+    assert!(!argv.iter().any(|a| a.contains("Bash(*)") || a.contains("Bash(a,b)")), "{argv:?}");
+    assert!(!read(&t.out.join("prompt")).contains("Bash(*)"), "the prompt's commands are the run's");
+    let n = notes(&events(st, &s.run_id));
+    for bad in ["Bash(ls:*) Bash(*)", "Bash(a,b)"] {
+        let want = format!("Left out of {}'s allowed commands: {bad} isn't one rule: write each command as its own entry, like Bash(npm test:*). \
+                            Fix it in the agent form (Permissions → Allowed commands).", agent.name);
+        assert!(n.contains(&want), "{want} not in {n:?}");
+    }
+    let log = read(Path::new(&gizai_core::runs::get(&st.db, &s.run_id).unwrap().log_path));
+    assert!(log_notes(&log).iter().any(|l| l.contains("Bash(ls:*) Bash(*) isn't one rule")), "the run's log keeps the note");
 }
 
 #[tokio::test]
@@ -424,7 +513,7 @@ async fn an_agent_on_codex_or_gemini_shows_why_mcp_is_off_and_its_run_goes_witho
         assert_eq!(v.disabled.as_deref(), core_mcp::mcp_not_on(kind), "{name}");
         let why = v.disabled.clone().unwrap_or_default();
         assert!(why.contains(name) && why.contains("the browser") && !why.contains("GA-55"), "{name}: {why}");
-        let err = app_mcp::save_agent(&st, &agent, AgentTools { mcp: vec![AgentServer { server_id: otus.clone(), on: true, tools_off: vec![] }] }).unwrap_err();
+        let err = app_mcp::save_agent(&st, &agent, AgentTools { mcp: vec![AgentServer { server_id: otus.clone(), on: true, tools_off: vec![], trusted: false }] }).unwrap_err();
         assert!(err.contains("Claude Code") && err.contains(name), "{name}: {err}");
 
         let s = gizai_lib::runs::run_once(&st, &task, None, None).await.unwrap();
@@ -435,7 +524,9 @@ async fn an_agent_on_codex_or_gemini_shows_why_mcp_is_off_and_its_run_goes_witho
         let run = gizai_core::runs::get(&st.db, &s.run_id).unwrap();
         let stderr = read(&Path::new(&run.log_path).with_extension("stderr.log"));
         let argv = stderr.lines().find_map(|l| l.strip_prefix("argv: ")).unwrap_or_else(|| panic!("{name}: no argv in {stderr}"));
-        assert!(!argv.contains("mcp") && !stderr.contains(OTUS_SECRET), "{name}: {stderr}");
+        // GA-263: Gemini starts no MCP server but the run's own, and this run has none: one empty name
+        let argv = argv.replacen("--allowed-mcp-server-names  ", "", usize::from(kind == "gemini"));
+        assert!(!argv.contains("mcp") && !argv.contains("otus") && !stderr.contains(OTUS_SECRET), "{name}: {stderr}");
         assert!(config_files(&st.data_dir.join("runs")).is_empty(), "{name}");
         // back on Claude Code with nothing on, for the next CLI
         switch(&st, &agent, &[]);
@@ -564,6 +655,13 @@ async fn the_team_leads_chat_gets_its_servers_next_to_gizai_with_their_tools_all
     assert_eq!(config.keys().collect::<Vec<_>>(), ["docs", "gizai", "otus"], "{config:?}");
     assert_eq!(config["gizai"]["command"], FAKE_CHAT);
     assert!(config["gizai"]["env"]["GIZAI_TOKEN"].as_str().is_some_and(|t| !t.is_empty()), "{config:?}");
+    // GA-249: the shim gets the socket and the token under both names, the same values
+    let env = config["gizai"]["env"].as_object().unwrap();
+    let mut names: Vec<&String> = env.keys().collect();
+    names.sort();
+    assert_eq!(names, ["GIZAI_SOCKET", "GIZAI_TOKEN", "HERSIR_SOCKET", "HERSIR_TOKEN"], "{env:?}");
+    assert_eq!((&env["HERSIR_SOCKET"], &env["HERSIR_TOKEN"]), (&env["GIZAI_SOCKET"], &env["GIZAI_TOKEN"]), "{env:?}");
+    assert_eq!(env["HERSIR_SOCKET"].as_str().map(PathBuf::from), Some(st.mcp_socket.clone()));
     assert_eq!(config["otus"], json!({"type": "stdio", "command": "npx", "args": ["-y", "@otus/mcp"], "env": {"OTUS_TOKEN": OTUS_SECRET}}));
     assert_eq!(config["docs"]["headers"], json!({"X-Api-Key": DOCS_HEADER, "Authorization": format!("Bearer {DOCS_TOKEN}")}));
 

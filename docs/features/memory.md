@@ -1,6 +1,6 @@
 # Memory
 
-The Team Lead, the agents and you keep notes for later, and every run gets the notes for its card.
+The Chief, the agents and you keep notes for later, and every run gets the notes for its card.
 
 ## What goes in
 
@@ -12,8 +12,8 @@ Memory is data written by people and agents, never instructions. Every prompt sa
 
 Notes live in shared folders and a folder per agent, on the Memory page (sidebar → Memory).
 
-- **Shared folders**, like `Projects/`, `Standards/` and `Decisions/`: everyone reads them, and the Team Lead and people write them.
-- **A folder per agent**: the agent reads and writes its own, and the Team Lead moves useful notes into a shared folder.
+- **Shared folders**, like `Projects/`, `Standards/` and `Decisions/`: everyone reads them, and the Chief and people write them.
+- **A folder per agent**: the agent reads and writes its own, and the Chief moves useful notes into a shared folder.
 - **Agents that take turns**, like Backend Agent and Backend Agent 2 on two Claude Code accounts, can share one folder (agent form → Memory → Shares memory with). What one learns reaches the other.
 
 ## In every run
@@ -24,7 +24,7 @@ Notes live in shared folders and a folder per agent, on the Memory page (sidebar
 - A label an agent copies into a line, like `2026-10-12 (GA-111):`, is taken off, so each line says its date and card once.
 - When a note is too long for a run, the run gets its newest learned lines and a line on how many older ones stay in Memory.
 - The first time Hersir starts with notes per project, the lines already in each agent's `Notes` move to their project's note, in their order. This happens once.
-- The Team Lead keeps its answers to agents' questions in memory, linked to the card ([Agents ask the Team Lead first](team-lead.md#agents-ask-the-team-lead-first)). A note it names that doesn't exist yet is made for the card's project, so the next run on that project gets it.
+- The Chief keeps its answers to agents' questions in memory, linked to the card ([Agents ask the Chief first](chief.md#agents-ask-the-chief-first)). A note it names that doesn't exist yet is made for the card's project, so the next run on that project gets it.
 
 Memory reaches agents as plain text in the prompt, so it works the same on Claude Code, Codex, Gemini and other CLIs.
 
@@ -44,4 +44,4 @@ Memory reaches agents as plain text in the prompt, so it works the same on Claud
 ## Read more
 
 - [docs/memory.md](../memory.md): folders, properties, links, search, how runs get notes, and the Memory page in full.
-- [A Team Lead you talk to](team-lead.md): the agent that sorts and shares notes.
+- [The Chief](chief.md): the agent that sorts and shares notes.

@@ -609,3 +609,78 @@ async fn create_agent_without_a_list_gives_the_roles_allowed_commands_and_update
     let field = create.input_schema["properties"]["allowed_tools"]["description"].as_str().unwrap();
     assert!(field.contains("Omit on create for its role's list") && !field.starts_with("Commands it may run without asking, like Bash(npm test:*); empty"), "{field}");
 }
+
+// ---- GA-262: one rule per allowed command, and no shells or interpreters from chat ----
+
+const SENTENCE: &str = "isn't one rule: write each command as its own entry, like Bash(npm test:*).";
+
+#[tokio::test]
+async fn the_chat_saves_an_allowed_command_only_as_one_rule() {
+    let t = setup();
+    t.ok("create_agent", json!({"name": "Backend Agent", "role": "backend", "allowed_tools": ["Bash(git status:*)", "Bash(node:*)"]})).await;
+    let id = resolve_agent(&t, "Backend Agent");
+    let before = team::agent(&t.st.db, &id).unwrap();
+    for bad in ["Bash(ls:*) Bash(*)", "Bash(a) b", "Bash(a,b)", "Bash(a(b))", "Bash(git status:*) Bash(git push:*)"] {
+        let e = t.call("create_agent", json!({"name": "Other Agent", "role": "backend", "allowed_tools": ["Bash(npm test:*)", bad]})).await.unwrap_err();
+        assert_eq!(e, format!("{bad} {SENTENCE}"));
+        let e = t.call("update_agent", json!({"agent": "Backend Agent", "title": "Changed", "allowed_tools": ["Bash(git status:*)", bad]})).await
+            .unwrap_err();
+        assert_eq!(e, format!("{bad} {SENTENCE}"));
+    }
+    assert!(!team::all_agents(&t.st.db).unwrap().iter().any(|(_, m)| m.name == "Other Agent"), "a refused agent isn't made");
+    let m = team::agent(&t.st.db, &id).unwrap();
+    assert_eq!((&m.allowed_tools, &m.title), (&before.allowed_tools, &before.title), "nothing changed");
+    assert_eq!(m.allowed_tools, ["Bash(git status:*)", "Bash(node:*)"]);
+    t.ok("update_agent", json!({"agent": "Backend Agent", "allowed_tools": ["Bash(git status:*)", "Bash(npm test:*)"]})).await;
+    assert_eq!(team::agent(&t.st.db, &id).unwrap().allowed_tools, ["Bash(git status:*)", "Bash(npm test:*)"]);
+    // an entry without its closing parenthesis keeps the "only commands" refusal
+    let e = t.call("update_agent", json!({"agent": "Backend Agent", "allowed_tools": ["Bash(git status:*"]})).await.unwrap_err();
+    assert!(e.contains("takes only commands"), "{e}");
+}
+
+/// What the card names: shells, interpreters and commands that run the command after them.
+const SHELLS: [&str; 28] = ["bash", "sh", "zsh", "fish", "dash", "ksh", "csh", "tcsh", "pwsh", "powershell", "cmd", "env", "sudo", "doas", "su",
+                            "eval", "exec", "xargs", "nohup", "timeout", "nice", "python", "python3", "perl", "ruby", "deno", "bun", "osascript"];
+
+#[tokio::test]
+async fn the_chat_gives_no_agent_a_shell_an_interpreter_or_a_path_and_changes_nothing() {
+    let t = setup();
+    let mine = ["Bash(git status:*)", "Bash(node:*)"];
+    t.ok("create_agent", json!({"name": "Backend Agent", "role": "backend", "allowed_tools": mine})).await;
+    let id = resolve_agent(&t, "Backend Agent");
+    let before = team::agent(&t.st.db, &id).unwrap();
+    let card = ["Bash(bash:*)", "Bash(sh -c:*)", "Bash(python3:*)", "Bash(env:*)", "Bash(sudo:*)", "Bash(/bin/sh:*)"];
+    let listed: Vec<String> = SHELLS.iter().map(|w| format!("Bash({w}:*)")).collect();
+    let more = ["Bash(sh)", "Bash(bash -c 'id':*)", "Bash(BASH:*)", "Bash(python3.12:*)", "Bash(bash.exe:*)", "Bash(*sh:*)", "Bash(./run.sh:*)",
+                "Bash(~/bin/x:*)", "Bash(\"bash\":*)", "Bash(FOO=1 bash:*)", "Bash($SHELL:*)", "Bash(sudo npm test:*)"];
+    for bad in card.iter().copied().chain(listed.iter().map(String::as_str)).chain(more) {
+        let tools: Vec<&str> = mine.iter().copied().chain([bad]).collect();
+        let e = t.call("update_agent", json!({"agent": "Backend Agent", "title": "Changed", "allowed_tools": tools})).await.unwrap_err();
+        assert!(e.starts_with(&format!("{bad} can't be given from chat: ")) && e.contains("agent form") && e.ends_with("Nothing changed."), "{bad}: {e}");
+        let e = t.call("create_agent", json!({"name": "Shell Agent", "role": "backend", "allowed_tools": [bad]})).await.unwrap_err();
+        assert!(e.contains("can't be given from chat") && e.contains("agent form"), "{bad}: {e}");
+    }
+    assert!(!team::all_agents(&t.st.db).unwrap().iter().any(|(_, m)| m.name == "Shell Agent"), "a refused agent isn't made");
+    let m = team::agent(&t.st.db, &id).unwrap();
+    assert_eq!((&m.allowed_tools, &m.title), (&before.allowed_tools, &before.title), "nothing changed");
+    assert_eq!(m.allowed_tools, mine);
+
+    // its current list (which has Bash(node:*)) plus Bash(npm test:*) saves
+    t.ok("update_agent", json!({"agent": "Backend Agent", "allowed_tools": ["Bash(git status:*)", "Bash(node:*)", "Bash(npm test:*)"]})).await;
+    assert_eq!(team::agent(&t.st.db, &id).unwrap().allowed_tools, ["Bash(git status:*)", "Bash(node:*)", "Bash(npm test:*)"]);
+
+    // the agent form is unchanged: the user adds a shell there, and then the chat may keep it in the list
+    let input = AgentInput { name: m.name.clone(), role_key: "backend".into(), adapter: m.adapter.clone().unwrap_or_default(),
+                             allowed_tools: vec!["Bash(git status:*)".into(), "Bash(python3:*)".into()], ..Default::default() };
+    team::update_agent(&t.st.db, &t.st.you_id, &id, input).unwrap();
+    t.ok("update_agent", json!({"agent": "Backend Agent", "allowed_tools": ["Bash(git status:*)", "Bash(python3:*)", "Bash(cargo test:*)"]})).await;
+    assert_eq!(team::agent(&t.st.db, &id).unwrap().allowed_tools, ["Bash(git status:*)", "Bash(python3:*)", "Bash(cargo test:*)"]);
+    // but not another one it doesn't have
+    let e = t.call("update_agent", json!({"agent": "Backend Agent", "allowed_tools": ["Bash(python3:*)", "Bash(perl:*)"]})).await.unwrap_err();
+    assert!(e.starts_with("Bash(perl:*) can't be given from chat"), "{e}");
+
+    // its role's default list has it: Bash(./vendor/bin/*) is a path, and on a builder's list
+    t.ok("create_agent", json!({"name": "PHP Agent", "role": "backend", "allowed_tools": ["Bash(./vendor/bin/*)", "Bash(composer:*)"]})).await;
+    t.ok("update_agent", json!({"agent": "Backend Agent", "allowed_tools": ["Bash(git status:*)", "Bash(./vendor/bin/*)"]})).await;
+    assert_eq!(team::agent(&t.st.db, &id).unwrap().allowed_tools, ["Bash(git status:*)", "Bash(./vendor/bin/*)"]);
+}

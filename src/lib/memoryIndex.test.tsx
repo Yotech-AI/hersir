@@ -540,7 +540,8 @@ describe("NotePane with 300 notes builds its note index once per list (GA-190)",
     for (const c of "abcdefghijklmnopqrst") { text += c; await type(text); }
     expect(h.indexCalls.slice(afterMount)).toEqual([301]);
     expect(backlinksShown().linked).toEqual(withNew.linked);
-  });
+    // 20 s: on GitHub's windows-latest the 300 notes took 5.1 s, past vitest's 5 s (GA-280)
+  }, 20_000);
 
   it("builds no index on re-renders with the same list, and one when the open note's place changes", async () => {
     const notes = makeNotes();

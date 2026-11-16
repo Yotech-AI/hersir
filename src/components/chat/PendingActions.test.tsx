@@ -39,7 +39,7 @@ describe("a call that waits for your OK", () => {
   it("says it waits and why, in words", () => {
     expect(html).toContain('aria-label="Waiting for your OK"');
     expect(html).toContain("Waiting for your OK</span>");
-    expect(html).toContain("This answer used search on the otus server, a tool from outside Hersir, so Hersir didn&#x27;t run this.");
+    expect(html).toContain("This chat used search on the otus server, a tool from outside Hersir, so Hersir didn&#x27;t run this.");
     expect(html).toContain('title="mcp__otus__search"');
   });
 
@@ -110,7 +110,7 @@ describe("several calls under one answer", () => {
   });
 
   it("names a web tool in words", () => {
-    expect(render([action("a1", { outsideTool: "WebFetch" })])).toContain("This answer used fetching a web page, a tool from outside Hersir");
+    expect(render([action("a1", { outsideTool: "WebFetch" })])).toContain("This chat used fetching a web page, a tool from outside Hersir");
   });
 });
 

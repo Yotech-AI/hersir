@@ -17,7 +17,7 @@ const api = await import("./api");
 const fs = await import(/* @vite-ignore */ ["node", "fs"].join(":"));
 const rust = (path: string): string => fs.readFileSync(new URL(`../src-tauri/src/${path}`, import.meta.url), "utf8");
 
-/** Contract C4's `src/api.ts`, as the card has it. */
+/** Contract C4's `src/api.ts`, as the card has it (GA-249: a new card's branch is hersir/, so the push's example says so). */
 const C4_API = `
 /** Open in editor, on a card assigned to you: makes and prepares its worktree as for an agent, pins the card to you and moves
  *  it on from To do. Resolves with where it is (its folder is an EditorFolder id). */
@@ -25,7 +25,7 @@ export const startByHand = (taskId: string) => invoke<T.HandCard>("start_by_hand
 export const handCard = (taskId: string) => invoke<T.HandCard>("hand_card", { taskId });
 /** Commits every change in the card's worktree with this message. */
 export const handCommit = (taskId: string, message: string) => invoke<T.Commit>("hand_commit", { taskId, message });
-/** Pushes the card's branch like Gizai's push after a run; resolves with what it did ("Pushed gizai/ga-123-… (2 commits)."). */
+/** Pushes the card's branch like Gizai's push after a run; resolves with what it did ("Pushed hersir/ga-123-… (2 commits)."). */
 export const handPush = (taskId: string) => invoke<string>("hand_push", { taskId });
 /** Refuses uncommitted changes; pushes, moves the card to Testing (Review with its Testing switch off) and takes the pin off.
  *  Resolves with the column's name. */

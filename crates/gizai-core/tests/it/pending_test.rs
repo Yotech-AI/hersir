@@ -121,8 +121,8 @@ fn a_newer_write_for_the_same_note_replaces_the_older_one_and_every_other_call_s
     // another chat's call for that note is its own
     assert_eq!(t.status(&same_elsewhere.id), "pending");
     // a replaced call can't be approved or discarded
-    assert_eq!(err(pending::claim(&t.db, &t.you, &first.id)), "It no longer waits: a newer call of the Team Lead's took its place.");
-    assert_eq!(err(pending::discard(&t.db, &t.you, &first.id, "x")), "It no longer waits: a newer call of the Team Lead's took its place.");
+    assert_eq!(err(pending::claim(&t.db, &t.you, &first.id)), "It no longer waits: a newer call of the Chief's took its place.");
+    assert_eq!(err(pending::discard(&t.db, &t.you, &first.id, "x")), "It no longer waits: a newer call of the Chief's took its place.");
 }
 
 #[test]
@@ -349,7 +349,7 @@ fn v16_db(dir: &std::path::Path) -> std::path::PathBuf {
         include_str!("../../migrations/0014_memory.sql"), include_str!("../../migrations/0015_lead_merges.sql"),
         include_str!("../../migrations/0016_memory_groups.sql"),
     ];
-    assert_eq!(all.len() as i64, db::SCHEMA_VERSION - 5, "five schema steps back (0017, and GA-180's 0018, GA-182's 0019, GA-212's 0020 and GA-228's 0021 after it)");
+    assert_eq!(all.len() as i64, db::SCHEMA_VERSION - 6, "six schema steps back (0017, and GA-180's 0018, GA-182's 0019, GA-212's 0020, GA-228's 0021 and GA-261's 0022 after it)");
     Migrations::new(all.iter().map(|sql| M::up(sql)).collect()).to_latest(&mut c).unwrap();
     c.pragma_update(None, "foreign_keys", "ON").unwrap();
     c.execute_batch("
@@ -372,13 +372,13 @@ fn migration_0017_on_a_v16_database_adds_pending_actions_after_a_backup_and_ever
     let path = v16_db(dir.path());
     let db = Db::open(&path).unwrap();
     // 0017, and GA-180's 0018 (indexes), GA-182's 0019 (screenshots), GA-212's 0020 (Test runs at once) and GA-228's 0021
-    // (Builds on) after it in the same step
-    assert_eq!(db::SCHEMA_VERSION, 21);
+    // (Builds on) and GA-261's 0022 (outside-tool marks) after it in the same step
+    assert_eq!(db::SCHEMA_VERSION, 22);
     let (v, broken): (i64, i64) = db.read(|c| Ok((c.query_row("PRAGMA user_version", [], |r| r.get(0))?,
         c.query_row("SELECT count(*) FROM pragma_foreign_key_check", [], |r| r.get(0))?))).unwrap();
-    assert_eq!((v, broken), (21, 0), "schema 21, foreign keys intact");
+    assert_eq!((v, broken), (22, 0), "schema 22, foreign keys intact");
     let snaps: Vec<String> = std::fs::read_dir(dir.path().join("backups")).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
-    assert!(snaps.len() == 1 && snaps[0].starts_with("gizai-before-v21-"), "{snaps:?}");
+    assert!(snaps.len() == 1 && snaps[0].starts_with("gizai-before-v22-"), "{snaps:?}");
     let old = Connection::open(dir.path().join("backups").join(&snaps[0])).unwrap();
     assert_eq!(old.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(), 16, "the backup is the schema 16 database");
     // the table, empty, with its index
@@ -401,10 +401,13 @@ fn migration_0017_on_a_v16_database_adds_pending_actions_after_a_backup_and_ever
     assert_eq!(std::fs::read_dir(dir.path().join("backups")).unwrap().count(), 1);
 }
 
-/// GA-182's 0019 columns and GA-212's 0020 column: NULL in every row an upgrade keeps.
-const COLUMNS_0019_0020: [(&str, &str); 9] = [("files", "caption"), ("files", "width"), ("files", "height"), ("runs", "screenshots_note"),
+/// GA-182's 0019 columns and GA-212's 0020 column (and GA-261's 0022 columns): NULL in every row an upgrade keeps.
+const COLUMNS_0019_0020: [(&str, &str); 11] = [("files", "caption"), ("files", "width"), ("files", "height"), ("runs", "screenshots_note"),
     ("tasks", "screenshots"), ("projects", "screenshots_json"), ("projects", "preview_command"), ("projects", "preview_start_secs"),
-    ("projects", "test_runs_at_once")];
+    ("projects", "test_runs_at_once"), ("tasks", "hold_kind"), ("chat_threads", "outside_tool")];
+
+/// Undoes GA-261's 0022: no outside-tool mark on chats and no hold kind on cards.
+const UNDO_0022: &str = "ALTER TABLE tasks DROP COLUMN hold_kind; ALTER TABLE chat_threads DROP COLUMN outside_tool;";
 
 /// Undoes GA-228's 0021: no Builds on table.
 const UNDO_0021: &str = "DROP INDEX task_builds_on_needed_by; DROP TABLE task_builds_on;";
@@ -503,8 +506,10 @@ fn a_v080_database_full_of_work_migrates_to_20_and_keeps_every_row_of_every_tabl
     memory::append(&db, &who, "Decisions/Use SQLite", None, "And backups are a copy.", None).unwrap();
     drop(db);
     // five steps back to the database v0.8.0 leaves (schema 16): 0017 only adds pending_actions and its index, GA-180's
-    // 0018 only indexes, GA-182's 0019 only columns and an index, GA-212's 0020 only a column, and GA-228's 0021 only a table
+    // 0018 only indexes, GA-182's 0019 only columns and an index, GA-212's 0020 only a column, GA-228's 0021 only a table, and
+    // GA-261's 0022 only two columns
     let c = Connection::open(&path).unwrap();
+    c.execute_batch(UNDO_0022).unwrap();
     c.execute_batch(UNDO_0021).unwrap();
     c.execute_batch(UNDO_0020).unwrap();
     c.execute_batch(UNDO_0019).unwrap();
@@ -527,7 +532,7 @@ fn a_v080_database_full_of_work_migrates_to_20_and_keeps_every_row_of_every_tabl
     let (v, broken, ok): (i64, i64, String) = db.read(|c| Ok((c.query_row("PRAGMA user_version", [], |r| r.get(0))?,
         c.query_row("SELECT count(*) FROM pragma_foreign_key_check", [], |r| r.get(0))?,
         c.query_row("PRAGMA integrity_check", [], |r| r.get(0))?))).unwrap();
-    assert_eq!((v, broken, ok.as_str()), (21, 0, "ok"), "schema 21, foreign keys and the file intact");
+    assert_eq!((v, broken, ok.as_str()), (22, 0, "ok"), "schema 22, foreign keys and the file intact");
     let mut after = db.read(|c| Ok(rows_without_0019_0020(c))).unwrap();
     assert_eq!(after.remove("pending_actions"), Some(vec![]), "pending_actions is new and empty");
     assert_eq!(after.remove("task_builds_on"), Some(vec![]), "task_builds_on (GA-228) is new and empty");
@@ -537,7 +542,7 @@ fn a_v080_database_full_of_work_migrates_to_20_and_keeps_every_row_of_every_tabl
     }
     // the backup made before the upgrade is that schema 16 database, with the same rows
     let snaps: Vec<_> = std::fs::read_dir(dir.path().join("backups")).unwrap().map(|e| e.unwrap().path()).collect();
-    assert!(snaps.len() == 1 && snaps[0].file_name().unwrap().to_string_lossy().starts_with("gizai-before-v21-"), "{snaps:?}");
+    assert!(snaps.len() == 1 && snaps[0].file_name().unwrap().to_string_lossy().starts_with("gizai-before-v22-"), "{snaps:?}");
     let old = Connection::open(&snaps[0]).unwrap();
     assert_eq!(old.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(), 16);
     assert!(all_rows(&old) == before, "the backup holds every row");

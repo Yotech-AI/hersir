@@ -26,7 +26,7 @@ pub(crate) const WAITS: &str = "EXISTS (SELECT 1 FROM task_builds_on bo JOIN tas
       JOIN workflow_states bs ON bs.id = bt.state_id WHERE bo.task_id = t.id AND bs.category NOT IN ('deploy','done'))";
 
 /// A card one builds on, or one that builds on it (Needed by), as the card page, the board check, the run prompt and the
-/// Team Lead's tools show it.
+/// Chief's tools show it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Linked {
@@ -117,8 +117,8 @@ fn and_list(items: &[String]) -> String {
     }
 }
 
-/// Why a start of `card` is refused while it waits for `waits` (identifiers, by number): Run, Continue, and the Team
-/// Lead's start_agent_run and continue_agent_run. "GA-227 builds on GA-226, which isn't merged yet. It starts by itself
+/// Why a start of `card` is refused while it waits for `waits` (identifiers, by number): Run, Continue, and the
+/// Chief's start_agent_run and continue_agent_run. "GA-227 builds on GA-226, which isn't merged yet. It starts by itself
 /// once GA-226 is merged; to start it now, take GA-226 off its Builds on."
 pub fn waits_message(card: &str, waits: &[String]) -> String {
     match waits {

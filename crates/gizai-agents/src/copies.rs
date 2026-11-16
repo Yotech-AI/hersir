@@ -1,4 +1,4 @@
-//! The Team Lead's read-only copies of the projects' code (`<data dir>/code/<KEY>`): a worktree of the project's
+//! The Chief's read-only copies of the projects' code (`<data dir>/code/<KEY>`): a worktree of the project's
 //! repository without a branch, at the commit a new card starts from. It shares the repository's objects (no clone, no
 //! second download) and holds only tracked files: no vendor/, node_modules/, target/ or .env. Gizai never prepares it
 //! (no copies, installs or setup), and the card worktree features don't see it: it lives outside Gizai's worktree folder.

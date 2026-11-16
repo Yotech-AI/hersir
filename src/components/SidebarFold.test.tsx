@@ -321,17 +321,17 @@ describe("nothing else changes (GA-90)", () => {
     expect(memory).toMatch(/href="#\/memory\/agent\/be" title="Backend Agent: its own folder">.*?<span class="count" title="Notes">2<\/span>/);
     expect(memory).toMatch(/href="#\/memory\/agent\/qa" title="QA Agent: its own folder">.*?<span class="count" title="Notes">1<\/span>/);
     expect(memory).toMatch(/href="#\/memory\/agent\/fe" title="Frontend Agent: its own folder">.*?<span class="count" title="Notes">0<\/span>/);
-    expect(memory).not.toContain("Set up the Team Lead");
+    expect(memory).not.toContain("Set up the Chief");
   });
-  it("Memory without a Team Lead has Shared notes and Set up the Team Lead, which opens the agent form on Team", () => {
+  it("Memory without a Chief has Shared notes and Set up the Chief, which opens the agent form on Team", () => {
     team([you, backend, qa]);
     const memory = section(html(), "Memory");
     expect(memory).toMatch(/<a class="nav-item" href="#\/memory\/shared" title="The shared folders">.*?<span>Shared notes<\/span><span class="meta"><span class="count" title="Notes">1<\/span><\/span><\/a>/);
-    expect(memory).toMatch(/<button class="nav-item"><svg[^>]*class="lucide lucide-crown icon"[^>]*>.*?<\/svg><span>Set up the Team Lead<\/span><\/button>/);
-    const setUp = tree().find((el) => el.type === "button" && [el.props.children].flat().some((c) => (c as ReactElement<Props>)?.props?.children === "Set up the Team Lead"))!;
+    expect(memory).toMatch(/<button class="nav-item"><svg[^>]*class="lucide lucide-crown icon"[^>]*>.*?<\/svg><span>Set up the Chief<\/span><\/button>/);
+    const setUp = tree().find((el) => el.type === "button" && [el.props.children].flat().some((c) => (c as ReactElement<Props>)?.props?.children === "Set up the Chief"))!;
     (setUp.props.onClick as () => void)();
     expect(state.go).toHaveBeenCalledWith({ page: "team" });
-    expect(state.open).toHaveBeenCalledWith({ kind: "agent", teamId: "t1", preset: { name: "Team Lead", role: "lead", chat: true } });
+    expect(state.open).toHaveBeenCalledWith({ kind: "agent", teamId: "t1", preset: { name: "Chief", role: "lead", chat: true } });
   });
   it("keeps Memory's section label, folded or open", () => {
     expect(html()).toContain('<div class="nav-section" aria-label="Memory">');

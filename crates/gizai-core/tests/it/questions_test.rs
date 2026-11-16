@@ -278,7 +278,7 @@ fn the_question_right_after_a_team_lead_answer_goes_to_you_and_the_board_check_l
     assert_eq!(g.lead, None);
     let l = q.lead_of(&r2).unwrap();
     assert_eq!((l.state.as_str(), l.lead_id.as_deref()), ("limit", None));
-    assert_eq!(l.reason.as_deref(), Some("the Team Lead answered this card's last question"));
+    assert_eq!(l.reason.as_deref(), Some("the Chief answered this card's last question"));
     assert!(q.in_inbox() && !q.card().with_lead);
     assert!(q.findings().is_empty(), "no board finding: it waits for you, {:?}", q.findings());
     // you answer on the card: now the board check sees an answered card
@@ -299,7 +299,7 @@ fn the_team_lead_takes_at_most_two_questions_per_card() {
     let (r3, g) = q.ask();
     assert_eq!(g.lead, None);
     let l = q.lead_of(&r3).unwrap();
-    assert_eq!((l.state.as_str(), l.reason.as_deref()), ("limit", Some("the Team Lead already took two questions on this card")));
+    assert_eq!((l.state.as_str(), l.reason.as_deref()), ("limit", Some("the Chief already took two questions on this card")));
     assert!(q.in_inbox());
     assert!(q.findings().is_empty(), "{:?}", q.findings());
 }
@@ -333,7 +333,7 @@ fn escalated_the_team_leads_comment_and_the_reason_go_on_the_card_and_it_lands_i
     assert!(questions::escalate(&q.db, &r, Some(&lr), "the client decides on the format", comment).unwrap());
     let t = q.card();
     assert_eq!((t.hold.as_deref(), t.hold_reason.as_deref(), t.with_lead),
-               (Some("needs_decision"), Some("Team Lead escalated to you: the client decides on the format"), false));
+               (Some("needs_decision"), Some("Chief escalated to you: the client decides on the format"), false));
     assert!(t.hold_at.unwrap_or(0) > before, "the hold is new, so it notifies");
     assert!(q.in_inbox());
     let c = q.leads_comments();
@@ -381,7 +381,7 @@ fn questions_that_waited_for_the_team_lead_when_gizai_stopped_go_to_you_at_the_n
     assert_eq!((lrun.status.as_str(), lrun.error.as_deref(), lrun.question_task_id.as_deref()), ("failed", Some("interrupted"), Some(q.task.as_str())));
     assert_eq!(questions::recover(&q.db).unwrap(), 1);
     let t = q.card();
-    assert_eq!(t.hold_reason.as_deref(), Some("Team Lead escalated to you: Hersir stopped before it had answered"));
+    assert_eq!(t.hold_reason.as_deref(), Some("Chief escalated to you: Hersir stopped before it had answered"));
     assert!(q.in_inbox());
     let c = q.leads_comments();
     assert_eq!(c.len(), 1);

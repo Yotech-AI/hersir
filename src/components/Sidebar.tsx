@@ -101,7 +101,7 @@ export function Sidebar({ route, youId, onSearch, onNewTask, dataLabel, dataDir 
       </FoldSection>
 
       <MemorySection route={route} lead={lead} agents={agents} notes={notes.data ?? []} folded={folded("memory")} onFold={() => fold("memory")}
-        setUpLead={() => { go({ page: "team" }); open({ kind: "agent", teamId: team.data?.id, preset: { name: "Team Lead", role: "lead", chat: true } }); }} />
+        setUpLead={() => { go({ page: "team" }); open({ kind: "agent", teamId: team.data?.id, preset: { name: "Chief", role: "lead", chat: true } }); }} />
 
       </div>
 
@@ -166,7 +166,7 @@ function MemorySection({ route, lead, agents, notes, folded, onFold, setUpLead }
           <a className={`nav-item${on("shared") ? " on" : ""}`} href={href({ page: "memory", scope: "shared" })} title="The shared folders">
             <Library className="icon" /><span>Shared notes</span><span className="meta">{count("shared")}</span>
           </a>
-          <button className="nav-item" onClick={setUpLead}><Crown className="icon" /><span>Set up the Team Lead</span></button>
+          <button className="nav-item" onClick={setUpLead}><Crown className="icon" /><span>Set up the Chief</span></button>
         </>
       )}
       {agents.filter((a) => a.actorId !== lead?.actorId).map((a) => {

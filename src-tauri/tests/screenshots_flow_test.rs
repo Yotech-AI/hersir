@@ -53,6 +53,7 @@ if (mode === 'shots') {
 const info = {
   pid: process.pid, child: child.pid, port: process.env.PORT ?? null, previewPort: process.env.GIZAI_PREVIEW_PORT ?? null,
   url: process.env.GIZAI_PREVIEW_URL ?? null, dir: process.env.GIZAI_PREVIEW_DIR ?? null, claudecode: process.env.CLAUDECODE ?? null,
+  hersirPort: process.env.HERSIR_PREVIEW_PORT ?? null, hersirUrl: process.env.HERSIR_PREVIEW_URL ?? null, hersirDir: process.env.HERSIR_PREVIEW_DIR ?? null,
   cwd: process.cwd(),
 };
 const file = path.join(infoDir, 'preview-' + port + '.json');
@@ -244,7 +245,7 @@ impl T {
 
     fn browser(&self, on: bool, tools_off: &[&str]) {
         let mcp = if on {
-            vec![AgentServer { server_id: core_mcp::BROWSER.into(), on: true, tools_off: tools_off.iter().map(|t| t.to_string()).collect() }]
+            vec![AgentServer { server_id: core_mcp::BROWSER.into(), on: true, tools_off: tools_off.iter().map(|t| t.to_string()).collect(), trusted: false }]
         } else {
             vec![]
         };
@@ -330,7 +331,7 @@ impl T {
         assert_eq!(s.status, "succeeded", "{why}: {:?}", s.error);
         assert!(!g.prompt.contains("## Screenshots"), "{why}: {}", g.prompt);
         assert!(!g.prompt.contains("127.0.0.1:"), "{why}: {}", g.prompt);
-        for k in ["GIZAI_PREVIEW_PORT", "GIZAI_PREVIEW_URL", "GIZAI_PREVIEW_DIR"] {
+        for k in ["GIZAI_PREVIEW_PORT", "GIZAI_PREVIEW_URL", "GIZAI_PREVIEW_DIR", "HERSIR_PREVIEW_PORT", "HERSIR_PREVIEW_URL", "HERSIR_PREVIEW_DIR"] {
             assert!(!g.env.contains_key(k), "{why}: {k} in {:?}", g.env);
         }
         assert!(!g.shot, "{why}: the fake saved no screenshots");
@@ -390,6 +391,10 @@ async fn a_run_with_the_browser_and_a_preview_command_gets_its_preview_and_its_s
     assert_eq!(g.env.get("GIZAI_PREVIEW_PORT"), Some(&port.to_string()));
     assert_eq!(g.env.get("GIZAI_PREVIEW_URL"), Some(&url));
     assert_eq!(g.env.get("GIZAI_PREVIEW_DIR").map(PathBuf::from), Some(preview_dir.clone()));
+    // GA-249: and under their HERSIR_ names, the same
+    assert_eq!(g.env.get("HERSIR_PREVIEW_PORT"), Some(&port.to_string()));
+    assert_eq!(g.env.get("HERSIR_PREVIEW_URL"), Some(&url));
+    assert_eq!(g.env.get("HERSIR_PREVIEW_DIR").map(PathBuf::from), Some(preview_dir.clone()));
     match std::env::var("PORT") {
         Err(_) => assert!(!g.env.contains_key("PORT"), "the agent gets no PORT: {:?}", g.env),
         Ok(own) => assert_eq!(g.env.get("PORT"), Some(&own), "only the PORT this test process has"),
@@ -405,6 +410,8 @@ async fn a_run_with_the_browser_and_a_preview_command_gets_its_preview_and_its_s
     assert_eq!(info["previewPort"], port.to_string());
     assert_eq!(info["url"], url);
     assert_eq!(info["dir"].as_str().map(PathBuf::from), Some(preview_dir.clone()));
+    // GA-249: the three HERSIR_PREVIEW_* too
+    assert_eq!((&info["hersirPort"], &info["hersirUrl"], &info["hersirDir"]), (&info["previewPort"], &info["url"], &info["dir"]), "{info}");
     assert_eq!(std::fs::canonicalize(info["cwd"].as_str().unwrap()).unwrap(), std::fs::canonicalize(&g.wt).unwrap());
     assert!(info["claudecode"].is_null(), "{info}");
     // its output went to .gizai-tmp/preview/preview.log, there while the run lived
@@ -884,4 +891,39 @@ async fn in_the_slice_what_the_preview_left_in_a_group_of_its_own_ends_with_the_
     let scopes = std::fs::read_dir(slice.0.dir()).unwrap().flatten().filter(|e| e.path().is_dir());
     let procs: String = scopes.map(|e| std::fs::read_to_string(e.path().join("cgroup.procs")).unwrap_or_default()).collect();
     assert!(procs.trim().is_empty(), "{procs}");
+}
+
+/// GA-277, Linux with a systemd user session: in the test Gizai's own slice, the run's preview starts in a scope with
+/// Memory per run as its MemoryMax and no MemoryHigh of its own, as the run itself does. Without a user session it says
+/// so and passes.
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn in_the_slice_the_preview_starts_in_a_scope_with_memory_per_run_and_no_memory_high() {
+    use gizai_agents::run_memory::{GB, Slice, slice_name};
+    struct Own(Slice);
+    impl Drop for Own {
+        fn drop(&mut self) {
+            let _ = self.0.remove();
+        }
+    }
+    let t = setup(Some((49800, 49899)));
+    t.st.run_memory.enable(&slice_name(&t.st.data_dir), 4 * GB);
+    t.st.run_memory.set_run_limit(GB);
+    let Some(slice) = t.st.run_memory.slice().map(Own) else {
+        assert!(std::env::var_os("GIZAI_TEST_SLICE").is_none(), "GIZAI_TEST_SLICE is set, but there is no slice");
+        eprintln!("skipped: no slice for agent runs on this Linux");
+        return;
+    };
+    let at = t.tmp.path().join("preview-scope");
+    t.project(&format!("c=$(sed -n 's/^0:://p' /proc/self/cgroup); echo \"$c $(cat /sys/fs/cgroup$c/memory.max) $(cat /sys/fs/cgroup$c/memory.high)\" > '{}'; {}",
+                       at.display(), t.node_preview("")), None, None);
+    let task = t.task("");
+    let (s, g) = t.run(&task).await;
+    assert_eq!(s.status, "succeeded", "{:?}", s.error);
+    preview_gone(&t.info(g.port()), g.port());
+    let line = read(&at);
+    let f: Vec<&str> = line.split_whitespace().collect();
+    let dir = Path::new("/sys/fs/cgroup").join(f[0].trim_start_matches('/'));
+    assert_eq!(dir.parent(), Some(slice.0.dir()), "the preview ran in a scope in the slice: {line}");
+    assert_eq!((f[1], f[2]), (GB.to_string().as_str(), "max"), "Memory per run, and no MemoryHigh of its own: {line}");
 }

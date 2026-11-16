@@ -22,10 +22,11 @@ import { onAppearance } from "./appearance";
 import { modClick } from "./keys";
 import { hidden, onShown } from "./windowFocus";
 
-/** Where a terminal can show: the Terminal page, or the terminal panel of a folder in the Editor (its EditorFolder id). */
-export type TerminalPlace = { kind: "page" } | { kind: "panel"; folder: string };
+/** Where a terminal can show: the Terminal page, the terminal panel of a folder in the Editor (its EditorFolder id), or the
+ *  Chat page's terminal panel (GA-278). */
+export type TerminalPlace = { kind: "page" } | { kind: "panel"; folder: string } | { kind: "chat" };
 
-export const placeKey = (p: TerminalPlace) => (p.kind === "page" ? "page" : `panel:${p.folder}`);
+export const placeKey = (p: TerminalPlace) => (p.kind === "panel" ? `panel:${p.folder}` : p.kind);
 export const samePlace = (a: TerminalPlace | null, b: TerminalPlace | null) => !!a && !!b && placeKey(a) === placeKey(b);
 
 // ---------- pure parts (tested in Node) ----------
@@ -501,6 +502,11 @@ export function leaveIn(id: string, place: TerminalPlace): void {
   else shown.delete(id);
   changed();
 }
+
+/** Every open terminal now, for a store outside React (the Chat's terminal panel, src/lib/chatTerminal.ts). */
+export const terminalsNow = (): TerminalSession[] => sessions;
+/** Calls `f` on every change to the list or to where a terminal shows; returns the unsubscribe. */
+export const watchTerminals = (f: () => void): (() => void) => subscribe(f);
 
 /** Every open terminal, in the order they were opened. */
 export function useTerminals(): TerminalSession[] {

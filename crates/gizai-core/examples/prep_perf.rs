@@ -1,9 +1,9 @@
 //! Makes the data for GA-188's benchmark harness (docs/research/performance.md §7 part 1): first the demo data, as the
 //! demo example makes it, when <data dir> has none, then on it:
-//! - The Team Lead (Chat on), the Backend, Frontend and QA Agents. Claude Code is <fake claude>; the Team Lead's chat
+//! - The Chief (Chat on), the Backend, Frontend and QA Agents. Claude Code is <fake claude>; the Chief's chat
 //!   turns run on a second coding CLI, "Claude Code (chat)", whose program is fake-claude-chat.py next to it. Agents are
 //!   paused in Settings, so the queue and the board check start nothing, and the Frontend and QA Agents are paused
-//!   themselves. The Team Lead stays active (the chat refuses a paused one) and so does the Backend Agent (Run refuses a
+//!   themselves. The Chief stays active (the chat refuses a paused one) and so does the Backend Agent (Run refuses a
 //!   paused agent; Settings' pause stops only the queue): KADE-1 is assigned to it, so Run on KADE-1 starts it. Tool
 //!   calls per run are 2,000 (FAKE_STREAM 50x20 makes 333; the default 200 would stop the run).
 //! - 500 cards in KADE over every column, each with a 1 to 3 KB description, up to three labels and three comments
@@ -11,9 +11,9 @@
 //!   Inbox). KADE-1 stays in In progress, and its description has FAKE_STREAM 50x20 (the fake streams 50 events a
 //!   second for 20 s).
 //! - 90 days of history: 2,000 finished runs with tokens and cost (KADE's cards mostly, one in ten on GFW's; mostly
-//!   succeeded), 60 chats with the Team Lead (59 of a few messages, a chat turn per answer; the newest has 1,000
+//!   succeeded), 60 chats with the Chief (59 of a few messages, a chat turn per answer; the newest has 1,000
 //!   messages, every tenth a tool call). Their times, and the activity's (`changes`), are set back to when they happened.
-//! - 300 Memory notes that link each other (prep_graph's pattern), in the shared folders and the Team Lead's; the most
+//! - 300 Memory notes that link each other (prep_graph's pattern), in the shared folders and the Chief's; the most
 //!   linked is Projects/Kade portal.
 //! - KADE-1's last run, by the Backend Agent, whose log has 5,000 events: <data dir>/runs/<session>.jsonl, stored with
 //!   its absolute path, as the app stores a run's log. A copy of the data dir reads the original's log.
@@ -22,11 +22,11 @@
 //! --repo <dir>: links KADE to the git repository <dir>, made (main, one empty commit) when it isn't there, so Run starts.
 //! --editor <dir>: makes <dir>/big (once): a git repository of 20,000 small files in 200 folders and big.ts of 5,000
 //!   lines. Then <dir> is the Editor folder, so big is one of the Editor's folders. Checked as the app checks it, with
-//!   HOME and XDG_DATA_HOME, so give prep_perf the ones the app runs with: a folder in Gizai's data folders (the data
-//!   dir, $XDG_DATA_HOME/gizai, ~/.local/share/gizai) is refused, and prep_perf stops with why.
+//!   HOME and XDG_DATA_HOME, so give prep_perf the ones the app runs with: a folder in Hersir's data folders (the data
+//!   dir, $XDG_DATA_HOME/hersir or …/gizai, ~/.local/share/hersir or …/gizai) is refused, and prep_perf stops with why.
 //! On a data dir it made before, or a copy of one, it makes nothing again: it does --repo and --editor and prints the ids.
 //! Prints one line, progress goes to stderr: card=<KADE-1> run=<its 5,000-event run> chat=<the 1,000-message chat>
-//! note=<Projects/Kade portal> lead=<the Team Lead> folder=<the Editor's id of <dir>/big, or -> file=big.ts
+//! note=<Projects/Kade portal> lead=<the Chief> folder=<the Editor's id of <dir>/big, or -> file=big.ts
 //! usage: cargo run -p gizai-core --example prep_perf -- <data dir> <fake claude> [--years <n>] [--repo <dir>] [--editor <dir>]
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -58,10 +58,10 @@ const LOG_EVENTS: usize = 5_000;
 const BIG_FILES: usize = 20_000;
 /// The most linked Memory note.
 const HUB: &str = "Projects/Kade portal";
-/// The coding CLI the Team Lead's chat turns run on.
+/// The coding CLI the Chief's chat turns run on.
 const CHAT_CLI: &str = "Claude Code (chat)";
 
-const FOLDERS: [&str; 9] = ["Decisions", "Workflows", "Standards", "Lessons", "Clients", "Projects", "Deployments", "Dependencies", "Team Lead"];
+const FOLDERS: [&str; 9] = ["Decisions", "Workflows", "Standards", "Lessons", "Clients", "Projects", "Deployments", "Dependencies", memory::LEAD];
 
 // What the cards, comments, chats and notes say, combined by number.
 const SENTENCES: [&str; 32] = [
@@ -239,8 +239,8 @@ fn main() {
     println!("card={} run={} chat={} note={} lead={} folder={folder} file=big.ts", ids.card, ids.run, ids.chat, ids.note, ids.lead);
 }
 
-/// The ids, when the data is made already: KADE-1's last run has its log, and the big chat, the hub note and the Team
-/// Lead are there.
+/// The ids, when the data is made already: KADE-1's last run has its log, and the big chat, the hub note and the
+/// Chief are there.
 fn made(db: &Db) -> Option<Ids> {
     let card = tasks::id_of(db, "KADE-1").ok()?;
     let run = runs::list_for_task(db, &card).ok()?.into_iter().next().filter(|r| Path::new(&r.log_path).is_file())?.id;
@@ -279,7 +279,7 @@ fn agents(db: &Db, s: &SeedIds, fake: &Path) -> Agents {
     settings::set(db, "claude_bin", &fake.display().to_string()).unwrap();
     settings::set(db, "agents_paused", &true).unwrap();
     settings::set(db, "max_run_tool_calls", &2_000u32).unwrap();
-    // The Team Lead's chat turns run on the fake chat Claude, next to the fake.
+    // The Chief's chat turns run on the fake chat Claude, next to the fake.
     let chat_bin = fake.parent().unwrap().join("fake-claude-chat.py").display().to_string();
     let mut added: Vec<Cli> = clis::list(db).unwrap().into_iter().filter(|c| c.id != clis::CLAUDE_CODE).collect();
     match added.iter_mut().find(|c| c.name == CHAT_CLI) {
@@ -296,7 +296,7 @@ fn agents(db: &Db, s: &SeedIds, fake: &Path) -> Agents {
         team::set_agent_status(db, &s.you_id, &id, status).unwrap();
         id
     };
-    let lead = agent("Team Lead", "lead", "active");
+    let lead = agent("Chief", "lead", "active");
     let backend = agent("Backend Agent", "backend", "active");
     let frontend = agent("Frontend Agent", "frontend", "paused");
     let qa = agent("QA Agent", "qa", "paused");
@@ -338,7 +338,7 @@ fn cards(db: &Db, s: &SeedIds, a: &Agents, sanne: &str) -> String {
         let open = matches!(st.category.as_str(), "ready" | "in_progress" | "testing");
         let hold = (open && pick(6, k, 12) == 0).then(|| if k % 3 == 0 { ("blocked", BLOCKED) } else { ("needs_decision", HOLDS[k % HOLDS.len()]) });
         if st.id != team.states[0].id {
-            tasks::move_to_held(db, &s.you_id, &id, &st.id, "", hold).unwrap();
+            tasks::move_to_held(db, &s.you_id, &id, &st.id, "", hold.map(Into::into)).unwrap();
         }
     }
     let kade1 = tasks::get(db, &tasks::id_of(db, "KADE-1").unwrap()).unwrap();
@@ -552,7 +552,7 @@ fn tidy(db: &Db, before: i64) {
     }).unwrap();
 }
 
-/// 300 Memory notes that link each other (prep_graph's pattern), in the shared folders and the Team Lead's: each links
+/// 300 Memory notes that link each other (prep_graph's pattern), in the shared folders and the Chief's: each links
 /// two or three others, every tenth the hub (Projects/Kade portal, which links twelve), every 40th a note that isn't
 /// there yet; every seventh names a KADE card, every 25th mentions the Backend Agent, every eighth has a #tag and every
 /// fifth properties. Returns the hub's id.
@@ -592,7 +592,7 @@ fn notes(db: &Db, you: &str, a: &Agents) -> String {
         if i % 8 == 0 {
             body += &format!("\n\n#{}", TAGS[i % TAGS.len()]);
         }
-        let who = if folder == "Team Lead" || i % 2 == 1 { &as_lead } else { &as_you };
+        let who = if folder == memory::LEAD || i % 2 == 1 { &as_lead } else { &as_you };
         let id = memory::write(db, who, &format!("{folder}/{}", title(i)), &body, None, None).unwrap().id;
         if i == 0 {
             hub = id;
@@ -784,7 +784,7 @@ fn comment(i: usize) -> String {
     s
 }
 
-/// Who writes message `m` of a chat: every tenth is a tool call of the Team Lead's, the others are yours and its in turn.
+/// Who writes message `m` of a chat: every tenth is a tool call of the Chief's, the others are yours and its in turn.
 fn role_of(m: usize) -> &'static str {
     if m % 10 == 9 {
         "tool"
@@ -805,7 +805,7 @@ fn ask(i: usize) -> String {
     }
 }
 
-/// An answer of the Team Lead's: from a line to a few screens of Markdown (paragraphs, lists, code, a table).
+/// An answer of the Chief's: from a line to a few screens of Markdown (paragraphs, lists, code, a table).
 fn answer(i: usize) -> String {
     let mut s = para(61, i, 1 + pick(62, i, 3));
     for p in 1..1 + pick(60, i, 6) {
@@ -822,7 +822,7 @@ fn answer(i: usize) -> String {
     s
 }
 
-/// A tool call of the Team Lead's, as the app saves one: no text, the tool's name, and its input and result.
+/// A tool call of the Chief's, as the app saves one: no text, the tool's name, and its input and result.
 fn tool_call(i: usize) -> (String, Value) {
     let n = 1 + i % 480;
     let (name, input, result) = match i % 5 {

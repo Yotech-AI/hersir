@@ -171,8 +171,8 @@ export function ProjectDrawer({ id, onClose }: { id?: string; onClose: () => voi
             <input id="p-url" className="input mono" placeholder="https://github.com/owner/name or https://bitbucket.org/workspace/name" value={v.repoUrl ?? ""}
               onChange={(e) => { setUrlTouched(true); set("repoUrl", e.target.value); }} /></Field>
           <Field label="Main branch" htmlFor="p-branch" hint="New task branches start here"><input id="p-branch" className="input mono" value={v.defaultBranch ?? "main"} onChange={(e) => set("defaultBranch", e.target.value)} /></Field>
-          <Field label="Merging" wide hint="On GitHub only. The Team Lead merges a card in Review with a merge commit once QA passed its latest commit and every check succeeded, in chat and in its board checks. Releases and deploys stay yours.">
-            <label className="check"><input type="checkbox" checked={v.leadMayMerge ?? false} onChange={(e) => set("leadMayMerge", e.target.checked)} />Team Lead may merge</label>
+          <Field label="Merging" wide hint="On GitHub only. The Chief merges a card in Review with a merge commit once QA passed its latest commit and every check succeeded, in chat and in its board checks. Releases and deploys stay yours.">
+            <label className="check"><input type="checkbox" checked={v.leadMayMerge ?? false} onChange={(e) => set("leadMayMerge", e.target.checked)} />Chief may merge</label>
           </Field>
         </FormSection>
         <FormSection title="New worktrees" text="Each card gets its own git worktree. Before the agent starts in a new one, Hersir copies these paths, installs what is still missing, then runs the setup command.">
@@ -200,9 +200,9 @@ export function ProjectDrawer({ id, onClose }: { id?: string; onClose: () => voi
             <label className="check"><input id="p-shots" type="checkbox" checked={shots.on} onChange={(e) => setShots({ on: e.target.checked })} />Take screenshots of this project’s screens</label>
           </Field>
           <Field label="Preview command" htmlFor="p-preview" wide
-            hint="Empty by default: no preview, so no screenshots. Runs with bash -c in the card’s worktree when a run starts whose agent takes screenshots, on a free port in GIZAI_PREVIEW_PORT (and PORT), with GIZAI_PREVIEW_DIR for a throwaway database. Serve demo data, never your .env database. Hersir ends it with the run.">
+            hint="Empty by default: no preview, so no screenshots. Runs with bash -c in the card’s worktree when a run starts whose agent takes screenshots, on a free port in HERSIR_PREVIEW_PORT (and PORT), with HERSIR_PREVIEW_DIR for a throwaway database. The GIZAI_PREVIEW_* names are set too. Serve demo data, never your .env database. Hersir ends it with the run.">
             <input id="p-preview" className="input mono" spellCheck={false} autoComplete="off" value={v.previewCommand ?? ""} onChange={(e) => set("previewCommand", e.target.value)}
-              placeholder={'npx astro dev --host 127.0.0.1 --port "$GIZAI_PREVIEW_PORT" --ignore-lock'} />
+              placeholder={'npx astro dev --host 127.0.0.1 --port "$HERSIR_PREVIEW_PORT" --ignore-lock'} />
           </Field>
           <Field label="Start time (seconds)" htmlFor="p-start" hint="10 to 600; 120 by default. The agent starts once the page answers, or after this long without it.">
             <input id="p-start" className="input" type="number" min={START_SECS.low} max={START_SECS.high} step={1} value={shownNumber(v.previewStartSecs)}

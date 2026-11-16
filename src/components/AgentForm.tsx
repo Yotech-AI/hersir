@@ -3,9 +3,10 @@ import { Plus, RefreshCw, X } from "lucide-react";
 import { addAgent, chatAgent, checkAgentFolders, claudeModels, getAgent, getTeam, listClis, listTeams, roleTemplate, roleTools, saveAgentCliTools, saveAgentMcp, updateAgent } from "../api";
 import { go } from "../router";
 import {
-  DEFAULT_TOOLS, draftFrom, foldersFrom, inputFrom, isLeadDraft, parseTools, ROLES, roleLabel, shareChoices, shareTarget, type AgentDraft, type AgentPreset,
+  DEFAULT_TOOLS, draftFrom, foldersFrom, inputFrom, isLeadDraft, notOneRule, oneRule, parseTools, ROLES, roleLabel, shareChoices, shareTarget, type AgentDraft,
+  type AgentPreset,
 } from "../lib/agents";
-import { agentFolder } from "../lib/memory";
+import { agentFolder, LEAD } from "../lib/memory";
 import { CLAUDE_CODE, EFFORTS_BY_KIND, FOLDERS_NOTE, KIND_LABEL, kindOf, modeFor, PERMISSIONS, RISKY, usesAllowedTools } from "../lib/clis";
 import { cliToolsToSave, fitCliTools, sameCliTools } from "../lib/cliTools";
 import { modKey } from "../lib/keys";
@@ -75,7 +76,7 @@ function FoldersField({ value, onChange, kind, lead }: { value: AgentFolder[]; o
       Folders besides its card's worktree that its file tools may read, or read and change. They limit the file tools, not the commands it may run: an allowed command can still reach any folder.
       {" "}Never /, your home folder, Hersir's data folder or folders with keys (~/.ssh, ~/.gnupg, ~/.config, …).
       {" "}{FOLDERS_NOTE[kind]}
-      {lead && " In chat the Team Lead only reads them; read and change also lets it update that folder (update_checkout) after you say yes in the chat."}
+      {lead && " In chat the Chief only reads them; read and change also lets it update that folder (update_checkout) after you say yes in the chat."}
     </>}>
       <div className="folder-list">
         {value.map((f, i) => {
@@ -109,7 +110,7 @@ function SharesField({ value, onChange, agentId, name, lead, agents }: {
   const choices = shareChoices(agentId, agents);
   const sharers = agents.filter((a) => agentId && a.sharesMemoryWith === agentId && a.actorId !== agentId).map((a) => a.name);
   const own = `Agents/${agentFolder(name || "Agent")}/`;
-  const hint = lead ? "The Team Lead keeps its own notes, in Team Lead/." : <>
+  const hint = lead ? `The Chief keeps its own notes, in ${LEAD}/.` : <>
     Its own folder ({own}), or the folder of an agent it takes turns with, like Backend Agent 2 with Backend Agent: their runs get that folder's notes and what they learn goes there.
     {" "}Joining moves its notes into that folder; back to its own folder, it starts a fresh Notes.
     {sharers.length > 0 && ` ${sharers.join(", ")} ${sharers.length === 1 ? "shares" : "share"} this agent's folder.`}
@@ -208,6 +209,8 @@ export function AgentDrawer({ teamId, agentId, preset, onClose }: { teamId?: str
       model: k === kind ? x.model : "", chat: k === "claude_code" ? x.chat : false };
   });
   const addTool = (t: string) => { const list = parseTools(d.tools); if (!list.includes(t)) set("tools", [...list, t].join("\n")); };
+  // GA-262: entries that aren't one rule, also saved before that was checked: saving refuses them and runs leave them out.
+  const notOne = parseTools(d.tools).filter((t) => !oneRule(t));
   const save = async () => {
     setBusy(true);
     try {
@@ -276,7 +279,7 @@ export function AgentDrawer({ teamId, agentId, preset, onClose }: { teamId?: str
             );
           })()}
         </FormSection>
-        <FormSection title="Chat" text="The agent you talk to on the Chat page: your Team Lead. Only one agent has Chat.">
+        <FormSection title="Chat" text="The agent you talk to on the Chat page: your Chief. Only one agent has Chat.">
           <Field label="Chat" wide htmlFor="a-chat"
             warn={kind !== "claude_code" ? "Chat runs on Claude Code: pick a Claude Code CLI under Runs on to turn it on." : d.chat && chatOwner && chatOwner.actorId !== agentId ? `Chat moves from ${chatOwner.name} to this agent.` : null}
             hint="In chat it uses Hersir's tools: clients, projects, tasks, agents, docs, files and your inbox. It can read your linked repositories but doesn't edit files or run commands there. The settings below are for its work on tasks.">
@@ -300,7 +303,7 @@ export function AgentDrawer({ teamId, agentId, preset, onClose }: { teamId?: str
           <SharesField value={d.memoryWith} onChange={(v) => set("memoryWith", v)} agentId={agentId} name={d.name} lead={isLeadDraft(d)} agents={agents} />
         </FormSection>
         <FormSection title="Work" text={isNew
-          ? "The columns it is on decide when it works (Team → Workflow). A new agent goes on its role's usual columns: builders on To do and In progress, QA on Testing, DevOps on Deploy, the Team Lead on none."
+          ? "The columns it is on decide when it works (Team → Workflow). A new agent goes on its role's usual columns: builders on To do and In progress, QA on Testing, DevOps on Deploy, the Chief on none."
           : "The columns it is on decide when it works (Team → Workflow): on an Auto column it takes cards by itself, on a Manual one Run starts it."}>
           <Field label="Cards at once" htmlFor="a-runs" hint="1 to 10. Each card gets its own git worktree; Settings sets the limit for all agents together."
             warn={d.maxRuns.trim() !== "" && !(Number(d.maxRuns) >= 1 && Number(d.maxRuns) <= 10) ? "Pick a number from 1 to 10" : null}>
@@ -316,8 +319,9 @@ export function AgentDrawer({ teamId, agentId, preset, onClose }: { teamId?: str
                 {!(d.permissionMode in PERMISSIONS[kind]) && <option value={d.permissionMode}>{d.permissionMode || "(none)"} (not offered)</option>}
               </select></Field>
           )}
-          {usesAllowedTools(kind) && (
-            <Field label="Allowed commands" htmlFor="a-tools" wide hint={kind === "gemini" ? "One per line, like Bash(npm test:*). Gemini gets each Bash(…) line as a shell command it may run; everything else is refused in auto_edit mode." : "One per line. Everything else is refused in acceptEdits mode."}>
+          {/* On a CLI that takes no allowed commands, shown only to fix an entry that would stop saving. */}
+          {(usesAllowedTools(kind) || notOne.length > 0) && (
+            <Field label="Allowed commands" htmlFor="a-tools" wide warn={notOne.length > 0 ? notOne.map(notOneRule).join(" ") : null} hint={kind === "gemini" ? "One per line, like Bash(npm test:*). Gemini gets each Bash(…) line as a shell command it may run; everything else is refused in auto_edit mode." : "One per line. Everything else is refused in acceptEdits mode."}>
               <textarea id="a-tools" className="textarea mono" rows={6} value={d.tools} onChange={(e) => set("tools", e.target.value)} />
               <div className="tool-sugg">{TOOL_SUGGESTIONS.filter((t) => !parseTools(d.tools).includes(t)).map((t) => <button key={t} type="button" className="label-pill" onClick={() => addTool(t)}>+ {t}</button>)}</div></Field>
           )}
@@ -325,7 +329,7 @@ export function AgentDrawer({ teamId, agentId, preset, onClose }: { teamId?: str
           <Field label="Monthly budget ($)" htmlFor="a-budget" hint={kind === "claude_code" ? "Once its runs this calendar month (UTC) cost this much, it starts no new runs" : `${cliName} doesn't report what a run costs, so its runs count as $0 here`}><input id="a-budget" className="input" inputMode="decimal" value={d.budget} onChange={(e) => set("budget", e.target.value)} placeholder="No limit" /></Field>
         </FormSection>
         <FormSection title="Tools" text={`What ${cliName} may use besides its worktree, folders and commands: outside services through MCP servers, the web, a hidden browser and its own built-in tools. Everything is off until you switch it on.`}>
-          <AgentToolsField agentId={agentId} kind={kind} allowedTools={!usesAllowedTools(kind) ? [] : parseTools(d.tools).length > 0 ? parseTools(d.tools) : DEFAULT_TOOLS} value={d.mcp} onChange={(v) => set("mcp", v)} />
+          <AgentToolsField agentId={agentId} kind={kind} allowedTools={!usesAllowedTools(kind) ? [] : parseTools(d.tools).length > 0 ? parseTools(d.tools) : DEFAULT_TOOLS} value={d.mcp} onChange={(v) => set("mcp", v)} lead={d.chat} />
           <AgentCliToolsFields agentId={agentId} cliId={cliId} lead={d.chat} value={d.cliTools} onChange={(v) => set("cliTools", v)}
             mcp={d.mcp} onMcp={(v) => set("mcp", v)}
             allowedTools={!usesAllowedTools(kind) ? [] : parseTools(d.tools).length > 0 ? parseTools(d.tools) : DEFAULT_TOOLS} />

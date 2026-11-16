@@ -38,8 +38,8 @@ pub struct GateResult {
     pub moved_to: Option<String>,
     /// The hold the card got.
     pub hold: Option<String>,
-    /// The Team Lead took the card's question (GA-70, `questions::hand_over_in`): its id. The card stays on hold, out of
-    /// the Inbox, while the Team Lead answers it or asks you.
+    /// The Chief took the card's question (GA-70, `questions::hand_over_in`): its id. The card stays on hold, out of
+    /// the Inbox, while the Chief answers it or asks you.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lead: Option<String>,
 }
@@ -221,7 +221,7 @@ impl TestRunsFull {
         format!("{} tests {} {} at a time (project settings)", self.project, self.limit, if self.limit == 1 { "card" } else { "cards" })
     }
 
-    /// Why a start waits (Run, Continue, the Team Lead's start_agent_run): "Giz AI tests 2 cards at a time (project
+    /// Why a start waits (Run, Continue, the Chief's start_agent_run): "Giz AI tests 2 cards at a time (project
     /// settings): wait for GA-188 or GA-211 to finish testing, or raise the limit on the project page."
     pub fn message(&self) -> String {
         format!("{}: wait for {} to finish testing, or raise the limit on the project page.", self.tests(), or_list(&self.cards))
@@ -438,9 +438,22 @@ fn reviewer(c: &Connection, t: &TaskRow) -> Result<Option<String>> {
 }
 
 pub(crate) fn set_hold(w: &Writer, task_id: &str, hold: &str, reason: &str) -> Result<()> {
-    w.conn().execute("UPDATE tasks SET hold=?2, hold_reason=?3, hold_at=?4, updated_at=?4, version=version+1 WHERE id=?1",
-                     rusqlite::params![task_id, hold, reason, ids::now_ms()])?;
-    w.update("tasks", task_id, serde_json::json!({"hold": hold, "holdReason": reason}))
+    set_hold_as(w, task_id, hold, reason, None)
+}
+
+/// `set_hold` of the kind `kind` (GA-261, `model::HOLD_WAITING_FOR_OK`). None keeps the kind of the hold the card is on
+/// (a run that was under way puts its own hold on a card that waits for your OK: only you take it off still), and a card
+/// that wasn't on hold gets none.
+pub(crate) fn set_hold_as(w: &Writer, task_id: &str, hold: &str, reason: &str, kind: Option<&str>) -> Result<()> {
+    // The right-hand sides read the row as it was: `hold` is the hold before this one.
+    w.conn().execute("UPDATE tasks SET hold=?2, hold_reason=?3, hold_at=?4, hold_kind=COALESCE(?5, CASE WHEN hold IS NOT NULL THEN hold_kind END),
+                        updated_at=?4, version=version+1 WHERE id=?1",
+                     rusqlite::params![task_id, hold, reason, ids::now_ms(), kind])?;
+    let mut diff = serde_json::json!({"hold": hold, "holdReason": reason});
+    if let Some(k) = kind {
+        diff["holdKind"] = k.into();
+    }
+    w.update("tasks", task_id, diff)
 }
 
 fn set_fields(w: &Writer, task_id: &str, sql_set: &str, params: &[&dyn rusqlite::ToSql], diff: serde_json::Value) -> Result<()> {
@@ -459,7 +472,7 @@ fn set_fields(w: &Writer, task_id: &str, sql_set: &str, params: &[&dyn rusqlite:
 ///   takes the person's pin off: the agent built it.
 /// - `qa_fail` sends it back to the column it came from, to the agent that built it; three bounces hold it. A card a
 ///   person built by hand (GA-111, `start_by_hand`) goes back to that person, pinned to them again.
-/// - `needs_decision` holds it where it is. The Team Lead looks at the question first when it can (GA-70,
+/// - `needs_decision` holds it where it is. The Chief looks at the question first when it can (GA-70,
 ///   `questions::hand_over_in`, then `GateResult::lead`): the card stays out of the Inbox until it answers or asks you.
 /// Cards a person moved to Backlog, Done or Cancelled while the agent worked stay where they are, and a Deploy card
 /// moves only on `deployed`. GA-32's DevOps rules hold: a DevOps run never sends a card to QA (`ready_for_testing`
@@ -579,7 +592,7 @@ pub fn apply_outcome_with(db: &Db, run_id: &str, outcome: Option<&Outcome>, run_
                     };
                     set_hold(w, &task_id, "needs_decision", &reason)?;
                     g.hold = Some("needs_decision".into());
-                    // GA-70: the Team Lead looks at the question first when it can; the card stays out of the Inbox meanwhile.
+                    // GA-70: the Chief looks at the question first when it can; the card stays out of the Inbox meanwhile.
                     if o.outcome == "needs_decision" {
                         g.lead = crate::questions::hand_over_in(w, run_id, &task_id, &agent, &role, run_for_me)?;
                     }
@@ -746,7 +759,7 @@ pub fn by_hand_check(db: &Db, person: &str, task_id: &str, idle: bool) -> Result
 /// person's move into To do or In progress answers it (`tasks::move_to`).
 fn release_hold(w: &Writer, task_id: &str, why: &str) -> Result<()> {
     let n = w.conn().execute(
-        "UPDATE tasks SET hold=NULL, hold_reason=NULL, hold_at=NULL, fail_count=0, updated_at=?2, version=version+1 WHERE id=?1 AND hold IS NOT NULL",
+        "UPDATE tasks SET hold=NULL, hold_reason=NULL, hold_at=NULL, hold_kind=NULL, fail_count=0, updated_at=?2, version=version+1 WHERE id=?1 AND hold IS NOT NULL",
         rusqlite::params![task_id, ids::now_ms()])?;
     if n > 0 {
         w.update("tasks", task_id, serde_json::json!({"hold": null, "released": why}))?;

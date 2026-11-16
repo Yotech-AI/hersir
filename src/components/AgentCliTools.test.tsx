@@ -129,7 +129,7 @@ describe("the Tools section's Web, Browser and Built-in tools", () => {
     expect(t).toContain("Other tools the CLI reports FancyNewTool FancyNewTool Risk unknown Reported Claude Code reports it");
     expect(t).not.toContain("Accept self-signed certificates");
     expect(t).not.toContain(WARN);
-    expect(t).toContain("Suggested for the Team Lead (web search), never switched on by Hersir");
+    expect(t).toContain("Suggested for the Chief (web search), never switched on by Hersir");
     expect(t).toContain("Suggested for QA, Frontend and Design agents, never switched on by Hersir");
     expect(t).toContain("hidden Chrome with a throwaway profile, never on your screen");
     expect(t).toContain("Every click is a tool call, and the cap per run is in Settings → Runs");
@@ -239,9 +239,17 @@ describe("the Slash commands and skills switch", () => {
     }
   });
 
-  it("tells the Team Lead its chat never gets slash commands or skills", () => {
+  it("tells the Chief its chat never gets slash commands or skills", () => {
     expect(text(render({ lead: true }))).toContain("and never slash commands or skills.");
     expect(text(render())).not.toContain("never slash commands or skills");
+  });
+
+  it("names the Chief in its chat's lines on the built-in and web tools (GA-254)", () => {
+    const t = text(render({ lead: true }));
+    expect(t).toContain("In chat the Chief keeps only Read, Glob and Grep, plus the web tools when they are on, and never slash commands or skills.");
+    expect(t).toContain("For the Chief, its chat answers get these too; after one uses them, it asks you before it starts runs or changes agents.");
+    expect(t).not.toContain("Team Lead");
+    expect(text(render())).not.toContain("For the Chief");
   });
 
   it("is read off for an agent saved without it, and a change to it counts as a change to save", () => {
@@ -275,5 +283,106 @@ describe("the switches' helpers", () => {
     expect(switchBuiltin({ ...NO_CLI_TOOLS, builtin: ["A"] }, "A", false).builtin).toEqual([]);
     expect(browserOn(switchBrowser([], true))).toBe(true);
     expect(browserOn(switchBrowser(browserSwitch, false))).toBe(false);
+  });
+});
+
+// GA-271: After the Chief uses it for Web (under its list) and the browser (in its row), only in the form of an agent with
+// Chat on (`lead`, the Chief): Ask for my OK (the default) or Allow, with the warning under Allow, read out when it shows.
+describe("After the Chief uses it, for Web and the browser (GA-271)", () => {
+  const WARN = (name: string) => `What ${name} returns can steer the Chief: with Allow, what the Chief does after using it runs without your OK.`;
+  const radio = (html: string, id: string, value: string) =>
+    (html.match(/<input type="radio"[^>]*>/g) ?? []).find((i) => i.includes(`name="${id}"`) && i.includes(`value="${value}"`)) ?? "";
+  /** The Web field's HTML and the Browser field's, apart. */
+  const parts = (html: string) => {
+    const at = html.indexOf('aria-label="Browser"');
+    return { web: html.slice(0, at), browser: html.slice(at, html.indexOf("Built-in tools", at)) };
+  };
+  const web = { ...NO_CLI_TOOLS, webSearch: true, webFetch: true };
+
+  it("shows Web and the browser on Ask for my OK in the Chief's form, and nothing of it in other agents' forms", () => {
+    const html = render({ lead: true, value: web, mcp: browserSwitch });
+    const p = parts(html);
+    for (const [part, id, source] of [[p.web, "trust-web", "the web"], [p.browser, "trust-browser", "the browser"]] as const) {
+      expect(text(part), id).toContain("After the Chief uses it: Ask for my OK Allow");
+      expect(part, id).toContain(`role="radiogroup" aria-label="After the Chief uses ${source}"`);
+      expect(radio(part, id, "ask"), id).toContain('checked=""');
+      expect(radio(part, id, "allow"), id).not.toContain("checked");
+      expect(text(part), id).not.toContain("can steer the Chief");
+    }
+    expect(html.match(/type="radio"/g)).toHaveLength(4);
+    for (const other of [render({ value: web, mcp: browserSwitch }), render({ lead: false, value: { ...web, webTrusted: true },
+      mcp: [{ ...browserSwitch[0]!, trusted: true }] })]) {
+      expect(text(other)).not.toContain("After the Chief uses it");
+      expect(other).not.toContain('type="radio"');
+    }
+  });
+
+  it("shows it with the switches off too, so the choice can be made before switching them on", () => {
+    const p = parts(render({ lead: true }));
+    expect(radio(p.web, "trust-web", "ask")).toContain('checked=""');
+    expect(radio(p.browser, "trust-browser", "ask")).toContain('checked=""');
+  });
+
+  it("shows Allow chosen with its warning, tied to Allow for a screen reader: the web, and pages in the browser", () => {
+    const p = parts(render({ lead: true, value: { ...web, webTrusted: true }, mcp: [{ ...browserSwitch[0]!, trusted: true }] }));
+    for (const [part, id, name] of [[p.web, "trust-web", "the web"], [p.browser, "trust-browser", "pages in the browser"]] as const) {
+      expect(radio(part, id, "allow"), id).toContain('checked=""');
+      expect(radio(part, id, "allow"), id).toContain(`aria-describedby="${id}-warn"`);
+      expect(radio(part, id, "ask"), id).not.toContain("checked");
+      expect(part, id).toContain(`<div aria-live="polite"><span id="${id}-warn" class="warn">${WARN(name)}</span></div>`);
+    }
+    // only the one on Allow warns
+    const webOnly = parts(render({ lead: true, value: { ...web, webTrusted: true }, mcp: browserSwitch }));
+    expect(text(webOnly.web)).toContain(WARN("the web"));
+    expect(text(webOnly.browser)).not.toContain("can steer the Chief");
+  });
+
+  it("hands the form Web's choice with the rest of its switches, and the browser's with its MCP switch", () => {
+    const value = { ...web, fetchDomains: ["docs.rs"] };
+    const pick = (t: ReactNode, id: string, v: string) => {
+      const all: Record<string, unknown>[] = [];
+      const walk = (n: ReactNode) => {
+        if (Array.isArray(n)) n.forEach(walk);
+        else if (n && typeof n === "object" && "props" in n) {
+          const p = (n as ReactElement<Record<string, unknown>>).props;
+          if (p.name === id && p.value === v) all.push(p);
+          walk(p.children as ReactNode);
+        }
+      };
+      walk(t);
+      (all[0] as { onChange: () => void }).onChange();
+    };
+    const changed: CliTools[] = [];
+    const mcp: AgentServer[][] = [];
+    direct = true;
+    queue.push(claude, null, false, "");
+    try {
+      const t = expand(AgentCliToolsFields({ ...props({ lead: true, value, mcp: [{ serverId: "s-otus", on: true, toolsOff: [] }] }),
+        onChange: (v: CliTools) => changed.push(v), onMcp: (v: AgentServer[]) => mcp.push(v) }));
+      pick(t, "trust-web", "allow");
+      pick(t, "trust-web", "ask");
+      pick(t, "trust-browser", "allow");
+    } finally { direct = false; queue.length = 0; }
+    expect(changed).toEqual([{ ...value, webTrusted: true }, { ...value, webTrusted: false }]);
+    expect(mcp).toEqual([[{ serverId: "s-otus", on: true, toolsOff: [] }, { serverId: "chrome-devtools", on: false, toolsOff: [], trusted: true }]]);
+  });
+
+  it("is disabled where the CLI can't take it: the browser on Codex, and Web on a CLI with neither search nor fetch", () => {
+    const p = parts(render({ lead: true, view: codex }));
+    expect(radio(p.browser, "trust-browser", "allow")).toContain("disabled");
+    expect(radio(p.web, "trust-web", "allow")).not.toContain("disabled");
+    const none: ToolsView = { ...codex, web: { search: "No web search here.", fetch: "No fetching here.", domains: null } };
+    expect(radio(parts(render({ lead: true, view: none })).web, "trust-web", "allow")).toContain("disabled");
+  });
+
+  it("reads saved tools without webTrusted as Ask, keeps Allow, and counts Allow and Ask as a change to save", async () => {
+    const { cliToolsToSave } = await import("../lib/cliTools");
+    expect(cliToolsFrom({ ...web }).webTrusted).toBeUndefined();
+    expect(cliToolsFrom(null).webTrusted).toBeUndefined();
+    expect(cliToolsFrom({ ...web, webTrusted: true }).webTrusted).toBe(true);
+    expect(sameCliTools(web, { ...web, webTrusted: false })).toBe(true);
+    expect(sameCliTools(web, { ...web, webTrusted: true })).toBe(false);
+    expect(cliToolsToSave({ ...web, webTrusted: true }, web)).toMatchObject({ webTrusted: true });
+    expect(fitCliTools({ ...web, webTrusted: true }, "codex").webTrusted).toBe(true);
   });
 });

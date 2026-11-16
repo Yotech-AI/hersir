@@ -108,10 +108,10 @@ async fn a_second_server_cant_take_a_pipe_name_that_is_in_use() {
     assert!(e.to_string().contains("taken by another program"), "{e}");
 }
 
-/// The gizai-mcp shim next to the test binaries (`cargo test --workspace` builds it; CI builds it first).
+/// The hersir-mcp shim (the crate gizai-mcp) next to the test binaries (`cargo test --workspace` builds it; CI builds it first).
 fn shim() -> PathBuf {
-    let path = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), r"\..\target\debug\gizai-mcp.exe"));
-    assert!(path.is_file(), "build gizai-mcp first: {}", path.display());
+    let path = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), r"\..\target\debug\hersir-mcp.exe"));
+    assert!(path.is_file(), "build hersir-mcp (the crate gizai-mcp) first: {}", path.display());
     path
 }
 

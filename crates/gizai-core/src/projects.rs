@@ -73,7 +73,7 @@ fn test_runs_field(input: &ProjectInput) -> Result<Option<i64>> {
     }
 }
 
-/// Team Lead may merge (GA-86) is a person's switch, set in the app: a write by anyone else (an agent, Gizai) that gives
+/// Chief may merge (GA-86) is a person's switch, set in the app: a write by anyone else (an agent, Gizai) that gives
 /// it is refused, and nothing changes.
 fn person_sets_lead_may_merge(c: &rusqlite::Connection, actor: &str, input: &ProjectInput) -> Result<()> {
     if input.lead_may_merge.is_none() {
@@ -81,7 +81,7 @@ fn person_sets_lead_may_merge(c: &rusqlite::Connection, actor: &str, input: &Pro
     }
     let kind: Option<String> = c.query_row("SELECT kind FROM actors WHERE id=?1 AND deleted_at IS NULL", [actor], |r| r.get(0)).optional()?;
     if kind.as_deref() != Some("person") {
-        return Err(Error::Invalid("Team Lead may merge is switched only by a person, in the app (the project page → Edit). Nothing changed.".into()));
+        return Err(Error::Invalid("Chief may merge is switched only by a person, in the app (the project page → Edit). Nothing changed.".into()));
     }
     Ok(())
 }

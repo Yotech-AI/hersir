@@ -6,13 +6,13 @@ The code is `gizai_core::templates`; the app's commands are in `src-tauri/src/co
 
 ## The file
 
-A template is a JSON file in UTF-8, named `<team name>.gizai-team.json`, like `Software team.gizai-team.json`. Hersir writes it indented, with its fields in the order below. It reads a file of at most 2 MB, with or without a byte order mark.
+A template is a JSON file in UTF-8, named `<team name>.hersir-team.json`, like `Software team.hersir-team.json`. Hersir before 0.17.0 named it `<team name>.gizai-team.json`, with `"format": "gizai-team"`: the same format 1, which New team still reads (the file picker shows every `.json` file). Hersir writes it indented, with its fields in the order below. It reads a file of at most 2 MB, with or without a byte order mark.
 
 **Never in the file:** people (you, your reviewers), an agent's folders, MCP server settings (commands, addresses, environment and header values, keys and sign-ins), a CLI's id, program or account, the agents' status, clients, projects, cards, memory notes, runs and spend. Archived agents are left out; paused ones go in as they are.
 
 ```json
 {
-  "format": "gizai-team",
+  "format": "hersir-team",
   "format_version": 1,
   "app_version": "0.13.0",
   "name": "Software team",
@@ -43,7 +43,7 @@ Names link the file together: a column's `next` and `agents`, and an agent's `sh
 
 | Field | What it holds |
 |---|---|
-| `format` | always `"gizai-team"` |
+| `format` | `"hersir-team"` (Hersir before 0.17.0 wrote `"gizai-team"`, which is still read) |
 | `format_version` | `1`. A Hersir that reads a higher one refuses the file: "This template needs a newer version of the app." |
 | `app_version` | the Hersir version that wrote it, like `"0.13.0"` |
 | `name` | the team's name |
@@ -78,10 +78,10 @@ Names link the file together: a column's `next` and `agents`, and an agent's `sh
 | `effort` | its effort level (Claude Code's `--effort`, Codex's reasoning effort), or `null` |
 | `permission_mode` | its permission mode, like `acceptEdits` (Claude Code), `workspace-write` (Codex) or `auto_edit` (Gemini); `""` for an Other CLI |
 | `instructions_md` | its instructions, at most 100,000 characters |
-| `allowed_tools` | its allowed commands, like `Bash(git status:*)` |
+| `allowed_tools` | its allowed commands, like `Bash(git status:*)`, each one rule (one command per entry). Export leaves out one saved before Hersir checked that, as runs do. |
 | `cards_at_once` | the cards it works on at once, 1 to 10 |
 | `monthly_budget_usd` | its monthly budget in dollars (`25` or `25.5`), or `null` for none |
-| `chat` | it answers on the Chat page (the Team Lead) |
+| `chat` | it answers on the Chat page (the Chief) |
 | `board_check_minutes` | its board check runs every this many minutes (5 to 1440), or `null` for off |
 | `use_memory` | its runs get a Memory section and its learned lines are kept |
 | `shares_memory_with` | the name of the agent whose memory folder it shares, or `null` for its own folder |
@@ -125,14 +125,15 @@ It is made when it is asked for, from the seed (`seed::DEFAULT_COLUMNS`, `DEFAUL
 
 It refuses a template a team can't be made from, saying why:
 
-- the file can't be read, isn't JSON (in UTF-8), or its `format` isn't `gizai-team`;
+- the file can't be read, isn't JSON (in UTF-8), or its `format` is neither `hersir-team` nor `gizai-team`;
 - its `format_version` is above 1: "This template needs a newer version of the app."
 - the file is over 2 MB, it has no name or no columns, more than 50 agents or 30 columns, or an agent's instructions are over 100,000 characters;
 - a column's `kind` is unknown, or a column or agent has no name;
 - two columns or two agents have the same name (ignoring case);
 - a `next` or a column's agent isn't in the file, or a column goes next to itself;
 - a backlog, review, done or cancelled column has agents or is Auto;
-- an Auto column has no `next`.
+- an Auto column has no `next`;
+- an agent's allowed command isn't one rule (GA-262): "Backend Agent's allowed commands: `Bash(ls:*) Bash(*)` isn't one rule: write each command as its own entry, like Bash(npm test:*)."
 
 Otherwise its plan (`TemplatePlan`) says what the new team gets:
 
@@ -143,8 +144,8 @@ Otherwise its plan (`TemplatePlan`) says what the new team gets:
 - **The effort** is kept when the CLI offers it, else empty.
 - **The allowed commands** are kept. `extraTools` lists the ones that aren't in the role's default list (`seed::role_tools`).
 - **MCP servers** are matched by name to Settings → MCP, ignoring case. A match is switched on for the agent, with its tools switched off as the file has them. One that isn't there is in `missingServers` and stays off. An agent that doesn't run on Claude Code gets no MCP servers and no browser, noted, as the agent form allows them on Claude Code only.
-- **Chat:** at most one agent has it, on Claude Code. When an agent already has Chat, the file's Chat agent comes without Chat and without the board check, noted: "Your Team Lead stays Master Chief." The same goes, with a note, for a second Chat agent in the file and for one that doesn't run on Claude Code.
-- **Shares memory with:** a name that isn't in the file gives the agent its own folder, noted. So do a Team Lead on either side (it keeps its notes in Team Lead/) and a circle. A chain ends at its first agent with a folder of its own.
+- **Chat:** at most one agent has it, on Claude Code. When an agent already has Chat, the file's Chat agent comes without Chat and without the board check, noted: "Your Chief stays Master Chief." The same goes, with a note, for a second Chat agent in the file and for one that doesn't run on Claude Code.
+- **Shares memory with:** a name that isn't in the file gives the agent its own folder, noted. So do a Chief on either side (it keeps its notes in Chief/) and a circle. A chain ends at its first agent with a folder of its own.
 - **Labels** that aren't there yet (ignoring case) are added and listed in `labelsAdded`; the ones there keep their colour. A label of over 40 characters isn't added, and one without a hex colour is added without one, noted.
 - **Active:** agents from a file come in paused (`active` false); a built-in's are active.
 - Other settings out of range are noted and set: cards at once to 1 to 10, a board check outside 5 to 1440 minutes off, a negative budget none, a fetch domain or tool name that can't be used left out (with no fetch domain left, fetching pages is off).

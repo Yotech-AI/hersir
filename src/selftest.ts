@@ -5,7 +5,7 @@ import { emit } from "@tauri-apps/api/event";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
 import type { Terminal } from "@xterm/xterm";
-import { appInfo, archiveTask, chatMessages, checkTeamExport, editorFolders, getTask, getTeam as teamById, listChatThreads, listDocs, listLabels, listProjects, listTasks, listTeams, previewTeamTemplate, readClipboardText, selftestPaste, setAgentStatus, terminalClose, terminalInput, terminalList, terminalOpen } from "./api";
+import { appInfo, archiveTask, chatMessages, checkTeamExport, editorFolders, getTask, getTeam as teamById, listChatThreads, listDocs, listLabels, listProjects, listTasks, listTeams, pinnedChats, previewTeamTemplate, readClipboardText, selftestPaste, setAgentStatus, terminalClose, terminalInput, terminalList, terminalOpen } from "./api";
 import { isMac } from "./lib/keys";
 import { periodDays } from "./lib/usage";
 import { getAppearance, resetAppearance, setAppearance } from "./lib/appearance";
@@ -17,6 +17,7 @@ import { boardDrawn, perfCalls, perfCount, perfFirst, perfFrames, perfHeard, per
 import { graphProbe } from "./components/memory/GraphCanvas";
 import { TerminalView } from "./components/terminal/TerminalView";
 import { boardOrder } from "./lib/columns";
+import { roleLabel } from "./lib/agents";
 import { pickTeam } from "./lib/team";
 import { PAUSED_LINE, kindWord } from "./components/TeamTemplate";
 import type { FolderMain, Team, TemplatePlan } from "./types";
@@ -648,7 +649,7 @@ export async function runProbe(taskId: string, api: {
 }
 
 /** Chat page against the fake Claude Code: the setup panel opens the agent form with Chat on, saving it
- * makes the Team Lead, then a message streams an answer whose tool card links the task it created. */
+ * makes the Chief, then a message streams an answer whose tool card links the task it created. */
 export async function chatProbe(listTitles: () => Promise<string[]>) {
   const setup = await waitFor(() => document.querySelector(".chat-setup .btn.primary") as HTMLButtonElement | null, 6000);
   if (!setup) return { ok: false, error: "no setup panel" };
@@ -660,7 +661,7 @@ export async function chatProbe(listTitles: () => Promise<string[]>) {
   const chatOn = !!(dialog.querySelector("#a-chat") as HTMLInputElement | null)?.checked;
   await waitFor(() => (dialog.querySelector(".cm-content")?.textContent ?? "").includes("Chat page") || null, 3000);
   buttonByText(dialog, "Add agent")?.click();
-  const agentPage = !!(await waitFor(() => (document.querySelector(".entity-head h1")?.textContent ?? "") === "Team Lead" || null, 4000));
+  const agentPage = !!(await waitFor(() => (document.querySelector(".entity-head h1")?.textContent ?? "") === "Chief" || null, 4000));
   window.location.hash = "#/chat";
   // GA-41: the text box is a Markdown editor without a toolbar.
   const box = await waitFor(composer, 4000);
@@ -673,7 +674,7 @@ export async function chatProbe(listTitles: () => Promise<string[]>) {
   const made = (await listTitles()).includes("Chat probe task");
   const thread = window.location.hash.startsWith("#/chat/");
   const listed = !!document.querySelector(".chat-threads .th.on");
-  const first = onTeam && name === "Team Lead" && chatOn && agentPage && !!card && reply && made && thread && listed;
+  const first = onTeam && name === "Chief" && chatOn && agentPage && !!card && reply && made && thread && listed;
   const layout = await composerLayoutProbe();
   const runsOn = await runsOnAndQueueProbe();
   const linksAndFiles = await chatPickerAndFilesProbe();
@@ -1023,8 +1024,8 @@ export async function usageProbe() {
     && asOf(subscription.claude2[0]) && asOf(subscription.claude2[1])
     && same(subscription.codex.map((r) => r.slice(0, 2)), [["5-hour limit", "24%"], ["Weekly limit", "41%"]]) && asOf(subscription.codex[0])
     && subscription.gemini.includes("Hersir can't read Gemini's limits yet.") && subscription.gemini_tables === 0
-    && same(subscription.agents, [["Backend Agent (paused)"], ["Team Lead (paused)"], ["Codex Agent (paused)"], []])
-    && subscription.chats.includes("The Team Lead's chat runs here.")
+    && same(subscription.agents, [["Backend Agent (paused)"], ["Chief (paused)"], ["Codex Agent (paused)"], []])
+    && subscription.chats.includes("The Chief's chat runs here.")
     && same(subscription.states, [["limit-ok", "limit-near", "limit-unread"], ["limit-reached", "limit-ok", "limit-unread"], ["limit-ok", "limit-ok"], []])
     && subscription.clipped.length === 0 && subscription.foot.includes("it never asks Anthropic or OpenAI");
 
@@ -1053,7 +1054,7 @@ export async function usageProbe() {
   const agentsTotal = total("Usage per agent");
   const agentsOk = same(agents, [
     ["Backend Agent", "2 runs", "16K", "3.4K", "$0.57", "95%"],
-    ["Team Lead", "1 chat turn", "2K", "100", "$0.03", "5%"],
+    ["Chief", "1 chat turn", "2K", "100", "$0.03", "5%"],
     ["Codex Agent", "1 run", "5K", "500", "Unknown", "0%"],
   ]) && same(agentsTotal, wantTotal);
   await tab("Projects");
@@ -1134,7 +1135,8 @@ export async function chatArchiveProbe() {
   if (scroller) scroller.scrollTop = scroller.scrollHeight;
   await sleep(100);
   const atEnd = !!scroller && scroller.scrollTop > 0 && inSight();
-  const lastRowAbove = (q(".chat-threads-list a.th:last-child")?.getBoundingClientRect().bottom ?? 1e9) <= (button?.getBoundingClientRect().top ?? 0) + 0.5;
+  // GA-257: each chat on the left is a .th-row, its link with its pin button beside it
+  const lastRowAbove = (q(".chat-threads-list > .th-row:last-child")?.getBoundingClientRect().bottom ?? 1e9) <= (button?.getBoundingClientRect().top ?? 0) + 0.5;
   const buttonOk = !!button && textOf(button) === "Archive" && button.getAttribute("href") === "#/chats" && !!button.querySelector("svg.lucide-history")
     && !button.classList.contains("on") && !scroller?.contains(button);
 
@@ -1167,7 +1169,7 @@ export async function chatArchiveProbe() {
   const hit = rows()[0];
   const found = { titles: rowTitles(), who: textOf(hit?.querySelector(".snippet .who")), snippet: textOf(hit?.querySelector(".snippet")),
     marks: textsOf(".snippet mark", hit ?? document) };
-  const hitOk = flamingo && found.titles.length === 1 && found.who === "Team Lead:" && found.snippet === "Team Lead: The old flamingo plan is in the docs."
+  const hitOk = flamingo && found.titles.length === 1 && found.who === "Chief:" && found.snippet === "Chief: The old flamingo plan is in the docs."
     && JSON.stringify(found.marks) === JSON.stringify(["flamingo"]);
   const percent = await find("0%", () => JSON.stringify(rowTitles()) === JSON.stringify(["Chat 34"]));
   await sleep(400);
@@ -1188,6 +1190,193 @@ export async function chatArchiveProbe() {
     button_ok: buttonOk, opened, all: all.length, all_ok: allOk, row_ok: rowOk, crumbs, focused, focused_el: focusedEl, highlighted,
     chat_nav_on: chatNavOn, recent_stays: recentStays, search_on_top: searchOnTop, found, hit_ok: hitOk, percent_ok: percentOk, no_match: none,
     opened_chat: openedChat, chat_crumbs: chatCrumbs, not_in_recent: notInRecent };
+}
+
+/** GA-257, against prep_chats' 36 chats ("Which database?", a Team Lead question, then "Chat 1" … "Chat 35", the oldest last),
+ * in two starts on the same data. (a) Nothing pinned: no Pinned heading, and each chat on the left has a pin button, "Pin to
+ * the top" (label and tooltip), beside its link (a click on the button's spot reaches the button), hidden until the row is
+ * pointed at or focused. A click pins Chat 3; the focused button of "Which database?" pressed pins it, the focus going
+ * along; the top bar's pin pins Chat 5; the Archive's pins Chat 34 and Chat 35 (older than the 30 newest) and unpins Chat
+ * 34; in a search, Chat 35 is unpinned and pinned again, the search staying as it was; Chat 3's Unpin on the left puts it
+ * back in Recent at its place. Each time the list changes at once, the chat isn't opened (the address stays), Pinned is
+ * above Recent with the newest pin first, a pinned chat isn't under Recent again, its button says Unpin, and the backend
+ * has the same pins. (b) After a restart: Pinned still has Chat 35, Chat 5 and "Which database?" with their label and time;
+ * Chat 35 opened from Pinned and unpinned in its top bar leaves Pinned and isn't in Recent, and stays open. */
+export async function chatPinsProbe(stage: "a" | "b") {
+  const NEWEST = ["Which database?", ...Array.from({ length: 29 }, (_, i) => `Chat ${i + 1}`)];
+  const titleOf = (r: Element | null | undefined) => textOf(r?.querySelector("a.th .ellipsis"));
+  /** The rows under heading `name` on the left, up to the next heading. */
+  const part = (name: "Pinned" | "Recent") => {
+    const out: HTMLElement[] = [];
+    let on = false;
+    for (const el of [...(q(".chat-threads-list")?.children ?? [])]) {
+      if (el.classList.contains("nav-label")) { on = textOf(el) === name; continue; }
+      if (on && el.classList.contains("th-row")) out.push(el as HTMLElement);
+    }
+    return out;
+  };
+  const titles = (name: "Pinned" | "Recent") => part(name).map(titleOf);
+  const row = (name: "Pinned" | "Recent", title: string) => part(name).find((r) => titleOf(r) === title);
+  const pinIn = (r: Element | null | undefined) => r?.querySelector<HTMLButtonElement>(":scope > button.pin-btn") ?? null;
+  const label = (b: HTMLButtonElement | null) => (b ? `${b.getAttribute("aria-label")}|${b.title}` : null);
+  const headings = () => textsOf(".chat-threads-list > .nav-label");
+  const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+  const opacity = (b: Element | null) => (b ? Number(getComputedStyle(b).opacity) : -1);
+  /** A click at the middle of `b` reaches `b` (it lies on top of the chat's link there). */
+  const onTop = (b: Element | null) => {
+    if (!b) return false;
+    const r = b.getBoundingClientRect(), at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return r.width > 0 && !!at && (at === b || b.contains(at));
+  };
+  /** Presses `b` as a mouse does at its middle (pointer, mouse and click events); a key's press is a click on the focused button. */
+  const press = (b: HTMLButtonElement, how: "mouse" | "key") => {
+    if (how === "key") {
+      b.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", keyCode: 13, bubbles: true, cancelable: true }));
+      b.click();
+      b.dispatchEvent(new KeyboardEvent("keyup", { key: "Enter", code: "Enter", keyCode: 13, bubbles: true, cancelable: true }));
+      return;
+    }
+    const r = b.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+    const init = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, button: 0 };
+    b.dispatchEvent(pe("pointerdown", x, y));
+    b.dispatchEvent(new MouseEvent("mousedown", { ...init, buttons: 1 }));
+    b.dispatchEvent(pe("pointerup", x, y));
+    b.dispatchEvent(new MouseEvent("mouseup", init));
+    b.dispatchEvent(new MouseEvent("click", init));
+  };
+  /** Presses `b` and waits until `done`: how long the list took (ms), whether the address stayed, and the backend's pins. */
+  const step = async (b: HTMLButtonElement | null, how: "mouse" | "key", done: () => boolean) => {
+    if (!b) return { pressed: false, ms: -1, stayed: false, at_once: false, backend: [] as string[], shown: [] as string[] };
+    const hash = location.hash, t0 = performance.now();
+    press(b, how);
+    const changed = await waitFor(() => (done() ? true : null), 3000);
+    const ms = Math.round(performance.now() - t0);
+    await sleep(500); // the backend's notice (chat_pins) reloads the list: it must stay as it is
+    const backend = (await pinnedChats()).map((t) => t.title);
+    return { pressed: true, ms, stayed: location.hash === hash, at_once: !!changed && ms < 300 && done(), backend, shown: titles("Pinned") };
+  };
+  const stepOk = (s: Awaited<ReturnType<typeof step>>, pinned: string[]) => s.pressed && s.stayed && s.at_once && same(s.backend, pinned) && same(s.shown, pinned);
+  /** Pinned above Recent, the pinned chats not again under Recent, which is the 30 newest without them. */
+  const listOk = (pinned: string[]) => {
+    const h = headings();
+    return same(titles("Pinned"), pinned) && (pinned.length ? same(h, ["Pinned", "Recent"]) : same(h, ["Recent"]))
+      && same(titles("Recent"), NEWEST.filter((t) => !pinned.includes(t)))
+      && part("Pinned").every((r) => r.classList.contains("pinned") && label(pinIn(r)) === "Unpin|Unpin" && opacity(pinIn(r)) === 1 && !!textOf(r.querySelector(".when")))
+      && part("Recent").every((r) => !r.classList.contains("pinned") && label(pinIn(r)) === "Pin to the top|Pin to the top");
+  };
+  /** The stylesheet shows a row's pin when the row is pointed at (a pointer can't be moved in the cage). */
+  const hoverRule = [...document.styleSheets].flatMap((sh) => { try { return [...sh.cssRules]; } catch { return []; } })
+    .some((r) => r instanceof CSSStyleRule && r.selectorText.split(",").map((s) => s.trim()).includes(".th-row:hover > .pin-btn") && r.style.opacity === "1");
+  const focusRule = [...document.styleSheets].flatMap((sh) => { try { return [...sh.cssRules]; } catch { return []; } })
+    .some((r) => r instanceof CSSStyleRule && r.selectorText.split(",").map((s) => s.trim()).includes(".th-row:focus-within > .pin-btn") && r.style.opacity === "1");
+  const noHover = matchMedia("(hover: none)").matches;
+  const crumbsPin = () => q<HTMLButtonElement>(".topbar .crumbs button.pin-btn");
+
+  if (!(await waitFor(() => (part("Recent").length > 0 ? true : null), 6000))) return { ok: false, error: "Recent shows no chats", page: textOf(q(".main")).slice(0, 300) };
+
+  if (stage === "b") {
+    const kept = ["Chat 35", "Chat 5", "Which database?"];
+    await waitFor(() => (titles("Pinned").length ? true : null), 3000);
+    const keptOk = listOk(kept) && textOf(row("Pinned", "Which database?")?.querySelector(".badge")) === "Question" && !titles("Recent").includes("Chat 35");
+    const shown = { pinned: titles("Pinned"), recent: titles("Recent").length, headings: headings() };
+    // Chat 35, older than the 30 newest, opened from Pinned: its title in the crumbs, Unpin in the top bar
+    row("Pinned", "Chat 35")?.querySelector<HTMLAnchorElement>("a.th")?.click();
+    const opened = !!(await waitFor(() => (location.hash.startsWith("#/chat/") && textOf(q(".topbar .crumbs")).includes("Chat 35") && crumbsPin() ? true : null), 5000));
+    const onOk = !!row("Pinned", "Chat 35")?.querySelector('a.th.on[aria-current="page"]');
+    const topLabel = label(crumbsPin());
+    const unpin = await step(crumbsPin(), "mouse", () => !titles("Pinned").includes("Chat 35"));
+    const after = { pinned: titles("Pinned"), in_recent: titles("Recent").includes("Chat 35"), crumbs: textOf(q(".topbar .crumbs")), top: label(crumbsPin()) };
+    const unpinOk = stepOk(unpin, ["Chat 5", "Which database?"]) && listOk(["Chat 5", "Which database?"]) && !after.in_recent
+      && after.crumbs === "Chat/Chat 35" && after.top === "Pin to the top|Pin to the top";
+    const ok = keptOk && opened && onOk && topLabel === "Unpin|Unpin" && unpinOk && hoverRule;
+    return { ok, stage, kept_ok: keptOk, shown, opened, on_ok: onOk, top_label: topLabel, unpin, after, unpin_ok: unpinOk, hover_rule: hoverRule };
+  }
+
+  // (a) nothing pinned yet
+  const startOk = listOk([]) && part("Recent").length === 30 && !headings().includes("Pinned");
+  const recentRows = part("Recent");
+  const buttonsBeside = recentRows.every((r) => { const b = pinIn(r), a = r.querySelector("a.th"); return !!b && !!a && !a.contains(b) && !b.closest("a"); });
+  const chat3 = row("Recent", "Chat 3");
+  chat3?.scrollIntoView({ block: "center" });
+  await sleep(200);
+  const onTopOk = onTop(pinIn(chat3));
+  // hidden until pointed at or focused (always shown where the screen has no pointer that hovers)
+  const hiddenOk = noHover ? opacity(pinIn(recentRows[5])) === 1 : opacity(pinIn(recentRows[5])) === 0;
+
+  // 1. a click on Chat 3's pin
+  const s1 = await step(pinIn(chat3), "mouse", () => same(titles("Pinned"), ["Chat 3"]));
+  const ok1 = stepOk(s1, ["Chat 3"]) && listOk(["Chat 3"]) && location.hash === "#/chat" && !q(".chat-threads-list a.th.on[href^='#/chat/']");
+
+  // 2. the keyboard: Which database?'s pin focused (shown then) and pressed; the focus goes along to its button under Pinned
+  const wd = row("Recent", "Which database?");
+  const wdPin = pinIn(wd);
+  wdPin?.focus();
+  await sleep(250);
+  // where the cage's window has no focus (document.hasFocus()), WebKit matches no :focus, so the stylesheet's rule is read
+  const focusShown = document.activeElement === wdPin && (opacity(wdPin) === 1 || (!document.hasFocus() && focusRule));
+  const focusState = { active: document.activeElement === wdPin, opacity: opacity(wdPin), has_focus: document.hasFocus(),
+    focus: wdPin?.matches(":focus") ?? null, visible: wdPin?.matches(":focus-visible") ?? null, within: wd?.matches(":focus-within") ?? null };
+  const s2 = await step(wdPin, "key", () => same(titles("Pinned"), ["Which database?", "Chat 3"]));
+  await nextFrame(); await nextFrame();
+  const focusFollows = document.activeElement === pinIn(row("Pinned", "Which database?"));
+  const ok2 = stepOk(s2, ["Which database?", "Chat 3"]) && listOk(["Which database?", "Chat 3"]) && focusShown && focusFollows
+    && textOf(row("Pinned", "Which database?")?.querySelector(".badge")) === "Question";
+
+  // 3. the top bar: Chat 5 opened, its pin after the title
+  row("Recent", "Chat 5")?.querySelector<HTMLAnchorElement>("a.th")?.click();
+  const opened5 = !!(await waitFor(() => (location.hash.startsWith("#/chat/") && textOf(q(".topbar .crumbs")) === "Chat/Chat 5" && crumbsPin() ? true : null), 5000));
+  const top5 = { label: label(crumbsPin()), shown: opacity(crumbsPin()) === 1, on_top: onTop(crumbsPin()),
+    after_title: crumbsPin()?.previousElementSibling?.classList.contains("ellipsis") ?? false };
+  const s3 = await step(crumbsPin(), "mouse", () => same(titles("Pinned"), ["Chat 5", "Which database?", "Chat 3"]));
+  const ok3 = opened5 && top5.label === "Pin to the top|Pin to the top" && top5.shown && top5.on_top && top5.after_title
+    && stepOk(s3, ["Chat 5", "Which database?", "Chat 3"]) && listOk(["Chat 5", "Which database?", "Chat 3"])
+    && label(crumbsPin()) === "Unpin|Unpin" && !!row("Pinned", "Chat 5")?.querySelector('a.th.on[aria-current="page"]')
+    && textOf(q(".topbar .crumbs")) === "Chat/Chat 5";
+
+  // 4. the Archive: every row has its pin; Chat 34 and Chat 35, older than the 30 newest, pinned there, Chat 34 unpinned
+  q<HTMLAnchorElement>(".chat-threads-foot a.th")?.click();
+  const items = () => [...document.querySelectorAll<HTMLElement>(".archive-item")];
+  const item = (title: string) => items().find((r) => textOf(r.querySelector(".archive-row .title")) === title);
+  const archiveOpen = !!(await waitFor(() => (location.hash === "#/chats" && items().length === 36 ? true : null), 5000));
+  const archiveLabels = items().every((r) => label(pinIn(r)) === (["Chat 5", "Which database?", "Chat 3"].includes(textOf(r.querySelector(".title"))) ? "Unpin|Unpin" : "Pin to the top|Pin to the top")
+    && !r.querySelector(".archive-row")?.contains(pinIn(r)));
+  item("Chat 34")?.scrollIntoView({ block: "center" });
+  await sleep(200);
+  const archiveOnTop = onTop(pinIn(item("Chat 34")));
+  const s4 = await step(pinIn(item("Chat 34")), "mouse", () => titles("Pinned")[0] === "Chat 34");
+  const s5 = await step(pinIn(item("Chat 35")), "mouse", () => titles("Pinned")[0] === "Chat 35");
+  const five = ["Chat 35", "Chat 34", "Chat 5", "Which database?", "Chat 3"];
+  const ok45 = archiveOpen && archiveLabels && archiveOnTop && stepOk(s4, ["Chat 34", "Chat 5", "Which database?", "Chat 3"]) && stepOk(s5, five) && listOk(five)
+    && label(pinIn(item("Chat 35"))) === "Unpin|Unpin" && items().length === 36;
+  const s6 = await step(pinIn(item("Chat 34")), "mouse", () => !titles("Pinned").includes("Chat 34"));
+  const four = ["Chat 35", "Chat 5", "Which database?", "Chat 3"];
+  const ok6 = stepOk(s6, four) && listOk(four) && !titles("Recent").includes("Chat 34") && !!item("Chat 34") && label(pinIn(item("Chat 34"))) === "Pin to the top|Pin to the top";
+
+  // 5. in a search: Chat 35 unpinned and pinned again, the search as it was
+  const search = q<HTMLInputElement>(".chat-archive input.archive-search");
+  if (search) typeInto(search, "flamingo");
+  const found = !!(await waitFor(() => (items().length === 1 && item("Chat 35") ? true : null), 4000));
+  const s7 = await step(pinIn(item("Chat 35")), "mouse", () => !titles("Pinned").includes("Chat 35"));
+  const stays = items().length === 1 && !!item("Chat 35") && label(pinIn(item("Chat 35"))) === "Pin to the top|Pin to the top" && search?.value === "flamingo";
+  const s8 = await step(pinIn(item("Chat 35")), "mouse", () => titles("Pinned")[0] === "Chat 35");
+  const ok78 = found && stepOk(s7, ["Chat 5", "Which database?", "Chat 3"]) && stays && stepOk(s8, four) && items().length === 1
+    && JSON.stringify(textsOf(".archive-item mark")) === JSON.stringify(["flamingo"]);
+
+  // 6. Chat 3 unpinned on the left, by the keyboard: back in Recent at its place, the focus going along
+  const c3pin = pinIn(row("Pinned", "Chat 3"));
+  c3pin?.focus();
+  const s9 = await step(c3pin, "key", () => !titles("Pinned").includes("Chat 3"));
+  await nextFrame(); await nextFrame();
+  const three = ["Chat 35", "Chat 5", "Which database?"];
+  const backAt = titles("Recent").slice(0, 3);
+  const ok9 = stepOk(s9, three) && listOk(three) && same(backAt, ["Chat 1", "Chat 2", "Chat 3"]) && titles("Recent").length === 28
+    && document.activeElement === pinIn(row("Recent", "Chat 3")) && location.hash === "#/chats";
+
+  const ok = startOk && buttonsBeside && onTopOk && hiddenOk && ok1 && ok2 && ok3 && ok45 && ok6 && ok78 && ok9 && hoverRule;
+  return { ok, stage, start_ok: startOk, buttons_beside: buttonsBeside, on_top: onTopOk, hidden_ok: hiddenOk, no_hover: noHover, hover_rule: hoverRule, focus_rule: focusRule,
+    s1, ok1, focus_shown: focusShown, focus_state: focusState, focus_follows: focusFollows, s2, ok2, opened5, top5, s3, ok3, archive_open: archiveOpen, archive_labels: archiveLabels,
+    archive_on_top: archiveOnTop, s4, s5, ok45, s6, ok6, found, stays, s7, s8, ok78, back_at: backAt, s9, ok9,
+    pinned: titles("Pinned"), recent: titles("Recent").length, active: `${document.activeElement?.tagName} ${document.activeElement?.className} ${document.activeElement?.getAttribute("data-pin")}` };
 }
 
 // ---------- GA-42: Settings → Appearance ----------
@@ -1543,23 +1732,23 @@ async function appearanceKeptProbe() {
 
 // ---------- GA-68: the Memory page ----------
 /** GA-68 on the demo data (no agents, no notes), route memory/shared: the sidebar's Memory has Shared notes (0) and Set up
- *  the Team Lead; the page says what memory is, and its tree has only the shared folders. Set up the Team Lead opens the
- *  agent form on the Team page with the Team Lead's name. */
+ *  the Chief; the page says what memory is, and its tree has only the shared folders. Set up the Chief opens the
+ *  agent form on the Team page with the Chief's name (GA-254). */
 export async function memoryEmptyProbe() {
   const items = () => [...document.querySelectorAll('.side .nav-section[aria-label="Memory"] .nav-item')]
     .map((e) => `${e.tagName.toLowerCase()}:${textOf(e)}:${e.getAttribute("href") ?? ""}`);
   await waitFor(() => (items().length === 2 ? true : null), 6000);
   const nav = items();
-  const navOk = JSON.stringify(nav) === JSON.stringify(["a:Shared notes0:#/memory/shared", "button:Set up the Team Lead:"]);
+  const navOk = JSON.stringify(nav) === JSON.stringify(["a:Shared notes0:#/memory/shared", "button:Set up the Chief:"]);
   const empty = await waitFor(() => q(".mem-empty"), 5000);
   const emptyText = textOf(empty);
-  const emptyOk = textOf(empty?.querySelector("b")) === "No notes yet" && emptyText.includes("Memory is what the Team Lead and the agents keep for later")
+  const emptyOk = textOf(empty?.querySelector("b")) === "No notes yet" && emptyText.includes("Memory is what the Chief and the agents keep for later")
     && !!buttonByText(empty ?? document, "New note");
   const top = [...document.querySelectorAll(".mem-tree > [role=treeitem]")].map((e) => e.getAttribute("aria-label"));
   const topOk = JSON.stringify(top) === JSON.stringify(["Clients", "Decisions", "Dependencies", "Deployments", "Lessons", "Projects", "Standards", "Workflows"]);
   const crumbs = textOf(q(".topbar .crumbs"));
   [...document.querySelectorAll<HTMLButtonElement>('.side .nav-section[aria-label="Memory"] button.nav-item')][0]?.click();
-  const setUp = !!(await waitFor(() => (location.hash === "#/team" && q<HTMLInputElement>(".drawer #a-name")?.value === "Team Lead" ? true : null), 5000));
+  const setUp = !!(await waitFor(() => (location.hash === "#/team" && q<HTMLInputElement>(".drawer #a-name")?.value === "Chief" ? true : null), 5000));
   return { ok: navOk && emptyOk && topOk && crumbs === "Memory/Shared notes" && setUp, nav_ok: navOk, nav, empty_ok: emptyOk, top_ok: topOk, top, crumbs, set_up: setUp };
 }
 
@@ -1586,7 +1775,7 @@ const mouse = (el: Element, type: "mouseover" | "mouseout") => el.dispatchEvent(
  *  the link finds it; in the new note's editor [[ lists notes, [[Note# their headings, and Ctrl+click opens a link.
  *  KADE-1 opens the card. The agent's page shows only its folder, also when searching (Backend Agent 2's folder starts
  *  the same), and Recently changed says the agent wrote its KADE note in a run on KADE-1. The Team Lead's page searches
- *  every note (path:"Team Lead" only its own), the shared page lists none of the agents' or the Team Lead's. The Memory page's
+ *  every note (path:"Chief" only its own, GA-258), the shared page lists none of the agents' or the Team Lead's. The Memory page's
  *  prefs are put back at the end. */
 export async function memoryProbe(noteId: string, agentId: string) {
   // GA-69: MODE=memory:graph-a|graph-b|graph-c <agent id> <note id> runs the graph's probe on prep_graph's notes instead.
@@ -1601,7 +1790,7 @@ export async function memoryProbe(noteId: string, agentId: string) {
     await waitFor(() => (nav().length === 3 && nav()[0]?.count === "8" ? true : null), 6000);
     out.nav = nav();
     const navOk = JSON.stringify(nav().map((n, i) => (i === 2 ? { ...n, href: "" } : n))) === JSON.stringify([
-      { name: "Team Lead", count: "8", href: "#/memory" }, { name: "Backend Agent", count: "2", href: `#/memory/agent/${agentId}` },
+      { name: "Chief", count: "8", href: "#/memory" }, { name: "Backend Agent", count: "2", href: `#/memory/agent/${agentId}` },
       { name: "Backend Agent 2", count: "1", href: "" }]) && (nav()[2]?.href ?? "").startsWith("#/memory/agent/");
     const agentsFirst = textOf(q('.side .nav-section[aria-label="Memory"]')?.previousElementSibling?.querySelector(".nav-label")) === "Agents";
 
@@ -1825,12 +2014,12 @@ export async function memoryProbe(noteId: string, agentId: string) {
     buttonByText(q(".mem-recent") ?? document, "Agents")?.click();
     await sleep(200);
     out.recent = { everyone, agents: textsOf(".mem-change") };
-    // by agents: the Backend Agent's KADE note (in a run) and Notes, Backend Agent 2's and the Team Lead's (each made its own)
+    // by agents: the Backend Agent's KADE note (in a run) and Notes, Backend Agent 2's and the Chief's in Chief/ (each made its own)
     const byAgents = textsOf(".mem-change");
     const recentOk = everyone === 9 && byAgents.length === 4 && byAgents.some((t) => t.startsWith("KADEAgents/Backend AgentBackend Agent in a run on KADE-1"))
-      && byAgents.some((t) => t.startsWith("NotesAgents/Backend AgentBackend Agent")) && byAgents.some((t) => t.startsWith("NotesTeam LeadTeam Lead"));
+      && byAgents.some((t) => t.startsWith("NotesAgents/Backend AgentBackend Agent")) && byAgents.some((t) => t.startsWith("NotesChiefChief"));
 
-    // The Team Lead's page searches every note: both agents' notes say "learned"; path:"Team Lead" keeps to its folder.
+    // The Team Lead's page searches every note: both agents' notes say "learned"; path:"Chief" keeps to its folder.
     // The shared notes' page lists no agent's or Team Lead note: they all say "data", as Use SQLite does.
     const searchFor = async (text: string, done: () => boolean) => {
       const box = q<HTMLInputElement>('input[aria-label="Search notes"]');
@@ -1840,13 +2029,13 @@ export async function memoryProbe(noteId: string, agentId: string) {
       return { hits: hitPaths(), count: resultsCount() };
     };
     const leadLearned = await searchFor("learned", () => hitPaths().length >= 3);
-    const leadPath = await searchFor('path:"Team Lead" data', () => hitPaths().length === 1 && hitPaths()[0] === "Team Lead/Notes");
+    const leadPath = await searchFor('path:"Chief" data', () => hitPaths().length === 1 && hitPaths()[0] === "Chief/Notes");
     const leadData = await searchFor("data", () => hitPaths().length >= 5);
     out.lead_search = { learned: leadLearned, team_lead: leadPath, data: leadData };
     const leadSearchOk = JSON.stringify(sorted(leadLearned.hits)) === JSON.stringify(["Agents/Backend Agent 2/Notes", "Agents/Backend Agent/KADE", "Agents/Backend Agent/Notes"])
       && leadLearned.count === "3 notes"
-      && JSON.stringify(leadPath.hits) === JSON.stringify(["Team Lead/Notes"]) && leadPath.count === "1 note"
-      && ["Decisions/Use SQLite", "Team Lead/Notes", "Agents/Backend Agent/KADE", "Agents/Backend Agent/Notes", "Agents/Backend Agent 2/Notes"].every((p) => leadData.hits.includes(p));
+      && JSON.stringify(leadPath.hits) === JSON.stringify(["Chief/Notes"]) && leadPath.count === "1 note"
+      && ["Decisions/Use SQLite", "Chief/Notes", "Agents/Backend Agent/KADE", "Agents/Backend Agent/Notes", "Agents/Backend Agent 2/Notes"].every((p) => leadData.hits.includes(p));
     const typed = q<HTMLInputElement>('input[aria-label="Search notes"]');
     if (typed) typeInto(typed, "");
     location.hash = "#/memory/shared";
@@ -1855,7 +2044,7 @@ export async function memoryProbe(noteId: string, agentId: string) {
     const sharedData = await searchFor("data", () => hitPaths().includes("Decisions/Use SQLite"));
     const sharedOnly = await searchFor("learned", () => textOf(q(".mem-results")).includes("No note matches"));
     out.shared_search = { data: sharedData, learned: { ...sharedOnly, text: textOf(q(".mem-results")).slice(0, 40) } };
-    const sharedSearchOk = sharedData.hits.includes("Decisions/Use SQLite") && sharedData.hits.every((p) => !p.startsWith("Agents/") && !p.startsWith("Team Lead/"))
+    const sharedSearchOk = sharedData.hits.includes("Decisions/Use SQLite") && sharedData.hits.every((p) => !p.startsWith("Agents/") && !p.startsWith("Chief/"))
       && sharedData.count === `${sharedData.hits.length} ${sharedData.hits.length === 1 ? "note" : "notes"}`
       && sharedOnly.hits.length === 0 && textOf(q(".mem-results")).includes("No note matches");
     const typed2 = q<HTMLInputElement>('input[aria-label="Search notes"]');
@@ -2224,8 +2413,8 @@ async function graphPartB() {
     && JSON.stringify(out.checks) === JSON.stringify(["Tags", "Orphans", "Existing notes only", "Cards", "Projects", "Clients", "Agents", "People", "Arrows"])
     && JSON.stringify(out.sliders) === JSON.stringify(["Text fade threshold", "Node size", "Link thickness", "Centre force", "Repel force", "Link force", "Link distance"])
     && !!buttonByText(p, "Animate") && !!p.querySelector('input[aria-label="Search the graph"]') && unnamed === 0;
-  // One group per top folder that has notes: the Team Lead's first, Agents last; each its own colour.
-  const groupsOk = JSON.stringify(out.groups) === JSON.stringify(['path:"Team Lead/"', "path:Clients/", "path:Decisions/", "path:Dependencies/", "path:Deployments/",
+  // One group per top folder that has notes: the Chief's first, Agents last; each its own colour.
+  const groupsOk = JSON.stringify(out.groups) === JSON.stringify(["path:Chief/", "path:Clients/", "path:Decisions/", "path:Dependencies/", "path:Deployments/",
     "path:Lessons/", "path:Projects/", "path:Standards/", "path:Workflows/", "path:Agents/"]) && new Set(swatches).size === swatches.length;
 
   // Filters.
@@ -3125,6 +3314,10 @@ export async function terminalProbe(folder: string) {
   if (folder === "rows") return editorRowsProbe();
   // GA-157: MODE=terminal:order-a and terminal:order-b run the probe of the Editor list's order, before and after a restart
   if (folder === "order-a" || folder === "order-b") return editorOrderProbe(folder === "order-a" ? "a" : "b");
+  // GA-278: MODE=terminal:chat-a and terminal:chat-b run the probe of the Chat's terminal panel, before and after a restart
+  if (folder === "chat-a" || folder === "chat-b") return chatTerminalProbe(folder === "chat-a" ? "a" : "b");
+  // GA-279: MODE=terminal:chat-run runs the probe of Open in terminal under a Chief answer
+  if (folder === "chat-run") return chatRunProbe();
   const errors: string[] = [];
   const out: Record<string, unknown> = {};
   const check = (ok: unknown, what: string) => { if (!ok) errors.push(what); };
@@ -3696,6 +3889,564 @@ async function terminalPanelProbe(phase: "a" | "b", card: string) {
   await sleep(1500);
   return done();
 }
+
+// ---------- the Chat's terminal panel (GA-278) ----------
+// GIZAI_SELFTEST_MODE=terminal:chat-a, then terminal:chat-b, on route terminal (scripts/ui-test.sh: prep_chats' Chief and
+// chats, /bin/sh as the shell, a scratch home folder with ~/Herd/chat-site and ~/Herd/chat-other), two starts on the same
+// WebKit storage. (a) Open terminal right before New chat opens the picker titled "Open terminal in" under it; a pick starts
+// a terminal there in a panel on the right of the conversation, with the focus, its folder under the tabs and its row in the
+// sidebar; another pick adds a tab; + starts one in the shown terminal's folder; the messages and the text box start at the
+// left of their column while the panel shows (at 45% of the space right of the chat list), and are centred again once it
+// hides; × asks first while a program runs, the next tab shows; Hide keeps a running sleep 60 going, and the rail (with the
+// number) and Ctrl+` show it again; Ctrl+` from inside the terminal; the drag handle between 360px of panel and 400px of
+// conversation, a double click and ← →; another chat, New chat, the Archive and another page and back keep the panel, its tabs
+// and the shown terminal; Own page and back; a narrow window hides the chat list; the largest text size and light; closing the
+// last tab hides the panel. (b) After the restart: the width kept.
+
+const CHAT_SHARE = "gizai.chat.panel";
+
+async function chatTerminalProbe(phase: "a" | "b") {
+  const errors: string[] = [];
+  const out: Record<string, unknown> = { phase };
+  const check = (ok: unknown, what: string) => { if (!ok) errors.push(what); };
+  const done = () => ({ ok: errors.length === 0, errors, ...out });
+
+  const folders = await editorFolders();
+  const site = folders.find((f) => f.kind === "root" && f.name === "chat-site");
+  const other = folders.find((f) => f.kind === "root" && f.name === "chat-other");
+  if (!site || !other) { errors.push(`no folders chat-site and chat-other (${folders.map((f) => `${f.kind} ${f.name}`).join(", ")})`); return done(); }
+  if (phase === "a") localStorage.removeItem(CHAT_SHARE);
+
+  const chat = () => q<HTMLElement>("div.chat");
+  const panel = () => q<HTMLElement>(".chat > .chat-term");
+  const rail = () => q<HTMLButtonElement>(".chat > .chat-term-rail");
+  const openBtn = () => [...document.querySelectorAll<HTMLButtonElement>(".topbar .actions > button")].find((b) => textOf(b) === "Open terminal") ?? null;
+  const shownTab = () => q(".chat-term .term-tab[aria-selected=true]")?.getAttribute("data-term") ?? null;
+  const tabIds = () => [...document.querySelectorAll(".chat-term .term-tab")].map((t) => t.getAttribute("data-term") ?? "");
+  const wd = (el: Element | null | undefined) => el?.getBoundingClientRect().width ?? 0;
+  const r1 = (n: number) => Math.round(n * 10) / 10;
+  /** The panel's share of the space right of the chat list (the conversation and the panel), in %. */
+  const shareNow = () => { const p = wd(panel()), c = wd(q(".chat > .chat-main")); return p + c ? (p / (p + c)) * 100 : 0; };
+  const sizes = () => ({ chat: r1(wd(chat())), list: r1(wd(q(".chat > .chat-threads"))), talk: r1(wd(q(".chat > .chat-main"))), panel: r1(wd(panel())), share: r1(shareNow()) });
+  /** Where each .chat-col of the conversation starts and ends against its column: left-aligned or centred. */
+  const cols = () => [...document.querySelectorAll<HTMLElement>(".chat > .chat-main .chat-col")].map((c) => {
+    const m = c.closest(".chat-main")!.getBoundingClientRect(), r = c.getBoundingClientRect();
+    return { left: r1(r.left - m.left), right: r1(m.right - r.right), w: r1(r.width) };
+  });
+  const atLeft = () => { const c = cols(); return c.length > 0 && c.every((x) => Math.abs(x.left) <= 1); };
+  const centred = () => { const c = cols(); return c.length > 0 && c.every((x) => Math.abs(x.left - x.right) <= 1.5); };
+  // The cage's window is 1280px wide, which leaves the panel 12px between its limits (772px right of the chat list: 360px
+  // of panel, 400px of conversation) and the conversation narrower than its 760px column. The app is drawn 1920px wide for
+  // the width and the alignment, and at the window's own width for the narrow window, the largest text size and light.
+  const app = q<HTMLElement>(".app");
+  const wide = (on: boolean) => { if (app) app.style.width = on ? "1920px" : ""; return sleep(250); };
+  await wide(true);
+  const viewInPanel = (id: string) => waitFor(() => { const v = probeView(id); return v && v.renderer !== "none" && panel()?.contains(v.term.element ?? null) ? v : null; }, 10000);
+  /** Ctrl+` (Ctrl+Shift+` with shift) on the page, outside the terminal. */
+  const backquote = (shift = false) => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: shift ? "~" : "`", code: "Backquote", keyCode: 192, ctrlKey: true, shiftKey: shift, bubbles: true, cancelable: true }));
+  const pwdIn = async (term: Terminal, path: string) => {
+    await waitFor(() => termLines(term).some((l) => l.trim()), 10000); // the prompt
+    await sleep(300);
+    termType(term, "pwd\r");
+    // the path may wrap in a narrow panel: the screen's lines joined
+    return waitFor(() => (termLines(term).map((l) => l.trimEnd()).join("").includes(`pwd${path}`) ? path : null), 5000);
+  };
+  /** Open terminal, then a folder in its picker; the new terminal's id once its tab shows. */
+  const pick = async (name: string) => {
+    const before = tabIds();
+    openBtn()?.click();
+    const picker = await waitFor(() => q('.ed-picker[aria-label="Open terminal in"]'));
+    const opt = await waitFor(() => [...(picker?.querySelectorAll<HTMLElement>(".opt") ?? [])].find((o) => textOf(o.querySelector(".label")) === name), 8000);
+    if (!opt) return null;
+    opt.click();
+    return waitFor(() => { const t = shownTab(); return t && !before.includes(t) ? t : null; }, 10000);
+  };
+  const toChat = async (hash: string) => {
+    window.location.hash = hash;
+    return waitFor(() => (openBtn() && chat() ? true : null), 8000);
+  };
+
+  if (phase === "b") {
+    // after a restart: the width kept, and no terminal (quitting ended them)
+    const kept = Number(localStorage.getItem(CHAT_SHARE));
+    out.kept = kept;
+    check(kept >= 54 && kept <= 56, `the width kept before the restart is still there (${localStorage.getItem(CHAT_SHARE)})`);
+    if (!(await toChat("#/chat"))) { errors.push("no Open terminal on the Chat page"); return done(); }
+    check(!panel() && !rail() && (await terminalList()).length === 0, "after a restart the chat has no terminals, no panel and no rail");
+    const id = await pick("chat-site");
+    if (!id || !(await viewInPanel(id))) { errors.push(`no terminal opened after the restart: ${textOf(q(".ed-row-note"))}`); return done(); }
+    await sleep(250);
+    out.afterRestart = sizes();
+    check(Math.abs(shareNow() - kept) < 0.6, `after the restart the panel has the kept width (${JSON.stringify(out.afterRestart)}, kept ${kept})`);
+    for (const s of await terminalList()) await Promise.race([terminalClose(s.id).catch(() => {}), sleep(3000)]);
+    return done();
+  }
+
+  // 1. Open terminal, right before New chat; the picker titled "Open terminal in" under it
+  if (!(await toChat("#/chat"))) { errors.push("no Open terminal on the Chat page"); return done(); }
+  const acts = [...(openBtn()?.parentElement?.children ?? [])].map((el) => textOf(el));
+  out.topBar = acts;
+  check(acts.indexOf("Open terminal") >= 0 && acts[acts.indexOf("Open terminal") + 1] === "New chat", `Open terminal is right before New chat (${acts.join(" | ")})`);
+  check(openBtn()?.className === "btn sm" && !!openBtn()?.querySelector("svg.lucide-terminal"), "Open terminal is a btn sm with the terminal icon");
+  check(!panel() && !rail() && atLeft() === false && centred(), `without terminals no panel, no rail, the conversation centred (${JSON.stringify(cols())})`);
+  openBtn()?.click();
+  const picker = await waitFor(() => q('.ed-picker[aria-label="Open terminal in"]'));
+  out.picker = { title: textOf(picker?.querySelector(".ed-picker-title")), top: r1(picker?.getBoundingClientRect().top ?? 0), button: r1(openBtn()?.getBoundingClientRect().bottom ?? 0) };
+  check(textOf(picker?.querySelector(".ed-picker-title")) === "Open terminal in", `the picker is titled Open terminal in (${JSON.stringify(out.picker)})`);
+  check(picker && picker.getBoundingClientRect().top >= (openBtn()?.getBoundingClientRect().bottom ?? 1e9) - 1, `the picker opens under the button (${JSON.stringify(out.picker)})`);
+  document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true, cancelable: true }));
+  picker?.querySelector<HTMLElement>("input")?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true, cancelable: true }));
+  await waitFor(() => (!q(".ed-picker") ? true : null), 2000);
+
+  // 2. a pick starts a terminal there, in the panel on the right, with the focus; its folder under the tabs; its sidebar row
+  const id1 = await pick("chat-site");
+  if (!id1) { errors.push(`picking chat-site opened no terminal: ${textOf(q(".ed-row-note"))}`); return done(); }
+  const v1 = await viewInPanel(id1);
+  if (!v1) { errors.push("the terminal's view didn't show in the chat's panel"); return done(); }
+  const term = v1.term;
+  check(!q(".ed-picker"), "the picker closes after a pick that starts");
+  await sleep(300);
+  out.opened = { ...sizes(), cls: chat()?.className, cols: term.cols, rows: term.rows };
+  check(chat()?.className === "chat has-term" && panel() && wd(q(".chat > .chat-threads")) > 0, `the panel is the chat's third column, the chat list still there (${JSON.stringify(out.opened)})`);
+  check((panel()?.getBoundingClientRect().left ?? 0) >= (q(".chat > .chat-main")?.getBoundingClientRect().right ?? 1e9) - 1, "the panel is on the right of the conversation");
+  check(Math.abs(shareNow() - 45) < 0.6, `the panel opens at 45% of the space right of the chat list (${JSON.stringify(out.opened)})`);
+  check(await waitFor(() => (document.activeElement === term.textarea ? true : null), 2000), "the new terminal has the focus");
+  check(textOf(q(".chat-term-where")) === site.path && /Mono|monospace/.test(getComputedStyle(q(".chat-term-where")!).fontFamily),
+    `the panel shows the terminal's folder in mono (${textOf(q(".chat-term-where"))}, ${q(".chat-term-where") ? getComputedStyle(q(".chat-term-where")!).fontFamily : ""})`);
+  check(await waitFor(() => q(`.side [aria-label="Terminal"] a[data-term="${CSS.escape(id1)}"]`), 3000), "the sidebar's Terminal section lists it");
+  out.left = cols();
+  check(atLeft(), `while the panel shows, the messages and the text box start at the left of their column (${JSON.stringify(out.left)})`);
+  out.pwd = await pwdIn(term, site.id);
+  check(out.pwd, `pwd prints chat-site's folder ${site.id} (screen: ${JSON.stringify(termLines(term, true).filter(Boolean).slice(-4))})`);
+  check(term.cols >= 30 && term.rows >= 10, `the terminal fits the panel (${term.cols} × ${term.rows})`);
+
+  // 3. another pick adds a tab, shown, with the focus; + starts one in the shown terminal's folder
+  const id2 = await pick("chat-other");
+  const v2 = id2 ? await viewInPanel(id2) : null;
+  check(v2 && same2(tabIds(), [id1, id2]), `another pick adds a tab (${tabIds().join(", ")})`);
+  if (!id2 || !v2) return done();
+  check(await waitFor(() => (document.activeElement === v2.term.textarea ? true : null), 2000), "the picked terminal has the focus");
+  check(textOf(q(".chat-term-where")) === other.path, `the folder follows the shown terminal (${textOf(q(".chat-term-where"))})`);
+  const plus = q<HTMLButtonElement>('.chat-term .term-tabs button[aria-label="New terminal in chat-other"]');
+  check(plus?.title === "New terminal in chat-other (Ctrl+Shift+`)" && plus.getAttribute("aria-disabled") !== "true", `+ says where (${plus?.title})`);
+  const own = q<HTMLButtonElement>('.chat-term button[aria-label="Own page"]'), hide = q<HTMLButtonElement>('.chat-term button[aria-label="Hide"]');
+  check(hide?.title === "Hide the terminal (Ctrl+`): its shells keep running" && !!own, `Hide's tooltip is the card's (${hide?.title})`);
+  plus?.click();
+  const id3 = await waitFor(() => { const t = shownTab(); return t && t !== id1 && t !== id2 ? t : null; }, 10000);
+  const v3 = id3 ? await viewInPanel(id3) : null;
+  check(v3 && (await terminalList()).find((s) => s.id === id3)?.folder === other.id, "+ starts another terminal in the shown terminal's folder");
+  // Ctrl+Shift+` too
+  await sleep(300);
+  out.plusBefore = q('.chat-term .term-tabs button[aria-label^="New terminal in"]')?.getAttribute("aria-disabled") ?? "on";
+  backquote(true);
+  const id4 = await waitFor(() => { const t = shownTab(); return t && ![id1, id2, id3].includes(t) ? t : null; }, 10000);
+  out.ctrlShift = { tabs: tabIds().length, open: (await terminalList()).length, failed: textOf(q(".chat-term .ed-bar.failed")), plus: out.plusBefore, focus: document.activeElement?.className };
+  check(id4 && (await terminalList()).find((s) => s.id === id4)?.folder === other.id && tabIds().length === 4, `Ctrl+Shift+\` starts one there too (${JSON.stringify(out.ctrlShift)})`);
+
+  // 4. × on a tab with a program running asks first; Cancel keeps it; Close ends it and the next tab shows. A middle click
+  // on a waiting one closes it at once.
+  if (id4) await viewInPanel(id4);
+  const t4 = id4 ? probeView(id4)?.term : null;
+  if (t4 && id3 && id4) {
+    await waitFor(() => termLines(t4).some((l) => l.trim()), 10000);
+    await sleep(300);
+    termType(t4, "sleep 60\r");
+    const busy = await waitFor(() => (textOf(q(`.chat-term .term-tab[data-term="${CSS.escape(id4)}"] .prog`)) === "sleep" ? true : null), 6000);
+    check(busy, `the tab says what runs in it (${textOf(q(`.chat-term .term-tab[data-term="${CSS.escape(id4)}"]`))})`);
+    // the second tab picked first, so the next after the closed one is a tab after it
+    q<HTMLElement>(`.chat-term .term-tab[data-term="${CSS.escape(id3)}"]`)?.click();
+    await waitFor(() => (shownTab() === id3 ? true : null), 2000);
+    q<HTMLElement>(`.chat-term .term-tab[data-term="${CSS.escape(id4)}"]`)?.click();
+    await waitFor(() => (shownTab() === id4 ? true : null), 2000);
+    q<HTMLButtonElement>(`.chat-term .term-tab[data-term="${CSS.escape(id4)}"] .x`)?.click();
+    const ask = await waitFor(() => q(".ed-ask"), 2000);
+    out.ask = textOf(ask);
+    check(ask && /sleep is still running in .+\. Close it and end sleep\?/.test(textOf(ask)), `× asks first while a program runs (${out.ask})`);
+    if (ask) buttonByText(ask, "Cancel")?.click();
+    await sleep(300);
+    check(tabIds().includes(id4) && !(await terminalList()).find((s) => s.id === id4)?.ended, "Cancel keeps it running");
+    q<HTMLButtonElement>(`.chat-term .term-tab[data-term="${CSS.escape(id4)}"] .x`)?.click();
+    const ask2 = await waitFor(() => q(".ed-ask"), 2000);
+    if (ask2) buttonByText(ask2, "Close")?.click();
+    check(await waitFor(() => (!tabIds().includes(id4) ? true : null), 5000), "Close closes it");
+    check(shownTab() === id3, `the tab before it shows, as it was the last (${shownTab()})`);
+    // middle click on a waiting tab (id2, not shown) closes it at once
+    q<HTMLElement>(`.chat-term .term-tab[data-term="${CSS.escape(id2)}"]`)?.dispatchEvent(new MouseEvent("auxclick", { button: 1, bubbles: true, cancelable: true }));
+    check(await waitFor(() => (!tabIds().includes(id2) && !q(".ed-ask") ? true : null), 5000), "a middle click closes a waiting terminal without asking");
+    check(same2(tabIds(), [id1, id3]) && shownTab() === id3, `the shown tab stays (${tabIds().join(", ")} shown ${shownTab()})`);
+
+    // the keys between tabs: Ctrl+PgUp and Ctrl+PgDn from inside the terminal (it lets them through), ← and → on a tab;
+    // F2 renames a tab in place
+    const t3 = probeView(id3)?.term;
+    t3?.focus();
+    t3?.textarea?.dispatchEvent(termKeyEvent("keydown", { key: "PageUp", code: "PageUp", keyCode: 33, ctrlKey: true }));
+    check(await waitFor(() => (shownTab() === id1 ? true : null), 2000), `Ctrl+PgUp from inside the terminal shows the tab before (${shownTab()})`);
+    await waitFor(() => (document.activeElement === term.textarea ? true : null), 2000);
+    term.textarea?.dispatchEvent(termKeyEvent("keydown", { key: "PageDown", code: "PageDown", keyCode: 34, ctrlKey: true }));
+    check(await waitFor(() => (shownTab() === id3 ? true : null), 2000), `Ctrl+PgDn shows the next tab (${shownTab()})`);
+    const tabOf = (id: string) => q<HTMLElement>(`.chat-term .term-tab[data-term="${CSS.escape(id)}"]`);
+    tabOf(id3)?.focus();
+    if (tabOf(id3)) keyOn(tabOf(id3)!, "ArrowLeft");
+    // the picked terminal then takes the focus, as a tab picked in the Editor's panel does
+    check(await waitFor(() => (shownTab() === id1 ? true : null), 2000), `← on a tab shows the one before (${shownTab()}, ${JSON.stringify({ id1, id3 })})`);
+    tabOf(id1)?.focus();
+    if (tabOf(id1)) keyOn(tabOf(id1)!, "ArrowRight");
+    check(await waitFor(() => (shownTab() === id3 ? true : null), 2000), `→ shows the next one (${shownTab()})`);
+    if (tabOf(id3)) keyOn(tabOf(id3)!, "F2");
+    const nameIn = await waitFor(() => tabOf(id3)?.querySelector<HTMLInputElement>("input.name-in") ?? null, 2000);
+    if (nameIn) {
+      typeInto(nameIn, "chat build");
+      nameIn.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true, cancelable: true }));
+    }
+    check(nameIn && (await waitFor(() => (textOf(tabOf(id3)?.querySelector(".name")) === "chat build" ? true : null), 4000)), `F2 renames the tab (${textOf(tabOf(id3))})`);
+  }
+
+  // 5. Hide: the shells keep running (sleep 60 in the first), the rail with the number, the conversation centred; the rail
+  // and Ctrl+` show it again; Ctrl+` from inside the terminal hides it
+  q<HTMLElement>(`.chat-term .term-tab[data-term="${CSS.escape(id1)}"]`)?.click();
+  await waitFor(() => (shownTab() === id1 && panel()?.contains(term.element ?? null) ? true : null), 3000);
+  termType(term, "sleep 60\r");
+  await sleep(1200);
+  q<HTMLButtonElement>('.chat-term button[aria-label="Hide"]')?.click();
+  check(await waitFor(() => (!panel() && rail() ? true : null), 2000), "Hide hides the panel and the rail shows");
+  out.rail = { cls: chat()?.className, n: textOf(rail()?.querySelector(".n")), title: rail()?.title, w: r1(wd(rail())), right: r1((chat()?.getBoundingClientRect().right ?? 0) - (rail()?.getBoundingClientRect().right ?? 0)) };
+  check(chat()?.className === "chat has-rail" && textOf(rail()?.querySelector(".n")) === "2" && rail()?.title === "Show the terminal (Ctrl+`)" && !!rail()?.querySelector("svg.lucide-terminal"),
+    `the rail has the terminal icon, the number and its tooltip (${JSON.stringify(out.rail)})`);
+  check(wd(rail()) <= 48 && Math.abs(Number((out.rail as { right: number }).right)) <= 1, `the rail is narrow, on the chat's right edge (${JSON.stringify(out.rail)})`);
+  out.centredAgain = cols();
+  check(centred(), `hidden, the conversation is centred as before (${JSON.stringify(out.centredAgain)})`);
+  const running = (await terminalList()).find((s) => s.id === id1);
+  check(running && !running.ended && running.busy === "sleep", `its shell keeps running sleep 60 (${JSON.stringify(running && { busy: running.busy, ended: running.ended })})`);
+  rail()?.click();
+  check(await waitFor(() => (panel()?.contains(term.element ?? null) && shownTab() === id1 ? true : null), 3000), "the rail shows the panel again, on the same terminal");
+  check(await waitFor(() => (document.activeElement === term.textarea ? true : null), 2000), "shown again, the terminal has the focus");
+  term.textarea?.dispatchEvent(termKeyEvent("keydown", { key: "`", code: "Backquote", keyCode: 192, ctrlKey: true }));
+  check(await waitFor(() => (!panel() && rail() ? true : null), 2000), "Ctrl+` hides the panel from inside the terminal");
+  backquote();
+  check(await waitFor(() => (panel()?.contains(term.element ?? null) ? true : null), 3000), "Ctrl+` shows it again");
+  check((await terminalList()).find((s) => s.id === id1)?.busy === "sleep", "sleep 60 is still running");
+  term.input("\x03", true); // Ctrl+C ends the sleep
+  await sleep(300);
+
+  // 6. the drag handle: the panel's left edge, a vertical separator; between 360px of panel and 400px of conversation; a
+  // double click gives 45% back; ← and → move it 5%; kept
+  const handle = q<HTMLElement>(".chat-term > .term-handle");
+  if (!handle) { errors.push("no drag handle on the panel's left edge"); return done(); }
+  out.handle = { w: wd(handle), cursor: getComputedStyle(handle).cursor, orientation: handle.getAttribute("aria-orientation"), label: handle.getAttribute("aria-label"), now: handle.getAttribute("aria-valuenow"),
+    left: r1((handle.getBoundingClientRect().left) - (panel()?.getBoundingClientRect().left ?? 0)) };
+  check(handle.getAttribute("role") === "separator" && handle.getAttribute("aria-orientation") === "vertical" && getComputedStyle(handle).cursor === "col-resize" && wd(handle) <= 1.5
+    && Math.abs(handle.getBoundingClientRect().left - (panel()?.getBoundingClientRect().left ?? 0)) <= 1, `the handle is the panel's left edge, a vertical separator (${JSON.stringify(out.handle)})`);
+  const drag = async (dx: number) => {
+    const r = handle.getBoundingClientRect();
+    const x = r.left + r.width / 2, y = r.top + r.height / 2;
+    handle.dispatchEvent(pe("pointerdown", x, y));
+    for (let i = 1; i <= 4; i++) { handle.dispatchEvent(pe("pointermove", x + (dx * i) / 4, y)); await nextFrame(); }
+    handle.dispatchEvent(pe("pointerup", x + dx, y));
+    await sleep(150);
+    return sizes();
+  };
+  const start = sizes();
+  const grown = await drag(-80);
+  check(Math.abs(grown.panel - start.panel - 80) <= 2 && Math.abs(start.talk - grown.talk - 80) <= 2, `dragging the edge left 80px widens the panel 80px (${JSON.stringify({ start, grown })})`);
+  check(Math.abs(Number(localStorage.getItem(CHAT_SHARE)) - shareNow()) < 0.2, `the width is kept when the pointer lets go (${localStorage.getItem(CHAT_SHARE)})`);
+  const widest = await drag(-5000);
+  const narrow = await drag(5000);
+  out.drag = { start, grown, widest, narrow };
+  check(Math.abs(widest.talk - 400) <= 1.5, `dragging far left leaves the conversation 400px (${JSON.stringify(widest)})`);
+  check(Math.abs(narrow.panel - 360) <= 1.5, `dragging far right stops at 360px of panel (${JSON.stringify(narrow)})`);
+  handle.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
+  await sleep(200);
+  out.doubleClick = { ...sizes(), kept: localStorage.getItem(CHAT_SHARE), now: handle.getAttribute("aria-valuenow") };
+  check(Math.abs(shareNow() - 45) < 0.6 && localStorage.getItem(CHAT_SHARE) === "45" && handle.getAttribute("aria-valuenow") === "45", `a double click gives 45% back (${JSON.stringify(out.doubleClick)})`);
+  handle.focus();
+  keyOn(handle, "ArrowLeft");
+  await sleep(150);
+  out.arrowLeft = { share: r1(shareNow()), now: handle.getAttribute("aria-valuenow") };
+  check(Math.abs(shareNow() - 50) < 0.6 && handle.getAttribute("aria-valuenow") === "50", `← widens it 5% (${JSON.stringify(out.arrowLeft)})`);
+  keyOn(handle, "ArrowRight");
+  await sleep(150);
+  check(Math.abs(shareNow() - 45) < 0.6, `→ narrows it 5% (${r1(shareNow())})`);
+  keyOn(handle, "ArrowUp");
+  await sleep(150);
+  check(Math.abs(shareNow() - 45) < 0.6, "↑ doesn't move the left edge");
+  await sleep(200);
+  check(Math.abs(term.cols - (out.opened as { cols: number }).cols) <= 2, `back at 45% the terminal has the columns it opened with (${term.cols}, ${(out.opened as { cols: number }).cols})`);
+
+  // 7. another chat, New chat, the Archive, another page and back: the panel, its tabs and the shown terminal stay
+  const tabsNow = tabIds(), shown = shownTab(), shareKept = r1(shareNow());
+  const stays = (where: string) => {
+    const ok = panel()?.contains(term.element ?? null) && same2(tabIds(), tabsNow) && shownTab() === shown && Math.abs(shareNow() - shareKept) < 0.6;
+    check(ok, `${where}: the panel, its tabs and the shown terminal stay (${tabIds().join(", ")} shown ${shownTab()}, ${r1(shareNow())}%)`);
+  };
+  const recent = q<HTMLAnchorElement>(".chat-threads-list a.th[href^='#/chat/']");
+  recent?.click();
+  await waitFor(() => (/^#\/chat\/.+/.test(location.hash) && q(".chat-msg") ? true : null), 5000);
+  await sleep(300);
+  stays("another chat");
+  out.otherChat = cols();
+  check(atLeft(), `in another chat the messages start at the left too (${JSON.stringify(out.otherChat)})`);
+  await toChat("#/chat");
+  await sleep(300);
+  stays("New chat");
+  q<HTMLAnchorElement>(".chat-threads-foot a.th")?.click();
+  await waitFor(() => (location.hash === "#/chats" && q(".chat-archive") ? true : null), 5000);
+  await sleep(300);
+  stays("the Archive");
+  const arch = [...document.querySelectorAll<HTMLElement>(".chat-archive .chat-col")].map((c) => r1(c.getBoundingClientRect().left - c.closest(".chat-archive")!.getBoundingClientRect().left));
+  out.archive = arch;
+  check(arch.length > 0 && arch.every((x) => Math.abs(x) <= 1), `beside the panel the Archive starts at the left (${JSON.stringify(arch)})`);
+  window.location.hash = "#/tasks";
+  await sleep(700);
+  check(!panel() && (await terminalList()).filter((s) => tabsNow.includes(s.id) && !s.ended).length === tabsNow.length, "on another page the chat's terminals keep running");
+  check(q(`.side [aria-label="Terminal"] a[data-term="${CSS.escape(id1)}"]`), "and the sidebar lists them");
+  await toChat("#/chat");
+  check(await waitFor(() => (panel()?.contains(term.element ?? null) ? true : null), 5000), "back on the Chat page the view is in the panel again");
+  await sleep(200);
+  stays("another page and back");
+
+  // 8. Own page: the same view on #/terminal/<id>; back on Chat the panel shows it again
+  const ownName = (await terminalList()).find((s) => s.id === id1)?.name ?? "";
+  check(q<HTMLButtonElement>('.chat-term button[aria-label="Own page"]')?.title === `Open ${ownName} on its own page`, "Own page's tooltip names the terminal");
+  q<HTMLButtonElement>('.chat-term button[aria-label="Own page"]')?.click();
+  const onPage = await waitFor(() => (location.hash === `#/terminal/${encodeURIComponent(id1)}` && q(".term-page .term-place")?.contains(term.element ?? null) ? true : null), 5000);
+  check(onPage, `Own page shows the terminal on #/terminal/<id> (${location.hash})`);
+  await toChat("#/chat");
+  check(await waitFor(() => (panel()?.contains(term.element ?? null) && shownTab() === id1 ? true : null), 5000), "back on Chat the panel shows it again");
+  // the Terminal page asking for it shows the chat's away text in the panel
+  const box = document.createElement("div");
+  box.style.cssText = "position:fixed;right:0;bottom:0;width:520px;height:240px;display:flex;flex-direction:column;z-index:100";
+  document.body.appendChild(box);
+  const root = createRoot(box);
+  root.render(createElement(TerminalView, { id: id1, place: { kind: "page" } }));
+  const away = await waitFor(() => (box.contains(term.element ?? null) ? q(".chat-term .term-away") : null), 3000);
+  check(away && textOf(away) === `${ownName} is on its own page.Show here`, `the panel shows Show here while the page has it (${textOf(away)})`);
+  if (away) buttonByText(away, "Show here")?.click();
+  check(await waitFor(() => (panel()?.contains(term.element ?? null) ? true : null), 3000), "Show here brings it back to the panel");
+  out.awayChat = textOf(box.querySelector(".term-away"));
+  check(out.awayChat === `${ownName} is in the Chat's terminal panel.Show here`, `the other place says it is in the Chat's terminal panel (${out.awayChat})`);
+  root.unmount();
+  box.remove();
+
+  // 9. a narrow window: the chat list hides while the panel shows, and comes back with the panel hidden
+  if (app) {
+    app.style.width = "1000px";
+    const gone = await waitFor(() => (chat()?.classList.contains("no-list") ? true : null), 2000);
+    await sleep(200);
+    out.narrow = { ...sizes(), cls: chat()?.className, threads: getComputedStyle(q(".chat > .chat-threads")!).display, scroll: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+    check(gone && getComputedStyle(q(".chat > .chat-threads")!).display === "none" && wd(panel()) >= 359.5 && wd(q(".chat > .chat-main")) > 0,
+      `in a narrow window the chat list hides while the panel shows, and the panel fits (${JSON.stringify(out.narrow)})`);
+    q<HTMLButtonElement>('.chat-term button[aria-label="Hide"]')?.click();
+    await waitFor(() => (rail() ? true : null), 2000);
+    check(getComputedStyle(q(".chat > .chat-threads")!).display !== "none", "with the panel hidden the chat list is back");
+    rail()?.click();
+    await waitFor(() => (panel() ? true : null), 2000);
+    await wide(true);
+    check(await waitFor(() => (!chat()?.classList.contains("no-list") && getComputedStyle(q(".chat > .chat-threads")!).display !== "none" ? true : null), 2000), "a wide window shows the chat list again beside the panel");
+  }
+
+  // 10. the largest text size, then light: the panel fits, nothing scrolls sideways
+  const look = getAppearance();
+  await wide(false);
+  setAppearance({ ui: 16.5, chat: 20, docs: 20 }, false);
+  await sleep(500);
+  out.largest = { ...sizes(), list: wd(q(".chat > .chat-threads")), scroll: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+  check(panel() && wd(panel()) >= 359.5 && wd(q(".chat > .chat-main")) >= 399.5 && document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+    `at the largest text size the panel fits (${JSON.stringify(out.largest)}, ${chat()?.className})`);
+  setAppearance({ theme: "light" }, false);
+  await sleep(300);
+  out.light = { bg: getComputedStyle(panel()!).backgroundColor, term: String(term.options.theme?.background) };
+  check(panel() && getComputedStyle(panel()!).backgroundColor !== "rgba(0, 0, 0, 0)", `in light the panel draws (${JSON.stringify(out.light)})`);
+  setAppearance(look, false);
+  await wide(true);
+
+  // 11. closing the last tabs hides the panel, and nothing is left on the right; the width for the restart: 55%
+  // the panel was drawn again since step 6 (hidden, other pages): its handle now
+  const edge = q<HTMLElement>(".chat-term > .term-handle");
+  edge?.focus();
+  for (let i = 0; i < 2; i++) { if (edge) keyOn(edge, "ArrowLeft"); await sleep(150); }
+  out.kept = localStorage.getItem(CHAT_SHARE);
+  check(localStorage.getItem(CHAT_SHARE) === "55", `← twice keeps 55% (${out.kept})`);
+  for (const t of tabIds()) {
+    q<HTMLButtonElement>(`.chat-term .term-tab[data-term="${CSS.escape(t)}"] .x`)?.click();
+    const ask = await waitFor(() => q(".ed-ask"), 600);
+    if (ask) buttonByText(ask, "Close")?.click();
+    await waitFor(() => (!tabIds().includes(t) ? true : null), 5000);
+  }
+  check(await waitFor(() => (!panel() && !rail() && chat()?.className === "chat" ? true : null), 3000), `closing the last tab hides the panel, with no rail (${chat()?.className})`);
+  check(centred(), `and the conversation is centred again (${JSON.stringify(cols())})`);
+  for (const s of await terminalList()) await Promise.race([terminalClose(s.id).catch(() => {}), sleep(3000)]);
+  await wide(false);
+  await sleep(1500); // WebKit writes localStorage to disk a moment later
+  return done();
+}
+
+// ---------- Open in terminal under a Chief answer (GA-279) ----------
+// GIZAI_SELFTEST_MODE=terminal:chat-run on route terminal (scripts/ui-test.sh: prep_chats' Chief, prep_chat_terminal's chat
+// "How do I test GA-279?", /bin/sh as the shell, a scratch home folder with ~/Herd/doq-studio and resources/embed-test in it,
+// ~/Herd/shop, ~/Herd/kade-portal and ~/Herd/invoice-api). Under each of the Chief's text messages that asks you to run a
+// command, and only there (not under a tool call, a message that only mentions commands or files, plain text or yours): one
+// quiet button per folder it names, in the order named and at most 3, right under the message and left-aligned with it;
+// Open in terminal… for none. A click opens the chat's terminal panel with a terminal in the folder (pwd prints it), with
+// the focus, and nothing typed; a second click shows the same one while it waits; while a program runs in it a click starts
+// a new tab there, which a click under the message that names a subfolder shows again; the second folder's button opens its
+// own; Open in terminal… opens the picker titled "Open terminal in" under it, and a pick opens a terminal there. In the
+// narrow conversation beside the panel the row of three buttons wraps.
+async function chatRunProbe() {
+  const errors: string[] = [];
+  const out: Record<string, unknown> = {};
+  const check = (ok: unknown, what: string) => { if (!ok) errors.push(what); };
+  const done = () => ({ ok: errors.length === 0, errors, ...out });
+
+  const folders = await editorFolders();
+  const named = (name: string) => folders.find((f) => f.kind === "root" && f.name === name);
+  const doq = named("doq-studio"), shop = named("shop"), kade = named("kade-portal");
+  if (!doq || !shop || !kade) { errors.push(`no folders doq-studio, shop and kade-portal (${folders.map((f) => `${f.kind} ${f.name}`).join(", ")})`); return done(); }
+  const thread = (await listChatThreads(50)).find((t) => t.title === "How do I test GA-279?");
+  if (!thread) { errors.push("no chat How do I test GA-279?"); return done(); }
+  window.location.hash = `#/chat/${thread.id}`;
+
+  const texts = () => [...document.querySelectorAll<HTMLElement>(".chat-main .chat-group.agent .chat-msg.agent:not(.draft)")];
+  const rowAfter = (m: Element) => { const n = m.nextElementSibling; return n?.classList.contains("msg-term") ? n as HTMLElement : null; };
+  const buttonsIn = (row: Element | null) => [...(row?.querySelectorAll<HTMLButtonElement>(".msg-term-row > button") ?? [])];
+  const labelsOf = (row: Element | null) => buttonsIn(row).map((b) => textOf(b));
+  const message = (start: string) => texts().find((m) => textOf(m).startsWith(start)) ?? null;
+  const panel = () => q<HTMLElement>(".chat > .chat-term");
+  const shownTab = () => q(".chat-term .term-tab[aria-selected=true]")?.getAttribute("data-term") ?? null;
+  const tabIds = () => [...document.querySelectorAll(".chat-term .term-tab")].map((t) => t.getAttribute("data-term") ?? "");
+  const r1 = (n: number) => Math.round(n * 10) / 10;
+  const viewInPanel = (id: string) => waitFor(() => { const v = probeView(id); return v && v.renderer !== "none" && panel()?.contains(v.term.element ?? null) ? v : null; }, 10000);
+  const pwdIn = async (term: Terminal, path: string) => {
+    await waitFor(() => termLines(term).some((l) => l.trim()), 10000); // the prompt
+    await sleep(300);
+    termType(term, "pwd\r");
+    return waitFor(() => (termLines(term).map((l) => l.trimEnd()).join("").includes(`pwd${path}`) ? path : null), 5000);
+  };
+  /** The chat's terminals seen so far (a hidden panel has no tabs in the page). */
+  const seen: string[] = [];
+  /** A click on a button under a message; the terminal shown then, once its view is in the panel: a new one once it started
+   *  (a few seconds at most), else the one the panel shows. */
+  const press = async (b: HTMLButtonElement | undefined) => {
+    b?.click();
+    const fresh = await waitFor(() => { const t = shownTab(); return t && panel() && !seen.includes(t) ? t : null; }, 4000);
+    const id = fresh ?? (panel() ? shownTab() : null);
+    if (!id) return null;
+    const v = await viewInPanel(id);
+    if (!v) return null;
+    if (fresh) seen.push(fresh);
+    return { id, term: v.term, isNew: !!fresh };
+  };
+
+  // 1. the rows: under the Chief's text messages that ask you to run a command, one button per folder named, in order
+  const why = await waitFor(() => message("Before you test"), 8000);
+  if (!why) { errors.push(`the chat's messages didn't show (${texts().length})`); return done(); }
+  await waitFor(() => (labelsOf(rowAfter(why)).length > 0 ? true : null), 5000);
+  const open = (path: string) => `Open in terminal${path}`;
+  const rows = texts().map((m) => [textOf(m).slice(0, 18), rowAfter(m) ? labelsOf(rowAfter(m)) : null]);
+  out.rows = rows;
+  const want = [
+    ["Before you test, i", [open(doq.path)]],
+    ["QA ran npm test on", null],
+    [`In ${doq.path}/resou`.slice(0, 18), [open(doq.path)]],
+    [`In ${doq.id}`.slice(0, 18), [open(doq.path)]],
+    ["Run composer insta", ["Open in terminal…"]],
+    [`In ${shop.path}: run`.slice(0, 18), [open(shop.path), open(doq.path)]],
+    ["Run npm ci in ~/He", [open(doq.path), open(shop.path), open(kade.path)]],
+    ["All done: GA-279 i", null],
+  ];
+  check(JSON.stringify(rows) === JSON.stringify(want), `the rows under the Chief's messages (${JSON.stringify(rows)}, want ${JSON.stringify(want)})`);
+  check(!q(".chat-main .tool-card .msg-term") && !q(".chat-main .tool-card + .msg-term") && !q(".chat-main .chat-group.user .msg-term"),
+    "no row under a tool call or under your messages");
+  check(document.querySelectorAll(".chat-main .msg-term").length === 6, `six rows in the chat (${document.querySelectorAll(".chat-main .msg-term").length})`);
+
+  // 2. the button: quiet, the terminal icon, the folder in mono, its tooltip; right under the message and left-aligned with it
+  const b = buttonsIn(rowAfter(why))[0]!;
+  const mono = b.querySelector<HTMLElement>(".mono");
+  const msgBox = why.getBoundingClientRect(), rowBox = rowAfter(why)!.getBoundingClientRect(), icon = b.querySelector("svg")?.getBoundingClientRect();
+  const firstText = why.querySelector("p")?.getBoundingClientRect();
+  const monoFont = mono ? getComputedStyle(mono).fontFamily : "";
+  out.button = { cls: b.className, title: b.title, mono: textOf(mono), font: monoFont, gap: r1(rowBox.top - msgBox.bottom),
+    iconLeft: r1(icon?.left ?? 0), textLeft: r1(firstText?.left ?? 0), height: r1(b.getBoundingClientRect().height) };
+  check(b.className === "btn ghost sm" && b.title === `Open a terminal in ${doq.path} beside the chat` && !!b.querySelector("svg.lucide-terminal"),
+    `Open in terminal is a btn ghost sm with the terminal icon and its tooltip (${JSON.stringify(out.button)})`);
+  check(textOf(mono) === doq.path && /Mono|monospace/.test(monoFont), `the folder in mono (${JSON.stringify(out.button)})`);
+  check(Math.abs(rowBox.top - msgBox.bottom) <= 8, `the row is right under the message (${JSON.stringify(out.button)})`);
+  check(icon && firstText && Math.abs(icon.left - firstText.left) <= 12, `the button is left-aligned with the message's text (${JSON.stringify(out.button)})`);
+
+  // 3. a click: the chat's terminal panel with a terminal in ~/Herd/doq-studio, with the focus; nothing typed into it
+  check(!panel(), "no panel before the click");
+  const t1 = await press(b);
+  if (!t1) { errors.push(`the click opened no terminal: ${textOf(rowAfter(why)?.querySelector(".msg-term-why"))}`); return done(); }
+  check(t1.isNew && tabIds().length === 1, `a new tab (${tabIds().join(", ")})`);
+  check(await waitFor(() => (document.activeElement === t1.term.textarea ? true : null), 2000), "the terminal has the focus");
+  check(textOf(q(".chat-term-where")) === doq.path, `the panel shows the folder (${textOf(q(".chat-term-where"))})`);
+  await waitFor(() => termLines(t1.term).some((l) => l.trim()), 10000);
+  await sleep(500);
+  out.screenAtStart = termLines(t1.term).filter((l) => l.trim());
+  check(!termLines(t1.term).join("\n").match(/artisan|npm/), `nothing typed or run in it (${JSON.stringify(out.screenAtStart)})`);
+  out.pwd = await pwdIn(t1.term, doq.id);
+  check(out.pwd, `pwd prints ${doq.id} (screen: ${JSON.stringify(termLines(t1.term, true).filter(Boolean).slice(-4))})`);
+
+  // 4. a second click shows the same terminal while it waits for a command, also after Hide
+  q<HTMLButtonElement>(".chat-term button[aria-label^='Hide'], .chat-term button[title^='Hide']")?.click();
+  await waitFor(() => (!panel() ? true : null), 2000);
+  out.hidden = !panel();
+  (document.activeElement as HTMLElement | null)?.blur();
+  const again = await press(buttonsIn(rowAfter(why))[0]);
+  check(again && again.id === t1.id && !again.isNew && tabIds().length === 1, `a second click shows the same terminal (${again?.id}, ${tabIds().join(", ")}, hidden first: ${out.hidden})`);
+  check(await waitFor(() => (document.activeElement === t1.term.textarea ? true : null), 2000), "with the focus");
+
+  // 5. while a program runs in it, a click starts a new tab in that folder; the message that names a subfolder shows that one
+  termType(t1.term, "sleep 30\r");
+  // the backend notes the program that runs a moment later
+  let busy: unknown = null;
+  for (let i = 0; i < 50 && !busy; i++) { busy = (await terminalList()).find((s) => s.id === t1.id)?.busy ?? null; if (!busy) await sleep(100); }
+  out.busy = busy;
+  check(busy, `sleep 30 runs in it (${JSON.stringify(out.busy)})`);
+  const t2 = await press(buttonsIn(rowAfter(why))[0]);
+  check(t2 && t2.isNew && same2(tabIds(), [t1.id, t2.id]), `while a program runs, a click starts a new tab (${tabIds().join(", ")})`);
+  if (!t2) return done();
+  check(await pwdIn(t2.term, doq.id), `the new tab is in ${doq.id}`);
+  const sub = message(`In ${doq.path}/resou`.slice(0, 18));
+  const t3 = await press(sub ? buttonsIn(rowAfter(sub))[0] : undefined);
+  check(t3 && t3.id === t2.id && !t3.isNew, `the message naming a subfolder shows the waiting terminal in ${doq.path} (${t3?.id}, ${tabIds().join(", ")})`);
+
+  // 6. the second folder's button opens its own terminal
+  const two = message(`In ${shop.path}: run`.slice(0, 18));
+  const t4 = await press(two ? buttonsIn(rowAfter(two))[0] : undefined);
+  check(t4 && t4.isNew && textOf(q(".chat-term-where")) === shop.path, `${shop.path}'s button opens a terminal there (${textOf(q(".chat-term-where"))})`);
+  if (t4) check(await pwdIn(t4.term, shop.id), `pwd prints ${shop.id}`);
+
+  // 7. Open in terminal… opens the picker titled "Open terminal in" under it; a pick opens a terminal there
+  const none = message("Run composer insta");
+  const pickBtn = none ? buttonsIn(rowAfter(none))[0] : undefined;
+  check(pickBtn?.className === "btn ghost sm" && !!pickBtn.querySelector("svg.lucide-terminal"), "Open in terminal… is a btn ghost sm with the terminal icon");
+  pickBtn?.click();
+  const picker = await waitFor(() => q('.ed-picker[aria-label="Open terminal in"]'), 3000);
+  out.picker = { title: textOf(picker?.querySelector(".ed-picker-title")), top: r1(picker?.getBoundingClientRect().top ?? 0), button: r1(pickBtn?.getBoundingClientRect().bottom ?? 0) };
+  check(picker && textOf(picker.querySelector(".ed-picker-title")) === "Open terminal in", `the picker is titled Open terminal in (${JSON.stringify(out.picker)})`);
+  check(picker && pickBtn && picker.getBoundingClientRect().top >= pickBtn.getBoundingClientRect().bottom - 1, `the picker opens under the button (${JSON.stringify(out.picker)})`);
+  const opt = await waitFor(() => [...(picker?.querySelectorAll<HTMLElement>(".opt") ?? [])].find((o) => textOf(o.querySelector(".label")) === "kade-portal"), 8000);
+  const before = tabIds();
+  opt?.click();
+  const t5id = await waitFor(() => { const t = shownTab(); return t && !before.includes(t) ? t : null; }, 10000);
+  check(t5id && !q(".ed-picker") && textOf(q(".chat-term-where")) === kade.path, `a pick opens a terminal in kade-portal and closes the picker (${textOf(q(".chat-term-where"))})`);
+
+  // 8. beside the panel the conversation is narrow: the row of three buttons wraps, and none runs out of it
+  await sleep(300);
+  const three = message("Run npm ci in ~/He");
+  const threeRow = three ? rowAfter(three)?.querySelector<HTMLElement>(".msg-term-row") ?? null : null;
+  const boxes = buttonsIn(threeRow?.parentElement ?? null).map((x) => x.getBoundingClientRect());
+  const rowRect = threeRow?.getBoundingClientRect();
+  out.narrow = { conversation: r1(q(".chat > .chat-main")?.getBoundingClientRect().width ?? 0), row: r1(rowRect?.width ?? 0),
+    tops: boxes.map((x) => r1(x.top)), rights: boxes.map((x) => r1(x.right)), wrap: threeRow ? getComputedStyle(threeRow).flexWrap : "" };
+  check(threeRow && getComputedStyle(threeRow).flexWrap === "wrap", `the row wraps (${JSON.stringify(out.narrow)})`);
+  check(boxes.length === 3 && new Set(boxes.map((x) => Math.round(x.top))).size > 1, `three buttons on more than one line beside the panel (${JSON.stringify(out.narrow)})`);
+  check(rowRect && boxes.every((x) => x.right <= rowRect.right + 1), `no button runs out of the row (${JSON.stringify(out.narrow)})`);
+
+  for (const s of await terminalList()) await Promise.race([terminalClose(s.id).catch(() => {}), sleep(3000)]);
+  return done();
+}
+const same2 =(a: unknown[], b: unknown[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 
 // GIZAI_SELFTEST_MODE=steps:<step>;<step>… (scripts/shot-cage.sh, scripts/tour-capture.sh), run after
 // the start route opens. A step is one of:
@@ -4553,7 +5304,7 @@ async function perfLead(o: PerfResult, ids: PerfIds) {
   await nextFrame();
   const sent = performance.now();
   enter(c);
-  if (!(await waitFor(() => document.querySelector(".chat-working"), 20000))) throw new Error("the Team Lead did not start answering");
+  if (!(await waitFor(() => document.querySelector(".chat-working"), 20000))) throw new Error("the Chief did not start answering");
   const from = performance.now();
   o.numbers.answer_start_ms = ms(from - sent);
   const f = await perfFrames(120000, undefined, () => !document.querySelector(".chat-working"));
@@ -4768,7 +5519,7 @@ async function templatesSteps(dir: string, dialog: { asked: { cmd: string; optio
   const swShown = await checkShown();
   const software: Record<string, unknown> = {
     shown: swShown, description: swDescription, name: nameField()?.value, plan_name: swPlan.teamName, plan_columns: swPlan.columns.length,
-    plan_agents: swPlan.agents.length, rows_match: same(rowsShown(), planRows(swPlan)), rows: rowsShown().length,
+    plan_agents: swPlan.agents.length, first_role: swPlan.agents[0]?.role, rows_match: same(rowsShown(), planRows(swPlan)), rows: rowsShown().length,
     cards: textsOf(".tt-agent .h b"), heading: (drawer()?.textContent ?? "").includes("Commands beyond"), paused_line: !!q(".tt-paused"),
     props: textsOf(".tt-agent:first-child .tt-props dd"), subtitle: textOf(q(".drawer-head p", drawer()!)), on: createBtn()?.disabled === false,
   };
@@ -4800,7 +5551,7 @@ async function templatesSteps(dir: string, dialog: { asked: { cmd: string; optio
     return {
       name: textOf(c?.querySelector(".h b")) === a.name,
       file_name: a.fileName === a.name || textsOf(".h .faint", c ?? document).includes(`${a.fileName} in the file`),
-      props: same(textsOf(".tt-props dd", c ?? document), [a.role, a.cliName, a.model ?? "The CLI's default", a.effort ?? "The CLI's default", a.permissionMode || "None"]),
+      props: same(textsOf(".tt-props dd", c ?? document), [roleLabel(a.role), a.cliName, a.model ?? "The CLI's default", a.effort ?? "The CLI's default", a.permissionMode || "None"]),
       extra: a.extraTools.length ? textOf(extra?.querySelector("h4")) === "Commands beyond its role's usual ones" && same(textsOf("li", extra ?? document), a.extraTools) : !extra,
       missing: same(textsOf(".tt-missing", c ?? document), a.missingServers.map((s) => `Needs MCP server ${s}: add it in Settings → MCP to switch it on.`)),
     };
@@ -4923,8 +5674,8 @@ async function templatesSteps(dir: string, dialog: { asked: { cmd: string; optio
   const e = out.empty as { focus: boolean; subtitle: string; group: boolean; starts: string[]; notes: string[]; empty_on: boolean; off_without_name: boolean; no_check: boolean;
     made: { on: boolean; closed: boolean; shown: boolean; picked: boolean; name: string; columns: unknown; agents: number | null } };
   const ep = out.export_plain as { warnings: number; question: boolean; asked?: string; default_path?: unknown; filters?: unknown; toast: boolean; file: { columns: string[]; agents: number } | string };
-  const sw = software as { shown: boolean; description: string; name?: string; plan_name: string; plan_columns: number; plan_agents: number; rows_match: boolean;
-    rows: number; cards: string[]; heading: boolean; paused_line: boolean; on: boolean; made: { on: boolean; closed: boolean; shown: boolean; name: string; agents: unknown[][] | null; columns: string[] | null } };
+  const sw = software as { shown: boolean; description: string; name?: string; plan_name: string; plan_columns: number; plan_agents: number; first_role?: string; rows_match: boolean;
+    rows: number; cards: string[]; props: string[]; heading: boolean; paused_line: boolean; on: boolean; made: { on: boolean; closed: boolean; shown: boolean; name: string; agents: unknown[][] | null; columns: string[] | null } };
   const f = file as { asked?: string; filters?: { extensions?: string[] }[]; multiple?: boolean; directory?: boolean; shown: boolean; picked: string; name?: string; plan_name: string;
     rows_match: boolean; agents: Record<string, boolean>[]; paused_line: boolean; paused_above: boolean; extra_colours: string[] | null; banner_colours: string[] | null;
     labels: string; plan_labels: string[]; notes: string[]; plan_notes: string[]; plan_has: Record<string, boolean | number>;
@@ -4947,6 +5698,8 @@ async function templatesSteps(dir: string, dialog: { asked: { cmd: string; optio
     software_check: sw.shown && sw.description === "The five agents a new install gets, and the seven usual columns." && sw.name === sw.plan_name
       && sw.plan_name.startsWith("Software team") && sw.plan_columns === 7 && sw.plan_agents === 5 && sw.rows === 7 && sw.rows_match && sw.cards.length === 5
       && !sw.heading && !sw.paused_line && sw.on,
+    // GA-254: the first agent, the lead, reads Role Chief, not its key lead
+    software_chief: sw.first_role === "lead" && sw.props[0] === "Chief",
     software_made: sw.made.on && sw.made.closed && sw.made.shown && sw.made.name === "Probe software team" && sw.made.agents?.length === 5
       && !!sw.made.agents?.every((a) => a[2] === "active") && sw.made.columns?.length === 7,
     file_dialog: f.asked === "open" && same(f.filters?.[0]?.extensions, ["json"]) && f.multiple === false && f.directory === false,

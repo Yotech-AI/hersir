@@ -1,14 +1,17 @@
 [workspace]
 resolver = "3"
 members = ["crates/gizai-core", "crates/gizai-agents", "crates/gizai-mcp", "src-tauri"]
+# A patched copy of a dependency, not a crate of Hersir's (see [patch.crates-io]): cargo test --workspace skips its tests.
+exclude = ["third_party/rusqlite_migration"]
 
 [workspace.package]
 edition = "2024"
 license = "Apache-2.0"
-version = "0.16.0"
+version = "0.17.0"
 
 [workspace.dependencies]
-rusqlite = { version = "0.40", features = ["bundled", "serde_json"] }
+# 0.41 at least: its bundled SQLite (libsqlite3-sys 0.39, SQLite 3.54) has the fix for RUSTSEC-2026-0459.
+rusqlite = { version = "0.41", features = ["bundled", "serde_json"] }
 rusqlite_migration = "2"
 uuid = { version = "1", features = ["v7"] }
 serde = { version = "1", features = ["derive"] }
@@ -23,6 +26,11 @@ getrandom = "0.4"
 # A backup's database, compressed (GA-216, docs/backup-format.md). Without the old formats' decoders and the dictionary
 # builder, which backups don't use.
 zstd = { version = "0.14", default-features = false }
+
+# rusqlite_migration 2.6.0 with only its rusqlite requirement changed to 0.41, because no release accepts rusqlite 0.41
+# yet. Remove this, the exclude above and the folder once one does (third_party/rusqlite_migration/README.md, GA-273).
+[patch.crates-io]
+rusqlite_migration = { path = "third_party/rusqlite_migration" }
 
 # Debug builds keep line tables only: panics and backtraces still show file and line, and the test programs are a
 # fraction of their size with full debug info (GA-213). On dev, not only on test: `cargo test` takes dev's settings,

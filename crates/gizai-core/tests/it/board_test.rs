@@ -548,7 +548,7 @@ fn rows(c: &rusqlite::Connection, sql: &str) -> Rows {
 /// and no chat Runs on or queue (0012), no memory (0014), no Team Lead may merge (0015), no shared memory folders (0016)
 /// and no pending actions (0017), and none of 0019's screenshot columns nor 0020's Test runs at once.
 pub fn back_to_7(c: &rusqlite::Connection) {
-    let undo14 = format!("{UNDO_0021} {UNDO_0020} {UNDO_0019} {UNDO_0017} {} ALTER TABLE projects DROP COLUMN lead_may_merge; {}", undo_0016(c), undo_0014());
+    let undo14 = format!("{UNDO_0022} {UNDO_0021} {UNDO_0020} {UNDO_0019} {UNDO_0017} {} ALTER TABLE projects DROP COLUMN lead_may_merge; {}", undo_0016(c), undo_0014());
     let m7 = include_str!("../../migrations/0007_card_flow.sql");
     let start = m7.find("CREATE TABLE runs_new (").unwrap();
     let end = start + m7[start..].find(") STRICT;").unwrap() + ") STRICT;".len();
@@ -572,6 +572,9 @@ pub fn back_to_7(c: &rusqlite::Connection) {
         DROP TABLE chat_queue; ALTER TABLE chat_messages DROP COLUMN meta_json; ALTER TABLE chat_threads DROP COLUMN session_cli; ALTER TABLE chat_threads DROP COLUMN cli;
         COMMIT; PRAGMA user_version = 7;")).unwrap();
 }
+
+/// Undoes GA-261's 0022: no outside-tool mark on chats and no hold kind on cards.
+const UNDO_0022: &str = "ALTER TABLE tasks DROP COLUMN hold_kind; ALTER TABLE chat_threads DROP COLUMN outside_tool;";
 
 /// Undoes GA-228's 0021: no Builds on table.
 const UNDO_0021: &str = "DROP INDEX task_builds_on_needed_by; DROP TABLE task_builds_on;";

@@ -25,6 +25,7 @@ pub const THIS_COMPUTER: &[&str] = &[
     "claude_memory_imports",
     // its capacity and state
     "runs_memory_gb",
+    "runs_memory_per_run_gb",
     "max_concurrent_runs",
     "agents_paused",
     "subscription_limits",

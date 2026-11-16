@@ -14,8 +14,8 @@ export function AskLeadSetting({ say }: { say: (ok: boolean, text: string) => vo
   return (
     <Field label="Questions" wide hint={on === false
       ? "Off: an agent that needs a decision puts its card in your Inbox at once."
-      : "An agent that needs a decision asks the Team Lead first: it answers from memory and the card, and the agent carries on, or it asks you in the Inbox with the options and its advice. Money, scope, deadlines, client messages, security and deleting always come to you."}>
-      <label className="check"><input type="checkbox" checked={on !== false} disabled={on === null} onChange={(e) => flip(e.target.checked)} />Ask the Team Lead first</label>
+      : "An agent that needs a decision asks the Chief first: it answers from memory and the card, and the agent carries on, or it asks you in the Inbox with the options and its advice. Money, scope, deadlines, client messages, security and deleting always come to you."}>
+      <label className="check"><input type="checkbox" checked={on !== false} disabled={on === null} onChange={(e) => flip(e.target.checked)} />Ask the Chief first</label>
     </Field>
   );
 }

@@ -20,13 +20,13 @@ export type AgentDrag = { type: "agent"; agentId: string; name: string; role: st
 function Ghost({ node, teamId, branch }: { node: Extract<OrgNode, { kind: "ghost" }>; teamId: string; branch?: string }) {
   const open = useDrawer();
   const lead = node.role === "lead";
-  const what = lead ? "Team Lead" : branch ?? roleLabel(node.role);
+  const what = lead ? "Chief" : branch ?? roleLabel(node.role);
   return (
     <button className="org-node ghost" onClick={() => open({ kind: "agent", teamId, preset: { name: node.name, role: node.role, chat: lead } })}
-      aria-label={lead ? "Add the Team Lead" : `Add an agent to ${what}`}
-      title={lead ? "Add the Team Lead: the agent you chat with" : `Add a ${roleLabel(node.role)} agent to ${what}`}>
+      aria-label={lead ? "Add the Chief" : `Add an agent to ${what}`}
+      title={lead ? "Add the Chief: the agent you chat with" : `Add a ${roleLabel(node.role)} agent to ${what}`}>
       <span className="org-icon"><Plus className="icon" /></span>
-      <span className="org-text"><b>{lead ? "Team Lead" : roleLabel(node.role)}</b><span>{lead ? "Add your Team Lead" : "Add an agent"}</span></span>
+      <span className="org-text"><b>{roleLabel(node.role)}</b><span>{lead ? "Add your Chief" : "Add an agent"}</span></span>
     </button>
   );
 }

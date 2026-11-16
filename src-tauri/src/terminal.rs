@@ -5,7 +5,7 @@
 //! - Your shell (`os::user_shell`) gets Gizai's environment with the PATH runs get (`runs::command_path`).
 //! - Every change goes to the window as `terminals-changed`, with the whole list.
 //! - Gizai quitting ends every terminal (`end_all`, from `quit`); closing the window keeps them running.
-//! - These are the window's commands only: no MCP tool and no agent or Team Lead tool reaches a terminal.
+//! - These are the window's commands only: no MCP tool and no agent or Chief tool reaches a terminal.
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::sync::Arc;

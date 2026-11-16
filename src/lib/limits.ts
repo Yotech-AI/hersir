@@ -116,6 +116,6 @@ export function anyRead(c: CliLimits): boolean {
  *  "" for none. */
 export function chatsLine(c: CliLimits): string {
   const picked = c.chats > 0 ? `${c.chats === 1 ? "1 chat" : `${c.chats} chats`} picked it under Runs on.` : "";
-  if (c.leadChat) return picked ? `The Team Lead's chat runs here, and ${picked}` : "The Team Lead's chat runs here.";
+  if (c.leadChat) return picked ? `The Chief's chat runs here, and ${picked}` : "The Chief's chat runs here.";
   return picked;
 }

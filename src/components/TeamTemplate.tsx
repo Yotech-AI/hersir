@@ -1,6 +1,7 @@
 // Team templates on the Team page (GA-227, the backend is GA-226 and docs/team-template-format.md): the check the New team
 // drawer shows before it makes a team from a template, and Export's question when the team has text that looks private.
 import { useEffect, useRef, type KeyboardEvent } from "react";
+import { roleLabel } from "../lib/agents";
 import type { TemplatePlan, TemplateWarning } from "../types";
 import { Avatar } from "./Avatar";
 import { FormSection } from "./Form";
@@ -14,8 +15,9 @@ const KIND_WORDS: Record<string, string> = {
 };
 export const kindWord = (kind: string) => KIND_WORDS[kind] ?? kind;
 
-/** The file name Export offers: `<team name>.gizai-team.json`, with characters a file name can't have as "-". */
-export const templateFileName = (team: string) => `${team.replace(/[<>:"/\\|?*]/g, "-").trim() || "Team"}.gizai-team.json`;
+/** The file name Export offers: `<team name>.hersir-team.json` (`.gizai-team.json` before 0.17.0, which New team still
+ *  reads), with characters a file name can't have as "-". */
+export const templateFileName = (team: string) => `${team.replace(/[<>:"/\\|?*]/g, "-").trim() || "Team"}.hersir-team.json`;
 
 /** A path's last part, with / or \ between folders. */
 export const baseName = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? path;
@@ -54,7 +56,7 @@ export function TemplateCheck({ plan, fromFile }: { plan: TemplatePlan; fromFile
                     {!a.active && <span className="badge">Paused</span>}
                   </div>
                   <dl className="tt-props">
-                    <dt>Role</dt><dd>{a.role}</dd>
+                    <dt>Role</dt><dd>{roleLabel(a.role)}</dd>
                     <dt>CLI</dt><dd>{a.cliName}</dd>
                     <dt>Model</dt><dd>{a.model ?? <span className="faint">The CLI's default</span>}</dd>
                     <dt>Effort</dt><dd>{a.effort ?? <span className="faint">The CLI's default</span>}</dd>

@@ -22,7 +22,7 @@ export function CommandPalette({ open, onClose, onNewTask }: { open: boolean; on
     Promise.all([listTasks({ openOnly: false }), listProjects(), listClients(), memoryNotes().catch(() => [])]).then(([t, p, c, n]) => {
       setItems([
         { kind: "action", id: "new-task", label: "New task", hint: "N" },
-        { kind: "action", id: "chat", label: "Chat with the Team Lead", hint: "chat" },
+        { kind: "action", id: "chat", label: "Chat with the Chief", hint: "chat" },
         ...t.map((x) => ({ kind: "task" as const, id: x.id, label: x.title, hint: x.identifier })),
         ...p.map((x) => ({ kind: "project" as const, id: x.id, label: x.name, hint: `${x.number} ${x.key}` })),
         ...c.map((x) => ({ kind: "client" as const, id: x.id, label: x.name, hint: x.city ?? "" })),

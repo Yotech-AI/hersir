@@ -47,6 +47,16 @@ The **Terminal** button in the Editor's top bar, between Fetch and Open in, show
 - Drag its edge to change its height, which is the same in every folder.
 - Ctrl+\` shows or hides the panel, and Ctrl+Shift+\` starts a terminal in it.
 
+### In the Chat
+
+**Open terminal** in the Chat page's top bar, right before New chat, starts a terminal in a folder you pick: a project's folder, a folder in ~/Herd or a card's worktree. It opens in a panel on the right of the conversation, so you can run what the Chief asks for without leaving the chat.
+
+- The panel's tabs are the terminals you opened in the chat, with + for another one in the same folder, **Own page** and **Hide**. Under the tabs is the folder the shown terminal runs in.
+- While the panel shows, the conversation moves to the left. Drag the panel's left edge to change its width, which is the same in every chat; a double-click gives the first width back. In a narrow window the chat list hides while the panel shows.
+- **Hide** keeps the shells running: a rail on the chat's right edge says how many terminals it has, and a click shows them again. Ctrl+\` shows or hides the panel, and Ctrl+Shift+\` starts a terminal in the shown terminal's folder.
+- Another chat, the Archive, or another page and back: the panel stays as it was. The chat's terminals are in the sidebar too, and run until you close them or quit Hersir.
+- **Open in terminal** under a Chief answer that asks you to run commands (in code after Run, or in a sh code block) opens a terminal in the folder the answer names, in this panel: a project's folder or a folder in your Editor folders, also when the answer names a folder or a file inside it, so `~/Herd/shop/resources` opens one in `~/Herd/shop`. A card's worktree doesn't count. With more folders named, each has a button, at most 3. A second click shows the same terminal while it waits for a command; while a program runs in it, or after it ended, it starts another one there. When the answer names no such folder, **Open in terminal…** asks for the folder, as Open terminal does. It never types or runs anything for you: the terminal starts in the folder and waits for you.
+
 ### In the sidebar and on its own page
 
 Each terminal has a row in the sidebar, with what runs in it on the right, or "ended". It also has its own page:
@@ -73,7 +83,7 @@ A card assigned to you has **Open in editor** in its top bar. Hersir makes the c
 
 In the Editor, a bar above the code shows the card, its branch and how far it is, with three buttons:
 
-- **Commit…**: a small box with the message and the files it commits;
+- **Commit…**: a small box with the message and the files it commits. Like all of Hersir's git, it runs none of the repository's hooks; a `git commit` in the terminal does;
 - **Push**;
 - **Hand over**: to Testing, or to Review when the card's Testing is off.
 

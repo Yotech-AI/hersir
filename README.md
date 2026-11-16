@@ -10,8 +10,8 @@
 
 **Your coding agents need a chief, not a babysitter.**
 
-A free, open-source desktop app where a team of AI coding agents works through your board in parallel, on Claude Code,
-Codex CLI or Gemini CLI. Made for freelancers and software companies with several clients and projects.
+Talk to one Chief instead of juggling a dozen agent chats. Tell it what you need, for any client or codebase: it turns that into cards on your board, starts the agents, answers their questions and puts only tested work in your review.
+Free and open source, on Claude Code, Codex CLI or Gemini CLI. Made for freelancers and software companies with several clients and projects.
 
 [Website](https://hersir.dev) · [Install](#install) · [Docs](#documentation) · [Releases](https://github.com/Yotech-AI/hersir/releases) · [Licence](LICENSE)
 
@@ -24,6 +24,8 @@ its own git worktree and branch; a QA agent tests the card and opens its pull re
 Everything runs on your own computer, with your own git repositories, logins and coding CLIs.
 
 Hersir was called GizAi until version 0.14.
+From 0.17.0 its programs and command are `hersir` too. An install from before 0.17.0 keeps its folders when it updates,
+and `gizai` still starts it.
 
 ## Made for work with several clients
 
@@ -38,7 +40,7 @@ Hersir was called GizAi until version 0.14.
 
 A new install starts with five agents. Each runs on the CLI you pick, with its own model, instructions and tools:
 
-- **Team Lead:** you chat with it (its chat runs on Claude Code). It turns requests into cards, starts agents and
+- **Chief:** you chat with it (its chat runs on Claude Code). It turns requests into cards, starts agents and
   answers their questions before they reach you.
 - **Backend and Frontend Agents** build the cards in To do.
 - **QA Agent** tests the cards, adds missing tests and opens the pull requests.
@@ -50,11 +52,11 @@ that researches a feature before it's built.
 ## Features
 
 - **The board decides who works.** Each column holds the agents that work its cards, so cards move from builder to tester to you by themselves. [Read more](docs/features/board.md)
-- **A Team Lead you talk to.** Ask the Team Lead in chat to plan work, make cards or start agents, and Approve with one click (or Approve all) the steps that wait for your OK. [Read more](docs/features/team-lead.md)
+- **A Chief you talk to.** Ask the Chief in chat to plan work, make cards or start agents, and Approve with one click (or Approve all) the steps that wait for your OK. [Read more](docs/features/chief.md)
 - **Bring your own CLI.** Each agent runs on the coding CLI you pick, like Claude Code, Codex CLI or Gemini CLI, on your own machine with your own logins and accounts. [Read more](docs/features/cli.md)
 - **Tested before you see it.** A QA agent tests a card before it reaches your Review, and opens its pull request on GitHub. [Read more](docs/features/testing.md)
 - **The Editor and Terminal, built in.** Open a project or a card's worktree, see its git status and edit it, with your own shell in a panel under the code or on its own page. [Read more](docs/features/editor-and-terminal.md)
-- **Memory.** The Team Lead, the agents and you keep notes for later, and each run gets the notes for its card. [Read more](docs/features/memory.md)
+- **Memory.** The Chief, the agents and you keep notes for later, and each run gets the notes for its card. [Read more](docs/features/memory.md)
 - **Tools per agent.** Give each agent only the commands, folders, MCP servers, web access and hidden browser it needs. [Read more](docs/features/tools.md)
 - **The Inbox.** Questions, approvals, commands to run and cards to review wait for you in one list. [Read more](docs/features/inbox.md)
 
@@ -72,11 +74,13 @@ On Windows 11, in PowerShell:
 irm https://hersir.dev/install.ps1 | iex
 ```
 
-It gets the source of the latest release, checks what your computer is missing, then builds Hersir and installs it for you alone, without sudo or administrator rights. Run it again to update. Every system needs git, Rust, Node.js 20 or newer, and Claude Code or Codex, logged in.
+It checks the latest release's signature against Hersir's own release keys, then installs its ready-made build for your system in about a minute, for you alone, without sudo or administrator rights. Where there is no ready-made build (an Intel Mac, Linux on arm64), it builds Hersir from the release's source instead. Run it again to update. Every system needs git, ssh-keygen (OpenSSH's client), and Claude Code or Codex, logged in.
 
 - **Linux:** also WebKitGTK 4.1, and for the tray icon `libayatana-appindicator` on Arch and Omarchy or `libayatana-appindicator3-1` on Debian and Ubuntu. The check names the packages.
-- **macOS** on Apple silicon: also Apple's Command Line Tools, from `xcode-select --install`.
-- **Windows 11:** also the Microsoft C++ Build Tools and Git for Windows.
+- **macOS** on Apple silicon: git comes with Apple's Command Line Tools, from `xcode-select --install`, or Homebrew.
+- **Windows 11:** also Git for Windows and WebView2, which comes with Windows 11.
+
+To build from source (with `--from-source`, `-FromSource` on Windows, or from a clone), you also need Rust, Node.js 20 or newer, and on macOS the Command Line Tools, on Windows the Microsoft C++ Build Tools.
 
 Or build from a clone:
 
@@ -98,9 +102,9 @@ The details are in [docs/install.md](docs/install.md): what each system needs, u
 
 ## Getting started
 
-1. Install Claude Code or Codex and log in to it. The Team Lead's chat needs Claude Code.
+1. Install Claude Code or Codex and log in to it. The Chief's chat needs Claude Code.
 2. For projects on GitHub, install gh and log in (`gh auth login`, or Settings → GitHub): QA opens the pull requests with it.
-3. Open Hersir: the workflow and five agents are ready. Talk to the Team Lead on the Chat page.
+3. Open Hersir: the workflow and five agents are ready. Talk to the Chief on the Chat page.
 4. Add a project with its git repository, and put a card in To do.
 5. The Backend or Frontend Agent builds it, the QA Agent tests it, and it lands in your Review.
 
@@ -108,7 +112,7 @@ The details are in [docs/install.md](docs/install.md): what each system needs, u
 
 - [Install](docs/install.md): what each system needs, when macOS or Windows warns, updates, your data and no telemetry.
 - [Settings](docs/settings.md): what each tab holds, how Hersir looks, the tray, and the screenshot settings.
-- Features: [Board](docs/features/board.md) · [Team Lead](docs/features/team-lead.md) · [CLIs](docs/features/cli.md) · [Testing](docs/features/testing.md) · [Editor and Terminal](docs/features/editor-and-terminal.md) · [Memory](docs/features/memory.md) · [Tools](docs/features/tools.md) · [Inbox](docs/features/inbox.md) · [Screenshots](docs/features/screenshots.md)
+- Features: [Board](docs/features/board.md) · [Chief](docs/features/chief.md) · [CLIs](docs/features/cli.md) · [Testing](docs/features/testing.md) · [Editor and Terminal](docs/features/editor-and-terminal.md) · [Memory](docs/features/memory.md) · [Tools](docs/features/tools.md) · [Inbox](docs/features/inbox.md) · [Screenshots](docs/features/screenshots.md)
 - [Memory in depth](docs/memory.md): folders, properties, links, search, and how runs get notes.
 - [Agent tools in depth](docs/agent-tools.md): MCP servers, signing in, the web, the browser and the safety rules.
 - [Linux, macOS and Windows](docs/PLATFORMS.md): what differs on each system.
@@ -130,7 +134,7 @@ A performance card runs `scripts/perf.sh` on `main` and on its branch, on the sa
 
 The capture makes the stills of each feature: Hersir with made-up data in a headless compositor, scene by scene, in dark and light, with a `scenes.json` of what each step clicked. The website's repository makes hersir.dev's pictures from them.
 
-On every pull request and every push to `main`, CI (`.github/workflows/ci.yml`) builds Hersir and runs `cargo test --workspace` and `npm test` on Linux, macOS (Apple silicon) and Windows, and checks the install scripts there. A pull request that changes an install script also installs Hersir with the one line on Ubuntu, Fedora, Arch Linux, openSUSE Tumbleweed, macOS and Windows (`.github/workflows/install.yml`). A pull request into `main` that changes nothing but Hersir's version, a release's first step, skips both, and its checks pass within a minute or two: the release's pull request into `production` runs them in full (`docs/RELEASING.md`). After each release, and every week, hersir.dev's own lines install it on Ubuntu, macOS and Windows (`.github/workflows/one-line.yml`).
+On every pull request and every push to `main`, CI (`.github/workflows/ci.yml`) builds Hersir and runs `cargo test --workspace` and `npm test` on Linux, macOS (Apple silicon) and Windows, and checks the install scripts there. A pull request that changes an install script also installs Hersir with the one line on Ubuntu, Fedora, Arch Linux, openSUSE Tumbleweed, macOS and Windows (`.github/workflows/install.yml`). A pull request into `main` that changes nothing but Hersir's version, a release's first step, skips both, and its checks pass within a minute or two: the release's pull request into `production` runs them in full (`docs/RELEASING.md`). Once each release is signed, and every week, hersir.dev's own lines install it on Ubuntu, macOS and Windows (`.github/workflows/one-line.yml`).
 
 [CLAUDE.md](CLAUDE.md) has the rules for working in this repository, [docs/HANDOFF-2026-10-07.md](docs/HANDOFF-2026-10-07.md) explains how it is built, and [docs/RELEASING.md](docs/RELEASING.md) how a release is made.
 
@@ -138,6 +142,6 @@ On every pull request and every push to `main`, CI (`.github/workflows/ci.yml`) 
 
 Hersir is open source under the [Apache License 2.0](LICENSE); see also [NOTICE](NOTICE). You may use, change and share it, also commercially, if you include the licence and the NOTICE and mark the files you changed. The licence gives no rights to the Hersir name and logo. Releases published before the switch to Apache-2.0 stay under the MIT licence.
 
-The whole app is free, with the agents, the Team Lead's chat, the Editor and the terminals; the plan for paid features is hosted services only, like an encrypted backup and sync ([docs/PAID-FEATURES.md](docs/PAID-FEATURES.md)).
+The whole app is free, with the agents, the Chief's chat, the Editor and the terminals; the plan for paid features is hosted services only, like an encrypted backup and sync ([docs/PAID-FEATURES.md](docs/PAID-FEATURES.md)).
 
 Hersir is an independent open-source project by YoTech, not affiliated with or endorsed by Anthropic, OpenAI or Google. It runs Claude Code, Codex CLI and Gemini CLI with your own accounts, and never sells AI usage. Claude Code is a trademark of Anthropic, Codex of OpenAI, and Gemini of Google LLC.

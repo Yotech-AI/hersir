@@ -156,7 +156,7 @@ export function highlight(text: string, query: string): { text: string; hit: boo
 
 /** Who wrote a message the Archive found: you, or the Team Lead (by its name). */
 export function hitAuthor(m: Pick<ChatMessage, "role" | "authorName">): string {
-  return m.role === "user" ? "You" : m.authorName || "Team Lead";
+  return m.role === "user" ? "You" : m.authorName || "Chief";
 }
 
 /** The coding CLI a chat runs on: its own pick while that is still in Settings, else the Team Lead's Runs on. */

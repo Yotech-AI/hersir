@@ -100,7 +100,7 @@ export function Properties({ task, team, people, onError, onClose, onReadComment
         <BuildsOnRows task={task} readOnly={readOnly} />
         {task.hold && row("Hold", <span className="v" style={{ flexDirection: "column", alignItems: "flex-start", gap: 6 }}>
           {/* GA-70: the question is with the Team Lead (an agent at work, so teal), not with you yet. */}
-          {task.withLead ? <span className="badge live" title="The Team Lead answers it, or asks you in the Inbox">With the Team Lead</span>
+          {task.withLead ? <span className="badge live" title="The Chief answers it, or asks you in the Inbox">With the Chief</span>
             : <span className="badge needs">{HOLD_NAMES[task.hold] ?? task.hold}</span>}
           {task.holdReason && <span className="muted" style={{ fontSize: "var(--fs-sm)", overflowWrap: "anywhere" }} title={reasonEnd ? task.holdReason : undefined}>
             {reasonEnd ?? task.holdReason}</span>}

@@ -30,8 +30,8 @@ Testing has rules of its own: a failed test sends a card back, and a card can sk
 ## The team
 
 - Agents for each role (frontend, backend, design, QA, DevOps), each with its own model, effort and [allowed commands](tools.md#allowed-commands).
-- A new install starts with five: the Team Lead, and the Backend, Frontend, QA and DevOps Agents. The Backend and Frontend Agents work the cards in To do, and the QA Agent tests them.
-- An org chart of your team: the Team Lead on top, then branches (Design, Development, Quality, Operations and your own), each with one empty spot that adds an agent there.
+- A new install starts with five: the Chief, and the Backend, Frontend, QA and DevOps Agents. The Backend and Frontend Agents work the cards in To do, and the QA Agent tests them.
+- An org chart of your team: the Chief on top, then branches (Design, Development, Quality, Operations and your own), each with one empty spot that adds an agent there.
 - Drag an agent onto a column in Team → Workflow to put it to work there.
 
 ### Several teams
@@ -43,7 +43,7 @@ Team → New team adds a team with the seven usual columns and no agents. Each t
 - **Refused while a run is under way:** while one of the project's cards has a run live or starting, the move is refused and nothing changes: "Wait for GA-12's run to end, or stop it, before you move Hersir to another team."
 - **The board's Team select.** With more than one team, the Tasks page's toolbar has a Team select. The board and the list show that team's columns and the cards of its projects; cards without a project go with the first team. The Team page and the sidebar's agents follow the same pick. The Inbox still shows every team's cards that need you.
 
-With one team there is no Team select anywhere, and everything works as before. The Team Lead's tools name the team when there is more than one: [Teams](team-lead.md#teams).
+With one team there is no Team select anywhere, and everything works as before. The Chief's tools name the team when there is more than one: [Teams](chief.md#teams).
 
 ## When agents start
 
@@ -55,6 +55,8 @@ Settings → Runs sets how many runs go at once, for all agents together. Pause 
 
 Memory for agent runs, also in Settings → Runs, is how much memory all agent runs may use together: half of the computer's memory until you set it. On Linux the system holds the runs to it, and Hersir stays outside the limit, so a big build can't take Hersir down ([PLATFORMS.md](../PLATFORMS.md#memory-for-agent-runs)). On every system no run starts while the runs use over 80% of it or the computer has under 2 GB free: the card waits with the reason, like Runs at once, and starts by itself once memory frees up.
 
+Memory per run, right under it, is how much one run may use: its agent and everything it starts. It is half of Memory for agent runs until you set it, and never more than that. On Linux the system ends the biggest process of a run that reaches it, and the run goes on, so one runaway test can't slow every other run and chat down; the card's activity and the run's output then name Memory per run ([PLATFORMS.md](../PLATFORMS.md#memory-for-agent-runs)). Runs that start after you save get the new value.
+
 A project can also keep how many of its cards are tested at the same time, so a heavy test suite doesn't run several times at once: [Test runs at once](testing.md#test-runs-at-once).
 
 A card that builds on another card waits until that card is merged: [Cards that build on others](#cards-that-build-on-others).
@@ -64,7 +66,7 @@ A card that builds on another card waits until that card is merged: [Cards that 
 A card that needs another card's code builds on it, like screens on their backend, or a follow-up on its base. It waits until that card is merged, then starts by itself, so a plan of cards runs through in order.
 
 - **Merged** means in a Deploy or Done column. An archived card came from Done, so it counts. A cancelled card never counts.
-- **Set it** in the card's Properties → Builds on: Add a card finds a card by ID or title, as @ does, and × takes one off. Any card may be named, another project's too, up to 20. The Team Lead sets it with `builds_on` ([A Team Lead you talk to](team-lead.md#cards-that-build-on-others)).
+- **Set it** in the card's Properties → Builds on: Add a card finds a card by ID or title, as @ does, and × takes one off. Any card may be named, another project's too, up to 20. The Chief sets it with `builds_on` ([The Chief](chief.md#cards-that-build-on-others)).
 - **Refused:** a card building on itself, more than 20 cards, and a loop, like "GA-227 can't build on GA-225: GA-225 already builds on GA-227." A loop through other cards names them: "…, through GA-226."
 - **Needed by**, under Builds on, lists the cards that build on this one.
 
@@ -74,7 +76,7 @@ While it waits:
 - The board shows "Waits for GA-226", or "Waits for 2 cards", with the cards in its tooltip. The badge goes once they are merged.
 - Run and Continue don't start it, and say why: "GA-227 builds on GA-226, which isn't merged yet. It starts by itself once GA-226 is merged; to start it now, take GA-226 off its Builds on."
 - You can still move it to any column. In an Auto column it waits there with its badge.
-- When a card it waits for is on hold or cancelled, the Team Lead's board check reports it (`builds_on_blocked`). Waiting for a card that is still in work isn't reported.
+- When a card it waits for is on hold or cancelled, the Chief's board check reports it (`builds_on_blocked`). Waiting for a card that is still in work isn't reported.
 
 Once the last of them is merged (its pull request merged, the DevOps Agent's release, or you moving it to Deploy or Done), the agents take it at the next pull, without anyone moving it. Its run's prompt lists the cards it builds on, like "Builds on GA-226: Team templates (backend), merged.", so the agent knows their code is on main.
 
@@ -102,7 +104,7 @@ Settings → Data lists old worktrees with their uncommitted files, and removes 
 
 Continue picks an agent's run up again, in the same session. The box above Continue takes a note for the agent, like "use the existing CSV writer". The continued run hears it next to why its last run stopped, and it is saved on the card as your comment.
 
-The Team Lead's `continue_agent_run` takes a `note` the same way. On a run that asked for a decision, the Team Lead's note counts as an answer.
+The Chief's `continue_agent_run` takes a `note` the same way. On a run that asked for a decision, the Chief's note counts as an answer.
 
 ### One nudge
 

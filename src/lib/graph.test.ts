@@ -447,11 +447,11 @@ describe("parseGraphQuery and matchesQuery: the search in Filters and Groups", (
 });
 
 describe("defaultGroups and groupOf: colour by query", () => {
-  const notes = [note("Lessons/A"), note("Agents/QA/Notes"), note("Team Lead/Notes"), note("Decisions/B"), note("lessons/C"), note("Loose")];
+  const notes = [note("Lessons/A"), note("Agents/QA/Notes"), note("Chief/Notes"), note("Decisions/B"), note("lessons/C"), note("Loose")];
 
-  it("starts with one group per top folder: the Team Lead's first, Agents last, each its own colour", () => {
+  it("starts with one group per top folder: the Chief's first, Agents last, each its own colour", () => {
     const groups = defaultGroups(notes);
-    expect(groups.map((g) => g.query)).toEqual(['path:"Team Lead/"', "path:Decisions/", "path:Lessons/", "path:Agents/"]);
+    expect(groups.map((g) => g.query)).toEqual(["path:Chief/", "path:Decisions/", "path:Lessons/", "path:Agents/"]);
     expect(new Set(groups.map((g) => g.color)).size).toBe(groups.length);
     expect(defaultGroups([])).toEqual([]);
   });

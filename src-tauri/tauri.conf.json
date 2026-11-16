@@ -1,9 +1,9 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Hersir",
-  "mainBinaryName": "gizai",
-  "version": "0.16.0",
-  "identifier": "ai.gizai.app",
+  "mainBinaryName": "hersir",
+  "version": "0.17.0",
+  "identifier": "dev.hersir.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",

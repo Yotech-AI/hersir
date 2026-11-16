@@ -21,10 +21,10 @@ A test run builds and runs the project's whole test suite in the card's own work
 
 - A test run is a run on a card in a Testing column. Runs on cards in other columns never count and never wait.
 - While the project has that many test runs live or starting, the queue passes over its other cards in Testing and the agent takes its next card, so other projects' cards aren't held up. A card that waits starts by itself once one of those runs has ended.
-- Run, Continue and the Team Lead's `start_agent_run` and `continue_agent_run` wait too, and say why: "Hersir tests 1 card at a time (project settings): wait for GA-211 to finish testing, or raise the limit on the project page."
+- Run, Continue and the Chief's `start_agent_run` and `continue_agent_run` wait too, and say why: "Hersir tests 1 card at a time (project settings): wait for GA-211 to finish testing, or raise the limit on the project page."
 - Runs at once (Settings → Runs), each agent's cards at once and the wait for memory still hold: this is one more limit.
-- A card that has waited over an hour only for it is a finding of the Team Lead's board check (`test_runs_full`).
-- The Team Lead's `get_project` and `list_projects` show it, and `update_project` sets it (`test_runs_at_once`; 0 clears it).
+- A card that has waited over an hour only for it is a finding of the Chief's board check (`test_runs_full`).
+- The Chief's `get_project` and `list_projects` show it, and `update_project` sets it (`test_runs_at_once`; 0 clears it).
 
 ## Hersir pushes after every run
 
@@ -62,16 +62,16 @@ Review on Bitbucket Cloud works the same way. The push goes over SSH with your k
 
 What you need for it: [docs/install.md](../install.md#what-every-system-needs).
 
-## The Team Lead may merge
+## The Chief may merge
 
-In a project you switch on, the Team Lead may merge a card's pull request once QA passed it and CI is green, in chat and in its board checks.
+In a project you switch on, the Chief may merge a card's pull request once QA passed it and CI is green, in chat and in its board checks.
 
-- The switch: project form → Repository → **Team Lead may merge**, off by default. Only you set it.
+- The switch: project form → Repository → **Chief may merge**, off by default. Only you set it.
 - It merges only when QA passed exactly the pull request's latest commit, the pull request can be merged, every check passed and no release is under way. GitHub only.
 - It makes a merge commit and deletes no branch: never `--admin`, `--auto`, squash or rebase.
 - Releases, tags and deploys stay yours.
 
-Every rule: [docs/agent-tools.md](../agent-tools.md#the-team-lead-merges-pull-requests).
+Every rule: [docs/agent-tools.md](../agent-tools.md#the-chief-merges-pull-requests).
 
 ## Read more
 

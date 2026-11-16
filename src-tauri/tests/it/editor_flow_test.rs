@@ -75,7 +75,7 @@ async fn a_cards_worktree_is_read_only_while_an_agent_works_on_it_and_says_who()
     assert_eq!(on_disk, "# Kade\n");
     // looking is fine
     assert!(editor::files(&st, &wt.id).unwrap().contains(&"README.md".to_string()));
-    assert!(editor::git(&st, &wt.id).unwrap().branch.is_some_and(|b| b.starts_with("gizai/kade-")));
+    assert!(editor::git(&st, &wt.id).unwrap().branch.is_some_and(|b| b.starts_with("hersir/kade-")), "GA-249: a new card's branch is hersir/");
 
     runs::stop(&st, &run);
     finished.await.unwrap();

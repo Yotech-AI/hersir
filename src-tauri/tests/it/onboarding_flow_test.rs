@@ -16,15 +16,15 @@ use gizai_lib::{AppState, mcp, onboarding};
 
 const FAKE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../crates/gizai-agents/tests/fake-claude-chat.py");
 
-/// The shim binary: target/debug/gizai-mcp (built by `cargo test --workspace`; built here when missing).
+/// The shim binary: target/debug/hersir-mcp, which the crate gizai-mcp builds (built by `cargo test --workspace`; built here when missing).
 fn shim() -> PathBuf {
     static BUILT: std::sync::Once = std::sync::Once::new();
-    let path = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/debug/gizai-mcp"));
+    let path = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/debug/hersir-mcp"));
     BUILT.call_once(|| {
         let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
         let ok = std::process::Command::new(cargo).args(["build", "-q", "-p", "gizai-mcp"])
             .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/..")).status().map(|s| s.success()).unwrap_or(false);
-        assert!(ok && path.is_file(), "could not build gizai-mcp");
+        assert!(ok && path.is_file(), "could not build hersir-mcp (the crate gizai-mcp)");
     });
     path
 }
@@ -100,7 +100,7 @@ async fn a_new_install_waits_until_the_onboarding_is_finished_and_the_welcome_ch
     assert_eq!(team_name, "YoTech");
     let mut want: Vec<(String, String, String)> = ["Backend Agent", "DevOps Agent", "Frontend Agent", "QA Agent"].iter()
         .map(|n| (n.to_string(), codex.clone(), "workspace-write".to_string())).collect();
-    want.push(("Team Lead".into(), clis::CLAUDE_CODE.into(), "acceptEdits".into()));
+    want.push(("Chief".into(), clis::CLAUDE_CODE.into(), "acceptEdits".into()));
     want.sort();
     assert_eq!(agents, want);
 
@@ -108,7 +108,7 @@ async fn a_new_install_waits_until_the_onboarding_is_finished_and_the_welcome_ch
     let threads = chat::list_threads(&t.st.db).unwrap();
     assert_eq!(threads.iter().map(|th| th.id.as_str()).collect::<Vec<_>>(), [thread.as_str()], "one new chat");
     let lead = team::chat_agent(&t.st.db).unwrap().unwrap();
-    assert_eq!(lead.name, "Team Lead");
+    assert_eq!(lead.name, "Chief");
     let th = chat::get_thread(&t.st.db, &thread).unwrap();
     assert_eq!(th.agent_id, lead.actor_id);
     let first = chat::messages(&t.st.db, &thread).unwrap().into_iter().next().expect("a first message");

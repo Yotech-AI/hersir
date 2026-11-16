@@ -231,7 +231,7 @@ describe("the Usage page's Subscription tab (GA-62)", () => {
     expect(cc).toContain('href="#/agent/a-be"');
     expect(cc).not.toContain("Team Lead");
     expect(strip(cc2.slice(cc2.indexOf('class="limits-agents"')))).toContain("|Agents on it:|Team Lead|Frontend Agent| (paused)|");
-    expect(cc2).toContain("The Team Lead&#x27;s chat runs here, and 2 chats picked it under Runs on.");
+    expect(cc2).toContain("The Chief&#x27;s chat runs here, and 2 chats picked it under Runs on.");
     expect(block(html, "Codex")).toContain("No agent runs on Codex.");
   });
 

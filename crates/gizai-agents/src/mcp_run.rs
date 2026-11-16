@@ -64,19 +64,30 @@ pub fn config(first: Vec<(String, Value)>, servers: &[RunServer]) -> Value {
 }
 
 /// What `--allowedTools` and `--disallowedTools` get for the servers: all tools on → `mcp__<name>`; some off → the ones on
-/// by full name, and the ones off refused.
+/// by full name, and the ones off refused. GA-262: a tool whose name isn't a plain tool name (`plain_tool_name`) is never
+/// in either, as Claude Code would read `mcp__<name>__x Bash` as two rules, the second any command; with one like it
+/// known, the server's other tools are allowed by full name, never the whole server.
 pub fn permissions(servers: &[RunServer]) -> (Vec<String>, Vec<String>) {
     let (mut allowed, mut refused) = (vec![], vec![]);
     for s in servers {
-        if s.tools_off.is_empty() {
+        if s.tools_off.is_empty() && s.known_tools.iter().all(|t| plain_tool_name(t)) {
             allowed.push(format!("mcp__{}", s.name));
             continue;
         }
-        allowed.extend(s.known_tools.iter().filter(|t| !s.tools_off.contains(t)).map(|t| format!("mcp__{}__{t}", s.name)));
-        refused.extend(s.tools_off.iter().map(|t| format!("mcp__{}__{t}", s.name)));
+        allowed.extend(s.known_tools.iter().filter(|t| plain_tool_name(t) && !s.tools_off.contains(t)).map(|t| format!("mcp__{}__{t}", s.name)));
+        refused.extend(s.tools_off.iter().filter(|t| plain_tool_name(t)).map(|t| format!("mcp__{}__{t}", s.name)));
     }
     (allowed, refused)
 }
+
+/// GA-262: an MCP tool's name a run may allow or refuse by name: letters, digits, `_` and `-`, at most 64, not starting
+/// with `mcp__`. The same rule as `gizai_core::mcp_servers::valid_tool_name` (this crate doesn't use gizai-core).
+pub fn plain_tool_name(n: &str) -> bool {
+    !n.is_empty() && n.len() <= 64 && !n.starts_with("mcp__") && n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
+/// What Settings and the agent form say about a tool whose name isn't a plain tool name (`plain_tool_name`).
+pub const LEFT_OUT: &str = "left out: its name isn't a plain tool name";
 
 /// Writes the config for the run's process only to read (0600). The caller deletes it when the run ends.
 /// Windows has no modes: the file is in your own profile (Gizai's data folder), whose inherited ACL lets only you,

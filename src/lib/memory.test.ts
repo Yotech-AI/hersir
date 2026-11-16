@@ -28,16 +28,16 @@ describe("buildTree: the file explorer's folders and notes", () => {
     note("Lessons/Sub/Deep"),
     note("lessons/sub/Deeper"),
     note("Agents/Backend/Notes"),
-    note("Team Lead/Notes"),
+    note("Chief/Notes"),
     note("Clients/Kade"),
     note("Decisions/Use SQLite"),
     note("Loose"),
   ];
   const tree = buildTree(notes, [...scopeRoots({ kind: "all" }), "Projects/Empty", "  ", "/Workflows/Draft/"]);
 
-  it("puts the Team Lead's folder first and Agents last at the top, the shared folders by name between them", () => {
+  it("puts the Chief's folder first and Agents last at the top, the shared folders by name between them", () => {
     expect(tree.folders.map((f) => f.name)).toEqual([
-      "Team Lead", "Clients", "Decisions", "Dependencies", "Deployments", "Lessons", "Projects", "Standards", "Workflows", "Agents",
+      "Chief", "Clients", "Decisions", "Dependencies", "Deployments", "Lessons", "Projects", "Standards", "Workflows", "Agents",
     ]);
   });
   it("keeps folders and notes apart, folders and notes each by name (case ignored)", () => {
@@ -131,14 +131,14 @@ describe("foldersTo, moveTarget and rebase", () => {
 });
 
 describe("isNoteFolder and isOwnFolder", () => {
-  it("a note goes in a shared folder, an agent's folder or the Team Lead's, or a folder inside one", () => {
-    for (const f of [...SHARED_FOLDERS, "lessons", "Lessons/Sub", "Team Lead", "team lead/Sub", "Agents/Backend", "agents/backend/Sub"])
+  it("a note goes in a shared folder, an agent's folder or the Chief's, or a folder inside one", () => {
+    for (const f of [...SHARED_FOLDERS, "lessons", "Lessons/Sub", "Chief", "chief/Sub", "Agents/Backend", "agents/backend/Sub"])
       expect(isNoteFolder(f), f).toBe(true);
     for (const f of ["", "Agents", "Agents/", "Other", "Other/Lessons", "/Lessons"]) expect(isNoteFolder(f), f).toBe(false);
   });
   it("only a folder inside a memory folder is the user's own (renamed, moved), never a memory folder itself", () => {
-    for (const f of ["Lessons/Sub", "Lessons/Sub/Deep", "Team Lead/Sub", "Agents/Backend/Sub"]) expect(isOwnFolder(f), f).toBe(true);
-    for (const f of ["Lessons", "Team Lead", "Agents", "Agents/Backend", "Other/Sub", ""]) expect(isOwnFolder(f), f).toBe(false);
+    for (const f of ["Lessons/Sub", "Lessons/Sub/Deep", "Chief/Sub", "Agents/Backend/Sub"]) expect(isOwnFolder(f), f).toBe(true);
+    for (const f of ["Lessons", "Chief", "Agents", "Agents/Backend", "Other/Sub", ""]) expect(isOwnFolder(f), f).toBe(false);
   });
 });
 

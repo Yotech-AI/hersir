@@ -3,7 +3,7 @@
 //!   your own), so `~/Herd/kade-portal` opens without being a project first; and the cards' worktrees,
 //!   `<data>/worktrees/<KEY>/<identifier>`.
 //! - Never with the refusals agent folders get (`folders`): `/`, your home folder and the folders above it, the folders
-//!   that hold keys or logins, and Gizai's data folder apart from the card worktrees in it, so not the Team Lead's copies
+//!   that hold keys or logins, and Gizai's data folder apart from the card worktrees in it, so not the Chief's copies
 //!   either. A folder that leads somewhere else through a link is checked where it leads too.
 //! - A card's worktree is read-only while an agent works on the card.
 //!

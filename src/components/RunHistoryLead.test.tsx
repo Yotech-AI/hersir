@@ -1,6 +1,6 @@
-// GA-70 QA: a card's Runs tab says who answered a run's question: the badge while the Team Lead has it or answered it,
+// GA-70 QA: a card's Runs tab says who answered a run's question: the badge while the Chief has it or answered it,
 // the row's line when it went to you, and in the open row "Who answered", the answer, your answer kept in memory and
-// what the Team Lead's look cost (on its budget). Rendered to HTML on the server with the row open: React's useState is
+// what the Chief's look cost (on its budget). Rendered to HTML on the server with the row open: React's useState is
 // replaced so `useState(false)` (the row's open switch) starts true, and effects don't run, so nothing loads.
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -32,42 +32,50 @@ const row = (html: string) => {
 };
 
 describe("the Runs tab: who answered a question (GA-70)", () => {
-  it("while the Team Lead has it: a teal badge, and its look in the open row", () => {
+  it("while the Chief has it: a teal badge, and its look in the open row", () => {
     const html = render(lead({ state: "asking", costUsdMicros: 0 }));
-    expect(html).toContain('<span class="badge live">With the Team Lead</span>');
-    expect(row(html)).not.toContain("· With the Team Lead");
-    expect(text(html)).toContain("Who answered With the Team Lead");
+    expect(html).toContain('<span class="badge live">With the Chief</span>');
+    expect(row(html)).not.toContain("· With the Chief");
+    expect(text(html)).toContain("Who answered With the Chief");
   });
-  it("answered: the badge, the answer, where it was kept and what the look cost on the Team Lead's budget", () => {
+  it("answered: the badge, the answer, where it was kept and what the look cost on the Chief's budget", () => {
     const html = render(lead({ state: "answered", answer: "Use CSV with semicolons.", note: "Standards/Exports" }));
-    expect(html).toContain('<span class="badge ok">Team Lead answered</span>');
-    expect(row(html)).not.toContain("· Team Lead answered");
+    expect(html).toContain('<span class="badge ok">Chief answered</span>');
+    expect(row(html)).not.toContain("· Chief answered");
     const t = text(html);
-    expect(t).toContain("Who answered Team Lead answered Use CSV with semicolons.");
-    expect(t).toContain("Team Lead's look $0.03, on the Team Lead's budget · answer kept in Standards/Exports");
+    expect(t).toContain("Who answered Chief answered Use CSV with semicolons.");
+    expect(t).toContain("Chief's look $0.03, on the Chief's budget · answer kept in Standards/Exports");
   });
-  it("escalated: Needs your decision, the row says the Team Lead asked you, the open row says why, and your answer once kept", () => {
+  it("escalated: Needs your decision, the row says the Chief asked you, the open row says why, and your answer once kept", () => {
     const html = render(lead({ state: "escalated", reason: "the client pays per export" }));
     expect(html).toContain('<span class="badge needs">Needs your decision</span>');
-    expect(row(html)).toContain("· Team Lead escalated to you");
+    expect(row(html)).toContain("· Chief escalated to you");
     expect(row(html)).not.toContain("the client pays per export");
-    expect(text(html)).toContain("Who answered Team Lead escalated to you: the client pays per export");
+    expect(text(html)).toContain("Who answered Chief escalated to you: the client pays per export");
     const learned = text(render(lead({ state: "escalated", reason: "money", learned: true, note: "Decisions/Kade" })));
     expect(learned).toContain("Your answer is kept in memory (Decisions/Kade).");
     expect(learned).not.toContain("answer kept in Decisions/Kade");
   });
-  it("went to you by a limit, or because the Team Lead can't look here: the row says which", () => {
-    expect(row(render(lead({ state: "limit", leadId: null, runId: null, reason: "the Team Lead answered this card's last question" }))))
-      .toContain("· Went to you: the Team Lead answered this card's last question");
+  it("went to you by a limit, or because the Chief can't look here: the row says which", () => {
+    expect(row(render(lead({ state: "limit", leadId: null, runId: null, reason: "the Chief answered this card's last question" }))))
+      .toContain("· Went to you: the Chief answered this card's last question");
     expect(row(render(lead({ state: "skipped", runId: null, reason: "no gizai-mcp helper" }))))
-      .toContain("· Went to you: the Team Lead can't look at questions here (no gizai-mcp helper)");
-    // no run of the Team Lead: no cost line
-    expect(text(render(lead({ state: "limit", leadId: null, runId: null, reason: "x" })))).not.toContain("Team Lead's look");
+      .toContain("· Went to you: the Chief can't look at questions here (no gizai-mcp helper)");
+    // no run of the Chief: no cost line
+    expect(text(render(lead({ state: "limit", leadId: null, runId: null, reason: "x" })))).not.toContain("Chief's look");
+  });
+  it("a run of the Chief's (a board check on its page) names its role Chief, not its key lead (GA-254)", () => {
+    const check = { ...asked(null), id: "01HZRUN0000000000000000002", agentId: "lead", agentName: "Ann", taskId: null, roleKey: "lead",
+      trigger: "board_check", outcome: null, summaryMd: "Nothing new on the board." } as Run;
+    const line = row(renderToStaticMarkup(<RunHistory runs={[check]} />));
+    expect(line).toContain("Ann");
+    expect(line).not.toMatch(/· lead ·/);
+    expect(line).not.toContain("Team Lead");
   });
   it("a question that went to you directly shows none of it", () => {
     const html = render(null);
     expect(html).toContain('<span class="badge needs">Needs your decision</span>');
     expect(text(html)).not.toContain("Who answered");
-    expect(text(html)).not.toContain("Team Lead");
+    expect(text(html)).not.toContain("Chief");
   });
 });

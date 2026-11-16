@@ -77,6 +77,16 @@ pub fn save(db: &Db, actor: &str, id: &str, body_md: &str, base_version: i64) ->
 /// `save` inside a write that is open. `run_id`: the agent run that wrote it, kept on the version. Every save rebuilds
 /// the doc's links (`doc_links`); a memory note with a secret in it is refused.
 pub(crate) fn save_in(w: &Writer, actor: &str, id: &str, body_md: &str, base_version: i64, run_id: Option<&str>) -> Result<i64> {
+    store_in(w, actor, id, body_md, base_version, run_id, true)
+}
+
+/// `save_in` for a text that changed only where its links were rewritten to follow a note that moved: the rest of it was
+/// saved before, so it isn't checked for secrets again (a note saved before a kind of secret was known still moves).
+pub(crate) fn relinked_in(w: &Writer, actor: &str, id: &str, body_md: &str, base_version: i64) -> Result<i64> {
+    store_in(w, actor, id, body_md, base_version, None, false)
+}
+
+fn store_in(w: &Writer, actor: &str, id: &str, body_md: &str, base_version: i64, run_id: Option<&str>, check: bool) -> Result<i64> {
     let c = w.conn();
     let (current, kind, path): (i64, String, Option<String>) = c
         .query_row("SELECT current_version, kind, path FROM docs WHERE id = ?1 AND deleted_at IS NULL", [id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
@@ -93,7 +103,7 @@ pub(crate) fn save_in(w: &Writer, actor: &str, id: &str, body_md: &str, base_ver
             "doc changed since you opened it".into()
         }));
     }
-    if memory {
+    if memory && check {
         crate::memory::refuse_secrets(body_md)?;
     }
     let next = current + 1;

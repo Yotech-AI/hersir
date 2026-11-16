@@ -4,7 +4,7 @@
 # refused by the data lock.
 set -uo pipefail
 cd "$(dirname "$0")/.."
-GZ=$PWD; DEV=$GZ/.devdata; BIN=$GZ/target/release/gizai
+GZ=$PWD; DEV=$GZ/.devdata; BIN=$GZ/target/release/hersir
 # CLAUDE: an empty Claude Code account folder (CLAUDE_CONFIG_DIR) for the Gizais, so they don't import your own Claude
 # Code memory notes (~/.claude) into this test's data when they start (GA-85). Their data folders are new, so they
 # start without the first start's onboarding (GIZAI_SKIP_ONBOARDING=1).

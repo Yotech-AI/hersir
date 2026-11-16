@@ -45,7 +45,7 @@ fn qa_runs_the_tests_and_opens_the_pull_request_on_github_only() {
 #[test]
 fn the_lead_keeps_its_template() {
     let lead = role_template("lead");
-    assert!(lead.starts_with("You are the Team Lead"));
+    assert!(lead.starts_with("You are the Chief in Hersir's Software team."));
     assert!(lead.contains("Chat page"));
     assert!(lead.contains("Don't write code yourself"));
     assert!(!lead.contains("routing"), "labels don't route any more (GA-49): {lead}");
@@ -83,7 +83,7 @@ fn devops_keeps_a_projects_deploy_note_in_gizais_memory_not_in_claude_codes() {
     for want in ["Each project has one deploy note in Hersir's Memory, Deployments/<KEY> (Deployments/KADE for project KADE)",
                  "`type: deployment`, `project: <KEY>` and `applies_to: devops`", "comes into your run in the Memory section",
                  "At the start of a run, read this project's deploy note there.", "the repo's own docs and workflows win",
-                 "Report what changed as `learned` lines on your result line", "The Team Lead folds them into the deploy note.",
+                 "Report what changed as `learned` lines on your result line", "The Chief folds them into the deploy note.",
                  "No deploy note yet: also put the whole note, in the format above, in your summary",
                  // the format stays
                  "Deploy mode: manual (the team deploys it by hand) or agent", "Gotchas: what is easy to get wrong",

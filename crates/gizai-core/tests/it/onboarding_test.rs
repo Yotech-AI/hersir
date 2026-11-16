@@ -60,7 +60,7 @@ fn agents(db: &Db, s: &SeedIds) -> Vec<(String, String, String, Option<String>, 
 fn four_on(cli: &str, mode: &str) -> Vec<(String, String, String, Option<String>, Option<String>)> {
     let mut v: Vec<_> = ["Backend Agent", "DevOps Agent", "Frontend Agent", "QA Agent"].iter()
         .map(|n| (n.to_string(), cli.to_string(), mode.to_string(), None, None)).collect();
-    v.push(("Team Lead".into(), clis::CLAUDE_CODE.into(), "acceptEdits".into(), None, None));
+    v.push(("Chief".into(), clis::CLAUDE_CODE.into(), "acceptEdits".into(), None, None));
     v.sort();
     v
 }
@@ -162,13 +162,13 @@ fn your_handle_is_kept_when_it_is_yours_and_numbered_when_an_agent_has_it() {
     onboarding::finish(&db, &s.you_id, &input("jefsev", "My team", None)).unwrap();
     assert_eq!(you(&db, &s), ("jefsev".into(), "jefsev".into()));
 
-    // Named like an agent: team-lead is the Team Lead's, so you get team-lead-2 instead of a UNIQUE error.
+    // Named like an agent: chief is the Chief's (GA-255), so you get chief-2 instead of a UNIQUE error.
     let (db, s) = new_install();
     let lead = team::chat_agent(&db).unwrap().unwrap();
-    assert_eq!(lead.handle, "team-lead");
-    onboarding::finish(&db, &s.you_id, &input("Team Lead", "My team", None)).unwrap();
-    assert_eq!(you(&db, &s), ("Team Lead".into(), "team-lead-2".into()));
-    assert_eq!(team::chat_agent(&db).unwrap().unwrap().handle, "team-lead", "the Team Lead keeps its handle");
+    assert_eq!(lead.handle, "chief");
+    onboarding::finish(&db, &s.you_id, &input("Chief", "My team", None)).unwrap();
+    assert_eq!(you(&db, &s), ("Chief".into(), "chief-2".into()));
+    assert_eq!(team::chat_agent(&db).unwrap().unwrap().handle, "chief", "the Chief keeps its handle");
 
     // A name without letters or digits gets the seed's fallback handle.
     let (db, s) = new_install();
@@ -214,7 +214,7 @@ fn an_agents_cli_puts_backend_frontend_qa_and_devops_on_it_and_the_team_lead_sta
         onboarding::finish(&db, &s.you_id, &input("Jeffrey", "YoTech", Some(&id))).unwrap();
         assert_eq!(agents(&db, &s), four_on(&id, mode), "on {name}");
         let lead = team::chat_agent(&db).unwrap().unwrap();
-        assert_eq!((lead.name.as_str(), lead.adapter.as_deref()), ("Team Lead", Some(clis::CLAUDE_CODE)), "on {name}: the chat stays");
+        assert_eq!((lead.name.as_str(), lead.adapter.as_deref()), ("Chief", Some(clis::CLAUDE_CODE)), "on {name}: the chat stays");
         assert!(!onboarding::pending(&db).unwrap());
         assert_eq!(clis::list(&db).unwrap(), list, "the CLIs themselves are left as they are");
     }

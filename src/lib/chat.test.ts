@@ -200,9 +200,9 @@ describe("the Archive's highlight", () => {
 });
 
 describe("who wrote an Archive hit", () => {
-  it("is You for your message, the Team Lead by its name otherwise", () => {
+  it("is You for your message, the Chief by its name otherwise", () => {
     expect(hitAuthor({ role: "user", authorName: "Jeffrey" })).toBe("You");
     expect(hitAuthor({ role: "agent", authorName: "Kees" })).toBe("Kees");
-    expect(hitAuthor({ role: "agent", authorName: null })).toBe("Team Lead");
+    expect(hitAuthor({ role: "agent", authorName: null })).toBe("Chief");
   });
 });

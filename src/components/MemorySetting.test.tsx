@@ -52,6 +52,11 @@ describe("Settings → Runs → Use memory", () => {
     expect(html).toContain('<input type="checkbox"/>Use memory');
     expect(html).toContain("Off for every agent");
   });
+  it("names the Chief, on and off (GA-254)", () => {
+    expect(render(true)).toContain("and the Chief&#x27;s chat gets its notes.");
+    expect(render(false)).toContain("The Chief&#x27;s memory tools still work.");
+    for (const on of [true, false]) expect(render(on)).not.toContain("Team Lead");
+  });
   it("can't be switched before it has loaded", () => {
     expect(checkbox(null).disabled).toBe(true);
     expect(checkbox(true).disabled).toBe(false);

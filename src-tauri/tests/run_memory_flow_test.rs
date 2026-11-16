@@ -219,16 +219,16 @@ fn alive(pid: u32) -> bool {
     std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|s| !s[s.rfind(')').unwrap() + 2..].starts_with('Z'))
 }
 
-/// The shim binary: target/debug/gizai-mcp (built by `cargo test --workspace`; built here when missing).
+/// The shim binary: target/debug/hersir-mcp, which the crate gizai-mcp builds (built by `cargo test --workspace`; built here when missing).
 #[cfg(target_os = "linux")]
 fn shim() -> PathBuf {
     static BUILT: std::sync::Once = std::sync::Once::new();
-    let path = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/debug/gizai-mcp"));
+    let path = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/debug/hersir-mcp"));
     BUILT.call_once(|| {
         let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
         let ok = std::process::Command::new(cargo).args(["build", "-q", "-p", "gizai-mcp"])
             .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/..")).status().map(|s| s.success()).unwrap_or(false);
-        assert!(ok && path.is_file(), "could not build gizai-mcp");
+        assert!(ok && path.is_file(), "could not build hersir-mcp (the crate gizai-mcp)");
     });
     path
 }
@@ -521,4 +521,250 @@ async fn stop_continue_and_quitting_work_as_before_in_the_slice_and_leave_nothin
     assert_eq!((quit.status.as_str(), quit.error.as_deref()), ("cancelled", Some(runs::STOPPED_BY_QUIT)));
     until("its process is gone", || !alive(second)).await;
     until("nothing is left in the slice", || procs_in(s.dir()).is_empty()).await;
+}
+
+// ---- GA-277: Memory per run, a limit of its own for each scope (Linux with a systemd user session) ----
+
+/// A bash line that adds its scope's cgroup folder, memory.max and memory.high, as a process in the scope reads them, to
+/// `out`.
+#[cfg(target_os = "linux")]
+fn record_scope(out: &Path) -> String {
+    format!("c=$(sed -n 's/^0:://p' /proc/self/cgroup); echo \"$c $(cat /sys/fs/cgroup$c/memory.max) $(cat /sys/fs/cgroup$c/memory.high)\" >> '{}'",
+            out.display())
+}
+
+/// What `record_scope` added to `out`: each scope's cgroup folder, memory.max and memory.high.
+#[cfg(target_os = "linux")]
+fn scopes_in(out: &Path) -> Vec<(PathBuf, String, String)> {
+    std::fs::read_to_string(out).unwrap_or_default().lines().map(|l| {
+        let f: Vec<&str> = l.split(' ').collect();
+        (Path::new("/sys/fs/cgroup").join(f[0].trim_start_matches('/')), f[1].to_string(), f[2].to_string())
+    }).collect()
+}
+
+#[cfg(target_os = "linux")]
+fn read_trim(path: &Path) -> String {
+    std::fs::read_to_string(path).unwrap_or_default().trim().to_string()
+}
+
+/// The card's activity lines from Gizai's cleanup notes (`ended_on_card`).
+#[cfg(target_os = "linux")]
+fn cleanups(st: &AppState, task: &str) -> Vec<String> {
+    gizai_core::tasks::activity(&st.db, task).unwrap().iter()
+        .filter_map(|e| e.diff.get("cleanup").and_then(|c| c.as_str()).map(String::from)).collect()
+}
+
+#[cfg(target_os = "linux")]
+fn run_notes(st: &AppState, run: &str) -> Vec<String> {
+    runs::events_for(st, run).into_iter().filter_map(|e| match e.event {
+        gizai_agents::stream::RunEvent::Note { text } => Some(text),
+        _ => None,
+    }).collect()
+}
+
+/// Gizai's start with Memory for agent runs at `runs_gb` (Memory per run unset: half of it), and its slice, stopped and
+/// reverted when the test ends. None where this Linux has no systemd user session.
+#[cfg(target_os = "linux")]
+fn started_with(st: &AppState, runs_gb: u32) -> Option<Own> {
+    gizai_core::settings::set(&st.db, gizai_lib::run_memory::KEY, &runs_gb).unwrap();
+    gizai_lib::run_memory::start(st);
+    match st.run_memory.slice() {
+        Some(s) => Some(Own(s)),
+        None => {
+            assert!(std::env::var_os("GIZAI_TEST_SLICE").is_none(), "GIZAI_TEST_SLICE is set, but there is no slice (see stderr)");
+            eprintln!("skipped: no slice for agent runs on this Linux");
+            None
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn memory_per_run_is_the_memory_max_without_memory_high_of_a_runs_scope_its_setup_command_a_chat_answer_and_a_board_check_and_the_slice_keeps_its_own() {
+    use gizai_agents::run_memory::limits_for;
+    const CHAT_FAKE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../crates/gizai-agents/tests/fake-claude-chat.py");
+    let tmp = tempfile::tempdir().unwrap();
+    let mut st = gizai_lib::test_state(tmp.path());
+    // Memory for agent runs 4 GB, Memory per run not set: 2 GB
+    let Some(slice) = started_with(&st, 4) else { return };
+    let s = &slice.0;
+    let (max, high) = limits_for(4 * GB);
+    assert_eq!(s.limits(), (Some(max), Some(high)));
+    assert_eq!((s.run_limit(), runs::get_settings(&st).runs_memory_per_run_gb), (Some(2 * GB), Some(2)));
+    let own = (2 * GB).to_string();
+    let check = |what: &str, at: &[(PathBuf, String, String)], n: usize| {
+        assert_eq!(at.len(), n, "{what}: {at:?}");
+        let (dir, max, high) = &at[n - 1];
+        assert!(in_a_scope_of(dir, s), "{what}: {at:?}");
+        assert_eq!((max.as_str(), high.as_str()), (own.as_str(), "max"), "{what}: Memory per run, and no MemoryHigh of its own");
+    };
+
+    // a run, after its worktree's setup command
+    let repo = git_repo(tmp.path());
+    let task = gizai_lib::test_task(&st, repo.to_str().unwrap(), "backend");
+    let setup_file = tmp.path().join("setup-scopes");
+    let p = gizai_core::projects::list(&st.db).unwrap().into_iter().find(|p| p.key == "KADE").unwrap();
+    gizai_core::projects::update(&st.db, &st.you_id, &p.id, ProjectInput { name: p.name.clone(), key: p.key.clone(), repo_path: p.repo_path.clone(),
+        default_branch: Some(p.default_branch.clone()), worktree_setup: Some(record_scope(&setup_file)), ..Default::default() }).unwrap();
+    let run_file = tmp.path().join("run-scopes");
+    let run_bin = wrapper(tmp.path(), "run-claude.sh", &record_scope(&run_file), FAKE);
+    let summary = runs::run_once(&st, &task, None, Some(run_bin)).await.unwrap();
+    assert_eq!(summary.status, "succeeded", "{summary:?}");
+    check("the setup command", &scopes_in(&setup_file), 1);
+    check("the run", &scopes_in(&run_file), 1);
+
+    // a chat answer and a board check of the Team Lead
+    let chat_file = tmp.path().join("chat-scopes");
+    let chat_bin = wrapper(tmp.path(), "chat-claude.sh", &record_scope(&chat_file), CHAT_FAKE);
+    gizai_core::settings::set(&st.db, "claude_bin", &chat_bin).unwrap();
+    st.mcp_shim = Some(shim());
+    let team_id = gizai_core::team::list(&st.db).unwrap()[0].id.clone();
+    gizai_core::team::add_agent(&st.db, &st.you_id, &team_id, AgentInput {
+        name: "Team Lead".into(), role_key: "lead".into(), chat_enabled: Some(true), board_check_minutes: Some(15), ..Default::default() }).unwrap();
+    let _server = gizai_lib::mcp::start(&st).unwrap();
+    let (_, done) = gizai_lib::chat::send(&st, None, "How are the cards?".into(), None).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(30), done).await.expect("the answer finished").unwrap();
+    check("the chat answer", &scopes_in(&chat_file), 1);
+    gizai_core::tasks::update(&st.db, &st.you_id, &task, TaskPatch { hold: Some("blocked".into()), hold_reason: Some("Needs a key".into()), ..Default::default() }).unwrap();
+    let t0 = gizai_core::ids::now_ms();
+    let board = match gizai_lib::board::tick(&st, t0).await {
+        Some(h) => h,
+        None => gizai_lib::board::tick(&st, t0 + 16 * 60_000).await.expect("a board check started"),
+    };
+    let checked = tokio::time::timeout(Duration::from_secs(30), board).await.expect("the check finished").unwrap();
+    assert_eq!(checked.status, "succeeded", "{checked:?}");
+    check("the board check", &scopes_in(&chat_file), 2);
+
+    // the slice keeps its MemoryMax, MemoryHigh and no swap
+    assert_eq!(s.limits(), (Some(max), Some(high)));
+    assert_eq!(read_trim(&s.dir().join("memory.swap.max")), "0");
+    assert_eq!(procs_in(s.dir()), Vec::<String>::new());
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn a_saved_memory_per_run_counts_for_runs_that_start_after_the_save_a_running_one_keeps_its_own_and_memory_for_agent_runs_lowered_below_it_is_the_limit() {
+    let a = app();
+    // Memory for agent runs 6 GB, Memory per run not set: 3 GB
+    let Some(slice) = started_with(&a.st, 6) else { return };
+    let s = &slice.0;
+    let gb = |n: u64| (n * GB).to_string();
+    let rec = a.tmp.path().join("scopes");
+    let bin = wrapper(a.tmp.path(), "claude.sh", &record_scope(&rec), FAKE);
+    // a run that is at work while Settings are saved
+    let hanging = a.card("FAKE_HANG");
+    let (hang_run, hang_done) = runs::start(&a.st, &hanging, None, Some(bin.clone()), "manual").await.unwrap();
+    until("the run started", || scopes_in(&rec).len() == 1).await;
+    let (hang_scope, max, high) = scopes_in(&rec).remove(0);
+    assert!(in_a_scope_of(&hang_scope, s));
+    assert_eq!((max, high), (gb(3), "max".into()));
+
+    // Memory per run 4 GB: the next run gets it, the one at work keeps 3 GB
+    runs::save_settings(&a.st, &runs::Settings { runs_memory_per_run_gb: Some(4), ..runs::get_settings(&a.st) }).unwrap();
+    let t = a.card("");
+    assert_eq!(runs::run_once(&a.st, &t, None, Some(bin.clone())).await.unwrap().status, "succeeded");
+    let at = scopes_in(&rec);
+    assert_eq!((at.len(), at[1].1.clone(), at[1].2.clone()), (2, gb(4), "max".into()), "{at:?}");
+    assert_eq!(read_trim(&hang_scope.join("memory.max")), gb(3), "a scope that already runs keeps what it had");
+
+    // Memory for agent runs lowered to 2 GB, below Memory per run: a new run's scope gets 2 GB
+    runs::save_settings(&a.st, &runs::Settings { runs_memory_gb: Some(2), ..runs::get_settings(&a.st) }).unwrap();
+    assert_eq!(s.limits().0, Some(2 * GB), "the slice's own limit follows Memory for agent runs, as before");
+    assert_eq!(runs::get_settings(&a.st).runs_memory_per_run_gb, Some(2));
+    let t = a.card("");
+    assert_eq!(runs::run_once(&a.st, &t, None, Some(bin.clone())).await.unwrap().status, "succeeded");
+    let at = scopes_in(&rec);
+    assert_eq!((at.len(), at[2].1.clone(), at[2].2.clone()), (3, gb(2), "max".into()), "{at:?}");
+    assert_eq!(read_trim(&hang_scope.join("memory.max")), gb(3));
+    // raised again: Memory per run as saved
+    runs::save_settings(&a.st, &runs::Settings { runs_memory_gb: Some(8), ..runs::get_settings(&a.st) }).unwrap();
+    let t = a.card("");
+    assert_eq!(runs::run_once(&a.st, &t, None, Some(bin)).await.unwrap().status, "succeeded");
+    assert_eq!(scopes_in(&rec)[3].1, gb(4));
+
+    runs::stop(&a.st, &hang_run);
+    assert_eq!(hang_done.await.unwrap().status, "cancelled");
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn at_memory_per_run_a_runs_command_that_grows_past_it_is_ended_within_seconds_the_run_and_another_run_go_on_and_the_activity_and_note_name_memory_per_run() {
+    let a = app();
+    // Memory for agent runs 4 GB (MemoryHigh 3.6 GB), Memory per run 2 GB
+    let Some(slice) = started_with(&a.st, 4) else { return };
+    let s = &slice.0;
+    // another run in the slice, which keeps working
+    let pid_file = a.tmp.path().join("other-pid");
+    let other_bin = wrapper(a.tmp.path(), "other-claude.sh", &format!("echo $$ > '{}'", pid_file.display()), FAKE);
+    let other = a.card("FAKE_HANG");
+    let (other_run, other_done) = runs::start(&a.st, &other, None, Some(other_bin), "manual").await.unwrap();
+    until("the other run started", || std::fs::read_to_string(&pid_file).is_ok_and(|p| p.ends_with('\n'))).await;
+    let other_pid: u32 = std::fs::read_to_string(&pid_file).unwrap().trim().parse().unwrap();
+    assert!(in_a_scope_of(&cgroup_of(other_pid), s));
+
+    // a run whose test hangs and grows to 3 GB; Claude Code itself goes on after the failed command, and finishes
+    let big_bin = wrapper(a.tmp.path(), "big-claude.sh",
+        "t0=$(date +%s%N)\npython3 -c \"b = b'x' * (3 << 30)\"\necho \"test: $? after $(( ($(date +%s%N) - t0) / 1000000 )) ms\" >&2", FAKE);
+    let big = a.card("");
+    let (big_run, big_done) = runs::start(&a.st, &big, None, Some(big_bin), "manual").await.unwrap();
+    let summary = tokio::time::timeout(Duration::from_secs(120), big_done).await.expect("the run finished").unwrap();
+    assert_eq!(summary.status, "succeeded", "{summary:?}");
+    let run = gizai_core::runs::get(&a.st.db, &big_run).unwrap();
+    let stderr = std::fs::read_to_string(Path::new(&run.log_path).with_extension("stderr.log")).unwrap();
+    let ms: u64 = stderr.split("test: 137 after ").nth(1).and_then(|r| r.split(' ').next()).and_then(|n| n.parse().ok())
+        .unwrap_or_else(|| panic!("Linux ended the test (SIGKILL): {stderr}"));
+    assert!(ms < 10_000, "ended within seconds, not slowed down: {ms} ms");
+
+    // the card's activity says so once, as Gizai, with the run's own limit and where to change it
+    let said = "saw Linux end a process in Backend Agent's run: the run reached its memory limit of 2 GB (Settings → Runs → Memory per run)";
+    assert_eq!(cleanups(&a.st, &big), [said]);
+    // and the run's own output, at its end
+    let note = "Linux ended a process in this run: it reached its memory limit of 2 GB per run. Change it in Settings → Runs → Memory per run.";
+    let notes = run_notes(&a.st, &big_run);
+    assert_eq!(notes.iter().filter(|n| n.starts_with("Linux ended")).collect::<Vec<_>>(), [note], "{notes:?}");
+    // the slice's own limit was never reached
+    let local = std::fs::read_to_string(s.dir().join("memory.events.local")).unwrap();
+    assert_eq!(gizai_agents::run_memory::stat_value(&local, "oom"), Some(0), "{local}");
+
+    // the other run keeps running, and its card says nothing
+    assert!(alive(other_pid), "the other run's process keeps running");
+    assert_eq!(a.live_cards(), [other.clone()]);
+    runs::stop(&a.st, &other_run);
+    assert_eq!(other_done.await.unwrap().status, "cancelled");
+    assert_eq!(cleanups(&a.st, &other), Vec::<String>::new());
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn a_run_ended_once_at_its_own_limit_and_once_at_the_limit_of_all_runs_together_gets_the_text_of_each_once() {
+    let a = app();
+    // Memory for agent runs 4 GB, Memory per run 2 GB
+    let Some(_slice) = started_with(&a.st, 4) else { return };
+    let (first, gate) = (a.tmp.path().join("first"), a.tmp.path().join("gate"));
+    let bin = wrapper(a.tmp.path(), "claude.sh", &format!(
+        "python3 -c \"b = b'x' * (3 << 30)\"\necho $? > '{}'\nwhile [ ! -e '{}' ]; do sleep 0.05; done\npython3 -c \"b = b'x' * (3 << 29)\"\necho \"second: $?\" >&2",
+        first.display(), gate.display()), FAKE);
+    let t = a.card("");
+    let (run, done) = runs::start(&a.st, &t, None, Some(bin), "manual").await.unwrap();
+    until("the first command was ended", || read_trim(&first) == "137").await;
+    // the limit of all runs together lowered to 1 GB under the run, below the 2 GB its scope started with
+    a.st.run_memory.set_limit(GB).unwrap();
+    std::fs::write(&gate, "").unwrap();
+    let summary = tokio::time::timeout(Duration::from_secs(240), done).await.expect("the run finished").unwrap();
+    assert_eq!(summary.status, "succeeded", "{summary:?}");
+    let r = gizai_core::runs::get(&a.st.db, &run).unwrap();
+    assert!(std::fs::read_to_string(Path::new(&r.log_path).with_extension("stderr.log")).unwrap().contains("second: 137"));
+
+    let own = "saw Linux end a process in Backend Agent's run: the run reached its memory limit of 2 GB (Settings → Runs → Memory per run)";
+    let together = "saw Linux end a process in Backend Agent's run: the agent runs reached their memory limit of 1 GB together \
+                    (Settings → Runs → Memory for agent runs)";
+    let mut said = cleanups(&a.st, &t);
+    said.sort();
+    assert_eq!(said, [together, own], "each once");
+    let notes = run_notes(&a.st, &run);
+    let ended: Vec<&String> = notes.iter().filter(|n| n.starts_with("Linux ended")).collect();
+    assert_eq!(ended, [
+        "Linux ended a process in this run: it reached its memory limit of 2 GB per run. Change it in Settings → Runs → Memory per run.",
+        "Linux ended a process in this run: Hersir's agent runs reached their memory limit of 1 GB together. Change it in Settings → Runs → Memory for agent runs.",
+    ], "{notes:?}");
 }

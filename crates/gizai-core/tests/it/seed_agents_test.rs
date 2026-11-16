@@ -30,7 +30,7 @@ const DEVOPS: [&str; 59] = [
 
 /// The five agents, by name, with where each should be: (name, role, columns).
 const FIVE: [(&str, &str, &[&str]); 5] = [
-    ("Team Lead", "lead", &[]),
+    ("Chief", "lead", &[]),
     ("Backend Agent", "backend", &["To do", "In progress"]),
     ("Frontend Agent", "frontend", &["To do", "In progress"]),
     ("QA Agent", "qa", &["Testing"]),
@@ -70,7 +70,7 @@ fn assert_ready(t: &Team, name: &str, role: &str, cols: &[&str]) {
     assert!(m.tools.mcp.is_empty(), "{name}: no MCP servers");
     assert!(m.folders.is_empty(), "{name}: no folders");
     assert_eq!(m.status, "active", "{name}");
-    assert_eq!((m.chat_enabled, m.is_lead), (role == "lead", role == "lead"), "{name}: only the Team Lead has Chat");
+    assert_eq!((m.chat_enabled, m.is_lead), (role == "lead", role == "lead"), "{name}: only the Chief has Chat");
     assert_eq!(columns_of(t, &m.actor_id), strs(cols), "{name}'s columns");
 }
 
@@ -85,14 +85,14 @@ fn a_new_install_starts_with_the_workflow_and_five_agents_on_claude_code() {
     assert_eq!(t.labels.len(), 4);
     let mut names: Vec<&str> = agents(&t).iter().map(|m| m.name.as_str()).collect();
     names.sort();
-    assert_eq!(names, ["Backend Agent", "DevOps Agent", "Frontend Agent", "QA Agent", "Team Lead"]);
+    assert_eq!(names, ["Backend Agent", "Chief", "DevOps Agent", "Frontend Agent", "QA Agent"]);
     for (name, role, cols) in FIVE {
         assert_ready(&t, name, role, cols);
         let m = agent(&t, name);
         assert_eq!(m.adapter.as_deref(), Some(clis::CLAUDE_CODE), "{name} runs on Claude Code");
         assert_eq!(m.permission_mode.as_deref(), Some("acceptEdits"), "{name}");
     }
-    assert_eq!(team::chat_agent(&db).unwrap().unwrap().name, "Team Lead");
+    assert_eq!(team::chat_agent(&db).unwrap().unwrap().name, "Chief");
     assert_eq!(clis::list(&db).unwrap().len(), 1, "no coding CLI added: only the built-in Claude Code");
     // You are still the only person, and the reviewer.
     assert_eq!(t.members.iter().filter(|m| m.kind == "person").count(), 1);
@@ -119,7 +119,7 @@ fn with_only_codex_installed_codex_is_added_and_runs_every_agent_but_the_team_le
             assert_eq!((m.adapter.as_deref(), m.permission_mode.as_deref()), (Some(cx.id.as_str()), Some("workspace-write")), "{name}");
         }
     }
-    assert_eq!(team::chat_agent(&db).unwrap().unwrap().name, "Team Lead");
+    assert_eq!(team::chat_agent(&db).unwrap().unwrap().name, "Chief");
 }
 
 #[test]

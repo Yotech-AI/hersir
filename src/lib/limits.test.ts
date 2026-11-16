@@ -122,11 +122,11 @@ describe("what a block says", () => {
     expect(anyRead(cli({ limits: [] }))).toBe(false);
   });
 
-  it("says which chats run on a CLI: the Team Lead's, chats that picked it, both, or none", () => {
+  it("says which chats run on a CLI: the Chief's, chats that picked it, both, or none", () => {
     expect(chatsLine(cli({}))).toBe("");
-    expect(chatsLine(cli({ leadChat: true }))).toBe("The Team Lead's chat runs here.");
+    expect(chatsLine(cli({ leadChat: true }))).toBe("The Chief's chat runs here.");
     expect(chatsLine(cli({ chats: 1 }))).toBe("1 chat picked it under Runs on.");
     expect(chatsLine(cli({ chats: 3 }))).toBe("3 chats picked it under Runs on.");
-    expect(chatsLine(cli({ leadChat: true, chats: 2 }))).toBe("The Team Lead's chat runs here, and 2 chats picked it under Runs on.");
+    expect(chatsLine(cli({ leadChat: true, chats: 2 }))).toBe("The Chief's chat runs here, and 2 chats picked it under Runs on.");
   });
 });

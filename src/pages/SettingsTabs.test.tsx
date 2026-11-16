@@ -252,7 +252,7 @@ describe("Chat answers in Runs (GA-94)", () => {
     expect(runs).toMatch(/<label for="s-chat-min">Minutes per chat answer<\/label><input id="s-chat-min" class="input" type="number" min="5" max="240" value="120"\/>/);
     expect(runs).toMatch(/<label for="s-chat-calls">Tool calls per chat answer<\/label><input id="s-chat-calls" class="input" type="number" min="20" max="500" value="300"\/>/);
     const t = text(runs);
-    expect(t).toContain("Minutes per chat answer 5 to 240. The Team Lead's board check and its look at an agent's question too.");
+    expect(t).toContain("Minutes per chat answer 5 to 240. The Chief's board check and its look at an agent's question too.");
     expect(t).toContain("Tool calls per chat answer 20 to 500");
     const at = (s: string) => t.indexOf(s);
     expect(at("Tool calls per run")).toBeLessThan(at("Minutes per chat answer"));
@@ -362,6 +362,95 @@ describe("Memory for agent runs in Runs (GA-202)", () => {
     await settle();
     expect(spy).toHaveBeenCalledWith({ ...edited, maxRunUsd: null });
     expect(r.got[2]).toEqual([{ ok: false, text: refused }]);
+    spy.mockRestore();
+  });
+});
+
+// GA-277: Memory per run, right under Memory for agent runs: the backend's value (half of Memory for agent runs until it
+// is set), 2 GB up to Memory for agent runs, and the card's hint word for word. After a save the page shows what the
+// backend has now.
+describe("Memory per run in Runs (GA-277)", () => {
+  const MEM: Settings = { ...SETTINGS, runsMemoryGb: 32, runsMemoryPerRunGb: 16, computerMemoryGb: 64, runsMemoryEnforced: true };
+  const HINT = "One run at most: its agent and everything it starts. Linux ends the biggest process of a run that reaches it, and the run goes on. Half of Memory for agent runs until you set it. Runs that start after you save get it.";
+  const runsOf = (html: string) => {
+    const agents = panels(html).find((p) => p.label === "Agents and runs")?.html ?? "";
+    return agents.slice(agents.indexOf("<h3>Runs</h3>"));
+  };
+  const saveButton = (t: ReactNode) =>
+    findAll(t, (p) => p.className === "btn primary" && typeof p.onClick === "function")[0] as { onClick: () => void; children: unknown };
+  /** The settings after typing `value` in Memory per run. */
+  const edit = (s: Settings, value: string) => {
+    const first = tree("agents", s);
+    (findAll(first.t, (p) => p.id === "s-memory-run")[0] as { onChange: (e: unknown) => void }).onChange({ target: { value } });
+    return first.got[0]?.[0] as Settings;
+  };
+  it("is right under Memory for agent runs, in GB, from 2 up to Memory for agent runs, with the backend's value and the hint word for word", () => {
+    const runs = runsOf(render("agents", MEM));
+    expect(runs).toMatch(/<label for="s-memory-run">Memory per run<\/label>.*<input id="s-memory-run" class="input" type="number" min="2" max="32" step="1" value="16"\/><span class="faint">GB<\/span>/);
+    const t = text(runs);
+    expect(t).toContain(`Memory for agent runs GB All agent runs together. This computer has 64 GB. Memory per run GB ${HINT} Spend per run`);
+    // on no other tab
+    for (const p of panels(render("agents", MEM)).filter((p) => p.label !== "Agents and runs")) expect(p.html).not.toContain("s-memory-run");
+  });
+  it("shows what the backend has: half of Memory for agent runs, rounded down and at least 2, until it is set", () => {
+    for (const [runs, half] of [[32, 16], [31, 15], [3, 2]]) {
+      expect(runsOf(render("agents", { ...MEM, runsMemoryGb: runs, runsMemoryPerRunGb: half }))).toMatch(new RegExp(`id="s-memory-run"[^>]*max="${runs}"[^>]*value="${half}"`));
+    }
+  });
+  it("Save settings saves an edited value with the rest, then shows what the backend has now", async () => {
+    const edited = edit(MEM, "8");
+    expect(edited).toEqual({ ...MEM, runsMemoryPerRunGb: 8 });
+    const api = await import("../api");
+    const now = { ...MEM, runsMemoryPerRunGb: 8 };
+    const read = vi.spyOn(api, "getSettings").mockResolvedValueOnce(now);
+    const r = tree("agents", edited);
+    saveButton(r.t).onClick();
+    await settle();
+    await settle();
+    expect(calls.filter(([k]) => k === "saveSettings").map(([, a]) => a[0])).toEqual([{ ...MEM, runsMemoryPerRunGb: 8, maxRunUsd: null }]);
+    expect(r.got[2]).toEqual([{ ok: true, text: "Settings saved." }]);
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(r.got[0]).toEqual([now]);
+    read.mockRestore();
+  });
+  it("sends Memory per run as the backend showed it back as it came, also after an edit, and doesn't show it as a field", async () => {
+    const read = { ...MEM, runsMemoryPerRunShownGb: 16 };
+    expect(render("agents", read)).toBe(render("agents", MEM));
+    const edited = edit(read, "8");
+    expect(edited).toEqual({ ...read, runsMemoryPerRunGb: 8, runsMemoryPerRunShownGb: 16 });
+    const api = await import("../api");
+    const get = vi.spyOn(api, "getSettings").mockResolvedValueOnce({ ...read, runsMemoryPerRunGb: 8, runsMemoryPerRunShownGb: 8 });
+    const r = tree("agents", edited);
+    saveButton(r.t).onClick();
+    await settle();
+    await settle();
+    expect(calls.filter(([k]) => k === "saveSettings").map(([, a]) => a[0])).toEqual([{ ...read, runsMemoryPerRunGb: 8, runsMemoryPerRunShownGb: 16, maxRunUsd: null }]);
+    expect(r.got[0]).toEqual([{ ...read, runsMemoryPerRunGb: 8, runsMemoryPerRunShownGb: 8 }]);
+    get.mockRestore();
+  });
+  it("Save settings refuses an emptied field or less than 2 GB with a message, and doesn't save", async () => {
+    for (const value of ["", "1", "2.5"]) {
+      calls.length = 0;
+      const second = tree("agents", edit(MEM, value));
+      saveButton(second.t).onClick();
+      await settle();
+      expect(calls.filter(([k]) => k === "saveSettings")).toEqual([]);
+      expect(second.got[2]).toEqual([{ ok: false, text: "Memory per run is a whole number of GB, 2 or more." }]);
+    }
+  });
+  it("shows the backend's refusal of more than Memory for agent runs, and keeps what you typed", async () => {
+    const edited = { ...MEM, runsMemoryPerRunGb: 40 };
+    const r = tree("agents", edited);
+    const refused = "memory per run may be between 2 and 32 GB: memory for agent runs is 32 GB";
+    const api = await import("../api");
+    const spy = vi.spyOn(api, "saveSettings").mockRejectedValueOnce(refused);
+    saveButton(r.t).onClick();
+    await settle();
+    await settle();
+    expect(spy).toHaveBeenCalledWith({ ...edited, maxRunUsd: null });
+    expect(r.got[2]).toEqual([{ ok: false, text: refused }]);
+    expect(calls.filter(([k]) => k === "getSettings")).toEqual([]);
+    expect(r.got[0] ?? []).toEqual([]);
     spy.mockRestore();
   });
 });

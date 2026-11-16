@@ -71,7 +71,7 @@ export function TaskList({ groups, showHeads, live, onAdd, empty, shots }: {
               {t.assigneeName ? <span className="who"><Avatar name={t.assigneeName} kind={t.assigneeKind} size="sm" /><span className="ellipsis">{t.assigneeName}</span></span>
                 : <span className="who none"><User className="icon sm" />Assignee</span>}
               <span>{live.has(t.id) ? <span className="badge live" title={`${live.get(t.id)} is working`}><span className="pulse" />Live</span>
-                : t.hold && t.withLead ? <span className="badge live" title="Its question is with the Team Lead">Team Lead</span>
+                : t.hold && t.withLead ? <span className="badge live" title="Its question is with the Chief">Chief</span>
                 : t.hold ? <span className="badge needs">On hold</span> : null}</span>
               <span className="date">{shortDate(t.updatedAt)}</span>
             </a>

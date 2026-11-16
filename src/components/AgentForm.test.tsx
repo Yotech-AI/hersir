@@ -20,9 +20,9 @@ describe("Folders in the agent form", () => {
     expect(html).not.toContain("update_checkout");
   });
 
-  it("tells the Team Lead that it only reads them in chat", () => {
-    const html = renderToStaticMarkup(<AgentDrawer teamId="t1" preset={{ name: "Team Lead", role: "lead", chat: true }} onClose={() => {}} />);
-    expect(html).toContain("In chat the Team Lead only reads them; read and change also lets it update that folder (update_checkout) after you say yes in the chat.");
+  it("tells the Chief that it only reads them in chat", () => {
+    const html = renderToStaticMarkup(<AgentDrawer teamId="t1" preset={{ name: "Chief", role: "lead", chat: true }} onClose={() => {}} />);
+    expect(html).toContain("In chat the Chief only reads them; read and change also lets it update that folder (update_checkout) after you say yes in the chat.");
   });
 
   it("says for each CLI what it does with the folders, and that an Other CLI can't limit them", () => {
@@ -88,8 +88,8 @@ describe("the agent form with GA-39's Tools and GA-53's columns", () => {
     expect(html).toMatch(/<option value="backend" selected="">/);
   });
 
-  it("keeps the Team Lead's board check in Chat, with Tools further down", () => {
-    const html = renderToStaticMarkup(<AgentDrawer teamId="t1" preset={{ name: "Team Lead", role: "lead", chat: true }} onClose={() => {}} />);
+  it("keeps the Chief's board check in Chat, with Tools further down", () => {
+    const html = renderToStaticMarkup(<AgentDrawer teamId="t1" preset={{ name: "Chief", role: "lead", chat: true }} onClose={() => {}} />);
     expect(sections(html)).toEqual(["Agent", "Chat", "Memory", "Work", "Permissions", "Tools", "Instructions"]);
     expect(section(html, "Chat")).toContain('aria-label="Board check minutes"');
     expect(html.indexOf("Board check")).toBeLessThan(html.indexOf("<h3>Tools</h3>"));
@@ -132,11 +132,11 @@ describe("Shares memory with in the agent form (GA-96)", () => {
     expect(html).toContain("Its own folder (Agents/Ops- 2-3/)");
   });
 
-  it("is off on the Team Lead's form, which keeps its own notes", () => {
-    for (const preset of [{ name: "Team Lead", role: "lead", chat: true }, { name: "Team Lead", role: "lead" }, { name: "Chat Agent", role: "backend", chat: true }]) {
+  it("is off on the Chief's form, which keeps its own notes", () => {
+    for (const preset of [{ name: "Chief", role: "lead", chat: true }, { name: "Team Lead", role: "lead" }, { name: "Chat Agent", role: "backend", chat: true }]) {
       const html = memory(renderToStaticMarkup(<AgentDrawer teamId="t1" preset={preset} onClose={() => {}} />));
       expect(select(html), JSON.stringify(preset)).toMatch(/^<select id="a-shares" class="select" disabled="">/);
-      expect(html).toContain("The Team Lead keeps its own notes, in Team Lead/.");
+      expect(html).toContain("The Chief keeps its own notes, in Chief/.");
     }
   });
 });

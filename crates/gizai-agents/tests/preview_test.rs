@@ -35,12 +35,14 @@ fn port(base: u16) -> u16 {
     preview::free_port(base, base + 99, &[]).expect("a free block")
 }
 
-/// A node server on GIZAI_PREVIEW_PORT after `delay_ms`, which first writes its environment, its folder, its pid and
+/// A node server on GIZAI_PREVIEW_PORT after `delay_ms`, which first writes its environment (the GIZAI_PREVIEW_* names a
+/// project's script from before 0.17.0 reads, and the HERSIR_PREVIEW_* ones, GA-249), its folder, its pid and
 /// its process group to `<out>`, says "listening" on stdout, and (with `stubborn`) ignores SIGTERM.
 fn server(out: &Path, delay_ms: u64, stubborn: bool) -> String {
     let js = format!(
         "const fs=require('fs'),e=process.env;{ignore}\
          fs.writeFileSync({out:?},JSON.stringify({{port:e.GIZAI_PREVIEW_PORT,PORT:e.PORT,url:e.GIZAI_PREVIEW_URL,dir:e.GIZAI_PREVIEW_DIR,\
+         hport:e.HERSIR_PREVIEW_PORT,hurl:e.HERSIR_PREVIEW_URL,hdir:e.HERSIR_PREVIEW_DIR,\
          claudecode:e.CLAUDECODE||null,cwd:process.cwd(),pid:process.pid}}));\
          setTimeout(()=>require('http').createServer((q,s)=>s.end('ok')).listen(+e.GIZAI_PREVIEW_PORT,'127.0.0.1',\
          ()=>console.log('listening on '+e.GIZAI_PREVIEW_PORT)),{delay_ms});",
@@ -107,13 +109,18 @@ fn the_address_and_the_environment_of_the_command_and_the_agent() {
     assert_eq!(preview::log_path(wt), wt.join(".gizai-tmp/preview/preview.log"));
     let agent = preview::agent_env(47130, wt);
     let names: Vec<&str> = agent.iter().map(|(k, _)| k.as_str()).collect();
-    assert_eq!(names, ["GIZAI_PREVIEW_PORT", "GIZAI_PREVIEW_URL", "GIZAI_PREVIEW_DIR"], "the agent gets no PORT");
-    assert_eq!(agent[0].1, "47130");
-    assert_eq!(agent[1].1, "http://127.0.0.1:47130");
-    assert_eq!(agent[2].1, wt.join(".gizai-tmp/preview").display().to_string());
+    // GA-249: under the HERSIR_ names and the GIZAI_ ones from before 0.17.0, the same values
+    assert_eq!(names, ["HERSIR_PREVIEW_PORT", "HERSIR_PREVIEW_URL", "HERSIR_PREVIEW_DIR", "GIZAI_PREVIEW_PORT", "GIZAI_PREVIEW_URL", "GIZAI_PREVIEW_DIR"],
+        "the agent gets no PORT");
+    let dir = wt.join(".gizai-tmp/preview").display().to_string();
+    for prefix in ["HERSIR", "GIZAI"] {
+        let get = |n: &str| agent.iter().find(|(k, _)| *k == format!("{prefix}_PREVIEW_{n}")).map(|(_, v)| v.as_str());
+        assert_eq!((get("PORT"), get("URL"), get("DIR")), (Some("47130"), Some("http://127.0.0.1:47130"), Some(dir.as_str())), "{prefix}");
+    }
     let command = preview::command_env(47130, wt);
     assert!(command.contains(&("PORT".to_string(), "47130".to_string())), "{command:?}");
-    assert_eq!(command.len(), 4);
+    assert_eq!(command.len(), 7, "the six *_PREVIEW_* and PORT");
+    assert!(agent.iter().all(|a| command.contains(a)), "{command:?}");
 }
 
 #[test]
@@ -156,6 +163,8 @@ async fn the_command_runs_in_the_worktree_with_its_ports_and_log_and_the_wait_en
     assert_eq!(env["PORT"], port.to_string());
     assert_eq!(env["url"], format!("http://127.0.0.1:{port}"));
     assert_eq!(env["dir"], wt.join(".gizai-tmp/preview").display().to_string());
+    // GA-249: the same three under their HERSIR_ names
+    assert_eq!((&env["hport"], &env["hurl"], &env["hdir"]), (&env["port"], &env["url"], &env["dir"]), "{env:?}");
     assert_eq!(env["claudecode"], serde_json::Value::Null, "no CLAUDECODE");
     assert_eq!(fs::canonicalize(env["cwd"].as_str().unwrap()).unwrap(), fs::canonicalize(&wt).unwrap());
     assert_eq!(p.port, port);

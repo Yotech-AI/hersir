@@ -1,4 +1,4 @@
-//! The Team Lead's own read-only copies of the projects' code, at `<data dir>/code/<KEY>` (`gizai_agents::copies`): one
+//! The Chief's own read-only copies of the projects' code, at `<data dir>/code/<KEY>` (`gizai_agents::copies`): one
 //! per active project with a git repository, at the commit a new card of it starts from (`git::start_point`).
 //! - Before each chat turn every copy is refreshed, in parallel: the project is fetched (unless it was fetched less
 //!   than a minute ago), and the copy moves when that commit moved (else nothing in it is touched). One refresh per
@@ -11,7 +11,7 @@
 //! With each refresh Gizai also looks at the project's linked folder (your own checkout, where a new card's worktree
 //! copies vendor/ and node_modules/ from), locally and without a fetch (`gizai_agents::checkout::status`). When its
 //! dependencies are behind main, the turn's line gets a note: on a chat's first turn, and again when it changes. The
-//! Team Lead then offers to update the folder, and `update_checkout` does that in the background once you said yes
+//! Chief then offers to update the folder, and `update_checkout` does that in the background once you said yes
 //! (`start_update`), putting uncommitted changes in git's stash first only when you agreed to that too; never at the
 //! same time as a card's preparation copying from the same folder (`folder_lock`; its install runs in the worktree, so
 //! it doesn't count). The Editor's Update (`editor`)
@@ -40,7 +40,7 @@ const FETCH_LIMIT: Duration = Duration::from_secs(60);
 pub struct Copies {
     /// Project key → its copy.
     slots: Mutex<HashMap<String, Arc<Slot>>>,
-    /// Chat thread → what its turns' lines have told the Team Lead.
+    /// Chat thread → what its turns' lines have told the Chief.
     heard: Mutex<HashMap<String, Heard>>,
     /// Linked folder (as it is on disk) → written while it is updated, read while a card's worktree copies from it.
     folders: Mutex<HashMap<PathBuf, Arc<tokio::sync::RwLock<()>>>>,
@@ -123,7 +123,7 @@ pub fn dir_of(st: &AppState, key: &str) -> PathBuf {
     root(st).join(key)
 }
 
-/// The projects the Team Lead gets a copy of: active ones with a git repository on this disk, by key.
+/// The projects the Chief gets a copy of: active ones with a git repository on this disk, by key.
 pub fn projects_with_code(st: &AppState) -> Vec<Project> {
     let mut list: Vec<Project> = projects::list(&st.db).unwrap_or_default().into_iter()
         .filter(|p| p.status == "active")
@@ -133,7 +133,7 @@ pub fn projects_with_code(st: &AppState) -> Vec<Project> {
     list
 }
 
-/// The copies there are now, of the projects that get one: the folders the Team Lead may read and attach files from.
+/// The copies there are now, of the projects that get one: the folders the Chief may read and attach files from.
 pub fn dirs(st: &AppState) -> Vec<PathBuf> {
     projects_with_code(st).iter().map(|p| dir_of(st, &p.key)).filter(|d| d.join(".git").exists()).collect()
 }
@@ -342,7 +342,7 @@ async fn tidy(st: &AppState, keep: &[Project]) {
             match copies::remove(&dir, &root2) {
                 Ok(()) => true,
                 Err(e) => {
-                    eprintln!("gizai: couldn't remove the Team Lead's copy {}: {e}", dir.display());
+                    eprintln!("gizai: couldn't remove the Chief's copy {}: {e}", dir.display());
                     false
                 }
             }

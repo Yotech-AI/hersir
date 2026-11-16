@@ -529,3 +529,92 @@ describe("a run's live and past logs draw only what is in sight (GA-190)", () =>
     expect(logLines(log).length).toBeLessThanOrEqual(MOST);
   });
 });
+
+// ---- GA-279 QA: Open in terminal under a Chief answer that asks you to run commands ----
+// The folders are asked once for all the messages and kept while Hersir runs, so the test that holds them back runs first.
+const DOQ_FOLDER = { id: "/home/you/Herd/doq-studio", path: "~/Herd/doq-studio", name: "doq-studio", kind: "project", projectId: "p1", taskId: null,
+  readOnly: false, readOnlyWhy: null };
+/** The card's Why, as the Chief wrote it. */
+const RUN_THESE = "Before you test, in `~/Herd/doq-studio`:\n\n1. Run `php artisan migrate`.\n2. Run `npm run build`.";
+/** `n` messages: the Chief's answers that ask you to run commands, and your questions, in turn. */
+const asksToRun = (n: number) => Array.from({ length: n }, (_, i) => i % 2 === 0 ? message(i, "agent", RUN_THESE) : message(i, "user", `Question ${i}`));
+const opensIn = (n: FakeNode) => buttonsNamed(n, "Open in terminal~/Herd/doq-studio");
+
+describe("Open in terminal under a Chief answer that asks you to run commands (GA-279)", () => {
+  it("keeps each row's room while the folders load, so the chat you read doesn't move when the buttons come", async () => {
+    let give: (f: unknown[]) => void = () => {};
+    h.api.editorFolders = () => new Promise((ok) => { give = ok as (f: unknown[]) => void; });
+    h.chat = { ...h.chat, messages: asksToRun(200) };
+    await mount(<ChatThread threadId="c1" agent={lead} />);
+    const s = scroller();
+    await scrollTo(s, Math.round(s.scrollHeight / 2));
+    const at = s.scrollTop;
+    const reading = rowAtTop(s);
+    const y = rect(reading).top;
+    // an answer in sight, with its row: as tall once its button comes
+    const answer = inView(s).find((r) => byClass(r, "msg-term").length > 0)!;
+    const tall = rect(answer).height;
+    const rooms = byClass(container, "msg-term-wait");
+    expect(rooms.length, "a hidden button's room under each answer in the page").toBeGreaterThan(0);
+    expect(rooms.every((r) => r.getAttribute("aria-hidden") === "true")).toBe(true);
+    expect(opensIn(container)).toHaveLength(0);
+    expect(h.calls.filter(([k]) => k === "editorFolders"), "asked once for all the answers").toHaveLength(1);
+
+    await act(async () => { give([DOQ_FOLDER]); });
+    await settle();
+    expect(byClass(container, "msg-term-wait")).toHaveLength(0);
+    expect(opensIn(container).length).toBe(byClass(container, "msg-term").length);
+    expect(s.scrollTop).toBe(at);
+    expect(reading.isConnected).toBe(true);
+    expect(rect(reading).top).toBe(y);
+    expect(answer.isConnected).toBe(true);
+    expect(rect(answer).height, "the answer's group is as tall as before").toBe(tall);
+  });
+
+  it("the answer being written has none; once saved, it shows right under the message, and the chat follows at the bottom", async () => {
+    h.api.editorFolders = () => Promise.resolve([DOQ_FOLDER]);
+    measured(1000);
+    const messages = conversation(1000);
+    h.chat = { ...h.chat, messages, working: true };
+    await mount(<ChatThread threadId="c1" agent={lead} />);
+    const s = scroller();
+    await chat({ draft: RUN_THESE });
+    expect(byClass(container, "draft")).toHaveLength(1);
+    expect(byClass(container, "msg-term"), "no row under the answer being written").toHaveLength(0);
+    expect(opensIn(container)).toHaveLength(0);
+    expect(s.scrollTop).toBe(end(s));
+
+    const saved = message(1000, "agent", RUN_THESE, { runId: "r500" });
+    await chat({ messages: [...messages, saved], draft: "", tool: null });
+    await chat({ working: false });
+    const newest = rows().at(-1)!;
+    expect(indexOf(newest)).toBe(1000);
+    const text = byClass(newest, "chat-msg")[0];
+    const row = byClass(newest, "msg-term")[0];
+    expect(row, "the row under the saved message").toBeDefined();
+    expect(text.nextSibling, "right under the message").toBe(row);
+    expect(opensIn(newest)).toHaveLength(1);
+    expect(s.scrollTop).toBe(end(s));
+    expect(rect(row).bottom).toBeLessThanOrEqual(view(s).bottom);
+    // the messages above, without a command, have none
+    expect(byClass(container, "msg-term")).toHaveLength(1);
+  });
+
+  it("scrolled up, an answer saved below keeps the place you read", async () => {
+    h.api.editorFolders = () => Promise.resolve([DOQ_FOLDER]);
+    measured(1000);
+    const messages = conversation(1000);
+    h.chat = { ...h.chat, messages, working: true, draft: RUN_THESE };
+    await mount(<ChatThread threadId="c1" agent={lead} />);
+    const s = scroller();
+    await scrollTo(s, 30_000);
+    const at = s.scrollTop;
+    const reading = rowAtTop(s);
+    const y = rect(reading).top;
+    await chat({ messages: [...messages, message(1000, "agent", RUN_THESE, { runId: "r500" })], draft: "", tool: null });
+    await chat({ working: false });
+    expect(s.scrollTop).toBe(at);
+    expect(reading.isConnected).toBe(true);
+    expect(rect(reading).top).toBe(y);
+  });
+});

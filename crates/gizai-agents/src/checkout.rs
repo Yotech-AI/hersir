@@ -159,7 +159,7 @@ fn sentence(parts: &[String]) -> String {
     }
 }
 
-/// Uncommitted files as the Team Lead's sentences name them: "a, b"; after ten, "and 5 more".
+/// Uncommitted files as the Chief's sentences name them: "a, b"; after ten, "and 5 more".
 fn files_said(files: &[String]) -> String {
     if files.len() > 10 {
         format!("{} and {} more", files[..10].join(", "), files.len() - 10)
@@ -174,7 +174,7 @@ pub fn stash_said(files: &[String]) -> String {
     format!("put the uncommitted changes in {} in git's stash", files_said(files))
 }
 
-/// Why `check` changes nothing, as it found it. `said` words it for the Team Lead (`plan`); the Editor words it its own
+/// Why `check` changes nothing, as it found it. `said` words it for the Chief (`plan`); the Editor words it its own
 /// way (`behind`).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Refusal {
@@ -272,7 +272,7 @@ pub fn check(dir: &Path, repo: &Path, default_branch: &str, main: &str, switch: 
     Ok(Plan { stash: changed, on, switch: switching, default_branch: default_branch.to_string(), from, to, commits, install })
 }
 
-/// `check`, refused in a sentence for the Team Lead (`Refusal::said`): `update_checkout`'s plan.
+/// `check`, refused in a sentence for the Chief (`Refusal::said`): `update_checkout`'s plan.
 pub fn plan(dir: &Path, repo: &Path, default_branch: &str, main: &str, switch: bool, stash: bool) -> Result<Plan, String> {
     check(dir, repo, default_branch, main, switch, stash).map_err(|r| r.said(dir, default_branch, main))
 }
@@ -342,21 +342,20 @@ impl Progress {
 /// Carries out `plan` in the checkout `dir`: puts the uncommitted changes in tracked files in git's stash when the plan
 /// says so (`git stash push`, as `STASH_MESSAGE`; untracked files stay where they are), switches to the default branch
 /// when the plan says so, fast-forwards it to main (`git merge --ff-only`), then installs the dependency folders that
-/// were behind (`prepare::install`: no prompts, within its time limit). git's hooks don't run, so nothing happens beyond
-/// what the plan says. `path` is the PATH the installs get (None: Gizai's own). The first step that fails stops it.
+/// were behind (`prepare::install`: no prompts, within its time limit). git's hooks don't run (`worktree::NO_HOOKS`, as
+/// for all of Hersir's git), so nothing happens beyond what the plan says. `path` is the PATH the installs get (None:
+/// Gizai's own). The first step that fails stops it.
 pub fn update(dir: &Path, plan: &Plan, path: Option<&OsStr>) -> Result<Updated, Box<Stopped>> {
     let mut p = Progress::default();
     let said = |e: AgentError| match e {
         AgentError::Git(m) => m,
         other => other.to_string(),
     };
-    const NO_HOOKS: [&str; 2] = ["-c", "core.hooksPath=/dev/null"];
     if !plan.stash.is_empty() {
         let top = || git(dir, &["rev-parse", "--quiet", "--verify", "refs/stash"]).ok();
         let before = top();
         // tracked files only, as `check` counts them
-        let args = [NO_HOOKS[0], NO_HOOKS[1], "stash", "push", "-m", STASH_MESSAGE];
-        match git(dir, &args) {
+        match git(dir, &["stash", "push", "-m", STASH_MESSAGE]) {
             Ok(out) => p.printed(&out),
             Err(e) => return Err(p.stop("putting the uncommitted changes in git's stash failed".into(), said(e))),
         }
@@ -367,8 +366,7 @@ pub fn update(dir: &Path, plan: &Plan, path: Option<&OsStr>) -> Result<Updated, 
         }
     }
     if plan.switch {
-        let args = [NO_HOOKS[0], NO_HOOKS[1], "switch", "--quiet", plan.default_branch.as_str()];
-        match git(dir, &args) {
+        match git(dir, &["switch", "--quiet", plan.default_branch.as_str()]) {
             Ok(out) => p.printed(&out),
             Err(e) => return Err(p.stop(format!("switching to {} failed", plan.default_branch), said(e))),
         }
@@ -377,8 +375,7 @@ pub fn update(dir: &Path, plan: &Plan, path: Option<&OsStr>) -> Result<Updated, 
             None => format!("switched to {}", plan.default_branch),
         });
     }
-    let args = [NO_HOOKS[0], NO_HOOKS[1], "merge", "--ff-only", "--quiet", plan.to.as_str()];
-    match git(dir, &args) {
+    match git(dir, &["merge", "--ff-only", "--quiet", plan.to.as_str()]) {
         Ok(out) => p.printed(&out),
         Err(e) => return Err(p.stop("the fast-forward to main failed".into(), said(e))),
     }

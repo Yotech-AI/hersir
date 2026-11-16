@@ -2,9 +2,11 @@
 
 Hersir was called GizAi until version 0.14.
 
-Hersir builds from source on your own computer and installs for you alone, without sudo or administrator rights. It runs on Linux, on Macs with Apple silicon and on Windows 11.
+From 0.17.0 the programs, the command and the app id are Hersir's too: `hersir`, `hersir-mcp` and `dev.hersir.app`. An install from before 0.17.0 keeps its folders when it updates, from Hersir itself or with the one line, and gets the hersir names beside its gizai ones: `gizai` still starts Hersir.
 
-There are no downloads, installers or binaries, on any system. The install script checks what is missing, builds Hersir and installs it. The `production` branch holds the released version; `main` is development.
+Hersir installs for you alone, without sudo or administrator rights. It runs on Linux, on Macs with Apple silicon and on Windows 11.
+
+The one line installs the latest release's ready-made build for your system, in about a minute, once it has checked the release's signature. Where there is no ready-made build, it builds Hersir from the release's source on your own computer, as a clone does. Updates from inside Hersir install the release's ready-made build too, once its signature checks ([Updates](#updates)). There are no installers and no browser downloads, on any system. The `production` branch holds the released version; `main` is development.
 
 Hersir is early: its version is still 0.x. Every release is on [GitHub Releases](https://github.com/Yotech-AI/hersir/releases).
 
@@ -22,14 +24,21 @@ On Windows, in PowerShell:
 irm https://hersir.dev/install.ps1 | iex
 ```
 
-It gets the source of the latest release into `~/.local/share/gizai-src` (on Windows `%LOCALAPPDATA%\gizai-src`), or updates it there. Then it runs that release's install script: first its check, which names what is missing, then the build and the install. Run it again to update.
+It gets the source of the latest release into `~/.local/share/hersir-src` (on Windows `%LOCALAPPDATA%\hersir-src`), or updates it there; the `gizai-src` folder from before 0.17.0 becomes that folder. Then:
 
-- hersir.dev sends the line on to [`scripts/get.sh`](https://github.com/Yotech-AI/hersir/blob/production/scripts/get.sh) (on Windows [`scripts/get.ps1`](https://github.com/Yotech-AI/hersir/blob/production/scripts/get.ps1)) on the `production` branch, where you can read it first. The source it gets comes from GitHub.
+1. It checks the release's signature with ssh-keygen, against Hersir's release keys, which the line carries itself ([Signatures](#signatures)). Until it checks, nothing of the release runs.
+2. It downloads the release's ready-made build for your system, checks it against the release's `SHA256SUMS`, and puts it in the source folder.
+3. It runs that release's install script: first its check, which names what is missing, then the install, which backs up your data first.
+
+Run it again to update. When the release has no ready-made build for your system (an Intel Mac, Linux on arm64), or it can't be downloaded or doesn't match its checksum, one line says why, and the install script builds Hersir from the release's checked source instead, as before: that takes several minutes and needs what a build needs ([What every system needs](#what-every-system-needs)).
+
+- hersir.dev sends the line on to [`scripts/get.sh`](https://github.com/Yotech-AI/hersir/blob/production/scripts/get.sh) (on Windows [`scripts/get.ps1`](https://github.com/Yotech-AI/hersir/blob/production/scripts/get.ps1)) on the `production` branch, where you can read it first. The source, the signature and the ready-made builds it gets come from GitHub.
 - Older install lines with gizai.app keep working.
-- Without git (on Linux and macOS also bash and curl), it says what to install first and does nothing else.
+- Without git or ssh-keygen (on Linux and macOS also bash and curl), it says what to install first and does nothing else.
+- A release that isn't signed yet stops with `vX.Y.Z isn't signed yet: try again in a few minutes.` One whose signature doesn't check isn't installed either, and one line says why: an installed Hersir stays as it is.
 - The source folder is the install's own: changes in it are replaced. Your data stays in [its own folder](#your-data).
-- `--uninstall --purge` (`-Uninstall -Purge` on Windows) deletes the source folder with your data.
-- CI proves the line: it installs, updates and uninstalls Hersir with it on Ubuntu 24.04, Fedora, Arch Linux, openSUSE Tumbleweed, macOS 15 on Apple silicon and Windows whenever an install script changes, and runs hersir.dev's own lines on Ubuntu, macOS and Windows after each release and every week.
+- `--uninstall --purge` (`-Uninstall -Purge` on Windows) deletes the source folder with your data: the data folder Hersir uses, which is the hersir folder, or, when there is none, the gizai folder of an install from before 0.17.0 that holds `gizai.db` ([Your data](#your-data)). On macOS and Windows, `HERSIR_DATA_DIR` (else `GIZAI_DATA_DIR`) names another one.
+- CI proves the line: it installs, updates and uninstalls Hersir with it on Ubuntu 24.04, Fedora, Arch Linux, openSUSE Tumbleweed, macOS 15 on Apple silicon and Windows whenever an install script changes, from a ready-made build signed with a test key and from source, and checks that a release whose signature doesn't check installs nothing. It runs hersir.dev's own lines on Ubuntu, macOS and Windows once each release is signed, and every week.
 
 The install script's options go after the line:
 
@@ -37,18 +46,23 @@ The install script's options go after the line:
 |---|---|---|
 | `curl -fsSL … \| sh -s -- --check` | `& ([scriptblock]::Create((irm …))) -Check` | Gets the source and shows what is missing |
 | `curl -fsSL … \| sh -s -- --uninstall` | `& ([scriptblock]::Create((irm …))) -Uninstall` | Removes Hersir and keeps your data |
-| `curl -fsSL … \| GIZAI_PREFIX=$HOME/opt/hersir sh` | `$env:GIZAI_PREFIX = 'D:\Apps\Hersir'`, then the line | Installs into another folder than `~/.local` (on Windows `%LOCALAPPDATA%\Programs\Gizai`) |
+| `curl -fsSL … \| sh -s -- --from-source` | `& ([scriptblock]::Create((irm …))) -FromSource` | Builds the release's checked source instead of using its ready-made build |
+| `curl -fsSL … \| HERSIR_PREFIX=$HOME/opt/hersir sh` | `$env:HERSIR_PREFIX = 'D:\Apps\Hersir'`, then the line | Installs into another folder than `~/.local` (on Windows `%LOCALAPPDATA%\Programs\Hersir`) |
+
+The scripts' variables from before 0.17.0, `GIZAI_PREFIX`, `GIZAI_REPO` and the others, still work; when both names are set, the `HERSIR_` one wins.
 
 ## What every system needs
 
-- [Claude Code](https://docs.claude.com/en/docs/claude-code) or Codex, installed and logged in; for Claude Code, run `claude` once. The Team Lead's chat needs Claude Code. Agents can also run on Gemini or another coding CLI you have installed and logged in (Settings → Coding CLIs).
-- git, Rust ([rustup](https://rustup.rs)) and Node.js 20 or newer.
+- [Claude Code](https://docs.claude.com/en/docs/claude-code) or Codex, installed and logged in; for Claude Code, run `claude` once. The Chief's chat needs Claude Code. Agents can also run on Gemini or another coding CLI you have installed and logged in (Settings → Coding CLIs).
+- git, and ssh-keygen, with which the one line checks a release's signature. ssh-keygen is OpenSSH's client: on Linux the package `openssh-client`, `openssh-clients` or `openssh`; macOS has it, and so do Windows 11 and Git for Windows.
+- With the ready-made build, that's all Hersir needs to run, with WebKitGTK 4.1 on Linux and WebView2 on Windows: no Rust, Node.js or compiler. The check (`--check`) names only these.
+- To build from source (the one line with `--from-source`, a system without a ready-made build, or a clone), also Rust ([rustup](https://rustup.rs)), Node.js 20 or newer, and what each system lists below for a build. The check names those when it builds.
 - Optional, to review cards as pull requests on GitHub: the [GitHub CLI](https://cli.github.com) and an SSH key on your GitHub account. Settings → GitHub shows what's missing and can log gh in.
 - Optional, for a project on Bitbucket Cloud: an SSH key on your Bitbucket account and an API token with the scopes `read:user:bitbucket`, `read:pullrequest:bitbucket` and `write:pullrequest:bitbucket` (Atlassian account → Security → API tokens). Save the token with your Atlassian email in Settings → Bitbucket. Hersir keeps them in your keychain.
 
 ## Linux
 
-You also need WebKitGTK 4.1: the check (`./install.sh --check` in a clone) names the packages for your distribution. The tray icon needs libayatana-appindicator: `libayatana-appindicator` on Arch and Omarchy, `libayatana-appindicator3-1` on Debian and Ubuntu (the .deb depends on it). Without it Hersir runs without a tray icon.
+You also need WebKitGTK 4.1. With the ready-made build (for x86_64), the check names its library's package for your distribution; to build, its development packages, a C compiler and pkg-config (`./install.sh --check` in a clone). The tray icon needs libayatana-appindicator: `libayatana-appindicator` on Arch and Omarchy, `libayatana-appindicator3-1` on Debian and Ubuntu (the .deb depends on it). Without it Hersir runs without a tray icon.
 
 Install [in one line](#in-one-line), or build from a clone:
 
@@ -58,17 +72,17 @@ cd hersir
 ./install.sh
 ```
 
-The installer builds Hersir and installs it for your user in `~/.local`, with no sudo. It also adds Hersir to your app launcher.
+The installer builds Hersir (the one line installs the ready-made build instead) and installs it for your user in `~/.local`, with no sudo: the programs in `~/.local/lib/hersir`, and the `hersir` command in `~/.local/bin`. It also adds Hersir to your app launcher.
 
 | Command | What it does |
 |---|---|
 | `./install.sh --check` | Shows what is missing and the command that installs it |
 | `./install.sh` | Installs, or updates (your data is backed up first) |
-| `./install.sh --uninstall` | Removes Hersir and keeps your data in `~/.local/share/gizai` |
+| `./install.sh --uninstall` | Removes Hersir, also an install from before 0.17.0, and keeps your data in `~/.local/share/hersir`, or in `~/.local/share/gizai` of an install from before 0.17.0 when that holds `gizai.db` and there is no hersir folder ([Your data](#your-data)) |
 
 ## macOS
 
-For Macs with Apple silicon (M1 and later). You also need Apple's Command Line Tools, which bring git and a C compiler: run `xcode-select --install`. Node.js can come from Homebrew (`brew install node`), mise, nvm or the installer on nodejs.org.
+For Macs with Apple silicon (M1 and later). git comes with Apple's Command Line Tools (run `xcode-select --install`) or Homebrew (`brew install git`); that's all the ready-made build needs. To build from source you also need the Command Line Tools themselves, which bring a C compiler, and Node.js, from Homebrew (`brew install node`), mise, nvm or the installer on nodejs.org.
 
 Install [in one line](#in-one-line), or build from a clone:
 
@@ -80,9 +94,9 @@ cd hersir
 
 It's the same installer, with the same commands as on Linux. On a Mac it:
 
-- builds `Hersir.app` and installs it in `~/.local/lib/gizai`;
+- installs `Hersir.app`, the ready-made build's or the one it builds, in `~/.local/lib/hersir` (an install from before 0.17.0 keeps `~/.local/lib/gizai`);
 - links it into the Applications folder in your home folder (`~/Applications`): open Hersir from there and keep it in the Dock;
-- puts the `gizai` command in `~/.local/bin`.
+- puts the `hersir` command in `~/.local/bin`.
 
 Hersir's tray icon is in the menu bar.
 
@@ -90,9 +104,9 @@ Hersir's tray icon is in the menu bar.
 
 For Windows 11. You also need:
 
-- the Microsoft C++ Build Tools, with "Desktop development with C++" ([download](https://visualstudio.microsoft.com/visual-cpp-build-tools/); the Rust installer offers to install them);
-- Git for Windows: Claude Code runs its commands in Git for Windows' Git Bash;
-- WebView2, which comes with Windows 11.
+- Git for Windows: Claude Code runs its commands in Git for Windows' Git Bash, and it has an ssh-keygen too;
+- WebView2, which comes with Windows 11;
+- to build from source only: the Microsoft C++ Build Tools, with "Desktop development with C++" ([download](https://visualstudio.microsoft.com/visual-cpp-build-tools/); the Rust installer offers to install them), Rust and Node.js.
 
 Rust, Node.js and Git can come from winget:
 
@@ -110,7 +124,7 @@ cd hersir
 powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-`install.ps1` builds Hersir and installs it in `%LOCALAPPDATA%\Programs\Gizai`, without administrator rights. It adds Hersir to the Start menu with a shortcut that carries Hersir's app ID, which Windows needs to show Hersir's notifications.
+`install.ps1` builds Hersir (the one line installs the ready-made build instead) and installs it in `%LOCALAPPDATA%\Programs\Hersir` (an install from before 0.17.0 keeps `%LOCALAPPDATA%\Programs\Gizai`), without administrator rights. It adds Hersir to the Start menu with a shortcut that carries Hersir's app ID, which Windows needs to show Hersir's notifications.
 
 Hersir runs the coding CLIs installed on Windows itself, like `claude.exe` or npm's `gemini.cmd`. It doesn't use WSL.
 
@@ -118,15 +132,22 @@ Hersir runs the coding CLIs installed on Windows itself, like `claude.exe` or np
 |---|---|
 | `.\install.ps1 -Check` | Shows what is missing and how to install it |
 | `.\install.ps1` | Installs, or updates (your data is backed up first) |
-| `.\install.ps1 -Uninstall` | Removes Hersir and keeps your data in `%APPDATA%\Gizai` |
+| `.\install.ps1 -Uninstall` | Removes Hersir, also an install from before 0.17.0, and keeps your data in `%APPDATA%\Hersir`, or in `%APPDATA%\Gizai` of an install from before 0.17.0 when that holds `gizai.db` and there is no `%APPDATA%\Hersir` ([Your data](#your-data)) |
 
 If PowerShell won't run scripts, start these the way the block above does: `powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Check`. The one line needs no such change: it starts `install.ps1` that way itself.
 
-## Not signed
+## Signatures
 
-Hersir isn't signed yet: there is no Apple Developer account or Windows certificate until Hersir has paid features. A build made on your own computer isn't a download, so Gatekeeper and SmartScreen shouldn't stop it. If they still do:
+Every release of Hersir is signed with Hersir's own release key: not Apple's or Microsoft's, but a key of Hersir's own, kept on Jeffrey's computer. The one-line install and Update check that signature before anything of the release runs: a release without it, or with one that doesn't check, isn't installed ([how a release is signed](RELEASING.md#making-a-release), step 5).
 
-- macOS: System Settings → Privacy & Security → Open Anyway, or `xattr -dr com.apple.quarantine ~/.local/lib/gizai/Hersir.app`;
+- The one line checks it with ssh-keygen (`ssh-keygen -Y verify`), against the two release keys it carries itself, the lines of [`release-signers`](../release-signers). It never takes keys from a release.
+- The signature covers the commit the release's tag points to and the release's `SHA256SUMS`, which has the checksum of each ready-made build: so it covers the source, and through `SHA256SUMS` the builds.
+- No signature: `vX.Y.Z isn't signed yet: try again in a few minutes.` A signature by another key, for another commit or over another `SHA256SUMS`: one line says so. Either way nothing of the release runs and nothing is installed.
+- Only then is the ready-made build checked against `SHA256SUMS`. A build that doesn't match isn't used: the one line says so, and builds the checked source instead.
+
+Hersir has no Apple or Microsoft signature yet: there is no Apple Developer account or Windows certificate until Hersir has paid features. The one line and Update download a release's ready-made build with curl (the one line on Windows with PowerShell), which doesn't mark it as downloaded from the internet, and a build made on your own computer isn't a download, so Gatekeeper and SmartScreen shouldn't stop either. Don't download the builds from the release's page in a browser: a browser marks them, and macOS and Windows stop an app with that mark that Apple or Microsoft hasn't signed. If they still stop it:
+
+- macOS: System Settings → Privacy & Security → Open Anyway, or `xattr -dr com.apple.quarantine ~/.local/lib/hersir/Hersir.app`;
 - Windows: More info → Run anyway.
 
 After an update, macOS may ask once whether Hersir may use what it saved in your keychain: choose Always Allow.
@@ -136,22 +157,25 @@ After an update, macOS may ask once whether Hersir may use what it saved in your
 The first time Hersir opens, it walks you through four steps:
 
 1. your name and your team's name;
-2. which coding CLIs to use: it lists the ones it finds installed. The Backend, Frontend, QA and DevOps Agents run on the one you pick; the Team Lead stays on Claude Code, where its chat runs;
+2. which coding CLIs to use: it lists the ones it finds installed. The Backend, Frontend, QA and DevOps Agents run on the one you pick; the Chief stays on Claude Code, where its chat runs;
 3. importing MCP servers from Claude Code, if you want;
-4. the Team Lead's chat, when Claude Code is installed: it welcomes you and asks whether you'd like help setting up agents, clients, projects, tasks or anything else.
+4. the Chief's chat, when Claude Code is installed: it welcomes you and asks whether you'd like help setting up agents, clients, projects, tasks or anything else.
 
-You can skip it. Hersir is set up already: you (named after your login), My company, My team, and five agents (the Team Lead, Backend, Frontend, QA and DevOps) on Claude Code, or on Codex when only Codex is installed. Change them later on the Team page and in Settings.
+You can skip it. Hersir is set up already: you (named after your login), My company, My team, and five agents (the Chief, Backend, Frontend, QA and DevOps) on Claude Code, or on Codex when only Codex is installed. Change them later on the Team page and in Settings.
 
-`GIZAI_SKIP_ONBOARDING=1` starts Hersir as if you skipped it: for scripts and tests on a new data folder.
+`HERSIR_SKIP_ONBOARDING=1` starts Hersir as if you skipped it: for scripts and tests on a new data folder.
 
 ## Updates
 
-Hersir asks GitHub for the latest release 20 seconds after it starts, then every six hours. When a newer one is out, **Update to X.Y.Z** shows above Company in the sidebar. Click it and Hersir:
+Hersir asks GitHub for the latest release 20 seconds after it starts, then every six hours. When a newer one is out and signed, **Update to X.Y.Z** shows above Company in the sidebar. Click it and Hersir:
 
-1. builds the new version from source in the background with your system's install script, while you keep working;
-2. backs up your data;
-3. installs the new version;
-4. offers a restart.
+1. gets the release's source and checks its signature against Hersir's own release keys, which are built into Hersir: a release that isn't signed, or whose signature doesn't check, is never installed;
+2. downloads the release's ready-made build for your system in the background, while you keep working, and checks it against the release's signed checksums. On a system without one (an Intel Mac, Linux on arm64), or when the download or its checksum fails, it builds the new version from source with your system's install script instead, and Settings → Updates says why;
+3. backs up your data;
+4. installs the new version;
+5. offers a restart.
+
+A newer release that isn't signed yet isn't offered: Settings → Updates says `vX.Y.Z is out, but not signed yet.` Releases are signed shortly after they come out. The download uses curl, so the build isn't marked as downloaded from the internet, and Gatekeeper and SmartScreen don't stop it.
 
 If a step fails, the version you have keeps working, and Settings → Updates says why. Settings → Updates also has Check now, and switches the check off.
 
@@ -159,15 +183,19 @@ You can still update from a terminal: run the [one line](#in-one-line) again, or
 
 ## Your data
 
-Hersir keeps your data in one folder on your computer: the database, logs, worktrees and backups. It is `~/.local/share/gizai` on Linux, `~/Library/Application Support/Gizai` on macOS and `%APPDATA%\Gizai` on Windows, and `GIZAI_DATA_DIR` points it elsewhere. One Hersir runs per data folder.
+Hersir keeps your data in one folder on your computer: the database, logs, worktrees and backups. It is `~/.local/share/hersir` on Linux (`$XDG_DATA_HOME/hersir` when that is set), `~/Library/Application Support/Hersir` on macOS and `%APPDATA%\Hersir` on Windows. `HERSIR_DATA_DIR` points it elsewhere. One Hersir runs per data folder.
+
+An install from before 0.17.0 keeps its data where it is, in `~/.local/share/gizai`, `~/Library/Application Support/Gizai` or `%APPDATA%\Gizai`: Hersir uses the hersir folder when there is one, else the gizai folder when it holds Hersir's data (its `gizai.db`), else it makes the hersir folder. It never moves or copies your data.
+
+Each variable Hersir reads has a `HERSIR_` name and, from before 0.17.0, a `GIZAI_` one: `GIZAI_DATA_DIR` still works, and `HERSIR_DATA_DIR` wins when both are set.
 
 It cleans up after itself when it starts and once a day while it runs:
 
 - **Run and chat logs** (`runs/` and `chat/`): kept for 30 days after the run, chat answer or board check ended, then removed. The run stays in the history with its summary, cost and commits; Show output says its log is gone.
-- **Keys for the Team Lead's tools** (`api_tokens` in `gizai.db`): each one lasts a chat answer or board check, and is removed a day after it expired or was revoked.
+- **Keys for the Chief's tools** (`api_tokens` in `gizai.db`): each one lasts a chat answer or board check, and is removed a day after it expired or was revoked.
 - **Screenshots** of what agents built (`files/`): a card keeps its newest 3 sets, and all of them go 30 days after it reached Done or Cancelled (0 days keeps them). What you attached to a card is never removed.
 - **Stored files nothing uses any more** (`files/`): a file no attachment, screenshot or chat message names any more is removed, a day after it was last stored.
-- **Backups** (`backups/`): one before every update, install and database upgrade, and `gizai --backup` makes one when you ask. The newest 20 are kept. Their names use your local time, like `gizai-before-update-20261009-143502-123.db`.
+- **Backups** (`backups/`): one before every update, install and database upgrade, and `hersir --backup` makes one when you ask. The newest 20 are kept. Their names use your local time, like `gizai-before-update-20261009-143502-123.db`.
 - **Backups in a folder you choose** (Settings → General → Backups): copies of the database and your stored files in a folder of your own, like a USB disk or a folder that Dropbox or Syncthing keeps, daily, weekly or when you ask. After each one, this computer's backups past Keep (10 by default) are removed; one made before a restore, and other computers' backups, never are. Keys and passwords are never in them, and they are not encrypted: a synced folder gets your data as it is ([Backups](settings.md#backups)).
 
 ### Restore a backup

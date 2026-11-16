@@ -98,6 +98,6 @@ export function tickedLine(n: number): string {
 /** Why there is no Team Lead chat after finishing (finish_onboarding gave no chat), shown above the board. */
 export function noChatNote(claudeCode: boolean): string {
   return claudeCode
-    ? "The Team Lead's chat couldn't start. You can start one on the Chat page."
-    : "There's no Team Lead chat yet: it needs Claude Code, which isn't installed. Once it is, start one on the Chat page.";
+    ? "The Chief's chat couldn't start. You can start one on the Chat page."
+    : "There's no chat with the Chief yet: it needs Claude Code, which isn't installed. Once it is, start one on the Chat page.";
 }

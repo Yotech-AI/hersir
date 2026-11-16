@@ -6,6 +6,8 @@
 //   is a share of the column, the same in every folder; whether it shows is kept per folder (src/lib/terminalPanel.ts).
 // - One view per terminal, through TF0's store: Own page moves it to #/terminal/<id>; Show in Editor (TF1's sidebar and
 //   page) puts it in this panel, which then opens on its tab.
+// - The Chat's terminal panel (GA-278, components/chat/ChatTerminal.tsx) has the same tabs (TermTab), close question
+//   (CloseAsk) and drag handle (Handle, there on the panel's left edge).
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Maximize2, Plus, Terminal as TerminalIcon, X } from "lucide-react";
@@ -181,32 +183,60 @@ export function TerminalPanel({ p, name }: { p: TerminalPanelState; name: string
   );
 }
 
+/** What a drag handle resizes: the Editor's panel by its top edge, or the Chat's terminal panel by its left edge (GA-278). */
+export type HandleEdge = {
+  /** "top": dragging up and ↑ grow the panel; "left": dragging left and ←. */
+  side: "top" | "left";
+  label: string;
+  /** The panel's size, the other part's (the code, the conversation) and the whole that the share is of, now, in pixels;
+   *  null when they can't be measured. */
+  measure: (panel: HTMLElement) => { size: number; other: number; whole: number } | null;
+  /** The panel's size for a wanted size, within its limits. */
+  clamp: (want: number, size: number, other: number) => number;
+  /** The share of the whole (0 to 100) a size is. */
+  share: (size: number, whole: number) => number;
+  /** The share a double-click gives back, and how far the arrow keys move it. */
+  first: number;
+  step: number;
+  /** Keeps the share on this computer. */
+  keep: (share: number) => void;
+};
+
+/** The Editor's panel: its height, a share of the code column, at least 120px of code and of panel. */
+const EDITOR_EDGE: HandleEdge = {
+  side: "top", label: "Terminal panel's height", clamp: clampPanel, share: shareFor, first: FIRST_SHARE, step: SHARE_STEP, keep: keepShare,
+  measure: (el) => {
+    const col = el.parentElement;
+    const code = col?.querySelector<HTMLElement>(":scope > .ed-code");
+    if (!col || !code) return null;
+    return { size: el.getBoundingClientRect().height, other: code.getBoundingClientRect().height, whole: col.getBoundingClientRect().height };
+  },
+};
+
 /** The drag handle, the panel's top border (design §7): drag it between the limits (at least 120px of code and of panel),
- *  a double-click gives 30% back, ↑ and ↓ move it 5% when it has the focus. The share is kept when you let go. */
-function Handle({ panel, share, setShare }: { panel: React.RefObject<HTMLDivElement | null>; share: number; setShare: (n: number) => void }) {
-  const drag = useRef<{ y: number; h: number; code: number; col: number } | null>(null);
+ *  a double-click gives 30% back, ↑ and ↓ move it 5% when it has the focus. The share is kept when you let go. With the
+ *  Chat's `edge`, the panel's left border: ← and → move it. */
+export function Handle({ panel, share, setShare, edge = EDITOR_EDGE }: {
+  panel: React.RefObject<HTMLDivElement | null>; share: number; setShare: (n: number) => void; edge?: HandleEdge;
+}) {
+  const drag = useRef<{ at: number; size: number; other: number; whole: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const latest = useRef(share);
   latest.current = share;
-  /** The panel's, the code's and the column's heights now. */
-  const measure = () => {
-    const el = panel.current;
-    const col = el?.parentElement;
-    const code = col?.querySelector<HTMLElement>(":scope > .ed-code");
-    if (!el || !col || !code) return null;
-    return { h: el.getBoundingClientRect().height, code: code.getBoundingClientRect().height, col: col.getBoundingClientRect().height };
-  };
-  const set = (n: number, keep: boolean) => { latest.current = n; setShare(n); if (keep) keepShare(n); };
+  const top = edge.side === "top";
+  /** The panel's, the other part's and the whole's sizes now. */
+  const measure = () => (panel.current ? edge.measure(panel.current) : null);
+  const set = (n: number, keep: boolean) => { latest.current = n; setShare(n); if (keep) edge.keep(n); };
   const end = () => {
     if (!drag.current) return;
     drag.current = null;
     ref.current?.classList.remove("is-drag");
     panel.current?.parentElement?.classList.remove("is-dragging");
-    keepShare(latest.current);
+    edge.keep(latest.current);
   };
   useEffect(() => end, []); // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <div ref={ref} className="term-handle" role="separator" aria-orientation="horizontal" aria-label="Terminal panel's height"
+    <div ref={ref} className="term-handle" role="separator" aria-orientation={top ? "horizontal" : "vertical"} aria-label={edge.label}
       aria-valuenow={Math.round(share)} aria-valuemin={0} aria-valuemax={100} tabIndex={0}
       onPointerDown={(e) => {
         if (e.button !== 0) return;
@@ -214,32 +244,33 @@ function Handle({ panel, share, setShare }: { panel: React.RefObject<HTMLDivElem
         if (!m) return;
         e.preventDefault();
         try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* the pointer is gone already */ }
-        drag.current = { y: e.clientY, ...m };
+        drag.current = { at: top ? e.clientY : e.clientX, ...m };
         e.currentTarget.classList.add("is-drag");
         panel.current?.parentElement?.classList.add("is-dragging");
       }}
       onPointerMove={(e) => {
         const d = drag.current;
         if (!d) return;
-        set(shareFor(clampPanel(d.h + d.y - e.clientY, d.h, d.code), d.col), false);
+        set(edge.share(edge.clamp(d.size + d.at - (top ? e.clientY : e.clientX), d.size, d.other), d.whole), false);
       }}
       onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}
-      onDoubleClick={() => set(FIRST_SHARE, true)}
+      onDoubleClick={() => set(edge.first, true)}
       onKeyDown={(e) => {
-        if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+        const [grow, shrink] = top ? ["ArrowUp", "ArrowDown"] : ["ArrowLeft", "ArrowRight"];
+        if (e.key !== grow && e.key !== shrink) return;
         e.preventDefault();
         const m = measure();
         if (!m) return;
-        const by = ((e.key === "ArrowUp" ? 1 : -1) * SHARE_STEP * m.col) / 100;
-        set(shareFor(clampPanel(m.h + by, m.h, m.code), m.col), true);
+        const by = ((e.key === grow ? 1 : -1) * edge.step * m.whole) / 100;
+        set(edge.share(edge.clamp(m.size + by, m.size, m.other), m.whole), true);
       }} />
   );
 }
 
 /** A terminal's tab (design §3 and §7): its icon, its name, what runs in it, ×. A double-click renames it in place; a
  *  middle click or × closes it, asking under the tab first while a program runs; ← and → move between tabs. While its view
- *  is on its own page, its icon is Own page's. */
-function TermTab({ s, on, ids, renaming, pick, close, rename, fail }: {
+ *  is on its own page, its icon is Own page's. The Chat's terminal panel has the same tabs (GA-278). */
+export function TermTab({ s, on, ids, renaming, pick, close, rename, fail }: {
   s: TerminalSession; on: boolean; ids: string[]; renaming: boolean;
   pick: (id: string) => void; close: (s: TerminalSession, el: HTMLElement | null) => void; rename: (on: boolean) => void; fail: (m: string) => void;
 }) {
@@ -290,7 +321,7 @@ function TermTab({ s, on, ids, renaming, pick, close, rename, fail }: {
 }
 
 /** Closing a terminal while a program runs in it, under its tab (design §3): Cancel, Close; Close has the focus. */
-function CloseAsk({ at, s, close, cancel }: { at: { x: number; y: number }; s: TerminalSession; close: () => void; cancel: () => void }) {
+export function CloseAsk({ at, s, close, cancel }: { at: { x: number; y: number }; s: TerminalSession; close: () => void; cancel: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const cancelRef = useRef(cancel);
   cancelRef.current = cancel;

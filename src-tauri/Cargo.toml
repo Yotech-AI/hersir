@@ -11,6 +11,12 @@ version.workspace = true
 name = "gizai_lib"
 crate-type = ["rlib"]
 
+# The program is hersir (hersir.exe on Windows), as tauri.conf.json's mainBinaryName says; the package keeps its name,
+# as the other crates do (GA-248).
+[[bin]]
+name = "hersir"
+path = "src/main.rs"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

@@ -32,7 +32,7 @@ Questions and ideas go to [Discussions](https://github.com/Yotech-AI/hersir/disc
 The Hersir you use keeps your real data. Don't run `./install.sh` to try a change, and never point a test at your own data folder.
 
 - On Linux and macOS, `scripts/run.sh` builds Hersir and starts it on data of its own in `.devdata/dev`, next to the Hersir you use.
-- For anything else, set `GIZAI_DATA_DIR` to a scratch folder.
+- For anything else, set `HERSIR_DATA_DIR` to a scratch folder.
 - To test an update, follow [Testing an update](docs/RELEASING.md#testing-an-update-without-touching-a-real-hersir) in `docs/RELEASING.md`: a scratch install and a fake release, with `HOME` and `XDG_DATA_HOME` in the scratch folder too.
 
 ## How the code is laid out

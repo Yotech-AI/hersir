@@ -416,6 +416,16 @@ button.label-pill[aria-pressed="true"] { border-color: var(--accent); color: var
 .chat-working { display: flex; align-items: center; gap: 8px; color: var(--live); font-size: var(--fs-sm); font-weight: 500; }
 .chat-note { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0 auto 22px; max-width: 600px; font-size: var(--fs-sm); color: var(--text-3); text-align: center; }
 .chat-note.bad { color: var(--danger); }
+/* Open in terminal under a Chief answer that asks you to run commands (GA-279): quiet buttons right under the message, their
+   icons in line with its text, on a row that wraps; a long folder ends in … (its tooltip has it whole). Until the folders
+   are known the row keeps a button's room, so the chat doesn't jump. */
+.msg-term { margin: -4px 0 0 -9px; }
+.msg-term-row { display: flex; flex-wrap: wrap; gap: 2px 4px; }
+.msg-term-row .btn { max-width: 100%; }
+.msg-term-row .mono { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-xs); color: var(--text-3); }
+.msg-term-row .btn:hover .mono { color: var(--text-2); }
+.msg-term-wait { visibility: hidden; }
+.msg-term-why { padding: 2px 0 0 9px; color: var(--danger); font-size: var(--fs-xs); line-height: 1.45; overflow-wrap: anywhere; }
 
 .tool-card { max-width: calc(560px * var(--chat-scale, 1)); border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); font-size: var(--fs-sm); }
 .tool-card .tc-row { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 0 4px 0 10px; }

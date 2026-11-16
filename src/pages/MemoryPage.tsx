@@ -434,11 +434,11 @@ function MemoryEmpty({ scope, onNew }: { scope: MemoryScope; onNew: () => void }
     <div className="empty mem-empty">
       <Brain className="icon" />
       <b>{scope.kind === "agent" ? "No notes in this agent's folder yet" : "No notes yet"}</b>
-      <p>Memory is what the Team Lead and the agents keep for later: decisions and their reasons, preferences, gotchas and how
+      <p>Memory is what the Chief and the agents keep for later: decisions and their reasons, preferences, gotchas and how
         things are done here. Each agent's run gets the notes that matter for its card, as data, never as instructions, and
         agents add what they learned to their own folder.</p>
       <p>A note is Markdown with [[links]] to other notes, #tags and properties at the top. Shared notes go in folders like
-        Standards, Decisions and Lessons; each agent and the Team Lead have a folder of their own.</p>
+        Standards, Decisions and Lessons; each agent and the Chief have a folder of their own.</p>
       <button className="btn primary" onClick={onNew}><FilePlus className="icon" />New note</button>
     </div>
   );

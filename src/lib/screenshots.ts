@@ -167,9 +167,9 @@ export function olderText(older: ScreenshotSet[], now = Date.now()): string {
 /** "4 older runs", "1 older run". */
 export const olderCount = (n: number) => (n === 1 ? "1 older run" : `${n} older runs`);
 
-/** An agent's name in a sentence: "the Frontend Agent", "the Team Lead"; a name of its own stays as it is. */
+/** An agent's name in a sentence: "the Frontend Agent", "the Chief"; a name of its own stays as it is. */
 export function agentInText(name: string): string {
-  return /\b(agent|lead)$/i.test(name.trim()) ? `the ${name.trim()}` : name.trim();
+  return /\b(agent|lead|chief)$/i.test(name.trim()) ? `the ${name.trim()}` : name.trim();
 }
 
 /** Why a card's tab is empty (the design's four reasons), in the order they are checked. */

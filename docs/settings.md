@@ -9,7 +9,7 @@ Where each setting lives, what a backup holds and how to restore one, how Hersir
 | General | Quit, Updates, the Editor's folders, Data: where Hersir keeps your data, and the worktrees of finished cards; and Backups: a folder for copies of your data, how often, how many to keep, Back up now, the backups there and Restore |
 | Appearance | The font, text sizes, theme, density and the mountains |
 | Notifications | A switch for each kind of notification |
-| Agents and runs | Coding CLIs; Runs: limits, runs at once, memory for agent runs, Pause all agents, memory and Ask the Team Lead first; and Screenshots: what Hersir keeps of agents' screenshots, and the previews' ports |
+| Agents and runs | Coding CLIs; Runs: limits, runs at once, memory for agent runs and per run, Pause all agents, memory and Ask the Chief first; and Screenshots: what Hersir keeps of agents' screenshots, and the previews' ports |
 | MCP servers | The outside services agents can use, and the built-in browser |
 | GitHub and Bitbucket | gh and how pushes go, Check connection, and your Bitbucket login |
 
@@ -82,7 +82,7 @@ Each project's own (its page → Edit → Preview): whether its cards get screen
 | Setting | Default | Range | What it does |
 |---|---|---|---|
 | Screenshots: Take screenshots of this project's screens | on | on or off | Off: agents take none on its cards, except on a card whose own switch is on. |
-| Preview command | empty | a command | Serves the card's branch with demo data while an agent that takes screenshots works on it. Empty: no preview, so no screenshots. Hersir runs it with `bash -c` (Git Bash on Windows) in the card's worktree, on a free port in `GIZAI_PREVIEW_PORT` (and `PORT`), with `GIZAI_PREVIEW_DIR` for a throwaway database, never your `.env` one, and ends it with the run ([The preview](features/screenshots.md#the-preview)). |
+| Preview command | empty | a command | Serves the card's branch with demo data while an agent that takes screenshots works on it. Empty: no preview, so no screenshots. Hersir runs it with `bash -c` (Git Bash on Windows) in the card's worktree, on a free port in `HERSIR_PREVIEW_PORT` (and `PORT`), with `HERSIR_PREVIEW_DIR` for a throwaway database, never your `.env` one (the `GIZAI_PREVIEW_*` names are set too), and ends it with the run ([The preview](features/screenshots.md#the-preview)). |
 | Start time (seconds) | 120 | 10 to 600 | The agent starts once the page answers, or after this long without it, and then takes none. |
 | Themes: Both themes, dark and light | off | on or off | On: each changed screen in the first theme, and the card's main screen in the other one too. Off: the theme the page opens in. |
 | Sizes | Desktop 1280 × 800 and Mobile 390 × 844 | 1 to 4 sizes, each 320 to 3840 wide and 320 to 2400 high | Each changed screen is taken at every size. A size's name has at most 40 characters. |

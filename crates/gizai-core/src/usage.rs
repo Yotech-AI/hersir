@@ -30,7 +30,7 @@ pub(crate) fn unknown_cost(alias: &str) -> String {
     format!("(COALESCE({alias}.cost_usd_micros, 0) = 0 AND COALESCE({alias}.input_tokens, 0) + COALESCE({alias}.output_tokens, 0) > 0)")
 }
 
-/// What a set of runs used. A chat turn of the Team Lead is a run too (`chat_turns` counts them).
+/// What a set of runs used. A chat turn of the Chief is a run too (`chat_turns` counts them).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageTotals {
@@ -112,7 +112,7 @@ pub struct Usage {
     pub agents: Vec<AgentUsage>,
     /// Per project with runs, the highest cost first.
     pub projects: Vec<ProjectUsage>,
-    /// Runs without a card, so without a project: the Team Lead's chat turns and board checks.
+    /// Runs without a card, so without a project: the Chief's chat turns and board checks.
     pub chat: UsageTotals,
     /// Runs on cards without a project.
     pub no_project: UsageTotals,

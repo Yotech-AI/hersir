@@ -263,13 +263,14 @@ describe("the README's first screen (the research's section 3.3)", () => {
   const section = (title) => readme.split(`\n## ${title}\n`)[1].split("\n## ")[0];
 
   it("under the logo: the headline, who it's for, and the links with the Website first", () => {
+    // GA-256: the paragraph under the headline leads with the Chief
     expect(lines.slice(8, 15)).toEqual([
       '<div align="center">',
       "",
       "**Your coding agents need a chief, not a babysitter.**",
       "",
-      "A free, open-source desktop app where a team of AI coding agents works through your board in parallel, on Claude Code,",
-      "Codex CLI or Gemini CLI. Made for freelancers and software companies with several clients and projects.",
+      "Talk to one Chief instead of juggling a dozen agent chats. Tell it what you need, for any client or codebase: it turns that into cards on your board, starts the agents, answers their questions and puts only tested work in your review.",
+      "Free and open source, on Claude Code, Codex CLI or Gemini CLI. Made for freelancers and software companies with several clients and projects.",
       "",
     ]);
     expect(lines[15]).toBe(`[Website](https://hersir.dev) · [Install](#install) · [Docs](#documentation) · [Releases](${REPO}/releases) · [Licence](LICENSE)`);
@@ -284,7 +285,7 @@ describe("the README's first screen (the research's section 3.3)", () => {
     ]);
     const team = section("The team");
     expect(team).toMatch(/A new install starts with five agents\./);
-    for (const agent of ["**Team Lead:**", "**Backend and Frontend Agents**", "**QA Agent**", "**DevOps Agent**", "**Design Agent**", "**R&D Agent**"]) expect(team).toContain(agent);
+    for (const agent of ["**Chief:**", "**Backend and Frontend Agents**", "**QA Agent**", "**DevOps Agent**", "**Design Agent**", "**R&D Agent**"]) expect(team).toContain(agent);
   });
 
   it("Features keeps its eight lines, each with its Read more, and the third names Codex CLI and Gemini CLI", () => {
@@ -361,7 +362,7 @@ describe("the community files", () => {
     expect(headings).toEqual(expect.arrayContaining(["set-up", "never-test-against-your-own-hersir", "pull-requests", "licence"]));
     expect(contributing).toMatch(/source scripts\/env\.sh[\s\S]*cargo test --workspace && npm test/);
     expect(contributing).toMatch(/scripts\/ui-test\.sh/);
-    expect(contributing).toMatch(/GIZAI_DATA_DIR/);
+    expect(contributing).toMatch(/HERSIR_DATA_DIR/); // GA-249: the variable's hersir name
     expect(contributing).toMatch(/Open them into `main`/);
     expect(contributing).toMatch(/Apache License 2\.0[\s\S]*no CLA/);
     for (const script of contributing.match(/scripts\/[a-z-]+\.sh/g)) expect(existsSync(join(ROOT, script))).toBe(true);
@@ -404,7 +405,7 @@ describe("docs/RELEASING.md", () => {
     expect(bullets.length).toBeGreaterThan(0);
     expect(bullets.length).toBeLessThanOrEqual(6);
     expect(sample).toMatch(/\*\*Update:\*\* .+\n\n## All changes\n$/);
-    expect(notes).toMatch(/\*\*Who writes them:\*\*[\s\S]*The Team Lead drafts[\s\S]*starts the DevOps Agent[\s\S]*The DevOps Agent[\s\S]*needs_decision/);
+    expect(notes).toMatch(/\*\*Who writes them:\*\*[\s\S]*The Chief drafts[\s\S]*starts the DevOps Agent[\s\S]*The DevOps Agent[\s\S]*needs_decision/);
   });
 });
 
@@ -450,10 +451,17 @@ function codeParts(md) {
 // The app's own texts with Hersir the docs quote, each in the app's code outside its tests (when the app changes one,
 // the doc that quotes it shows up here).
 const QUOTES = ["Open Hersir", "Quit Hersir completely", "From Hersir's catalog", "a tool from outside Hersir", "because Hersir quit", "Hersir can't find what", "Hersir pushed", "Hersir kept", "no Hersir data", "This Hersir runs from", "From Hersir card"];
-// The names the code keeps (the card's item 4), which the docs give as the code has them, and the forms they'd take
-// if a doc renamed them by mistake.
-const CODE_NAMES = ["gizai --version", "gizai-mcp", "gizai-launch", "~/.local/share/gizai", "GIZAI_DATA_DIR", "GIZAI_PREFIX", "GIZAI_RESULT", "ai.gizai.app", "mcp__gizai", ".gizai-tmp", "gizai-installed.txt", ".gizai-team.json", "gizai-backups.json"];
-const RENAMED = /\bhersir(-mcp|-launch|-src|-installed\.txt|-backups|\.db|\.desktop|\.exe)\b|\bHERSIR_|ai\.hersir|mcp__hersir|\.hersir-(tmp|team)|\bhersir:[a-z]|\/(share|lib|bin)\/hersir\b|`hersir[ `]|APPDATA%\\Hersir|Programs\\Hersir|Application Support\/Hersir/;
+// The names the docs give as the code has them (the card's item 4), and the forms they'd take if a doc renamed one by
+// mistake. GA-248 made the programs, the command, the app id, the install folders and the variables of the scripts and
+// the update Hersir's (hersir, hersir-mcp, hersir-launch, dev.hersir.app, lib/hersir, Programs\Hersir, hersir-src and
+// HERSIR_PREFIX, HERSIR_REPO, HERSIR_BRANCH, HERSIR_RELEASES_URL, HERSIR_REF, HERSIR_MCP_BIN); GA-249 gave the data
+// folders, the variables Hersir reads and sets, the keychain's service and the team template file their hersir names. An
+// install from before 0.17.0 keeps its gizai names, which the docs still give, and the gizai ones still work. The rest
+// stays gizai: GIZAI_RESULT, the MCP server gizai, gizai: links, .gizai-tmp, the files in the data folder and the backup
+// format.
+const CODE_NAMES = ["hersir --version", "hersir-mcp", "hersir-launch", "dev.hersir.app", "HERSIR_PREFIX", "hersir-installed.txt",
+  "gizai --version", "gizai-mcp", "gizai-launch", "~/.local/share/gizai", "~/.local/share/hersir", "GIZAI_DATA_DIR", "HERSIR_DATA_DIR", "GIZAI_PREFIX", "GIZAI_RESULT", "ai.gizai.app", "mcp__gizai", ".gizai-tmp", "gizai-installed.txt", ".gizai-team.json", ".hersir-team.json", "gizai-backups.json"];
+const RENAMED = /\bhersir(-backups|\.db|\.lock)\b|\bHERSIR_RESULT\b|ai\.hersir|mcp__hersir|\.hersir-tmp|\bhersir:[a-z]/;
 
 describe("one name: Hersir in the docs, and Gizai only in the names the code keeps (GA-234)", () => {
   it("the docs it covers include the README, NOTICE, the community files, every doc in docs/ and design's READMEs, but not the records of their day", () => {
@@ -493,7 +501,9 @@ describe("one name: Hersir in the docs, and Gizai only in the names the code kee
 
   it('README.md\'s "What it is" and the top of docs/install.md say "Hersir was called GizAi until version 0.14.", and no other doc does', () => {
     const whatItIs = read("README.md").split("\n## What it is\n")[1].split("\n## ")[0];
-    expect(whatItIs.split("\n\n").map((p) => p.trim())).toContain(OLD_NAME);
+    // GA-248: the paragraph goes on with the programs' names from 0.17.0, on the next line (GA-256's chief-docs test
+    // reads the old name's line as it was)
+    expect(whatItIs.split("\n\n").map((p) => p.trim()).some((p) => p.startsWith(`${OLD_NAME}\n`) || p === OLD_NAME)).toBe(true);
     expect(read("docs/install.md").split("\n").slice(0, 3)).toEqual(["# Install Hersir", "", OLD_NAME]);
     expect(NAMED_DOCS.filter((doc) => read(doc).includes(OLD_NAME))).toEqual(["README.md", "docs/install.md"]);
   });
@@ -535,15 +545,16 @@ describe("one name: Hersir in the docs, and Gizai only in the names the code kee
     expect(lines[bullet - 1]).toMatch(/^- hersir\.dev sends the line on to /);
   });
 
-  it("the app's identifier stays ai.gizai.app where the app and the installers use it", () => {
-    expect(JSON.parse(read("src-tauri/tauri.conf.json")).identifier).toBe("ai.gizai.app");
-    expect(read("src-tauri/src/lib.rs")).toContain('pub const APP_ID: &str = "ai.gizai.app";');
-    expect(read("install.ps1")).toContain("'ai.gizai.app')");
-    expect(read(".github/workflows/install.yml")).toContain('[ "$id" = ai.gizai.app ]');
-    expect(read(".github/workflows/install.yml")).toContain("if ($id -ne 'ai.gizai.app')");
+  // GA-248: the app id is dev.hersir.app (ai.gizai.app before 0.17.0)
+  it("the app's identifier is dev.hersir.app where the app and the installers use it", () => {
+    expect(JSON.parse(read("src-tauri/tauri.conf.json")).identifier).toBe("dev.hersir.app");
+    expect(read("src-tauri/src/lib.rs")).toContain('pub const APP_ID: &str = "dev.hersir.app";');
+    expect(read("install.ps1")).toContain("'dev.hersir.app')");
+    expect(read(".github/workflows/install.yml")).toContain('[ "$id" = dev.hersir.app ]');
+    expect(read(".github/workflows/install.yml")).toContain("if ($id -ne 'dev.hersir.app')");
   });
 
-  it("commands, paths, variables and file names are the code's: the docs name gizai, GIZAI_*, ai.gizai.app and mcp__gizai, never a hersir in their place", () => {
+  it("commands, paths, variables and file names are the code's: hersir's programs, install and HERSIR_ variables (GA-248), gizai's kept names, never a hersir in their place", () => {
     const docs = NAMED_DOCS.map(read).join("\n");
     for (const name of CODE_NAMES) {
       expect(docs, name).toContain(name);
@@ -564,21 +575,26 @@ describe("one name: Hersir in the docs, and Gizai only in the names the code kee
   });
 
   // GA-233: the app's name for the OS is Hersir; the names an installed Gizai is found by stay, so it updates into it.
-  it("the app is called Hersir (productName, the window title, the launcher), while the identifier, the program, the data folders and the desktop entry's file stay", () => {
+  // GA-248: the identifier, the program and the desktop entry are Hersir's too; the data folders and the keychain stay.
+  it("the app is called Hersir (productName, the window title, the launcher), and so are the identifier, the program and the desktop entry, while the data folders stay", () => {
     const conf = JSON.parse(read("src-tauri/tauri.conf.json"));
     expect(conf.productName).toBe("Hersir");
     expect(conf.app.windows[0].title).toBe("Hersir");
-    expect(conf.identifier).toBe("ai.gizai.app");
-    expect(conf.mainBinaryName).toBe("gizai");
+    expect(conf.identifier).toBe("dev.hersir.app");
+    expect(conf.mainBinaryName).toBe("hersir");
     expect(read("install.sh")).toContain(`grep -q '"productName": "Hersir"'`);
     expect(read("install.ps1")).toContain(`-Pattern '"productName": "Hersir"'`);
     expect(read("install.sh")).toMatch(/^Name=Hersir$/m);
-    expect(read("install.sh")).toContain('cat > "$APPS/gizai.desktop" <<DESKTOP');
-    expect(read("install.sh")).toMatch(/^Icon=gizai$/m);
-    expect(read("install.sh")).toMatch(/^StartupWMClass=gizai$/m);
+    expect(read("install.sh")).toContain('cat > "$APPS/hersir.desktop" <<DESKTOP');
+    expect(read("install.sh")).toMatch(/^Icon=hersir$/m);
+    expect(read("install.sh")).toMatch(/^StartupWMClass=hersir$/m);
     expect(read("src-tauri/src/lib.rs")).toContain('join("Library/Application Support/Gizai")');
     expect(read("src-tauri/src/lib.rs")).toMatch(/\.join\("Gizai"\)/);
-    expect(read("crates/gizai-agents/src/secrets.rs")).toContain('pub const SERVICE: &str = "gizai";');
+    // GA-249: the data folders and the keychain service are Hersir's for a new install; the gizai ones are still found
+    expect(read("src-tauri/src/lib.rs")).toContain('join("Library/Application Support/Hersir")');
+    expect(read("src-tauri/src/lib.rs")).toMatch(/\.join\("Hersir"\)/);
+    expect(read("crates/gizai-agents/src/secrets.rs")).toContain('pub const SERVICE: &str = "hersir";');
+    expect(read("crates/gizai-agents/src/secrets.rs")).toContain('pub const OLD_SERVICE: &str = "gizai";');
   });
 });
 
@@ -600,10 +616,14 @@ describe("the installers' messages say Hersir (GA-234)", () => {
   it("what they print includes their help and their messages", () => {
     const lines = (path) => printed(path).map((p) => p.line.trim());
     expect(lines("install.sh")).toContain("# Hersir installer for Linux and macOS. Builds Hersir from source and installs it for you alone (no sudo):");
-    expect(lines("install.sh")).toContain("#   ./install.sh --uninstall     remove Hersir (add --purge to delete your data too)");
-    expect(lines("install.sh")).toContain('[ "$ok" = 1 ] && say "Everything Hersir needs to build is here."');
+    expect(lines("install.sh")).toContain("#   ./install.sh --uninstall     remove Hersir, also an install from before 0.17.0 (add --purge to delete your data too)");
+    // with --skip-build (-SkipBuild), what Hersir needs to run; else to build (GA-252)
+    expect(lines("install.sh")).toContain('say "Everything Hersir needs to build is here."');
+    expect(lines("install.sh")).toContain('say "Everything Hersir needs to run is here."');
     expect(lines("install.ps1")).toContain("# Hersir installer for Windows. Builds Hersir from source and installs it for you alone (no administrator rights):");
-    expect(lines("install.ps1")).toContain("if ($ok) { Say 'Everything Hersir needs to build is here.' }");
+    expect(lines("install.ps1")).toContain(
+      "if ($ok -and $SkipBuild) { Say 'Everything Hersir needs to run is here.' } elseif ($ok) { Say 'Everything Hersir needs to build is here.' }",
+    );
     expect(lines("scripts/get.sh")).toContain("Hersir's one-line install for Linux and macOS:");
     expect(lines("scripts/get.ps1")).toContain('Say "Hersir\'s one-line install for Windows, in PowerShell:"');
     expect(lines("install.sh").some((l) => l.startsWith("# The tray icon loads libayatana-appindicator"))).toBe(false);
@@ -628,7 +648,8 @@ describe("the installers' messages say Hersir (GA-234)", () => {
   });
 
   it("Cargo.toml's descriptions and browser.html's title say Hersir", () => {
-    const tomls = git("ls-files", "Cargo.toml", "*/Cargo.toml").stdout.split("\n").filter(Boolean);
+    // Hersir's own crates: third_party/ holds other people's crates with their own descriptions (GA-264)
+    const tomls = git("ls-files", "Cargo.toml", "*/Cargo.toml").stdout.split("\n").filter((t) => t && !t.startsWith("third_party/"));
     const descriptions = tomls.flatMap((t) => [...read(t).matchAll(/^description = "(.*)"$/gm)].map((m) => m[1]));
     expect(descriptions).toHaveLength(4);
     for (const d of descriptions) expect(d).toMatch(/^Hersir[: ]/);

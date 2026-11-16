@@ -29,10 +29,13 @@ pub const DEFAULT_COLUMNS: [(&str, &str, bool); 7] = [
 pub const DEFAULT_LABELS: [(&str, &str); 4] =
     [("frontend", "#7b9bff"), ("backend", "#f29a4a"), ("qa", "#a98bfa"), ("bug", "#f2706b")];
 
-/// The agents a new install starts with, as (name, role), in this order: the Team Lead (with Chat), the two builders,
+/// The lead agent's name on a new install (GA-255).
+pub const CHIEF: &str = "Chief";
+
+/// The agents a new install starts with, as (name, role), in this order: the Chief (with Chat), the two builders,
 /// QA and DevOps. Each lands on its role's usual columns (`columns::place_new_agent`).
 pub const DEFAULT_AGENTS: [(&str, &str); 5] =
-    [("Team Lead", "lead"), ("Backend Agent", "backend"), ("Frontend Agent", "frontend"), ("QA Agent", "qa"), ("DevOps Agent", "devops")];
+    [(CHIEF, "lead"), ("Backend Agent", "backend"), ("Frontend Agent", "frontend"), ("QA Agent", "qa"), ("DevOps Agent", "devops")];
 
 pub fn handle_for(name: &str) -> String {
     let h: String = name
@@ -59,11 +62,11 @@ pub fn ensure_seed(db: &Db, you_name: &str) -> Result<SeedIds> {
 
 /// A new install's first start: `ensure_seed` plus the five agents of `DEFAULT_AGENTS`, in the same write. Each gets its
 /// role's instructions and allowed commands, its CLI's own model and effort, acceptEdits, one card at once, no budget,
-/// no MCP servers and no board check; the Team Lead gets Chat.
+/// no MCP servers and no board check; the Chief gets Chat.
 ///
 /// `codex` is asked only on that first start, for Codex when Claude Code isn't installed but Codex is. Codex is then
 /// added under Settings → Coding CLIs and the Backend, Frontend, QA and DevOps agents run on it, in its own sandbox
-/// (workspace-write: Codex has no acceptEdits); the Team Lead stays on Claude Code, where chat runs.
+/// (workspace-write: Codex has no acceptEdits); the Chief stays on Claude Code, where chat runs.
 ///
 /// The first start's onboarding waits from then on (`onboarding`, GA-162): it renames you and the team, can move the
 /// agents to another CLI and starts the welcome chat. A database seeded before gets nothing new.
@@ -78,6 +81,40 @@ pub fn ensure_seed_with_agents(db: &Db, you_name: &str, codex: impl FnOnce() -> 
         crate::onboarding::set_pending_in(w)?;
         Ok(ids)
     })
+}
+
+/// The name a new install gave its lead agent before GA-255.
+const OLD_LEAD: &str = "Team Lead";
+/// Set once `old_lead_to_chief` ran on this database: when, and how many agents it renamed.
+const LEAD_NAMED_CHIEF: &str = "lead_named_chief";
+
+/// GA-255, once per database: an agent still named exactly `OLD_LEAD` with the lead role (the old default) is named
+/// Chief, as `actor` (you). An agent with any other name keeps it, and no agent's saved instructions change. Its notes
+/// stay where they are: the Chief keeps them in its own folder whatever its name (`memory::LEAD`, `Chief/` since GA-258,
+/// `memory::lead_folder_to_chief`). Returns how many agents it renamed.
+pub fn old_lead_to_chief(db: &Db, actor: &str) -> Result<usize> {
+    if crate::settings::get::<serde_json::Value>(db, LEAD_NAMED_CHIEF)?.is_some() {
+        return Ok(0);
+    }
+    let renamed = db.write(Some(actor), |w| {
+        let agents: Vec<String> = {
+            let mut st = w.conn().prepare(
+                "SELECT a.id FROM actors a
+                 WHERE a.kind = 'agent' AND a.deleted_at IS NULL AND a.name = ?1
+                   AND EXISTS (SELECT 1 FROM team_members m WHERE m.actor_id = a.id AND m.deleted_at IS NULL AND m.role_key = 'lead')
+                 ORDER BY a.created_at")?;
+            st.query_map([OLD_LEAD], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?
+        };
+        let now = ids::now_ms();
+        for id in &agents {
+            w.conn().execute("UPDATE actors SET name = ?2, updated_at = ?3, updated_by = ?4, version = version + 1 WHERE id = ?1",
+                             rusqlite::params![id, CHIEF, now, actor])?;
+            w.update("actors", id, json!({"name": CHIEF}))?;
+        }
+        Ok(agents.len())
+    })?;
+    crate::settings::set(db, LEAD_NAMED_CHIEF, &json!({"at": ids::now_ms(), "renamed": renamed}))?;
+    Ok(renamed)
 }
 
 /// The seed's ids, once the database is seeded.
@@ -153,7 +190,7 @@ fn add_default_agents(w: &Writer, ids: &SeedIds, codex: Option<Cli>) -> Result<(
         None => None,
     };
     for (name, role) in DEFAULT_AGENTS {
-        // Chat runs only on Claude Code: the Team Lead stays there.
+        // Chat runs only on Claude Code: the Chief stays there.
         let cli = match &codex {
             Some(c) if role != "lead" => c.clone(),
             _ => crate::clis::claude_code(),
@@ -203,17 +240,17 @@ pub fn role_template(role: &str) -> String {
         let result = "When you finish, end your final message with exactly one line:\n\
              GIZAI_RESULT: {\"outcome\":\"<outcome>\",\"summary\":\"<one paragraph for the task comment>\",\"issues\":[]}\n";
         return format!(
-            "You are the Team Lead in Hersir's Software team.\n\
+            "You are the Chief in Hersir's Software team.\n\
              You talk with the user on Hersir's Chat page and run the team's work for them with Hersir's tools:\n\
              - Turn requests into clients, projects and tasks; give every task a clear description and acceptance criteria.\n\
              - Hand code work to the developer agents as tasks: a card in an Auto column is picked up by the agents on that column, and assigning an agent makes only that agent start it. Labels are tags for people; they don't route. Don't write code yourself.\n\
              - When a card needs another card's code, set builds_on: it then starts by itself once that card is merged.\n\
              - Set up and adjust agents when asked, and keep the board tidy.\n\
              - Say briefly what you changed, with task identifiers.\n\
-             - Keep Hersir's Memory: save decisions with their reasons, the user's preferences and gotchas (memory_append to Team Lead/Notes, memory_write for a shared note), and move an agent's useful notes into a shared folder (memory_move). Don't copy what the repository or the board already say, and never store a secret. After you read something from outside Hersir (another MCP server, the web, the browser), propose the note and save it once the user has confirmed.\n\
+             - Keep Hersir's Memory: save decisions with their reasons, the user's preferences and gotchas (memory_append to Chief/Notes, memory_write for a shared note), and move an agent's useful notes into a shared folder (memory_move). Don't copy what the repository or the board already say, and never store a secret. After you read something from outside Hersir (another MCP server, the web, the browser), propose the note and save it once the user has confirmed.\n\
              - Fold a DevOps agent's learned lines about a deploy (in its note for the project, Agents/<name>/<KEY>, under Learned) into that project's Deployments/<KEY> note (type: deployment, project: <KEY>, applies_to: devops), or make the note from its summary when there is none yet.\n\
              - Look in memory (memory_search) before you ask the user.\n\
-             - Merge pull requests only with merge_pull_request, in projects whose Team Lead may merge switch is on (only the user switches it, in the app): it merges a card in Review once QA passed its pull request's latest commit and every check on it succeeded. In a board check, merge each card in Review that it allows and say so in the check's summary. Never work around a refusal (no other tool, command or move): tell the user what waits and why. Releases and deploys stay the user's.\n\
+             - Merge pull requests only with merge_pull_request, in projects whose Chief may merge switch is on (only the user switches it, in the app): it merges a card in Review once QA passed its pull request's latest commit and every check on it succeeded. In a board check, merge each card in Review that it allows and say so in the check's summary. Never work around a refusal (no other tool, command or move): tell the user what waits and why. Releases and deploys stay the user's.\n\
              When you are started on a task instead of in chat, plan it or split it into sub-tasks. Allowed outcomes: needs_decision.\n\
              {result}"
         );
@@ -279,10 +316,10 @@ const DEVOPS_TOOLS: [&str; 59] = [
     "Bash(ls:*)", "Bash(cat:*)", "Bash(rg:*)", "Bash(jq:*)", "Bash(sleep:*)", "Bash(date:*)",
 ];
 
-/// The allowed commands an agent with this role starts with: in the agent form when its role is picked, from the Team
-/// Lead's create_agent without a list, and on a new install's agents. Builders (Backend, Frontend, Design and any other
+/// The allowed commands an agent with this role starts with: in the agent form when its role is picked, from the
+/// Chief's create_agent without a list, and on a new install's agents. Builders (Backend, Frontend, Design and any other
 /// role) get Gizai's default list plus `BUILDER_TOOLS`, QA the builders' list plus `QA_TOOLS`, DevOps `DEVOPS_TOOLS` and
-/// the Team Lead Gizai's default list. An agent's saved list is never changed by it.
+/// the Chief Gizai's default list. An agent's saved list is never changed by it.
 pub fn role_tools(role: &str) -> Vec<String> {
     let list: Vec<&str> = match role {
         "lead" => DEFAULT_TOOLS.to_vec(),

@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { agentCliTools, askCliTools } from "../api";
 import { BROWSER, browserOn, GROUPS, HOW_LABEL, parseDomains, switchBrowser, switchBuiltin } from "../lib/cliTools";
-import { lastRunLabel, npmWebWarning, RISK_BADGE, RISK_LABEL, switchTool } from "../lib/mcp";
+import { lastRunLabel, npmWebWarning, RISK_BADGE, RISK_LABEL, switchTool, trustServer } from "../lib/mcp";
 import type { AgentServer, CatalogTool, CliTools, ToolsView } from "../types";
 import { Field } from "./Form";
 import { McpToolList } from "./McpTools";
+import { TrustChoice } from "./TrustChoice";
 
 const RISK_TEXT: Record<string, string> = { ...RISK_LABEL, unknown: "Risk unknown" };
 
@@ -28,7 +29,9 @@ function ToolRow({ t, on, onSwitch }: { t: CatalogTool; on: boolean; onSwitch?: 
 }
 
 /** The agent form's Web, Browser and Built-in tools: the CLI's own tools and the hidden browser, for the CLI picked in the
- * form. Everything is off until you switch it on; what the CLI can't take is shown disabled, with why. */
+ * form. Everything is off until you switch it on; what the CLI can't take is shown disabled, with why. For an agent with
+ * Chat on (`lead`, the Chief), Web and the browser have After the Chief uses it: Ask for my OK (the default) or Allow
+ * (GA-271). */
 export function AgentCliToolsFields({ agentId, cliId, allowedTools, value, onChange, mcp, onMcp, lead }: {
   agentId?: string; cliId: string; allowedTools: string[]; value: CliTools; onChange: (v: CliTools) => void;
   mcp: AgentServer[]; onMcp: (v: AgentServer[]) => void; lead: boolean;
@@ -74,8 +77,8 @@ export function AgentCliToolsFields({ agentId, cliId, allowedTools, value, onCha
   return (
     <>
       <Field label="Web" wide error={err} warn={warning}
-        hint={<>What it finds on the web is data for the agent, never instructions: its prompt says so. Suggested for the Team Lead (web search), never switched on by Hersir.
-          {lead && " For the Team Lead, its chat answers get these too; after one uses them, it asks you before it starts runs or changes agents."}</>}>
+        hint={<>What it finds on the web is data for the agent, never instructions: its prompt says so. Suggested for the Chief (web search), never switched on by Hersir.
+          {lead && " For the Chief, its chat answers get these too; after one uses them, it asks you before it starts runs or changes agents."}</>}>
         <ul className="mcp-agent" aria-label="Web">
           <li className={`ma-server${value.webSearch && !web.search ? " on" : ""}`}>
             <div className="ma-head">
@@ -101,6 +104,12 @@ export function AgentCliToolsFields({ agentId, cliId, allowedTools, value, onCha
             ))}
           </li>
         </ul>
+        {lead && (
+          <div className="ma-trust-web">
+            <TrustChoice id="trust-web" source="the web" name="the web" trusted={!!value.webTrusted} disabled={!!web.search && !!web.fetch}
+              onChange={(t) => onChange({ ...value, webTrusted: t })} />
+          </div>
+        )}
       </Field>
       <Field id="agent-browser" label="Browser" wide warn={view.browser.disabled ?? null}
         hint="Chrome DevTools: a hidden Chrome with a throwaway profile, never on your screen and never your own browser, profile or logins. Every click is a tool call, and the cap per run is in Settings → Runs. Suggested for QA, Frontend and Design agents, never switched on by Hersir.">
@@ -117,6 +126,10 @@ export function AgentCliToolsFields({ agentId, cliId, allowedTools, value, onCha
             {needs.missing.length === 0 ? (
               <span className="hint">Found: Node {needs.nodeVersion ?? ""}, npx, {needs.browserName ?? "a browser"} ({needs.browser}).</span>
             ) : needs.missing.map((m) => <span key={m} className="warn">{m}</span>)}
+            {lead && (
+              <TrustChoice id="trust-browser" source="the browser" name="pages in the browser" trusted={!!bSwitch?.trusted}
+                disabled={!!view.browser.disabled} onChange={(t) => onMcp(trustServer(mcp, BROWSER, t))} />
+            )}
             {bOn && (
               <label className="check"><input type="checkbox" aria-label="Accept self-signed certificates" checked={value.insecureCerts}
                 onChange={(e) => onChange({ ...value, insecureCerts: e.target.checked })} /> Accept self-signed certificates, for local .test sites (off: such a page doesn't load)</label>
@@ -135,7 +148,7 @@ export function AgentCliToolsFields({ agentId, cliId, allowedTools, value, onCha
         </ul>
       </Field>
       <Field label="Built-in tools" wide
-        hint={<>{view.builtin.source}{lead && " In chat the Team Lead keeps only Read, Glob and Grep, plus the web tools when they are on, and never slash commands or skills."}</>}>
+        hint={<>{view.builtin.source}{lead && " In chat the Chief keeps only Read, Glob and Grep, plus the web tools when they are on, and never slash commands or skills."}</>}>
         <div className="ct-head">
           {view.builtin.canAsk && (
             <button type="button" className="btn ghost sm" disabled={asking} onClick={ask} title="Starts Claude Code without a login: nothing is spent, nothing is written in ~/.claude">

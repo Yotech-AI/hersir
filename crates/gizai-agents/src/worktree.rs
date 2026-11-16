@@ -50,8 +50,30 @@ pub fn slug(title: &str, max: usize) -> String {
     tidy.chars().take(max).collect::<String>().trim_end_matches('-').to_string()
 }
 
+/// What every git command Hersir runs in a project's repository or a card's worktree starts with (GA-263): none of the
+/// repository's hooks run (`core.hooksPath` points at a folder that can't be there) and no file system monitor program
+/// (`core.fsmonitor`). Else a hook or an fsmonitor program set in the repository's git config, which an agent could have
+/// put there, would run as you, outside the agent's allowed commands and any sandbox, when Hersir commits, stashes,
+/// fetches, pushes or makes a worktree. They are `-c` settings of that one command, which git hands on to the git
+/// commands it starts itself (a worktree add's checkout, a push's pre-push): nothing in the repository changes, so your
+/// own `git commit` there still runs its hooks.
+pub const NO_HOOKS: [&str; 4] = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"];
+
+/// git in the folder `dir` (a project's repository or a card's worktree), the one way Hersir starts it there: with
+/// `NO_HOOKS`, run in `dir` (`-C`). The caller adds the command and its arguments.
+pub fn git_command(dir: &Path) -> std::process::Command {
+    let mut cmd = crate::os::command("git");
+    cmd.args(NO_HOOKS).arg("-C").arg(dir);
+    cmd
+}
+
+/// `NO_HOOKS` as (key, value) pairs, for the git another program of Hersir's starts (gh: `connection::git_env`).
+pub fn no_hooks_settings() -> Vec<(String, String)> {
+    NO_HOOKS.iter().filter_map(|s| s.split_once('=')).map(|(k, v)| (k.to_string(), v.to_string())).collect()
+}
+
 pub(crate) fn git(repo: &Path, args: &[&str]) -> Result<String, AgentError> {
-    let out = crate::os::command("git").arg("-C").arg(repo).args(args).output()
+    let out = git_command(repo).args(args).output()
         .map_err(|e| AgentError::Git(format!("can't run git: {e}")))?;
     if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).trim_end().to_string())
@@ -106,21 +128,36 @@ pub(crate) fn same(a: &Path, b: &Path) -> bool {
     }
 }
 
-/// The branch a card works on: `gizai/<identifier>-<slug of its title>`.
+/// The branch a new card works on: `hersir/<identifier>-<slug of its title>` (GA-249; `gizai/…` before 0.17.0).
 pub fn branch_name(identifier: &str, title: &str) -> String {
     let s = slug(title, 40);
-    if s.is_empty() { format!("gizai/{}", identifier.to_lowercase()) } else { format!("gizai/{}-{s}", identifier.to_lowercase()) }
+    if s.is_empty() { format!("hersir/{}", identifier.to_lowercase()) } else { format!("hersir/{}-{s}", identifier.to_lowercase()) }
 }
 
-/// The task's worktree at `base_dir/<identifier>` on branch `gizai/<identifier>-<slug>`: reused when it
-/// already exists, else created (on the existing branch if there is one, or a new branch off `default_branch`).
+/// The branch a card works on: the one it has (`has`, the card's branch), else a new one (`branch_name`). So a card
+/// keeps its branch, a `gizai/` one from before 0.17.0 too, also after its worktree was removed or its title changed.
+pub fn card_branch(has: Option<&str>, identifier: &str, title: &str) -> String {
+    match has.map(str::trim).filter(|b| !b.is_empty()) {
+        Some(b) => b.to_string(),
+        None => branch_name(identifier, title),
+    }
+}
+
+/// The task's worktree at `base_dir/<identifier>` on branch `hersir/<identifier>-<slug>` (`branch_name`): `ensure_on`
+/// that branch.
 pub fn ensure(repo: &Path, base_dir: &Path, identifier: &str, title: &str, default_branch: &str) -> Result<Worktree, AgentError> {
+    ensure_on(repo, base_dir, identifier, &branch_name(identifier, title), default_branch)
+}
+
+/// The card's worktree at `base_dir/<identifier>` on `branch` (`card_branch`): reused when it already exists, else
+/// created (on the existing branch if there is one, or a new branch off `default_branch`).
+pub fn ensure_on(repo: &Path, base_dir: &Path, identifier: &str, branch: &str, default_branch: &str) -> Result<Worktree, AgentError> {
     match git(repo, &["rev-parse", "--is-inside-work-tree"]) {
         Ok(s) if s == "true" => {}
         _ => return Err(AgentError::NotGitRepo(repo.to_path_buf())),
     }
     let path = base_dir.join(identifier);
-    let branch = branch_name(identifier, title);
+    let branch = branch.to_string();
     // the list and the add under one hold, so two starts can't both decide on what they read before the other's add
     one_at_a_time(repo, || {
         let list = list_worktrees(repo)?;
@@ -152,9 +189,15 @@ pub fn ensure(repo: &Path, base_dir: &Path, identifier: &str, title: &str, defau
 /// Then nothing of the finished card is left (`git clean -dx`: untracked and ignored files go) except the paths in
 /// `keep`, relative to the worktree: the copied folders and the installed dependencies, such as node_modules/ and
 /// target/. Refuses a worktree with uncommitted changes or untracked files, and puts it back when switching fails.
+/// On a new card's branch (`branch_name`); `reuse_on` takes the card's own.
 pub fn reuse(repo: &Path, from: &Path, base_dir: &Path, identifier: &str, title: &str, start: &str, keep: &[String]) -> Result<Worktree, AgentError> {
+    reuse_on(repo, from, base_dir, identifier, &branch_name(identifier, title), start, keep)
+}
+
+/// `reuse` onto `branch` (`card_branch`: the card's own branch, else a new one).
+pub fn reuse_on(repo: &Path, from: &Path, base_dir: &Path, identifier: &str, branch: &str, start: &str, keep: &[String]) -> Result<Worktree, AgentError> {
     let path = base_dir.join(identifier);
-    let branch = branch_name(identifier, title);
+    let branch = branch.to_string();
     // the list up to the branch switch under one hold, so two starts can't take over the same worktree
     let head = one_at_a_time(repo, || {
         if path.exists() {
@@ -230,6 +273,30 @@ pub fn mark_prepared(wt: &Path) -> Result<(), AgentError> {
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.into()),
         _ => Ok(()),
     }
+}
+
+/// The folders of the repository's git folder that a commit in the worktree at `wt` writes, absolute, for a sandbox
+/// that lets an agent commit and push its branch there and no more (Codex's writable roots, GA-263): `objects`, `refs`
+/// and `logs` of the shared git folder, and the worktree's own folder in it (`worktrees/<name>`: its index, HEAD and
+/// FETCH_HEAD). Never the git folder itself, nor `config`, `hooks`, `info` or another worktree's folder, so the agent
+/// can't add a hook or a setting that starts a program. Only the folders that are there.
+///
+/// Also `reftable`, only in a repository that keeps its refs there (`git clone --ref-format=reftable`): its commits
+/// update their branch in it, not in `refs`. Checked in Codex 0.163.0's sandbox: `git add`, `git commit`, `git push`
+/// and `git fetch` work with these; `refs/remotes/<remote>/<branch>` takes the push. What still touches the git folder
+/// itself fails without stopping the work: a commit also deletes a ref, which wants `packed-refs.lock` (git says it
+/// couldn't and the commit stays, exit 0), and `git push -u` can't write the branch's upstream into `config` (the push
+/// goes, exit 0). With rerere on in your git config a commit would make `rr-cache` and fail (exit 128, after the
+/// commit): a Codex run's own git goes without it (`rerere.enabled=false` in `cli::TaskRun::git_config`).
+pub fn commit_dirs(wt: &Path) -> Result<Vec<PathBuf>, AgentError> {
+    let common = PathBuf::from(git(wt, &["rev-parse", "--path-format=absolute", "--git-common-dir"])?);
+    let own = PathBuf::from(git(wt, &["rev-parse", "--absolute-git-dir"])?);
+    let mut dirs: Vec<PathBuf> = ["objects", "refs", "logs", "reftable"].iter().map(|d| common.join(d)).collect();
+    // a linked worktree's own folder; a main checkout has none apart from the shared one, which never goes in
+    if own.parent() == Some(common.join("worktrees").as_path()) {
+        dirs.push(own);
+    }
+    Ok(dirs.into_iter().filter(|d| d.is_dir()).collect())
 }
 
 /// The folder at a card's worktree root where its runs keep the screenshots and the preview's files (GA-182,
@@ -516,8 +583,7 @@ pub fn own_rewrites(repo: &Path) -> Vec<String> {
 /// Every git setting of the repository whose key matches `pattern`, as written: (key, value). Not the GIT_CONFIG_COUNT
 /// settings of Gizai's own environment: a run's own take their place (`connection::git_env`).
 fn config_matching(repo: &Path, pattern: &str) -> Vec<(String, String)> {
-    let out = crate::os::command("git").arg("-C").arg(repo).args(["config", "-z", "--get-regexp", pattern])
-        .env_remove("GIT_CONFIG_COUNT").output();
+    let out = git_command(repo).args(["config", "-z", "--get-regexp", pattern]).env_remove("GIT_CONFIG_COUNT").output();
     // git says nothing (exit code 1) when no setting matches
     match out {
         Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).split('\0')
@@ -702,9 +768,10 @@ pub fn branch_of(dir: &Path) -> Option<String> {
 }
 
 /// Commit…, on a person's card (GA-111): commits every change in the checkout at `dir`, untracked files included
-/// (`git add --all`; what git ignores stays out), with `message`, the way `git commit` in a terminal does: the
-/// repository's own hooks run, and the author is who your git config says. Returns the new commit. Refuses an empty
-/// message and a checkout with nothing to commit, and says in plain words why git refused.
+/// (`git add --all`; what git ignores stays out), with `message`, the way `git commit` in a terminal does, but without
+/// the repository's hooks (`NO_HOOKS`, GA-263: an agent may have worked in that worktree before); the author is who your
+/// git config says. Returns the new commit. Refuses an empty message and a checkout with nothing to commit, and says in
+/// plain words why git refused.
 pub fn commit_all(dir: &Path, message: &str) -> Result<Commit, AgentError> {
     let message = message.trim();
     if message.is_empty() {
@@ -714,7 +781,7 @@ pub fn commit_all(dir: &Path, message: &str) -> Result<Commit, AgentError> {
         return Err(AgentError::Git("There is nothing to commit: no file has changed".into()));
     }
     git(dir, &["add", "--all"])?;
-    let out = crate::os::command("git").arg("-C").arg(dir).args(["commit", "--quiet", "-m", message])
+    let out = git_command(dir).args(["commit", "--quiet", "-m", message])
         .stdin(std::process::Stdio::null()).env("GIT_TERMINAL_PROMPT", "0").output()
         .map_err(|e| AgentError::Git(format!("can't run git: {e}")))?;
     if !out.status.success() {
@@ -726,7 +793,7 @@ pub fn commit_all(dir: &Path, message: &str) -> Result<Commit, AgentError> {
     Ok(Commit { sha, subject })
 }
 
-/// Why `git commit` refused, in plain words where Gizai knows them, else git's (or a hook's) last lines.
+/// Why `git commit` refused, in plain words where Gizai knows them, else git's last lines.
 fn commit_refusal(said: &str) -> String {
     if said.contains("Please tell me who you are") || said.contains("unable to auto-detect email address") {
         return "git doesn't know who you are: set your name and email with git config --global user.name \"Your Name\" and \
@@ -988,7 +1055,7 @@ pub fn parse_status(out: &str) -> Vec<UncommittedFile> {
 /// repository's, shared by all its worktrees: `git stash list` in the main checkout shows it too. With nothing to stash
 /// it does nothing. An error says why, in plain words where Gizai knows them.
 pub fn stash_all(dir: &Path, message: &str) -> Result<(), AgentError> {
-    let out = crate::os::command("git").arg("-C").arg(dir).args(["stash", "push", "--include-untracked", "-m", message])
+    let out = git_command(dir).args(["stash", "push", "--include-untracked", "-m", message])
         .stdin(std::process::Stdio::null()).env("GIT_TERMINAL_PROMPT", "0").output()
         .map_err(|e| AgentError::Git(format!("can't run git: {e}")))?;
     if out.status.success() {
@@ -1035,10 +1102,9 @@ impl Failure {
 }
 
 /// git without prompts, ended after `limit`: no terminal and no askpass program, ssh in batch mode (unless you set your
-/// own ssh command), and `config` as `-c` settings for this one command.
+/// own ssh command), no hooks (`git_command`), and `config` as `-c` settings for this one command.
 fn quiet(repo: &Path, config: &[String], args: &[&str], limit: Duration) -> Result<String, Failure> {
-    let mut cmd = crate::os::command("git");
-    cmd.arg("-C").arg(repo);
+    let mut cmd = git_command(repo);
     for c in config {
         cmd.arg("-c").arg(c);
     }

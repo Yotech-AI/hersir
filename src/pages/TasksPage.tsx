@@ -70,8 +70,8 @@ function useKeptFilter(): [Filter, (f: Filter) => void] {
  *  until you approved or discarded each, in the chat. */
 function LeadChats({ chats, onDismiss }: { chats: ChatThread[]; onDismiss: (id: string) => void }) {
   return (
-    <section className="lead-chats" aria-label="From the Team Lead">
-      <div className="section-head"><h3>From the Team Lead</h3><span className="faint">{chats.length}</span></div>
+    <section className="lead-chats" aria-label="From the Chief">
+      <div className="section-head"><h3>From the Chief</h3><span className="faint">{chats.length}</span></div>
       <div className="panel">
         {chats.map((c) => (
           <div key={c.id} className="panel-row lead-chat">
@@ -278,7 +278,7 @@ export function TasksPage({ initialView, onNewTask, inboxFor }: { initialView?: 
           {chats.length > 0 && <div className="page-pad lead-chats-pad"><LeadChats chats={chats} onDismiss={dismiss} /></div>}
           {asks.length > 0 && <div className="page-pad lead-chats-pad"><RunForMeCards tasks={asks} agentOf={(t) => (t.assigneeKind === "agent" ? t.assigneeName ?? null : null)} /></div>}
           <TaskList key={`${group}-${inbox}`} groups={groups} showHeads={group !== "none"} live={working} shots={inbox ? shots : undefined} onAdd={group === "status" && !inbox ? (key) => onNewTask(key) : undefined}
-            empty={inbox ? (chats.length + asks.length > 0 ? null : <div className="empty"><b>Nothing needs you.</b><span>Cards on hold, cards waiting for your review or deploy, the Team Lead's questions and the calls it waits for your OK on show up here.</span></div>)
+            empty={inbox ? (chats.length + asks.length > 0 ? null : <div className="empty"><b>Nothing needs you.</b><span>Cards on hold, cards waiting for your review or deploy, the Chief's questions and the calls it waits for your OK on show up here.</span></div>)
               : <div className="empty"><b>No tasks here.</b><span>{nFilters ? "Nothing matches these filters." : "Press N to add one."}</span></div>} />
         </div>
       ) : (

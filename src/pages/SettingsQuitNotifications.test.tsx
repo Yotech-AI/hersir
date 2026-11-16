@@ -69,8 +69,8 @@ const answer = (n: number): ChatStatus => ({ threadId: `c${n}`, runId: `cr${n}`,
 const LABELS = [
   "A card goes on hold",
   "A card waits for your review or deploy",
-  "The Team Lead asks you something (a Question or Approval chat)",
-  "The Team Lead answers in a chat while the Hersir window is hidden or in the background",
+  "The Chief asks you something (a Question or Approval chat)",
+  "The Chief answers in a chat while the Hersir window is hidden or in the background",
 ];
 
 type Page = { s?: Partial<Settings>; agents?: CardAgent[] };
@@ -155,7 +155,7 @@ describe("Settings → Notifications", () => {
     sets = null;
     const boxes = findAll(tree, (p) => p.type === "checkbox" && typeof p.onChange === "function") as { onChange: (e: unknown) => void; checked: boolean }[];
     // Appearance's Show mountains along the bottom (GA-143) comes first on the page, then the four switches, before Pause all
-    // agents, Use memory (GA-19) and Ask the Team Lead first (GA-70)
+    // agents, Use memory (GA-19) and Ask the Chief first (GA-70)
     expect(boxes.length).toBe(8);
     boxes[3].onChange({ target: { checked: false } });
     await settle();

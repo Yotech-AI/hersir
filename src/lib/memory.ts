@@ -8,8 +8,8 @@ import { fold } from "./palette";
 export const SHARED_FOLDERS = ["Clients", "Projects", "Standards", "Workflows", "Deployments", "Dependencies", "Decisions", "Lessons"] as const;
 /** `Agents/<name>/`: each agent's own folder. */
 export const AGENTS = "Agents";
-/** The Team Lead's own folder. */
-export const LEAD = "Team Lead";
+/** The Chief's own folder (Team Lead/ before GA-258). */
+export const LEAD = "Chief";
 /** The note the Team Lead and each agent keep in their own folder. */
 export const NOTES = "Notes";
 

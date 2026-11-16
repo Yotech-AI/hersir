@@ -329,7 +329,7 @@ fn schema_10_gives_existing_sessions_the_cli_of_their_last_turn() {
     // One schema step back: 0012 hadn't run (nor GA-19's 0014, GA-86's 0015, GA-96's 0016, GA-102's 0017, GA-182's 0019 and
     // GA-212's 0020, which come after it).
     let c = rusqlite::Connection::open(&path).unwrap();
-    c.execute_batch(&format!("PRAGMA foreign_keys=OFF; BEGIN; {UNDO_0021} {UNDO_0020} {UNDO_0019} {UNDO_0017} {} ALTER TABLE projects DROP COLUMN lead_may_merge; {} COMMIT;", undo_0016(&c), undo_0014())).unwrap();
+    c.execute_batch(&format!("PRAGMA foreign_keys=OFF; BEGIN; {UNDO_0022} {UNDO_0021} {UNDO_0020} {UNDO_0019} {UNDO_0017} {} ALTER TABLE projects DROP COLUMN lead_may_merge; {} COMMIT;", undo_0016(&c), undo_0014())).unwrap();
     c.execute_batch("DROP TABLE chat_queue; ALTER TABLE chat_messages DROP COLUMN meta_json;
                      ALTER TABLE chat_threads DROP COLUMN session_cli; ALTER TABLE chat_threads DROP COLUMN cli; PRAGMA user_version = 11;").unwrap();
     drop(c);
@@ -341,6 +341,9 @@ fn schema_10_gives_existing_sessions_the_cli_of_their_last_turn() {
     assert_eq!(chat::messages(&db, &id).unwrap()[0].meta, None);
     assert!(chat::queue(&db, &id).unwrap().is_empty());
 }
+
+/// Undoes GA-261's 0022: no outside-tool mark on chats and no hold kind on cards.
+const UNDO_0022: &str = "ALTER TABLE tasks DROP COLUMN hold_kind; ALTER TABLE chat_threads DROP COLUMN outside_tool;";
 
 /// Undoes GA-228's 0021: no Builds on table.
 const UNDO_0021: &str = "DROP INDEX task_builds_on_needed_by; DROP TABLE task_builds_on;";

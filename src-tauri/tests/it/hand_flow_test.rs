@@ -15,7 +15,10 @@ use gizai_lib::{editor, hand, runs};
 
 const FAKE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../crates/gizai-agents/tests/fake-claude.sh");
 const LINK: &str = "https://github.com/acme/shop";
-const BRANCH: &str = "gizai/kade-1-export-invoices-as-csv";
+/// A new card's branch (GA-249: hersir/).
+const BRANCH: &str = "hersir/kade-1-export-invoices-as-csv";
+/// The branch 0.16.0 gave the same card, which it keeps after the update (GA-249).
+const OLD_BRANCH: &str = "gizai/kade-1-export-invoices-as-csv";
 
 /// A temp folder by its real path, the way git and Gizai report it (the Editor's folder ids are canonical).
 fn real_tempdir() -> tempfile::TempDir {
@@ -178,6 +181,48 @@ async fn commit_and_push_send_the_branch_where_open_pull_request_pushes() {
     assert_eq!(hand::push(&c.st, &c.task).await.unwrap(),
                format!("Pushed {BRANCH} (1 commit). 1 uncommitted change isn't pushed: commit it first."));
     assert!(git(&c.bare, &["ls-tree", "-r", "--name-only", BRANCH]).lines().all(|f| f != "draft.txt"), "only commits go");
+}
+
+#[tokio::test]
+async fn a_card_with_a_gizai_branch_from_before_0_17_keeps_it_through_open_in_editor_commit_push_and_hand_over() {
+    let tmp = real_tempdir();
+    let c = yours(tmp.path());
+    // as 0.16.0 left it: the card has its gizai/ branch, with a commit, pushed to GitHub, and no worktree any more
+    let local = c.tmp.join("local");
+    git(&local, &["branch", OLD_BRANCH, "main"]);
+    let scratch = c.tmp.join("scratch");
+    git(&local, &["worktree", "add", "-q", scratch.to_str().unwrap(), OLD_BRANCH]);
+    std::fs::write(scratch.join("export.csv"), "id,total\n").unwrap();
+    git(&scratch, &["add", "export.csv"]);
+    git(&scratch, &["commit", "-q", "-m", "Export from 0.16.0"]);
+    git(&scratch, &["push", "-q", "origin", OLD_BRANCH]);
+    git(&local, &["worktree", "remove", scratch.to_str().unwrap()]);
+    let work = git(&local, &["rev-parse", OLD_BRANCH]);
+    c.st.db.write(None, |w| { w.conn().execute("UPDATE tasks SET branch=?2 WHERE id=?1", [c.task.as_str(), OLD_BRANCH])?; Ok(()) }).unwrap();
+
+    // Open in editor: its worktree on its gizai/ branch, with its work; no hersir/ branch is made
+    let h = hand::start(&c.st, &c.task).await.unwrap();
+    assert_eq!((h.branch.as_str(), h.changed, h.unpushed), (OLD_BRANCH, 0, 0), "{h:?}");
+    assert_eq!(git(&c.wt(), &["branch", "--show-current"]), OLD_BRANCH);
+    assert_eq!(git(&c.wt(), &["rev-parse", "HEAD"]), work, "its own commits, not a new branch off main");
+    assert_eq!(c.task().branch.as_deref(), Some(OLD_BRANCH), "the card keeps its branch");
+    assert!(!has_branch(&local, BRANCH), "no hersir/ branch made");
+
+    // Commit and push: the gizai/ branch goes to GitHub as before
+    std::fs::write(c.wt().join("export.csv"), "id,total,vat\n").unwrap();
+    let made = hand::commit(&c.st, &c.task, "Add VAT").await.unwrap();
+    assert_eq!(hand::card(&c.st, &c.task).await.unwrap().unpushed, 1);
+    assert_eq!(hand::push(&c.st, &c.task).await.unwrap(), format!("Pushed {OLD_BRANCH} (1 commit)."));
+    assert_eq!(git(&c.bare, &["rev-parse", &format!("refs/heads/{OLD_BRANCH}")]), made.sha);
+    assert_eq!(git(&c.bare, &["log", "--format=%s", &format!("main..{OLD_BRANCH}")]), "Add VAT\nExport from 0.16.0");
+    assert!(!has_branch(&c.bare, BRANCH), "nothing under hersir/ on GitHub");
+
+    // Hand over: pushes (nothing left) and moves it on, still on its branch
+    std::fs::write(c.wt().join("notes.md"), "done\n").unwrap();
+    hand::commit(&c.st, &c.task, "Notes").await.unwrap();
+    hand::over(&c.st, &c.task).await.unwrap();
+    assert_eq!(git(&c.bare, &["rev-parse", &format!("refs/heads/{OLD_BRANCH}")]), git(&c.wt(), &["rev-parse", "HEAD"]), "pushed first");
+    assert_eq!(c.task().branch.as_deref(), Some(OLD_BRANCH));
 }
 
 #[tokio::test]
