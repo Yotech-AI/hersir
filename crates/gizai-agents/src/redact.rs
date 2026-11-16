@@ -31,9 +31,11 @@ pub const LEFT_OUT: &str = "***";
 /// - tokens by their known start (`TOKEN_STARTS`: `ghp_***`, `github_pat_***`, `sk-***` …) and JSON web tokens (`eyJ***`);
 /// - the whole value after a name that names a secret (`SECRET_NAMES`, `SECRET_ENDS`) and `=` or `:` (`PASSWORD=***`,
 ///   `APP_KEY=***`, `"token": "***"`), or after such a flag and a space (`--password ***`), whatever characters it holds:
-///   up to a space or the line's end, a quoted one up to its closing quote (`'***'`), and one in braces or brackets up
-///   to the one that closes them (`value_end`);
-/// - the value after `Bearer` or `Basic`, and both words after `Authorization:` (`Authorization: *** ***`);
+///   a quoted one up to its closing quote (`'***'`), one in braces or brackets up to the one that closes them, one after
+///   `:` or after a sign with a space after it up to the line's end, each word `***` (`client_secret: *** ***`,
+///   `Authorization: *** ***`), and any other up to a space, as a shell reads `TOKEN=*** npm ci` (`value_end`). A value
+///   in quotes ends at the quote around it (`'Authorization: *** ***'`);
+/// - the value after `Bearer` or `Basic`;
 /// - mysql's and mariadb's password stuck to `-p` (`-p***`), and the password in a login after `-u` or `--user`, as curl
 ///   takes it (`-u me:***`).
 ///
@@ -96,7 +98,7 @@ fn hide_words(text: &str) -> String {
         }
         let end = text[i..].find(|c: char| !is_word(c)).map_or(text.len(), |n| i + n);
         let word = &text[i..end];
-        let Some((mut at, mut quote)) = secret_value(text, i, end, mysql) else {
+        let Some(Value { mut at, mut quote, to_line_end }) = secret_value(text, i, end, mysql) else {
             out.push_str(&token_hidden(word));
             i = end;
             continue;
@@ -113,7 +115,24 @@ fn hide_words(text: &str) -> String {
             quote = None;
         }
         let outer = outer_quote(text, i, at);
-        // after `Authorization:` its scheme and then its credentials go, and after a value `Bearer` or `Basic` the next one
+        if to_line_end && quote.is_none() && !text[at..].starts_with(['{', '[']) {
+            // `client_secret: p@ss w0rd`, `Authorization: Bearer …`: up to the line's end or the quote around it, each
+            // word left out and the spaces between kept
+            let line_end = text[at..].find(['\n', '\r']).map_or(text.len(), |n| at + n);
+            let stop = outer.and_then(|q| closing(text, at, q, true)).map_or(line_end, |k| k.min(line_end));
+            let mut in_word = false;
+            for c in text[at..stop].chars() {
+                if c.is_whitespace() {
+                    out.push(c);
+                } else if !in_word {
+                    out.push_str(LEFT_OUT);
+                }
+                in_word = !c.is_whitespace();
+            }
+            i = stop;
+            continue;
+        }
+        // after `Authorization=` its scheme and then its credentials go, and after a value `Bearer` or `Basic` the next one
         let mut and_next = word.to_ascii_lowercase().contains("authorization");
         loop {
             let stop = value_end(text, at, quote, outer);
@@ -154,35 +173,49 @@ fn is_scheme(word: &str) -> bool {
     word.eq_ignore_ascii_case("bearer") || word.eq_ignore_ascii_case("basic")
 }
 
-/// Where the secret value after the word `text[start..end]` starts, if one follows it, and the quote it starts after:
+/// A secret value found after a word: where it starts, the quote it starts after (it ends at its closing one), and
+/// whether, unquoted, it runs to its line's end rather than to a space.
+struct Value {
+    at: usize,
+    quote: Option<char>,
+    to_line_end: bool,
+}
+
+/// The value at `at`, after its opening quote if it starts with one.
+fn value_at(text: &str, at: usize, to_line_end: bool) -> Value {
+    let (at, quote) = opening(text, at);
+    Value { at, quote, to_line_end }
+}
+
+/// The secret value after the word `text[start..end]`, if one follows it:
 /// - after a word that names a secret and `=` or `:` (`assignment`);
 /// - after a flag that names a secret and spaces: `--password …`, `--api-key '…'`;
 /// - after `Bearer` or `Basic` and spaces;
 /// - in a text about mysql or mariadb, the password stuck to `-p`: `-pS3cret`, `-p'…'`;
 /// - after `-u` or `--user`, the password after a login's `:`: `-u me:…`.
-fn secret_value(text: &str, start: usize, end: usize, mysql: bool) -> Option<(usize, Option<char>)> {
+fn secret_value(text: &str, start: usize, end: usize, mysql: bool) -> Option<Value> {
     let word = &text[start..end];
     let rest = &text[end..];
     if names_secret(&word.to_ascii_lowercase()) {
-        if let Some(n) = assignment(rest) {
-            return Some(opening(text, end + n));
+        if let Some((n, to_line_end)) = assignment(rest) {
+            return Some(value_at(text, end + n, to_line_end));
         }
         if word.starts_with('-') && let Some(n) = spaced(rest) {
-            return Some(opening(text, end + n));
+            return Some(value_at(text, end + n, false));
         }
     }
     if is_scheme(word) && let Some(n) = spaced(rest) {
-        return Some(opening(text, end + n));
+        return Some(value_at(text, end + n, false));
     }
     if mysql && word.starts_with("-p") && !word.starts_with("--") && text[start + 2..].starts_with(|c: char| !c.is_whitespace()) {
-        return Some(opening(text, start + 2));
+        return Some(value_at(text, start + 2, false));
     }
     if word == "-u" || word == "--user" {
         let n = spaced(rest).or_else(|| (word == "--user" && rest.starts_with('=')).then_some(1))?;
-        let (at, quote) = opening(text, end + n);
+        let Value { at, quote, .. } = value_at(text, end + n, false);
         let login_end = value_end(text, at, quote, outer_quote(text, start, at));
         let colon = text[at..login_end].find(':')?;
-        return Some((at + colon + 1, quote));
+        return Some(Value { at: at + colon + 1, quote, to_line_end: false });
     }
     None
 }
@@ -190,7 +223,10 @@ fn secret_value(text: &str, start: usize, end: usize, mysql: bool) -> Option<(us
 /// Where a value starts after a word that names a secret, when `=` or `:` (also `=>` and `:=`) follows it: after the
 /// word's closing quote and spaces, if any, the sign, and spaces (`=`, `: `, `": "`, `' => '`). A `:` needs a space or a
 /// quote after it, as in YAML, JSON and headers, so `key:generate` and `token:***@host` hold no value; `==` is none.
-fn assignment(rest: &str) -> Option<usize> {
+/// Also whether the value runs to the line's end: after `:` (YAML, headers) and after a sign with a space after it
+/// (`password = …` in INI, TOML and Makefiles); not after `=` without one, where a shell ends it at a space
+/// (`TOKEN=… npm ci`).
+fn assignment(rest: &str) -> Option<(usize, bool)> {
     let n = rest.len() - rest.trim_start_matches([' ', '\t', '\'', '"', '`']).len();
     let after = &rest[n..];
     let sign = if after.starts_with("=>") || after.starts_with(":=") {
@@ -201,7 +237,9 @@ fn assignment(rest: &str) -> Option<usize> {
     } else {
         return None;
     };
-    Some(rest.len() - rest[n + sign..].trim_start_matches([' ', '\t']).len())
+    let value = rest[n + sign..].trim_start_matches([' ', '\t']);
+    let spaces = rest.len() - n - sign - value.len();
+    Some((rest.len() - value.len(), after.starts_with(':') || spaces > 0))
 }
 
 /// Where a value starts after the spaces `rest` starts with, when something follows them on the same line.
