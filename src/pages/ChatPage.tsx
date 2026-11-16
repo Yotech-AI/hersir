@@ -110,25 +110,25 @@ export function ChatPage({ id, archive = false, youId = "" }: { id?: string; arc
       {agent.data && !lead && <ChatSetup />}
       {lead && (
         <BesideChat.Provider value={openCardTab}>
-        <div ref={side.chatRef} className={side.className}>
-          <aside className="chat-threads" aria-label="Chats">
-            <div className="chat-threads-list" data-pins="">
-              <a className={`th${!id && !archive ? " on" : ""}`} href={href({ page: "chat" })}><span className="t"><Plus className="icon sm" />New chat</span></a>
-              {pins.list.length > 0 && <div className="nav-label">Pinned</div>}
-              {pins.list.map((t) => <ThreadRow key={t.id} t={t} on={t.id === id} live={live} pins={pins} />)}
-              {recent.length > 0 && <div className="nav-label">Recent</div>}
-              {recent.map((t) => <ThreadRow key={t.id} t={t} on={t.id === id} live={live} pins={pins} />)}
-            </div>
-            {(newest.length > 0 || pins.list.length > 0) && (
-              <div className="chat-threads-foot">
-                <a className={`th${archive ? " on" : ""}`} href={href({ page: "chats" })} aria-current={archive ? "page" : undefined}
-                  title="Every chat, with a search through their titles and messages"><span className="t"><History className="icon sm" />Archive</span></a>
+          <div ref={side.chatRef} className={side.className}>
+            <aside className="chat-threads" aria-label="Chats">
+              <div className="chat-threads-list" data-pins="">
+                <a className={`th${!id && !archive ? " on" : ""}`} href={href({ page: "chat" })}><span className="t"><Plus className="icon sm" />New chat</span></a>
+                {pins.list.length > 0 && <div className="nav-label">Pinned</div>}
+                {pins.list.map((t) => <ThreadRow key={t.id} t={t} on={t.id === id} live={live} pins={pins} />)}
+                {recent.length > 0 && <div className="nav-label">Recent</div>}
+                {recent.map((t) => <ThreadRow key={t.id} t={t} on={t.id === id} live={live} pins={pins} />)}
               </div>
-            )}
-          </aside>
-          {archive ? <ChatArchive live={live} pins={pins} /> : <ChatThread threadId={id ?? null} thread={thread} agent={lead} youId={youId} />}
-          <ChatSide youId={youId} />
-        </div>
+              {(newest.length > 0 || pins.list.length > 0) && (
+                <div className="chat-threads-foot">
+                  <a className={`th${archive ? " on" : ""}`} href={href({ page: "chats" })} aria-current={archive ? "page" : undefined}
+                    title="Every chat, with a search through their titles and messages"><span className="t"><History className="icon sm" />Archive</span></a>
+                </div>
+              )}
+            </aside>
+            {archive ? <ChatArchive live={live} pins={pins} /> : <ChatThread threadId={id ?? null} thread={thread} agent={lead} youId={youId} />}
+            <ChatSide youId={youId} />
+          </div>
         </BesideChat.Provider>
       )}
       {pins.error && <div className="toast" role="status">{pins.error}</div>}
