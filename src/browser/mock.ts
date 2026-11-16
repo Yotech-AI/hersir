@@ -314,6 +314,7 @@ export async function answer(cmd: string, args: Row): Promise<unknown> {
   if (cmd in WRITES) return WRITES[cmd](args);
   if (cmd === "screenshot_bytes") return picture(String(args.fileId));
   if (cmd === "list_tasks") return tasks(args.filter as Row | undefined);
+  if (cmd === "item_id") return itemId(String(args.kind), String(args.key));
   // the folder in Settings: none once Backups is turned off
   if (cmd === "list_backups" && args.folder == null && backups() && !backups()!.folder) return [];
   if (cmd === "list_backups" && !inSettings(args.folder)) return structuredClone(usb());
@@ -328,6 +329,20 @@ function tasks(filter: Row | undefined) {
   if (!all) return empty("list_tasks", "list_tasks");
   return structuredClone(all.filter((t) => (!filter?.projectId || t.projectId === filter.projectId)
     && (!filter?.openOnly || !["done", "cancelled"].includes(String(t.stateCategory)))));
+}
+
+/** item_id, as the backend: a card's id by its id or identifier, a project's by its id or key (case ignored); any other kind
+ *  answers its key. One that matches nothing fails. */
+function itemId(kind: string, key: string): Promise<string> | string {
+  if (kind === "task") {
+    const t = ((commands.list_tasks as Row[] | undefined) ?? []).find((x) => x.id === key || x.identifier === key);
+    return t ? String(t.id) : Promise.reject(`No task ${key}`);
+  }
+  if (kind === "project") {
+    const p = ((commands.list_projects as Row[] | undefined) ?? []).find((x) => x.id === key || String(x.key).toLowerCase() === key.toLowerCase());
+    return p ? String(p.id) : Promise.reject(`No project with the key ${key}`);
+  }
+  return key;
 }
 
 /** A screenshot's bytes: a picture drawn from its size and caption (the fixtures hold no images). */

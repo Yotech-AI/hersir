@@ -7,6 +7,7 @@ import { keyBetween } from "../lib/sortKey";
 import { files } from "../lib/changes";
 import { cardShotsHint } from "../lib/screenshotSettings";
 import { useData } from "../lib/useData";
+import { HOLD_NAMES } from "../lib/holds";
 import type { CardChanges, Person, Task, Team } from "../types";
 import { PRIORITY_NAMES, PriorityIcon, StatusIcon } from "./StatusIcon";
 import { Avatar } from "./Avatar";
@@ -15,10 +16,6 @@ import { NewLabel } from "./NewLabel";
 import { Diffstat } from "./changes/Diffstat";
 import { BuildsOnRows } from "./BuildsOn";
 
-const HOLD_NAMES: Record<string, string> = {
-  needs_decision: "Needs your decision", stalled: "Stalled", merge_conflict: "Merge conflict",
-  waiting_approval: "Waiting for approval", rate_limited: "Rate limited", blocked: "Blocked",
-};
 const date = (ms: number) => new Date(ms).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 /** A hold reason longer than this shows its end: about two lines of the value column (some 30 characters a line). */
 const REASON_CHARS = 60;
