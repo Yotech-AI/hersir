@@ -2159,7 +2159,9 @@ function memoryIslands() {
     gaps: [Math.round(n.left - f.right), Math.round(a.left - n.right)], page_bg: getComputedStyle(split.parentElement ?? split).backgroundColor };
   for (const [name, l] of [["Notes", out.notes], ["note", out.note], ["About this note", out.about]] as const)
     check(l.bg === island && l.radius === "10px" && l.border === "0px 0px", `the ${name} island: the sidebar island's fill, radius 10, no border (${JSON.stringify(l)}, island ${island})`);
-  check(out.notes.w === 260 && out.about.w === 300, `Notes 260 and About this note 300 wide (${out.notes.w}, ${out.about.w})`);
+  // as today: 260 and 300, or 230 and 270 in a window up to 1300 wide (the cage's is 1280)
+  const [nw, aw] = window.innerWidth > 1300 ? [260, 300] : [230, 270];
+  check(out.notes.w === nw && out.about.w === aw, `Notes ${nw} and About this note ${aw} wide in a ${window.innerWidth}px window (${out.notes.w}, ${out.about.w})`);
   check(out.gaps.every((g) => g === 6) && [f, n, a].every((r) => Math.round(r.top) === Math.round(f.top) && Math.round(r.bottom) === Math.round(f.bottom)), `side by side, 6 apart, as high as each other (${out.gaps})`);
   check(out.page_bg === "rgba(0, 0, 0, 0)", `the page's own island gives way to them (${out.page_bg})`);
   // Notes' header: the scope's name with New note and New folder, above the search box
