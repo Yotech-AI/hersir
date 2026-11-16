@@ -150,20 +150,24 @@
 #     made with its agents paused; Export with warnings lists each, Cancel and Escape save nothing, Export anyway saves; a
 #     bad file shows the refusal and Create team stays off; the Software team exported and made again from its file has the
 #     same columns and agents, names aside.
-# 23. chat terminal (GA-278), against prep_chats' Chief and chats, with /bin/sh in a scratch home folder with ~/Herd/chat-site
-#     and ~/Herd/chat-other, in two starts on the same WebKit storage: (a) Open terminal right before New chat opens the
-#     picker titled "Open terminal in" under it; a pick starts a terminal there in a panel on the right of the conversation at
-#     45% of the space right of the chat list, with the focus, its folder in mono under the tabs (pwd prints it) and its row
-#     in the sidebar; another pick adds a tab, + and Ctrl+Shift+` start one in the shown terminal's folder; the messages and
-#     the text box start at the left of their column while it shows and are centred again once it hides (the app drawn
-#     1920px wide, so the column is narrower than the conversation); × on sleep asks first (Cancel keeps it, Close ends it,
-#     the tab before shows), a middle click closes a waiting one; Hide keeps sleep 60 running, the rail on the right edge
-#     says 2 with its tooltip, and the rail, Ctrl+` and Ctrl+` from inside the terminal show and hide it; the left edge is a
-#     vertical separator between 360px of panel and 400px of conversation, a double click gives 45% back, ← and → move it 5%;
-#     another chat, New chat, the Archive (also at the left) and another page and back keep the panel, its tabs, the shown
-#     terminal and its width; Own page and back; the away texts; the app drawn 1000px wide hides the chat list while the
-#     panel shows; the largest text size and light in the 1280px window; closing the last tab hides the panel, no rail.
-#     (b) After a restart the panel opens at the width kept (55%).
+# 23. chat side island (GA-296; GA-278's terminal panel before it), against prep_chats' Chief and chats, with /bin/sh in a
+#     scratch home folder with ~/Herd/chat-site and ~/Herd/chat-other, in two starts on the same WebKit storage: (a) in chat
+#     A the chat list and the conversation are islands 6px apart (no line above the text box); one Open (panel-right, a
+#     chevron, a menu) right before New chat, no Open terminal; its New terminal opens the picker titled "Open terminal in"
+#     under it while the chat has no terminal; a pick starts a terminal in the side island right of the conversation at 45%
+#     of the room right of the chat list, with the focus, its folder in mono (pwd prints it) and its sidebar row, and the tool
+#     strip 28px wide at the window's right edge, 6px in: the Terminal icon, 1, selected (a pill in the island's fill), its
+#     tooltip "Terminal, 1 open (Ctrl+`)"; New terminal in… adds a tab, the island's + (a menu) and Ctrl+Shift+` start one
+#     in the shown terminal's folder; × on sleep asks first, a middle click closes a waiting one, Ctrl+PgUp, Ctrl+PgDn, ← →
+#     and F2; Hide keeps sleep 600 running and the strip stays (none selected), a click on the icon shows the island, on the
+#     selected icon hides it, Ctrl+` (also from inside the terminal) and Alt+1 do the same, Alt+1 inside the terminal
+#     reaches the shell, Alt+2, Alt+3 and Alt+4 do nothing yet; the icon's right-click menu (and the context menu key):
+#     Terminal · 2 open, Hide or Show, Close all; the handle in the gap between 360px of island and 400px of conversation, a
+#     double click and ← →; chat B, New chat and the Archive show none of A's tabs, B its own; back in A (also from another
+#     page) its tabs and width, sleep still running; Own page closes the tab here; the app drawn 1100, 1000 and 900px wide
+#     hides the chat list while the island shows, the strip stays; the largest text size and light; Close all asks while
+#     sleep runs (Cancel keeps them), then closes them all: no island, no strip. (b) After a restart the island opens at the
+#     width kept (55%).
 # 24. Open in terminal (GA-279), against prep_chats' Chief and prep_chat_terminal's chat, with /bin/sh in a scratch home
 #     folder with ~/Herd/doq-studio (and resources/embed-test in it), ~/Herd/shop, ~/Herd/kade-portal and ~/Herd/invoice-api:
 #     a row under each of the Chief's text messages that asks you to run a command and nowhere else (not under a tool call,
@@ -331,7 +335,7 @@ JSON
 printf '{ "format": "gizai-team", "format_version": 2, "name": "Too new", "columns": [], "agents": [] }\n' > .devdata/uitest-templates/bad.json
 DATA=$PWD/.devdata/uitest ROUTE=team MODE="templates:$PWD/.devdata/uitest-templates" TIMEOUT=120 scripts/smoke-cage.sh || fail=1
 fresh
-# GA-278: the Chat's terminal panel, with the Chief of prep_chats and two folders in ~/Herd; b is a restart on the same WebKit storage
+# GA-296 (GA-278 before it): the Chat's side island and tool strip, with the Chief of prep_chats and two folders in ~/Herd; b is a restart on the same WebKit storage
 (source scripts/env.sh && cargo run -q -p gizai-core --example prep_chats -- .devdata/uitest "$PWD/crates/gizai-agents/tests/fake-claude.sh")
 rm -rf .devdata/uitest-home && mkdir -p .devdata/uitest-home/Herd/chat-site .devdata/uitest-home/Herd/chat-other
 DATA=$PWD/.devdata/uitest ROUTE=terminal MODE=terminal:chat-a GZ_SHELL=/bin/sh GZ_HOME=$PWD/.devdata/uitest-home TIMEOUT=150 scripts/smoke-cage.sh || fail=1
