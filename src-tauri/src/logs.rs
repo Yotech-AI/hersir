@@ -175,7 +175,7 @@ pub fn mark_running(data_dir: &Path, running: &Running) -> std::io::Result<()> {
 }
 
 /// Removes all but the `KEEP` newest logs (`hersir-*.log`, by the start time in their name) in `dir`, never one in
-/// `keep` (this start's log and the previous one's). Returns how many it removed.
+/// `keep` (by name: this start's log, the previous one's, the kept unexpected end's). Returns how many it removed.
 pub fn remove_old(dir: &Path, keep: &[&Path]) -> usize {
     let Ok(entries) = fs::read_dir(dir) else { return 0 };
     let mut logs: Vec<((String, u32), PathBuf)> = entries.flatten()
