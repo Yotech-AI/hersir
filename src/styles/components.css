@@ -342,7 +342,7 @@ button.label-pill[aria-pressed="true"] { border-color: var(--accent); color: var
    or Island tabs; right the island's actions (App/Icon button, 26 × 26). The same values as the Editor's (GA-293) and the
    Chat's side island (GA-296). A page's toolbar as the header is 44 high, as the Tasks board's (.island-head.bar). */
 .island-head { display: flex; flex: none; align-items: center; gap: 2px; height: var(--size-island-head); padding: 0 6px; }
-.island-head.bar { height: 44px; gap: 8px; padding: 0 8px; }
+.island-head.bar { height: 44px; gap: 8px; padding: 0 12px 0 6px; }
 .island-head > .island-title { flex: 1; min-width: 0; padding-left: 6px; overflow: hidden; color: var(--text); font-size: var(--fs); font-weight: 600; line-height: 20px; text-overflow: ellipsis; white-space: nowrap; }
 .island-head > .acts { display: flex; flex: none; align-items: center; gap: 2px; margin-left: auto; }
 .island-head > .acts .btn.icon-only { width: 26px; height: 26px; }
