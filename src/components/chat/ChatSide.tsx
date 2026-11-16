@@ -62,25 +62,26 @@ export function useChatSideLayout(on: boolean, key: string) {
   useLayoutEffect(() => { showChat(key); }, [key]);
   const shows = useSideShows();
   const [chat, chatRef] = useState<HTMLDivElement | null>();
-  const fits = useListFits(chat ?? null, on && shows === "island");
-  const className = !on || !shows ? "chat" : shows === "strip" ? "chat has-strip" : `chat has-side has-strip${fits ? "" : " no-list"}`;
+  const fits = useListFits(chat ?? null, on && !!shows, shows === "island");
+  const className = !on || !shows ? "chat" : `chat${shows === "island" ? " has-side" : ""} has-strip${fits ? "" : " no-list"}`;
   return { chatRef, className };
 }
 
-/** Whether the chat list has room beside the island: measured while the island shows, and again when the chat changes size. */
-function useListFits(chat: HTMLDivElement | null, on: boolean): boolean {
+/** Whether the chat list has room beside the conversation, the strip and (`island`) the side island: measured while the strip
+ *  shows, and again when the chat changes size. */
+function useListFits(chat: HTMLDivElement | null, on: boolean, island: boolean): boolean {
   const [fits, setFits] = useState(true);
   useLayoutEffect(() => {
     if (!on || !chat) return;
     const check = () => {
       const grow = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ui-grow")) || 0;
-      setFits(listFits(chat.getBoundingClientRect().width, chatListWidth(window.matchMedia("(max-width: 1100px)").matches, grow)));
+      setFits(listFits(chat.getBoundingClientRect().width, chatListWidth(window.matchMedia("(max-width: 1100px)").matches, grow), island));
     };
     check();
     const ro = new ResizeObserver(check);
     ro.observe(chat);
     return () => ro.disconnect();
-  }, [chat, on]);
+  }, [chat, on, island]);
   return fits;
 }
 
@@ -134,12 +135,14 @@ function openItems(s: TerminalSession | null, off: string | null, pick: () => vo
  *  anything open; and the page's keys. A tab shown when the page opens doesn't take the focus; one opened, picked or shown
  *  on the page does. `youId`: for the folder picker. */
 export function ChatSide({ youId }: { youId: string }) {
-  const { side, focus } = useChatSide();
+  const { chat, side, focus } = useChatSide();
   const all = useTerminals();
   const fresh = useNewTerminal(side);
   const islandRef = useRef<HTMLDivElement>(null);
   const shown = side.open && !!side.current;
-  const since = useRef(focus);
+  // what was asked before the page or the chat showed doesn't move the focus: another chat's terminal coming in doesn't take it
+  const since = useRef({ chat, focus });
+  if (since.current.chat !== chat) since.current = { chat, focus };
 
   /** Hides the island: with the focus in it, the focus goes to the text box (the Archive's search). */
   const hide = () => {
@@ -179,7 +182,7 @@ export function ChatSide({ youId }: { youId: string }) {
   if (!side.tabs.length) return null;
   return (
     <>
-      {shown && <SideIsland islandRef={islandRef} side={side} all={all} focus={focus} focusNext={focus > since.current} fresh={fresh} you={youId} hide={hide} />}
+      {shown && <SideIsland islandRef={islandRef} side={side} all={all} focus={focus} focusNext={focus > since.current.focus} fresh={fresh} you={youId} hide={hide} />}
       <ToolStrip side={side} all={all} toggle={toggle} />
     </>
   );
@@ -221,8 +224,14 @@ function SideIsland({ islandRef, side, all, focus, focusNext, fresh, you, hide }
     if (shownTerm) focusTerminal(shownTerm.id);
   }, [focus]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // why New terminal couldn't start, or a tab couldn't close, goes once another tab shows
-  useEffect(() => { setFailed(undefined); }, [current]);
+  // why New terminal couldn't start, or a tab couldn't close, goes once another tab shows (not when the island comes in
+  // to show it)
+  const was = useRef(current);
+  useEffect(() => {
+    if (was.current === current) return;
+    was.current = current;
+    setFailed(undefined);
+  }, [current]);
 
   const end = (t: TerminalSession) => { terminalClose(t.id).catch((e) => setFailed(`Couldn't close ${t.name}: ${why(e)}`)); };
   const close = (t: TerminalSession, el: HTMLElement | null) => {

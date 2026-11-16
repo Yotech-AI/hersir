@@ -372,12 +372,14 @@ a.member:hover { border-color: var(--line-2); }
    chat has anything open, whether the side island shows or not; it ends at the main column's edge, island-gap from the
    window's. The side island, while it shows, is the column before it: a share of the room right of the chat list (the
    conversation and the island, --chat-side-share, 0.45 the first time), at least 360px, leaving the conversation at least
-   400px; in a window without room for the chat list besides, the list hides (no-list) and the strip stays. The
+   400px. In a window without room for the chat list besides, the list hides (no-list): the conversation keeps 400px, with
+   the strip alone too, and the strip stays. The
    conversation, the text box and the Archive then start at the left of their column instead of in its middle. */
 .chat.has-strip { --chat-strip: var(--size-tool); grid-template-columns: var(--chat-list) minmax(0, 1fr) var(--chat-strip); }
 .chat.has-side { --chat-room: calc(100% - var(--chat-list) - 3 * var(--island-gap) - var(--chat-strip));
   --chat-side-w: clamp(360px, calc(var(--chat-room) * var(--chat-side-share, .45)), calc(var(--chat-room) - 400px));
   grid-template-columns: var(--chat-list) minmax(0, 1fr) var(--chat-side-w) var(--chat-strip); }
+.chat.has-strip.no-list { grid-template-columns: minmax(0, 1fr) var(--chat-strip); }
 .chat.has-side.no-list { --chat-list: calc(-1 * var(--island-gap)); grid-template-columns: minmax(0, 1fr) var(--chat-side-w) var(--chat-strip); }
 .chat.no-list > .chat-threads { display: none; }
 .chat.has-side .chat-col { margin-left: 0; }

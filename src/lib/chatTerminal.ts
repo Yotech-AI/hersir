@@ -54,9 +54,10 @@ export const chatListWidth = (narrow: boolean, uiGrow: number) => (narrow ? 220 
 /** The gap between islands (island-gap), and the tool strip's buttons (size-tool) on the window's right edge. */
 export const ISLAND_GAP = 6;
 export const STRIP_WIDTH = 28;
-/** Whether the chat list has room beside the side island in a chat `chat` pixels wide: what is right of the list (less the
- *  three gaps and the strip) holds the island's and the conversation's least widths. */
-export const listFits = (chat: number, list: number) => chat - list - 3 * ISLAND_GAP - STRIP_WIDTH >= CHAT_PANEL_MIN + CONVERSATION_MIN;
+/** Whether the chat list has room in a chat `chat` pixels wide while the tool strip shows: what is right of the list (less
+ *  the gaps and the strip) holds the conversation's least width, and the side island's while it shows (`island`). */
+export const listFits = (chat: number, list: number, island = true) =>
+  island ? chat - list - 3 * ISLAND_GAP - STRIP_WIDTH >= CHAT_PANEL_MIN + CONVERSATION_MIN : chat - list - 2 * ISLAND_GAP - STRIP_WIDTH >= CONVERSATION_MIN;
 
 // ---------- a chat's terminals ----------
 
