@@ -108,6 +108,20 @@ The details are in [docs/install.md](docs/install.md): what each system needs, u
 4. Add a project with its git repository, and put a card in To do.
 5. The Backend or Frontend Agent builds it, the QA Agent tests it, and it lands in your Review.
 
+## When Hersir crashed
+
+Hersir keeps a log of each start: everything it prints, a line every minute while it runs, and a panic with its backtrace. When Hersir ended without quitting (it crashed, or was killed), its next start notices and names the log of the start that ended.
+
+The logs are in the `logs` folder of your data, one file per start, named after its start time in UTC, such as `hersir-2026-11-13T14-50-26Z.log`:
+
+- **Linux:** `~/.local/share/hersir/logs` (`$XDG_DATA_HOME/hersir/logs` when that is set)
+- **macOS:** `~/Library/Application Support/Hersir/logs`
+- **Windows:** `%APPDATA%\Hersir\logs`
+
+An install from before 0.17.0 that keeps its data in the gizai folder has them in `gizai/logs` there, and `HERSIR_DATA_DIR` moves them along with your data. Started from a terminal, Hersir prints where its log is.
+
+Please send us the file of the start that crashed, and say roughly when it happened: its first line says which Hersir started when, on which system, and its last lines show what happened just before the end. The 20 newest files stay. They hold no passwords, keys or tokens, but they do name your folders and cards, so look it over first if you like.
+
 ## Documentation
 
 - [Install](docs/install.md): what each system needs, when macOS or Windows warns, updates, your data and no telemetry.
