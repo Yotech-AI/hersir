@@ -5123,7 +5123,7 @@ async function chatCardsProbe(phase: "a" | "b") {
   // 3. GFW-2 in Review: the pull request and QA's verdict first; no Run or Continue
   q<HTMLElement>('.chat-side .card-tab[data-tab="card:GFW-2"]')?.click();
   await waitFor(() => (textOf(q(".chat-side .chat-card-head .id")) === "GFW-2" && sec("QA's verdict") && prop("Column") ? true : null), 6000);
-  const kids = [...(body()?.children ?? [])].map((c) => c.getAttribute("aria-label") ?? c.className.split(" ")[0]);
+  const kids = [...(body()?.children ?? [])].map((c) => c.getAttribute("aria-label") ?? [...c.classList].find((k) => k.startsWith("chat-card")) ?? c.className);
   const pr = q<HTMLElement>('.chat-side section[aria-label="Pull request"]');
   const verdict = sec("QA's verdict");
   out.review = { order: kids, pr: textOf(pr?.querySelector("a")), verdict: { icon: !!verdict?.querySelector("svg.lucide-circle-check"), badge: textOf(verdict?.querySelector(".badge")),
