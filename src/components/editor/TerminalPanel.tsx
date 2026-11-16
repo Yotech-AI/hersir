@@ -1,5 +1,6 @@
 // The Editor's terminal panel (GA-137, TF2; design/terminal/terminal.html §4, §5 and §7, research §5.1 and §5.2): the
-// Terminal button in the top bar, and the panel in the code column, between the code and the status bar.
+// Terminal button in the top bar, and the panel in the code column, an island under the code island (GA-293,
+// design/islands: Editor); the gap above it is its drag handle.
 // - The button shows and hides the panel; when the folder has no terminal yet it starts one in the folder's root. It is
 //   off (aria-disabled, so its tooltip says why) while a terminal can't start there and none is open there yet.
 // - The panel's tabs are the folder's terminals, the same set as the Terminal page's, with +, Own page and Hide. Its height
@@ -157,23 +158,29 @@ export function TerminalPanel({ p, name }: { p: TerminalPanelState; name: string
           if (next) p.pick(next);
         }
       }}>
+      {/* the gap above the panel's island is its drag handle (design/islands: The gap as a resize handle) */}
       <Handle panel={p.panelRef} share={share} setShare={setShare} />
-      <div className="ed-tabs term-tabs" role="tablist" aria-label={`Terminals in ${name}`}>
-        {p.here.map((t) => (
-          <TermTab key={t.id} s={t} on={t.id === p.current} ids={ids} renaming={renaming === t.id}
-            pick={p.pick} close={close} rename={(on) => setRenaming(on ? t.id : null)} fail={p.fail} />
-        ))}
-        <button className={`btn ghost sm icon-only${p.off ? " term-btn" : ""}`} aria-label={`New terminal in ${name}`}
-          title={p.off ?? `New terminal in ${name} (Ctrl+Shift+\`)`} aria-disabled={!!p.off || p.starting || undefined}
-          onClick={() => { if (!p.off) p.start(); }}>
-          <Plus className="icon" />
-        </button>
-        <span className="acts">
-          <button className="btn ghost sm" title={`Open ${s?.name ?? name} on its own page`} disabled={!s} onClick={ownPage}><Maximize2 className="icon" />Own page</button>
-          <button className="btn ghost sm" title="Hide the terminal (Ctrl+`): its shells keep running" onClick={p.hide}><ChevronDown className="icon" />Hide</button>
-        </span>
+      <div className="term-panel-in">
+        {/* the island's header: its tabs, then New terminal, Own page and Hide (frame 274:1564) */}
+        <div className="island-head term-tabs">
+          <div className="island-tabs" role="tablist" aria-label={`Terminals in ${name}`}>
+            {p.here.map((t) => (
+              <TermTab key={t.id} s={t} on={t.id === p.current} ids={ids} renaming={renaming === t.id}
+                pick={p.pick} close={close} rename={(on) => setRenaming(on ? t.id : null)} fail={p.fail} />
+            ))}
+          </div>
+          <span className="acts">
+            <button className={`btn ghost sm icon-only${p.off ? " term-btn" : ""}`} aria-label={`New terminal in ${name}`}
+              title={p.off ?? `New terminal in ${name} (Ctrl+Shift+\`)`} aria-disabled={!!p.off || p.starting || undefined}
+              onClick={() => { if (!p.off) p.start(); }}>
+              <Plus className="icon" />
+            </button>
+            <button className="btn ghost sm icon-only" aria-label="Own page" title={`Open ${s?.name ?? name} on its own page`} disabled={!s} onClick={ownPage}><Maximize2 className="icon" /></button>
+            <button className="btn ghost sm icon-only" aria-label="Hide" title="Hide the terminal (Ctrl+`): its shells keep running" onClick={p.hide}><ChevronDown className="icon" /></button>
+          </span>
+        </div>
+        {p.current ? <TerminalView key={p.current} id={p.current} place={p.place} autoFocus={p.focusNext} /> : <div className="term-place" />}
       </div>
-      {p.current ? <TerminalView key={p.current} id={p.current} place={p.place} autoFocus={p.focusNext} /> : <div className="term-place" />}
       {asking && createPortal(
         <CloseAsk at={asking} s={asking.s} cancel={() => setAsking(null)}
           close={() => { const t = asking.s; setAsking(null); terminalClose(t.id).catch((e) => p.fail(`Couldn't close ${t.name}: ${String(e).replace(/^Error:\s*/, "")}`)); }} />,
@@ -202,18 +209,20 @@ export type HandleEdge = {
   keep: (share: number) => void;
 };
 
-/** The Editor's panel: its height, a share of the code column, at least 120px of code and of panel. */
+/** The Editor's panel: its height, a share of the code column, at least 120px of code (in the code island, GA-293) and of
+ *  panel. */
 const EDITOR_EDGE: HandleEdge = {
   side: "top", label: "Terminal panel's height", clamp: clampPanel, share: shareFor, first: FIRST_SHARE, step: SHARE_STEP, keep: keepShare,
   measure: (el) => {
     const col = el.parentElement;
-    const code = col?.querySelector<HTMLElement>(":scope > .ed-code");
+    const code = col?.querySelector<HTMLElement>(":scope > .ed-code-island > .ed-code");
     if (!col || !code) return null;
     return { size: el.getBoundingClientRect().height, other: code.getBoundingClientRect().height, whole: col.getBoundingClientRect().height };
   },
 };
 
-/** The drag handle, the panel's top border (design §7): drag it between the limits (at least 120px of code and of panel),
+/** The drag handle, the panel's top edge (design §7; in the Editor the 6px gap above its island, GA-293): drag it between
+ *  the limits (at least 120px of code and of panel),
  *  a double-click gives 30% back, ↑ and ↓ move it 5% when it has the focus. The share is kept when you let go. With the
  *  Chat's `edge`, the panel's left border: ← and → move it. */
 export function Handle({ panel, share, setShare, edge = EDITOR_EDGE }: {
