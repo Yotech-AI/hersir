@@ -1,7 +1,8 @@
 // One note on the Memory page (GA-68): in the centre its title, the reading view or the editor (the doc page's editor,
 // saving and conflict handling: useDocEditor; switching to Read saves, leaving the editor doesn't), and on the right the
-// panel with collapsible sections: backlinks (linked and unlinked mentions, with Link), outgoing links (also those that
-// find no note yet), the outline, the properties as a small form, the tags (a click filters the tree) and the history.
+// panel with collapsible sections, in the islands design's order (GA-295): the outline, the properties as a small form,
+// the tags (a click filters the tree), the history, backlinks (linked and unlinked mentions, with Link) and outgoing
+// links (also those that find no note yet). The note and the panel are islands of their own.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { BookOpen, ChevronDown, ChevronRight, FileText, Hash, Link2, Pencil, Plus, X } from "lucide-react";
 import { docVersionBody, docVersions, renameDoc, saveDoc } from "../../api";
