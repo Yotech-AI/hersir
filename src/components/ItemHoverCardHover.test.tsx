@@ -2,6 +2,8 @@
 // README (design/islands/README.md → The chip's hover card → When it shows): the pointer rests 350 ms; leaving the chip and
 // the card hides it after 250 ms; the keyboard focus shows it, Escape and blur hide it; one card at a time; a click opens
 // the item. An item is read only when its card is about to show, and kept for a minute.
+// GA-297 QA: on the Chat page (its BesideChat context) a click on a card chip opens the card beside the chat, Ctrl+click
+// (Cmd+click on macOS) its page; other kinds of chip, and chips anywhere else, open the page as before.
 // There is no DOM here, so a small hook runtime stands in for React (as in HandFlow.test): a chip's hook keeps its state by
 // its place, a state change renders it again, effects run after each render. The backend is faked and counts its reads;
 // timers are vitest's.
@@ -15,6 +17,8 @@ const h = vi.hoisted(() => ({
   /** How long the fake backend takes to answer, in ms (0: at once). */
   delay: 0,
   reads: [] as string[],
+  /** The contexts the chip is rendered in (the Chat page gives BesideChat); a context left out has its default. */
+  contexts: new Map<unknown, unknown>(),
 }));
 
 vi.mock("react", async (orig) => {
@@ -61,7 +65,11 @@ vi.mock("react", async (orig) => {
   }) as typeof R.useEffect;
   const useEffect = effect(R.useEffect);
   const useLayoutEffect = effect(R.useLayoutEffect);
-  const hooks = { useState, useRef, useCallback, useId, useEffect, useLayoutEffect };
+  const useContext = ((ctx: { _currentValue?: unknown }) => {
+    if (!h.cur) return R.useContext(ctx as never);
+    return h.contexts.has(ctx) ? h.contexts.get(ctx) : ctx._currentValue;
+  }) as typeof R.useContext;
+  const hooks = { useState, useRef, useCallback, useId, useEffect, useLayoutEffect, useContext };
   return { ...R, ...hooks, default: { ...R, ...hooks } };
 });
 
@@ -82,6 +90,7 @@ vi.mock("../lib/openItem", () => ({ openItem: (kind: string, key: string) => { o
 const { useItemHover, SHOW_MS, HIDE_MS, WAIT_MS } = await import("./ItemHoverCard");
 const { ItemChip } = await import("./MarkdownView");
 const { forgetPreviews } = await import("../lib/itemPreview");
+const { BesideChat } = await import("../lib/besideChat");
 import type { ItemKind } from "../lib/itemLinks";
 import type { ItemPreview } from "../lib/itemPreview";
 
@@ -132,6 +141,7 @@ beforeEach(() => {
   h.delay = 0;
   h.reads = [];
   opened.length = 0;
+  h.contexts.clear();
   keys.clear();
   vi.stubGlobal("window", { setTimeout: (f: () => void, ms: number) => setTimeout(f, ms), clearTimeout: (id: number) => clearTimeout(id) });
   vi.stubGlobal("document", {
@@ -422,4 +432,94 @@ describe("a click on the chip", () => {
     (c.a.props.onClick as (e: unknown) => void)({ preventDefault: () => {}, stopPropagation: () => {} });
     expect(opened).toEqual([["doc", "d-1"]]);
   });
+});
+
+describe("a click on a chip on the Chat page (GA-297)", () => {
+  /** ItemChip in the runtime, inside the Chat page's BesideChat: what it opened beside the chat. */
+  function chatChip(kind: ItemKind, key: string) {
+    const beside: string[] = [];
+    h.contexts.set(BesideChat, (id: string) => { beside.push(id); });
+    let out!: ReactElement<{ children: [ReactElement<Record<string, unknown>>, ReactElement<CardProps> | null] }>;
+    const inst: Inst = { slots: [], i: 0, effects: [], cleanups: [], render: () => {
+      const prev = h.cur;
+      h.cur = inst;
+      inst.i = 0;
+      try { out = ItemChip({ kind, itemKey: key, children: `${key} text` }) as typeof out; } finally { h.cur = prev; }
+      const a = out.props.children[0];
+      (a.props.ref as { current: unknown }).current = { textContent: `${key} text`, getClientRects: () => [] };
+      for (const f of inst.effects.splice(0)) f();
+    } };
+    inst.render();
+    mounted.push(inst);
+    const click = (mods: { ctrlKey?: boolean; metaKey?: boolean } = {}) => {
+      const e = { preventDefault: vi.fn(), stopPropagation: vi.fn(), ctrlKey: false, metaKey: false, ...mods };
+      (out.props.children[0].props.onClick as (e: unknown) => void)(e);
+      return e;
+    };
+    return { beside, click, get a() { return out.props.children[0]; }, get card() { return out.props.children[1]; } };
+  }
+  const onMac = () => vi.stubGlobal("navigator", { userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15" });
+
+  it("a card chip opens the card beside the chat, not its page, and hides its hover card", async () => {
+    const c = chatChip("task", "GA-12");
+    expect(c.a.props.href).toBe("gizai:task/GA-12");
+    (c.a.props.onMouseEnter as (e: unknown) => void)({ clientX: 1, clientY: 1 });
+    await wait(SHOW_MS);
+    expect(c.card).not.toBeNull();
+    const e = c.click();
+    expect(c.beside).toEqual(["GA-12"]);
+    expect(opened).toEqual([]);
+    expect(e.preventDefault).toHaveBeenCalled();
+    expect(e.stopPropagation).toHaveBeenCalled();
+    expect(c.card).toBeNull();
+  });
+
+  it("Ctrl+click opens the card's page instead (Linux and Windows), Super+click too", () => {
+    const c = chatChip("task", "GA-12");
+    c.click({ ctrlKey: true });
+    c.click({ metaKey: true });
+    expect(opened).toEqual([["task", "GA-12"], ["task", "GA-12"]]);
+    expect(c.beside).toEqual([]);
+  });
+
+  it("on macOS Cmd+click opens the page, and Ctrl+click (a right click there) doesn't", () => {
+    onMac();
+    const c = chatChip("task", "GA-12");
+    c.click({ metaKey: true });
+    expect(opened).toEqual([["task", "GA-12"]]);
+    expect(c.beside).toEqual([]);
+    c.click({ ctrlKey: true });
+    expect(opened).toEqual([["task", "GA-12"]]);
+    expect(c.beside).toEqual(["GA-12"]);
+  });
+
+  it("chips of other kinds still open their page", () => {
+    for (const [kind, key] of [["project", "GA"], ["client", "c-1"], ["agent", "a-1"], ["person", "u-1"], ["doc", "d-1"]] as [ItemKind, string][]) {
+      const c = chatChip(kind, key);
+      c.click();
+      expect(c.beside).toEqual([]);
+    }
+    expect(opened).toEqual([["project", "GA"], ["client", "c-1"], ["agent", "a-1"], ["person", "u-1"], ["doc", "d-1"]]);
+  });
+
+  it("outside the Chat page (no BesideChat) a card chip opens its page, as before", () => {
+    const out = itemChipOutside("task", "GA-12");
+    (out.props.onClick as (e: unknown) => void)({ preventDefault: () => {}, stopPropagation: () => {}, ctrlKey: false, metaKey: false });
+    expect(opened).toEqual([["task", "GA-12"]]);
+  });
+  /** ItemChip's <a> rendered with no BesideChat. */
+  function itemChipOutside(kind: ItemKind, key: string) {
+    let out!: ReactElement<{ children: [ReactElement<Record<string, unknown>>, unknown] }>;
+    const inst: Inst = { slots: [], i: 0, effects: [], cleanups: [], render: () => {
+      const prev = h.cur;
+      h.cur = inst;
+      inst.i = 0;
+      try { out = ItemChip({ kind, itemKey: key, children: key }) as typeof out; } finally { h.cur = prev; }
+      (out.props.children[0].props.ref as { current: unknown }).current = { textContent: key, getClientRects: () => [] };
+      for (const f of inst.effects.splice(0)) f();
+    } };
+    inst.render();
+    mounted.push(inst);
+    return out.props.children[0];
+  }
 });
