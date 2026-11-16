@@ -6,8 +6,10 @@
 # nothing from the checkout. The line checks the release's signature with Hersir's own keys and installs its
 # ready-made build (GA-252): it sets up no Rust or Node.js, and on macOS and Windows the installed Hersir must have no
 # mark of a download from the internet. It runs when scripts/sign-release.sh starts it, once a release's signature is
-# uploaded (GA-260), every week, by hand, and on a pull request that changes this file; not when a release is
-# published, which isn't signed yet then. It signs, releases and uploads nothing.
+# uploaded (GA-260), every week, by hand, and on a pull request into main that changes this file; not when a release
+# is published, which isn't signed yet then. Not on the release's pull request into production either (GA-283): it
+# would install the published release with production's get.sh, nothing of the pull request. It signs, releases and
+# uploads nothing.
 # A release from 0.17.0 on installs the hersir names (hersir, hersir.exe, hersir-installed.txt); an older one, the
 # gizai names, and it reads its prefix from GIZAI_PREFIX only, so the prefix goes under both names (GA-248).
 name: One-line install
@@ -19,6 +21,8 @@ on:
   pull_request:
     paths:
       - .github/workflows/one-line.yml
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -35,7 +39,8 @@ jobs:
       matrix:
         os: [ubuntu-24.04, macos-15, windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 90
+    # Two waits for GitHub's limit to reset, at most an hour each, and the lines themselves.
+    timeout-minutes: 180
     steps:
       # What the line must install: the latest release, as GitHub's own CLI names it, with the job's token. In a step
       # of its own, so the token stays out of what the line runs.
@@ -51,7 +56,8 @@ jobs:
 
       # The line asks GitHub's API for the latest release without a login, which allows 60 calls an hour, and the
       # runners share them. So when it stops at "Finding Hersir's latest release" (Could not read the latest release),
-      # it is tried again a minute later, at most 3 times; after that the job fails and says why.
+      # it is tried again, at most 3 times: when GitHub's rate_limit says no calls are left, 10 seconds after the limit
+      # resets (at most an hour later), else a minute later (GA-283). After that the job fails and says why.
       - name: The one line (Linux, macOS)
         if: runner.os != 'Windows'
         shell: bash
@@ -73,10 +79,23 @@ jobs:
               eval "$1" 2>&1 | tee "$RUNNER_TEMP/line.log" || status=$?
               if [ "$status" = 0 ] || ! grep -q "Could not read the latest release" "$RUNNER_TEMP/line.log"; then return "$status"; fi
               if [ "$try" = 4 ]; then
-                fail "The one line could not read Hersir's latest release from GitHub's API, also not after trying again 3 times, a minute apart. GitHub allows 60 calls an hour without a login, and the runners share them: run this again later."
+                fail "The one line could not read Hersir's latest release from GitHub's API, also not after trying again 3 times. GitHub allows 60 calls an hour without a login, and the runners share them: run this again later."
               fi
-              echo "Could not read the latest release: trying again in a minute ($try of 3)."
-              sleep 60
+              # What GitHub's rate_limit says of that limit on this runner (asking it doesn't count against it): the
+              # calls left and when it resets, in seconds since 1970. Empty when it can't be read.
+              rate="$(curl -fs --max-time 30 https://api.github.com/rate_limit | tr -d '[:space:]')" || rate=""
+              rate="$(printf '%s\n' "$rate" | sed -n 's/.*"rate":{\([^}]*\)}.*/\1/p')"
+              left="$(printf '%s\n' "$rate" | sed -n 's/.*"remaining":\([0-9][0-9]*\).*/\1/p')"
+              reset="$(printf '%s\n' "$rate" | sed -n 's/.*"reset":\([0-9][0-9]*\).*/\1/p')"
+              if [ "$left" = 0 ] && [ -n "$reset" ]; then
+                seconds=$(( reset + 10 - $(date +%s) ))
+                if [ "$seconds" -lt 10 ]; then seconds=10; elif [ "$seconds" -gt 3660 ]; then seconds=3660; fi
+                echo "GitHub's limit of 60 calls an hour without a login is used up on this runner: trying again in $(( (seconds + 59) / 60 )) minutes, once it resets ($try of 3)."
+                sleep "$seconds"
+              else
+                echo "Could not read the latest release: trying again in a minute ($try of 3)."
+                sleep 60
+              fi
             done
           }
 
@@ -134,11 +153,29 @@ jobs:
               if ($returned -eq 'returned 0') { return }
               if (-not ($out -match 'Could not read the latest release')) { Write-Host "The one line failed: it $returned."; exit 1 }
               if ($try -eq 4) {
-                Write-Host "The one line could not read Hersir's latest release from GitHub's API, also not after trying again 3 times, a minute apart. GitHub allows 60 calls an hour without a login, and the runners share them: run this again later."
+                Write-Host "The one line could not read Hersir's latest release from GitHub's API, also not after trying again 3 times. GitHub allows 60 calls an hour without a login, and the runners share them: run this again later."
                 exit 1
               }
-              Write-Host "Could not read the latest release: trying again in a minute ($try of 3)."
-              Start-Sleep -Seconds 60
+              # What GitHub's rate_limit says of that limit on this runner (asking it doesn't count against it): the
+              # calls left and when it resets, in seconds since 1970. Nothing when it can't be read. GitHub takes
+              # TLS 1.2 or newer, added as get.ps1 adds it, here for this step's own PowerShell only.
+              $rate = $null
+              try {
+                $tls = [Net.ServicePointManager]::SecurityProtocol
+                if ([int]$tls -ne 0 -and ([int]$tls -band [int][Net.SecurityProtocolType]::Tls12) -eq 0) {
+                  [Net.ServicePointManager]::SecurityProtocol = $tls -bor [Net.SecurityProtocolType]::Tls12
+                }
+                $rate = (Invoke-RestMethod -Uri https://api.github.com/rate_limit -UseBasicParsing -TimeoutSec 30).rate
+              } catch { }
+              if ($rate -and "$($rate.remaining)" -eq '0' -and "$($rate.reset)" -match '^\d+$') {
+                $seconds = [long]$rate.reset + 10 - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+                if ($seconds -lt 10) { $seconds = 10 } elseif ($seconds -gt 3660) { $seconds = 3660 }
+                Write-Host "GitHub's limit of 60 calls an hour without a login is used up on this runner: trying again in $([Math]::Ceiling($seconds / 60.0)) minutes, once it resets ($try of 3)."
+                Start-Sleep -Seconds $seconds
+              } else {
+                Write-Host "Could not read the latest release: trying again in a minute ($try of 3)."
+                Start-Sleep -Seconds 60
+              }
             }
           }
 

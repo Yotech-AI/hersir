@@ -80,6 +80,8 @@ Replace `X.Y.Z` with the new version.
 
    A release that changes `install.sh`, `install.ps1` or `.github/workflows/release-builds.yml` has six more checks, from Release builds, which on a pull request builds the archives of step 4 and uploads nothing: `What to build`, `build linux-x86_64`, `build macos-arm64`, `build windows-x86_64`, `SHA256SUMS` and `upload to the release`.
 
+   One-line install doesn't run on this pull request: it would install the published release with production's `get.sh`, nothing of the release; signing it (step 5) starts it.
+
    Each must say `COMPLETED SUCCESS`, except `upload to the release`, which a pull request skips: `COMPLETED SKIPPED`. A check that is still `IN_PROGRESS` needs a few more minutes. On a failure, don't release: the card goes back to whoever can fix it.
 
 3. **Create the release** on `production`, with the release card's notes ([Release notes](#release-notes)) above GitHub's list of the merged pull requests:
