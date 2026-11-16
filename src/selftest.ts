@@ -5,7 +5,7 @@ import { emit } from "@tauri-apps/api/event";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
 import type { Terminal } from "@xterm/xterm";
-import { appInfo, archiveTask, chatMessages, checkTeamExport, editorFolders, getTask, getTeam as teamById, listChatThreads, listDocs, listLabels, listProjects, listTasks, listTeams, pinnedChats, previewTeamTemplate, readClipboardText, selftestPaste, setAgentStatus, terminalClose, terminalInput, terminalList, terminalOpen } from "./api";
+import { appInfo, archiveTask, chatMessages, checkTeamExport, editorFolders, getTask, getTeam as teamById, listChatThreads, listDocs, listLabels, listProjects, listTasks, listTeams, pinnedChats, previewTeamTemplate, readClipboardText, selftestPanic, selftestPaste, setAgentStatus, terminalClose, terminalInput, terminalList, terminalOpen } from "./api";
 import { isMac } from "./lib/keys";
 import { periodDays } from "./lib/usage";
 import { getAppearance, resetAppearance, setAppearance } from "./lib/appearance";
@@ -4496,6 +4496,8 @@ export async function runSteps(steps: string[], api: { still: (name: string) => 
       continue;
     }
     if (step.startsWith("wait:")) { await sleep(Number(step.slice(5)) || 0); continue; }
+    // GA-281 QA: the panic hook's self-test command (refused outside a self-test run, where the refusal is the step's error)
+    if (step === "selftest-panic") { await selftestPanic().catch((e) => errors.push(`${step}: ${e}`)); continue; }
     if (step.startsWith("term:")) {
       let last = (await terminalList()).at(-1);
       for (let i = 0; i < 50 && !last; i++) { await sleep(100); last = (await terminalList()).at(-1); }

@@ -36,6 +36,7 @@ mod lead_files_test;
 mod lead_merge_test;
 mod limits_flow_test;
 mod login_path_other_systems_test;
+mod logs_test;
 mod mcp_pipe_test;
 mod mcp_run_flow_test;
 mod mcp_settings_test;
