@@ -57,7 +57,10 @@ fn hide_url_logins(text: &str) -> String {
     while let Some(i) = rest.find("://") {
         let (before, after) = rest.split_at(i + 3);
         out.push_str(before);
-        let scheme_start = before[..i].rfind(|c: char| !(c.is_ascii_alphanumeric() || "+.-".contains(c))).map_or(0, |j| j + 1);
+        // the scheme starts after the last character before `://` that can't be in one, which may take more than one
+        // byte (git in Bulgarian writes `„https://…“`)
+        let scheme_start = before[..i].char_indices().rev().find(|&(_, c)| !is_scheme_char(c))
+                                      .map_or(0, |(j, c)| j + c.len_utf8());
         let scheme = before[scheme_start..i].to_ascii_lowercase();
         // the address's authority: its login, host and port
         let end = after.find(|c: char| c.is_whitespace() || "/?#'\"<>()[],;`".contains(c)).unwrap_or(after.len());
@@ -81,6 +84,11 @@ fn hide_url_logins(text: &str) -> String {
     }
     out.push_str(rest);
     out
+}
+
+/// Whether `c` can be in a URL's scheme (`https`, `git+ssh`).
+fn is_scheme_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || "+.-".contains(c)
 }
 
 /// `text` with secret words left out: tokens by their start, and the values `secret_value` finds, each whole.
