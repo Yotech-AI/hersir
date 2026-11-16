@@ -733,6 +733,8 @@ span.mem-tag { cursor: default; }
 .mem-template { margin-top: 18px; }
 .mem-template pre { margin: 0; padding: 10px 12px; max-height: 260px; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--side); font-size: var(--fs-xs); white-space: pre-wrap; }
 .btn.mem-toggle.on { background: var(--selected); color: var(--text); }
+/* pressed in the top bar too, over its "no fill on the background" rule (design/islands-settings: Memory) */
+.main .topbar .btn.mem-toggle.on { background-color: var(--selected); }
 @media (max-width: 1300px) { .mem-files { width: 230px; } .mem-side { width: 270px; } .mem-prop { grid-template-columns: 84px minmax(0, 1fr) 26px; } }
 
 /* ---- The memory graph (GA-69): the canvas on the app's background, its tools and settings panel over its corners,
