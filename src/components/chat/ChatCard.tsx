@@ -96,7 +96,7 @@ export function ChatCardBody({ identifier }: { identifier: string }) {
   const id = useCardId(identifier);
   if (id === null) return <Gone text="This card is gone." />;
   if (!id) return <div className="chat-side-body" />;
-  return <CardView key={id} id={id} identifier={identifier} />;
+  return <CardView key={id} id={id} />;
 }
 
 const Gone = ({ text }: { text: string }) => <div className="chat-side-body chat-card-gone"><p className="t-body">{text}</p></div>;
@@ -118,7 +118,7 @@ function useChanges(id: string, on: boolean): CardChanges | null {
 /** Comments being written in a Card tab, by card: one stays while another tab shows. */
 const drafts = new Map<string, string>();
 
-function CardView({ id, identifier }: { id: string; identifier: string }) {
+function CardView({ id }: { id: string }) {
   const { data: task, error } = useData(() => getTask(id), [id]);
   const { data: comments } = useData(() => listComments(id), [id]);
   const { data: runs } = useData(() => listRuns(id), [id]);
