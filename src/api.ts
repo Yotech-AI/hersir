@@ -1,7 +1,7 @@
 // The only file that talks to Tauri. Swap this file to change the shell.
 import { Channel } from "@tauri-apps/api/core";
 import type { UnlistenFn } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWindow, type Effects } from "@tauri-apps/api/window";
 import { readText } from "@tauri-apps/plugin-clipboard-manager";
 import { shared } from "./lib/share";
 // Tauri's own invoke and listen, counted in a perf run only (GA-188, lib/perf.ts)
@@ -43,6 +43,13 @@ export const onCloseRequested = (cb: () => void): Promise<UnlistenFn> =>
   getCurrentWindow().onCloseRequested((e) => { e.preventDefault(); cb(); });
 /** A request to quit while the page has unsaved text: Gizai waits for `closeAnswer`. */
 export const onQuitRequested = (cb: () => void): Promise<UnlistenFn> => listen("quit-requested", () => cb());
+
+// The glass behind the islands (GA-292, lib/glass.ts). What blurs the desktop behind the window: "vibrancy" on macOS,
+// "mica" on Windows 11, "compositor" on Hyprland (by its own rules), "none" on an older Windows and other Linux desktops.
+export const glassSupport = () => invoke<"vibrancy" | "mica" | "compositor" | "none">("glass_support");
+/** Asks the system for the window's effect (vibrancy, Mica), or clears it with null. Linux has none: there it does nothing. */
+export const setWindowEffects = (effects: Effects | null): Promise<void> =>
+  effects ? getCurrentWindow().setEffects(effects) : getCurrentWindow().clearEffects();
 
 export const listClients = () => invoke<T.Client[]>("list_clients");
 export const getClient = (id: string) => invoke<T.Client>("get_client", { id });

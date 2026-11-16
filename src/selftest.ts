@@ -1701,7 +1701,9 @@ async function sidebarCloseProbe() {
  * reading text grows fully, titles half, small things at most 1px; rows grow so nothing is cut off; the chat column, the
  * sidebar and board columns get wider; in a 1280 px window nothing scrolls sideways on the task list, board, task page and
  * chat, in dark and in light. Then Compact, and each font everywhere at once. It leaves Geist, light, compact and the
- * largest sizes kept. Phase "kept" (the next start): they are all still there, and Reset to defaults brings everything back. */
+ * largest sizes kept. Phase "kept" (the next start): they are all still there, and Reset to defaults brings everything back.
+ * GA-292: the tab ends with Background → Glass; in the cage (Linux, not Hyprland: no blur) its checkbox is off and disabled
+ * with the no-blur hint, and the window stays plain. */
 export async function appearanceProbe(phase: "set" | "kept") {
   if (!(await waitFor(() => appearancePanel(), 6000))) return { ok: false, error: "Settings → Appearance did not open", page: textOf(q(".main")).slice(0, 300) };
   await sleep(300);
@@ -1733,9 +1735,22 @@ export async function appearanceProbe(phase: "set" | "kept") {
     && defaults.save === 30 && defaults.tab === 13.5 && defaults.bubble === 13.5 && defaults.agent === 15 && defaults.docs === 15 && defaults.docs_h3 === 15.5
     && JSON.stringify(defaults.pressed) === JSON.stringify({ chat: ["15"], ui: ["13.5"], docs: ["15"], theme: ["Dark"], density: ["Comfortable"] })
     && defaults.nav.family === "Atkinson Hyperlegible Next";
-  // GA-290: the window in islands at the defaults (Settings has a top bar), in dark; the mountains' checkbox is gone
-  const islands = { dark: islandsState(), checkboxes: panel.querySelectorAll('input[type="checkbox"]').length };
-  const islandsOk = islandsOn(islands.dark, "dark", 44) && islands.checkboxes === 0 && !JSON.stringify(controls.sections).includes("Background");
+  // GA-290: the window in islands at the defaults (Settings has a top bar), in dark; the mountains' checkbox is gone.
+  // GA-292: Background → Glass in its place, with its one checkbox. The cage isn't Hyprland (no HYPRLAND_INSTANCE_SIGNATURE)
+  // and WebKitGTK's user agent is Linux's: no blur, so the checkbox is off and disabled with the no-blur hint, and the window
+  // stays plain (no html.glass, html and body opaque, .app's opaque gradient as islandsOn checks).
+  const glassField = [...panel.querySelectorAll(".field")].find((f) => textOf(f.querySelector(":scope > label")) === "Glass") ?? null;
+  const glassBox = glassField ? q<HTMLInputElement>('input[type="checkbox"]', glassField) : null;
+  const islands = { dark: islandsState(), checkboxes: panel.querySelectorAll('input[type="checkbox"]').length,
+    glass: { label: textOf(glassBox?.closest("label")), checked: glassBox?.checked ?? null, disabled: glassBox?.disabled ?? null,
+      hint: textOf(glassField ? q(".hint", glassField) : null), html_glass: document.documentElement.classList.contains("glass"),
+      html_bg: getComputedStyle(document.documentElement).backgroundColor, body_bg: getComputedStyle(document.body).backgroundColor,
+      linux_ua: !/Macintosh|Mac OS X|Windows/.test(navigator.userAgent), kept: localStorage.getItem("gizai-glass") } };
+  const islandsOk = islandsOn(islands.dark, "dark", 44) && islands.checkboxes === 1 && controls.sections[controls.sections.length - 1] === "Background"
+    && islands.glass.label === "Show the desktop through the background" && islands.glass.checked === false && islands.glass.disabled === true
+    && islands.glass.hint === "Your system doesn't blur windows behind Hersir, so the background stays plain."
+    && !islands.glass.html_glass && islands.glass.html_bg === ISLANDS.dark.island && islands.glass.body_bg === ISLANDS.dark.island
+    && islands.glass.linux_ua && islands.glass.kept === null;
 
   // Tabs work like the Usage page's, in the address; an edit not saved yet survives a switch to another tab and back.
   const tabTo = async (label: string) => {

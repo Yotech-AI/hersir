@@ -6,9 +6,11 @@
    components.css as it is: .btn, .input, .select, .check, .field, .fields, .panel, .badge, .agent-chip, .empty, .link-btn.
    Only OnboardingPage.tsx loads this file, so a normal start doesn't. */
 /* Its top bar keeps the 52px it was drawn with (size-topbar is the app's top bar on the islands' background, 44px).
-   isolation: the band's z-index -1 stays inside the onboarding, over the page's background and under the rest. */
+   isolation: the band's z-index -1 stays inside the onboarding, over its background and under the rest. Its own bg, the
+   page's as before: with the glass on (html.glass, app.css) the page is see-through, and the onboarding gets the glass
+   only with the card that draws it in islands. */
 .onb { --onb-w: min(calc(640px + 20 * var(--ui-grow, 0px)), calc(100vw - 48px)); --onb-band: clamp(var(--size-band-min), 14vh, var(--size-band));
-  display: grid; grid-template-rows: calc(52px + var(--ui-box, 0px)) minmax(0, 1fr) auto auto; height: 100vh; overflow: hidden; isolation: isolate; }
+  display: grid; grid-template-rows: calc(52px + var(--ui-box, 0px)) minmax(0, 1fr) auto auto; height: 100vh; overflow: hidden; isolation: isolate; background: var(--bg); }
 
 /* ---------- the mountains along the bottom (GA-139's design) ---------- */
 /* The app's window has the islands' gradient in their place (design/islands); the onboarding keeps them until the card

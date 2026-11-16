@@ -12,8 +12,13 @@
   },
   "app": {
     "windows": [
-      { "label": "main", "title": "Hersir", "width": 1440, "height": 900, "minWidth": 900, "minHeight": 600 }
+      {
+        "label": "main", "title": "Hersir", "width": 1440, "height": 900, "minWidth": 900, "minHeight": 600,
+        "transparent": true,
+        "windowEffects": { "effects": ["underWindowBackground", "mica"], "state": "followsWindowActiveState" }
+      }
     ],
+    "macOSPrivateApi": true,
     "security": {
       "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src ipc: http://ipc.localhost; frame-src gizai-artifact:; object-src 'none'; base-uri 'none'"
     }

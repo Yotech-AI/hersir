@@ -30,6 +30,7 @@ mod folders_flow_test;
 mod ga191_perf_test;
 mod ga31_flow_test;
 mod ga49_flow_test;
+mod glass_support_test;
 mod hand_flow_test;
 mod housekeeping_flow_test;
 mod lead_files_test;

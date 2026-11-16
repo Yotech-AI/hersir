@@ -11,6 +11,7 @@ pub mod editor;
 pub mod folders;
 pub mod git;
 pub mod github;
+pub mod glass;
 pub mod hand;
 pub mod limits;
 pub mod mcp;
@@ -762,7 +763,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            app_info, selftest_report, tour::tour_still, tour::tour_steps, exit_app, unsaved::set_unsaved_edits, unsaved::close_answer,
+            app_info, glass::glass_support, selftest_report, tour::tour_still, tour::tour_steps, exit_app, unsaved::set_unsaved_edits, unsaved::close_answer,
             #[cfg(target_os = "linux")] paste_guard::selftest_paste,
             commands::list_mcp_servers, commands::save_mcp_server, commands::remove_mcp_server, commands::list_mcp_tools,
             commands::scan_claude_code_mcp, commands::import_mcp_servers, commands::mcp_sign_in, commands::mcp_sign_out,
