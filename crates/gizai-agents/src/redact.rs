@@ -2,9 +2,10 @@
 //! so a password, key or token in git's or gh's words, in a command's error or in a project's setup command is left out
 //! first (`hidden`). Plain text work, the same on every system.
 
-/// Starts of tokens that are secret wherever they stand, each with how many characters must follow before a word counts
-/// as one: GitHub's (personal, fine-grained, OAuth, user, app and refresh tokens), GitLab's, Anthropic's and OpenAI's
-/// (`sk-`), Slack's, Atlassian's API tokens (Bitbucket's too) and AWS's access keys.
+/// Starts of tokens that are secret wherever they stand, each with how many of a token's characters (letters, digits, `_`
+/// and `-`) must follow it before it counts as one: GitHub's (personal, fine-grained, OAuth, user, app and refresh
+/// tokens), GitLab's, Anthropic's and OpenAI's (`sk-`), Slack's, Atlassian's API tokens (Bitbucket's too) and AWS's
+/// access keys.
 const TOKEN_STARTS: [(&str, usize); 15] = [
     ("ghp_", 20), ("gho_", 20), ("ghu_", 20), ("ghs_", 20), ("ghr_", 20), ("github_pat_", 20), ("glpat-", 16),
     ("sk-", 20), ("xoxb-", 10), ("xoxp-", 10), ("xoxa-", 10), ("xoxr-", 10), ("xoxs-", 10), ("ATATT", 20), ("AKIA", 16),
@@ -26,9 +27,12 @@ const QUOTES: [char; 3] = ['\'', '"', '`'];
 pub const LEFT_OUT: &str = "***";
 
 /// `text` with what looks like a password, key or token left out (`***`):
-/// - the password in a URL (`https://me:***@host`), and a URL's whole login over HTTP and HTTPS, where it is a token
-///   (`https://***@github.com`); `ssh://git@host` and `git@host:owner/repo` stay as they are;
-/// - tokens by their known start (`TOKEN_STARTS`: `ghp_***`, `github_pat_***`, `sk-***` …) and JSON web tokens (`eyJ***`);
+/// - the password in a URL (`https://me:***@host`), and a URL's whole login where it is a token: one without a password
+///   over HTTP and HTTPS, also `git+https` as npm and pip take it (`https://***@github.com`), and one whose user name
+///   is a token (`user_is_token`: `https://<token>:x-oauth-basic@github.com` becomes `https://***@github.com`);
+///   `ssh://git@host` and `git@host:owner/repo` stay as they are;
+/// - tokens by their known start (`TOKEN_STARTS`: `ghp_***`, `github_pat_***`, `sk-***` …) and JSON web tokens (`eyJ***`),
+///   at a word's start or after a character other than a letter or digit in it (`//ghp_***`);
 /// - the whole value after a name that names a secret (`SECRET_NAMES`, `SECRET_ENDS`) and `=` or `:` (`PASSWORD=***`,
 ///   `APP_KEY=***`, `"token": "***"`), or after such a flag and a space (`--password ***`), whatever characters it holds:
 ///   a quoted one up to its closing quote (`'***'`), one in braces or brackets up to the one that closes them, one after
@@ -37,7 +41,7 @@ pub const LEFT_OUT: &str = "***";
 ///   in quotes ends at the quote around it (`'Authorization: *** ***'`);
 /// - the value after `Bearer` or `Basic`;
 /// - mysql's and mariadb's password stuck to `-p` (`-p***`), and the password in a login after `-u` or `--user`, as curl
-///   takes it (`-u me:***`).
+///   takes it (`-u me:***`), or the whole login when its user name is a token (`curl -u <token>:` becomes `-u ***`).
 ///
 /// Everything else stays as it was, line breaks included.
 pub fn hidden(text: &str) -> String {
@@ -50,7 +54,10 @@ pub fn first_line(text: &str) -> &str {
     text.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("")
 }
 
-/// `text` with the logins in its URLs left out: after `scheme://`, up to the host's `@`.
+/// `text` with the logins in its URLs left out, after `scheme://` up to the host's `@`: a login's password
+/// (`https://me:***@host`), and the whole login when it is a token: one without a password over HTTP or HTTPS
+/// (`over_http`), or one whose user name is a token (`user_is_token`). A name without a password outside HTTP and HTTPS
+/// stays (`ssh://git@host`).
 fn hide_url_logins(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
@@ -68,13 +75,17 @@ fn hide_url_logins(text: &str) -> String {
         match authority.rfind('@') {
             Some(at) => {
                 let login = &authority[..at];
-                match login.find(':') {
-                    Some(colon) => {
-                        out.push_str(&login[..=colon]);
+                match login.split_once(':') {
+                    // `me:***`
+                    Some((user, password)) if !user_is_token(user, password) => {
+                        out.push_str(user);
+                        out.push(':');
                         out.push_str(LEFT_OUT);
                     }
-                    None if scheme == "http" || scheme == "https" => out.push_str(LEFT_OUT),
-                    None => out.push_str(login),
+                    // `git@`: a name, outside HTTP and HTTPS, that isn't a token
+                    None if !over_http(&scheme) && !holds_token(login) => out.push_str(login),
+                    // a token, whole
+                    _ => out.push_str(LEFT_OUT),
                 }
                 out.push_str(&authority[at..]);
             }
@@ -89,6 +100,24 @@ fn hide_url_logins(text: &str) -> String {
 /// Whether `c` can be in a URL's scheme (`https`, `git+ssh`).
 fn is_scheme_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || "+.-".contains(c)
+}
+
+/// Whether a URL with `scheme` (in lower case) goes over HTTP or HTTPS: `http`, `https`, and the `git+https` that npm
+/// and pip take a git repository's address with, where a login without a password is a token.
+fn over_http(scheme: &str) -> bool {
+    scheme.split('+').any(|part| part == "http" || part == "https")
+}
+
+/// Whether a login's user name is a token rather than a name: one that holds a known token (`holds_token`), or one with
+/// no password or GitHub's `x-oauth-basic` after it, as GitHub and curl take a token in a user name's place
+/// (`https://<token>:x-oauth-basic@github.com`, `curl -u <token>:`).
+fn user_is_token(user: &str, password: &str) -> bool {
+    holds_token(user) || (!user.is_empty() && (password.is_empty() || password.eq_ignore_ascii_case("x-oauth-basic")))
+}
+
+/// Whether `word` holds a token that `token_hidden` leaves out.
+fn holds_token(word: &str) -> bool {
+    token_hidden(word) != word
 }
 
 /// `text` with secret words left out: tokens by their start, and the values `secret_value` finds, each whole.
@@ -200,7 +229,8 @@ fn value_at(text: &str, at: usize, to_line_end: bool) -> Value {
 /// - after a flag that names a secret and spaces: `--password …`, `--api-key '…'`;
 /// - after `Bearer` or `Basic` and spaces;
 /// - in a text about mysql or mariadb, the password stuck to `-p`: `-pS3cret`, `-p'…'`;
-/// - after `-u` or `--user`, the password after a login's `:`: `-u me:…`.
+/// - after `-u` or `--user`, the password after a login's `:` (`-u me:…`), or the whole login when its user name is a
+///   token (`user_is_token`: `-u <token>:`).
 fn secret_value(text: &str, start: usize, end: usize, mysql: bool) -> Option<Value> {
     let word = &text[start..end];
     let rest = &text[end..];
@@ -220,10 +250,13 @@ fn secret_value(text: &str, start: usize, end: usize, mysql: bool) -> Option<Val
     }
     if word == "-u" || word == "--user" {
         let n = spaced(rest).or_else(|| (word == "--user" && rest.starts_with('=')).then_some(1))?;
-        let Value { at, quote, .. } = value_at(text, end + n, false);
-        let login_end = value_end(text, at, quote, outer_quote(text, start, at));
-        let colon = text[at..login_end].find(':')?;
-        return Some(Value { at: at + colon + 1, quote, to_line_end: false });
+        let login = value_at(text, end + n, false);
+        let login_end = value_end(text, login.at, login.quote, outer_quote(text, start, login.at));
+        let (user, password) = text[login.at..login_end].split_once(':')?;
+        if user_is_token(user, password) {
+            return Some(login);
+        }
+        return Some(Value { at: login.at + user.len() + 1, ..login });
     }
     None
 }
@@ -365,16 +398,35 @@ fn bracketed_end(text: &str, at: usize, open: char) -> Option<usize> {
     None
 }
 
-/// `word`, or its known start and `***` when it is a token (`TOKEN_STARTS`, a JSON web token).
+/// `word` with a token in it left out up to the word's end, after its known start (`TOKEN_STARTS`: `ghp_***`) or the
+/// `eyJ` of a JSON web token. A token starts the word or follows a character in it other than an ASCII letter or digit:
+/// in an address (`//ghp_***`), a path, or text without spaces such as Chinese (`令牌ghp_***`); `risk-free` and `task-…`
+/// hold none. A known start needs `after` of a token's characters (letters, digits, `_` and `-`) right after it, so
+/// `sk-hynix/repo.git` in a path is no token either.
 fn token_hidden(word: &str) -> String {
-    for (start, after) in TOKEN_STARTS {
-        if word.len() >= start.len() + after && word.starts_with(start) {
-            return format!("{start}{LEFT_OUT}");
+    // the dots from `n` to the word's end, for a JSON web token
+    let mut dots = word.matches('.').count();
+    let mut before = None;
+    for (n, c) in word.char_indices() {
+        if before.is_none_or(|b: char| !b.is_ascii_alphanumeric()) {
+            let rest = &word[n..];
+            let known = TOKEN_STARTS.iter().find(|&&(start, after)| {
+                rest.starts_with(start)
+                    && rest[start.len()..].chars().take_while(|&c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+                                                  .take(after).count() == after
+            });
+            if let Some((start, _)) = known {
+                return format!("{}{start}{LEFT_OUT}", &word[..n]);
+            }
+            // a JSON web token: three parts with dots between, the first a JSON object's start in base64
+            if rest.starts_with("eyJ") && rest.len() >= 30 && dots == 2 {
+                return format!("{}eyJ{LEFT_OUT}", &word[..n]);
+            }
         }
-    }
-    // a JSON web token: three parts with dots between, the first a JSON object's start in base64
-    if word.starts_with("eyJ") && word.len() >= 30 && word.matches('.').count() == 2 {
-        return format!("eyJ{LEFT_OUT}");
+        if c == '.' {
+            dots -= 1;
+        }
+        before = Some(c);
     }
     word.to_string()
 }
