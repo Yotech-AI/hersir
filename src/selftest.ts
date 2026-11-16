@@ -4457,6 +4457,8 @@ const same2 =(a: unknown[], b: unknown[]) => a.length === b.length && a.every((x
 //  - "scroll:<selector>": scrolls just far enough to show the element and the 150px under it, so what opens under it
 //    shows too and the page doesn't jump when that is shorter (the tour's Review scene: the card's Runs tab, low on the
 //    page at the tour's screen size);
+//  - "hover:<selector>" or "focus:<selector>" (GA-287): rests the pointer on the element (its first line, 8px in), or
+//    gives it the keyboard focus, so what shows on hover or focus (an @ chip's hover card) is in the shot;
 //  - "<name>=<selector>" or "<name>@<ms>=<selector>" (GA-148, the product tour): a named click. It waits for the element,
 //    scrolls it into view when it isn't, notes its box (in the screen's pixels) and clicks it; with GIZAI_TOUR_DIR set
 //    (scripts/tour-capture.sh) it takes a still before the click and one <ms> after it (1500 by default), and at the end
@@ -4499,6 +4501,18 @@ export async function runSteps(steps: string[], api: { still: (name: string) => 
       for (let i = 0; i < 50 && !last; i++) { await sleep(100); last = (await terminalList()).at(-1); }
       if (last) await terminalInput(last.id, `${step.slice(5)}\r`).catch((e) => errors.push(`${step}: ${e}`));
       else errors.push(`${step}: no terminal is open`);
+      continue;
+    }
+    if (step.startsWith("hover:") || step.startsWith("focus:")) {
+      const el = await waitFor(() => findStep(step.slice(6)), 10000);
+      if (!el) { errors.push(`${step}: nothing to rest on`); continue; }
+      el.scrollIntoView({ block: "nearest", inline: "nearest" });
+      await settled(300);
+      if (step.startsWith("focus:")) { el.focus(); continue; }
+      const r = el.getBoundingClientRect();
+      const at = { bubbles: true, clientX: r.left + Math.min(8, r.width / 2), clientY: r.top + r.height / 2 };
+      el.dispatchEvent(new MouseEvent("mouseover", { ...at, relatedTarget: document.body }));
+      el.dispatchEvent(new MouseEvent("mousemove", at));
       continue;
     }
     if (step.startsWith("scroll:")) {
