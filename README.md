@@ -120,7 +120,7 @@ The logs are in the `logs` folder of your data, one file per start, named after 
 
 An install from before 0.17.0 that keeps its data in the gizai folder has them in `gizai/logs` there, and `HERSIR_DATA_DIR` moves them along with your data. Started from a terminal, Hersir prints where its log is.
 
-Please send us the file of the start that crashed, and say roughly when it happened: its first line says which Hersir started when, on which system, and its last lines show what happened just before the end. The 20 newest files stay. They hold no passwords, keys or tokens, but they do name your folders and cards, so look it over first if you like.
+Please send us the file of the start that crashed, and say roughly when it happened: its first line says which Hersir started when, on which system, and its last lines show what happened just before the end. The 20 newest files stay. Hersir leaves passwords, keys and tokens out of the lines it writes, but a log names your folders and cards, so look it over first if you like.
 
 ## Documentation
 
