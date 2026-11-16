@@ -10,6 +10,12 @@ html, body, #root { height: 100%; margin: 0; }
   height: 100vh; padding: var(--island-gap); overflow: hidden;
   background: radial-gradient(ellipse 60% 75% at 0 0, var(--canvas-glow) 45%, transparent), linear-gradient(180deg, var(--canvas-from), var(--canvas-to)); }
 .side { width: auto; height: auto; min-height: 0; }
+/* GA-291: closed, the sidebar island goes and the main column takes its width. The toolbar (SidebarToolbar) sits at the top
+   left on the background, island-gap from the window's edges, centred in the top bar's row, above .main's box; the page's
+   top bar starts after it (--side-tools: its width, set by App.tsx) and keeps its own 12px before the crumbs. */
+.app.side-closed { position: relative; grid-template-columns: minmax(0, 1fr); }
+.side-tools { position: absolute; top: var(--island-gap); left: var(--island-gap); z-index: 1; display: flex; align-items: center; gap: 2px; height: var(--size-topbar); }
+.app.side-closed .page-island .topbar { left: var(--side-tools, 0px); }
 /* The main column: each page's top bar on the background (size-topbar), then the page as one island under it. A page with
    several panes keeps them in that one island for now. The top bar stays in the page's own markup, inside .page-island,
    and is placed over the column's top: .main is its containing block and .page-island isn't positioned, so the island's

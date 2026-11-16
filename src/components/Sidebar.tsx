@@ -2,9 +2,10 @@
 // the company pages stay at the bottom, with the update notice above them when a newer release is out, and the restore's
 // (GA-219) when one runs, is ready or has just been done. A Gizai on other data than the usual folder says so there.
 // Terminal (GA-136), Editor (GA-113), Agents and Memory fold with the caret at the end of their heading (GA-90).
+// Close sidebar (GA-291) sits at the top right, on New task's row; closed, App.tsx shows the toolbar (SidebarToolbar) instead.
 import {
   Building2, ChartColumn, ChevronDown, ChevronUp, Crown, FlaskConical, FolderCode, FolderKanban, Inbox, Keyboard, Library, ListTodo, LoaderCircle, MessagesSquare,
-  Network, Plus, Search, Settings, SquarePen, Terminal as TerminalIcon, Users, type LucideIcon,
+  Network, PanelLeftClose, Plus, Search, Settings, SquarePen, Terminal as TerminalIcon, Users, type LucideIcon,
 } from "lucide-react";
 import { Fragment, useEffect, useState } from "react";
 import { editorFolders, editorGit, editorMain, getTeam, listChatThreads, listProjects, listTasks, memoryNotes, onEditorUpdated } from "../api";
@@ -17,7 +18,7 @@ import { useLiveRuns } from "../lib/useLiveRuns";
 import { inboxCount } from "../lib/inbox";
 import { useDrawer } from "../lib/drawers";
 import { modKey } from "../lib/keys";
-import { liveTotal, useFolded, type Fold } from "../lib/sidebar";
+import { liveTotal, sidebarKeyName, useFolded, type Fold } from "../lib/sidebar";
 import { forgetFolder, useOpenedFolders } from "../lib/editor";
 import { askGit, askMain, foldedBehind, onTold, rowTip, rowWord } from "../lib/behind";
 import { asksToClose, closeQuestion, folderNameOf, openTip, openWord, rowTitle, showsCardId, useTerminals } from "../lib/terminals";
@@ -30,7 +31,11 @@ import { RestoreNotice } from "./RestoreNotice";
 import { UpdateNotice } from "./UpdateNotice";
 import { closeTerminal, NameInput, NewTerminalPicker, RowCloseAsk, showInEditor } from "./terminal/TerminalParts";
 
-type Props = { route: Route; youId: string; onSearch: () => void; onNewTask: () => void; dataLabel?: string | null; dataDir?: string };
+type Props = {
+  route: Route; youId: string; onSearch: () => void; onNewTask: () => void; dataLabel?: string | null; dataDir?: string;
+  /** Close sidebar (GA-291): the button at the top right, and Ctrl+\ (App.tsx). */
+  onClose?: () => void;
+};
 
 function Item({ to, icon: I, label, active, meta }: { to: Route; icon: LucideIcon; label: string; active: boolean; meta?: React.ReactNode }) {
   return (
@@ -40,7 +45,7 @@ function Item({ to, icon: I, label, active, meta }: { to: Route; icon: LucideIco
   );
 }
 
-export function Sidebar({ route, youId, onSearch, onNewTask, dataLabel, dataDir }: Props) {
+export function Sidebar({ route, youId, onSearch, onNewTask, dataLabel, dataDir, onClose }: Props) {
   const projects = useData(() => listProjects(), [], { counts: false });
   const allTasks = useData(() => listTasks());
   const [teamId] = useCurrentTeam();
@@ -58,9 +63,14 @@ export function Sidebar({ route, youId, onSearch, onNewTask, dataLabel, dataDir 
   const liveFor = (id: string) => live.filter((r) => r.agentId === id).length;
   const allLive = liveTotal(live, agents);
   return (
-    <aside className="side" aria-label="Navigation">
+    <aside className="side" id="sidebar" aria-label="Navigation">
       <div className="side-main">
-      <button className="nav-item" onClick={onNewTask}><SquarePen className="icon" /><span>New task</span><span className="meta"><span className="kbd">N</span></span></button>
+      {/* New task gets the row but the 28px of Close sidebar, 4px before it (design/islands: A sidebar that closes) */}
+      <div className="side-top">
+        <button className="nav-item" onClick={onNewTask}><SquarePen className="icon" /><span>New task</span><span className="meta"><span className="kbd">N</span></span></button>
+        <button type="button" className="tool" data-side-toggle aria-label="Close sidebar" aria-expanded="true" aria-controls="sidebar"
+          title={`Close sidebar (${sidebarKeyName(modKey())})`} onClick={onClose}><PanelLeftClose className="icon" /></button>
+      </div>
       <button className="nav-item" onClick={onSearch}><Search className="icon" /><span>Search</span><span className="meta"><span className="kbd">{`${modKey()} K`}</span></span></button>
       <Item to={{ page: "inbox" }} icon={Inbox} label="Inbox" active={is("inbox")} meta={inbox > 0 ? <span className="count alert">{inbox}</span> : undefined} />
 

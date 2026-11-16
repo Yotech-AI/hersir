@@ -126,6 +126,17 @@ input[type="checkbox"]:checked:disabled:hover { border-color: var(--accent); bac
 .side-main { display: flex; flex-direction: column; gap: 2px; flex: 1; min-height: 0; padding: 6px 10px 14px; overflow-y: auto; }
 .side-foot { display: flex; flex-direction: column; flex-shrink: 0; gap: 8px; padding: 0 10px 12px; border-top: 1px solid var(--line); }
 .side-foot .nav-section { margin-top: 8px; }
+/* New task's row (GA-291): New task takes the row but Close sidebar, 4px before it */
+.side-top { display: flex; flex-shrink: 0; align-items: center; gap: 4px; }
+.side-top > .nav-item { flex: 1; width: auto; min-width: 0; }
+/* A tool button (Figma Islands/Tool button): size-tool square, radius 6, a 16px icon in text-2, no fill until hovered. On
+   the background (the closed sidebar's toolbar) its hover is canvas-hover, in the sidebar island hover; the icon turns
+   text; pressed is as hover, keyboard focus the 2px focus ring outside. A count (the Inbox) widens it, 4px after the icon. */
+.tool { display: inline-flex; flex: none; align-items: center; justify-content: center; gap: 4px; min-width: var(--size-tool); height: var(--size-tool); padding: 0 6px; border: 0; border-radius: var(--radius); background: none; color: var(--text-2); font: inherit; text-decoration: none; cursor: pointer; }
+.tool:hover, .tool:active { background: var(--canvas-hover); color: var(--text); }
+.side .tool:hover, .side .tool:active { background: var(--hover); }
+/* the Inbox count on the background: needs on needs-soft over island, so it keeps AA on the glass (design/islands) */
+.tool .count { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: var(--radius-pill); background: linear-gradient(var(--needs-soft), var(--needs-soft)), var(--island); color: var(--needs); font-size: 11px; font-weight: 600; line-height: 1; }
 .data-tag { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px; border: 1px dashed var(--line-2); border-radius: var(--radius); color: var(--text-2); font-size: var(--fs-sm); }
 .side-org { display: flex; align-items: center; gap: 10px; height: calc(40px + var(--ui-box, 0px)); padding: 0 8px; margin-bottom: 6px; border-radius: var(--radius); font-weight: 650; cursor: pointer; }
 .side-org:hover { background: var(--hover); }
