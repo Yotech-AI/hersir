@@ -353,3 +353,86 @@ fn a_known_token_is_left_out_also_as_a_logins_user_name() {
         assert!(out.contains(" failed (exit code "), "{command:?} -> {out:?}");
     }
 }
+
+/// GA-281 QA, round 4: round 3's fix (a token as a login's user name) in the other forms a setup command can take it:
+/// GitHub's older 40-character tokens, which have no known start; curl's login quoted, after `--user=` and with
+/// x-oauth-basic; ssh and git+ssh; git's `url."…".insteadOf`; an empty password; package.json's address; and the
+/// password logins of GitLab, Bitbucket and Azure DevOps.
+#[test]
+fn a_token_as_a_logins_user_name_is_left_out_in_every_form_a_setup_command_takes_it() {
+    let t = "ghp_1234567890abcdefghijABCDEFGHIJ123456";
+    let hex = "0123456789abcdef0123456789abcdef01234567";
+    let cases = [
+        (format!("git clone https://{hex}:x-oauth-basic@github.com/acme/lib.git"), "git clone https://***@github.com/acme/lib.git"),
+        (format!("git clone https://{hex}@github.com/acme/lib.git"), "git clone https://***@github.com/acme/lib.git"),
+        (format!("pip install git+https://{hex}@github.com/acme/lib.git"), "pip install git+https://***@github.com/acme/lib.git"),
+        (format!("curl -u {hex}: https://api.github.com"), "curl -u *** https://api.github.com"),
+        (format!("curl -u {hex}:x-oauth-basic https://api.github.com"), "curl -u *** https://api.github.com"),
+        (format!("curl -u \"{t}:\" https://api.github.com"), "curl -u \"***\" https://api.github.com"),
+        (format!("curl -u '{t}:' https://api.github.com"), "curl -u '***' https://api.github.com"),
+        (format!("curl --user={t}: https://api.github.com"), "curl --user=*** https://api.github.com"),
+        (format!("curl --user {t}:x-oauth-basic https://api.github.com"), "curl --user *** https://api.github.com"),
+        (format!("curl -u {t} https://api.github.com"), "curl -u ghp_*** https://api.github.com"),
+        (format!("ssh://{t}@github.com/acme/lib.git"), "ssh://***@github.com/acme/lib.git"),
+        (format!("git+ssh://{t}@github.com/acme/lib.git"), "git+ssh://***@github.com/acme/lib.git"),
+        (format!("git config --global url.\"https://{hex}:x-oauth-basic@github.com/\".insteadOf \"https://github.com/\""),
+         "git config --global url.\"https://***@github.com/\".insteadOf \"https://github.com/\""),
+        (format!("go get https://{t}:@github.com/acme/lib"), "go get https://***@github.com/acme/lib"),
+        (format!("lib @ git+https://{t}@github.com/acme/lib.git@v1.0#egg=lib"), "lib @ git+https://***@github.com/acme/lib.git@v1.0#egg=lib"),
+        (format!("\"lib\": \"git+https://{t}:x-oauth-basic@github.com/acme/lib.git#v1\""), "\"lib\": \"git+https://***@github.com/acme/lib.git#v1\""),
+        ("https://oauth2:glpat-abcdefghij0123456789@gitlab.com/acme/lib.git".into(), "https://oauth2:***@gitlab.com/acme/lib.git"),
+        (format!("https://x-token-auth:{hex}@bitbucket.org/acme/lib.git"), "https://x-token-auth:***@bitbucket.org/acme/lib.git"),
+        (format!("https://{hex}@dev.azure.com/acme/lib/_git/lib"), "https://***@dev.azure.com/acme/lib/_git/lib"),
+        (format!("echo {t}|gh auth login --with-token"), "echo ghp_***|gh auth login --with-token"),
+        (format!("令牌{t}，请检查"), "令牌ghp_***，请检查"),
+        (format!("username={t}"), "username=ghp_***"),
+        (format!("({t})"), "(ghp_***)"),
+    ];
+    for (text, want) in cases {
+        let out = std::panic::catch_unwind(|| hidden(&text)).unwrap_or_else(|_| panic!("hidden panicked on {text:?}"));
+        assert_eq!(out, want, "{text:?}");
+    }
+}
+
+/// GA-281 QA, round 4: what round 3's change must leave as it was: logins that are names (ssh's git@, ftp's anonymous@),
+/// a password after a user name that is a name, `-u` that isn't curl's login, and words in a path that only look like a
+/// token's start.
+#[test]
+fn names_paths_and_other_logins_stay_after_round_3s_change() {
+    for text in ["ssh://git@github.com/acme/lib.git", "git@github.com:Yotech-AI/hersir.git", "git+ssh://git@github.com/acme/lib.git",
+                 "ftp://anonymous@ftp.example.com/pub", "php artisan key:generate", "sudo -u www-data php artisan migrate",
+                 "git push -u origin main", "git clone https://github.com/sk-hynix/some-long-repository-name.git",
+                 "/home/me/task-runner-for-every-project-we-have/bin", "http://localhost:8000/login?next=/",
+                 "fatal: unable to access 'https://github.com/acme/lib.git/': Could not resolve host"] {
+        assert_eq!(hidden(text), text);
+    }
+    assert_eq!(hidden("curl -u me:hunter2 https://x.example.com"), "curl -u me:*** https://x.example.com");
+    assert_eq!(hidden("https://x-access-token:ghs_16C7e42F292c6912E7710c838347Ae178B4a@github.com/o/r"),
+               "https://x-access-token:***@github.com/o/r");
+    assert_eq!(hidden("mysql://root:S3cretPw@127.0.0.1/app"), "mysql://root:***@127.0.0.1/app");
+    assert_eq!(hidden("redis://:S3cretPw@127.0.0.1:6379"), "redis://:***@127.0.0.1:6379");
+}
+
+/// GA-281 QA, round 4: a secret given as a plain argument in a setup command, after a word that doesn't name it, with no
+/// `=` and no known token start: Laravel Nova's and Flux's documented `composer config http-basic.<host> <user> <key>`,
+/// composer's GitHub token, npm's token after a space (npm's own tokens start with `npm_`, which isn't a known start),
+/// `docker login -p` and `sshpass -p`, and a token stuck to curl's `-u`. A failed setup command's first line, which
+/// holds the whole command, reaches Hersir's log (`runs::pause_pull`), so each puts its secret there. Ignored: a known
+/// gap left for Jefsev's decision on GA-281 (another rule per tool, or no setup command text in the log at all). Run it
+/// with `cargo test -p gizai-agents --test it -- --ignored a_secret_given_as_a_plain_argument`.
+#[test]
+#[ignore = "GA-281 QA round 4: known gap, waiting for a decision"]
+fn a_secret_given_as_a_plain_argument_in_a_setup_command_is_left_out() {
+    let cases = [
+        ("composer config http-basic.nova.laravel.com me@example.com nv-Lic3nseK3y && composer install failed (exit code 1)", "nv-Lic3nseK3y"),
+        ("composer config --global github-oauth.github.com 0123456789abcdef0123456789abcdef01234567 failed (exit code 1)", "0123456789abcdef"),
+        ("npm config set //registry.npmjs.org/:_authToken npm_a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8 && npm ci failed (exit code 1)", "a1B2c3D4"),
+        ("docker login -u me -p S3cretPw ghcr.io failed (exit code 1)", "S3cretPw"),
+        ("sshpass -p S3cretPw ssh deploy@host failed (exit code 255)", "S3cretPw"),
+        ("curl -ughp_1234567890abcdefghijABCDEFGHIJ123456: https://api.github.com failed (exit code 22)", "1234567890abcdefghij"),
+    ];
+    for (text, secret) in cases {
+        let out = hidden(first_line(text));
+        assert!(!out.contains(secret), "{text:?} -> {out:?} still holds {secret:?}");
+    }
+}
