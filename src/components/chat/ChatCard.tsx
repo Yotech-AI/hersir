@@ -387,12 +387,14 @@ function CardComposer({ taskId, done }: { taskId: string; done: () => void }) {
   };
   return (
     <div className="chat-card-foot writing">
-      <MarkdownEditor value={first} onChange={write} onSave={post} onCancel={done} autoFocus ariaLabel="New comment" minHeight={60} pickerUp
-        hint={`${modKey()}+Enter posts · Esc cancels`} placeholder="Write a comment. @ links a task, project, client or agent." />
+      {/* no formatting bar in the island's width: Markdown and @ work as typed */}
+      <MarkdownEditor value={first} onChange={write} onSave={post} onCancel={done} autoFocus ariaLabel="New comment" minHeight={60} pickerUp toolbar={false}
+        placeholder="Write a comment. @ links a task, project, client or agent." />
       {err && <p className="err t-small" role="alert">{err}</p>}
       <div className="row">
         <button type="button" className="btn sm primary" disabled={!text.trim() || busy} onClick={() => post(text)}>Comment</button>
         <button type="button" className="btn sm ghost" onClick={done}>Cancel</button>
+        <span className="grow" /><span className="hint t-small">{modKey()}+Enter posts · Esc cancels</span>
       </div>
     </div>
   );

@@ -216,6 +216,9 @@
 /* Text in t-body; the description folds after 4 lines, a comment after 3 (--fold-lines), with Show more */
 .chat-card .prose { max-width: none; font-size: 13.5px; line-height: 20px; }
 .chat-card .prose > :last-child { margin-bottom: 0; }
+/* a quick read: the text's own headings as strong body text, so the folded lines stay lines */
+.chat-card .prose :is(h1, h2, h3, h4, h5, h6) { margin: 8px 0 4px; font-size: 13.5px; line-height: 20px; font-weight: 600; letter-spacing: 0; }
+.chat-card .prose > :first-child { margin-top: 0; }
 .chat-card .fold:not(.open) { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--fold-lines); line-clamp: var(--fold-lines); overflow: hidden; }
 /* Acceptance criteria: the box (14, radius 3; checked: accent with a check) and the words; checked ones in text-2 */
 .chat-card-criteria { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
@@ -249,7 +252,9 @@
 .chat-card .run-card .run-head > .icon.fail { color: var(--danger); }
 .chat-card .run-card .run-summary { padding: 0 12px 10px; color: var(--text-2); font-size: var(--fs-sm); line-height: 18px; }
 .chat-card .run-card .run-summary .prose { font-size: var(--fs-sm); line-height: 18px; color: inherit; }
-.chat-card-verdict .handover { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; margin-bottom: 10px; padding-bottom: 0; cursor: pointer; }
+/* the hand-over: 3 lines (18px each), then an ellipsis; the height holds them where WebKit's clamp leaves more */
+.chat-card-verdict .handover { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; max-height: 54px; overflow: hidden;
+  margin-bottom: 10px; padding-bottom: 0; cursor: pointer; }
 .chat-card-verdict .handover:hover { color: var(--text); }
 .chat-card-verdict .handover:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: var(--radius-s); }
 .chat-card-verdict .handover .prose p { margin: 0; }
@@ -261,4 +266,5 @@
 .chat-card-foot .err { margin: 0; color: var(--danger); }
 .chat-card-foot .btn > .icon:last-child:not(:first-child) { width: 14px; height: 14px; color: var(--text-2); }
 .chat-card-foot .pop .opt svg:first-child { flex: none; }
-.chat-card-foot.writing .md-editor, .chat-card-foot.writing .cm-editor { max-height: 40vh; }
+.chat-card-foot.writing .md-surface { max-height: 40vh; overflow-y: auto; }
+.chat-card-foot .hint { color: var(--text-3); white-space: nowrap; }
