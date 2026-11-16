@@ -4,11 +4,19 @@
 /* ---------- frame: the background, the sidebar island and the page's island (design/islands) ---------- */
 html, body, #root { height: 100%; margin: 0; }
 /* The window paints the background: a gradient straight down, canvas-from to canvas-to, with canvas-glow from the top
-   left, full for 45% of the way and gone at 60% of the width and 75% of the height. Opaque for now (islands card 3
-   brings the glass). The islands sit on it, island-gap from the window's edges and from each other, with no border. */
+   left, full for 45% of the way and gone at 60% of the width and 75% of the height. Opaque, unless the glass is on (below).
+   The islands sit on it, island-gap from the window's edges and from each other, with no border. */
 .app { display: grid; grid-template-columns: var(--size-side) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: var(--island-gap);
   height: 100vh; padding: var(--island-gap); overflow: hidden;
   background: radial-gradient(ellipse 60% 75% at 0 0, var(--canvas-glow) 45%, transparent), linear-gradient(180deg, var(--canvas-from), var(--canvas-to)); }
+/* The glass (GA-292; design/islands/README.md → The glass): html.glass while it is on (lib/glass.ts). The window is
+   see-through and the system blurs the desktop behind it; the page paints the same gradient at 92% in dark and 86% in
+   light (glass-from, glass-to, glass-glow). The body paints it, so the window is tinted from its first paint, before the
+   app is drawn, and .app paints nothing over it. No blur in CSS: backdrop-filter can't reach the desktop behind a window.
+   The islands and what floats keep their solid fills. */
+html.glass { background: transparent; }
+html.glass body { background: radial-gradient(ellipse 60% 75% at 0 0, var(--glass-glow) 45%, transparent), linear-gradient(180deg, var(--glass-from), var(--glass-to)); }
+html.glass .app { background: none; }
 .side { width: auto; height: auto; min-height: 0; }
 /* The main column: each page's top bar on the background (size-topbar), then the page as one island under it. A page with
    several panes keeps them in that one island for now. The top bar stays in the page's own markup, inside .page-island,

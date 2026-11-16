@@ -1,11 +1,14 @@
 // Settings → Appearance (GA-42): the font, the text sizes of the chat, the interface, and tasks and docs, the theme and the
-// density. A change shows at once and is kept on this computer (src/lib/appearance.ts), without Save settings. The
-// mountains' Background section went with the islands (design/islands): the gradient took their place.
+// density, and the glass behind the islands (GA-292). A change shows at once and is kept on this computer
+// (src/lib/appearance.ts), without Save settings. The Background section holds the glass switch in the mountains' place
+// (design/islands-settings/README.md → Appearance: the glass switch, Figma 318:1588): its hint says what it does, or why
+// the background stays plain (no blur from the system, or reduced transparency; lib/glass.ts).
 import { Moon, Sun } from "lucide-react";
 import { Field, FormSection } from "./Form";
 import {
   CHAT_SIZES, DEFAULTS, DOCS_SIZES, FONTS, UI_SIZES, isDefault, resetAppearance, setAppearance, useAppearance,
 } from "../lib/appearance";
+import { glassHint, useGlass } from "../lib/glass";
 
 /** One size picker: the sizes in px, the default marked in its title. */
 function Sizes({ label, sizes, value, base, onPick }: { label: string; sizes: number[]; value: number; base: number; onPick: (px: number) => void }) {
@@ -20,6 +23,8 @@ function Sizes({ label, sizes, value, base, onPick }: { label: string; sizes: nu
 
 export function AppearanceSettings() {
   const a = useAppearance();
+  const g = useGlass();
+  const noBlur = g.support === "none";
   const atDefaults = isDefault(a);
   return (
     <>
@@ -77,6 +82,14 @@ export function AppearanceSettings() {
             <button aria-pressed={a.density === "comfortable"} onClick={() => setAppearance({ density: "comfortable" })}>Comfortable</button>
             <button aria-pressed={a.density === "compact"} onClick={() => setAppearance({ density: "compact" })}>Compact</button>
           </div>
+        </Field>
+      </FormSection>
+      <FormSection title="Background" text="Behind the islands: a soft gradient, and glass where your system blurs windows.">
+        <Field label="Glass" wide hint={glassHint(g)}>
+          <label className="check">
+            <input type="checkbox" checked={a.glass && !noBlur} disabled={noBlur} onChange={(e) => setAppearance({ glass: e.target.checked })} />
+            Show the desktop through the background
+          </label>
         </Field>
       </FormSection>
     </>
