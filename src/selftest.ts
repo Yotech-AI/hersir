@@ -890,20 +890,25 @@ async function chatPickerAndFilesProbe() {
   window.location.hash = `#/chat/${threadId}`;
   const reopenedChip = await waitFor(() => document.querySelector(".chat-msg.user .bubble a.item-chip.kind-task") as HTMLElement | null, 5000);
   const reopenedFile = textOf(await waitFor(() => document.querySelector(".chat-msg.user .msg-files b"), 5000));
-  // A click on the chip opens the task.
+  // A click on the chip opens the task: beside the chat since GA-297 (a Card tab, the chat stays), its page with Ctrl+click
+  // (Cmd+click on macOS).
+  const chatHash = window.location.hash;
   reopenedChip?.click();
+  const chipKey = decodeURIComponent((reopenedChip?.getAttribute("href") ?? "").replace(/^gizai:task\//, "")).toUpperCase();
+  const beside = await waitFor(() => (document.querySelector(`.chat-side .card-tab[aria-selected=true][data-tab="card:${chipKey}"]`) && window.location.hash === chatHash ? chipKey : null), 3000);
+  reopenedChip?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0, ctrlKey: !isMac(), metaKey: isMac() }));
   const opened = await waitFor(() => (window.location.hash.startsWith("#/task/") ? window.location.hash : null), 3000);
 
   const ok = JSON.stringify(items) === JSON.stringify(["Add files", "Link an item"]) && menuUp && menuClosed && JSON.stringify(kinds) === JSON.stringify(KINDS)
     && typedAt && pickerUp && !!tasks && enterLinks && chipInBox && twoLines && !!sentChip && cleared
     && dropState === "Drop to add to this message" && JSON.stringify(chips) === '["gizai.db"]' && dropGone && refused.includes("is a folder, not a file") && removed
     && JSON.stringify(again) === '["gizai.db"]' && textOf(sentFile) === "gizai.db" && chipsCleared && saved?.files?.[0]?.name === "gizai.db"
-    && !!reopenedChip && reopenedFile === "gizai.db" && !!opened && grows && pausedOk && chipsAbove && shrinks;
+    && !!reopenedChip && reopenedFile === "gizai.db" && !!beside && !!opened && grows && pausedOk && chipsAbove && shrinks;
   return { ok, grows: { ok: grows, one_line: oneLine, tall, overflow, sent_saved: sentSaved, sent_in_page: sentCount() - before, back_to_two_lines: shrinks, sent_back_to_two_lines: sentBackToTwo, empty: emptyH }, chips_above_text: chipsAbove, paused: { ok: pausedOk, off, plus_off: plusOff, no_menu: noMenu, no_drop_state: noDropState,
     no_drop: noDrop, on_again: on }, menu: items, menu_up: menuUp, menu_closed: menuClosed, kinds, typed_at: typedAt, picker_up: pickerUp, tasks: tasks?.slice(0, 3),
     enter_links_without_sending: enterLinks, chip_in_box: chipInBox, shift_enter_new_line: twoLines, sent_chip: sentChip?.textContent, cleared,
     drop_state: dropState, chips, drop_state_gone: dropGone, refused, removed, dropped_again: again, sent_file: textOf(sentFile), chips_cleared: chipsCleared,
-    saved_files: saved?.files?.map((f) => f.name), reopened_chip: reopenedChip?.textContent, reopened_file: reopenedFile, chip_opens: opened };
+    saved_files: saved?.files?.map((f) => f.name), reopened_chip: reopenedChip?.textContent, reopened_file: reopenedFile, chip_beside: beside, chip_opens: opened };
 }
 const picker = () => document.querySelector('.composer-foot select[aria-label="Runs on"]') as HTMLSelectElement | null;
 const userSaid = (text: string) => [...document.querySelectorAll(".chat-msg.user:not(.queued)")].some((e) => (e.textContent ?? "").includes(text));

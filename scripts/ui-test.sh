@@ -21,7 +21,8 @@
 #     task without sending and the sent message shows it as a chip; Tauri's drag-and-drop events (sent through its event
 #     system: a real OS drop can't be made headless) show the drop state and add a file (a folder is refused), which is
 #     sent and shown; the text box stops growing at 200 px; while the Team Lead is paused, + and drops are off; after
-#     reopening the chat the chip and the file are still there and the chip opens the task.
+#     reopening the chat the chip and the file are still there; the chip opens the task in a Card tab beside the chat
+#     (GA-297), and Ctrl+click (Cmd+click on macOS) opens its page.
 #  7. usage (GA-33): Usage in the sidebar's Company section above Team. GA-62: it opens on the Subscription tab, a block
 #     per coding CLI entry (Claude Code, Claude Code 2, Codex, Gemini) with prep_usage's limits and the agents on each.
 #     Then the Total, Agents and Projects tabs and the period
