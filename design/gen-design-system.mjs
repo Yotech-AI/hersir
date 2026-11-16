@@ -96,7 +96,7 @@ C.Sidebar = {
 - The foot stays in place while the rest scrolls: the update notice when a newer Gizai is out, COMPANY (Usage, Team, Users, Settings), and a dashed "Test data" tag when Gizai runs on a data folder of its own.
 - Section labels use \`t-nav-label\` in capitals and \`text-3\`; items are 32px with a 16px icon in \`text-3\` that brightens on hover. Items grow with the Interface size (Settings → Appearance), labels and icons don't.
 - The current page gets \`selected\`; nothing else is highlighted.
-- Background \`side\`, dimmer than the canvas, with a \`line\` border on the right; \`size-side\` wide, a little wider at larger Interface sizes.
+- An island (design/islands): \`island\` fill, \`island-radius\` corners, no border, \`island-gap\` from the window's edges; \`size-side\` wide, a little wider at larger Interface sizes.
 
 The consumer supplies the route, the counts and the lists of projects and agents.`,
   preview: `<div style="display:flex;height:668px"><aside class="side" style="height:auto">
