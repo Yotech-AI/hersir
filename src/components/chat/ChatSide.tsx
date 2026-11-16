@@ -250,7 +250,7 @@ function SideIsland({ islandRef, side, all, focus, focusNext, fresh, you, hide }
   const pickBelow = (el: HTMLElement | null) => { const r = el?.getBoundingClientRect(); setPicker({ x: r?.left ?? 200, y: (r?.bottom ?? 100) + 6 }); };
 
   return (
-    <div ref={islandRef} className="chat-side" role="region" aria-label="Beside the chat"
+    <div ref={islandRef} className="chat-side"
       onKeyDown={(e) => {
         // Ctrl+PgDn and Ctrl+PgUp: the next and previous tab, of any kind (a terminal lets them through)
         if (e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && (e.key === "PageDown" || e.key === "PageUp") && keys.length > 1) {
