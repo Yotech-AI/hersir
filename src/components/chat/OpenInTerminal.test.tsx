@@ -2,7 +2,8 @@
 // command; while the Editor's folders load, a hidden button's room; then a quiet button per folder the message names (at most
 // 3, in the order named) with the terminal icon, "Open in terminal", the folder in mono and its tooltip; Open in terminal…
 // with the folder picker titled "Open terminal in" when it names none of the Editor's folders. A click goes through GA-278's
-// real openChatTerminal(folder.id, true) with terminalOpen faked: the panel shows the terminal with the focus, a second click
+// real openChatTerminal(folder.id, true) with terminalOpen faked: the chat's side island shows the terminal's tab with the
+// focus (GA-296: src/lib/chatSide.ts, the chat on show; before it, GA-278's terminal panel), a second click
 // shows the same one while it waits for a command, and a new one starts while a program runs in it or after it ended. A
 // terminal that can't start says why under the button (role alert). Nothing is ever typed into a terminal. There is no DOM
 // here, so the small hook runtime of FolderPickerTerminal.test.tsx stands in for React (with useSyncExternalStore and memo),
@@ -127,7 +128,7 @@ vi.stubGlobal("window", Object.assign(new EventTarget(), { innerWidth: 1280, inn
 vi.stubGlobal("document", { body: {} });
 
 let M: typeof import("./OpenInTerminal");
-let C: typeof import("../../lib/chatTerminal");
+let S: typeof import("../../lib/chatSide");
 
 // ---- the hook runtime (FolderPickerTerminal.test.tsx's, with memo) ----
 let root: () => ReactNode = () => null;
@@ -215,7 +216,11 @@ async function showAll(mds: string[]) {
   render();
   await settle();
 }
-const shown = () => C.useChatTerminals();
+/** The side island of the chat on show: its terminals, the one shown, whether it shows, and the focus count. */
+const shown = () => {
+  const { side, focus } = S.useChatSide();
+  return { ids: side.tabs.filter((t) => t.kind === "terminal").map((t) => t.id), current: side.current ? S.idOf(side.current) : null, open: side.open, focus };
+};
 const session = (id: string) => tl.list.find((s) => s.id === id)!;
 const setSession = (id: string, more: Partial<TerminalSession>) => { tl.list = tl.list.map((s) => (s.id === id ? { ...s, ...more } : s)); tl.subs.forEach((g) => g()); };
 
@@ -232,7 +237,8 @@ beforeEach(async () => {
   store.clear();
   vi.resetModules();
   M = await import("./OpenInTerminal");
-  C = await import("../../lib/chatTerminal");
+  S = await import("../../lib/chatSide");
+  S.showChat("c1");
 });
 afterEach(() => { root = () => null; render(); vi.useRealTimers(); });
 
@@ -326,7 +332,7 @@ describe("the row from the message's first draw", () => {
 });
 
 describe("a click", () => {
-  it("opens the chat's terminal panel with a terminal in the folder, with the focus", async () => {
+  it("opens a Terminal tab in the folder in the chat's side island, with the focus", async () => {
     await show(WHY);
     const before = shown().focus;
     await click(rowButtons()[0]!);
@@ -341,12 +347,24 @@ describe("a click", () => {
   it("a second click shows the same terminal while it waits for a command", async () => {
     await show(WHY);
     await click(rowButtons()[0]!);
-    C.hideChatPanel();
+    S.hideSide();
     const focus = shown().focus;
     await click(rowButtons()[0]!);
     expect(a.opens, "no new terminal").toEqual([DOQ.id]);
     expect([shown().ids, shown().current, shown().open]).toEqual([["t1"], "t1", true]);
     expect(shown().focus).toBeGreaterThan(focus);
+  });
+
+  it("opens it in the chat on show only (GA-296): another chat has its own, and its button starts one there", async () => {
+    await show(WHY);
+    await click(rowButtons()[0]!);
+    S.showChat("c2");
+    expect(shown(), "chat 2 has nothing open").toMatchObject({ ids: [], current: null, open: false });
+    await click(rowButtons()[0]!);
+    expect(a.opens, "chat 1's waiting terminal isn't chat 2's: a new one").toEqual([DOQ.id, DOQ.id]);
+    expect(shown()).toMatchObject({ ids: ["t2"], current: "t2", open: true });
+    S.showChat("c1");
+    expect(shown()).toMatchObject({ ids: ["t1"], current: "t1", open: true });
   });
 
   it("starts a new tab in that folder while a program runs in it, and after it ended", async () => {
