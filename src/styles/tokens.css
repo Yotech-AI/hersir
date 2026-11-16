@@ -5,6 +5,7 @@
   --bg: #0f1013;
   --raised: #15171b;
   --overlay: #16181d;
+  --float: #22242a;
   --hover: #1b1d22;
   --selected: #22252c;
   --line: #23262c;
@@ -105,6 +106,7 @@
   --bg: #ffffff;
   --raised: #ffffff;
   --overlay: #ffffff;
+  --float: #ffffff;
   --hover: #f0f2f5;
   --selected: #e6e9f0;
   --line: #e3e5ea;
@@ -214,6 +216,7 @@
 .t-nav-label { font-family: var(--font-sans); font-size: 11px; line-height: 16px; font-weight: 700; letter-spacing: 0.07em; }
 .t-row { font-family: var(--font-sans); font-size: 14px; line-height: 20px; font-weight: 500; }
 .t-body { font-family: var(--font-sans); font-size: 13.5px; line-height: 20px; font-weight: 400; }
+.t-body-strong { font-family: var(--font-sans); font-size: 13.5px; line-height: 20px; font-weight: 600; }
 .t-prose { font-family: var(--font-sans); font-size: 15px; line-height: 24px; font-weight: 400; }
 .t-small { font-family: var(--font-sans); font-size: 12.5px; line-height: 18px; font-weight: 400; }
 .t-caption { font-family: var(--font-sans); font-size: 11.5px; line-height: 16px; font-weight: 400; }

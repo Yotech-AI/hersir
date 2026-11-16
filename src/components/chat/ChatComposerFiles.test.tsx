@@ -1,6 +1,6 @@
 // GA-41: the chat with the @ picker and files. The composer has a + button (a menu that opens upward) and the @ tip (since
 // GA-83 both in the row under the text, inside the box); your sent and queued messages show their links to Gizai items as chips and their files; shown Markdown keeps
-// gizai: links as chips and still drops unsafe links; while the Team Lead is paused the + button is off. Rendered to HTML
+// gizai: links as chips (with no title since GA-287: the hover card took the browser's Open task) and still drops unsafe links; while the Team Lead is paused the + button is off. Rendered to HTML
 // on the server with the conversation handed in.
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -93,7 +93,7 @@ describe("your messages", () => {
     chat.messages = [sent("m1", `Look at ${LINK} please`, [file("f1", "invoice 2026.pdf", 2048), file("f2", "Makefile", 10)])];
     chat.queue = [];
     const html = render();
-    expect(html).toContain('<div class="bubble">Look at <a class="item-chip kind-task" href="gizai:task/GA-12" title="Open task">GA-12 - Fix the login</a> please</div>');
+    expect(html).toContain('<div class="bubble">Look at <a class="item-chip kind-task" href="gizai:task/GA-12">GA-12 - Fix the login</a> please</div>');
     expect(html).toContain('<ul class="files compact msg-files" aria-label="Files">');
     expect(html).toContain('<span class="ext">PDF</span><span class="fname"><b>invoice 2026.pdf</b><span>2.0 KB</span>');
     expect(html).toContain('<span class="ext">FILE</span><span class="fname"><b>Makefile</b><span>10 B</span>');
@@ -118,13 +118,14 @@ describe("your messages", () => {
 describe("links to items where Markdown is shown", () => {
   it("become chips with the item's name; other links stay links and unsafe ones lose their target", () => {
     const html = renderToStaticMarkup(<MarkdownView md={`${LINK}, [Giz AI](gizai:project/GA), [site](https://gizai.ai) and [bad](javascript:alert(1))`} />);
-    expect(html).toContain('<a class="item-chip kind-task" href="gizai:task/GA-12" title="Open task">GA-12 - Fix the login</a>');
-    expect(html).toContain('<a class="item-chip kind-project" href="gizai:project/GA" title="Open project">Giz AI</a>');
+    expect(html).toContain('<a class="item-chip kind-task" href="gizai:task/GA-12">GA-12 - Fix the login</a>');
+    expect(html).toContain('<a class="item-chip kind-project" href="gizai:project/GA">Giz AI</a>');
     expect(html).toContain('<a href="https://gizai.ai" title="https://gizai.ai">site</a>');
+    expect(html).not.toMatch(/item-chip[^>]*title=/);
     expect(html).toContain("<a>bad</a>");
   });
   it("show the escaped text of a link as written", () => {
     const html = renderToStaticMarkup(<LinkedText text={"[GA-5 - Fix \\[urgent\\]](gizai:task/GA-5)"} />);
-    expect(html).toBe('<a class="item-chip kind-task" href="gizai:task/GA-5" title="Open task">GA-5 - Fix [urgent]</a>');
+    expect(html).toBe('<a class="item-chip kind-task" href="gizai:task/GA-5">GA-5 - Fix [urgent]</a>');
   });
 });
