@@ -108,6 +108,10 @@ fn hide_words(text: &str) -> String {
             out.push_str(&token_hidden(word));
             out.push_str(&text[end..at]);
         }
+        // in `echo "APP_KEY=" >> .env` that quote closes the one the name stands in: the value is what follows it at once
+        if let Some(q) = quote && text[..i].ends_with(q) && !text[end..at - 1].contains(q) {
+            quote = None;
+        }
         let outer = outer_quote(text, i, at);
         // after `Authorization:` its scheme and then its credentials go, and after a value `Bearer` or `Basic` the next one
         let mut and_next = word.to_ascii_lowercase().contains("authorization");
