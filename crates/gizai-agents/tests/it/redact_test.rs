@@ -226,3 +226,130 @@ fn an_address_right_after_a_character_outside_ascii_is_hidden_without_a_panic() 
         .expect("hidden panicked on «https://…»");
     assert_eq!(out, "«https://x-access-token:***@github.com/o/r»");
 }
+
+/// Characters outside ASCII of every length (2, 3 and 4 bytes), marks without a width of their own (a zero-width space, a
+/// right-to-left mark, a byte order mark, a combining accent) and letters in other scripts.
+const OUTSIDE_ASCII: [&str; 18] = ["é", "„", "“", "”", "«", "»", "→", "€", "🙂", "\u{200B}", "\u{200F}", "\u{FEFF}",
+                                   "\u{0301}", "Ａ", "ü", "Я", "中", "Ω"];
+
+/// GA-281 QA, round 3: round 2's fix for the address after `„`, for every kind of character outside ASCII, right before
+/// an address, inside its scheme and right after it: no panic, the password left out, the character kept.
+#[test]
+fn every_kind_of_character_outside_ascii_around_an_address_keeps_the_password_out() {
+    for c in OUTSIDE_ASCII {
+        let cases = [
+            (format!("{c}https://me:hunter2@github.com/o/r{c}"), format!("{c}https://me:***@github.com/o/r{c}")),
+            (format!("{c}{c}http://tok@host {c}"), format!("{c}{c}http://***@host {c}")),
+            (format!("x{c}git+ssh://me:hunter2@host/{c}"), format!("x{c}git+ssh://me:***@host/{c}")),
+            (format!("h{c}ttps://me:hunter2@host"), format!("h{c}ttps://me:***@host")),
+            (format!("{c}ssh://git@host/x{c}"), format!("{c}ssh://git@host/x{c}")),
+            (format!("'{c}https://me:hunter2@host{c}'"), format!("'{c}https://me:***@host{c}'")),
+        ];
+        for (text, want) in cases {
+            let out = std::panic::catch_unwind(|| hidden(&text)).unwrap_or_else(|_| panic!("hidden panicked on {text:?}"));
+            assert_eq!(out, want, "{text:?}");
+        }
+    }
+}
+
+/// GA-281 QA, round 3: the other rules (a secret's name and `=` or `:`, a flag, `Bearer`, mysql's `-p`, curl's `-u`)
+/// with characters outside ASCII right before the name and around the value: no panic, the value left out whole and
+/// what follows it kept.
+#[test]
+fn characters_outside_ascii_around_a_secrets_name_and_value_keep_the_value_out() {
+    for c in OUTSIDE_ASCII {
+        let cases = [
+            (format!("{c}TOKEN={c}abc{c}xyz next"), " next"),
+            (format!("{c} DB_PASSWORD=p@ss{c}abc{c}xyz npm ci"), " npm ci"),
+            (format!("{c}Authorization: Bearer {c}abc{c}xyz\nnext"), "\nnext"),
+            (format!("{c} --password {c}abc{c}xyz run"), " run"),
+            (format!("{c} --api-key '{c}abc xyz{c}' run"), " run"),
+            (format!("mysql -u root -p{c}abc{c}xyz db"), " db"),
+            (format!("{c} curl -u me:{c}abc{c}xyz https://x.example.com"), " https://x.example.com"),
+            (format!("{c}\"api_key\": \"{c}abc xyz{c}\", \"name\": \"x\""), ", \"name\": \"x\""),
+            (format!("{c} Bearer {c}abc{c}xyz ok"), " ok"),
+            (format!("client_secret: {c}abc {c}xyz\nname: {c}"), "\nname: "),
+        ];
+        for (text, kept) in cases {
+            let out = std::panic::catch_unwind(|| hidden(&text)).unwrap_or_else(|_| panic!("hidden panicked on {text:?}"));
+            assert!(!out.contains("abc") && !out.contains("xyz"), "{text:?} -> {out:?} still holds the secret");
+            assert!(out.contains(kept) && out.contains(LEFT_OUT), "{text:?} -> {out:?} should keep {kept:?}");
+        }
+    }
+}
+
+/// GA-281 QA, round 3: a wider sweep than `hidden_never_panics_or_hangs_on_odd_text`, with every kind of character
+/// outside ASCII next to the pieces the rules look at, and two planted secrets with a space on both sides: a password in
+/// an address and a `PASSWORD=` value. Whatever stands around them, `hidden` must not panic and must leave both out (a
+/// space on both sides means no rule can take them as part of something else and keep them). The one exception is curl's
+/// `-u`/`--user` rule, which keeps everything before a login's `:` as its user name, also in a quoted value with spaces
+/// (`--user=" PASSWORD=… …:"`): texts with `-u` are only checked for panics. GA281_SWEEP sets the number of texts
+/// (default 40,000); QA ran it with 300,000.
+#[test]
+fn a_wide_sweep_with_characters_outside_ascii_never_panics_and_never_keeps_a_planted_secret() {
+    let mut pieces = vec!["TOKEN", "password", "APP_KEY", "-p", "-u", "--user", "--token", "Bearer", "Basic", "Authorization",
+                          "mysql", "=", "==", "=>", ":=", ":", ": ", " ", "\t", "\n", "\r\n", "'", "\"", "`", "\\", "{", "}",
+                          "[", "]", "@", "://", "https://", "http://", "me:pw@", "ghp_", "eyJ", "a", "1", ".", "/", "-",
+                          "x-access-token:", "sk-", "$", "#", "%", "?", "(", ")", ",", ";", "<", ">",
+                          " https://me:Zq9pw@h/ ", " PASSWORD=Kx7pw "];
+    pieces.extend(OUTSIDE_ASCII);
+    let count: usize = std::env::var("GA281_SWEEP").ok().and_then(|n| n.parse().ok()).unwrap_or(40_000);
+    let mut seed: u64 = 0x0281_2026_1116;
+    let mut next = || {
+        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        seed >> 33
+    };
+    let started = std::time::Instant::now();
+    for _ in 0..count {
+        let len = next() % 32;
+        let mut text = String::new();
+        for _ in 0..len {
+            text.push_str(pieces[(next() % pieces.len() as u64) as usize]);
+        }
+        let out = std::panic::catch_unwind(|| hidden(&text)).unwrap_or_else(|_| panic!("hidden panicked on {text:?}"));
+        if text.contains("-u") {
+            continue;
+        }
+        for planted in ["Zq9pw", "Kx7pw"] {
+            assert!(!out.contains(planted), "{text:?} -> {out:?} still holds {planted:?}");
+        }
+    }
+    assert!(started.elapsed().as_secs() < 60, "{count} texts took {:?}", started.elapsed());
+}
+
+/// GA-281 QA, round 3: one long line full of secrets (a minified JSON answer, a long command on one line) is hidden in
+/// time too, not only many short lines (`hidden_is_fast_on_long_text`).
+#[test]
+fn one_long_line_full_of_secrets_is_hidden_in_time() {
+    let started = std::time::Instant::now();
+    let json = format!("{{{}\"end\": 1}}", "\"token\": \"abc def\", \"name\": \"x\", ".repeat(2_000));
+    let out = hidden(&json);
+    assert!(!out.contains("abc") && out.contains("\"name\": \"x\""), "{}", &out[..200]);
+    let env = "TOKEN=abc DB_PASSWORD=p@ss ".repeat(2_000);
+    let out = hidden(&env);
+    assert!(!out.contains("abc") && !out.contains("p@ss"), "{}", &out[..200]);
+    assert!(started.elapsed().as_secs() < 10, "took {:?}", started.elapsed());
+}
+
+/// GA-281 QA, round 3: a token with a known start (`TOKEN_STARTS`, "secret wherever they stand") used as a login's user
+/// name rather than its password. GitHub takes a token as the user name (`https://<token>:x-oauth-basic@github.com`,
+/// `curl -u <token>:`), and npm and pip take dependencies as `git+https://<token>@github.com/…`. A failed setup command's
+/// first line, `<command> failed (exit code …)`, reaches Hersir's log (`runs::pause_pull`), so each of these setup
+/// commands would put the whole token in it: the URL rule keeps a user name before `:` and every login of a scheme other
+/// than http or https, curl's `-u` rule keeps the user name before `:`, and the token rule only looks at a word's start,
+/// which is `//` here. Fails on purpose until a known token is left out wherever it stands.
+#[test]
+fn a_known_token_is_left_out_also_as_a_logins_user_name() {
+    let t = "ghp_1234567890abcdefghijABCDEFGHIJ123456";
+    let secret = "1234567890abcdefghij";
+    for command in [
+        format!("git clone https://{t}:x-oauth-basic@github.com/acme/lib.git vendor/lib failed (exit code 128)"),
+        format!("curl -fsSL -u {t}: https://api.github.com/repos/acme/lib/tarball -o lib.tgz failed (exit code 22)"),
+        format!("pip install git+https://{t}@github.com/acme/lib.git failed (exit code 1)"),
+        format!("npm install git+https://{t}@github.com/acme/lib.git failed (exit code 1)"),
+    ] {
+        let out = hidden(first_line(&command));
+        assert!(!out.contains(secret), "{command:?} -> {out:?} still holds the token");
+        assert!(out.contains(" failed (exit code "), "{command:?} -> {out:?}");
+    }
+}
