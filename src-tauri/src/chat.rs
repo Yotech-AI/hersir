@@ -41,11 +41,34 @@ pub fn caps(st: &AppState) -> Caps {
 }
 
 /// Starts Claude Code for an answer of the Chief (a chat answer, a board check, its look at an agent's question) in
-/// the slice of the agent runs, under their memory limit (GA-202, Linux; elsewhere as before).
-fn spawn_answer(st: &AppState, args: &ClaudeArgs, cwd: &Path, log_path: &Path, caps: Caps)
+/// the slice of the agent runs, under their memory limit (GA-202, Linux; elsewhere as before). `lines` reads its
+/// output: `process::ClaudeLines`, or `AnswerLines` for a chat answer.
+fn spawn_answer(st: &AppState, args: &ClaudeArgs, cwd: &Path, log_path: &Path, caps: Caps, lines: impl process::LineParser<ChatEvent>)
     -> Result<process::RunHandle<ChatEvent>, gizai_agents::AgentError> {
     let exec = process::Exec { slice: st.run_memory.slice(), ..args.exec() };
-    process::spawn_exec(&exec, cwd, log_path, caps, process::ClaudeLines)
+    process::spawn_exec(&exec, cwd, log_path, caps, lines)
+}
+
+/// GA-289: a chat answer's output, read as `process::ClaudeLines` reads it, that also keeps the tools Claude Code's
+/// init line lists for the session (`TurnTools::listed`). They are kept before the answer hears that line, so every
+/// tool use after it is checked against them.
+struct AnswerLines(std::sync::Arc<Mutex<Vec<String>>>);
+
+impl process::LineParser<ChatEvent> for AnswerLines {
+    fn line(&mut self, line: &str) -> Vec<ChatEvent> {
+        let events = chat_stream::parse_line(line);
+        if events.iter().any(|e| matches!(e, ChatEvent::Init { .. })) && let Ok(mut listed) = self.0.lock() {
+            listed.extend(init_line_tools(line));
+        }
+        events
+    }
+}
+
+/// The tools a Claude Code init line (`system`/`init`) lists for the session, its MCP servers' tools among them.
+fn init_line_tools(line: &str) -> Vec<String> {
+    serde_json::from_str::<serde_json::Value>(line.trim()).ok()
+        .and_then(|v| v.get("tools").and_then(|t| t.as_array()).map(|l| l.iter().filter_map(|t| t.as_str()).map(str::to_string).collect()))
+        .unwrap_or_default()
 }
 
 /// How long an answer's token for Gizai's tools lives: its time limit and a quarter of an hour (30 minutes at the default
@@ -243,12 +266,23 @@ fn mcp_states(st: &AppState, thread_id: &str, agent_id: &str, log_path: &Path, c
     crate::mcp_servers::record_states(st, agent_id, &states);
 }
 
-/// Tools that read nothing from outside: Claude Code's file tools and Gizai's own. A name that only looks like Gizai's
-/// own, as the tools of a server called "gizai_" or "gizai__notes" would (`mcp__gizai___x`, `mcp__gizai__notes__x`),
-/// counts as outside. Such server names can't be saved, but this doesn't count on that.
+/// Whether `name` is a tool from outside Gizai: anything but Claude Code's file tools (Read, Glob, Grep) and Gizai's
+/// own, which read nothing from outside. A name that only looks like Gizai's own, as the tools of a server called
+/// "gizai_" or "gizai__notes" would (`mcp__gizai___x`, `mcp__gizai__notes__x`), counts as outside. Such server names
+/// can't be saved, but this doesn't count on that.
+///
+/// It goes by the name alone, not by what a turn has: Bash and Edit are outside too. GA-289: a tool the Chief's turn
+/// doesn't have still marks nothing, as Claude Code refuses it ("No such tool available") without running it
+/// (`TurnTools::marks`).
 pub fn is_outside_tool(name: &str) -> bool {
     let gizais = name.strip_prefix("mcp__gizai__").is_some_and(|t| !t.is_empty() && !t.starts_with('_') && !t.contains("__"));
     !matches!(name, "Read" | "Glob" | "Grep") && !gizais
+}
+
+/// What follows `mcp__<server>__` when `tool` is named as one of server `server`'s tools, as Claude Code names them:
+/// by the exact server name, so `mcp__otusx__a` and `mcp__OTUS__a` aren't otus's.
+fn server_tool<'a>(tool: &'a str, server: &str) -> Option<&'a str> {
+    tool.strip_prefix("mcp__")?.strip_prefix(server)?.strip_prefix("__")
 }
 
 /// GA-271: the sources the Chief that answers trusts (agent form → Tools → After the Chief uses it: Allow), read once per
@@ -272,16 +306,54 @@ impl Trusted {
     pub fn trusts(&self, tool: &str) -> bool {
         match tool {
             "WebSearch" | "WebFetch" => self.web,
-            _ => self.servers.iter().any(|s| tool.strip_prefix("mcp__").and_then(|t| t.strip_prefix(s.as_str())).and_then(|t| t.strip_prefix("__"))
-                .is_some_and(|t| !t.is_empty() && !t.starts_with('_') && !t.contains("__"))),
+            _ => self.servers.iter().any(|s| server_tool(tool, s).is_some_and(|t| !t.is_empty() && !t.starts_with('_') && !t.contains("__"))),
         }
     }
 }
 
-/// Whether using `tool` marks the chat (GA-261): a tool from outside Gizai (`is_outside_tool`) that isn't a trusted
-/// source's (GA-271, `Trusted`). After a trusted one, an untrusted tool still marks it.
+/// Whether using `tool` marks the chat (GA-261), for a tool the turn has: a tool from outside Gizai (`is_outside_tool`)
+/// that isn't a trusted source's (GA-271, `Trusted`). After a trusted one, an untrusted tool still marks it.
+///
+/// GA-289: it doesn't ask whether the turn has `tool`. A chat answer asks `TurnTools::marks`, which also needs that: a
+/// tool the turn doesn't have, like Bash, Edit, Write, Task, WebFetch with Web off or a tool of a server that isn't in
+/// the turn, marks nothing.
 pub fn marks_chat(tool: &str, trusted: &Trusted) -> bool {
     is_outside_tool(tool) && !trusted.trusts(tool)
+}
+
+/// GA-289: the tools a chat turn has. A tool use of any other name is refused by Claude Code without running ("No such
+/// tool available: Bash"), so it reads nothing from outside and marks nothing (`marks`).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct TurnTools {
+    /// Its built-in tools, as `--tools` names them: Read, Glob and Grep, and WebSearch and WebFetch while Web is on.
+    pub tools: Vec<String>,
+    /// The MCP servers in its MCP config, by the names the config gives them: `gizai`, and the Chief's own servers with
+    /// the browser's `chrome-devtools` among them.
+    pub servers: Vec<String>,
+    /// The tools Claude Code's init line lists for the session (`AnswerLines`), empty until that line is read. Claude
+    /// Code lists only tools it has, so a tool it gives the session that Hersir didn't name still marks.
+    pub listed: Vec<String>,
+}
+
+impl TurnTools {
+    /// A turn with the built-in tools `tools` and the MCP servers `servers` beside `gizai`, as its config has them.
+    pub fn of(tools: &[String], servers: &[gizai_agents::mcp_run::RunServer]) -> TurnTools {
+        let servers = std::iter::once("gizai".to_string()).chain(servers.iter().map(|s| s.name.clone())).collect();
+        TurnTools { tools: tools.to_vec(), servers, listed: vec![] }
+    }
+
+    /// Whether the turn has `tool`: one of its built-in tools or one its init line lists, by the exact name; or
+    /// `mcp__<server>__<tool>` of a server in its config, matched by the exact server name as `Trusted::trusts` matches
+    /// one. Any tool name after the server's counts, as a server may name its tools as it likes (`_x`, `a__b`).
+    pub fn has(&self, tool: &str) -> bool {
+        self.tools.iter().chain(&self.listed).any(|t| t == tool)
+            || self.servers.iter().any(|s| server_tool(tool, s).is_some_and(|t| !t.is_empty()))
+    }
+
+    /// Whether using `tool` in this turn marks the chat: a tool the turn has (`has`) that marks it (`marks_chat`).
+    pub fn marks(&self, tool: &str, trusted: &Trusted) -> bool {
+        self.has(tool) && marks_chat(tool, trusted)
+    }
 }
 
 /// The tool from outside Gizai this chat used first, if any (GA-261: for good, also in its later messages, in a new session
@@ -1316,6 +1388,9 @@ async fn attempt_once(st: &AppState, thread: &ChatThread, plan: &Plan, prompt: &
     let (web, _) = crate::runs::web_for_run(agent, gizai_agents::cli::Kind::ClaudeCode, &plan.cli.name);
     let tools: Vec<String> = ["Read", "Glob", "Grep"].iter().map(|s| s.to_string())
         .chain(gizai_agents::tool_catalog::claude_web_names(web.search, web.fetch)).collect();
+    // GA-289: what this turn has, so a tool use Claude Code refuses marks nothing. Its init line adds the tools it lists.
+    let mut turn = TurnTools::of(&tools, &servers);
+    let listed = std::sync::Arc::new(Mutex::new(Vec::new()));
     let untrusted = !servers.is_empty() || web.search || web.fetch;
     let args = ClaudeArgs {
         bin: bin.bin.clone(), env: bin.env.clone(), prompt: prompt.to_string(), session_id: session.clone(), permission_mode: "manual".into(),
@@ -1330,7 +1405,7 @@ async fn attempt_once(st: &AppState, thread: &ChatThread, plan: &Plan, prompt: &
         disable_hooks: true, disable_skills: true, disable_auto_memory: true, effort: agent.effort.clone(), disallowed_tools: mcp_refused,
     };
     let showing = Showing::open(st, &run_id);
-    let mut handle = match spawn_answer(st, &args, &cwd, &log_path, caps) {
+    let mut handle = match spawn_answer(st, &args, &cwd, &log_path, caps, AnswerLines(listed.clone())) {
         Ok(h) => h,
         Err(e) => {
             cleanup(&token);
@@ -1370,6 +1445,10 @@ async fn attempt_once(st: &AppState, thread: &ChatThread, plan: &Plan, prompt: &
                 if let Some(s) = mcp_status.filter(|s| s != "connected") {
                     system(st, &thread.id, &format!("Hersir's tools didn't connect ({s}), so the Chief can't look anything up or change anything in this answer."));
                 }
+                // The tools this line lists, kept by `AnswerLines` before it was sent on.
+                if let Ok(mut l) = listed.lock() {
+                    turn.listed.append(&mut l);
+                }
             }
             ChatEvent::BlockStart => {
                 draft.clear();
@@ -1400,8 +1479,10 @@ async fn attempt_once(st: &AppState, thread: &ChatThread, plan: &Plan, prompt: &
                 }
                 // Marked for good before the stream is read on (GA-261), so every call of Gizai's tools after it in the
                 // answer sees the mark (`wait_shown`); the note the first one gets comes under this call. A tool of a
-                // source the Chief trusts marks nothing (GA-271); an untrusted one after it still does.
-                if marks_chat(&name, &trusted) {
+                // source the Chief trusts marks nothing (GA-271); an untrusted one after it still does. GA-289: neither
+                // does a tool the turn doesn't have (Bash, Edit, WebFetch with Web off, a server not in the turn), which
+                // Claude Code refuses without running it; a tool the turn has after it still marks.
+                if turn.marks(&name, &trusted) {
                     mark_outside(st, &thread.id, &name);
                 }
             }
@@ -1609,7 +1690,7 @@ async fn check_once(st: &AppState, agent: &Member, prompt: &str, saw: &[gizai_co
         cleanup(&token);
         return end("cancelled", Totals::default(), Some(crate::runs::STOPPED_BY_QUIT.into()), None);
     }
-    let mut handle = match spawn_answer(st, &args, &cwd, &log_path, caps) {
+    let mut handle = match spawn_answer(st, &args, &cwd, &log_path, caps, process::ClaudeLines) {
         Ok(h) => h,
         Err(e) => {
             cleanup(&token);
@@ -1816,7 +1897,7 @@ async fn question_process(st: &AppState, agent: &Member, asked_run_id: &str, pro
         cleanup(&token);
         return ("cancelled".into(), Totals::default(), Some(crate::runs::STOPPED_BY_QUIT.into()), String::new());
     }
-    let mut handle = match spawn_answer(st, &args, cwd, log_path, caps) {
+    let mut handle = match spawn_answer(st, &args, cwd, log_path, caps, process::ClaudeLines) {
         Ok(h) => h,
         Err(e) => {
             cleanup(&token);
