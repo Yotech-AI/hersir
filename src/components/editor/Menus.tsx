@@ -8,9 +8,11 @@ import type { EditorApp } from "../../types";
 import { Popover } from "../Popover";
 
 export type MenuItem =
-  | { label: string; kbd?: string; disabled?: boolean; title?: string; run: () => void }
+  | { label: string; kbd?: string; disabled?: boolean; title?: string; danger?: boolean; run: () => void }
   | { sep: true }
-  | { note: string };
+  | { note: string }
+  /** A heading over the items (the Chat's tool strip: "Terminal · 2 open"). */
+  | { head: string };
 
 /** A menu at the mouse (or under a row, from the keyboard), on top of everything; it closes on a click outside, Escape,
  *  scrolling, or a choice. ↑ and ↓ move between its items. */
@@ -44,7 +46,8 @@ export function ContextMenu({ at, items, label, onClose }: { at: { x: number; y:
       onContextMenu={(e) => e.preventDefault()}>
       {items.map((it, i) => "sep" in it ? <div key={i} className="sep" />
         : "note" in it ? <div key={i} className="pop-note">{it.note}</div>
-        : <button key={i} className="opt" role="menuitem" disabled={it.disabled} title={it.title} onClick={() => { onClose(); it.run(); }}>
+        : "head" in it ? <div key={i} className="pop-head">{it.head}</div>
+        : <button key={i} className={`opt${it.danger ? " danger" : ""}`} role="menuitem" disabled={it.disabled} title={it.title} onClick={() => { onClose(); it.run(); }}>
             {it.label}{it.kbd && <span className="kbd">{it.kbd}</span>}
           </button>)}
     </div>,

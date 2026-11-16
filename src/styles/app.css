@@ -333,10 +333,13 @@ a.member:hover { border-color: var(--line-2); }
 .md-edit-box { margin-left: 0; }
 .composer .md-editor { background: var(--raised); }
 
-/* chat page layout: the chat list (--chat-list wide; src/lib/chatTerminal.ts's chatListWidth says the same), the conversation
-   or the Archive, and the chat's terminal panel or its rail (GA-278, below) */
-.chat { --chat-list: calc(260px + 6 * var(--ui-grow, 0px)); display: grid; grid-template-columns: var(--chat-list) minmax(0, 1fr); flex: 1; min-height: 0; }
-.chat-threads { display: flex; flex-direction: column; min-height: 0; overflow: hidden; border-right: 1px solid var(--line); background: var(--side); }
+/* chat page layout, in islands (GA-296, design/islands-chat): the page's island gives way to the Chat's own, on the
+   background: the chat list (--chat-list wide; src/lib/chatTerminal.ts's chatListWidth says the same), the conversation or
+   the Archive, and what is open beside the chat (the side island and the tool strip, below), island-gap apart. Each is an
+   island: its fill, island-radius, no border; the gaps split them. */
+.page-island:has(> .chat) { background: none; border-radius: 0; }
+.chat { --chat-list: calc(260px + 6 * var(--ui-grow, 0px)); display: grid; grid-template-columns: var(--chat-list) minmax(0, 1fr); column-gap: var(--island-gap); flex: 1; min-height: 0; }
+.chat-threads { display: flex; flex-direction: column; min-height: 0; overflow: hidden; border-radius: var(--island-radius); background: var(--island); }
 /* Recent scrolls; Archive stays at the bottom of the column, under it */
 .chat-threads-list { display: flex; flex-direction: column; gap: 2px; flex: 1; min-height: 0; padding: 10px 8px; overflow: auto; }
 .chat-threads-foot { flex: none; padding: 6px 8px; border-top: 1px solid var(--line); }
@@ -360,21 +363,24 @@ a.member:hover { border-color: var(--line-2); }
 .run-for-me-card > a { display: block; color: var(--text); text-decoration: none; }
 .run-for-me-card > a:hover { text-decoration: underline; }
 .run-for-me-card .run-for-me { margin-top: 8px; }
-.chat-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.chat-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; border-radius: var(--island-radius); background: var(--island); }
 .chat-scroll { flex: 1; min-height: 0; overflow: auto; }
-.chat-composer { border-top: 1px solid var(--line); background: var(--bg); }
+.chat-composer { background: var(--bg); }
 .chat-composer .chat-col { padding-top: 12px; padding-bottom: 14px; }
 @media (max-width: 1100px) { .chat { --chat-list: calc(220px + 6 * var(--ui-grow, 0px)); } }
-/* GA-278: the chat's terminal panel, a third column on the right while it shows. Its width is a share of the space right of
-   the chat list (--chat-term-share, 0.45 the first time), at least 360px, and leaves the conversation at least 400px; in a
-   window without room for the chat list besides, the list hides (no-list). The conversation, the text box and the Archive
-   then start at the left of their column instead of in its middle. Hidden with terminals: the rail, a narrow column. */
-.chat.has-term { --chat-term-w: clamp(360px, calc((100% - var(--chat-list)) * var(--chat-term-share, .45)), calc(100% - var(--chat-list) - 400px));
-  grid-template-columns: var(--chat-list) minmax(0, 1fr) var(--chat-term-w); }
-.chat.has-term.no-list { --chat-list: 0px; grid-template-columns: minmax(0, 1fr) var(--chat-term-w); }
+/* GA-296: what is open beside the chat. The tool strip (size-tool wide, its own gap before it) is the last column while the
+   chat has anything open, whether the side island shows or not; it ends at the main column's edge, island-gap from the
+   window's. The side island, while it shows, is the column before it: a share of the room right of the chat list (the
+   conversation and the island, --chat-side-share, 0.45 the first time), at least 360px, leaving the conversation at least
+   400px; in a window without room for the chat list besides, the list hides (no-list) and the strip stays. The
+   conversation, the text box and the Archive then start at the left of their column instead of in its middle. */
+.chat.has-strip { --chat-strip: var(--size-tool); grid-template-columns: var(--chat-list) minmax(0, 1fr) var(--chat-strip); }
+.chat.has-side { --chat-room: calc(100% - var(--chat-list) - 3 * var(--island-gap) - var(--chat-strip));
+  --chat-side-w: clamp(360px, calc(var(--chat-room) * var(--chat-side-share, .45)), calc(var(--chat-room) - 400px));
+  grid-template-columns: var(--chat-list) minmax(0, 1fr) var(--chat-side-w) var(--chat-strip); }
+.chat.has-side.no-list { --chat-list: calc(-1 * var(--island-gap)); grid-template-columns: minmax(0, 1fr) var(--chat-side-w) var(--chat-strip); }
 .chat.no-list > .chat-threads { display: none; }
-.chat.has-term .chat-col { margin-left: 0; }
-.chat.has-rail { grid-template-columns: var(--chat-list) minmax(0, 1fr) auto; }
+.chat.has-side .chat-col { margin-left: 0; }
 /* Chat → Archive (#/chats): the search on top, every chat under it; a row's snippet shows where the search matched */
 .archive-head { border-bottom: 1px solid var(--line); background: var(--bg); }
 .archive-head .chat-col { padding-top: 14px; padding-bottom: 14px; }
