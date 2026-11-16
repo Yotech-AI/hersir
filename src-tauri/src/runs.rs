@@ -144,10 +144,12 @@ fn pause_pull(st: &AppState, agent_id: &str, why: &str) -> bool {
     if paused.contains_key(agent_id) {
         return false;
     }
+    paused.insert(agent_id.to_string(), why.to_string());
+    // after the lock is let go, so nothing in the line can poison it
+    drop(paused);
     // Hersir's log gets the reason's first line, without what looks like a secret (GA-281): its further lines can be a
     // failed setup command's output, which stays on the card.
     eprintln!("gizai: agent {agent_id} stops taking cards until you start or edit it: {}", redact::hidden(redact::first_line(why)));
-    paused.insert(agent_id.to_string(), why.to_string());
     true
 }
 

@@ -172,10 +172,13 @@ impl Drop for Busy {
 /// secret, such as a login in a remote's address in git's or gh's words (GA-281).
 fn log_once(st: &AppState, key: &str, msg: &str) {
     let mut errors = st.pulls.errors.lock().unwrap();
-    if errors.get(key).map(String::as_str) != Some(msg) {
-        eprintln!("gizai: {}", gizai_agents::redact::hidden(msg));
-        errors.insert(key.to_string(), msg.to_string());
+    if errors.get(key).map(String::as_str) == Some(msg) {
+        return;
     }
+    errors.insert(key.to_string(), msg.to_string());
+    // the line is made after the lock is let go, so nothing in it can poison the lock
+    drop(errors);
+    eprintln!("gizai: {}", gizai_agents::redact::hidden(msg));
 }
 
 fn forget_error(st: &AppState, key: &str) {
