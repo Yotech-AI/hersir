@@ -102,3 +102,15 @@ describe("the closed sidebar's Inbox tooltip (GA-291)", () => {
     expect(inboxTip(0)).toEqual({ title: "Inbox", label: "Inbox" });
   });
 });
+
+describe("in a terminal Ctrl+\\ stays the shell's (GA-291)", () => {
+  it("the terminal's key filter leaves it to xterm.js (its quit signal), not to Gizai, on every system", async () => {
+    const { termKey } = await import("./terminals");
+    const key = { key: "\\", code: "Backslash", ctrlKey: true, metaKey: false, shiftKey: false, altKey: false };
+    for (const p of ["linux", "windows", "mac"] as const) {
+      expect(termKey(key, p, false), p).toBeNull();
+      expect(termKey(key, p, true), `${p}, with a selection`).toBeNull();
+    }
+    expect(termKey({ ...key, ctrlKey: false, metaKey: true }, "mac", false)).toBeNull();
+  });
+});
