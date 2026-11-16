@@ -54,6 +54,12 @@
 #     see-through), in light too; "Show mountains along the bottom" turns them off and on at once, and leaves them off for the
 #     second start, where they are still off and Reset to defaults turns them on. Then a second start: Geist, light, compact and
 #     the sizes are still there, and Reset to defaults brings everything back (so later starts begin at the defaults).
+#     GA-294 (islandsPagesState), at the defaults in dark and at the largest sizes in light: the Inbox's, the task list's,
+#     Projects' and Clients' toolbars are their island's header (at its top, 44px + --ui-box, no fill or line); a card's
+#     page is the card island (its 40px header with Card, Changes and Screenshots as 28px tabs, the selected one in
+#     `selected`) and Properties' island (320 wide, 6px to its right, its 40px header); the New task drawer floats 6px in
+#     from the window's top, right and bottom edges, 1024 wide, 10px corners, float with a line-2 border all round, over a
+#     scrim covering the window, nothing under it moving; the palette and the Filters popover are float with a line-2 border.
 # 12. memory (GA-68), against prep_memory's notes: the sidebar's Memory lists the Team Lead first with every note (8) and the
 #     Backend Agent with its own folder's (2: its Notes and, since GA-172, Agents/Backend Agent/KADE, its note for project
 #     KADE with the line it learned in a run on KADE-1). Decisions/Use SQLite reads with its wikilinks (one to a heading,
