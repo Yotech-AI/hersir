@@ -413,26 +413,19 @@ fn names_paths_and_other_logins_stay_after_round_3s_change() {
     assert_eq!(hidden("redis://:S3cretPw@127.0.0.1:6379"), "redis://:***@127.0.0.1:6379");
 }
 
-/// GA-281 QA, round 4: a secret given as a plain argument in a setup command, after a word that doesn't name it, with no
-/// `=` and no known token start: Laravel Nova's and Flux's documented `composer config http-basic.<host> <user> <key>`,
-/// composer's GitHub token, npm's token after a space (npm's own tokens start with `npm_`, which isn't a known start),
-/// `docker login -p` and `sshpass -p`, and a token stuck to curl's `-u`. A failed setup command's first line, which
-/// holds the whole command, reaches Hersir's log (`runs::pause_pull`), so each puts its secret there. Ignored: a known
-/// gap left for Jefsev's decision on GA-281 (another rule per tool, or no setup command text in the log at all). Run it
-/// with `cargo test -p gizai-agents --test it -- --ignored a_secret_given_as_a_plain_argument`.
+/// GA-281 QA, round 4 (decided 16 Nov): npm's own tokens (`npm_` and 36 letters and digits) are a known start, so one
+/// is left out wherever it stands, also after a space where no `=` names it (`npm config set …:_authToken npm_…`).
+/// Names that only start with `npm_`, as npm's own variables do, stay. A secret given as a plain argument of a setup
+/// command is kept out of Hersir's log another way: the log names "the setup command" instead of its text
+/// (`src-tauri/tests/setup_secret_log_test.rs`).
 #[test]
-#[ignore = "GA-281 QA round 4: known gap, waiting for a decision"]
-fn a_secret_given_as_a_plain_argument_in_a_setup_command_is_left_out() {
-    let cases = [
-        ("composer config http-basic.nova.laravel.com me@example.com nv-Lic3nseK3y && composer install failed (exit code 1)", "nv-Lic3nseK3y"),
-        ("composer config --global github-oauth.github.com 0123456789abcdef0123456789abcdef01234567 failed (exit code 1)", "0123456789abcdef"),
-        ("npm config set //registry.npmjs.org/:_authToken npm_a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8 && npm ci failed (exit code 1)", "a1B2c3D4"),
-        ("docker login -u me -p S3cretPw ghcr.io failed (exit code 1)", "S3cretPw"),
-        ("sshpass -p S3cretPw ssh deploy@host failed (exit code 255)", "S3cretPw"),
-        ("curl -ughp_1234567890abcdefghijABCDEFGHIJ123456: https://api.github.com failed (exit code 22)", "1234567890abcdefghij"),
-    ];
-    for (text, secret) in cases {
-        let out = hidden(first_line(text));
-        assert!(!out.contains(secret), "{text:?} -> {out:?} still holds {secret:?}");
+fn npms_own_tokens_are_left_out_wherever_they_stand() {
+    let t = "npm_a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8";
+    assert_eq!(hidden(&format!("npm config set //registry.npmjs.org/:_authToken {t} && npm ci")),
+               "npm config set //registry.npmjs.org/:_authToken npm_*** && npm ci");
+    assert_eq!(hidden(&format!("echo {t} > token.txt")), "echo npm_*** > token.txt");
+    assert_eq!(hidden(&format!("https://{t}@npm.pkg.github.com/")), "https://***@npm.pkg.github.com/");
+    for text in ["npm_config_yes=true npm ci", "npm_lifecycle_event", "npm_package_name", "npm_x"] {
+        assert_eq!(hidden(text), text);
     }
 }
