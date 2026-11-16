@@ -338,7 +338,7 @@ fresh
 # GA-296 (GA-278 before it): the Chat's side island and tool strip, with the Chief of prep_chats and two folders in ~/Herd; b is a restart on the same WebKit storage
 (source scripts/env.sh && cargo run -q -p gizai-core --example prep_chats -- .devdata/uitest "$PWD/crates/gizai-agents/tests/fake-claude.sh")
 rm -rf .devdata/uitest-home && mkdir -p .devdata/uitest-home/Herd/chat-site .devdata/uitest-home/Herd/chat-other
-DATA=$PWD/.devdata/uitest ROUTE=terminal MODE=terminal:chat-a GZ_SHELL=/bin/sh GZ_HOME=$PWD/.devdata/uitest-home TIMEOUT=150 scripts/smoke-cage.sh || fail=1
+DATA=$PWD/.devdata/uitest ROUTE=terminal MODE=terminal:chat-a GZ_SHELL=/bin/sh GZ_HOME=$PWD/.devdata/uitest-home TIMEOUT=240 scripts/smoke-cage.sh || fail=1
 DATA=$PWD/.devdata/uitest ROUTE=terminal MODE=terminal:chat-b GZ_SHELL=/bin/sh GZ_HOME=$PWD/.devdata/uitest-home TIMEOUT=60 scripts/smoke-cage.sh || fail=1
 fresh
 # GA-279: Open in terminal under a Chief answer, with the Chief of prep_chats, prep_chat_terminal's chat and four folders in ~/Herd

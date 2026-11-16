@@ -4216,11 +4216,13 @@ async function chatTerminalProbe(phase: "a" | "b") {
   await sleep(1200);
   q<HTMLButtonElement>('.chat-side button[aria-label="Hide"]')?.click();
   check(await waitFor(() => (!island() && strip() ? true : null), 2000), "Hide hides the island and the strip stays");
-  out.hidden = { cls: chat()?.className, icon: iconState(), strip: rectOf(strip()), talk: rectOf(q(".chat > .chat-main")), bg: termIcon() ? getComputedStyle(termIcon()!).backgroundColor : null };
+  // the app is drawn wider than the window, so it may have scrolled sideways since: its right edge now
+  out.hidden = { cls: chat()?.className, icon: iconState(), strip: rectOf(strip()), talk: rectOf(q(".chat > .chat-main")), appR: r1(app?.getBoundingClientRect().right ?? window.innerWidth),
+    bg: termIcon() ? getComputedStyle(termIcon()!).backgroundColor : null };
   check(chat()?.className === "chat has-strip" && JSON.stringify(iconState()) === JSON.stringify({ pressed: "false", n: "2", label: "Terminal, 2 open", title: "Terminal, 2 open (Ctrl+`)" })
     && (out.hidden as { bg: string }).bg === "rgba(0, 0, 0, 0)", `hidden: the strip with the Terminal icon, 2, none selected and no fill (${JSON.stringify(out.hidden)})`);
-  const H = out.hidden as { strip: { l: number; r: number } | null; talk: { r: number } | null };
-  check(H.strip && H.talk && Math.abs(H.strip.l - H.talk.r - 6) <= 0.5 && Math.abs(appRight - 6 - H.strip.r) <= 0.5, `the conversation reaches the strip, 6px before it, on the window's edge (${JSON.stringify(out.hidden)})`);
+  const H = out.hidden as { strip: { l: number; r: number } | null; talk: { r: number } | null; appR: number };
+  check(H.strip && H.talk && Math.abs(H.strip.l - H.talk.r - 6) <= 0.5 && Math.abs(H.appR - 6 - H.strip.r) <= 0.5, `the conversation reaches the strip, 6px before it, on the window's edge (${JSON.stringify(out.hidden)})`);
   out.centredAgain = cols();
   check(centred(), `hidden, the conversation is centred as before (${JSON.stringify(out.centredAgain)})`);
   const running = (await terminalList()).find((s) => s.id === id1);
@@ -4373,6 +4375,38 @@ async function chatTerminalProbe(phase: "a" | "b") {
   await waitFor(() => (island()?.contains(term.element ?? null) ? true : null), 5000);
   await sleep(200);
   backInA("after chat B closed its own");
+  // New chat has its own tabs until the first message makes the chat, which takes them; New chat is empty again then
+  await toChat("#/chat");
+  await sleep(300);
+  const idN = await pick("chat-other");
+  const vN = idN ? await viewInIsland(idN) : null;
+  check(vN && same2(tabIds(), [idN]), `a terminal opened in New chat is its tab (${tabIds().join(", ")})`);
+  // prep_chats leaves the Chief paused, which turns the text box off: active for this message, paused again after
+  await setAgentStatus(chatA.agentId, "active");
+  const box0 = await waitFor(() => (q(".composer-box") && !q(".composer-box.disabled") ? composer() : null), 5000);
+  if (box0 && idN) {
+    typeIn(box0, "GA-296 side island");
+    enter(box0);
+    const made = await waitFor(() => { const m = /^#\/chat\/(.+)$/.exec(location.hash); return m && m[1] !== encodeURIComponent(chatA.id) && m[1] !== encodeURIComponent(chatB.id) ? m[1] : null; }, 8000);
+    await sleep(400);
+    out.adopted = { made, tabs: tabIds(), icon: iconState() };
+    check(made && same2(tabIds(), [idN]) && iconState()?.n === "1", `the chat New chat's first message made takes its terminal (${JSON.stringify(out.adopted)})`);
+    await toChat("#/chat");
+    await sleep(300);
+    nothingOpen("New chat after its first message");
+    if (made) {
+      await toChat(`#/chat/${made}`);
+      await waitFor(() => tabOf(idN), 5000);
+      tabOf(idN)?.querySelector<HTMLButtonElement>(".x")?.click();
+      await waitFor(() => (!island() ? true : null), 5000);
+    }
+  } else check(false, `no text box in New chat, or no terminal (${idN})`);
+  await setAgentStatus(chatA.agentId, "paused").catch(() => {});
+  for (const s of await terminalList()) if (s.id === idN) await Promise.race([terminalClose(s.id).catch(() => {}), sleep(3000)]);
+  await toChat(A);
+  await waitFor(() => (island()?.contains(term.element ?? null) ? true : null), 5000);
+  await sleep(200);
+  backInA("after New chat");
 
   // 9. Own page: the shown tab on its own page, #/terminal/<id>; its tab closes here, its shell keeps running. While another
   // place has a terminal of the island, the island offers Show here.
@@ -4593,6 +4627,10 @@ async function chatRunProbe() {
   const t1 = await press(b);
   if (!t1) { errors.push(`the click opened no terminal: ${textOf(rowAfter(why)?.querySelector(".msg-term-why"))}`); return done(); }
   check(t1.isNew && tabIds().length === 1, `a new tab (${tabIds().join(", ")})`);
+  // GA-296: the strip shows the Terminal icon with its count, selected
+  const stripIcon = q<HTMLButtonElement>('.chat > .chat-strip .strip-btn[data-kind="terminal"]');
+  out.strip = { pressed: stripIcon?.getAttribute("aria-pressed"), n: textOf(stripIcon?.querySelector(".n")), title: stripIcon?.title };
+  check(JSON.stringify(out.strip) === JSON.stringify({ pressed: "true", n: "1", title: "Terminal, 1 open (Ctrl+`)" }), `the strip shows Terminal, 1, selected (${JSON.stringify(out.strip)})`);
   check(await waitFor(() => (document.activeElement === t1.term.textarea ? true : null), 2000), "the terminal has the focus");
   check(textOf(q(".chat-term-where")) === doq.path, `the panel shows the folder (${textOf(q(".chat-term-where"))})`);
   await waitFor(() => termLines(t1.term).some((l) => l.trim()), 10000);
