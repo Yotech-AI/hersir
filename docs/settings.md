@@ -110,3 +110,5 @@ Hersir keeps running when you close its window (Super+W on Omarchy, or the X but
 - A tray icon (top right in Omarchy's Waybar, the menu bar on macOS) has Open Hersir and Quit Hersir completely.
 - Starting Hersir again also brings the window back.
 - Settings → Quit quits too, and says how many runs and chat answers it stops.
+
+The sidebar closes so the page gets its width: Close sidebar at its top right, or Ctrl+\ (Cmd+\ on macOS) on any page. Closed, a small toolbar at the top left keeps Show sidebar, New task, Search and the Inbox with its count; Ctrl+\ opens it again. In a terminal Ctrl+\ stays the shell's. The sidebar stays closed or open after a restart, kept on this computer.

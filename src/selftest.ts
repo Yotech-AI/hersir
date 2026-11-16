@@ -1486,6 +1486,214 @@ function appFonts(): [string, string] {
   return fams;
 }
 
+// ---------- GA-291 QA: the sidebar closes to a small toolbar at the top left (design/islands → A sidebar that closes) ----------
+const SIDE_KEPT = "gizai.sidebar.closed";
+type Rect = { l: number; t: number; r: number; b: number; w: number; h: number };
+const sideRect = (el: Element | null | undefined): Rect | null => {
+  const r = el?.getBoundingClientRect();
+  return r ? { l: Math.round(r.left), t: Math.round(r.top), r: Math.round(r.right), b: Math.round(r.bottom), w: Math.round(r.width), h: Math.round(r.height) } : null;
+};
+/** Ctrl+\ (or what `more` makes of it) as the WebView sends it, on `target`; whether something took it (preventDefault). */
+const sideKey = (target: EventTarget, more: KeyboardEventInit = {}) => {
+  const e = new KeyboardEvent("keydown", { key: "\\", code: "Backslash", ctrlKey: true, bubbles: true, cancelable: true, ...more });
+  // xterm.js reads the legacy keyCode (220 for \), which KeyboardEventInit can't set
+  Object.defineProperty(e, "keyCode", { get: () => 220 });
+  Object.defineProperty(e, "which", { get: () => 220 });
+  target.dispatchEvent(e);
+  return e.defaultPrevented;
+};
+/** The sidebar open: Close sidebar on New task's row, at the top right of the island. */
+const sideOpenState = () => {
+  const side = q(".side"), top = q(".side .side-main > .side-top"), close = q<HTMLElement>('.side .side-top > button.tool[aria-label="Close sidebar"]'), nt = q(".side .side-top > .nav-item");
+  const list = q(".side .side-main");
+  return { side: sideRect(side), side_id: side?.id ?? null, scrollbar: list ? list.offsetWidth - list.clientWidth : null, first_row: !!top && q(".side .side-main")?.firstElementChild === top, new_task: sideRect(nt), new_task_kbd: textOf(q(".kbd", nt ?? undefined)),
+    close: close ? { ...sideRect(close)!, title: close.title, expanded: close.getAttribute("aria-expanded"), controls: close.getAttribute("aria-controls"),
+      icon: close.querySelector("svg")?.getAttribute("class") ?? "", toggle: close.hasAttribute("data-side-toggle"), fill: getComputedStyle(close).backgroundColor } : null,
+    inbox: textOf(q('.side a.nav-item[href="#/inbox"] .count')), tools: !!q(".side-tools"), app: q(".app")?.className ?? null, kept: localStorage.getItem(SIDE_KEPT) };
+};
+const sideOpenOk = (s: ReturnType<typeof sideOpenState>) => !!s.side && !!s.close && !!s.new_task && s.side_id === "sidebar" && s.first_row && s.new_task_kbd === "N"
+  && s.close.w === 28 && s.close.h === 28 && s.close.l - s.new_task.r === 4 && Math.abs((s.close.t + s.close.b) - (s.new_task.t + s.new_task.b)) <= 2
+  && s.scrollbar !== null && s.side.r - s.close.r === 10 + s.scrollbar && s.close.title === "Close sidebar (Ctrl+\\)" && s.close.expanded === "true" && s.close.controls === "sidebar"
+  && s.close.icon.includes("lucide-panel-left-close") && s.close.toggle && s.close.fill === "rgba(0, 0, 0, 0)" && !s.tools && s.app === "app" && s.kept === null;
+/** The sidebar closed: the toolbar at the top left, the page's top bar after it, the page the width of the window. */
+const sideClosedState = () => {
+  const app = q(".app"), tools = q(".side-tools"), bar = q(".page-island .topbar"), page = q(".main > .page-island");
+  const items = tools ? [...tools.querySelectorAll<HTMLElement>(":scope > .tool")] : [];
+  const t = sideRect(tools);
+  const kids = bar ? [...bar.querySelectorAll(":scope > *, .actions > *")].filter((x) => x.getBoundingClientRect().width > 0) : [];
+  const b = bar?.getBoundingClientRect();
+  return { side: !!q(".side"), app_class: app?.className ?? null, app: sideRect(app), tools: t, tools_bg: tools ? getComputedStyle(tools).backgroundColor : null,
+    group: tools ? [tools.getAttribute("role"), tools.getAttribute("aria-label")] : null,
+    items: items.map((el) => ({ tag: el.tagName.toLowerCase(), label: el.getAttribute("aria-label"), title: el.title, ...sideRect(el)!, icon: (el.querySelector("svg")?.getAttribute("class") ?? "").replace(/lucide |icon/g, "").trim(),
+      fill: getComputedStyle(el).backgroundColor, href: el.getAttribute("href") })),
+    count: textOf(q(".side-tools .count")), bar: sideRect(bar), bar_pad: bar ? getComputedStyle(bar).paddingLeft : null, first: sideRect(kids[0]), page: sideRect(page),
+    bar_over: bar ? bar.scrollWidth - bar.clientWidth : null,
+    // what of the top bar runs under the toolbar, or out of the top bar's sides
+    under: t ? kids.filter((x) => { const r = x.getBoundingClientRect(); return r.left < t.r - 0.5 && r.right > t.l && r.top < t.b && r.bottom > t.t; }).map((x) => textOf(x).slice(0, 24) || String(x.className)) : ["no toolbar"],
+    outside: b ? kids.filter((x) => { const r = x.getBoundingClientRect(); return r.left < b.left - 0.5 || r.right > b.right + 0.5; }).map((x) => textOf(x).slice(0, 24) || String(x.className)) : ["no top bar"],
+    kept: localStorage.getItem(SIDE_KEPT) };
+};
+type SideClosed = ReturnType<typeof sideClosedState>;
+/** Closed as the notes draw it, with the Inbox showing `inbox` (the sidebar's count), in a top bar row `row` px high. */
+const sideClosedOk = (s: SideClosed | null, inbox: string, row = 44) => {
+  if (!s || s.side || s.app_class !== "app side-closed" || !s.app || !s.tools || !s.bar || !s.first || !s.page) return false;
+  const [show, add, search, box] = s.items;
+  const mid = (r: Rect) => r.t + r.b;
+  return s.items.length === 4 && !!show && !!add && !!search && !!box
+    && JSON.stringify(s.group) === '["group","Sidebar actions"]' && s.tools_bg === "rgba(0, 0, 0, 0)"
+    && JSON.stringify(s.items.map((i) => i.label)) === JSON.stringify(["Show sidebar", "New task", "Search", inbox ? `Inbox, ${inbox} need you` : "Inbox"])
+    && JSON.stringify(s.items.map((i) => i.title)) === JSON.stringify(["Show sidebar (Ctrl+\\)", "New task (N)", "Search (Ctrl K)", inbox ? `Inbox (${inbox} need you)` : "Inbox"])
+    && JSON.stringify(s.items.map((i) => i.icon)) === JSON.stringify(["lucide-panel-left-open", "lucide-square-pen", "lucide-search", "lucide-inbox"])
+    && s.count === inbox && box.href === "#/inbox" && box.tag === "a"
+    // 6px from the window's edges, as tall as the top bar's row and in it, the buttons 28px, centred, 2px apart
+    && s.tools.l === s.app.l + 6 && s.tools.t === s.app.t + 6 && s.tools.h === row && s.bar.t === s.tools.t && s.bar.h === row
+    && s.items.every((i) => i.h === 28 && i.w >= 28 && Math.abs(mid(i) - mid(s.tools!)) <= 1 && i.fill === "rgba(0, 0, 0, 0)")
+    && [show, add, search].every((i) => i.w === 28) && show.l === s.tools.l && box.r === s.tools.r
+    && s.items.slice(1).every((i, n) => Math.abs(i.l - s.items[n]!.r - 2) <= 1)
+    // the top bar starts where the toolbar ends, and its crumbs 12px after it; nothing of it runs under the toolbar or out
+    && s.bar.l - s.tools.r >= 0 && s.bar.l - s.tools.r <= 1 && s.bar_pad === "12px" && s.first.l - s.tools.r >= 12 && s.first.l - s.tools.r <= 13 && s.under.length === 0 && s.outside.length === 0 && (s.bar_over ?? 9) <= 1
+    // the page's island takes the sidebar's width: 6px from the window's left and right edges
+    && s.page.l === s.app.l + 6 && s.page.r === s.app.r - 6 && s.page.t === s.app.t + 6 + row
+    && s.kept === "1";
+};
+
+/** GA-291 at the defaults (dark), in the "set" phase of the appearance probe; it leaves the sidebar open on Settings →
+ *  Appearance. The sidebar open has Close sidebar at the top right, on New task's row (28px, panel-left-close, its
+ *  tooltip, aria-expanded, aria-controls #sidebar). A click on it (with the keyboard focus on it) closes it, kept at once,
+ *  and the focus moves to Show sidebar. Closed, on every page (but #/terminal: it starts a shell) and again at 900 × 600:
+ *  no sidebar, the toolbar 6px from the window's top left, in the top bar's 44px row, Show sidebar, New task, Search and
+ *  the Inbox with the sidebar's count, the notes' tooltips and icons, 28px buttons 2px apart; the top bar from its right
+ *  edge, the crumbs 12px after it, nothing under it or cut off; the page's island the window's width. Search opens the
+ *  palette, New task the New task drawer, the Inbox the Inbox. Ctrl+\ opens and closes it, also from a text field; not
+ *  Ctrl+Shift+\ or Ctrl+Alt+\; in a terminal (xterm.js with the app's key filter, no shell) the key goes to the terminal
+ *  as its quit signal (\x1c) and the sidebar stays. Show sidebar, with the focus on it, opens it and the focus moves to
+ *  Close sidebar. (A start with the sidebar closed is left to SidebarClose.test.tsx and AppSidebarKey.test.tsx: App's
+ *  self-test start wants the sidebar's rows, so leaving it closed for the next start would fail every start after it.) */
+async function sidebarCloseProbe() {
+  const tasks = await listTasks().catch(() => []);
+  const task = tasks.find((t) => t.identifier === "KADE-1") ?? tasks[0];
+  await goTo("#/inbox", ".page-island .topbar");
+  await sleep(600);
+  const open = sideOpenState();
+  const inbox = open.inbox;
+  // 1. Close sidebar, from the keyboard focus
+  const closeBtn = q<HTMLElement>('.side [aria-label="Close sidebar"]');
+  closeBtn?.focus();
+  closeBtn?.click();
+  await sleep(200); await nextFrame();
+  const closed = { ...sideClosedState(), focus: document.activeElement?.getAttribute("aria-label") ?? null };
+  // 2. every page, at the window's size, then at 900 × 600
+  const PAGES = ["#/inbox", "#/tasks", "#/board", ...(task ? [`#/task/${task.id}`] : []), "#/chat", "#/chats", "#/projects", "#/clients", "#/team", "#/users", "#/usage",
+    "#/memory/shared", "#/editor", "#/settings/general", "#/settings/appearance"];
+  const visit = async (hash: string) => {
+    if (hash === "#/tasks" || hash === "#/board") await showTasks(hash === "#/tasks" ? "list" : "board"); else await goTo(hash, ".page-island .topbar .crumbs, .page-island .topbar");
+    await sleep(250); await nextFrame();
+  };
+  const pages: Record<string, SideClosed> = {}, small: Record<string, SideClosed> = {};
+  for (const hash of PAGES) { await visit(hash); pages[hash] = sideClosedState(); }
+  const appEl = q<HTMLElement>(".app");
+  if (appEl) { appEl.style.width = "900px"; appEl.style.height = "600px"; }
+  for (const hash of PAGES) { await visit(hash); small[hash] = sideClosedState(); }
+  if (appEl) { appEl.style.width = ""; appEl.style.height = ""; }
+  await sleep(200);
+  // 3. the toolbar's buttons do what the sidebar's do
+  await goTo("#/projects", ".page-island .topbar");
+  const toolBtn = (label: string) => q<HTMLElement>(`.side-tools [aria-label="${label}"]`);
+  toolBtn("Search")?.click();
+  const palette = !!(await waitFor(() => q('.pal[role="dialog"]'), 3000));
+  q<HTMLElement>(".pal-backdrop")?.click();
+  await sleep(250);
+  toolBtn("New task")?.click();
+  const drawer = textOf(q("h2", (await waitFor(() => q('.drawer[role="dialog"]'), 3000)) ?? undefined));
+  q<HTMLElement>('.drawer [aria-label="Close"]')?.click();
+  await sleep(300);
+  q<HTMLElement>(".side-tools a.tool")?.click();
+  const toInbox = !!(await waitFor(() => (location.hash === "#/inbox" ? true : null), 3000));
+  await sleep(300);
+  const buttons = { palette, palette_gone: !q(".pal"), drawer, drawer_gone: !q(".drawer"), inbox: toInbox, still_closed: !q(".side") && !!q(".side-tools") };
+  // 4. the keys
+  (document.activeElement as HTMLElement | null)?.blur?.();
+  const keys: Record<string, unknown> = {};
+  /** The key on `target`, then what shows once React has drawn it. */
+  const pressOn = async (target: EventTarget, more: KeyboardEventInit = {}) => {
+    const took = sideKey(target, more);
+    await sleep(150); await nextFrame();
+    return { took, side: !!q(".side"), tools: !!q(".side-tools"), kept: localStorage.getItem(SIDE_KEPT) };
+  };
+  keys.open = await pressOn(document.body);
+  keys.close = await pressOn(document.body);
+  await showTasks("list");
+  const field = q<HTMLInputElement>('.page-island input.search-input[aria-label="Search tasks"]');
+  field?.focus();
+  const before = field?.value;
+  keys.field_open = { field: !!field, focused: document.activeElement === field, ...(field ? await pressOn(field) : {}) };
+  keys.field_close = { ...(field ? await pressOn(field) : {}), same_text: field?.value === before };
+  (document.activeElement as HTMLElement | null)?.blur?.();
+  keys.shift = await pressOn(document.body, { shiftKey: true, key: "|" });
+  keys.alt = await pressOn(document.body, { altKey: true });
+  keys.plain = await pressOn(document.body, { ctrlKey: false });
+  // a terminal: xterm.js as the app's terminals make it (lib/terminals: termKey lets Gizai's own keys through), no shell
+  const term: Record<string, unknown> = {};
+  const host = document.createElement("div");
+  host.style.cssText = "position:fixed;left:300px;top:200px;width:400px;height:200px;z-index:50";
+  document.body.appendChild(host);
+  try {
+    const { Terminal: XTerm } = await import("@xterm/xterm");
+    const { termKey } = await import("./lib/terminals");
+    const xt = new XTerm({ cols: 40, rows: 8 });
+    xt.attachCustomKeyEventHandler((e) => !termKey(e, "linux", xt.hasSelection()));
+    const sent: string[] = [];
+    xt.onData((d) => sent.push(d));
+    xt.open(host);
+    await sleep(200);
+    xt.textarea?.focus();
+    term.in_xterm = !!xt.textarea?.closest(".xterm");
+    term.closed_took = xt.textarea ? sideKey(xt.textarea) : null;
+    await sleep(150);
+    term.closed_side = !!q(".side");
+    term.closed_sent = sent.map((d) => [...d].map((c) => c.charCodeAt(0)));
+    sideKey(document.body); // open it, and try again from the terminal
+    await sleep(150);
+    xt.textarea?.focus();
+    term.open_took = xt.textarea ? sideKey(xt.textarea) : null;
+    await sleep(150);
+    term.open_side = !!q(".side");
+    term.sent = sent.map((d) => [...d].map((c) => c.charCodeAt(0)));
+    xt.dispose();
+  } catch (e) { term.error = String(e); }
+  host.remove();
+  keys.term = term;
+  // 5. Show sidebar, from the keyboard focus (close it first with the key)
+  if (q(".side")) sideKey(document.body);
+  await sleep(150);
+  const showBtn = q<HTMLElement>('.side-tools [aria-label="Show sidebar"]');
+  showBtn?.focus();
+  showBtn?.click();
+  await sleep(200); await nextFrame();
+  const shown = { side: !!q(".side"), tools: !!q(".side-tools"), kept: localStorage.getItem(SIDE_KEPT), focus: document.activeElement?.getAttribute("aria-label") ?? null };
+  (document.activeElement as HTMLElement | null)?.blur?.();
+  await goTo("#/settings/appearance", '.settings-panel[aria-label="Appearance"]');
+
+  const k = keys as Record<string, Record<string, unknown>>;
+  const openOk = sideOpenOk(open);
+  const closedOk = sideClosedOk(closed, inbox) && closed.focus === "Show sidebar";
+  const pagesFailing = PAGES.filter((h) => !sideClosedOk(pages[h] ?? null, inbox));
+  const smallFailing = PAGES.filter((h) => !sideClosedOk(small[h] ?? null, inbox) || small[h]!.app!.w !== 900 || small[h]!.app!.h !== 600);
+  const buttonsOk = buttons.palette && buttons.palette_gone && buttons.drawer === "New task" && buttons.drawer_gone && buttons.inbox && buttons.still_closed;
+  const keysOk = k.open!.took === true && k.open!.side === true && k.open!.tools === false && k.open!.kept === null
+    && k.close!.took === true && k.close!.side === false && k.close!.tools === true && k.close!.kept === "1"
+    && k.field_open!.field === true && k.field_open!.focused === true && k.field_open!.took === true && k.field_open!.side === true
+    && k.field_close!.took === true && k.field_close!.side === false && k.field_close!.same_text === true
+    && ["shift", "alt", "plain"].every((n) => k[n]!.took === false && k[n]!.side === false && k[n]!.tools === true && k[n]!.kept === "1");
+  const termOk = term.in_xterm === true && term.closed_side === false && term.open_side === true
+    && JSON.stringify(term.closed_sent) === "[[28]]" && JSON.stringify(term.sent) === "[[28],[28]]";
+  const shownOk = shown.side && !shown.tools && shown.kept === null && shown.focus === "Close sidebar";
+  const ok = openOk && closedOk && pagesFailing.length === 0 && smallFailing.length === 0 && buttonsOk && keysOk && termOk && shownOk;
+  return { ok, open_ok: openOk, closed_ok: closedOk, pages_failing: pagesFailing, small_failing: smallFailing, buttons_ok: buttonsOk, keys_ok: keysOk, term_ok: termOk, shown_ok: shownOk,
+    open, closed, buttons, keys, shown, pages: Object.fromEntries(pagesFailing.map((h) => [h, pages[h]])), small: Object.fromEntries(smallFailing.map((h) => [h, small[h]])),
+    sample: { inbox: pages["#/inbox"], small_tasks: small["#/tasks"], small_chat: small["#/chat"] } };
+}
+
 /** GA-42, against prep_chats' data (the demo plus a paused Team Lead and 36 chats). Phase "set": Settings → Appearance opens
  * on its own tab with Font, the three text sizes, Theme, Density and Reset to defaults; at the defaults nothing is on <html> and
  * the sizes are the design system's; each font choice shows in its own font and every font loads from the app (bundled).
@@ -1498,6 +1706,9 @@ export async function appearanceProbe(phase: "set" | "kept") {
   if (!(await waitFor(() => appearancePanel(), 6000))) return { ok: false, error: "Settings → Appearance did not open", page: textOf(q(".main")).slice(0, 300) };
   await sleep(300);
   if (phase === "kept") return appearanceKeptProbe();
+  // GA-291 QA: the sidebar closes, at the defaults; it leaves the sidebar open on Settings → Appearance
+  const sidebar = await sidebarCloseProbe();
+  await sleep(300);
 
   // The tab, its controls, and the default look.
   const tabs = { labels: textsOf('.tabs[role="tablist"] button[role="tab"]'), selected: textOf(q('.tabs button[aria-selected="true"]')),
@@ -1732,8 +1943,8 @@ export async function appearanceProbe(phase: "set" | "kept") {
   await sleep(1500); // WebKit writes localStorage to disk a moment later
 
   const ok = tabOk && switchingOk && controlsOk && defaultsOk && choicesOk && bigOk && growsOk(dark) && growsOk(lightPages) && editorsOk && lightOk && compactOk && fontsOk
-    && islandsOk && bandLeftOk && barsOk && smallOk;
-  return { ok, phase, tab_ok: tabOk, switching_ok: switchingOk, controls_ok: controlsOk, defaults_ok: defaultsOk, choices_ok: choicesOk, big_ok: bigOk, dark_ok: growsOk(dark),
+    && islandsOk && bandLeftOk && barsOk && smallOk && sidebar.ok;
+  return { ok, phase, sidebar_ok: sidebar.ok, sidebar, tab_ok: tabOk, switching_ok: switchingOk, controls_ok: controlsOk, defaults_ok: defaultsOk, choices_ok: choicesOk, big_ok: bigOk, dark_ok: growsOk(dark),
     light_pages_ok: growsOk(lightPages), editors_ok: editorsOk, light_ok: lightOk, compact_ok: compactOk, fonts_ok: fontsOk, islands_ok: islandsOk, band_left_ok: bandLeftOk, bars_ok: barsOk, small_ok: smallOk,
     bars_failing: BAR_PAGES.filter((h) => !barOk(bars[h])), small_failing: BAR_PAGES.filter((h) => !fitsOk(small[h])), small_known: [...SMALL_KNOWN],
     tabs, switching, controls, defaults, choices, loads, small0, row0, col0, big, dark, light, light_pages: lightPages, editors, compact, fonts, islands, bars, small,

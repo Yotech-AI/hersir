@@ -54,6 +54,14 @@
 #     see-through), in light too; "Show mountains along the bottom" turns them off and on at once, and leaves them off for the
 #     second start, where they are still off and Reset to defaults turns them on. Then a second start: Geist, light, compact and
 #     the sizes are still there, and Reset to defaults brings everything back (so later starts begin at the defaults).
+#     GA-291, first, at the defaults: Close sidebar sits at the top right of New task's row (28px, its tooltip with Ctrl+\,
+#     aria-expanded, aria-controls #sidebar); a click closes the sidebar and the focus moves to Show sidebar. Closed, on every
+#     page but #/terminal and again at 900 x 600: the toolbar 6px from the window's top left in the top bar's 44px row (Show
+#     sidebar, New task, Search and the Inbox with the sidebar's count, the notes' tooltips and icons, 28px buttons 2px
+#     apart), the top bar from its right edge with the crumbs 12px after it and nothing under it or cut off, the page's
+#     island the window's width. Search, New task and the Inbox do what the sidebar's do; Ctrl+\ opens and closes it, from a
+#     text field too, not with Shift or Alt; in xterm.js with the app's key filter it is the shell's \x1c and the sidebar
+#     stays; Show sidebar opens it and the focus moves to Close sidebar.
 # 12. memory (GA-68), against prep_memory's notes: the sidebar's Memory lists the Team Lead first with every note (8) and the
 #     Backend Agent with its own folder's (2: its Notes and, since GA-172, Agents/Backend Agent/KADE, its note for project
 #     KADE with the line it learned in a run on KADE-1). Decisions/Use SQLite reads with its wikilinks (one to a heading,
@@ -223,7 +231,7 @@ DATA=$PWD/.devdata/uitest ROUTE=chat MODE=pins-a scripts/smoke-cage.sh || fail=1
 DATA=$PWD/.devdata/uitest ROUTE=chat MODE=pins-b scripts/smoke-cage.sh || fail=1
 fresh
 (source scripts/env.sh && cargo run -q -p gizai-core --example prep_chats -- .devdata/uitest "$PWD/crates/gizai-agents/tests/fake-claude.sh")
-DATA=$PWD/.devdata/uitest ROUTE=settings/appearance MODE=appearance-set scripts/smoke-cage.sh || fail=1
+DATA=$PWD/.devdata/uitest ROUTE=settings/appearance MODE=appearance-set TIMEOUT=80 scripts/smoke-cage.sh || fail=1
 # the same WebKit storage (.devdata/xdg): a restart
 DATA=$PWD/.devdata/uitest ROUTE=settings/appearance MODE=appearance-kept scripts/smoke-cage.sh || fail=1
 fresh

@@ -23,6 +23,9 @@ vi.mock("react", async (orig) => {
     ...R,
     useState: (init: unknown) => [typeof init === "function" ? (init as () => unknown)() : init, (value: unknown) => { h.sets.push({ value, transition: h.transition }); }],
     useEffect: (f: () => unknown) => { h.effects.push(f); },
+    // GA-291: App keeps the closed sidebar's toggle in a useCallback and whether the focus was in what goes in a useRef
+    useCallback: <T,>(f: T) => f,
+    useRef: (current: unknown) => ({ current }),
     startTransition: (f: () => void) => { h.transition = true; try { f(); } finally { h.transition = false; } },
   };
 });
