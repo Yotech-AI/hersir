@@ -330,6 +330,12 @@ a.member:hover { border-color: var(--line-2); }
 .board-wrap { display: flex; flex: 1; min-height: 0; overflow: hidden; }
 .board-wrap .board { flex: 1; }
 .toolbar .search-input { width: 220px; height: calc(28px + var(--ui-box, 0px)); }
+/* GA-293 (design/islands, frame 273:1172): the Tasks page's view toolbar is its island's header (An island's header): 44
+   high, padding 0 8, its controls 28 to 30 high, the search and Board or List on raised; no line under it, so the columns
+   (or the list) start right below on the same fill. The board's columns sit 12px in and 4px under it and scroll sideways
+   inside the island, with the islands' 6px thumb 2px from its bottom. Other pages' toolbars stay as they are (cards 5, 6). */
+.toolbar.island-toolbar { flex: none; height: calc(44px + var(--ui-box, 0px)); padding: 0 8px; }
+.island-toolbar ~ .board-wrap > .board { padding: 4px 12px 12px; }
 .md-edit-box { margin-left: 0; }
 .composer .md-editor { background: var(--raised); }
 
