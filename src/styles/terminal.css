@@ -136,7 +136,7 @@
 /* Hidden while the chat has terminals: a narrow rail on the chat's right edge, the terminal icon and how many there are */
 .chat-term-rail { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); width: calc(36px + var(--ui-box, 0px)); padding: var(--space-3) 0;
   border: 0; border-left: 1px solid var(--line); background: var(--side); color: var(--text-2); font: inherit; cursor: pointer; }
-.chat > .chat-term-rail:hover { background: var(--hover); color: var(--text); } /* over band.css's see-through rail */
+.chat > .chat-term-rail:hover { background: var(--hover); color: var(--text); }
 .chat-term-rail:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .chat-term-rail .icon { width: 16px; height: 16px; }
 .chat-term-rail .n { font-size: var(--fs-xs); font-weight: 600; font-variant-numeric: tabular-nums; }

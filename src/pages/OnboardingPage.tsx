@@ -10,7 +10,6 @@ import { Check, CircleAlert, ExternalLink, Info, ListTodo, MessagesSquare, Plug,
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { appInfo, findClis, finishOnboarding, getTeam, importMcpServers, listClis, listMcpServers, listUsers, saveClis, scanClaudeCodeMcp, skipOnboarding } from "../api";
 import { Avatar } from "../components/Avatar";
-import { Band } from "../components/Band";
 import { ImportRows, importPicks, importProblem, tickedServers, type ImportPicks } from "../components/McpImport";
 import { CLAUDE_CODE } from "../lib/clis";
 import { afterSave, CLAUDE_CODE_DOCS, claudeCodeFound, cliRows, clisToSave, defaultAgentsCli, isTicked, noChatNote, notFoundLine, STEPS, tickedLine,
@@ -18,6 +17,7 @@ import { afterSave, CLAUDE_CODE_DOCS, claudeCodeFound, cliRows, clisToSave, defa
 import type { Route } from "../router";
 import type { Cli, CliStatus, McpScan } from "../types";
 import logo from "../assets/gizai-logo.svg?raw";
+import mountains from "../assets/mountains.svg?raw";
 import "../styles/onboarding.css";
 
 const TITLES = ["Welcome to Hersir", "Coding CLIs", "MCP servers", "You're all set"];
@@ -196,7 +196,9 @@ export function OnboardingPage({ onDone }: { onDone: (to: Route | null, note?: s
   const stepErr = err ?? (step === 1 && !clis ? clisErr : step === 2 && !mcp ? mcpErr : null);
   return (
     <div className="onb" onKeyDown={onKey}>
-      <Band />
+      {/* the mountains along the bottom (GA-139), until the onboarding's own islands card; inline, so its lines take
+          currentColor (band-line). It takes no clicks and screen readers skip it. */}
+      <div className="band" aria-hidden="true" dangerouslySetInnerHTML={{ __html: mountains }} />
       <header className="onb-top">
         <span className="onb-logo" dangerouslySetInnerHTML={{ __html: logo }} />
         <nav aria-label="Setup steps">
