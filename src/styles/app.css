@@ -1,11 +1,24 @@
 /* Gizai app layout. Components come from components.css (the design system's stylesheet); this file only
    places them: the frame, page regions, tables and a few page-specific pieces. Tokens: tokens.css. */
 
-/* ---------- frame: sidebar | main ---------- */
+/* ---------- frame: the background, the sidebar island and the page's island (design/islands) ---------- */
 html, body, #root { height: 100%; margin: 0; }
-.app { display: grid; grid-template-columns: var(--size-side) minmax(0, 1fr); height: 100vh; overflow: hidden; }
-.side { width: auto; height: 100vh; }
-.main { display: flex; flex-direction: column; min-width: 0; overflow: hidden; background: var(--bg); }
+/* The window paints the background: a gradient straight down, canvas-from to canvas-to, with canvas-glow from the top
+   left, full for 45% of the way and gone at 60% of the width and 75% of the height. Opaque for now (islands card 3
+   brings the glass). The islands sit on it, island-gap from the window's edges and from each other, with no border. */
+.app { display: grid; grid-template-columns: var(--size-side) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: var(--island-gap);
+  height: 100vh; padding: var(--island-gap); overflow: hidden;
+  background: radial-gradient(ellipse 60% 75% at 0 0, var(--canvas-glow) 45%, transparent), linear-gradient(180deg, var(--canvas-from), var(--canvas-to)); }
+.side { width: auto; height: auto; min-height: 0; }
+/* The main column: each page's top bar on the background (size-topbar), then the page as one island under it. A page with
+   several panes keeps them in that one island for now. The top bar stays in the page's own markup, inside .page-island,
+   and is placed over the column's top: .main is its containing block and .page-island isn't positioned, so the island's
+   rounded clip doesn't cut it. So keep .page-island and the page's own wrappers (.ed-page, .term-page) unpositioned. */
+.main { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; padding-top: var(--size-topbar); overflow: hidden; }
+.page-island { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; overflow: hidden; border-radius: var(--island-radius); background: var(--island); }
+.page-island .topbar { position: absolute; top: 0; left: 0; right: 0; }
+/* on the background faint text and icons are text-2 (components.css: .topbar); .main for the weight over the pages' own rules */
+.main .topbar .faint, .main .topbar .sep, .main .topbar .id, .main .topbar .ed-standing > .icon, .main .topbar .term-where { color: var(--text-2); }
 .content { flex: 1; overflow: auto; min-height: 0; }
 .split { display: flex; flex: 1; min-height: 0; }
 .split > .content { min-width: 0; }
@@ -47,7 +60,7 @@ select.chip { appearance: none; padding-right: 26px; background-image: url("data
 
 /* ---------- popover menus (filters, sort, group, pickers) ---------- */
 .pop-wrap { position: relative; display: inline-flex; }
-.pop { position: absolute; top: calc(100% + 6px); z-index: 30; min-width: 220px; max-height: 360px; overflow-y: auto; padding: 6px; border: 1px solid var(--line-2); border-radius: var(--radius-l); background: var(--overlay); box-shadow: var(--shadow-pop); }
+.pop { position: absolute; top: calc(100% + 6px); z-index: 30; min-width: 220px; max-height: 360px; overflow-y: auto; padding: 6px; border: 1px solid var(--line-2); border-radius: var(--radius-l); background: var(--float); box-shadow: var(--shadow-pop); }
 .pop.right { right: 0; }
 .pop .pop-label { padding: 6px 8px 4px; font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--text-3); }
 .pop .opt { display: flex; align-items: center; gap: 8px; width: 100%; height: calc(30px + var(--ui-box, 0px)); padding: 0 8px; border: 0; border-radius: var(--radius); background: none; color: var(--text); font: inherit; font-size: var(--fs); text-align: left; cursor: pointer; }
@@ -57,7 +70,7 @@ select.chip { appearance: none; padding-right: 26px; background-image: url("data
 
 /* ---------- command palette ---------- */
 .pal-backdrop { position: fixed; inset: 0; z-index: 50; background: var(--scrim); }
-.pal { position: fixed; left: 50%; top: 14vh; z-index: 51; transform: translateX(-50%); width: min(calc(640px + 20 * var(--ui-grow, 0px)), 92vw); padding: 6px 6px 10px; border: 1px solid var(--line-2); border-radius: var(--radius-xl); background: var(--overlay); box-shadow: var(--shadow-pop); }
+.pal { position: fixed; left: 50%; top: 14vh; z-index: 51; transform: translateX(-50%); width: min(calc(640px + 20 * var(--ui-grow, 0px)), 92vw); padding: 6px 6px 10px; border: 1px solid var(--line-2); border-radius: var(--radius-xl); background: var(--float); box-shadow: var(--shadow-pop); }
 .pal-in { display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin-bottom: 6px; border-bottom: 1px solid var(--line); color: var(--text-3); }
 .pal-in input { flex: 1; border: 0; outline: none; background: transparent; color: var(--text); font: inherit; font-size: calc(var(--fs) + 1.5px); }
 .pal-list { max-height: 50vh; overflow-y: auto; }
@@ -236,14 +249,14 @@ a.member:hover { border-color: var(--line-2); }
 .wf-confirm-move { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .wf-confirm-move .select { width: auto; height: calc(28px + var(--ui-box, 0px)); }
 .wf-confirm-actions { display: inline-flex; gap: 6px; margin-left: auto; }
-.agent-chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; max-width: 100%; padding: 0 3px 0 3px; border: 1px solid var(--line-2); border-radius: var(--radius-s); background: var(--bg); color: var(--text); font-size: var(--fs-sm); }
+.agent-chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; max-width: 100%; padding: 0 3px 0 3px; border: 1px solid var(--line-2); border-radius: var(--radius-s); background: var(--raised); color: var(--text); font-size: var(--fs-sm); }
 .agent-chip .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px; padding-right: 3px; }
 .agent-chip.paused { opacity: .62; }
 .agent-chip .chip-x { display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: var(--radius-s); background: none; color: var(--text-3); cursor: pointer; }
 .agent-chip .chip-x:hover { background: var(--hover); color: var(--text); }
 .agent-chip .chip-x:focus-visible { outline: 2px solid var(--focus); outline-offset: -1px; }
 .agent-chip .chip-x .icon { width: 13px; height: 13px; }
-.drag-chip { padding-right: 8px; background: var(--overlay); box-shadow: var(--shadow-drag); cursor: grabbing; }
+.drag-chip { padding-right: 8px; background: var(--float); box-shadow: var(--shadow-drag); cursor: grabbing; }
 .pop .pop-empty { padding: 6px 8px; color: var(--text-3); font-size: var(--fs-sm); }
 .pop .opt .faint { margin-left: auto; font-size: var(--fs-xs); }
 @media (max-width: 900px) {
@@ -607,7 +620,7 @@ a.member:hover { border-color: var(--line-2); }
 .mem-acts .btn.sm.icon-only { width: 22px; height: 22px; }
 .mem-acts .btn .icon { width: 13px; height: 13px; }
 .mem-name.input { height: 24px; padding: 0 6px; font-size: var(--fs-sm); }
-.mem-drag { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--overlay); box-shadow: var(--shadow-pop); font-size: var(--fs-sm); }
+.mem-drag { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--float); box-shadow: var(--shadow-pop); font-size: var(--fs-sm); }
 .mem-pad { padding: 6px 14px; font-size: var(--fs-sm); }
 .mem-results { flex: 1; overflow-y: auto; padding: 0 6px 16px; }
 .mem-hit { display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 7px 8px; border: 0; border-radius: var(--radius); background: none; color: var(--text); font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; }
@@ -711,12 +724,12 @@ span.mem-tag { cursor: default; }
 .graph-tools { position: absolute; left: 12px; top: 10px; z-index: 2; display: flex; align-items: center; gap: 10px; pointer-events: none; }
 .graph-tools > * { pointer-events: auto; }
 .graph-count { font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
-.graph-zoom { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--overlay); }
+.graph-zoom { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--float); }
 .graph-zoom .btn.sm.icon-only { width: 24px; height: 24px; }
 .graph-panel-open { position: absolute; right: 12px; top: 10px; z-index: 2; }
 .graph-empty { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; padding: 24px; text-align: center; pointer-events: none; }
 .graph-panel { position: absolute; right: 12px; top: 10px; z-index: 3; width: 272px; max-height: calc(100% - 20px); overflow-y: auto; border: 1px solid var(--line-2);
-  border-radius: var(--radius-l); background: var(--overlay); box-shadow: var(--shadow-pop); font-size: var(--fs-sm); }
+  border-radius: var(--radius-l); background: var(--float); box-shadow: var(--shadow-pop); font-size: var(--fs-sm); }
 .graph-panel-head { display: flex; align-items: center; gap: 2px; padding: 6px 6px 6px 14px; border-bottom: 1px solid var(--line); }
 .graph-panel-head b { flex: 1; font-weight: 600; }
 .graph-section { border-bottom: 1px solid var(--line); }
@@ -744,7 +757,7 @@ span.mem-tag { cursor: default; }
 .graph-swatches { flex-wrap: wrap; gap: 6px; padding-left: 24px; }
 .graph-swatches .swatch { width: 18px; height: 18px; }
 .graph-connections { position: absolute; left: 12px; bottom: 12px; z-index: 2; width: 290px; max-height: 45%; overflow-y: auto; border: 1px solid var(--line-2);
-  border-radius: var(--radius-l); background: var(--overlay); box-shadow: var(--shadow-pop); font-size: var(--fs-sm); }
+  border-radius: var(--radius-l); background: var(--float); box-shadow: var(--shadow-pop); font-size: var(--fs-sm); }
 .graph-connections-head { display: flex; align-items: center; gap: 6px; padding: 6px 6px 6px 12px; border-bottom: 1px solid var(--line); }
 .graph-connections-head .link-btn { flex: 1; color: var(--text); text-align: left; font-weight: 600; text-decoration: none; }
 .graph-connections-head .link-btn:hover { text-decoration: underline; }
