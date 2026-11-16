@@ -340,7 +340,8 @@ describe("GA-250: the Editor shows Hersir's own RunForMe.tsx, and the Terminal b
     const panel = read("src", "components", "editor", "TerminalPanel.tsx");
     expect(panel).toContain('<button className="btn ghost sm term-btn"');
     expect(panel).toContain('className="term-panel"');
-    expect(panel).toMatch(/<span className="acts">\s*<button className="btn ghost sm" title=\{`Open \$\{s\?\.name \?\? name\} on its own page`\}/);
+    // GA-293: the panel's island header; Own page is an icon button in its .acts, after New terminal, with the same title
+    expect(panel).toMatch(/<span className="acts">\s*<button className=\{`btn ghost sm icon-only[^`]*`\} aria-label=\{`New terminal in \$\{name\}`\}[\s\S]*?<\/button>\s*<button className="btn ghost sm icon-only" aria-label="Own page" title=\{`Open \$\{s\?\.name \?\? name\} on its own page`\}/);
     const page = read("src", "pages", "TerminalPage.tsx");
     expect(page).toContain('<div className="term-page">');
     expect(page).toMatch(/<div className="term-where">\s*<span className="path" title=\{s\.folderPath\}>\{s\.folderPath\}<\/span>/);
