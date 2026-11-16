@@ -12,7 +12,7 @@ use gizai_agents::prepare::{self as prep, Prepare};
 use gizai_agents::process::{self, Caps, StopHandle, StreamEvent};
 use gizai_agents::prompt::{self, BaseInfo, RunLimits, TaskContext};
 use gizai_agents::stream::RunEvent;
-use gizai_agents::{outcome, worktree};
+use gizai_agents::{outcome, redact, worktree};
 use gizai_core::model::{Outcome, Project, Refusal, Task, TaskPatch};
 use gizai_core::{builds_on, comments, housekeeping, ids, projects, runs as core_runs, settings, tasks, team, workflow};
 use serde::{Deserialize, Serialize};
@@ -144,7 +144,9 @@ fn pause_pull(st: &AppState, agent_id: &str, why: &str) -> bool {
     if paused.contains_key(agent_id) {
         return false;
     }
-    eprintln!("gizai: agent {agent_id} stops taking cards until you start or edit it: {why}");
+    // Hersir's log gets the reason's first line, without what looks like a secret (GA-281): its further lines can be a
+    // failed setup command's output, which stays on the card.
+    eprintln!("gizai: agent {agent_id} stops taking cards until you start or edit it: {}", redact::hidden(redact::first_line(why)));
     paused.insert(agent_id.to_string(), why.to_string());
     true
 }
@@ -885,13 +887,14 @@ async fn start_background(st: &AppState, task_id: &str, agent_id: &str, trigger:
             if pause_pull(st, agent_id, &reason) {
                 hold_card(st, agent_id, task_id, &reason);
             } else {
-                eprintln!("gizai: {trigger} start of an agent failed while its pull was paused, the card waits: {reason}");
+                eprintln!("gizai: {trigger} start of an agent failed while its pull was paused, the card waits: {}",
+                          redact::hidden(redact::first_line(&reason)));
             }
             None
         }
         Err(StartError::Held(reason)) => { pause_pull(st, agent_id, &reason); None }
         Err(StartError::Wait(_)) => None,
-        Err(StartError::Other(reason)) => { eprintln!("gizai: {trigger} start of an agent failed: {reason}"); None }
+        Err(StartError::Other(reason)) => { eprintln!("gizai: {trigger} start of an agent failed: {}", redact::hidden(&reason)); None }
     };
     drop(checked);
     out
@@ -1856,7 +1859,8 @@ async fn push_after_run(st: &AppState, run_id: &str, dir: &Path) -> Option<After
     match after {
         Ok(a) => {
             if let Err(why) = &a.push {
-                eprintln!("gizai: after run {run_id}: {why}");
+                // git's words, without a login in a remote's address (GA-281)
+                eprintln!("gizai: after run {run_id}: {}", redact::hidden(why));
             }
             Some(a)
         }

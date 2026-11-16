@@ -29,6 +29,7 @@ pub mod prepare;
 pub mod preview;
 pub mod process;
 pub mod prompt;
+pub mod redact;
 pub mod release_sig;
 pub mod run_memory;
 pub mod screenshots;

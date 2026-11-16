@@ -243,7 +243,9 @@ pub(crate) fn save_at_merge(st: &AppState, card: &PrCard, pr: &PullRequest, tip:
             git_changes::commit_of(repo, &main)
         }
         Err(e) => {
-            eprintln!("gizai: saving {}'s changes at its merge with main as last fetched: {e}", card.identifier);
+            // git's words, without a login in a remote's address (GA-281)
+            eprintln!("gizai: saving {}'s changes at its merge with main as last fetched: {}", card.identifier,
+                      gizai_agents::redact::hidden(&e.to_string()));
             None
         }
     };

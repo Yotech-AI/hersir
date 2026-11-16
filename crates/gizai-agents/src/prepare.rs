@@ -351,6 +351,8 @@ fn run<S: AsRef<OsStr>>(shown: &str, program: impl AsRef<OsStr>, args: &[S], dir
     if let Some(scope) = scope {
         let left = scope.end_leftovers(Some(child.id()));
         if !left.is_empty() {
+            // `shown` may be the project's setup command, which could hold a token (GA-281: users send us Hersir's log)
+            let shown = crate::redact::hidden(shown);
             eprintln!("gizai: ended {} in {}", crate::run_memory::leftovers_text(&left, &format!("`{shown}`")), dir.display());
         }
     }
