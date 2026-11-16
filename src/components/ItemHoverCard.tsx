@@ -6,6 +6,7 @@ import { KIND_NAME, type ItemKind } from "../lib/itemLinks";
 import { cardPlace, keptPreview, loadPreview, type ItemPreview } from "../lib/itemPreview";
 import { roleLabel } from "../lib/agents";
 import { holdName } from "../lib/holds";
+import { CLICK_TO_OPEN, CLICK_TO_OPEN_BESIDE, useBesideChat } from "../lib/besideChat";
 import { Avatar } from "./Avatar";
 import { StatusIcon } from "./StatusIcon";
 
@@ -111,6 +112,8 @@ export function ItemHoverCard({ id, kind, text, item, anchor, onEnter, onLeave }
   onEnter: () => void; onLeave: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  // on the Chat page a card's chip opens it beside the chat (GA-297)
+  const beside = !!useBesideChat() && kind === "task";
   const place = useCallback(() => {
     const el = ref.current, at = anchor();
     if (!el || !at) return;
@@ -131,14 +134,16 @@ export function ItemHoverCard({ id, kind, text, item, anchor, onEnter, onLeave }
   return createPortal(
     <div ref={ref} id={id} role="tooltip" className="chip-card" style={{ visibility: "hidden" }}
       onMouseEnter={onEnter} onMouseLeave={onLeave} onClick={stop} onMouseDown={stop} onPointerDown={stop} onDoubleClick={stop}>
-      <CardBody kind={kind} text={text} item={item} />
+      <CardBody kind={kind} text={text} item={item} foot={beside ? CLICK_TO_OPEN_BESIDE : CLICK_TO_OPEN} />
     </div>,
     document.body,
   );
 }
 
-function CardBody({ kind, text, item }: { kind: ItemKind; text: string; item: ItemPreview | undefined }) {
-  if (!item) return <><Head name={text} /><p className="t-small chip-card-note">{KIND_NAME[kind]}</p><Foot /></>;
+/** `foot`: the last line, what a click does. */
+function CardBody({ kind, text, item, foot }: { kind: ItemKind; text: string; item: ItemPreview | undefined; foot: string }) {
+  const end = <p className="t-caption chip-card-foot">{foot}</p>;
+  if (!item) return <><Head name={text} /><p className="t-small chip-card-note">{KIND_NAME[kind]}</p>{end}</>;
   switch (item.kind) {
     case "missing":
       return <><Head name={text} /><p className="t-small chip-card-note">Not found</p></>;
@@ -156,7 +161,7 @@ function CardBody({ kind, text, item }: { kind: ItemKind; text: string; item: It
             {task.hold && <span className="chip-card-hold">On hold: {task.withLead ? "With the Chief" : holdName(task.hold)}</span>}
           </Row>
         </Rows>
-        <Foot />
+        {end}
       </>;
     }
     case "project": {
@@ -167,7 +172,7 @@ function CardBody({ kind, text, item }: { kind: ItemKind; text: string; item: It
           <Row label="Client">{project.clientName ? <Val>{project.clientName}</Val> : <None />}</Row>
           <Row label="Status"><Val>{named(project.status)}</Val></Row>
         </Rows>
-        <Foot />
+        {end}
       </>;
     }
     case "agent": {
@@ -180,21 +185,21 @@ function CardBody({ kind, text, item }: { kind: ItemKind; text: string; item: It
             ? <Val mark={<span className="chip-card-live" />} className="live">Working on {workingOn}</Val>
             : <Val>{agent.status === "paused" ? "Paused" : "Active"}</Val>}</Row>
         </Rows>
-        <Foot />
+        {end}
       </>;
     }
     case "client":
       return <>
         <Head name={item.client.name} />
         <Rows><Row label="Status"><Val>{named(item.client.status)}</Val></Row></Rows>
-        <Foot />
+        {end}
       </>;
     case "person": {
       const { person } = item;
       return <>
         <Head mark={<Avatar name={person.name} size="sm" />} name={person.name} />
         <Rows><Row label="Email">{person.email ? <Val className="anywhere">{person.email}</Val> : <None />}</Row></Rows>
-        <Foot />
+        {end}
       </>;
     }
     case "doc": {
@@ -202,7 +207,7 @@ function CardBody({ kind, text, item }: { kind: ItemKind; text: string; item: It
       return <>
         <Head name={doc.title} />
         <Rows><Row label="Project">{project ? <Val mark={<Dot color={project.color} />}>{project.name}</Val> : <None />}</Row></Rows>
-        <Foot />
+        {end}
       </>;
     }
   }
@@ -234,4 +239,3 @@ const None = ({ children = "None" }: { children?: ReactNode }) => <span classNam
 
 const Dot = ({ color }: { color?: string | null }) => <span className="chip-card-dot" style={{ background: color ?? "var(--text-3)" }} />;
 
-const Foot = () => <p className="t-caption chip-card-foot">Click to open</p>;

@@ -1,16 +1,17 @@
 // The Chief Chat's side island and its tool strip (GA-296; design/islands-chat/README.md), in place of GA-278's terminal
 // panel and its rail. What is open beside a chat is src/lib/chatSide.ts's, kept per chat while Hersir runs.
-// - The side island, right of the conversation: a header with the chat's tabs (each kind's icon and title; Terminal tabs
-//   for now, cards 8 and 9 add Card, Board and Editor), + (a menu: New terminal), Own page and Hide; then the shown tab.
+// - The side island, right of the conversation: a header with the chat's tabs (each kind's icon and title; Terminal and,
+//   since GA-297, Card tabs (ChatCard.tsx); card 9 adds Board and Editor), + (a menu: New terminal), Own page and Hide;
+//   then the shown tab.
 //   Its left edge, the gap to the conversation, is the drag handle; its width is kept on this computer (gizai.chat.panel).
 // - The tool strip, on the background along the window's right edge, while the chat has anything open: an icon per kind
 //   open, with its count, the shown kind's selected. A click shows that kind's last tab, or hides the island while that
 //   kind is on show; a right click (or the context menu key) opens a menu: Show or Hide, and Close all.
 // - The top bar's Open, before New chat: a menu with New terminal (Open a file and Board come with card 9).
 // - Keys on the Chat page: Ctrl+` and Alt+1 show or hide Terminal, Alt+2, Alt+3 and Alt+4 Editor, Board and Card (Option on
-//   macOS; nothing until those kinds are built); Ctrl+Shift+` starts a terminal in the shown terminal's folder (the folder
-//   picker with none); in the island, Ctrl+PgDn and Ctrl+PgUp switch tabs. In a terminal only Ctrl+` and Ctrl+Shift+` are
-//   Hersir's: Alt with a digit reaches the shell.
+//   macOS; nothing with none of that kind open); Ctrl+Shift+` starts a terminal in the shown terminal's folder (the folder
+//   picker with none); in the island, Ctrl+PgDn and Ctrl+PgUp switch tabs, and Ctrl+W (Cmd+W) closes a shown Card tab. In a
+//   terminal only Ctrl+` and Ctrl+Shift+` are Hersir's: Alt with a digit reaches the shell.
 // The page itself only follows whether the island or the strip shows (useChatSideLayout), so the conversation isn't drawn
 // again when a terminal changes or the island is dragged.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -22,6 +23,7 @@ import {
 import { terminalClose } from "../../api";
 import type { TerminalSession } from "../../types";
 import { go } from "../../router";
+import { openItem } from "../../lib/openItem";
 import { stepTab } from "../../lib/editor";
 import { asksToClose, focusTerminal, folderNameOf, showIn, useTerminals } from "../../lib/terminals";
 import { panelKey } from "../../lib/terminalPanel";
@@ -35,6 +37,7 @@ import {
 import { ContextMenu, type MenuItem } from "../editor/Menus";
 import { Handle, TermTab, type HandleEdge } from "../editor/TerminalPanel";
 import { ChatTerminalBody, OpenTerminalPicker, useStartOff } from "./ChatTerminal";
+import { CardTab, ChatCardBody } from "./ChatCard";
 
 const KIND_ICON: Record<SideKind, LucideIcon> = { terminal: TerminalIcon, editor: FileCode, board: Columns3, card: SquareKanban };
 const why = (e: unknown) => String(e).replace(/^Error:\s*/, "");
@@ -206,6 +209,7 @@ function SideIsland({ islandRef, side, all, focus, focusNext, fresh, you, hide }
   const terms = useMemo(() => side.tabs.filter((t) => t.kind === "terminal").flatMap((t) => all.filter((s) => s.id === t.id)), [all, side.tabs]);
   const termIds = terms.map((s) => s.id);
   const shownTerm = kindOf(current) === "terminal" ? terms.find((s) => s.id === idOf(current)) ?? null : null;
+  const shownCard = kindOf(current) === "card" ? idOf(current) : null;
 
   // the grid's third column (app.css .chat.has-side) is as wide as the share says; set here, so a drag draws the island and
   // the conversation's column again, not the page
@@ -240,8 +244,13 @@ function SideIsland({ islandRef, side, all, focus, focusNext, fresh, you, hide }
     setAsking({ s: t, x: r?.left ?? 200, y: (r?.bottom ?? 100) + 4 });
   };
   const name = shownTerm?.name ?? idOf(current);
-  /** Own page: the shown tab on its own page; its tab closes here. */
+  /** Own page: the shown tab on its own page (a terminal on the Terminal page, a card on its page); its tab closes here. */
   const ownPage = () => {
+    if (shownCard) {
+      closeSideTabs([current]);
+      openItem("task", shownCard).catch(() => {});
+      return;
+    }
     if (!shownTerm) return;
     showIn(shownTerm.id, { kind: "page" });
     closeSideTabs([current]);
@@ -258,6 +267,12 @@ function SideIsland({ islandRef, side, all, focus, focusNext, fresh, you, hide }
           const next = stepTab(keys, current, e.key === "PageDown" ? 1 : -1);
           if (next) showSideTab(next);
         }
+        // Ctrl+W (Cmd+W on macOS) closes a shown Card tab; not from a text box (a comment being written) or a terminal
+        if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "w" && shownCard
+          && !(e.target instanceof Element && e.target.closest("input, textarea, [contenteditable], .cm-editor, .xterm"))) {
+          e.preventDefault();
+          closeSideTabs([current]);
+        }
       }}>
       <Handle panel={islandRef} share={share} setShare={setShare} edge={SIDE_EDGE} />
       <div className="chat-side-in">
@@ -273,6 +288,7 @@ function SideIsland({ islandRef, side, all, focus, focusNext, fresh, you, hide }
                     rename={(on) => setRenaming(on ? s.id : null)} fail={setFailed} />
                 ) : null;
               }
+              if (t.kind === "card") return <CardTab key={key} id={t.id} on={key === current} keys={keys} close={() => closeSideTabs([key])} />;
               return null;
             })}
           </div>
@@ -282,7 +298,7 @@ function SideIsland({ islandRef, side, all, focus, focusNext, fresh, you, hide }
               onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu(menu ? null : { x: r.left, y: r.bottom + 4 }); }}>
               <Plus className="icon" />
             </button>
-            <button type="button" className="btn ghost sm icon-only" aria-label="Own page" title={`Open ${name} on its own page`} disabled={!shownTerm} onClick={ownPage}>
+            <button type="button" className="btn ghost sm icon-only" aria-label="Own page" title={`Open ${name} on its own page`} disabled={!shownTerm && !shownCard} onClick={ownPage}>
               <Maximize2 className="icon" />
             </button>
             <button type="button" className="btn ghost sm icon-only" aria-label="Hide" title="Hide (Ctrl+`): terminals keep running" onClick={hide}>
@@ -297,7 +313,8 @@ function SideIsland({ islandRef, side, all, focus, focusNext, fresh, you, hide }
             <button type="button" className="btn ghost sm icon-only" aria-label="Close" title="Close" onClick={() => setFailed(undefined)}><X className="icon" /></button>
           </div>
         )}
-        {shownTerm ? <ChatTerminalBody s={shownTerm} focusNext={focusNext} /> : <div className="chat-side-body" />}
+        {shownCard ? <ChatCardBody key={shownCard} identifier={shownCard} />
+          : shownTerm ? <ChatTerminalBody s={shownTerm} focusNext={focusNext} /> : <div className="chat-side-body" />}
       </div>
       {menu && <ContextMenu at={menu} label="Open beside the chat" onClose={() => setMenu(null)}
         items={openItems(fresh.s, fresh.off, () => pickBelow(plusRef.current))} />}

@@ -1,7 +1,7 @@
 // The Chief Chat's side island and its tool strip (GA-296; design/islands-chat/README.md): what each chat has open beside
 // it, kept while Hersir runs (the Chat page unmounts when you leave it).
-// - A tab has a kind (Terminal, Editor, Board, Card), and an id within its kind (a terminal's id for now; a card's, a
-//   file's or a board's come with cards 8 and 9). Its icon and title come from its kind (components/chat/ChatSide.tsx).
+// - A tab has a kind (Terminal, Editor, Board, Card), and an id within its kind (a terminal's id, a card's id in upper case
+//   since GA-297; a file's or a board's come with card 9). Its icon and title come from its kind (components/chat/ChatSide.tsx).
 // - Tabs belong to the chat they were opened in, in the order they opened (a new one goes at the end). Another chat shows
 //   its own; a chat's terminals keep running while another chat is shown. New chat (no chat yet) has its own until the
 //   first message makes the chat, which takes them (adoptNewChat).
@@ -25,6 +25,8 @@ export type SideTab = { kind: SideKind; id: string };
 export const tabKey = (t: SideTab) => `${t.kind}:${t.id}`;
 export const kindOf = (key: string): SideKind => key.slice(0, key.indexOf(":")) as SideKind;
 export const idOf = (key: string): string => key.slice(key.indexOf(":") + 1);
+/** A Card tab's id: the card's id, trimmed, in upper case (chips and ChatThread.tasks may differ in case). */
+export const cardTabId = (identifier: string) => identifier.trim().toUpperCase();
 
 /** One chat's side island: its tabs in the order they opened, the one shown, whether the island shows, and each kind's
  *  last shown tab (a click on the kind's icon shows it). */
@@ -182,6 +184,21 @@ export function adoptNewChat(id: string) {
 export function openSideTab(tab: SideTab, key = chat) {
   watch();
   setSide(key, withTab(sideOf(key), tab), key === chat);
+}
+/** Opens tabs in the chat (those not open yet at the end, in their order) and shows the first, without the focus: what
+ *  opens by itself as a chat opens (the cards a Chief-started chat is about, lib/chatCard.ts). */
+export function openSideTabs(tabs: SideTab[], key = chat) {
+  const [first] = tabs;
+  if (!first) return;
+  watch();
+  const side = tabs.reduce(withTab, sideOf(key));
+  setSide(key, withShown(side, tabKey(first)));
+}
+/** A Card tab (by the card's id, GA-259): opened at the end, or shown where it is, in the chat on show. A chip's click and
+ *  a board's card open it so (GA-297). */
+export function openCardTab(identifier: string) {
+  const id = cardTabId(identifier);
+  if (id) openSideTab({ kind: "card", id });
 }
 /** A tab picked (a click, ← and →, Ctrl+PgDn and Ctrl+PgUp): it shows, with the focus. */
 export function showSideTab(key: string) {

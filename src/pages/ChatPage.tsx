@@ -1,8 +1,11 @@
 // Chat with the Team Lead (design system: ChatMessage, ToolCard, ChatSetup), in islands (GA-296, design/islands-chat): on the
 // left the pinned chats (Pinned, GA-257) and the 30 newest chats (Recent) with Archive under them, the conversation or the
 // Archive (#/chats) in the middle, and on the right what is open beside the chat: the side island while it shows and the
-// tool strip on the window's right edge (Open in the top bar, components/chat/ChatSide.tsx).
+// tool strip on the window's right edge (Open in the top bar, components/chat/ChatSide.tsx). A card chip opens the card in
+// a Card tab there (GA-297; Ctrl+click, Cmd+click on macOS, its page), and a chat the Chief started about cards opens them
+// there the first time it opens.
 // Without a Team Lead, a panel explains how to set one up.
+import { useEffect } from "react";
 import { Crown, History, MessagesSquare, Plus, Settings } from "lucide-react";
 import { chatAgent, getChatThread, listChatThreads } from "../api";
 import { go, href } from "../router";
@@ -12,7 +15,9 @@ import { useCurrentTeam } from "../lib/team";
 import { relTime } from "../lib/format";
 import { chatLabel, chatLabelTitle, chatWaits } from "../lib/inbox";
 import { RECENT_MAX } from "../lib/chat";
-import { chatSideKey } from "../lib/chatSide";
+import { chatSideKey, openCardTab } from "../lib/chatSide";
+import { openChatCardsOnce } from "../lib/chatCard";
+import { BesideChat } from "../lib/besideChat";
 import { Avatar } from "../components/Avatar";
 import { ChatArchive } from "../components/chat/ChatArchive";
 import { ChatSide, OpenButton, useChatSideLayout } from "../components/chat/ChatSide";
@@ -76,6 +81,12 @@ export function ChatPage({ id, archive = false, youId = "" }: { id?: string; arc
     ?? (id ? pins.list.find((t) => t.id === id) : undefined);
   const working = live.length > 0;
   const side = useChatSideLayout(!!lead, chatSideKey(id, archive));
+  // A chat the Chief started about cards: the first time it opens, its cards open beside it, the first one shown (once per
+  // chat, also after a restart: lib/chatCard.ts).
+  const cards = thread && thread.id === id ? thread.tasks?.join(" ") ?? "" : "";
+  useEffect(() => {
+    if (lead && id && cards) openChatCardsOnce(id, cards.split(" "));
+  }, [!!lead, id, cards]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <>
       <div className="topbar">
@@ -98,6 +109,7 @@ export function ChatPage({ id, archive = false, youId = "" }: { id?: string; arc
       {agent.error && <div className="error-banner">{agent.error}</div>}
       {agent.data && !lead && <ChatSetup />}
       {lead && (
+        <BesideChat.Provider value={openCardTab}>
         <div ref={side.chatRef} className={side.className}>
           <aside className="chat-threads" aria-label="Chats">
             <div className="chat-threads-list" data-pins="">
@@ -117,6 +129,7 @@ export function ChatPage({ id, archive = false, youId = "" }: { id?: string; arc
           {archive ? <ChatArchive live={live} pins={pins} /> : <ChatThread threadId={id ?? null} thread={thread} agent={lead} youId={youId} />}
           <ChatSide youId={youId} />
         </div>
+        </BesideChat.Provider>
       )}
       {pins.error && <div className="toast" role="status">{pins.error}</div>}
     </>
