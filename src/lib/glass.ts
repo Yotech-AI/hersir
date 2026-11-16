@@ -1,27 +1,27 @@
 // The glass behind the islands (GA-292; design/islands/README.md → The glass, and design/islands-settings/README.md →
 // Appearance: the glass switch). The window is see-through (src-tauri/tauri.conf.json: transparent). With the glass on,
 // the page paints the gradient at 92% in dark and 86% in light (glass-from, glass-to, glass-glow) and the system blurs the
-// desktop behind it: vibrancy on macOS, Mica on Windows 11, and on Linux the compositor's own blur (Hyprland's, when it is
-// on). The islands and what floats stay solid. Otherwise the background is GA-290's opaque gradient and the window's
+// desktop behind it: vibrancy on macOS, Mica on Windows 11, and on Hyprland the compositor's own blur (when it is on). The islands and what floats stay solid. Otherwise the background is GA-290's opaque gradient and the window's
 // effects are cleared.
 //
-// The glass is on when Settings → Appearance's switch is on (lib/appearance.ts: glass), the system gives a blur (not on
-// Windows 10), and the system doesn't ask for reduced transparency (prefers-reduced-transparency, where the web view knows
+// The glass is on when Settings → Appearance's switch is on (lib/appearance.ts: glass), the system gives a blur (not
+// Windows 10, not Linux other than Hyprland), and the system doesn't ask for reduced transparency (prefers-reduced-transparency, where the web view knows
 // it). html.glass is the page's side (app.css). A change of any of the three shows at once, without a restart.
 import { useEffect, useState } from "react";
 import { Effect, EffectState, type Effects } from "@tauri-apps/api/window";
 import { glassSupport, setWindowEffects } from "../api";
 import { getAppearance, onAppearance, type Theme } from "./appearance";
 
-/** What blurs the desktop behind the window (src-tauri/src/glass.rs): vibrancy on macOS, Mica on Windows 11, nothing on an
- *  older Windows, and on Linux the desktop's compositor, by its own rules (Hersir can't tell whether it does). */
+/** What blurs the desktop behind the window (src-tauri/src/glass.rs): vibrancy on macOS, Mica on Windows 11, Hyprland's
+ *  compositor by its own rules (Hersir can't tell whether its blur is on), and nothing on an older Windows or on Linux
+ *  other than Hyprland. */
 export type GlassSupport = "vibrancy" | "mica" | "compositor" | "none";
 const SUPPORTS: readonly unknown[] = ["vibrancy", "mica", "compositor", "none"];
 /** The system's side: its blur, and whether it asks for reduced transparency. */
 export type Glass = { support: GlassSupport; reduced: boolean };
 
-/** Until the system answers (at start): macOS has vibrancy, Windows is taken to be 11 (an older one says "none" a moment
- *  later), the rest has a compositor. */
+/** Until the system answers (at start): macOS has vibrancy, Windows is taken to be 11 and Linux to be Hyprland (an older
+ *  Windows or another desktop says "none" a moment later; the glass is off by default on Linux anyway). */
 export function guessSupport(userAgent: string): GlassSupport {
   return /Macintosh|Mac OS X/.test(userAgent) ? "vibrancy" : /Windows/.test(userAgent) ? "mica" : "compositor";
 }
@@ -42,8 +42,8 @@ export function effectsFor(on: boolean, support: GlassSupport, theme: Theme): Ef
   return null;
 }
 
-/** Settings → Appearance → Background → Glass: its hint, by the system's side: no blur (Windows 10), reduced
- *  transparency, or what it does (design/islands-settings/README.md, word for word). */
+/** Settings → Appearance → Background → Glass: its hint, by the system's side: no blur (Windows 10, Linux other than
+ *  Hyprland), reduced transparency, or what it does (design/islands-settings/README.md, word for word). */
 export function glassHint(g: Glass): string {
   if (g.support === "none") return "Your system doesn't blur windows behind Hersir, so the background stays plain.";
   if (g.reduced) return "Plain while your system reduces transparency.";

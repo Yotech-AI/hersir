@@ -45,7 +45,7 @@ export const onCloseRequested = (cb: () => void): Promise<UnlistenFn> =>
 export const onQuitRequested = (cb: () => void): Promise<UnlistenFn> => listen("quit-requested", () => cb());
 
 // The glass behind the islands (GA-292, lib/glass.ts). What blurs the desktop behind the window: "vibrancy" on macOS,
-// "mica" on Windows 11, "none" on an older Windows, "compositor" on Linux (the desktop's compositor, by its own rules).
+// "mica" on Windows 11, "compositor" on Hyprland (by its own rules), "none" on an older Windows and other Linux desktops.
 export const glassSupport = () => invoke<"vibrancy" | "mica" | "compositor" | "none">("glass_support");
 /** Asks the system for the window's effect (vibrancy, Mica), or clears it with null. Linux has none: there it does nothing. */
 export const setWindowEffects = (effects: Effects | null): Promise<void> =>

@@ -7,8 +7,11 @@
 /// - `"vibrancy"` on macOS (`underWindowBackground`);
 /// - `"mica"` on Windows 11 (build 22000 and later);
 /// - `"none"` on an older Windows: it has no Mica (Tauri's call does nothing there), so the background stays plain;
-/// - `"compositor"` on Linux: no window effects there; the desktop's compositor blurs a see-through window by its own
-///   rules (Hyprland does by default, GNOME doesn't), and Hersir can't tell whether it does.
+/// - `"compositor"` on Hyprland (told apart by `HYPRLAND_INSTANCE_SIGNATURE`): Linux has no window effects, but Hyprland
+///   blurs a see-through window by its own rules (`decoration:blur:enabled`, on by default; Hersir can't tell whether it
+///   is on in yours);
+/// - `"none"` on Linux other than Hyprland: KWin blurs only a window that asks for it and GNOME doesn't blur, so there
+///   the background stays plain (design/islands/README.md → How it is built).
 #[tauri::command]
 pub fn glass_support() -> &'static str {
     support()
@@ -20,5 +23,10 @@ pub fn support() -> &'static str {
     #[cfg(windows)]
     return if windows_version::OsVersion::current().build >= 22000 { "mica" } else { "none" };
     #[cfg(not(any(target_os = "macos", windows)))]
-    "compositor"
+    linux_support(std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").as_deref())
+}
+
+/// Linux's answer, from `HYPRLAND_INSTANCE_SIGNATURE`'s value.
+pub fn linux_support(hyprland: Option<&std::ffi::OsStr>) -> &'static str {
+    if hyprland.is_some_and(|s| !s.is_empty()) { "compositor" } else { "none" }
 }

@@ -86,7 +86,7 @@ export function AppearanceSettings() {
       </FormSection>
       <FormSection title="Background" text="Behind the islands: a soft gradient, and glass where your system blurs windows.">
         <Field label="Glass" wide hint={glassHint(g)}>
-          <label className="check">
+          <label className="check glass-check">
             <input type="checkbox" checked={a.glass && !noBlur} disabled={noBlur} onChange={(e) => setAppearance({ glass: e.target.checked })} />
             Show the desktop through the background
           </label>

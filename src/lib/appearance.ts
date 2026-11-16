@@ -25,7 +25,8 @@ export const UI_SIZES = [12.5, 13.5, 14.5, 15.5, 16.5];
 export const DOCS_SIZES = [14, 15, 16, 17, 18, 20];
 /** The glass's default (Settings → Appearance → Background): on where the system blurs the desktop behind a window, on
  *  macOS and Windows (Windows 10 has no Mica: Settings shows the switch off there, lib/glass.ts); off on Linux, where the
- *  desktop's compositor blurs a see-through window by its own rules (Hyprland does) and Hersir can't tell whether it does.
+ *  desktop's compositor blurs a see-through window by its own rules (Hyprland does) and Hersir can't tell whether it does
+ *  (other desktops don't: the switch is off there too).
  *  Read on each call from the user agent, as lib/keys.ts does, so a test can fake the system with a stubbed navigator. */
 export function glassByDefault(): boolean {
   if (typeof navigator === "undefined") return false;
