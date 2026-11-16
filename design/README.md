@@ -64,7 +64,7 @@ background with islands on it, and what floats goes over both:
   `term-magenta` a violet, at least 35° of hue (OKLCH) from `live` and `needs`, so a program's cyan never reads as an
   agent at work, nor its magenta as "needs you".
 - The background's gradient (`canvas-*`) is the window's own light, not a state: one cool blue, low in chroma, as the
-  mountains along the bottom were (`band-*`, GA-139, which only the first start's onboarding keeps now).
+  mountains along the bottom were (`band-*`, GA-139; gone from the onboarding too since GA-295).
 - `success`, `warning`, `danger` are run and form outcomes. Each badge pairs its colour with a word.
 - Status is shown by glyph shape *and* hue (see StatusIcon), so it reads without colour:
   Backlog dashed circle `st-backlog`, To do open circle `st-todo`, In progress half circle

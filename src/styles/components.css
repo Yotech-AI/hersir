@@ -169,6 +169,9 @@ input[type="checkbox"]:checked:disabled:hover { border-color: var(--accent); bac
 .topbar { display: flex; align-items: center; gap: 12px; height: var(--size-topbar); padding: 0 4px 0 12px; }
 .topbar .btn:not(.primary):not(.danger) { background-color: transparent; }
 .topbar .btn:not(.primary):not(.danger):hover, .topbar select.chip:hover { background-color: var(--canvas-hover); color: var(--text); }
+/* a picker chip that sits on island (Team's team picker, GA-295): island under it, its line border, the name in text */
+.topbar select.chip.on-island { border-color: var(--line); background-color: var(--island); color: var(--text); font-weight: 600; }
+.topbar select.chip.on-island:hover { background-color: var(--hover); }
 .crumbs { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: var(--fs); color: var(--text-2); }
 .crumbs a { color: var(--text-2); text-decoration: none; }
 .crumbs a:hover { color: var(--text); }

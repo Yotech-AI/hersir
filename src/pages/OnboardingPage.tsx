@@ -17,7 +17,6 @@ import { afterSave, CLAUDE_CODE_DOCS, claudeCodeFound, cliRows, clisToSave, defa
 import type { Route } from "../router";
 import type { Cli, CliStatus, McpScan } from "../types";
 import logo from "../assets/gizai-logo.svg?raw";
-import mountains from "../assets/mountains.svg?raw";
 import "../styles/onboarding.css";
 
 const TITLES = ["Welcome to Hersir", "Coding CLIs", "MCP servers", "You're all set"];
@@ -196,9 +195,7 @@ export function OnboardingPage({ onDone }: { onDone: (to: Route | null, note?: s
   const stepErr = err ?? (step === 1 && !clis ? clisErr : step === 2 && !mcp ? mcpErr : null);
   return (
     <div className="onb" onKeyDown={onKey}>
-      {/* the mountains along the bottom (GA-139), until the onboarding's own islands card; inline, so its lines take
-          currentColor (band-line). It takes no clicks and screen readers skip it. */}
-      <div className="band" aria-hidden="true" dangerouslySetInnerHTML={{ __html: mountains }} />
+      {/* the top row on the background, then the step in one island under it (design/islands-settings: Onboarding) */}
       <header className="onb-top">
         <span className="onb-logo" dangerouslySetInnerHTML={{ __html: logo }} />
         <nav aria-label="Setup steps">
@@ -222,44 +219,46 @@ export function OnboardingPage({ onDone }: { onDone: (to: Route | null, note?: s
           {busy === "skip" ? "Skipping…" : "Skip setup"}
         </button>
       </header>
-      <div className="onb-scroll">
-        <main className="onb-body" ref={body} aria-labelledby="onb-heading">
-          <p className="onb-eyebrow" id="onb-eyebrow">Step {step + 1} of 4</p>
-          <h1 id="onb-heading" ref={heading} tabIndex={-1} aria-describedby="onb-eyebrow">
-            {TITLES[step]}{step === 2 && <span className="badge outline">Optional</span>}
-          </h1>
-          <p className="onb-lead">{step === 3 && !claude ? "Here's what you set up." : LEADS[step]}</p>
-          <div className={`onb-parts${step === 0 ? " first" : ""}`}>
-            {step === 0 ? (
-              <YouAndTeam you={you} team={team} errors={nameErr} agents={agents} youRef={youField} teamRef={teamField}
-                onYou={(v) => { setYou(v); if (v.trim()) setNameErr((x) => ({ ...x, you: undefined })); }}
-                onTeam={(v) => { setTeam(v); if (v.trim()) setNameErr((x) => ({ ...x, team: undefined })); }} />
-            ) : step === 1 ? (
-              <CodingClis loaded={!!clis} failed={!!clisErr} rows={rows} unticked={unticked} claude={claude} agentsKey={agentsKey} looking={busy === "look"}
-                onTick={(key, on) => setUnticked((u) => (on ? u.filter((k) => k !== key) : [...u, key]))} onPick={setPick}
-                onLook={() => void run("look", loadClis)} disabled={!!busy} />
-            ) : step === 2 ? (
-              <McpServers mcp={mcp} failed={!!mcpErr} picks={picks} onPicks={setPicks} />
-            ) : (
-              <Ready you={you.trim()} team={team.trim()} agentsCli={agentsRow?.cli.name ?? (clis ? "None found" : "")} imported={imported} claude={claude}
-                disabled={!!busy} onChange={open} />
-            )}
-          </div>
-        </main>
-      </div>
-      {stepErr && <div className="onb-error"><Notice kind="bad">{stepErr}</Notice></div>}
-      <div className="onb-actions">
-        <button type="button" className="btn" disabled={step === 0 || !!busy} onClick={goBack}>Back</button>
-        {step < 3 ? (
-          <button type="button" className="btn primary" disabled={!!busy} onClick={next}>
-            {busy === "next" ? (step === 1 ? "Saving…" : "Importing…") : "Next"}
-          </button>
-        ) : (
-          <button type="button" className="btn primary" disabled={!!busy} onClick={next}>
-            {claude ? <MessagesSquare className="icon" /> : <ListTodo className="icon" />}
-            {busy === "finish" ? "Opening…" : claude ? "Open the Chief's chat" : "Open the board"}
-          </button>
-        )}
+      <div className="onb-island">
+        <div className="onb-scroll">
+          <main className="onb-body" ref={body} aria-labelledby="onb-heading">
+            <p className="onb-eyebrow" id="onb-eyebrow">Step {step + 1} of 4</p>
+            <h1 id="onb-heading" ref={heading} tabIndex={-1} aria-describedby="onb-eyebrow">
+              {TITLES[step]}{step === 2 && <span className="badge outline">Optional</span>}
+            </h1>
+            <p className="onb-lead">{step === 3 && !claude ? "Here's what you set up." : LEADS[step]}</p>
+            <div className={`onb-parts${step === 0 ? " first" : ""}`}>
+              {step === 0 ? (
+                <YouAndTeam you={you} team={team} errors={nameErr} agents={agents} youRef={youField} teamRef={teamField}
+                  onYou={(v) => { setYou(v); if (v.trim()) setNameErr((x) => ({ ...x, you: undefined })); }}
+                  onTeam={(v) => { setTeam(v); if (v.trim()) setNameErr((x) => ({ ...x, team: undefined })); }} />
+              ) : step === 1 ? (
+                <CodingClis loaded={!!clis} failed={!!clisErr} rows={rows} unticked={unticked} claude={claude} agentsKey={agentsKey} looking={busy === "look"}
+                  onTick={(key, on) => setUnticked((u) => (on ? u.filter((k) => k !== key) : [...u, key]))} onPick={setPick}
+                  onLook={() => void run("look", loadClis)} disabled={!!busy} />
+              ) : step === 2 ? (
+                <McpServers mcp={mcp} failed={!!mcpErr} picks={picks} onPicks={setPicks} />
+              ) : (
+                <Ready you={you.trim()} team={team.trim()} agentsCli={agentsRow?.cli.name ?? (clis ? "None found" : "")} imported={imported} claude={claude}
+                  disabled={!!busy} onChange={open} />
+              )}
+            </div>
+          </main>
+        </div>
+        {stepErr && <div className="onb-error"><Notice kind="bad">{stepErr}</Notice></div>}
+        <div className="onb-actions">
+          <button type="button" className="btn" disabled={step === 0 || !!busy} onClick={goBack}>Back</button>
+          {step < 3 ? (
+            <button type="button" className="btn primary" disabled={!!busy} onClick={next}>
+              {busy === "next" ? (step === 1 ? "Saving…" : "Importing…") : "Next"}
+            </button>
+          ) : (
+            <button type="button" className="btn primary" disabled={!!busy} onClick={next}>
+              {claude ? <MessagesSquare className="icon" /> : <ListTodo className="icon" />}
+              {busy === "finish" ? "Opening…" : claude ? "Open the Chief's chat" : "Open the board"}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

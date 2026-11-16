@@ -215,7 +215,8 @@ export function TeamPage() {
     <>
       <div className="topbar">
         <div className="crumbs"><span>Team</span><span className="sep">/</span>
-          <select className="chip" aria-label="Team" value={team.id} onChange={(e) => { setTeamId(e.target.value); go({ page: "team" }); }}>
+          {/* the team picker: a chip on the background, with island under it and its line border (design/islands-settings: Team) */}
+          <select className="chip on-island" aria-label="Team" value={team.id} onChange={(e) => { setTeamId(e.target.value); go({ page: "team" }); }}>
             {(teams ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
           <span className="faint">{people.length} {people.length === 1 ? "person" : "people"}, {agents.length} {agents.length === 1 ? "agent" : "agents"}</span>
