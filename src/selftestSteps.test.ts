@@ -46,6 +46,8 @@ class FakeEl {
     return { left, top, width, height, right: left + width, bottom: top + height, x: left, y: top };
   }
   click() { events.push(`click ${this.css} ${this.textContent} @${Date.now()}`); }
+  focus() { events.push(`focus ${this.css} @${Date.now()}`); }
+  dispatchEvent(e: FakeMouseEvent) { events.push(`${e.type} ${this.css} ${e.init.clientX},${e.init.clientY} @${Date.now()}`); dispatched.push(e); return true; }
   scrollIntoView(options?: unknown) {
     events.push(`scroll ${this.css}`);
     scrolls.push({ css: this.css, options, marginBottom: this.style.scrollMarginBottom ?? "" });
@@ -59,8 +61,14 @@ const fakeDocument: FakeDoc = {
   querySelectorAll: (css) => { if (css.startsWith("!")) throw new Error("not a selector"); return page.filter((e) => e.css === css || css === "*"); },
   querySelector: (css) => page.find((e) => e.css === css) ?? null,
 };
+/** GA-287's hover: step sends mouse events, which node doesn't have. */
+class FakeMouseEvent {
+  constructor(public type: string, public init: { bubbles?: boolean; clientX?: number; clientY?: number; relatedTarget?: unknown }) {}
+}
+let dispatched: FakeMouseEvent[] = [];
 vi.stubGlobal("window", fakeWindow);
 vi.stubGlobal("document", fakeDocument);
+vi.stubGlobal("MouseEvent", FakeMouseEvent);
 vi.stubGlobal("requestAnimationFrame", (cb: (t: number) => void) => setTimeout(() => cb(0), 16));
 
 const { runSteps } = await import("./selftest");
@@ -82,7 +90,7 @@ const at = (e: string) => Number(e.split("@").at(-1));
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date", "performance"] });
   vi.setSystemTime(0);
-  events = []; page = []; scrolls = []; themes.length = 0; term.list = []; term.input = []; invoked.length = 0;
+  events = []; page = []; scrolls = []; dispatched = []; themes.length = 0; term.list = []; term.input = []; invoked.length = 0;
   fakeWindow.location.hash = "";
   fakeDocument.documentElement.dataset = {};
 });
@@ -212,6 +220,44 @@ describe("the steps that set a scene up", () => {
     expect(scrolls).toEqual([]);
     expect(events.map((e) => e.split(" @")[0])).toEqual(["still a-before", "click .a A", "still a-after"]);
     expect(reports[0].errors).toEqual(["scroll:.nothing: nothing to scroll to", "scroll:.hidden: nothing to scroll to"]);
+  });
+});
+
+// GA-287 QA: hover:<selector> and focus:<selector>, so a shot (scripts/shot-cage.sh) can show an @ chip's hover card.
+describe("resting on an element or focusing it", () => {
+  it("hover:<selector> scrolls it into view, then rests the pointer on its first line 8px in: mouseover and mousemove, no click and no still", async () => {
+    const chip = new FakeEl("a.item-chip.kind-task", "KADE-2 - Rate limit", { left: 320, top: 290, width: 310, height: 22 });
+    page = [chip];
+    const reports = await run(["hover:a.item-chip.kind-task", "wait:1000"]);
+    expect(events.map((e) => e.split(" @")[0])).toEqual(["scroll a.item-chip.kind-task", "mouseover a.item-chip.kind-task 328,301", "mousemove a.item-chip.kind-task 328,301"]);
+    expect(scrolls[0].options).toEqual({ block: "nearest", inline: "nearest" });
+    expect(dispatched.map((e) => e.init.bubbles)).toEqual([true, true]);
+    expect(dispatched[0].init).toHaveProperty("relatedTarget"); // document.body: React makes onMouseEnter from a mouseover that comes from outside
+    // the page settles 300 ms after the scroll before the pointer comes
+    expect(at(events[1]!)).toBeGreaterThanOrEqual(300);
+    expect(reports).toEqual([]);
+  });
+
+  it("hover: on a chip narrower than 16px rests in its middle; :text(words) picks the chip", async () => {
+    page = [new FakeEl("a.item-chip", "KADE-2", { left: 10, top: 10, width: 60, height: 20 }), new FakeEl("a.item-chip", "GA-9", { left: 100, top: 40, width: 10, height: 20 })];
+    await run(["hover:a.item-chip:text(GA-9)"]);
+    expect(events.filter((e) => e.startsWith("mouse")).map((e) => e.split(" @")[0])).toEqual(["mouseover a.item-chip 105,50", "mousemove a.item-chip 105,50"]);
+  });
+
+  it("focus:<selector> gives it the keyboard focus after scrolling it into view, with no pointer and no click", async () => {
+    page = [new FakeEl("a.item-chip.kind-project", "Kade portal", { left: 330, top: 350, width: 80, height: 22 })];
+    const reports = await run(["focus:a.item-chip.kind-project"]);
+    expect(events.map((e) => e.split(" @")[0])).toEqual(["scroll a.item-chip.kind-project", "focus a.item-chip.kind-project"]);
+    expect(dispatched).toEqual([]);
+    expect(reports).toEqual([]);
+  });
+
+  it("hover: or focus: with nothing to rest on says so (after waiting 10 s), and goes on", async () => {
+    page = [new FakeEl(".a", "A", { left: 10, top: 10, width: 10, height: 10 })];
+    const reports = await run(["hover:.nothing", "focus:.nothing", "a=.a"]);
+    expect(Date.now()).toBeGreaterThanOrEqual(20000);
+    expect(events.map((e) => e.split(" @")[0])).toEqual(["still a-before", "click .a A", "still a-after"]);
+    expect(reports[0].errors).toEqual(["hover:.nothing: nothing to rest on", "focus:.nothing: nothing to rest on"]);
   });
 });
 

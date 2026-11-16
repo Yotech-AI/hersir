@@ -109,7 +109,7 @@ describe("reading an item for its card", () => {
     ["agent", "a-9", "a deleted agent (null)"],
     ["person", "u-9", "a person not in the list"],
     ["doc", "d-9", "a deleted doc (null)"],
-  ] as const)("%s %s is Not found: %s", async (kind, key) => {
+  ] as const)("%s %s is Not found: %s", async (kind, key, _why) => {
     expect(await loadPreview(kind, key)).toEqual({ kind: "missing" });
   });
 
