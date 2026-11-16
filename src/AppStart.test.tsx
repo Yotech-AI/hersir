@@ -50,7 +50,6 @@ vi.mock("./lib/appearance", () => ({ appearanceOf: (spec: string) => ({ spec }),
 vi.mock("./lib/terminals", () => ({ startTerminals: () => { h.log.push("startTerminals"); } }));
 vi.mock("./lib/drawers", () => ({ DrawerHost: ({ children }: { children: ReactNode }) => children }));
 vi.mock("./components/Sidebar", () => ({ Sidebar: () => null }));
-vi.mock("./components/Band", () => ({ Band: () => null }));
 vi.mock("./components/CommandPalette", () => ({ CommandPalette: () => null }));
 vi.mock("./components/CloseGuard", () => ({ CloseGuard: () => null }));
 vi.mock("./pages/TasksPage", () => ({ TasksPage: function TasksPage() { return null; } }));
@@ -266,7 +265,28 @@ describe("the page area", () => {
     const at = placed(tree);
     expect(at.get("Suspense")).toBe(false);
     expect(at.get("main")).toBe(false);
-    for (const name of ["Band", "Sidebar", "CommandPalette", "CloseGuard"]) expect(at.get(name), name).toBe(false);
+    for (const name of ["Sidebar", "CommandPalette", "CloseGuard"]) expect(at.get(name), name).toBe(false);
+    expect(at.has("Band")).toBe(false); // the mountains went with the islands (GA-290)
+  });
+
+  // GA-290 (design/islands): the window is .app, the sidebar island and <main>; the page is one island in <main>
+  // (.page-island), with the banners and the Suspense of the page in it, so its top bar is the page's own, over it.
+  it.each(["#/board", "#/task/t1", "#/settings"])("draws the page in one island inside <main> on '%s'", async (hash) => {
+    const tree = await start({}, hash);
+    const find = (n: ReactNode, pred: (el: ReactElement<{ className?: string; children?: ReactNode }>) => boolean): ReactElement<{ className?: string; children?: ReactNode }>[] => {
+      if (!n || typeof n !== "object") return [];
+      if (Array.isArray(n)) return n.flatMap((c) => find(c, pred));
+      const el = n as ReactElement<{ className?: string; children?: ReactNode }>;
+      return [...(pred(el) ? [el] : []), ...find(el.props?.children, pred)];
+    };
+    const [app] = find(tree, (el) => el.props?.className === "app");
+    expect(app?.type).toBe("div");
+    const [main] = find(app, (el) => el.type === "main");
+    expect(main?.props.className).toBe("main");
+    const kids = ([] as ReactNode[]).concat(main?.props.children).filter(Boolean) as ReactElement<{ className?: string; children?: ReactNode }>[];
+    expect(kids.map((k) => [k.type, k.props.className])).toEqual([["div", "page-island"]]);
+    expect(find(kids[0], (el) => el.type === Suspense)).toHaveLength(1);
+    expect(find(app, (el) => el.props?.className === "page-island")).toHaveLength(1);
   });
 });
 

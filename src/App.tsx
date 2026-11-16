@@ -4,7 +4,6 @@ import { appInfo, exitApp, getDoc, getTask, getTeam, listRuns, saveDoc, updateTa
 import { href, useRoute, type Route } from "./router";
 import type { AppInfo } from "./types";
 import { Sidebar } from "./components/Sidebar";
-import { Band } from "./components/Band";
 import { CommandPalette } from "./components/CommandPalette";
 import { CloseGuard } from "./components/CloseGuard";
 import { TasksPage } from "./pages/TasksPage";
@@ -236,11 +235,11 @@ export default function App({ onboarding = false }: { onboarding?: boolean }) {
   const newTask = (stateId?: string) => setDrawer({ kind: "task", stateId });
   return (
     <DrawerHost request={drawer} setRequest={setDrawer}>
+      {/* the window (design/islands): the sidebar and the page as islands on the background's gradient */}
       <div className="app">
-        {/* the mountains along the bottom (GA-143), while they are on: the window's lowest layer, under everything after it */}
-        <Band />
         <Sidebar youId={info?.you_id ?? ""} dataLabel={info?.data_label} dataDir={info?.data_dir} route={route} onSearch={() => setPalette(true)} onNewTask={() => newTask()} />
-        <main className="main">
+        {/* the page's top bar sits on the background over the island (app.css: .page-island .topbar) */}
+        <main className="main"><div className="page-island">
           {error && <div className="error-banner">{error}</div>}
           {note && (
             <div className="warn-banner" role="status"><TriangleAlert className="icon" /><span>{note}</span>
@@ -268,7 +267,7 @@ export default function App({ onboarding = false }: { onboarding?: boolean }) {
               : route.page === "project" && route.id ? <ProjectPage key={route.id} id={route.id} />
               : <Placeholder route={route} info={info} />}
           </Suspense>
-        </main>
+        </div></main>
         <CommandPalette open={palette} onClose={() => setPalette(false)} onNewTask={() => newTask()} />
         <CloseGuard />
       </div>

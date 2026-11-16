@@ -2,11 +2,24 @@
    window, without the sidebar: the top bar (the logo, the steps centred on the window, Skip setup), the step body (640
    wide and centred; it scrolls between the top bar and the actions when it is taller) and the actions (Back and Next,
    at one place on every step: 24px above the mountains along the bottom). The onboarding is see-through over the
-   mountains, as the app's main column is; panels, fields and notices keep their own fill. Everything else is
+   mountains; panels, fields and notices keep their own fill. Everything else is
    components.css as it is: .btn, .input, .select, .check, .field, .fields, .panel, .badge, .agent-chip, .empty, .link-btn.
    Only OnboardingPage.tsx loads this file, so a normal start doesn't. */
-.onb { --onb-w: min(calc(640px + 20 * var(--ui-grow, 0px)), calc(100vw - 48px));
-  display: grid; grid-template-rows: var(--size-topbar) minmax(0, 1fr) auto auto; height: 100vh; overflow: hidden; }
+/* Its top bar keeps the 52px it was drawn with (size-topbar is the app's top bar on the islands' background, 44px).
+   isolation: the band's z-index -1 stays inside the onboarding, over the page's background and under the rest. */
+.onb { --onb-w: min(calc(640px + 20 * var(--ui-grow, 0px)), calc(100vw - 48px)); --onb-band: clamp(var(--size-band-min), 14vh, var(--size-band));
+  display: grid; grid-template-rows: calc(52px + var(--ui-box, 0px)) minmax(0, 1fr) auto auto; height: 100vh; overflow: hidden; isolation: isolate; }
+
+/* ---------- the mountains along the bottom (GA-139's design) ---------- */
+/* The app's window has the islands' gradient in their place (design/islands); the onboarding keeps them until the card
+   that draws it in islands. Fixed along the window's bottom edge, the window's width: the lines are currentColor
+   (band-line) on a glow that rises from band-glow at the bottom edge to nothing at the band's top. The artwork keeps its
+   height and is cut at the sides (xMidYMax slice), its lines 1px at every width. It takes no clicks, no focus and no text
+   selection. It goes in a window under 560px high, with more contrast, in forced colours and on paper. */
+.onb > .band { position: fixed; left: 0; right: 0; bottom: 0; z-index: -1; height: var(--onb-band); overflow: hidden; pointer-events: none; user-select: none;
+  color: var(--band-line); background: linear-gradient(transparent, var(--band-glow)); }
+.onb > .band > svg { display: block; width: 100%; height: 100%; color: inherit; }
+@media (max-height: 559px), (prefers-contrast: more), (forced-colors: active), print { .onb > .band { display: none; } }
 
 /* ---------- the top bar ---------- */
 .onb-top { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 16px; padding: 0 20px;
@@ -105,8 +118,7 @@ button.onb-step:disabled { cursor: default; }
 
 /* ---------- the step's error and the actions, under the body ---------- */
 .onb-error { width: var(--onb-w); margin: 0 auto 16px; }
-.onb-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: var(--onb-w); margin: 0 auto 24px;
+/* the actions stay 24px above the mountains (24px from the bottom where the mountains go) */
+.onb-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: var(--onb-w); margin: 0 auto calc(var(--onb-band) + 24px);
   padding-top: 16px; border-top: 1px solid var(--line); }
-/* with the mountains on, the actions stay 24px above them (band.css: they go in a short window and with forced colours) */
-[data-band] .onb-actions { margin-bottom: calc(clamp(var(--size-band-min), 14vh, var(--size-band)) + 24px); }
-@media (max-height: 559px), (prefers-contrast: more), (forced-colors: active), print { [data-band] .onb-actions { margin-bottom: 24px; } }
+@media (max-height: 559px), (prefers-contrast: more), (forced-colors: active), print { .onb-actions { margin-bottom: 24px; } }

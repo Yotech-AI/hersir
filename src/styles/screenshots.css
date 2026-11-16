@@ -61,7 +61,7 @@
 /* ---------- the larger view: over the scrim, 24 from the window's edges ---------- */
 .shot-scrim { z-index: 70; }
 .shot-view { position: fixed; inset: 24px; z-index: 71; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line-2); border-radius: var(--radius-xl);
-  background: var(--overlay); box-shadow: var(--shadow-pop); outline: none; animation: gz-fade .16s ease-out; }
+  background: var(--float); box-shadow: var(--shadow-pop); outline: none; animation: gz-fade .16s ease-out; }
 .sv-head { display: flex; align-items: center; gap: 10px; height: 52px; flex: none; padding: 0 12px 0 20px; border-bottom: 1px solid var(--line); font-size: var(--fs-sm); color: var(--text-2); }
 .sv-count { color: var(--text); font-size: var(--fs); font-weight: 600; font-variant-numeric: tabular-nums; }
 .sv-who { color: var(--text-2); }

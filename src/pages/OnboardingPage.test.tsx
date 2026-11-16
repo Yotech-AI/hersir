@@ -126,10 +126,6 @@ vi.mock("../api", () => Object.fromEntries(["appInfo", "listUsers", "getTeam", "
   return f ? Promise.resolve().then(() => f(...a)) : new Promise(() => {});
 }])));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: (url: string) => { h.opened.push(url); return Promise.resolve(); } }));
-vi.mock("../components/Band", async () => {
-  const { createElement } = await import("react");
-  return { Band: () => createElement("div", { className: "band" }) };
-});
 
 const { createRoot } = await import("react-dom/client");
 const { createElement } = await import("react");
@@ -271,7 +267,8 @@ describe("when the onboarding opens (GA-164: on a new install, step 1)", () => {
     await open();
     const onb = container.firstChild!;
     expect(onb.attrs.get("class")).toBe("onb");
-    expect(onb.firstChild!.attrs.get("class")).toBe("band"); // the mountains, as in the app
+    expect(onb.firstChild!.attrs.get("class")).toBe("band"); // the mountains: the onboarding keeps them until its islands card (GA-290)
+    expect(onb.firstChild!.attrs.get("aria-hidden")).toBe("true");
     expect(byClass("onb-logo")[0].innerHTML).toContain('aria-label="Hersir"');
     const steps = byClass("onb-steps")[0];
     expect(steps.childNodes.map((li) => text(li))).toEqual(["1You and your team", "2Coding CLIs", "3MCP servers", "4Ready"]);

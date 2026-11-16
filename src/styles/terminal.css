@@ -107,6 +107,10 @@
 .term-host { position: absolute; inset: 0; }
 .term-host .xterm { height: 100%; }
 .term-host .xterm .xterm-viewport { background-color: var(--term-bg); }
+/* xterm.js draws its own scrollbar (its colours: lib/terminals.ts, scroll-thumb and scroll-thumb-hover): the islands' thumb,
+   a size-scroll pill 2px from the edge, as the app's own scrollbars (components.css). Its width and place are inline
+   styles, so these need !important. */
+.term-host .xterm .xterm-scrollable-element > .scrollbar.vertical > .slider { left: auto !important; right: 2px; width: var(--size-scroll) !important; border-radius: var(--radius-pill); }
 .term-place .term-away { flex: 1; }
 
 /* ---------- the Terminal page with no terminal (TF0; TF1 adds the tabs, the full top bar and the ended states above) ---------- */
@@ -136,7 +140,7 @@
 /* Hidden while the chat has terminals: a narrow rail on the chat's right edge, the terminal icon and how many there are */
 .chat-term-rail { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); width: calc(36px + var(--ui-box, 0px)); padding: var(--space-3) 0;
   border: 0; border-left: 1px solid var(--line); background: var(--side); color: var(--text-2); font: inherit; cursor: pointer; }
-.chat > .chat-term-rail:hover { background: var(--hover); color: var(--text); } /* over band.css's see-through rail */
+.chat > .chat-term-rail:hover { background: var(--hover); color: var(--text); }
 .chat-term-rail:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .chat-term-rail .icon { width: 16px; height: 16px; }
 .chat-term-rail .n { font-size: var(--fs-xs); font-weight: 600; font-variant-numeric: tabular-nums; }
