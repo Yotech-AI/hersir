@@ -1500,6 +1500,97 @@ const islandsOn = (s: IslandsState, theme: "dark" | "light", bar: number) => {
     && s.bar_in_page && !!s.bar && s.bar.t === gap && s.bar.h === bar && s.bar.l === s.page.l && s.bar.r === s.page.r
     && !!s.bar_look && s.bar_look.bg === "rgba(0, 0, 0, 0)" && s.bar_look.border === "0px 0px 0px 0px";
 };
+/** GA-294 QA (design/islands-pages): the work pages and what floats over them, measured in the window. `ui` is what the
+ *  interface size adds to rows and controls (--ui-box: 0 at the defaults, 5 at the largest). The Inbox's, the task list's,
+ *  Projects' and Clients' toolbars are their island's header: at the island's top, its width, 44 + ui high, no fill and no
+ *  line under it. A card's page is two islands with the page's own island see-through: the card's (the island's fill, 10px
+ *  corners, no border; its header 40 + ui with Card, Changes (and Screenshots) as 28 + ui tabs, the selected one in
+ *  `selected`, no underline) and Properties' (as tall, 6px to its right up to the island's right edge, 320 wide, its header
+ *  40 + ui with Properties and Close properties (])). The New task drawer opened over it sits 6px in from the window's top,
+ *  right and bottom edges, min(1024, window − 48) wide, 10px corners all round, float with a 1px line-2 border all round, a
+ *  shadow and its content kept to the corners, over a scrim covering the window; the sidebar and the page don't move. The
+ *  palette (Ctrl K) and the Filters popover are float with a 1px line-2 border and a shadow. */
+async function islandsPagesState(taskId: string, ui: number) {
+  const W = document.documentElement.clientWidth, H = window.innerHeight, clear = "rgba(0, 0, 0, 0)", none4 = "0px 0px 0px 0px";
+  const rect = (el: Element | null) => { const r = el?.getBoundingClientRect(); return r ? { l: Math.round(r.left), t: Math.round(r.top), r: Math.round(r.right), b: Math.round(r.bottom), w: Math.round(r.width), h: Math.round(r.height) } : null; };
+  const look = (el: Element | null) => { const cs = el ? getComputedStyle(el) : null; return cs ? { bg: cs.backgroundColor,
+    radii: [cs.borderTopLeftRadius, cs.borderTopRightRadius, cs.borderBottomRightRadius, cs.borderBottomLeftRadius].join(" "),
+    border: [cs.borderTopWidth, cs.borderRightWidth, cs.borderBottomWidth, cs.borderLeftWidth].join(" "),
+    colours: [...new Set([cs.borderTopColor, cs.borderRightColor, cs.borderBottomColor, cs.borderLeftColor])], shadow: cs.boxShadow, overflow: cs.overflow } : null; };
+  // the tokens as this theme computes them
+  const probe = document.createElement("div");
+  probe.style.cssText = "position:fixed;left:-60px;top:0;width:10px;height:10px;background:var(--float);border:1px solid var(--line-2);color:var(--selected);outline:1px solid var(--island)";
+  document.body.appendChild(probe);
+  const pcs = getComputedStyle(probe);
+  const tok = { float: pcs.backgroundColor, line2: pcs.borderTopColor, selected: pcs.color, island: pcs.outlineColor };
+  probe.remove();
+  const floats = (l: ReturnType<typeof look>) => !!l && l.bg === tok.float && l.border === "1px 1px 1px 1px" && l.colours.length === 1 && l.colours[0] === tok.line2 && l.shadow !== "none";
+
+  // the toolbars
+  const bars: Record<string, any> = {};
+  for (const hash of ["#/inbox", "#/tasks", "#/projects", "#/clients"]) {
+    if (hash === "#/tasks") await showTasks("list"); else await goTo(hash, ".main > .page-island .toolbar");
+    await sleep(150);
+    const bar = q(".main > .page-island .toolbar"), page = q(".main > .page-island");
+    bars[hash] = { island_bar: !!bar?.classList.contains("island-bar"), bar: rect(bar), page: rect(page), look: look(bar) };
+  }
+  const barOk = (b: any) => !!b && b.island_bar && !!b.bar && !!b.page && b.bar.t === b.page.t && b.bar.l === b.page.l && b.bar.r === b.page.r && b.bar.h === 44 + ui
+    && b.look.bg === clear && b.look.border === none4;
+  const barsOk = Object.values(bars).every(barOk);
+
+  // a card's page
+  await goTo(`#/task/${taskId}`, ".task-page > .card-island > .island-head .tab");
+  if (!q(".task-page > .props")) { q<HTMLElement>('.topbar [aria-label="Show properties"]')?.click(); await waitFor(() => q(".task-page > .props"), 2000); }
+  await sleep(200);
+  const page = q(".main > .page-island"), card = q(".task-page > .card-island"), head = q(".task-page > .card-island > .island-head"), props = q(".task-page > .props"), phead = q(".task-page > .props > .props-head");
+  const tabs = [...document.querySelectorAll(".card-island > .island-head .task-tabs .tab")];
+  const cardPage = { page: rect(page), page_look: look(page), card: rect(card), card_look: look(card), head: rect(head), props: rect(props), props_look: look(props), props_head: rect(phead),
+    props_title: (phead?.firstChild?.textContent ?? "").trim(), close: phead?.querySelector("button")?.getAttribute("title") ?? null,
+    tabs: tabs.map((t) => { const cs = getComputedStyle(t); return { text: textOf(t), selected: t.getAttribute("aria-selected") === "true", h: Math.round(t.getBoundingClientRect().height), bg: cs.backgroundColor, under: cs.borderBottomWidth }; }) };
+  const c = cardPage;
+  const cardOk = !!c.page && !!c.card && !!c.props && !!c.head && !!c.props_head && c.page_look?.bg === clear
+    && c.card.t === c.page.t && c.card.l === c.page.l && c.card.b === c.page.b && c.props.r === c.page.r && c.props.t === c.card.t && c.props.b === c.card.b
+    && c.props.w === 320 && c.props.l === c.card.r + 6
+    && c.card_look?.bg === tok.island && c.card_look.radii === "10px 10px 10px 10px" && c.card_look.border === none4
+    && c.props_look?.bg === tok.island && c.props_look.radii === "10px 10px 10px 10px" && c.props_look.border === none4
+    && c.head.t === c.card.t && c.head.h === 40 + ui && c.props_head.t === c.props.t && c.props_head.h === 40 + ui && c.props_title === "Properties" && c.close === "Close properties (])"
+    && c.tabs.length >= 2 && c.tabs[0]?.text === "Card" && (c.tabs[1]?.text ?? "").startsWith("Changes")
+    && c.tabs.every((t) => t.h === 28 + ui && t.under === "0px" && (t.selected ? t.bg === tok.selected : t.bg === clear)) && c.tabs.filter((t) => t.selected).length === 1 && !!c.tabs[0]?.selected;
+
+  // the New task drawer over it
+  const before = { side: rect(q(".side")), page: rect(q(".main > .page-island")), card: rect(q(".task-page > .card-island")) };
+  document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "n", code: "KeyN", bubbles: true, cancelable: true }));
+  const drawerEl = await waitFor(() => q(".drawer"), 4000);
+  await sleep(450); // its slide-in (.2s) is over
+  const scrimEl = q(".scrim");
+  const drawer = { label: drawerEl?.getAttribute("aria-label") ?? null, rect: rect(drawerEl), look: look(drawerEl), scrim: rect(scrimEl), scrim_bg: scrimEl ? getComputedStyle(scrimEl).backgroundColor : null,
+    side: rect(q(".side")), page: rect(q(".main > .page-island")), card: rect(q(".task-page > .card-island")), W, H };
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true, cancelable: true }));
+  const drawerClosed = !!(await waitFor(() => (q(".drawer") ? null : true), 3000));
+  const d = drawer, same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+  const drawerOk = drawerClosed && d.label === "New task" && !!d.rect && d.rect.t === 6 && d.rect.r === W - 6 && d.rect.b === H - 6 && d.rect.w === Math.min(1024, W - 48)
+    && floats(d.look) && d.look?.radii === "10px 10px 10px 10px" && d.look.overflow === "hidden"
+    && !!d.scrim && d.scrim.l === 0 && d.scrim.t === 0 && d.scrim.r === W && d.scrim.b === H && d.scrim_bg !== clear
+    && same(d.side, before.side) && same(d.page, before.page) && same(d.card, before.card);
+
+  // the palette and a popover
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", code: "KeyK", ctrlKey: true, bubbles: true, cancelable: true }));
+  const pal = await waitFor(() => q(".pal"), 3000);
+  const palette = { look: look(pal), radii: pal ? getComputedStyle(pal).borderTopLeftRadius : null };
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", code: "KeyK", ctrlKey: true, bubbles: true, cancelable: true }));
+  const palClosed = !!(await waitFor(() => (q(".pal") ? null : true), 2000)) || (q<HTMLElement>(".pal-backdrop")?.click(), !!(await waitFor(() => (q(".pal") ? null : true), 2000)));
+  await goTo("#/inbox", ".main > .page-island .toolbar");
+  const filtersBtn = [...document.querySelectorAll<HTMLElement>(".toolbar .pop-wrap > span")].find((s) => textOf(s).startsWith("Filters"));
+  filtersBtn?.click();
+  const pop = await waitFor(() => q('.toolbar .pop[aria-label="Filters"]'), 2000);
+  const btnRect = rect(filtersBtn?.parentElement ?? null), popRect = rect(pop); // under its .pop-wrap, aligned right
+  const popover = { look: look(pop), under: popRect && btnRect ? popRect.t - btnRect.b : null, right: popRect && btnRect ? popRect.r - btnRect.r : null };
+  filtersBtn?.click();
+  const popClosed = !!(await waitFor(() => (q('.toolbar .pop[aria-label="Filters"]') ? null : true), 2000));
+  const floatsOk = floats(palette.look) && palette.radii === "14px" && palClosed && floats(popover.look) && popover.look?.radii === "10px 10px 10px 10px" && popover.under === 6 && popover.right === 0 && popClosed;
+
+  return { ok: barsOk && cardOk && drawerOk && floatsOk, bars_ok: barsOk, card_ok: cardOk, drawer_ok: drawerOk, floats_ok: floatsOk, ui, tok, bars, card_page: cardPage, drawer, palette, popover };
+}
 /** Elements wider than their box (they would scroll sideways or be cut off at the side); the page itself first. */
 function sideways(sels: string[]): string[] {
   const out: string[] = [];
@@ -1881,6 +1972,10 @@ export async function appearanceProbe(phase: "set" | "kept") {
   }
   if (appEl) { appEl.style.width = ""; appEl.style.height = ""; }
   await sleep(200);
+  // GA-294 QA: the work pages in islands and what floats, at the defaults in dark (islandsPagesState)
+  const tasks294 = await listTasks();
+  const task294 = tasks294.find((t) => t.identifier === "KADE-1") ?? tasks294[0];
+  const pages294 = task294 ? await islandsPagesState(task294.id, 0) : null;
   const barOk = (b: any) => !!b && b.t === 6 && b.h === 44 && b.l === 0 && b.r === 0 && b.page_t === 50 && b.bg === "rgba(0, 0, 0, 0)" && b.border === "0px 0px 0px 0px" && b.fills.length === 0;
   const fitsOk = (b: any) => barOk(b) && b.app_b === 600 && b.page_b === 594 && b.bar_over <= 1 && b.page_over.every((n: number) => n <= 1) && b.side_over.every((n: number) => n <= 1) && b.outside.length === 0;
   const barsOk = BAR_PAGES.every((h) => barOk(bars[h]));
@@ -1973,6 +2068,8 @@ export async function appearanceProbe(phase: "set" | "kept") {
   const light = { theme: document.documentElement.dataset.theme, bg: getComputedStyle(document.documentElement).backgroundColor, kept: localStorage.getItem("gizai-theme"),
     islands: islandsState() };
   const lightPages = await pages();
+  // GA-294 QA: the same in light, at the largest sizes (--ui-box 5px)
+  const pages294Light = task294 ? await islandsPagesState(task294.id, 5) : null;
 
   const growsOk = (p: Record<string, any>) => {
     const s = p.tasks?.small ?? {};
@@ -2009,12 +2106,12 @@ export async function appearanceProbe(phase: "set" | "kept") {
   await sleep(1500); // WebKit writes localStorage to disk a moment later
 
   const ok = tabOk && switchingOk && controlsOk && defaultsOk && choicesOk && bigOk && growsOk(dark) && growsOk(lightPages) && editorsOk && lightOk && compactOk && fontsOk
-    && islandsOk && bandLeftOk && barsOk && smallOk && sidebar.ok;
-  return { ok, phase, sidebar_ok: sidebar.ok, sidebar, tab_ok: tabOk, switching_ok: switchingOk, controls_ok: controlsOk, defaults_ok: defaultsOk, choices_ok: choicesOk, big_ok: bigOk, dark_ok: growsOk(dark),
+    && islandsOk && bandLeftOk && barsOk && smallOk && sidebar.ok && !!pages294?.ok && !!pages294Light?.ok;
+  return { ok, phase, sidebar_ok: sidebar.ok, sidebar, pages294_ok: !!pages294?.ok, pages294_light_ok: !!pages294Light?.ok, tab_ok: tabOk, switching_ok: switchingOk, controls_ok: controlsOk, defaults_ok: defaultsOk, choices_ok: choicesOk, big_ok: bigOk, dark_ok: growsOk(dark),
     light_pages_ok: growsOk(lightPages), editors_ok: editorsOk, light_ok: lightOk, compact_ok: compactOk, fonts_ok: fontsOk, islands_ok: islandsOk, band_left_ok: bandLeftOk, bars_ok: barsOk, small_ok: smallOk,
     bars_failing: BAR_PAGES.filter((h) => !barOk(bars[h])), small_failing: BAR_PAGES.filter((h) => !fitsOk(small[h])), small_known: [...SMALL_KNOWN],
     tabs, switching, controls, defaults, choices, loads, small0, row0, col0, big, dark, light, light_pages: lightPages, editors, compact, fonts, islands, bars, small,
-    found: { task: task?.identifier ?? null, doc: !!docId, chat: !!chat } };
+    pages294, pages294_light: pages294Light, found: { task: task?.identifier ?? null, doc: !!docId, chat: !!chat } };
 }
 
 /** The next start: what the "set" phase left is still there, then Reset to defaults brings everything back. */
