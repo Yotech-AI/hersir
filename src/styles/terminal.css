@@ -286,3 +286,41 @@
 .chat-card-foot .pop .opt svg:first-child { flex: none; }
 .chat-card-foot.writing .md-surface { max-height: 40vh; overflow-y: auto; }
 .chat-card-foot .hint { color: var(--text-3); white-space: nowrap; }
+
+/* An Editor tab that isn't saved keeps its close (the dot until hovered, as the Editor's tabs) */
+.chat-side .island-tabs > .ed-tab.unsaved .x { display: grid; }
+.chat-side .island-tabs > .ed-tab .dir { font-size: var(--fs-xs); color: var(--text-3); }
+
+/* The Board tab (GA-298; design/islands-chat → Board, frame 3): a row with the project's dot and name, "the chat's
+   project" and the legend on the right; then the compact board (components.css .board.compact), which fills the island and
+   scrolls sideways, each column down. */
+.chat-board { position: relative; display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+.chat-board-head { display: flex; flex: none; align-items: center; gap: 8px; min-width: 0; padding: 2px 12px 8px 14px; }
+.chat-board-head .dot { flex: none; width: 8px; height: 8px; border-radius: 50%; }
+.chat-board-head .t-label { min-width: 0; overflow: hidden; color: var(--text); font-size: 12.5px; font-weight: 600; line-height: 18px; text-overflow: ellipsis; white-space: nowrap; }
+.chat-board-head .faint-2 { flex: none; color: var(--text-2); white-space: nowrap; }
+.chat-board-head .legend { display: inline-flex; flex: none; align-items: center; gap: 6px; margin-left: auto; color: var(--text-2); white-space: nowrap; }
+.chat-board-head .legend .mark { flex: none; width: 12px; height: 12px; border: 1.5px solid var(--accent); border-radius: 3px; }
+.chat-board > .board { flex: 1; min-height: 0; }
+.chat-board-empty { padding: var(--space-6) var(--space-4); }
+.chat-board > .ed-bar.file { flex: none; border-width: 1px 0 0; border-radius: 0; cursor: default; }
+
+/* The Editor tab (GA-298; design/islands-chat → Editor, frame 4): a row with the path from its folder in mono and Save;
+   a bar when it changed on disk or couldn't save; the code on the island, the line it was opened at marked (a band of
+   accent-soft the code's full width, a 2px accent bar on its left edge, its number in text); the status bar at its foot. */
+.chat-ed { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+.chat-ed-bar { display: flex; flex: none; align-items: center; gap: 8px; min-height: 32px; padding: 0 8px 4px 14px; }
+.chat-ed-bar .path { flex: 1; min-width: 0; overflow: hidden; color: var(--text-2); font-family: var(--font-mono); font-size: 12px; line-height: 16px;
+  text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+.chat-ed-bar .path > bdi { direction: ltr; }
+.chat-ed-bar .ro { display: inline-flex; flex: none; align-items: center; gap: 4px; color: var(--text-3); font-size: var(--fs-xs); }
+.chat-ed-bar .ro .icon { width: 12px; height: 12px; }
+.chat-ed > .ed-bar.file { flex: none; border-width: 1px 0; border-radius: 0; cursor: default; }
+.chat-ed-code { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.chat-ed-code > .ed-host { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.chat-ed .cm-editor { background-color: var(--island); }
+.chat-ed .cm-editor .cm-gutters { background-color: var(--island); }
+.chat-ed .cm-editor .cm-line.cm-marked { background-color: var(--accent-soft); }
+.chat-ed .cm-editor .cm-gutterElement.cm-marked-gutter { background-color: var(--accent-soft); color: var(--text); }
+.chat-ed .cm-editor .cm-lineNumbers .cm-gutterElement.cm-marked-gutter { box-shadow: inset 2px 0 0 var(--accent); }
+.chat-ed-status { padding-left: var(--space-2); }

@@ -1,7 +1,11 @@
 // The Chief Chat's side island and its tool strip (GA-296; design/islands-chat/README.md): what each chat has open beside
 // it, kept while Hersir runs (the Chat page unmounts when you leave it).
-// - A tab has a kind (Terminal, Editor, Board, Card), and an id within its kind (a terminal's id, a card's id in upper case
-//   since GA-297; a file's or a board's come with card 9). Its icon and title come from its kind (components/chat/ChatSide.tsx).
+// - A tab has a kind (Terminal, Editor, Board, Card), and an id within its kind: a terminal's id; a card's id in upper case
+//   (GA-297); since GA-298 a file's folder and path (editorTabId), and BOARD_TAB for the chat's one Board tab. Its icon
+//   and title come from its kind (components/chat/ChatSide.tsx).
+// - The chat's cards (GA-298): the cards the chat is about (ChatThread.tasks, set by the Chat page) and the cards its
+//   answers link (set by the conversation). The Board tab shows their project's board and marks them; an answer's files
+//   are looked for in their project's folder first.
 // - Tabs belong to the chat they were opened in, in the order they opened (a new one goes at the end). Another chat shows
 //   its own; a chat's terminals keep running while another chat is shown. New chat (no chat yet) has its own until the
 //   first message makes the chat, which takes them (adoptNewChat).
@@ -200,6 +204,20 @@ export function openCardTab(identifier: string) {
   const id = cardTabId(identifier);
   if (id) openSideTab({ kind: "card", id });
 }
+/** The Board tab's id: a chat has one, the board of the chat's project (else the team's), following its cards. */
+export const BOARD_TAB = "board";
+/** Opens the chat's Board tab, or shows it (Open board, Board in the menus, Alt+3 with none open). */
+export const openBoardTab = () => openSideTab({ kind: "board", id: BOARD_TAB });
+/** An Editor tab's id: its folder (an EditorFolder id, a canonical path, which never holds //) and the file's path in it. */
+export const editorTabId = (folder: string, path: string) => `${folder}//${path}`;
+/** An Editor tab's folder and path, from its id. */
+export function editorTabOf(id: string): { folder: string; path: string } {
+  const at = id.indexOf("//");
+  return at < 0 ? { folder: "", path: id } : { folder: id.slice(0, at), path: id.slice(at + 2) };
+}
+/** Whether any chat has the tab open (an Editor tab's file stays kept while one does). */
+export const tabOpenAnywhere = (key: string) => [...chats.values()].some((s) => s.tabs.some((t) => tabKey(t) === key));
+
 /** A tab picked (a click, ← and →, Ctrl+PgDn and Ctrl+PgUp): it shows, with the focus. */
 export function showSideTab(key: string) {
   const side = sideOf(chat);
@@ -239,6 +257,36 @@ const subscribe = (f: () => void) => {
 /** The chat on show, its side island and the focus count (the same snapshot on a server render, as tests do). */
 export function useChatSide(): SideSnapshot {
   return useSyncExternalStore(subscribe, () => snap, () => snap);
+}
+
+// ---------- the chat's cards (GA-298) ----------
+
+/** A chat's cards: those it is about (ChatThread.tasks) and those its answers link, each in upper case, in order. */
+export type ChatCards = { about: string[]; named: string[] };
+const NO_CARDS: ChatCards = { about: [], named: [] };
+const cards = new Map<string, ChatCards>();
+const cardSubs = new Set<() => void>();
+/** The chat's cards of one part (about: the Chat page's, from ChatThread.tasks; named: the conversation's, from its answers). */
+export function setChatCards(key: string, part: keyof ChatCards, ids: readonly string[]) {
+  const was = cards.get(key) ?? NO_CARDS;
+  const list = [...new Set(ids.map(cardTabId).filter(Boolean))];
+  if (list.join(" ") === was[part].join(" ")) return;
+  cards.set(key, { ...was, [part]: list });
+  cardSubs.forEach((f) => f());
+}
+/** The chat's cards (the chat on show by default). */
+export const chatCardsNow = (key = chat): ChatCards => cards.get(key) ?? NO_CARDS;
+/** Every card of the chat once: those it is about first, then those its answers link. */
+export const allChatCards = (c: ChatCards): string[] => [...new Set([...c.about, ...c.named])];
+const subscribeCards = (f: () => void) => {
+  cardSubs.add(f);
+  subs.add(f);
+  return () => { cardSubs.delete(f); subs.delete(f); };
+};
+const cardsSnap = () => chatCardsNow();
+/** The cards of the chat on show. */
+export function useChatCards(): ChatCards {
+  return useSyncExternalStore(subscribeCards, cardsSnap, cardsSnap);
 }
 
 /** What the Chat page has right of the conversation: the island with the strip, the strip alone (the island hidden), or

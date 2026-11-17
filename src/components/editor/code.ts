@@ -5,10 +5,10 @@
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { bracketMatching, foldGutter, foldKeymap, indentOnInput, indentUnit } from "@codemirror/language";
 import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/search";
-import { Compartment, EditorState, StateEffect, StateField, Transaction, type Extension } from "@codemirror/state";
+import { Compartment, EditorState, RangeSet, StateEffect, StateField, Transaction, type Extension } from "@codemirror/state";
 import {
-  Decoration, EditorView, crosshairCursor, drawSelection, dropCursor, highlightActiveLine, highlightActiveLineGutter, highlightSpecialChars,
-  keymap, lineNumbers, rectangularSelection, type DecorationSet, type ViewUpdate,
+  Decoration, EditorView, GutterMarker, crosshairCursor, drawSelection, dropCursor, gutterLineClass, highlightActiveLine, highlightActiveLineGutter,
+  highlightSpecialChars, keymap, lineNumbers, rectangularSelection, type DecorationSet, type ViewUpdate,
 } from "@codemirror/view";
 import { codeTheme } from "../../lib/codeTheme";
 import { loadLanguage } from "../../lib/codeLanguages";
@@ -114,4 +114,40 @@ export function goToLine(view: EditorView, line: number, column = 1) {
   view.dispatch({ selection: { anchor: at }, effects: [EditorView.scrollIntoView(at, { y: "center" }), flash.of(l.number)] });
   view.focus();
   setTimeout(() => { try { view.dispatch({ effects: flash.of(null) }); } catch { /* the view is gone */ } }, 1500);
+}
+
+// ---------- the marked line (GA-298: the Chat's Editor tab, design/islands-chat → Editor) ----------
+// The line a file was opened at stays marked until another line is: a band of accent-soft the code's full width, with a
+// 2px accent bar on its left edge and its number in text (the gutter's class; terminal.css .chat-ed).
+
+/** Marks the line at this position (its start), or none. */
+export const markLine = StateEffect.define<number | null>();
+const markedField = StateField.define<number | null>({
+  create: () => null,
+  update(at, tr) {
+    for (const e of tr.effects) if (e.is(markLine)) return e.value === null ? null : Math.min(e.value, tr.state.doc.length);
+    return at === null || !tr.docChanged ? at : tr.changes.mapPos(at, -1);
+  },
+});
+class MarkedNumber extends GutterMarker { elementClass = "cm-marked-gutter"; }
+const markedNumber = new MarkedNumber();
+/** The marked line's band and its number, for a state made by codeState (added with StateEffect.appendConfig). */
+export const markedLine: Extension = [
+  markedField,
+  EditorView.decorations.compute([markedField], (s) => {
+    const at = s.field(markedField);
+    return at === null ? Decoration.none : Decoration.set([Decoration.line({ class: "cm-marked" }).range(s.doc.lineAt(at).from)]);
+  }),
+  gutterLineClass.compute([markedField], (s) => {
+    const at = s.field(markedField);
+    return at === null ? RangeSet.empty : RangeSet.of([markedNumber.range(s.doc.lineAt(at).from)]);
+  }),
+];
+
+/** Marks `line` (from 1, at most the last), puts the caret at its start and scrolls it to a third from the top. */
+export function goToMarkedLine(view: EditorView, line: number) {
+  const doc = view.state.doc;
+  const l = doc.line(Math.max(1, Math.min(line, doc.lines)));
+  const third = Math.round((view.scrollDOM.clientHeight || 300) / 3);
+  view.dispatch({ selection: { anchor: l.from }, effects: [markLine.of(l.from), EditorView.scrollIntoView(l.from, { y: "start", yMargin: third })] });
 }

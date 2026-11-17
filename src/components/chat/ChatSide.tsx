@@ -1,17 +1,19 @@
 // The Chief Chat's side island and its tool strip (GA-296; design/islands-chat/README.md), in place of GA-278's terminal
 // panel and its rail. What is open beside a chat is src/lib/chatSide.ts's, kept per chat while Hersir runs.
-// - The side island, right of the conversation: a header with the chat's tabs (each kind's icon and title; Terminal and,
-//   since GA-297, Card tabs (ChatCard.tsx); card 9 adds Board and Editor), + (a menu: New terminal), Own page and Hide;
-//   then the shown tab.
+// - The side island, right of the conversation: a header with the chat's tabs (each kind's icon and title; Terminal,
+//   Card (GA-297, ChatCard.tsx), Board and Editor (GA-298, ChatBoard.tsx and ChatEditor.tsx)), + (a menu: New terminal,
+//   Open a file…, Board), Own page and Hide; then the shown tab.
 //   Its left edge, the gap to the conversation, is the drag handle; its width is kept on this computer (gizai.chat.panel).
 // - The tool strip, on the background along the window's right edge, while the chat has anything open: an icon per kind
 //   open, with its count, the shown kind's selected. A click shows that kind's last tab, or hides the island while that
 //   kind is on show; a right click (or the context menu key) opens a menu: Show or Hide, and Close all.
-// - The top bar's Open, before New chat: a menu with New terminal (Open a file and Board come with card 9).
+// - The top bar's Open, before New chat: a menu with New terminal, Open a file… (Go to file over the chat project's folder,
+//   else the last Editor tab's, else the folder picker first) and Board, the same as the header's +.
 // - Keys on the Chat page: Ctrl+` and Alt+1 show or hide Terminal, Alt+2, Alt+3 and Alt+4 Editor, Board and Card (Option on
-//   macOS; nothing with none of that kind open); Ctrl+Shift+` starts a terminal in the shown terminal's folder (the folder
-//   picker with none); in the island, Ctrl+PgDn and Ctrl+PgUp switch tabs, and Ctrl+W (Cmd+W) closes a shown Card tab. In a
-//   terminal only Ctrl+` and Ctrl+Shift+` are Hersir's: Alt with a digit reaches the shell.
+//   macOS); with none of that kind open Alt+2 opens Open a file…, Alt+3 the Board tab and Alt+4 nothing; Ctrl+Shift+` starts
+//   a terminal in the shown terminal's folder (the folder picker with none); in the island, Ctrl+PgDn and Ctrl+PgUp switch
+//   tabs, and Ctrl+W (Cmd+W) closes the shown tab but a terminal (an Editor tab with changes asks first). In a terminal only
+//   Ctrl+` and Ctrl+Shift+` are Hersir's: Alt with a digit reaches the shell.
 // The page itself only follows whether the island or the strip shows (useChatSideLayout), so the conversation isn't drawn
 // again when a terminal changes or the island is dragged.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -31,16 +33,26 @@ import {
   CHAT_FIRST_SHARE, CHAT_SHARE_STEP, chatListWidth, chatShareFor, clampChatPanel, keepChatShare, listFits, loadChatShare, openChatTerminal,
 } from "../../lib/chatTerminal";
 import {
-  closeAllQuestion, closeSideTabs, idOf, kindKey, kindOf, kindsOpen, lastOfKind, shownKind, showChat, showSide, showSideTab, sideKindKey,
-  stripLabel, stripMenuHead, stripTitle, tabKey, toggleSideKind, hideSide, useChatSide, useSideShows, type ChatSide, type SideKind,
+  closeAllQuestion, closeSideTabs, editorTabOf, idOf, kindKey, kindOf, kindsOpen, lastOfKind, openBoardTab, shownKind, showChat, showSide, showSideTab,
+  sideKindKey, stripLabel, stripMenuHead, stripTitle, tabKey, toggleSideKind, hideSide, useChatSide, useSideShows, type ChatSide, type SideKind,
 } from "../../lib/chatSide";
+import { nameOf, tabNames } from "../../lib/editor";
+import type { EditorFolder } from "../../types";
 import { ContextMenu, type MenuItem } from "../editor/Menus";
 import { Handle, TermTab, type HandleEdge } from "../editor/TerminalPanel";
+import { FolderPicker } from "../editor/FolderPicker";
+import { GoToFile } from "../editor/GoToFile";
 import { ChatTerminalBody, OpenTerminalPicker, useStartOff } from "./ChatTerminal";
 import { CardTab, ChatCardBody } from "./ChatCard";
+import { BoardTab, boardName, boardOwnPage, ChatBoardBody } from "./ChatBoard";
+import { ChatEditorBody, closeEditorTabs, EditorCloseAsk, EditorTab, editorOwnPage, openEditorTab } from "./ChatEditor";
+import { useEditorFolders } from "./OpenInTerminal";
+import { useChatProject } from "./useChatProject";
 
 const KIND_ICON: Record<SideKind, LucideIcon> = { terminal: TerminalIcon, editor: FileCode, board: Columns3, card: SquareKanban };
 const why = (e: unknown) => String(e).replace(/^Error:\s*/, "");
+/** Under a button, for what opens from it (a menu, a picker). */
+const under = (el: Element | null | undefined) => { const r = el?.getBoundingClientRect(); return r ? { x: r.left, y: r.bottom + 6 } : null; };
 
 /** The island's left edge: its width is a share of the room right of the chat list (the conversation and the island), at
  *  least 360px of island and 400px of conversation. */
@@ -123,13 +135,60 @@ function newTerminal(s: TerminalSession | null, off: string | null) {
   });
 }
 
-/** The items of Open's menu and of +'s: New terminal, and New terminal in… (the picker) while it goes to a folder by itself. */
-function openItems(s: TerminalSession | null, off: string | null, pick: () => void): MenuItem[] {
+/** The items of Open's menu and of +'s: New terminal, and New terminal in… (the picker) while it goes to a folder by itself;
+ *  Open a file… and Board (GA-298). `under`: where the folder picker of Open a file… shows when it needs one. */
+function openItems(s: TerminalSession | null, off: string | null, pick: () => void, under: () => { x: number; y: number } | null): MenuItem[] {
   const name = s ? folderNameOf(s) : null;
   const items: MenuItem[] = [{ label: "New terminal", kbd: "Ctrl+Shift+`", disabled: !!off, title: off ?? (name ? `New terminal in ${name}` : "New terminal in a folder you pick"),
     run: () => newTerminal(s, off) }];
   if (s) items.push({ label: "New terminal in…", title: "New terminal in a folder you pick", run: pick });
+  items.push(
+    { label: "Open a file…", kbd: kindKey("editor"), title: "Go to a file in the chat's project and open it beside the chat", run: () => openAFile(under()) },
+    { label: "Board", kbd: kindKey("board"), title: "The board of the chat's project beside the chat", run: openBoardTab },
+  );
   return items;
+}
+
+// ---------- Open a file… (+, Open, Alt+2 with no Editor tab) ----------
+
+/** Open a file… asked (`at`: where the folder picker shows when it needs one); `n` counts the asks. */
+let fileAsk: { n: number; at: { x: number; y: number } | null } | null = null;
+const fileSubs = new Set<() => void>();
+const subFile = (f: () => void) => { fileSubs.add(f); return () => { fileSubs.delete(f); }; };
+function openAFile(at: { x: number; y: number } | null) {
+  fileAsk = { n: (fileAsk?.n ?? 0) + 1, at };
+  fileSubs.forEach((f) => f());
+}
+
+/** Open a file…: the Editor's Go to file box over the chat project's folder, else over the last shown Editor tab's folder,
+ *  else the folder picker first ("Open a file in"). The file opens in an Editor tab; one in a card's worktree or in a folder
+ *  an agent works in opens read-only. `you`: for the picker. */
+function OpenAFile({ side, you }: { side: ChatSide; you: string }) {
+  const asked = useSyncExternalStore(subFile, () => fileAsk, () => fileAsk);
+  const folders = useEditorFolders(!!asked);
+  const { project } = useChatProject();
+  const [goto, setGoto] = useState<EditorFolder | null>(null);
+  const [picker, setPicker] = useState<{ x: number; y: number } | null>(null);
+  const done = useRef(0);
+  useEffect(() => {
+    if (!asked || asked.n === done.current || !folders || project === undefined) return;
+    done.current = asked.n;
+    const last = lastOfKind(side, "editor");
+    const lastFolder = last ? editorTabOf(idOf(last)).folder : null;
+    const f = (project && folders.find((x) => x.kind === "project" && x.projectId === project.id))
+      || (lastFolder ? folders.find((x) => x.id === lastFolder) : undefined) || null;
+    if (f) setGoto(f);
+    else setPicker(asked.at ?? { x: Math.max(8, window.innerWidth - 420), y: 56 });
+  }, [asked, folders, project]); // eslint-disable-line react-hooks/exhaustive-deps
+  const lock = (f: EditorFolder) => f.kind === "card" || f.readOnly;
+  return (
+    <>
+      {picker && <FolderPicker at={picker} title="Open a file in" you={you} onClose={() => setPicker(null)}
+        onPick={(f: EditorFolder) => { setPicker(null); setGoto(f); }} />}
+      {goto && <GoToFile folder={goto.id} name={goto.name} onClose={() => setGoto(null)}
+        onOpen={(p) => openEditorTab(goto.id, p, null, lock(goto))} />}
+    </>
+  );
 }
 
 // ---------- the island and the strip ----------
@@ -171,22 +230,28 @@ export function ChatSide({ youId }: { youId: string }) {
         e.preventDefault();
         newTerminal(fresh.s, fresh.off);
       } else {
-        // Alt+1 to Alt+4; in a terminal they reach the shell
+        // Alt+1 to Alt+4; in a terminal they reach the shell. With none of that kind open, Alt+2 opens Open a file… and
+        // Alt+3 the Board tab.
         const kind = sideKindKey(e);
         if (!kind || (e.target instanceof Element && e.target.closest(".xterm"))) return;
         e.preventDefault();
-        toggle(kind);
+        if (side.tabs.some((t) => t.kind === kind)) toggle(kind);
+        else if (kind === "editor") openAFile(null);
+        else if (kind === "board") openBoardTab();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  if (!side.tabs.length) return null;
+  // Open a file… and the Editor's question stay in their places with or without tabs (they float: no grid cell of .chat)
+  const any = side.tabs.length > 0;
   return (
     <>
-      {shown && <SideIsland islandRef={islandRef} side={side} all={all} focus={focus} focusNext={focus > since.current.focus} fresh={fresh} you={youId} hide={hide} />}
-      <ToolStrip side={side} all={all} toggle={toggle} />
+      {any && shown && <SideIsland islandRef={islandRef} side={side} all={all} focus={focus} focusNext={focus > since.current.focus} fresh={fresh} you={youId} hide={hide} />}
+      {any && <ToolStrip side={side} all={all} toggle={toggle} />}
+      <OpenAFile side={side} you={youId} />
+      <EditorCloseAsk />
     </>
   );
 }
@@ -210,6 +275,15 @@ function SideIsland({ islandRef, side, all, focus, focusNext, fresh, you, hide }
   const termIds = terms.map((s) => s.id);
   const shownTerm = kindOf(current) === "terminal" ? terms.find((s) => s.id === idOf(current)) ?? null : null;
   const shownCard = kindOf(current) === "card" ? idOf(current) : null;
+  const shownFile = kindOf(current) === "editor" ? idOf(current) : null;
+  const shownBoard = kindOf(current) === "board";
+  const { project } = useChatProject();
+  // the Editor tabs' names: two with the same name get their folder, as the Editor's tabs do
+  const fileNames = useMemo(() => {
+    const ids = side.tabs.filter((t) => t.kind === "editor").map((t) => t.id);
+    const names = tabNames(ids.map((id) => editorTabOf(id).path));
+    return new Map(ids.map((id) => [id, names.get(editorTabOf(id).path) ?? { name: nameOf(editorTabOf(id).path), dir: null }]));
+  }, [side.tabs]);
 
   // the grid's third column (app.css .chat.has-side) is as wide as the share says; set here, so a drag draws the island and
   // the conversation's column again, not the page
@@ -243,14 +317,22 @@ function SideIsland({ islandRef, side, all, focus, focusNext, fresh, you, hide }
     const r = el?.getBoundingClientRect();
     setAsking({ s: t, x: r?.left ?? 200, y: (r?.bottom ?? 100) + 4 });
   };
-  const name = shownTerm?.name ?? idOf(current);
-  /** Own page: the shown tab on its own page (a terminal on the Terminal page, a card on its page); its tab closes here. */
+  const name = shownTerm?.name ?? (shownFile ? fileNames.get(shownFile)?.name ?? nameOf(editorTabOf(shownFile).path) : shownBoard ? boardName(project) : idOf(current));
+  /** Where a question about closing the shown tab shows: under its tab. */
+  const underTab = () => {
+    const r = islandRef.current?.querySelector(`[data-tab="${CSS.escape(current)}"]`)?.getBoundingClientRect();
+    return r ? { x: r.left, y: r.bottom + 4 } : null;
+  };
+  /** Own page: the shown tab on its own page (a terminal on the Terminal page, a card on its page, the board on the Tasks
+   *  page, a file on the Editor page at its line); its tab closes here. */
   const ownPage = () => {
     if (shownCard) {
       closeSideTabs([current]);
       openItem("task", shownCard).catch(() => {});
       return;
     }
+    if (shownBoard) { boardOwnPage(project); return; }
+    if (shownFile) { editorOwnPage(shownFile, underTab()); return; }
     if (!shownTerm) return;
     showIn(shownTerm.id, { kind: "page" });
     closeSideTabs([current]);
@@ -267,11 +349,15 @@ function SideIsland({ islandRef, side, all, focus, focusNext, fresh, you, hide }
           const next = stepTab(keys, current, e.key === "PageDown" ? 1 : -1);
           if (next) showSideTab(next);
         }
-        // Ctrl+W (Cmd+W on macOS) closes a shown Card tab; not from a text box (a comment being written) or a terminal
-        if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "w" && shownCard
-          && !(e.target instanceof Element && e.target.closest("input, textarea, [contenteditable], .cm-editor, .xterm"))) {
-          e.preventDefault();
-          closeSideTabs([current]);
+        // Ctrl+W (Cmd+W on macOS) closes the shown tab but a terminal (the shell's there): a Card or the Board tab, not from a
+        // text box (a comment being written); an Editor tab also from its code, asking first when it has changes not saved
+        if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "w" && !shownTerm
+          && !(e.target instanceof Element && e.target.closest(".xterm"))) {
+          if (shownFile) { e.preventDefault(); closeEditorTabs([shownFile], underTab()); }
+          else if ((shownCard || shownBoard) && !(e.target instanceof Element && e.target.closest("input, textarea, [contenteditable], .cm-editor"))) {
+            e.preventDefault();
+            closeSideTabs([current]);
+          }
         }
       }}>
       <Handle panel={islandRef} share={share} setShare={setShare} edge={SIDE_EDGE} />
@@ -289,7 +375,9 @@ function SideIsland({ islandRef, side, all, focus, focusNext, fresh, you, hide }
                 ) : null;
               }
               if (t.kind === "card") return <CardTab key={key} id={t.id} on={key === current} keys={keys} close={() => closeSideTabs([key])} />;
-              return null;
+              if (t.kind === "board") return <BoardTab key={key} on={key === current} keys={keys} close={() => closeSideTabs([key])} />;
+              const n = fileNames.get(t.id);
+              return <EditorTab key={key} id={t.id} on={key === current} keys={keys} name={n?.name ?? nameOf(editorTabOf(t.id).path)} dir={n?.dir ?? null} />;
             })}
           </div>
           <span className="acts">
@@ -298,7 +386,7 @@ function SideIsland({ islandRef, side, all, focus, focusNext, fresh, you, hide }
               onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu(menu ? null : { x: r.left, y: r.bottom + 4 }); }}>
               <Plus className="icon" />
             </button>
-            <button type="button" className="btn ghost sm icon-only" aria-label="Own page" title={`Open ${name} on its own page`} disabled={!shownTerm && !shownCard} onClick={ownPage}>
+            <button type="button" className="btn ghost sm icon-only" aria-label="Own page" title={`Open ${name} on its own page`} disabled={!shownTerm && !shownCard && !shownFile && !shownBoard} onClick={ownPage}>
               <Maximize2 className="icon" />
             </button>
             <button type="button" className="btn ghost sm icon-only" aria-label="Hide" title="Hide (Ctrl+`): terminals keep running" onClick={hide}>
@@ -314,10 +402,12 @@ function SideIsland({ islandRef, side, all, focus, focusNext, fresh, you, hide }
           </div>
         )}
         {shownCard ? <ChatCardBody key={shownCard} identifier={shownCard} />
+          : shownFile ? <ChatEditorBody key={shownFile} id={shownFile} focus={focus} focusNext={focusNext} />
+          : shownBoard ? <ChatBoardBody />
           : shownTerm ? <ChatTerminalBody s={shownTerm} focusNext={focusNext} /> : <div className="chat-side-body" />}
       </div>
       {menu && <ContextMenu at={menu} label="Open beside the chat" onClose={() => setMenu(null)}
-        items={openItems(fresh.s, fresh.off, () => pickBelow(plusRef.current))} />}
+        items={openItems(fresh.s, fresh.off, () => pickBelow(plusRef.current), () => under(plusRef.current))} />}
       {picker && <OpenTerminalPicker at={picker} you={you} onClose={() => setPicker(null)} />}
       {asking && createPortal(
         <AskClose at={asking} label={`Close ${asking.s.name}`} text={`${asking.s.busy} is still running in ${asking.s.name}. Close it and end ${asking.s.busy}?`}
@@ -341,9 +431,11 @@ function ToolStrip({ side, all, toggle }: { side: ChatSide; all: TerminalSession
     const r = btn.getBoundingClientRect();
     setMenu({ kind, count, at: at ?? { x: r.left - 222, y: r.top }, under: { x: r.left, y: r.bottom + 4 } });
   };
-  /** Close all of a kind: for terminals, today's question first while one runs a program. */
+  /** Close all of a kind: for terminals, today's question first while one runs a program; for the Editor, its question
+   *  first while a file has changes not saved. */
   const closeAll = (kind: SideKind, under: { x: number; y: number }) => {
     const keys = side.tabs.filter((t) => t.kind === kind).map(tabKey);
+    if (kind === "editor") { closeEditorTabs(keys.map(idOf), under); return; }
     if (kind !== "terminal") { closeSideTabs(keys); return; }
     const mine = side.tabs.filter((t) => t.kind === "terminal").flatMap((t) => all.filter((s) => s.id === t.id));
     const endAll = () => {
@@ -445,7 +537,7 @@ export function OpenButton({ youId }: { youId: string }) {
         onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu(menu ? null : { x: r.left, y: r.bottom + 6 }); }}>
         <PanelRight className="icon" />Open<ChevronDown className="icon" />
       </button>
-      {menu && <ContextMenu at={menu} label="Open beside the chat" onClose={() => setMenu(null)} items={openItems(fresh.s, fresh.off, pick)} />}
+      {menu && <ContextMenu at={menu} label="Open beside the chat" onClose={() => setMenu(null)} items={openItems(fresh.s, fresh.off, pick, () => under(ref.current))} />}
       {picker && <OpenTerminalPicker at={picker} you={youId} onClose={() => setPicker(null)} />}
     </>
   );

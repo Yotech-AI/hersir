@@ -29,7 +29,7 @@ import type { DirEntry, EditorFolder, EditorUpdated, FolderGit, FolderMain, Open
 import { go, href } from "../router";
 import {
   cursorLabel, diskAction, endingsLabel, forgetFolder, ignoredFolderOf, keepTabs, loadTabs, MARK_TIP, MARK_WORD, markOf, nameOf, nextAfterClose,
-  parentOf, readOnlyBar, readOnlyStatus, rememberFolder, sizeLabel, stepTab, tabNames, unreadable, WHY, type Level,
+  parentOf, readOnlyBar, readOnlyStatus, rememberFolder, sizeLabel, stepTab, tabNames, takePageAt, unreadable, WHY, type Level,
 } from "../lib/editor";
 import { languageName } from "../lib/codeLanguages";
 import { modKey } from "../lib/keys";
@@ -363,9 +363,12 @@ function FolderEditor({ folderId, youId }: { folderId: string; youId: string }) 
     setActive(path);
   };
 
-  // The tabs kept for this folder, read once; and kept again as they change.
+  // The tabs kept for this folder, read once; and kept again as they change. Opened from the Chat's Editor tab (Own page,
+  // GA-298), its file is the open tab and the page goes to its line.
   useEffect(() => {
     const kept = loadTabs(id);
+    const at = takePageAt(id);
+    if (at) pending.current = at;
     if (!kept.paths.length) return;
     setTabs(kept.paths.map(newTab));
     kept.paths.forEach(read);

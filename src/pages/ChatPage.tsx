@@ -15,7 +15,7 @@ import { useCurrentTeam } from "../lib/team";
 import { relTime } from "../lib/format";
 import { chatLabel, chatLabelTitle, chatWaits } from "../lib/inbox";
 import { RECENT_MAX } from "../lib/chat";
-import { chatSideKey, openCardTab } from "../lib/chatSide";
+import { chatSideKey, openCardTab, setChatCards } from "../lib/chatSide";
 import { openChatCardsOnce } from "../lib/chatCard";
 import { BesideChat } from "../lib/besideChat";
 import { Avatar } from "../components/Avatar";
@@ -87,6 +87,8 @@ export function ChatPage({ id, archive = false, youId = "" }: { id?: string; arc
   useEffect(() => {
     if (lead && id && cards) openChatCardsOnce(id, cards.split(" "));
   }, [!!lead, id, cards]); // eslint-disable-line react-hooks/exhaustive-deps
+  // they are the chat's cards (GA-298): the Board tab shows their project's board and marks them
+  useEffect(() => { if (id && thread?.id === id) setChatCards(id, "about", cards ? cards.split(" ") : []); }, [id, cards, thread?.id]);
   return (
     <>
       <div className="topbar">
