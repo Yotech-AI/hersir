@@ -1,9 +1,10 @@
 /* Screenshots (GA-185): the card's Screenshots tab, its larger view and Compare, and the sign on the board and in the
    Inbox, as GA-181 designed them (design/screenshots/README.md → Sizes and spacing). All tokens. */
 
-/* ---------- the tab: full width under the tabs, like Changes ---------- */
+/* ---------- the tab: full width in the card's island, under its header, like Changes ---------- */
+/* 18px at the sides (GA-294, design/islands-pages), so four 272px thumbnails fit in the island at 1440 wide */
 .shots { flex: 1; min-width: 0; overflow-y: auto; }
-.shots-in { display: flex; flex-direction: column; gap: 28px; padding: 24px 28px 48px; }
+.shots-in { display: flex; flex-direction: column; gap: 28px; padding: 20px 18px 48px; }
 .shots-one { margin: 0; color: var(--text-2); }
 
 /* a set: its heading, then 12, the grid, then its notes 12 below */

@@ -1,8 +1,23 @@
 /* The Changes view on a card (Code Editor F1, GA-112): D1's design (design/code-editor/changes.css, its first part, as
    designed; all tokens), then what the app adds: the file list's rows as buttons, a file's CodeMirror diff in its box, and
    the box's size before its diff loads. */
-/* ---------- Card | Changes: the tabs under the top bar of the task page ---------- */
-.task-tabs { flex-wrap: nowrap; padding: 0 16px; }
+/* ---------- Card | Changes | Screenshots: the tabs in the header of the card's island (GA-294, design/islands: An
+   island's header) ---------- */
+/* Island tabs, without a close: size-island-tab high, radius 6, padding 0 6px 0 10px, 6px between icon, name and count, 2px
+   apart, no underline. At rest no fill, the name text-2, the icon 14px text-3; hover fill hover, the name text; the one shown
+   a pill in selected. Changes keeps its diffstat (diff-add, diff-del) and Screenshots its count in text-3. The tabs scroll
+   sideways in a narrow island, without a scrollbar. */
+.island-head > .task-tabs { flex: 1; flex-wrap: nowrap; gap: 2px; min-width: 0; height: 100%; align-items: center; padding: 0; border-bottom: 0;
+  overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.island-head > .task-tabs::-webkit-scrollbar { display: none; }
+.task-tabs .tab { flex: none; gap: 6px; height: calc(var(--size-island-tab) + var(--ui-box, 0px)); margin: 0; padding: 0 6px 0 10px; border: 0; border-radius: var(--radius); font-size: var(--fs-sm);
+  white-space: nowrap; color: var(--text-2); }
+.task-tabs .tab:hover { background: var(--hover); color: var(--text); }
+.task-tabs .tab[aria-selected="true"] { background: var(--selected); color: var(--text); }
+.task-tabs .tab .icon { width: 14px; height: 14px; color: var(--text-3); }
+.task-tabs .tab:hover .icon, .task-tabs .tab[aria-selected="true"] .icon { color: var(--text-2); }
+.task-tabs .tab .n { font-size: var(--fs-sm); }
+.task-tabs .tab:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .diffstat { display: inline-flex; align-items: baseline; gap: 6px; font-family: var(--font-mono); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .diffstat .add { color: var(--diff-add); }
 .diffstat .del { color: var(--diff-del); }
@@ -18,8 +33,9 @@
 .chg.list-folded > .chg-files { display: none; }
 .chg.list-folded > .chg-rail { display: flex; flex-direction: column; align-items: center; padding-top: 10px; border-right: 1px solid var(--line); background: var(--side); }
 
-/* the file list: the Memory page's explorer, on the dimmest surface */
-.chg-files { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); background: var(--side); }
+/* the file list: the Memory page's explorer, inside the card's island with a line on its right; the island is its surface
+   (GA-294: side is for recesses) */
+.chg-files { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); }
 .chg-sum { display: flex; flex-direction: column; gap: 3px; padding: 12px 8px 8px 14px; font-size: var(--fs-sm); line-height: 1.45; color: var(--text-2); }
 .chg-sum .src { display: flex; align-items: flex-start; gap: 6px; color: var(--text); font-weight: 500; }
 .chg-sum .src > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
@@ -158,8 +174,7 @@
 /* the file list's rows and the run's back button are buttons, not links */
 button.chg-file { width: 100%; border: 0; background: none; font: inherit; text-align: left; }
 .chg-files .chg-sum .src .btn.icon-only { width: 22px; height: 22px; }
-/* the task page under Card | Changes: the view fills what is left under the tabs */
-.task-tabs { flex: none; }
+/* the task page under Card | Changes: the view fills what is left of the card's island under its header */
 .chg { position: relative; }
 /* the boxes measure their place from the top of the diffs column (a click in the list scrolls there) */
 .chg-diffs { position: relative; }

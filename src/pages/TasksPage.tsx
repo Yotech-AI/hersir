@@ -233,8 +233,8 @@ export function TasksPage({ initialView, onNewTask, inboxFor }: { initialView?: 
           <b>{inbox ? "Inbox" : "Tasks"}</b><span className="faint">{fetched ? shown.length + chats.length + asks.length : ""}</span>
         </div>
       </div>
-      {/* the view toolbar is the page island's header (GA-293, design/islands: Tasks as a board) */}
-      <div className="toolbar island-toolbar">
+      {/* the view toolbar is the page island's header (GA-293, design/islands: Tasks as a board; GA-294, design/islands-pages) */}
+      <div className="toolbar island-bar island-toolbar">
         <button className="btn" onClick={() => onNewTask()}><Plus className="icon" />New task</button>
         <input className="input search-input" type="search" aria-label="Search tasks" placeholder="Search ID or title" value={filter.text ?? ""} onChange={(e) => setFilter({ ...filter, text: e.target.value })} />
         {several && !inbox && team && <select className="chip" aria-label="Team" title="The team whose board shows" value={team.id} onChange={(e) => onTeam(e.target.value)}>
@@ -275,7 +275,7 @@ export function TasksPage({ initialView, onNewTask, inboxFor }: { initialView?: 
       {noProjects ? (
         <div className="content"><div className="page-pad"><div className="empty"><b>No projects yet.</b><span>Tasks live in a project. Create one, then press N to add a task.</span><button className="btn primary" onClick={() => go({ page: "projects" })}>Go to Projects</button></div></div></div>
       ) : !team || !fetched || (inbox && several && !allTeams) ? null : view === "list" ? (
-        <div className="content">
+        <div className={`content${inbox ? " inbox-list" : ""}`}>
           {chats.length > 0 && <div className="page-pad lead-chats-pad"><LeadChats chats={chats} onDismiss={dismiss} /></div>}
           {asks.length > 0 && <div className="page-pad lead-chats-pad"><RunForMeCards tasks={asks} agentOf={(t) => (t.assigneeKind === "agent" ? t.assigneeName ?? null : null)} /></div>}
           <TaskList key={`${group}-${inbox}`} groups={groups} showHeads={group !== "none"} live={working} shots={inbox ? shots : undefined} onAdd={group === "status" && !inbox ? (key) => onNewTask(key) : undefined}
