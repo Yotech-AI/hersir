@@ -72,18 +72,18 @@ const SIDE_EDGE: HandleEdge = {
 
 // ---------- tabs that don't fit (GA-300; design/islands-chat → Its header) ----------
 
-/** The room a tab's × takes while it doesn't show (it shows on hover): 18 wide, 6 from the name. */
+/** The room a tab's × takes when it shows on hover: 18 wide, 6 from the name. */
 const X_ROOM = 24;
 /** The overflow button's width before it is first drawn. */
 const MORE_GUESS = 72;
 /** How long the pointer rests on a strip icon before its tooltip shows. */
 const TIP_REST_MS = 400;
 
-/** Which of the side island's tabs don't fit in its header beside +, Own page and Hide. Measured with every tab in the row,
- *  each as wide as with its × (so hovering one doesn't change the row). When they don't all fit, the overflow button takes
- *  room after the last that fits, and the row keeps the shown tab first, then the ones picked from the overflow's menu (the
- *  latest first), then the others in the order they opened while they fit. Marks the others `data-off` (hidden, app's
- *  terminal.css) and returns their keys in the order they opened; null without a header. */
+/** Which of the side island's tabs don't fit in its header beside +, Own page and Hide. Measured with every tab in the row
+ *  at rest, and room kept for the × that shows on the one under the pointer (so hovering doesn't change the row). When they
+ *  don't all fit, the overflow button takes room after the last that fits, and the row keeps the shown tab first, then the
+ *  ones picked from the overflow's menu (the latest first), then the others in the order they opened while they fit.
+ *  Marks the others `data-off` (hidden, terminal.css) and returns their keys in the order they opened; null without a header. */
 export function fitTabs(head: HTMLElement | null, more: HTMLElement | null, current: string, picked: string[]): string[] | null {
   const list = head?.querySelector<HTMLElement>(":scope > .island-tabs");
   const acts = head?.querySelector<HTMLElement>(":scope > .acts");
@@ -94,11 +94,15 @@ export function fitTabs(head: HTMLElement | null, more: HTMLElement | null, curr
   const hs = getComputedStyle(head);
   const gap = px(hs.columnGap);
   const tabGap = px(getComputedStyle(list).columnGap);
-  const room = head.clientWidth - px(hs.paddingLeft) - px(hs.paddingRight) - acts.getBoundingClientRect().width - gap;
   const tabs = els.map((el) => {
     const x = el.querySelector<HTMLElement>(".x");
-    return { el, key: el.dataset.tab ?? `terminal:${el.dataset.term}`, w: el.getBoundingClientRect().width + (x && !x.offsetWidth ? X_ROOM : 0) };
+    const shows = !!x && x.offsetWidth > 0;
+    // a tab under the pointer shows its × only while it is there: its width at rest is without it
+    const onHover = shows && el.matches(":hover") && el.getAttribute("aria-selected") !== "true" && !el.matches(":focus-within");
+    return { el, key: el.dataset.tab ?? `terminal:${el.dataset.term}`, w: el.getBoundingClientRect().width - (onHover ? X_ROOM : 0), bare: !shows || onHover };
   });
+  const room = head.clientWidth - px(hs.paddingLeft) - px(hs.paddingRight) - acts.getBoundingClientRect().width - gap
+    - (tabs.some((t) => t.bare) ? X_ROOM : 0);
   if (tabs.reduce((sum, t) => sum + t.w, 0) + tabGap * Math.max(0, tabs.length - 1) <= room + 0.5) return [];
   const left = room - (more?.getBoundingClientRect().width || MORE_GUESS) - gap;
   const byKey = new Map(tabs.map((t) => [t.key, t]));
