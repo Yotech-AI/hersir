@@ -5,7 +5,7 @@ import { emit } from "@tauri-apps/api/event";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
 import type { Terminal } from "@xterm/xterm";
-import { appInfo, archiveTask, chatMessages, checkTeamExport, editorFolders, getTask, getTeam as teamById, listChatThreads, listDocs, listLabels, listProjects, listTasks, listTeams, pinnedChats, previewTeamTemplate, readClipboardText, selftestPanic, selftestPaste, setAgentStatus, terminalClose, terminalInput, terminalList, terminalOpen } from "./api";
+import { appInfo, archiveTask, chatMessages, checkTeamExport, editorFolders, editorRead, getTask, getTeam as teamById, listChatThreads, listDocs, listLabels, listProjects, listTasks, listTeams, pinnedChats, previewTeamTemplate, readClipboardText, selftestPanic, selftestPaste, setAgentStatus, terminalClose, terminalInput, terminalList, terminalOpen } from "./api";
 import { isMac } from "./lib/keys";
 import { periodDays } from "./lib/usage";
 import { getAppearance, resetAppearance, setAppearance } from "./lib/appearance";
@@ -4411,7 +4411,8 @@ async function terminalPanelProbe(phase: "a" | "b", card: string) {
 // island's + (a menu) and Ctrl+Shift+` start one in the shown terminal's folder; × asks while a program runs; middle click,
 // Ctrl+PgUp, Ctrl+PgDn, ← → and F2 on the tabs; Hide keeps sleep 600 running and the strip stays (none selected); a click on
 // the icon shows the island, a click on the selected icon hides it; Ctrl+` (also from inside the terminal) and Alt+1 do the
-// same; Alt+1 inside the terminal reaches the shell; Alt+2, Alt+3 and Alt+4 do nothing yet; the icon's right-click menu
+// same; Alt+1 inside the terminal reaches the shell; Alt+4 does nothing with no card, Alt+3 opens the Board tab and Alt+2
+// Open a file… (GA-298; the Board tab is closed again, the picker too); the icon's right-click menu
 // (and the context menu key): its head, Hide or Show, Close all; the drag handle in the gap left of the island between 360px
 // of island and 400px of conversation; chat B shows none of A's tabs (and its own one), New chat and the Archive none,
 // another page and back: A's tabs are there, sleep 600 still running; Own page closes the tab here; a narrow window hides
@@ -4542,8 +4543,10 @@ async function chatTerminalProbe(phase: "a" | "b") {
   ob?.click();
   const menu0 = await waitFor(() => menuOf("Open beside the chat"), 2000);
   out.openMenu = itemsOf(menu0);
-  check(JSON.stringify(itemsOf(menu0)) === JSON.stringify([{ label: "New terminal", kbd: "Ctrl+Shift+`", off: false, danger: false }]),
-    `with no terminal in the chat, Open's menu has New terminal (${JSON.stringify(out.openMenu)})`);
+  // GA-298 adds Open a file… (Alt+2) and Board (Alt+3)
+  check(JSON.stringify(itemsOf(menu0)) === JSON.stringify([{ label: "New terminal", kbd: "Ctrl+Shift+`", off: false, danger: false },
+    { label: "Open a file…", kbd: "Alt+2", off: false, danger: false }, { label: "Board", kbd: "Alt+3", off: false, danger: false }]),
+    `with no terminal in the chat, Open's menu has New terminal, Open a file… and Board (${JSON.stringify(out.openMenu)})`);
   itemIn(menu0, "New terminal")?.click();
   const picker = await waitFor(() => q('.ed-picker[aria-label="Open terminal in"]'));
   out.picker = { title: textOf(picker?.querySelector(".ed-picker-title")), top: r1(picker?.getBoundingClientRect().top ?? 0), button: r1(openBtn()?.getBoundingClientRect().bottom ?? 0) };
@@ -4597,7 +4600,7 @@ async function chatTerminalProbe(phase: "a" | "b") {
   openBtn()?.click();
   const menu1 = await waitFor(() => menuOf("Open beside the chat"), 2000);
   out.openMenu1 = itemsOf(menu1);
-  check(JSON.stringify(itemsOf(menu1).map((i) => i.label)) === JSON.stringify(["New terminal", "New terminal in…"]), `with a terminal, Open's menu has New terminal and New terminal in… (${JSON.stringify(out.openMenu1)})`);
+  check(JSON.stringify(itemsOf(menu1).map((i) => i.label)) === JSON.stringify(["New terminal", "New terminal in…", "Open a file…", "Board"]), `with a terminal, Open's menu has New terminal, New terminal in…, Open a file… and Board (${JSON.stringify(out.openMenu1)})`);
   closeMenus();
   await waitFor(() => (!menuOf("Open beside the chat") ? true : null), 2000);
   const id2 = await pick("chat-other", "New terminal in…");
@@ -4722,12 +4725,32 @@ async function chatTerminalProbe(phase: "a" | "b") {
   altDigit(1);
   await waitFor(() => (island() ? true : null), 2000);
   (document.activeElement as HTMLElement | null)?.blur();
-  const before234 = { cls: chat()?.className, tabs: tabIds().join(","), icons: [...document.querySelectorAll(".chat-strip .strip-btn")].map((b) => b.getAttribute("data-kind")) };
-  altDigit(2); altDigit(3); altDigit(4);
+  const now234 = () => ({ cls: chat()?.className, tabs: tabIds().join(","), shown: shownTab(), icons: [...document.querySelectorAll(".chat-strip .strip-btn")].map((b) => b.getAttribute("data-kind")) });
+  // taken as the later ones are (with the tab shown), so the checks below compare like with like
+  const before234 = now234();
+  const shown234 = before234.shown;
+  // GA-298: Alt+4 with no card does nothing; Alt+3 with no Board tab opens it (closed again here); Alt+2 with no Editor tab
+  // opens Open a file…: the folder picker titled "Open a file in", as this chat has no project (closed again by a click outside)
+  altDigit(4);
   await sleep(300);
-  const after234 = { cls: chat()?.className, tabs: tabIds().join(","), icons: [...document.querySelectorAll(".chat-strip .strip-btn")].map((b) => b.getAttribute("data-kind")) };
-  out.alt234 = { before234, after234 };
-  check(JSON.stringify(before234) === JSON.stringify(after234) && JSON.stringify(after234.icons) === JSON.stringify(["terminal"]), `Alt+2, Alt+3 and Alt+4 do nothing yet (${JSON.stringify(out.alt234)})`);
+  const after4 = now234();
+  altDigit(3);
+  const boardOpened = !!(await waitFor(() => q('.chat-side [data-tab="board:board"][aria-selected=true]'), 2000));
+  q<HTMLButtonElement>('.chat-side [data-tab="board:board"] button.x')?.click();
+  await waitFor(() => (!q('.chat-side [data-tab="board:board"]') ? true : null), 2000);
+  // closing the Board shows the tab left of it (the last terminal): the one shown before is picked again, as the steps below use it
+  if (shown234) q<HTMLElement>(`.chat-side .term-tab[data-term="${CSS.escape(shown234)}"]`)?.click();
+  await waitFor(() => (shownTab() === shown234 ? true : null), 2000);
+  (document.activeElement as HTMLElement | null)?.blur();
+  altDigit(2);
+  const filePicker = !!(await waitFor(() => q('.ed-picker[aria-label="Open a file in"]'), 3000));
+  window.dispatchEvent(new MouseEvent("mousedown"));
+  await waitFor(() => (!q(".ed-picker") ? true : null), 2000);
+  const after234 = now234();
+  out.alt234 = { before234, after4, boardOpened, filePicker, after234 };
+  check(JSON.stringify(before234) === JSON.stringify(after4), `Alt+4 with no card does nothing (${JSON.stringify(out.alt234)})`);
+  check(boardOpened && filePicker && JSON.stringify(before234) === JSON.stringify(after234) && JSON.stringify(after234.icons) === JSON.stringify(["terminal"]),
+    `Alt+3 opens the Board tab, Alt+2 Open a file… (the picker "Open a file in"); both closed again, the terminals as they were (${JSON.stringify(out.alt234)})`);
   check((await terminalList()).find((s) => s.id === id1)?.busy === "sleep", "sleep 600 is still running after the keys");
 
   // 6. the icon's right-click menu: its head, Hide (on show) or Show with its key (hidden), a line, Close all in danger; the
@@ -4834,6 +4857,11 @@ async function chatTerminalProbe(phase: "a" | "b") {
   await toChat(A);
   check(await waitFor(() => (island()?.contains(term.element ?? null) ? true : null), 5000), "back on the Chat page the view is in chat A's island");
   await sleep(200);
+  // GA-298 QA: Open a file… was asked once in this chat (Alt+2 above); back on the Chat page nothing opens by itself
+  await sleep(500);
+  out.backOpened = { picker: q(".ed-picker")?.getAttribute("aria-label") ?? null, goTo: !!q(".ed-goto-pal") };
+  check(!q(".ed-picker") && !q(".ed-goto-pal"), `back on the Chat page from another page, Open a file… doesn't open again by itself (${JSON.stringify(out.backOpened)})`);
+  if (q(".ed-picker")) { window.dispatchEvent(new MouseEvent("mousedown")); await sleep(200); }
   backInA("from another page");
   // chat B's own terminal: back there it shows, and × closes it (no program runs): its island and strip go
   await toChat(B);
@@ -5011,6 +5039,18 @@ async function chatTerminalProbe(phase: "a" | "b") {
 // a new tab there, which a click under the message that names a subfolder shows again; the second folder's button opens its
 // own; Open in terminal… opens the picker titled "Open terminal in" under it, and a pick opens a terminal there. In the
 // narrow conversation beside the panel the row of three buttons wraps.
+// GA-298 QA: the row is under the whole answer now (its last part; one row per answer), so prep_chat_terminal puts a
+// question of yours between the answers and each answer is checked by its row; the chat is long, so a message is scrolled
+// into sight before it is read (only what is near sight is in the page, GA-190). Then GA-298's answer: its row Open KADE-1,
+// KADE-2, KADE-3, and 1 more (GFW-1, in a menu), Open board, Open in Editor page.html:30 and Open in terminal, with their
+// icons; nothing beside the chat before a click; and 1 more opens GFW-1 in a Card tab; Open in Editor opens page.html (at
+// doq-studio's top: a file in a folder there is "Ignored by git" here, as the scratch home is in .devdata) in an
+// Editor tab at line 30, marked (the band and its number), Ln 30, Col 1, Save off until a change, and Save writes it; Ctrl+W
+// with a change asks first (Cancel keeps it); Open board opens the Board tab of the chat's project (Kade portal, from the
+// cards the answers link) with the chat's cards marked and a click on one opens its Card tab; Alt+3 and Alt+2 show the
+// Board and the Editor, Alt+3 on the Board hides the island; the strip counts Terminal, Editor 1, Board 1, Card 2; Own page
+// with a change asks, Save and close saves and opens the Editor page at page.html, line 30. Dragging on the Board tab isn't
+// done here (it is the Tasks page's Board and its drop rules: the board probe).
 async function chatRunProbe() {
   const errors: string[] = [];
   const out: Record<string, unknown> = {};
@@ -5026,10 +5066,27 @@ async function chatRunProbe() {
   window.location.hash = `#/chat/${thread.id}`;
 
   const texts = () => [...document.querySelectorAll<HTMLElement>(".chat-main .chat-group.agent .chat-msg.agent:not(.draft)")];
-  const rowAfter = (m: Element) => { const n = m.nextElementSibling; return n?.classList.contains("msg-term") ? n as HTMLElement : null; };
+  /** The row of buttons of the answer a message is in (GA-298: one, under the whole answer). */
+  const rowOf = (m: Element | null | undefined) => (m?.closest(".chat-body")?.querySelector<HTMLElement>(":scope > .msg-term") ?? null);
   const buttonsIn = (row: Element | null) => [...(row?.querySelectorAll<HTMLButtonElement>(".msg-term-row > button") ?? [])];
   const labelsOf = (row: Element | null) => buttonsIn(row).map((b) => textOf(b));
   const message = (start: string) => texts().find((m) => textOf(m).startsWith(start)) ?? null;
+  /** A Chief text message by its start, scrolled into sight (from the top down while it isn't in the page). */
+  const find = async (start: string) => {
+    let m = message(start);
+    const s = q<HTMLElement>(".chat-main .chat-scroll");
+    for (let top = 0; !m && s && top <= s.scrollHeight; top += Math.max(200, Math.round(s.clientHeight / 2))) {
+      s.scrollTop = top;
+      await sleep(150);
+      m = message(start);
+    }
+    if (!m) return null;
+    m.scrollIntoView({ block: "center" });
+    await sleep(200);
+    return message(start);
+  };
+  /** The row of the answer a message starting so is in, in sight. */
+  const rowNow = async (start: string) => rowOf(await find(start));
   const panel = () => q<HTMLElement>(".chat > .chat-side");
   const shownTab = () => q(".chat-side .term-tab[aria-selected=true]")?.getAttribute("data-term") ?? null;
   const tabIds = () => [...document.querySelectorAll(".chat-side .term-tab")].map((t) => t.getAttribute("data-term") ?? "");
@@ -5056,46 +5113,60 @@ async function chatRunProbe() {
     return { id, term: v.term, isNew: !!fresh };
   };
 
-  // 1. the rows: under the Chief's text messages that ask you to run a command, one button per folder named, in order
-  const why = await waitFor(() => message("Before you test"), 8000);
-  if (!why) { errors.push(`the chat's messages didn't show (${texts().length})`); return done(); }
-  await waitFor(() => (labelsOf(rowAfter(why)).length > 0 ? true : null), 5000);
+  // 1. the rows, one under each answer (GA-298): under the Chief's answers that ask you to run a command, one button per
+  //    folder named, in order; GA-298's answer has its cards, Open board and Open in Editor first
+  if (!(await waitFor(() => texts()[0] ?? null, 8000))) { errors.push(`the chat's messages didn't show (${texts().length})`); return done(); }
   const open = (path: string) => `Open in terminal${path}`;
-  const rows = texts().map((m) => [textOf(m).slice(0, 18), rowAfter(m) ? labelsOf(rowAfter(m)) : null]);
-  out.rows = rows;
-  const want = [
+  const want: [string, string[] | null][] = [
     ["Before you test, i", [open(doq.path)]],
-    ["QA ran npm test on", null],
     [`In ${doq.path}/resou`.slice(0, 18), [open(doq.path)]],
     [`In ${doq.id}`.slice(0, 18), [open(doq.path)]],
     ["Run composer insta", ["Open in terminal…"]],
     [`In ${shop.path}: run`.slice(0, 18), [open(shop.path), open(doq.path)]],
     ["Run npm ci in ~/He", [open(doq.path), open(shop.path), open(kade.path)]],
     ["All done: GA-279 i", null],
+    ["I moved", ["Open KADE-1", "Open KADE-2", "Open KADE-3", "and 1 more", "Open board", "Open in Editorpage.html:30", open(doq.path)]],
   ];
-  check(JSON.stringify(rows) === JSON.stringify(want), `the rows under the Chief's messages (${JSON.stringify(rows)}, want ${JSON.stringify(want)})`);
+  const rows: [string, string[] | null][] = [];
+  for (const [start, w] of want) {
+    const m = await find(start);
+    // the buttons once the folders (and GA-298's file) are known
+    if (m && w) await waitFor(() => (labelsOf(rowOf(m)).length >= w.length ? true : null), 5000);
+    rows.push([m ? start : `${start} (not found)`, rowOf(message(start)) ? labelsOf(rowOf(message(start))) : null]);
+  }
+  out.rows = rows;
+  check(JSON.stringify(rows) === JSON.stringify(want), `the rows under the Chief's answers (${JSON.stringify(rows)}, want ${JSON.stringify(want)})`);
   check(!q(".chat-main .tool-card .msg-term") && !q(".chat-main .tool-card + .msg-term") && !q(".chat-main .chat-group.user .msg-term"),
     "no row under a tool call or under your messages");
-  check(document.querySelectorAll(".chat-main .msg-term").length === 6, `six rows in the chat (${document.querySelectorAll(".chat-main .msg-term").length})`);
+  check([...document.querySelectorAll(".chat-main .chat-body")].every((b) => b.querySelectorAll(".msg-term").length <= 1), "one row at most in an answer");
+  // the first answer (a text, a tool call, a text): its one row is its last part, under the second text
+  const why = await find("Before you test");
+  const firstRow = rowOf(why);
+  const lastText = firstRow?.previousElementSibling ?? null;
+  const underFirst = !!why?.nextElementSibling?.classList.contains("msg-term");
+  out.firstAnswer = { rowAfter: textOf(lastText).slice(0, 18), underFirst };
+  check(why && firstRow && lastText?.classList.contains("chat-msg") && textOf(lastText).startsWith("QA ran") && !underFirst,
+    `the first answer's row is under the whole answer, after its last text (${JSON.stringify(out.firstAnswer)})`);
+  if (!why || !firstRow || !lastText) return done();
 
-  // 2. the button: quiet, the terminal icon, the folder in mono, its tooltip; right under the message and left-aligned with it
-  const b = buttonsIn(rowAfter(why))[0]!;
+  // 2. the button: quiet, the terminal icon, the folder in mono, its tooltip; right under the answer and left-aligned with it
+  const b = buttonsIn(firstRow)[0]!;
   const mono = b.querySelector<HTMLElement>(".mono");
-  const msgBox = why.getBoundingClientRect(), rowBox = rowAfter(why)!.getBoundingClientRect(), icon = b.querySelector("svg")?.getBoundingClientRect();
-  const firstText = why.querySelector("p")?.getBoundingClientRect();
+  const msgBox = lastText.getBoundingClientRect(), rowBox = firstRow.getBoundingClientRect(), icon = b.querySelector("svg")?.getBoundingClientRect();
+  const firstText = lastText.querySelector("p")?.getBoundingClientRect();
   const monoFont = mono ? getComputedStyle(mono).fontFamily : "";
   out.button = { cls: b.className, title: b.title, mono: textOf(mono), font: monoFont, gap: r1(rowBox.top - msgBox.bottom),
     iconLeft: r1(icon?.left ?? 0), textLeft: r1(firstText?.left ?? 0), height: r1(b.getBoundingClientRect().height) };
   check(b.className === "btn ghost sm" && b.title === `Open a terminal in ${doq.path} beside the chat` && !!b.querySelector("svg.lucide-terminal"),
     `Open in terminal is a btn ghost sm with the terminal icon and its tooltip (${JSON.stringify(out.button)})`);
   check(textOf(mono) === doq.path && /Mono|monospace/.test(monoFont), `the folder in mono (${JSON.stringify(out.button)})`);
-  check(Math.abs(rowBox.top - msgBox.bottom) <= 8, `the row is right under the message (${JSON.stringify(out.button)})`);
-  check(icon && firstText && Math.abs(icon.left - firstText.left) <= 12, `the button is left-aligned with the message's text (${JSON.stringify(out.button)})`);
+  check(Math.abs(rowBox.top - msgBox.bottom) <= 8, `the row is right under the answer (${JSON.stringify(out.button)})`);
+  check(icon && firstText && Math.abs(icon.left - firstText.left) <= 12, `the button is left-aligned with the answer's text (${JSON.stringify(out.button)})`);
 
   // 3. a click: the chat's side island with a terminal in ~/Herd/doq-studio, with the focus; nothing typed into it
   check(!panel(), "no panel before the click");
   const t1 = await press(b);
-  if (!t1) { errors.push(`the click opened no terminal: ${textOf(rowAfter(why)?.querySelector(".msg-term-why"))}`); return done(); }
+  if (!t1) { errors.push(`the click opened no terminal: ${textOf(rowOf(message("Before you test"))?.querySelector(".msg-term-why"))}`); return done(); }
   check(t1.isNew && tabIds().length === 1, `a new tab (${tabIds().join(", ")})`);
   // GA-296: the strip shows the Terminal icon with its count, selected
   const stripIcon = q<HTMLButtonElement>('.chat > .chat-strip .strip-btn[data-kind="terminal"]');
@@ -5115,7 +5186,7 @@ async function chatRunProbe() {
   await waitFor(() => (!panel() ? true : null), 2000);
   out.hidden = !panel();
   (document.activeElement as HTMLElement | null)?.blur();
-  const again = await press(buttonsIn(rowAfter(why))[0]);
+  const again = await press(buttonsIn(await rowNow("Before you test"))[0]);
   check(again && again.id === t1.id && !again.isNew && tabIds().length === 1, `a second click shows the same terminal (${again?.id}, ${tabIds().join(", ")}, hidden first: ${out.hidden})`);
   check(await waitFor(() => (document.activeElement === t1.term.textarea ? true : null), 2000), "with the focus");
 
@@ -5126,23 +5197,20 @@ async function chatRunProbe() {
   for (let i = 0; i < 50 && !busy; i++) { busy = (await terminalList()).find((s) => s.id === t1.id)?.busy ?? null; if (!busy) await sleep(100); }
   out.busy = busy;
   check(busy, `sleep 30 runs in it (${JSON.stringify(out.busy)})`);
-  const t2 = await press(buttonsIn(rowAfter(why))[0]);
+  const t2 = await press(buttonsIn(await rowNow("Before you test"))[0]);
   check(t2 && t2.isNew && same2(tabIds(), [t1.id, t2.id]), `while a program runs, a click starts a new tab (${tabIds().join(", ")})`);
   if (!t2) return done();
   check(await pwdIn(t2.term, doq.id), `the new tab is in ${doq.id}`);
-  const sub = message(`In ${doq.path}/resou`.slice(0, 18));
-  const t3 = await press(sub ? buttonsIn(rowAfter(sub))[0] : undefined);
+  const t3 = await press(buttonsIn(await rowNow(`In ${doq.path}/resou`.slice(0, 18)))[0]);
   check(t3 && t3.id === t2.id && !t3.isNew, `the message naming a subfolder shows the waiting terminal in ${doq.path} (${t3?.id}, ${tabIds().join(", ")})`);
 
   // 6. the second folder's button opens its own terminal
-  const two = message(`In ${shop.path}: run`.slice(0, 18));
-  const t4 = await press(two ? buttonsIn(rowAfter(two))[0] : undefined);
+  const t4 = await press(buttonsIn(await rowNow(`In ${shop.path}: run`.slice(0, 18)))[0]);
   check(t4 && t4.isNew && textOf(q(".chat-term-where")) === shop.path, `${shop.path}'s button opens a terminal there (${textOf(q(".chat-term-where"))})`);
   if (t4) check(await pwdIn(t4.term, shop.id), `pwd prints ${shop.id}`);
 
   // 7. Open in terminal… opens the picker titled "Open terminal in" under it; a pick opens a terminal there
-  const none = message("Run composer insta");
-  const pickBtn = none ? buttonsIn(rowAfter(none))[0] : undefined;
+  const pickBtn = buttonsIn(await rowNow("Run composer insta"))[0];
   check(pickBtn?.className === "btn ghost sm" && !!pickBtn.querySelector("svg.lucide-terminal"), "Open in terminal… is a btn ghost sm with the terminal icon");
   pickBtn?.click();
   const picker = await waitFor(() => q('.ed-picker[aria-label="Open terminal in"]'), 3000);
@@ -5157,8 +5225,7 @@ async function chatRunProbe() {
 
   // 8. beside the panel the conversation is narrow: the row of three buttons wraps, and none runs out of it
   await sleep(300);
-  const three = message("Run npm ci in ~/He");
-  const threeRow = three ? rowAfter(three)?.querySelector<HTMLElement>(".msg-term-row") ?? null : null;
+  const threeRow = (await rowNow("Run npm ci in ~/He"))?.querySelector<HTMLElement>(".msg-term-row") ?? null;
   const boxes = buttonsIn(threeRow?.parentElement ?? null).map((x) => x.getBoundingClientRect());
   const rowRect = threeRow?.getBoundingClientRect();
   out.narrow = { conversation: r1(q(".chat > .chat-main")?.getBoundingClientRect().width ?? 0), row: r1(rowRect?.width ?? 0),
@@ -5167,8 +5234,126 @@ async function chatRunProbe() {
   check(boxes.length === 3 && new Set(boxes.map((x) => Math.round(x.top))).size > 1, `three buttons on more than one line beside the panel (${JSON.stringify(out.narrow)})`);
   check(rowRect && boxes.every((x) => x.right <= rowRect.right + 1), `no button runs out of the row (${JSON.stringify(out.narrow)})`);
 
+  // 9. GA-298's answer: its row, and what each button opens beside the chat (a part of its own: what it throws is an error)
+  try { await answerButtons(); } catch (e) { errors.push(`GA-298's part stopped: ${String(e)}`); }
+
   for (const s of await terminalList()) await Promise.race([terminalClose(s.id).catch(() => {}), sleep(3000)]);
   return done();
+
+  async function answerButtons() {
+    const strip = () => [...document.querySelectorAll<HTMLButtonElement>(".chat > .chat-strip .strip-btn")]
+      .map((x) => `${x.dataset.kind} ${textOf(x.querySelector(".n"))}${x.getAttribute("aria-pressed") === "true" ? " shown" : ""}`);
+    const shownSide = () => q(".chat-side [data-tab][aria-selected=true]")?.getAttribute("data-tab") ?? null;
+    const iconOf = (x: Element) => [...(x.querySelector("svg")?.classList ?? [])].filter((c) => c.startsWith("lucide-")).join(" ");
+    const ICONS = ["square-kanban", "square-kanban", "square-kanban", "chevron-down", "columns-3", "file-code", "terminal"];
+    const FILE = "page.html";
+    const line30 = async () => (await editorRead(doq!.id, FILE).catch(() => null))?.text?.split("\n")[29] ?? null;
+    const askOf = () => { const a = q('.ed-ask[role="alertdialog"]'); return a ? { text: textOf(a.querySelector("p")), buttons: [...a.querySelectorAll<HTMLButtonElement>("button")] } : null; };
+
+    // nothing opened by itself: only the terminals the clicks above opened
+    out.stripBefore = strip();
+    check(strip().every((x) => x.startsWith("terminal ")), `nothing beside the chat but the terminals before a click (${strip().join(", ")})`);
+    const btns = buttonsIn(await rowNow("I moved"));
+    out.answerRow = btns.map((x) => [textOf(x), iconOf(x), x.className]);
+    check(btns.length === ICONS.length && btns.every((x, i) => !!x.querySelector(`svg.lucide-${ICONS[i]}`))
+      && btns.every((x) => x.className === "btn ghost sm"), `GA-298's row: quiet buttons with their icons (${JSON.stringify(out.answerRow)})`);
+    const eb = btns.find((x) => textOf(x).startsWith("Open in Editor"));
+    check(textOf(eb?.querySelector(".mono")) === "page.html:30" && eb?.title === `${doq!.path}/${FILE}, line 30`, `Open in Editor: the file and line in mono, its title the whole path (${eb?.title})`);
+
+    // and 1 more: a menu with the rest; its item opens the card in a Card tab
+    btns.find((x) => textOf(x) === "and 1 more")?.click();
+    const menu = await waitFor(() => q('[role=menu][aria-label="More cards"]'), 2000);
+    const items = [...(menu?.querySelectorAll<HTMLButtonElement>("[role=menuitem]") ?? [])];
+    out.moreMenu = items.map((x) => textOf(x));
+    check(JSON.stringify(out.moreMenu) === JSON.stringify(["Open GFW-1"]), `and 1 more opens a menu with the rest (${JSON.stringify(out.moreMenu)})`);
+    items[0]?.click();
+    check(await waitFor(() => (panel() && shownSide() === "card:GFW-1" ? true : null), 3000), `Open GFW-1 opens its Card tab beside the chat (${shownSide()})`);
+
+    // Open in Editor: the file in an Editor tab at line 30, marked; Save off until a change; Save writes it
+    buttonsIn(await rowNow("I moved")).find((x) => textOf(x).startsWith("Open in Editor"))?.click();
+    const content = await waitFor(() => q<HTMLElement>(".chat-side .chat-ed .cm-content"), 8000);
+    const view = content ? EditorView.findFromDOM(content) : null;
+    if (!content || !view) { errors.push(`Open in Editor opened no file (${shownSide()}: ${textOf(q(".chat-side .chat-ed"))})`); return; }
+    await sleep(400);
+    const edKey = `editor:${doq!.id}//${FILE}`;
+    const band = q<HTMLElement>(".chat-side .cm-line.cm-marked");
+    const ed = { tab: shownSide(), name: textOf(q(".chat-side [data-tab][aria-selected=true] .name")), path: textOf(q(".chat-side .chat-ed-bar .path")),
+      marked: textOf(band), number: textOf(q(".chat-side .cm-lineNumbers .cm-marked-gutter")), status: textOf(q(".chat-side .chat-ed-status .item")),
+      saveOff: !!q<HTMLButtonElement>(".chat-side .chat-ed-bar button")?.disabled, caret: view.state.doc.lineAt(view.state.selection.main.head).number,
+      band: band ? getComputedStyle(band).backgroundColor : "" };
+    out.editor = ed;
+    check(JSON.stringify({ ...ed, band: undefined }) === JSON.stringify({ tab: edKey, name: "page.html", path: FILE, marked: "line 30", number: "30", status: "Ln 30, Col 1", saveOff: true, caret: 30 }),
+      `the Editor tab: page.html at line 30, marked, Save off (${JSON.stringify(ed)})`);
+    check(ed.band && ed.band !== "rgba(0, 0, 0, 0)" && ed.band !== "transparent", `the marked line has its band (${ed.band})`);
+    check(JSON.stringify(strip().slice(-2)) === JSON.stringify(["editor 1 shown", "card 1"]), `the strip: Editor 1, shown, and Card 1 (${strip().join(", ")})`);
+    const saveBtn = () => q<HTMLButtonElement>(".chat-side .chat-ed-bar button");
+    view.dispatch({ changes: { from: view.state.doc.line(30).to, insert: " saved" } });
+    check(await waitFor(() => (saveBtn() && !saveBtn()!.disabled ? true : null), 2000), "a change turns Save on");
+    saveBtn()?.click();
+    check(await waitFor(() => (saveBtn()?.disabled ? true : null), 5000), "Save saves it: Save is off again");
+    const after = await line30();
+    check(after === "line 30 saved", `the file on disk has the change (${JSON.stringify(after)})`);
+
+    // Ctrl+W with a change asks first; Cancel keeps the tab and the change
+    const v2 = EditorView.findFromDOM(q<HTMLElement>(".chat-side .chat-ed .cm-content")!)!;
+    v2.dispatch({ changes: { from: v2.state.doc.line(30).to, insert: " again" } });
+    await sleep(150);
+    q(".chat-side .chat-ed .cm-content")!.dispatchEvent(new KeyboardEvent("keydown", { key: "w", code: "KeyW", ctrlKey: !isMac(), metaKey: isMac(), bubbles: true, cancelable: true }));
+    const ask = await waitFor(askOf, 2000);
+    out.ask = ask ? { text: ask.text, buttons: ask.buttons.map((x) => textOf(x)) } : null;
+    check(JSON.stringify(out.ask) === JSON.stringify({ text: "page.html has changes that aren't saved.", buttons: ["Save and close", "Close without saving", "Cancel"] }),
+      `Ctrl+W with a change asks first (${JSON.stringify(out.ask)})`);
+    ask?.buttons.find((x) => textOf(x) === "Cancel")?.click();
+    await sleep(200);
+    check(!askOf() && shownSide() === edKey, `Cancel keeps the tab (${shownSide()})`);
+
+    // Open board: the Board tab of the chat's project (the cards the answers link: Kade portal), the chat's cards marked
+    buttonsIn(await rowNow("I moved")).find((x) => textOf(x) === "Open board")?.click();
+    const board = await waitFor(() => q(".chat-side .chat-board .board.compact .card"), 8000);
+    const boardTab = q('.chat-side [data-tab="board:board"]');
+    const marked = [...document.querySelectorAll<HTMLElement>(".chat-side .card.compact.marked")];
+    const k1 = marked.find((c) => c.dataset.card === "KADE-1");
+    const dot = document.body.appendChild(document.createElement("span"));
+    dot.style.color = "var(--accent)";
+    const accent = getComputedStyle(dot).color;
+    dot.remove();
+    const bd = { shown: shownSide(), name: textOf(boardTab?.querySelector(".name")), title: boardTab?.getAttribute("title"), head: textOf(q(".chat-side .chat-board-head")),
+      marked: marked.map((c) => c.dataset.card).sort(), k1: k1 ? [k1.getAttribute("aria-label"), !!k1.querySelector("svg.lucide-messages-square")] : null,
+      // the 1.5px accent border: WebKit draws it as a whole device pixel at 1x; its colour the accent
+      border: k1 ? [getComputedStyle(k1).borderTopWidth, getComputedStyle(k1).borderTopColor, accent] : null };
+    out.board = bd;
+    check(board && JSON.stringify(bd) === JSON.stringify({ shown: "board:board", name: "Kade portal", title: "Board of Kade portal", head: "Kade portalthe chat's projectIn this chat",
+      marked: ["KADE-1", "KADE-2", "KADE-3"], k1: ["KADE-1, in this chat", true], border: bd.border }), `the Board tab: Kade portal, its cards, the chat's marked (${JSON.stringify(bd)})`);
+    check(bd.border && ["1px", "1.5px", "2px"].includes(bd.border[0]!) && bd.border[1] === bd.border[2], `a marked card's border is the accent (${JSON.stringify(bd.border)})`);
+    k1?.click();
+    check(await waitFor(() => (shownSide() === "card:KADE-1" ? true : null), 3000), `a click on a card opens it in a Card tab (${shownSide()})`);
+
+    // Alt+3 shows the Board, Alt+3 on the Board hides the island, Alt+2 shows the Editor tab; the strip counts each kind
+    (document.activeElement as HTMLElement | null)?.blur();
+    const alt = (n: number) => window.dispatchEvent(new KeyboardEvent("keydown", { key: String(n), code: `Digit${n}`, altKey: true, cancelable: true }));
+    alt(3); await sleep(250);
+    const k3 = shownSide();
+    alt(3); await sleep(250);
+    const hid = !panel();
+    alt(2); await sleep(400);
+    const k2 = shownSide();
+    out.keys = { alt3: k3, alt3Again: hid ? "hidden" : shownSide(), alt2: k2, strip: strip() };
+    check(k3 === "board:board" && hid && k2 === edKey, `Alt+3 shows the Board and hides it, Alt+2 shows the Editor (${JSON.stringify(out.keys)})`);
+    check(JSON.stringify(strip().slice(-3)) === JSON.stringify(["editor 1 shown", "board 1", "card 2"]) && strip()[0]!.startsWith("terminal "),
+      `the strip: Terminal, Editor 1, Board 1, Card 2 (${strip().join(", ")})`);
+
+    // Own page with a change asks; Save and close saves it and opens the Editor page at page.html, line 30
+    q<HTMLButtonElement>(".chat-side button[aria-label='Own page']")?.click();
+    const ask2 = await waitFor(askOf, 2000);
+    check(ask2?.text === "page.html has changes that aren't saved.", `Own page with a change asks first (${ask2?.text})`);
+    ask2?.buttons.find((x) => textOf(x) === "Save and close")?.click();
+    const went = await waitFor(() => (location.hash.startsWith("#/editor") ? location.hash : null), 5000);
+    const at = await waitFor(() => [...document.querySelectorAll(".ed-status .item")].map((x) => textOf(x)).find((x) => x.startsWith("Ln ")) ?? null, 8000);
+    const own = { hash: !!went, at, line30: await line30(), tab: textOf(q(".ed-tab[aria-selected=true]")) };
+    out.ownPage = own;
+    check(own.hash && own.at === "Ln 30, Col 1" && own.line30 === "line 30 saved again" && own.tab.includes("page.html"),
+      `Save and close saved it, and Own page opened the Editor page at page.html, line 30 (${JSON.stringify(own)})`);
+  }
 }
 const same2 =(a: unknown[], b: unknown[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 

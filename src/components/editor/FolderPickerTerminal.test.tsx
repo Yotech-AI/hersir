@@ -92,7 +92,7 @@ vi.mock("../../api", async (orig) => {
     editorFolders: () => Promise.resolve(FOLDERS),
     getSettings: () => Promise.resolve({ editorRoots: ["~/Herd"] }),
     listTasks: () => Promise.resolve(TASKS),
-    listProjects: () => Promise.resolve([{ id: "p1", name: "Gizai", color: "var(--c-blue)" }]),
+    listProjects: () => Promise.resolve([{ id: "p1", key: "GA", name: "Gizai", color: "var(--c-blue)" }]),
     terminalOpen: (folder: string) => { chatT.opens.push(folder); return chatT.answer(folder); },
   };
 });
@@ -103,14 +103,23 @@ vi.mock("../../router", async (orig) => ({ ...(await orig<object>()), go: (r: un
 // GA-297: ChatSide brings the Card tab (its comment box and the pull request's counts load CodeMirror, which needs a DOM);
 // no card opens here
 vi.mock("../chat/ChatCard", () => ({ CardTab: () => null, ChatCardBody: () => null }));
+// GA-298: ChatSide brings the Editor tab (CodeMirror's view, which needs a DOM) and the Board tab; neither shows here, and
+// Open a file… opening a file is recorded
+vi.mock("../chat/ChatEditor", () => ({
+  ChatEditorBody: () => null, EditorCloseAsk: () => null, EditorTab: () => null, closeEditorTabs: () => {}, editorOwnPage: () => {},
+  openEditorTab: (...a: unknown[]) => { s.went.push(["openEditorTab", ...a]); },
+}));
+vi.mock("../chat/ChatBoard", () => ({ BoardTab: () => null, ChatBoardBody: () => null, boardName: () => "Board", boardOwnPage: () => {} }));
 
 const store = new Map<string, string>();
 vi.stubGlobal("localStorage", { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => { store.set(k, String(v)); }, removeItem: (k: string) => { store.delete(k); } });
 vi.stubGlobal("window", Object.assign(new EventTarget(), { innerWidth: 1280, innerHeight: 720 }));
-vi.stubGlobal("document", { body: {} });
+vi.stubGlobal("document", { body: {}, addEventListener: () => {}, removeEventListener: () => {} });
+// GA-298: ChatSide's keys ask whether the key came from a terminal (e.target instanceof Element)
+vi.stubGlobal("Element", class {});
 
 const { FolderPicker } = await import("./FolderPicker");
-const { OpenButton } = await import("../chat/ChatSide");
+const { ChatSide, OpenButton } = await import("../chat/ChatSide");
 const Side = await import("../../lib/chatSide");
 
 // ---- the hook runtime ----
@@ -312,13 +321,14 @@ describe("GA-278, GA-296: the Chat's Open opens it", () => {
     Side.closeSideTabs(Side.sideNow().tabs.map(Side.tabKey));
   });
 
-  it("Open's menu, under it: New terminal with its key, and (no terminal in the chat yet) nothing else", async () => {
+  // GA-298 adds Open a file… (Alt+2) and Board (Alt+3) after New terminal (design/islands-chat → The top bar)
+  it("Open's menu, under it: New terminal with its key, then (no terminal in the chat yet) Open a file… and Board", async () => {
     await openMenu();
     const m = menu()!;
     expect(m.props["aria-label"]).toBe("Open beside the chat");
     expect(m.props.style, "under the button: its left, 6px under it").toMatchObject({ left: 900, top: 46 });
     expect(openBtn()!.props["aria-expanded"]).toBe(true);
-    expect(items().map((i) => textOf(kids(i)))).toEqual(["New terminalCtrl+Shift+`"]);
+    expect(items().map((i) => textOf(kids(i)))).toEqual(["New terminalCtrl+Shift+`", "Open a file…Alt+2", "BoardAlt+3"]);
     expect([items()[0]!.props.title, items()[0]!.props.disabled]).toEqual(["New terminal in a folder you pick", false]);
   });
 
@@ -374,7 +384,7 @@ describe("GA-278, GA-296: the Chat's Open opens it", () => {
     chatT.terms = [kade(`${HERD}/kade-portal`)];
     Side.openSideTab({ kind: "terminal", id: "c1" });
     await openMenu();
-    expect(items().map((i) => textOf(kids(i)))).toEqual(["New terminalCtrl+Shift+`", "New terminal in…"]);
+    expect(items().map((i) => textOf(kids(i)))).toEqual(["New terminalCtrl+Shift+`", "New terminal in…", "Open a file…Alt+2", "BoardAlt+3"]);
     expect(item("New terminal").props.title).toBe("New terminal in kade-portal");
     expect(item("New terminal in…").props.title).toBe("New terminal in a folder you pick");
     fire(item("New terminal"), "onClick");
@@ -386,6 +396,153 @@ describe("GA-278, GA-296: the Chat's Open opens it", () => {
     fire(item("New terminal in…"), "onClick");
     await settle();
     expect(picker()?.props["aria-label"]).toBe("Open terminal in");
+  });
+});
+
+// GA-298 QA: Open's menu (the same as the island's +) adds Open a file… and Board; Alt+2 and Alt+3 open them while the chat has
+// none of that kind open (design/islands-chat → The keys). Open a file…: Go to file over the chat project's folder, else the
+// folder picker titled "Open a file in" first. The Chat page here is Open and the side island (ChatSide).
+describe("GA-298: Open a file… and Board, from Open's menu and Alt+2 and Alt+3", () => {
+  const menu = () => one((f) => f.props.role === "menu");
+  const item = (label: string) => findAll(kids(menu()!), (f) => f.props.role === "menuitem").find((i) => textOf(kids(i)).startsWith(label))!;
+  const page = async () => { root = () => <><OpenButton youId="u1" /><ChatSide youId="u1" /></>; render(); await settle(); };
+  const openMenu = async () => {
+    const btn = one((f) => f.type === "button" && typeof f.props.className === "string" && f.props.className.includes("chat-open"))!;
+    fire(btn, "onClick", { currentTarget: { getBoundingClientRect: () => ({ left: 900, bottom: 40 }) } });
+    await settle();
+  };
+  const pick = async (label: string) => { fire(item(label), "onClick"); await settle(); };
+  const alt = async (n: number) => {
+    window.dispatchEvent(Object.assign(new Event("keydown", { cancelable: true }), { code: `Digit${n}`, key: String(n), altKey: true, ctrlKey: false, shiftKey: false, metaKey: false }));
+    render();
+    await settle();
+  };
+  const filePicker = () => one((f) => f.props.role === "dialog" && f.props["aria-label"] === "Open a file in");
+  const goTo = () => one((f) => f.props.role === "dialog" && f.props["aria-label"] === "Go to file");
+  const goToIn = () => { const g = goTo(); return g ? findAll(kids(g), (f) => f.type === "input")[0]?.props.placeholder : undefined; };
+  const shownSide = () => { const x = Side.sideNow(); return { tabs: x.tabs.map(Side.tabKey), current: x.current, open: x.open }; };
+  beforeEach(() => {
+    Side.showChat("c1");
+    Side.closeSideTabs(Side.sideNow().tabs.map(Side.tabKey));
+    Side.setChatCards("c1", "about", []);
+    Side.setChatCards("c1", "named", []);
+  });
+  afterEach(() => { root = () => null; render(); });
+
+  it("Board opens the chat's Board tab beside the chat", async () => {
+    await page();
+    await openMenu();
+    expect(item("Board").props.title).toBe("The board of the chat's project beside the chat");
+    await pick("Board");
+    expect(shownSide()).toEqual({ tabs: ["board:board"], current: "board:board", open: true });
+  });
+
+  it("Open a file… in a chat about a card goes to Go to file over its project's folder", async () => {
+    Side.setChatCards("c1", "about", ["GA-5"]);
+    await page();
+    await openMenu();
+    await pick("Open a file…");
+    expect(filePicker()).toBeUndefined();
+    expect(goToIn()).toBe("Go to file in gizai");
+  });
+
+  it("Open a file… in a chat without a project or an Editor tab asks for the folder first, then Go to file over the one picked", async () => {
+    await page();
+    await openMenu();
+    await pick("Open a file…");
+    expect(goTo()).toBeUndefined();
+    expect(filePicker()).toBeDefined();
+    fire(option("invoice-api"), "onClick");
+    await settle();
+    expect(filePicker()).toBeUndefined();
+    expect(goToIn()).toBe("Go to file in invoice-api");
+  });
+
+  it("Alt+3 with no Board tab opens it, Alt+3 on the Board hides the island; Alt+4 with no card does nothing; Alt+2 with no Editor tab opens Open a file…", async () => {
+    await page();
+    await alt(3);
+    expect(shownSide()).toEqual({ tabs: ["board:board"], current: "board:board", open: true });
+    await alt(3);
+    expect(shownSide()).toMatchObject({ tabs: ["board:board"], open: false });
+    await alt(4);
+    expect(shownSide()).toMatchObject({ tabs: ["board:board"], open: false });
+    await alt(3);
+    expect(shownSide()).toMatchObject({ current: "board:board", open: true });
+    await alt(2);
+    expect(filePicker(), "no chat project: the picker first").toBeDefined();
+  });
+
+  it("Open a file… asked once doesn't open again by itself when the Chat page draws again (you went to another page and back)", async () => {
+    await page();
+    await openMenu();
+    await pick("Open a file…");
+    expect(filePicker()).toBeDefined();
+    fire(option("invoice-api"), "onClick");
+    await settle();
+    expect(goTo()).toBeDefined();
+    // another page, then the Chat page again: a new ChatSide
+    root = () => null;
+    render();
+    await settle();
+    await page();
+    expect([filePicker(), goTo()], "nothing opens by itself").toEqual([undefined, undefined]);
+  });
+
+  // GA-298 QA, round 2 (the fix starts OpenAFile at the ask already made): each way in, the island's + and Alt+2 too, opens
+  // nothing by itself after another page, and Open a file… still opens on the first ask after coming back
+  const plus = async () => {
+    const btn = one((f) => f.type === "button" && f.props["aria-label"] === "Open beside the chat")!;
+    fire(btn, "onClick", { currentTarget: { getBoundingClientRect: () => ({ left: 1000, bottom: 60 }) } });
+    await settle();
+  };
+  const closeGoTo = async () => { fire(one((f) => f.props.className === "pal-backdrop")!, "onClick"); await settle(); };
+  const away = async () => { root = () => null; render(); await settle(); await page(); };
+  const nothing = () => [filePicker(), goTo()];
+
+  it("in a chat about a card: the island's + and Alt+2 open Go to file over its project once each, nothing after coming back, and the first ask afterwards opens it", async () => {
+    Side.setChatCards("c1", "about", ["GA-5"]);
+    await page();
+    await alt(3); // the Board tab: the island and its + show
+    await plus();
+    await pick("Open a file…");
+    expect(goToIn()).toBe("Go to file in gizai");
+    await closeGoTo();
+    expect(nothing()).toEqual([undefined, undefined]);
+    await away();
+    expect(nothing(), "back from another page after +: nothing opens by itself").toEqual([undefined, undefined]);
+    await plus();
+    await pick("Open a file…");
+    expect(goToIn(), "the first + → Open a file… after coming back opens it").toBe("Go to file in gizai");
+    await closeGoTo();
+    await alt(2);
+    expect(goToIn(), "Alt+2 with no Editor tab").toBe("Go to file in gizai");
+    await closeGoTo();
+    await away();
+    expect(nothing(), "back from another page after Alt+2: nothing opens by itself").toEqual([undefined, undefined]);
+    await away();
+    expect(nothing(), "and not after a second round trip either").toEqual([undefined, undefined]);
+    await alt(2);
+    expect(goToIn(), "the first Alt+2 after coming back opens it").toBe("Go to file in gizai");
+  });
+
+  it("in a chat without a project: the picker opens again on the first ask after coming back, and with an Editor tab Go to file goes over its folder", async () => {
+    await page();
+    await alt(2);
+    expect(filePicker()).toBeDefined();
+    await away();
+    expect(nothing(), "the picker left open on the other page doesn't come back by itself").toEqual([undefined, undefined]);
+    await openMenu();
+    await pick("Open a file…");
+    expect(filePicker(), "the first Open a file… after coming back asks for the folder").toBeDefined();
+    expect(goTo()).toBeUndefined();
+    // an Editor tab beside the chat: Open a file… goes over the last Editor tab's folder, with no picker
+    Side.openSideTab({ kind: "editor", id: Side.editorTabId(`${HERD}/kade-portal`, "src/app.ts") });
+    await away();
+    expect(nothing()).toEqual([undefined, undefined]);
+    await plus();
+    await pick("Open a file…");
+    expect(filePicker()).toBeUndefined();
+    expect(goToIn()).toBe("Go to file in kade-portal");
   });
 });
 

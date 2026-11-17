@@ -1,5 +1,6 @@
 // One speaker's run of messages: your text on the right (with its links to Gizai items as chips, and the files you added),
-// the Team Lead's text and tool calls on the left, with Open in terminal under a text that asks you to run commands (GA-279).
+// the Chief's text and tool calls on the left, with one row of buttons under the whole answer (GA-298, AnswerRow.tsx): Open
+// GA-12, Open board, Open in Editor and Open in terminal (GA-279's), each opening in the chat's side island.
 import { memo, useState } from "react";
 import { Check, ChevronRight, CircleAlert, Info } from "lucide-react";
 import { openFile } from "../../api";
@@ -9,7 +10,7 @@ import { fileExt } from "../../lib/files";
 import { formatBytes, relTime } from "../../lib/format";
 import { toolCard, type Group } from "../../lib/chat";
 import type { ChatMessage, FileRow } from "../../types";
-import { OpenInTerminal } from "./OpenInTerminal";
+import { AnswerRow } from "./AnswerRow";
 
 /** The files added to a message you sent (or queued): each opens with the system's app. */
 export function MessageFiles({ files }: { files?: FileRow[] | null }) {
@@ -73,20 +74,14 @@ export const ToolCard = memo(function ToolCard({ m }: { m: ChatMessage }) {
   );
 });
 
-/** The Team Lead's text, and under it Open in terminal when it asks you to run commands (GA-279). `youId`: you, for its
- *  folder picker. */
-function AgentText({ md, youId }: { md: string; youId?: string }) {
-  return (
-    <>
-      <div className="chat-msg agent"><MarkdownView md={md} /></div>
-      <OpenInTerminal md={md} you={youId} />
-    </>
-  );
+/** The Chief's text. */
+function AgentText({ md }: { md: string }) {
+  return <div className="chat-msg agent"><MarkdownView md={md} /></div>;
 }
 
 /** `noteActions`: what a note of Gizai's offers under it (Answer on another CLI after a usage limit). `after`: what shows under
  *  the Team Lead's messages (the calls of its answer that wait for your approval, GA-102). `youId`: you, for the folder
- *  picker of Open in terminal under a message. Memoised (GA-176): while the Team Lead writes, only the group with `live`
+ *  picker of Open in terminal in the answer's row. Memoised (GA-176): while the Team Lead writes, only the group with `live`
  *  (the text being written, which has no Open in terminal) redraws, not every group above it. */
 export const MessageGroup = memo(function MessageGroup({ g, agentRole, live, noteActions, after, youId }: { g: Group; agentRole?: string | null; live?: React.ReactNode;
   noteActions?: (m: ChatMessage) => React.ReactNode; after?: React.ReactNode; youId?: string }) {
@@ -112,8 +107,9 @@ export const MessageGroup = memo(function MessageGroup({ g, agentRole, live, not
     <div className="chat-group agent">
       <div className="chat-head"><Avatar name={g.author ?? "Chief"} kind="agent" role={agentRole} /><b>{g.author ?? "Chief"}</b><span className="faint">{relTime(g.at)}</span></div>
       <div className="chat-body">
-        {g.items.map((m) => m.role === "tool" ? <ToolCard key={m.id} m={m} /> : <AgentText key={m.id} md={m.bodyMd ?? ""} youId={youId} />)}
+        {g.items.map((m) => m.role === "tool" ? <ToolCard key={m.id} m={m} /> : <AgentText key={m.id} md={m.bodyMd ?? ""} />)}
         {live}
+        <AnswerRow items={g.items} you={youId} />
         {after}
       </div>
     </div>

@@ -119,7 +119,7 @@ export function namedPaths(md: string): string[] {
 }
 
 /** A path with / between its parts once, without . and with .. taken back: ~/Herd/a/../b/ is ~/Herd/b. */
-function normal(path: string): string {
+export function normalPath(path: string): string {
   const [head = "", ...rest] = path.replace(/\\/g, "/").split("/");
   const parts: string[] = [];
   for (const s of rest) {
@@ -133,13 +133,13 @@ function normal(path: string): string {
 /** The Editor folder a path is: the project's or the one in the Editor folders whose path (with ~) or id (absolute) it is,
  *  or that it lies inside, the longest one. A card's worktree isn't one; null for any other path. */
 export function folderOf(path: string, folders: readonly EditorFolder[]): EditorFolder | null {
-  const p = normal(path);
+  const p = normalPath(path);
   let best: EditorFolder | null = null;
   let length = 0;
   for (const f of folders) {
     if (f.kind !== "project" && f.kind !== "root") continue;
     for (const at of [f.path, f.id]) {
-      const base = normal(at);
+      const base = normalPath(at);
       if (base && base.length > length && (p === base || p.startsWith(`${base}/`))) { best = f; length = base.length; }
     }
   }
