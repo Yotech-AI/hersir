@@ -4227,7 +4227,8 @@ async function terminalPanelProbe(phase: "a" | "b", card: string) {
 // island's + (a menu) and Ctrl+Shift+` start one in the shown terminal's folder; × asks while a program runs; middle click,
 // Ctrl+PgUp, Ctrl+PgDn, ← → and F2 on the tabs; Hide keeps sleep 600 running and the strip stays (none selected); a click on
 // the icon shows the island, a click on the selected icon hides it; Ctrl+` (also from inside the terminal) and Alt+1 do the
-// same; Alt+1 inside the terminal reaches the shell; Alt+2, Alt+3 and Alt+4 do nothing yet; the icon's right-click menu
+// same; Alt+1 inside the terminal reaches the shell; Alt+4 does nothing with no card, Alt+3 opens the Board tab and Alt+2
+// Open a file… (GA-298; the Board tab is closed again, the picker too); the icon's right-click menu
 // (and the context menu key): its head, Hide or Show, Close all; the drag handle in the gap left of the island between 360px
 // of island and 400px of conversation; chat B shows none of A's tabs (and its own one), New chat and the Archive none,
 // another page and back: A's tabs are there, sleep 600 still running; Own page closes the tab here; a narrow window hides
@@ -4358,8 +4359,10 @@ async function chatTerminalProbe(phase: "a" | "b") {
   ob?.click();
   const menu0 = await waitFor(() => menuOf("Open beside the chat"), 2000);
   out.openMenu = itemsOf(menu0);
-  check(JSON.stringify(itemsOf(menu0)) === JSON.stringify([{ label: "New terminal", kbd: "Ctrl+Shift+`", off: false, danger: false }]),
-    `with no terminal in the chat, Open's menu has New terminal (${JSON.stringify(out.openMenu)})`);
+  // GA-298 adds Open a file… (Alt+2) and Board (Alt+3)
+  check(JSON.stringify(itemsOf(menu0)) === JSON.stringify([{ label: "New terminal", kbd: "Ctrl+Shift+`", off: false, danger: false },
+    { label: "Open a file…", kbd: "Alt+2", off: false, danger: false }, { label: "Board", kbd: "Alt+3", off: false, danger: false }]),
+    `with no terminal in the chat, Open's menu has New terminal, Open a file… and Board (${JSON.stringify(out.openMenu)})`);
   itemIn(menu0, "New terminal")?.click();
   const picker = await waitFor(() => q('.ed-picker[aria-label="Open terminal in"]'));
   out.picker = { title: textOf(picker?.querySelector(".ed-picker-title")), top: r1(picker?.getBoundingClientRect().top ?? 0), button: r1(openBtn()?.getBoundingClientRect().bottom ?? 0) };
@@ -4413,7 +4416,7 @@ async function chatTerminalProbe(phase: "a" | "b") {
   openBtn()?.click();
   const menu1 = await waitFor(() => menuOf("Open beside the chat"), 2000);
   out.openMenu1 = itemsOf(menu1);
-  check(JSON.stringify(itemsOf(menu1).map((i) => i.label)) === JSON.stringify(["New terminal", "New terminal in…"]), `with a terminal, Open's menu has New terminal and New terminal in… (${JSON.stringify(out.openMenu1)})`);
+  check(JSON.stringify(itemsOf(menu1).map((i) => i.label)) === JSON.stringify(["New terminal", "New terminal in…", "Open a file…", "Board"]), `with a terminal, Open's menu has New terminal, New terminal in…, Open a file… and Board (${JSON.stringify(out.openMenu1)})`);
   closeMenus();
   await waitFor(() => (!menuOf("Open beside the chat") ? true : null), 2000);
   const id2 = await pick("chat-other", "New terminal in…");
@@ -4539,11 +4542,25 @@ async function chatTerminalProbe(phase: "a" | "b") {
   await waitFor(() => (island() ? true : null), 2000);
   (document.activeElement as HTMLElement | null)?.blur();
   const before234 = { cls: chat()?.className, tabs: tabIds().join(","), icons: [...document.querySelectorAll(".chat-strip .strip-btn")].map((b) => b.getAttribute("data-kind")) };
-  altDigit(2); altDigit(3); altDigit(4);
+  const now234 = () => ({ cls: chat()?.className, tabs: tabIds().join(","), icons: [...document.querySelectorAll(".chat-strip .strip-btn")].map((b) => b.getAttribute("data-kind")) });
+  // GA-298: Alt+4 with no card does nothing; Alt+3 with no Board tab opens it (closed again here); Alt+2 with no Editor tab
+  // opens Open a file…: the folder picker titled "Open a file in", as this chat has no project (closed again by a click outside)
+  altDigit(4);
   await sleep(300);
-  const after234 = { cls: chat()?.className, tabs: tabIds().join(","), icons: [...document.querySelectorAll(".chat-strip .strip-btn")].map((b) => b.getAttribute("data-kind")) };
-  out.alt234 = { before234, after234 };
-  check(JSON.stringify(before234) === JSON.stringify(after234) && JSON.stringify(after234.icons) === JSON.stringify(["terminal"]), `Alt+2, Alt+3 and Alt+4 do nothing yet (${JSON.stringify(out.alt234)})`);
+  const after4 = now234();
+  altDigit(3);
+  const boardOpened = !!(await waitFor(() => q('.chat-side [data-tab="board:board"][aria-selected=true]'), 2000));
+  q<HTMLButtonElement>('.chat-side [data-tab="board:board"] button.x')?.click();
+  await waitFor(() => (!q('.chat-side [data-tab="board:board"]') ? true : null), 2000);
+  altDigit(2);
+  const filePicker = !!(await waitFor(() => q('.ed-picker[aria-label="Open a file in"]'), 3000));
+  window.dispatchEvent(new MouseEvent("mousedown"));
+  await waitFor(() => (!q(".ed-picker") ? true : null), 2000);
+  const after234 = now234();
+  out.alt234 = { before234, after4, boardOpened, filePicker, after234 };
+  check(JSON.stringify(before234) === JSON.stringify(after4), `Alt+4 with no card does nothing (${JSON.stringify(out.alt234)})`);
+  check(boardOpened && filePicker && JSON.stringify(before234) === JSON.stringify(after234) && JSON.stringify(after234.icons) === JSON.stringify(["terminal"]),
+    `Alt+3 opens the Board tab, Alt+2 Open a file… (the picker "Open a file in"); both closed again, the terminals as they were (${JSON.stringify(out.alt234)})`);
   check((await terminalList()).find((s) => s.id === id1)?.busy === "sleep", "sleep 600 is still running after the keys");
 
   // 6. the icon's right-click menu: its head, Hide (on show) or Show with its key (hidden), a line, Close all in danger; the
@@ -4831,7 +4848,8 @@ async function chatTerminalProbe(phase: "a" | "b") {
 // question of yours between the answers and each answer is checked by its row; the chat is long, so a message is scrolled
 // into sight before it is read (only what is near sight is in the page, GA-190). Then GA-298's answer: its row Open KADE-1,
 // KADE-2, KADE-3, and 1 more (GFW-1, in a menu), Open board, Open in Editor page.html:30 and Open in terminal, with their
-// icons; nothing beside the chat before a click; and 1 more opens GFW-1 in a Card tab; Open in Editor opens page.html in an
+// icons; nothing beside the chat before a click; and 1 more opens GFW-1 in a Card tab; Open in Editor opens page.html (at
+// doq-studio's top: a file in a folder there is "Ignored by git" here, as the scratch home is in .devdata) in an
 // Editor tab at line 30, marked (the band and its number), Ln 30, Col 1, Save off until a change, and Save writes it; Ctrl+W
 // with a change asks first (Cancel keeps it); Open board opens the Board tab of the chat's project (Kade portal, from the
 // cards the answers link) with the chat's cards marked and a click on one opens its Card tab; Alt+3 and Alt+2 show the
@@ -5031,8 +5049,9 @@ async function chatRunProbe() {
     const strip = () => [...document.querySelectorAll<HTMLButtonElement>(".chat > .chat-strip .strip-btn")]
       .map((x) => `${x.dataset.kind} ${textOf(x.querySelector(".n"))}${x.getAttribute("aria-pressed") === "true" ? " shown" : ""}`);
     const shownSide = () => q(".chat-side [data-tab][aria-selected=true]")?.getAttribute("data-tab") ?? null;
-    const iconOf = (x: Element) => [...(x.querySelector("svg")?.classList ?? [])].find((c) => c.startsWith("lucide-")) ?? "";
-    const FILE = "resources/embed-test/page.html";
+    const iconOf = (x: Element) => [...(x.querySelector("svg")?.classList ?? [])].filter((c) => c.startsWith("lucide-")).join(" ");
+    const ICONS = ["square-kanban", "square-kanban", "square-kanban", "chevron-down", "columns-3", "file-code", "terminal"];
+    const FILE = "page.html";
     const line30 = async () => (await editorRead(doq!.id, FILE).catch(() => null))?.text?.split("\n")[29] ?? null;
     const askOf = () => { const a = q('.ed-ask[role="alertdialog"]'); return a ? { text: textOf(a.querySelector("p")), buttons: [...a.querySelectorAll<HTMLButtonElement>("button")] } : null; };
 
@@ -5041,7 +5060,7 @@ async function chatRunProbe() {
     check(strip().every((x) => x.startsWith("terminal ")), `nothing beside the chat but the terminals before a click (${strip().join(", ")})`);
     const btns = buttonsIn(await rowNow("I moved"));
     out.answerRow = btns.map((x) => [textOf(x), iconOf(x), x.className]);
-    check(JSON.stringify(btns.map(iconOf)) === JSON.stringify(["lucide-square-kanban", "lucide-square-kanban", "lucide-square-kanban", "lucide-chevron-down", "lucide-columns-3", "lucide-file-code", "lucide-terminal"])
+    check(btns.length === ICONS.length && btns.every((x, i) => !!x.querySelector(`svg.lucide-${ICONS[i]}`))
       && btns.every((x) => x.className === "btn ghost sm"), `GA-298's row: quiet buttons with their icons (${JSON.stringify(out.answerRow)})`);
     const eb = btns.find((x) => textOf(x).startsWith("Open in Editor"));
     check(textOf(eb?.querySelector(".mono")) === "page.html:30" && eb?.title === `${doq!.path}/${FILE}, line 30`, `Open in Editor: the file and line in mono, its title the whole path (${eb?.title})`);
@@ -5099,11 +5118,18 @@ async function chatRunProbe() {
     const boardTab = q('.chat-side [data-tab="board:board"]');
     const marked = [...document.querySelectorAll<HTMLElement>(".chat-side .card.compact.marked")];
     const k1 = marked.find((c) => c.dataset.card === "KADE-1");
+    const dot = document.body.appendChild(document.createElement("span"));
+    dot.style.color = "var(--accent)";
+    const accent = getComputedStyle(dot).color;
+    dot.remove();
     const bd = { shown: shownSide(), name: textOf(boardTab?.querySelector(".name")), title: boardTab?.getAttribute("title"), head: textOf(q(".chat-side .chat-board-head")),
-      marked: marked.map((c) => c.dataset.card).sort(), k1: k1 ? [k1.getAttribute("aria-label"), !!k1.querySelector("svg.lucide-messages-square"), getComputedStyle(k1).borderTopWidth] : null };
+      marked: marked.map((c) => c.dataset.card).sort(), k1: k1 ? [k1.getAttribute("aria-label"), !!k1.querySelector("svg.lucide-messages-square")] : null,
+      // the 1.5px accent border: WebKit draws it as a whole device pixel at 1x; its colour the accent
+      border: k1 ? [getComputedStyle(k1).borderTopWidth, getComputedStyle(k1).borderTopColor, accent] : null };
     out.board = bd;
     check(board && JSON.stringify(bd) === JSON.stringify({ shown: "board:board", name: "Kade portal", title: "Board of Kade portal", head: "Kade portalthe chat's projectIn this chat",
-      marked: ["KADE-1", "KADE-2", "KADE-3"], k1: ["KADE-1, in this chat", true, "1.5px"] }), `the Board tab: Kade portal, its cards, the chat's marked (${JSON.stringify(bd)})`);
+      marked: ["KADE-1", "KADE-2", "KADE-3"], k1: ["KADE-1, in this chat", true], border: bd.border }), `the Board tab: Kade portal, its cards, the chat's marked (${JSON.stringify(bd)})`);
+    check(bd.border && ["1px", "1.5px", "2px"].includes(bd.border[0]!) && bd.border[1] === bd.border[2], `a marked card's border is the accent (${JSON.stringify(bd.border)})`);
     k1?.click();
     check(await waitFor(() => (shownSide() === "card:KADE-1" ? true : null), 3000), `a click on a card opens it in a Card tab (${shownSide()})`);
 

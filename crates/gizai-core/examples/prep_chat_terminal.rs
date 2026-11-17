@@ -4,7 +4,8 @@
 //! prompts in a subfolder with a URL after it, the folder's absolute path, commands without a folder, two folders, four
 //! folders and plain text, each its own answer (GA-298: one row of buttons under a whole answer, so a question of yours
 //! comes between them). Last, GA-298's answer: chips of four cards, a move_task call, a file and line in doq-studio
-//! (resources/embed-test/page.html:30, a file of 40 lines written here) and a command. Prints the chat's id.
+//! (page.html:30 at its top, a file of 40 lines written here: a file in a folder there would be "Ignored by git", as the
+//! UI test's scratch home is in .devdata) and a command. Prints the chat's id.
 //! usage: cargo run -p gizai-core --example prep_chat_terminal -- <data dir> <home folder the app gets>
 use gizai_core::{chat, db::Db, seed::ensure_seed, team};
 use serde_json::json;
@@ -41,13 +42,13 @@ fn main() {
     say("agent", "All done: GA-279 is in Review.");
     // GA-298: an answer that links four cards, moved one (a move_task of Hersir's that ended without an error), names a file
     // and line in doq-studio and asks you to run a command
-    let page = format!("{home}/Herd/doq-studio/resources/embed-test/page.html");
+    let page = format!("{home}/Herd/doq-studio/page.html");
     std::fs::write(&page, (1..=40).map(|n| format!("line {n}\n")).collect::<String>()).unwrap();
     say("user", "Move KADE-1 along?");
     chat::add_message(&db, chat::NewMessage { thread_id: th.clone(), role: "tool".into(), author_id: Some(lead.clone()), body_md: Some("Moved KADE-1".into()),
                                               tool_name: Some("mcp__gizai__move_task".into()),
                                               tool: Some(json!({"id": "toolu_2", "input": {"identifier": "KADE-1", "state": "Testing"}, "result": "{}", "isError": false})),
                                               ..Default::default() }).unwrap();
-    say("agent", "I moved [KADE-1 - Export invoices](gizai:task/KADE-1) to Testing; [KADE-2](gizai:task/KADE-2), [KADE-3](gizai:task/KADE-3) and [GFW-1](gizai:task/GFW-1) are next. The page is `resources/embed-test/page.html:30`. In `~/Herd/doq-studio`: run `npm test`.");
+    say("agent", "I moved [KADE-1 - Export invoices](gizai:task/KADE-1) to Testing; [KADE-2](gizai:task/KADE-2), [KADE-3](gizai:task/KADE-3) and [GFW-1](gizai:task/GFW-1) are next. The page is `page.html:30`. In `~/Herd/doq-studio`: run `npm test`.");
     println!("{th}");
 }
