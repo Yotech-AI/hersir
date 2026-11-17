@@ -14,6 +14,8 @@ pub mod github;
 pub mod glass;
 pub mod hand;
 pub mod limits;
+// Hersir's own log: one file per start in <data>/logs (GA-281).
+pub mod logs;
 pub mod mcp;
 pub mod mcp_servers;
 pub mod memory;
@@ -229,6 +231,12 @@ fn display_name() -> String {
     }
 }
 
+/// The data folder `dir`, made when it is missing, and its lock (`lock_data_dir`).
+fn take_data_dir(dir: &std::path::Path) -> Result<std::fs::File, String> {
+    std::fs::create_dir_all(dir).map_err(|e| format!("can't create {}: {e}", dir.display()))?;
+    lock_data_dir(dir)
+}
+
 /// One Gizai per data folder: a second one would treat the first one's running agents as left behind and stop
 /// them, and take over its chat socket. An exclusive lock on `<dir>/gizai.lock`, released when Gizai exits.
 fn lock_data_dir(dir: &std::path::Path) -> Result<std::fs::File, String> {
@@ -278,15 +286,19 @@ pub fn housekeeping(db: &Db, dir: &std::path::Path) {
 /// (`gizai_core::seed::ensure_seed_with_agents`), and the onboarding waits (`onboarding`), unless
 /// HERSIR_SKIP_ONBOARDING=1.
 pub fn open_state(dir: PathBuf, notify: Arc<dyn Fn(runs::Note) + Send + Sync>) -> Result<AppState, String> {
-    open_data(dir, notify, true)
+    open_data(dir, notify, true, None)
 }
 
-/// `open_state`, with or without the default agents on a first start. The log says once how long each part took
-/// (GA-191), so a slow start says where its time went.
-fn open_data(dir: PathBuf, notify: Arc<dyn Fn(runs::Note) + Send + Sync>, default_agents: bool) -> Result<AppState, String> {
+/// `open_state`, with or without the default agents on a first start, with the data folder's lock when the caller holds
+/// it already (`run`'s setup, which starts Hersir's log once it holds the lock: GA-281), else taking it. The log says
+/// once how long each part took (GA-191), so a slow start says where its time went.
+fn open_data(dir: PathBuf, notify: Arc<dyn Fn(runs::Note) + Send + Sync>, default_agents: bool, lock: Option<std::fs::File>)
+    -> Result<AppState, String> {
     let mut timed = Timed::start();
-    std::fs::create_dir_all(&dir).map_err(|e| format!("can't create {}: {e}", dir.display()))?;
-    let lock = lock_data_dir(&dir)?;
+    let lock = match lock {
+        Some(lock) => lock,
+        None => take_data_dir(&dir)?,
+    };
     timed.part("the lock");
     // GA-218: a restore that is ready (`restore`) is swapped in first, keeping this computer's device and settings; with
     // none staged this is `Db::open`. Its result waits for the window as `restore_result`.
@@ -530,7 +542,7 @@ fn appindicator_found() -> bool {
 /// need; `open_state` starts like a new install.
 #[doc(hidden)]
 pub fn test_state(dir: &std::path::Path) -> AppState {
-    let mut st = open_data(dir.join("data"), Arc::new(|_| {}), false).expect("test state");
+    let mut st = open_data(dir.join("data"), Arc::new(|_| {}), false, None).expect("test state");
     // Tests keep their runs' temp folders in their own folder too, never in /var/tmp.
     st.temp_base = dir.join("run-temp");
     // Tests keep their socket in their own folder, never in the real runtime dir.
@@ -580,6 +592,8 @@ pub fn test_task(st: &AppState, repo: &str, label: &str) -> String {
 }
 
 pub fn run() {
+    // A panic writes its message, place and a backtrace in Hersir's log first (GA-281; on stderr until the log starts).
+    logs::panic_hook();
     let dir = data_dir();
     let _ = std::fs::create_dir_all(&dir); // so the instance id names the folder the same way from the first start
     // The window's storage from before the app id was dev.hersir.app comes along, before the window opens (GA-248).
@@ -638,11 +652,28 @@ pub fn run() {
             }
             // Headless test and screenshot runs.
             let test_run = ["HERSIR_SELFTEST", "HERSIR_ROUTE"].iter().any(|v| env::var_os(v).is_some());
-            let mut state = match open_state(dir.clone(), ui_notifier(app.handle().clone())) {
+            // The data folder's lock first: a Hersir refused here (another one holds this data folder, from another login
+            // session) says so where it was started, and keeps no log.
+            let lock = match take_data_dir(&dir) {
+                Ok(lock) => lock,
+                Err(e) => {
+                    eprintln!("gizai: {e}");
+                    quit::end_web_content(app.handle());
+                    std::process::exit(1);
+                }
+            };
+            // Hersir's own log (GA-281), before the database opens, so the start's own lines are in it. A release build
+            // outside a headless test or screenshot run prints into it from now on; test runs (scripts/ui-test.sh reads
+            // their stderr) and debug builds print to stderr as before.
+            if let Err(e) = logs::start(&dir, !cfg!(debug_assertions) && !test_run) {
+                eprintln!("gizai: Hersir keeps no log of this start: {e}");
+            }
+            let mut state = match open_data(dir.clone(), ui_notifier(app.handle().clone()), true, Some(lock)) {
                 Ok(s) => s,
                 Err(e) => {
-                    // e.g. another Gizai holds this data folder (from another login session)
                     eprintln!("gizai: {e}");
+                    // it ends on purpose: the next start reports no unexpected end
+                    logs::quit();
                     quit::end_web_content(app.handle());
                     std::process::exit(1);
                 }
@@ -659,6 +690,8 @@ pub fn run() {
                 let st = state.clone();
                 tauri::async_runtime::spawn_blocking(move || memory::import_claude(&st));
             }
+            // Every minute Hersir's log says it is alive, with its runs at work and memory (GA-281).
+            logs::watch(state.clone());
             // After manage: quitting reads the state.
             quit::on_signals(app.handle());
             // The tray icon, with Open Gizai and Quit Gizai completely: closing the window only hides it.
@@ -765,6 +798,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             app_info, glass::glass_support, selftest_report, tour::tour_still, tour::tour_steps, exit_app, unsaved::set_unsaved_edits, unsaved::close_answer,
             #[cfg(target_os = "linux")] paste_guard::selftest_paste,
+            logs::get_logs_info, logs::open_logs_folder, logs::dismiss_unexpected_end, logs::selftest_panic,
             commands::list_mcp_servers, commands::save_mcp_server, commands::remove_mcp_server, commands::list_mcp_tools,
             commands::scan_claude_code_mcp, commands::import_mcp_servers, commands::mcp_sign_in, commands::mcp_sign_out,
             commands::agent_mcp, commands::save_agent_mcp, commands::agent_cli_tools, commands::save_agent_cli_tools, commands::ask_cli_tools,
@@ -864,6 +898,8 @@ pub fn run() {
                 mcp::remove_socket(app.state::<AppState>().inner());
                 // an update that is building stops (its source and build so far are kept for the next one)
                 update::on_exit(app.state::<AppState>().inner());
+                // last, Hersir's log says it quit, and the next start reports no unexpected end (GA-281)
+                logs::quit();
             }
         });
 }

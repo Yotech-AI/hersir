@@ -265,3 +265,62 @@ fn copy_defaults_are_suggested_from_the_repository() {
     std::fs::write(plain.join("Cargo.toml"), "[package]\n").unwrap();
     assert_eq!(prepare::suggest_copy(&plain), ["target/"]);
 }
+
+/// GA-281 QA, round 5: what Hersir's log says about a failed preparation (`PrepareFailed::logged`). The project's setup
+/// command is named "the setup command", never shown, and why it failed stays; the end of its output stays out too. The
+/// card still gets all of it (`Display`), the command's text and output included.
+#[test]
+fn a_failed_setup_command_is_named_in_the_logs_line_and_shown_in_full_on_the_card() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = repo(tmp.path(), &[("README.md", "hi\n")]);
+    let wt = new_worktree(tmp.path(), &repo);
+    let setup = "echo 'login with S3cretPw failed' >&2; exit 3; docker login -u me -p S3cretPw ghcr.io";
+    let plan = Prepare { copy: vec![], install: false, setup: Some(setup.into()) };
+    let failed = prepare::prepare(&repo, &wt, &plan, None, None).unwrap_err();
+    assert!(failed.setup, "the failed command is the setup command");
+    assert_eq!(failed.logged(), "the setup command failed (exit code 3)");
+    let card = failed.to_string();
+    assert!(card.starts_with(setup) && card.contains("failed (exit code 3)") && card.contains("login with S3cretPw failed"),
+            "the card keeps the whole command and its output: {card}");
+}
+
+/// A setup command ended by a signal is named the same way, with why.
+#[test]
+fn a_setup_command_ended_by_a_signal_is_named_with_why() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = repo(tmp.path(), &[("README.md", "hi\n")]);
+    let wt = new_worktree(tmp.path(), &repo);
+    let plan = Prepare { copy: vec![], install: false, setup: Some("sshpass -p Sshp4ssW0rd true 2>/dev/null; kill -9 $$".into()) };
+    let failed = prepare::prepare(&repo, &wt, &plan, None, None).unwrap_err();
+    assert_eq!(failed.logged(), "the setup command was ended by a signal");
+    assert!(failed.to_string().contains("Sshp4ssW0rd"), "the card keeps the command's text: {failed}");
+}
+
+/// Hersir's own install commands keep their names in the log's line, with why, without their output; a missing program
+/// says so. Its own install for a folder it doesn't install (chat, the Editor) is no setup command either.
+#[test]
+fn hersirs_own_commands_keep_their_names_in_the_logs_line() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = repo(tmp.path(), &[("composer.json", "{}\n")]);
+    let wt = new_worktree(tmp.path(), &repo);
+    let plan = Prepare { copy: vec![], install: true, setup: Some("touch .setup-ran".into()) };
+
+    let bin = tmp.path().join("failing-bin");
+    std::fs::create_dir(&bin).unwrap();
+    write_script(&bin.join("composer"), "#!/bin/sh\necho 'Your requirements could not be resolved' >&2\nexit 1\n");
+    let path = std::env::join_paths([bin, PathBuf::from("/usr/bin"), PathBuf::from("/bin")]).unwrap();
+    let failed = prepare::prepare(&repo, &wt, &plan, None, Some(&path)).unwrap_err();
+    assert!(!failed.setup);
+    assert_eq!(failed.logged(), "composer install failed (exit code 1)");
+    assert!(failed.to_string().contains("could not be resolved"), "the card keeps the output: {failed}");
+
+    let empty = tmp.path().join("empty-bin");
+    std::fs::create_dir(&empty).unwrap();
+    let failed = prepare::prepare(&repo, &wt, &plan, None, Some(empty.as_os_str())).unwrap_err();
+    assert_eq!(failed.logged(), "composer install couldn't start: composer isn't installed (or not on Hersir's PATH)");
+    assert!(!wt.join(".setup-ran").exists());
+
+    let failed = prepare::install(&wt, "target", None).unwrap_err();
+    assert!(!failed.setup);
+    assert_eq!(failed.logged(), "installing target/ isn't something Hersir installs");
+}

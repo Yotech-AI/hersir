@@ -37,6 +37,7 @@ mod process_test;
 mod prompt_screenshots_test;
 mod prompt_test;
 mod push_new_commits_test;
+mod redact_test;
 mod release_sig_test;
 mod release_update_test;
 mod repo_settings_test;
