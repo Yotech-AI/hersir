@@ -207,6 +207,13 @@
 #     page; Alt+4 hides and shows the cards, Ctrl+W closes the shown one, Own page opens the card's page and closes its tab;
 #     on a card's page a chip still opens the page; every tab closed, the chat opened again opens none. (b) After a restart,
 #     the chat opens with nothing beside it.
+# 26. an image pasted into the Chief Chat's text box (GA-304, Linux), against prep_chats' Chief (resumed), in a cage of its own
+#     whose clipboard starts empty; WebKit pastes the way Ctrl+V does ("Paste"): with nothing copied and text selected, and
+#     in an empty box, the text box takes the paste, paste_clipboard_image (the clipboard plugin in Rust) answers null: no
+#     chip, no banner, the text and its selection unchanged, the paste guard's count rises and Hersir still answers; with
+#     "GA-304 text" copied the paste puts it in place of the selection and adds no chip; the Chief paused, a paste adds
+#     nothing. The cage has no data-control protocol, so only the page could put an image on its clipboard: the report says
+#     whether it could (imageOnClipboard), and when it can, the paste adds one chip that says Pasted from the clipboard.
 # Makes .devdata/demo when it is missing, and builds the app when it is missing or stale (scripts/app-ready.sh).
 # usage: scripts/ui-test.sh
 set -uo pipefail
@@ -335,6 +342,10 @@ DATA=$PWD/.devdata/uitest ROUTE="task/${SHOTS%% *}/screenshots" MODE="screenshot
 fresh
 # GA-222: a fresh cage has an empty clipboard and primary selection (Linux only: the guard is WebKitGTK's)
 DATA=$PWD/.devdata/uitest ROUTE=projects MODE=paste scripts/smoke-cage.sh || fail=1
+fresh
+# GA-304: the same paste in the Chief Chat's text box, in a cage of its own (its clipboard starts empty), with prep_chats' Chief
+(source scripts/env.sh && cargo run -q -p gizai-core --example prep_chats -- .devdata/uitest "$PWD/crates/gizai-agents/tests/fake-claude.sh")
+DATA=$PWD/.devdata/uitest ROUTE=chat MODE=paste TIMEOUT=60 scripts/smoke-cage.sh || fail=1
 fresh
 # GA-227: a template file with what the check shows (extra commands, an MCP server that isn't set up, a Codex agent, an agent
 # name the Software team takes, new labels, settings out of range, text that looks private) and one in format 2, refused
