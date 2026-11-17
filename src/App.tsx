@@ -143,7 +143,8 @@ export default function App({ onboarding = false }: { onboarding?: boolean }) {
           const projects = await probe("listProjects", () => listProjects());
           const tasks = await probe("listTasks", () => listTasks());
           await new Promise((r) => setTimeout(r, 300));
-          if (!document.querySelector(".side .nav-item")) errors.push("sidebar did not render");
+          // the sidebar, or with it closed (GA-291, kept on this computer) the closed sidebar's toolbar in its place (GA-300)
+          if (!document.querySelector(".side .nav-item, .side-tools .tool")) errors.push("sidebar did not render");
           let drag: Awaited<ReturnType<typeof dragProbe>> | undefined;
           if (i.start_route === "board") {
             drag = await dragProbe();
