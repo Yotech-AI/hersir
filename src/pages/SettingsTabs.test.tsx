@@ -108,7 +108,11 @@ beforeEach(() => { calls.length = 0; went.length = 0; });
 describe("Settings' tabs", () => {
   it("look like the Usage page's: a tablist with an icon and a label per tab, in the card's order", () => {
     const html = render();
-    expect(html).toContain('<div class="tabs" role="tablist" aria-label="Settings">');
+    // GA-295 (design/islands-settings: Settings): Island tabs in the island's header, right under the top bar and above the
+    // scrolling form, with Save settings still in the top bar
+    expect(html).toContain('</div><div class="island-head settings-head"><div class="tabs island-tabs" role="tablist" aria-label="Settings">');
+    expect(html.indexOf('class="island-head settings-head"')).toBeLessThan(html.indexOf('<div class="content">'));
+    expect(html.slice(0, html.indexOf('class="island-head'))).toContain('<div class="actions"><button class="btn primary">Save settings</button></div>');
     const tabs = [...html.matchAll(/<button class="tab" role="tab" aria-selected="(true|false)"><svg[^>]*class="lucide[^"]*icon"[^>]*>.*?<\/svg>([^<]+)<\/button>/g)];
     expect(tabs.map((m) => m[2])).toEqual(LABELS);
     // the tabs come before the panels
@@ -153,9 +157,11 @@ describe("what each tab has", () => {
     const t = text(of("General"));
     for (const s of ["Data folder", "/home/you/.local/share/gizai/worktrees", "Run logs", "Worktrees of finished cards", "the old worktrees"]) expect(t).toContain(s);
   });
-  it("Appearance: Font, the three text sizes, Theme and Density, Background (the mountains, GA-143), and Reset to defaults", () => {
+  it("Appearance: Font, the three text sizes, Theme and Density, Background with the glass (GA-292, where the mountains were), and Reset to defaults", () => {
     expect(sections(of("Appearance"))).toEqual(["Font", "Text size", "Theme and density", "Background"]);
-    expect(text(of("Appearance"))).toContain("Show mountains along the bottom");
+    expect(text(of("Appearance"))).not.toContain("Show mountains along the bottom");
+    expect(text(of("Appearance"))).toContain("Show the desktop through the background");
+    expect(of("Appearance").match(/type="checkbox"/g)).toHaveLength(1);
     const a = of("Appearance");
     for (const l of ["Font", "Chat size", "Interface size", "Tasks and docs size", "Theme", "Density"]) expect(a).toContain(`aria-label="${l}"`);
     expect(text(a)).toContain("Reset to defaults");
@@ -461,3 +467,34 @@ function checkboxLabelled(t: ReactNode, label: string) {
   expect(labels.length).toBe(1);
   return findAll(labels[0].children as ReactNode, (p) => p.type === "checkbox")[0] as unknown as { onChange: (e: unknown) => void };
 }
+
+// GA-282: Settings → General → Data has Hersir's logs right after Run logs: the logs folder in mono like the rows above it
+// (<data folder>/logs until get_logs_info answers; LogsSetting.test.tsx tests the answer), Open folder, and the card's hint
+// word for word. The other rows of Data stay as they were, and no other tab has it.
+describe("Hersir's logs in General → Data (GA-282)", () => {
+  const HINT = "One file per start; the 20 newest are kept. If Hersir crashed, send us the file of that start.";
+  const dataOf = (html: string) => {
+    const general = panels(html).find((p) => p.label === "General")?.html ?? "";
+    const from = general.indexOf("<h3>Data</h3>");
+    return general.slice(from, general.indexOf("<h3>Backups</h3>", from));
+  };
+  const labels = (html: string) => [...html.matchAll(/<div class="field wide"[^>]*><label[^>]*>([^<]+)<\/label>/g)].map((m) => m[1]!.replace(/&#x27;/g, "'"));
+  it("comes right after Run logs, and Data's other rows are as they were", () => {
+    expect(labels(dataOf(render()))).toEqual(["Data folder", "Worktrees", "Run logs", "Hersir's logs", "Worktrees of finished cards"]);
+  });
+  it("shows the folder in mono like the rows above it, an Open folder button and the hint word for word", () => {
+    const data = dataOf(render());
+    const row = data.slice(data.indexOf("<label>Hersir&#x27;s logs</label>"), data.indexOf("<label>Worktrees of finished cards</label>"));
+    expect(row).toContain('<span class="mono bk-folder">/home/you/.local/share/gizai/logs</span>');
+    expect(data).toContain('<span class="mono">/home/you/.local/share/gizai/runs</span>');
+    expect(row).toMatch(/<button type="button" class="btn sm"><svg[^>]*>.*<\/svg>Open folder<\/button>/);
+    expect(text(row)).toBe(`Hersir's logs /home/you/.local/share/gizai/logs Open folder ${HINT}`);
+  });
+  it("follows the data folder in Settings until Hersir names the logs folder", () => {
+    const data = dataOf(render(undefined, { ...SETTINGS, dataDir: "/srv/hersir" }));
+    expect(data).toContain('<span class="mono bk-folder">/srv/hersir/logs</span>');
+  });
+  it("is on General only", () => {
+    for (const p of panels(render()).filter((p) => p.label !== "General")) expect(text(p.html)).not.toContain("Hersir's logs");
+  });
+});

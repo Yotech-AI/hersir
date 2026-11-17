@@ -7,7 +7,7 @@ exclude = ["third_party/rusqlite_migration"]
 [workspace.package]
 edition = "2024"
 license = "Apache-2.0"
-version = "0.17.0"
+version = "0.18.0"
 
 [workspace.dependencies]
 # 0.41 at least: its bundled SQLite (libsqlite3-sys 0.39, SQLite 3.54) has the fix for RUSTSEC-2026-0459.
@@ -38,7 +38,10 @@ rusqlite_migration = { path = "third_party/rusqlite_migration" }
 [profile.dev]
 debug = "line-tables-only"
 
+# Release builds keep their symbols, without debug info: a panic's backtrace in Hersir's log names the functions it
+# went through (GA-281), where `strip = true` left only unknown frames. Not on Windows, which keeps a program's function
+# names in a separate .pdb file that Hersir doesn't ship.
 [profile.release]
 lto = "thin"
 codegen-units = 4
-strip = true
+strip = "debuginfo"

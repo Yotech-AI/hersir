@@ -154,8 +154,8 @@ describe("Settings → Notifications", () => {
     const got = sets;
     sets = null;
     const boxes = findAll(tree, (p) => p.type === "checkbox" && typeof p.onChange === "function") as { onChange: (e: unknown) => void; checked: boolean }[];
-    // Appearance's Show mountains along the bottom (GA-143) comes first on the page, then the four switches, before Pause all
-    // agents, Use memory (GA-19) and Ask the Chief first (GA-70)
+    // Appearance's glass checkbox comes first on the page (GA-292; the mountains' went with the islands, GA-290), then the
+    // four switches, before Pause all agents, Use memory (GA-19) and Ask the Chief first (GA-70)
     expect(boxes.length).toBe(8);
     boxes[3].onChange({ target: { checked: false } });
     await settle();

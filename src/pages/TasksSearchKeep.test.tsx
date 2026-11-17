@@ -10,6 +10,8 @@ import type { Task } from "../types";
 
 // ---- a stand-in DOM, as much of it as React DOM uses (as in components/StreamParses.test.tsx) ----
 const HTML = "http://www.w3.org/1999/xhtml";
+/** GA-300: the Tasks toolbar's width, and what it needs at fold level 0, 1 and 2; wide enough by default. */
+const bar = { have: 0, need: [0, 0, 0] };
 type Listener = { f: (e: unknown) => void; capture: boolean };
 class FakeNode {
   childNodes: FakeNode[] = [];
@@ -18,6 +20,12 @@ class FakeNode {
   listeners = new Map<string, Listener[]>();
   style: Record<string, unknown> = { setProperty(k: string, v: string) { (this as Record<string, unknown>)[k] = v; }, removeProperty() {} };
   nodeValue: string | null = null;
+  // data-* through dataset, and widths, as the Tasks toolbar measures itself to fold (GA-300, useFold): the toolbar is
+  // bar.have wide and needs bar.need[its data-fold] (its CSS isn't here); everything else fits
+  dataset: Record<string, string> = {};
+  get scrollWidth() { return this.isBar() ? bar.need[Number(this.dataset.fold ?? 0)] ?? 0 : 0; }
+  get clientWidth() { return this.isBar() ? bar.have : 0; }
+  isBar() { return (this.getAttribute("class") ?? "").split(" ").includes("island-toolbar"); }
   // an <input>'s value and type, as React sets and reads them
   declare value?: string;
   declare type?: string;
@@ -365,5 +373,84 @@ describe("the Tasks page keeps its filter once typing pauses (GA-190)", () => {
     expect(ticked).toEqual(["Gizai", "Jeffrey"]);
     // opening it writes nothing
     expect(writes()).toHaveLength(before);
+  });
+});
+
+// GA-300 QA: the toolbar (the list's island header) folds when it doesn't fit, measured before it is drawn (useFold): level 1
+// turns Filters, Sort and Group into icon buttons named in their tooltips, level 2 New task too (its tooltip with its key N).
+// Here the toolbar is as wide as bar.have and needs bar.need[level] (the CSS that makes each level narrower is checked in
+// src/lib/useFold.test.ts, and the real 900 × 600 window in the self-test's appearance probe). Folded, every action works.
+describe("the Tasks toolbar folds to fit a narrow island (GA-300)", () => {
+  afterEach(() => { bar.have = 0; bar.need = [0, 0, 0]; });
+  const toolbar = () => container.all().find((n) => cls(n).includes("island-toolbar"))!;
+  const button = (text: string) => container.all().find((n) => n.nodeName === "BUTTON" && n.textContent.trim() === text);
+  const titles = () => ["New task", "Sort", "Group"].map((t) => [t, button(t)?.getAttribute("title") ?? null]);
+  const menu = (label: string) => byLabel(container, label).find((n) => n.getAttribute("role") === "menu");
+
+  it("draws it as before while it fits: no data-fold, every button with its name and no tooltip of its own", () => {
+    bar.have = 900; bar.need = [708, 640, 600];
+    mountTasks();
+    expect(toolbar().getAttribute("data-fold")).toBeNull();
+    expect(titles()).toEqual([["New task", null], ["Sort", null], ["Group", null]]);
+    expect(filtersButton().getAttribute("title")).toBeNull();
+  });
+
+  it("a little short: Filters, Sort and Group fold (data-fold 1), each named in its tooltip; New task keeps its label", () => {
+    bar.have = 660; bar.need = [708, 640, 600];
+    mountTasks();
+    expect(toolbar().getAttribute("data-fold")).toBe("1");
+    expect(titles()).toEqual([["New task", null], ["Sort", "Sort"], ["Group", "Group"]]);
+    expect(filtersButton().getAttribute("title")).toBe("Filters");
+    // the names stay in the buttons for screen readers (the CSS draws them at no size)
+    for (const b of [filtersButton(), button("Sort")!, button("Group")!]) expect(cls(b)).toContain("fold");
+    expect(cls(button("New task")!)).toContain("fold-2");
+  });
+
+  it("at 900 × 600 (the list's island 634 wide where 708 was needed, GA-290 QA): New task folds too, its tooltip with its key", () => {
+    bar.have = 634; bar.need = [708, 680, 600];
+    mountTasks();
+    expect(toolbar().getAttribute("data-fold")).toBe("2");
+    expect(titles()).toEqual([["New task", "New task (N)"], ["Sort", "Sort"], ["Group", "Group"]]);
+    // nothing on it goes: the search, the view switch, Filters, Sort, Group and Archived cards are all there
+    expect(byLabel(container, "Search tasks")).toHaveLength(1);
+    expect(byLabel(container, "Board")).toHaveLength(1);
+    expect(byLabel(container, "List")).toHaveLength(1);
+    expect(byLabel(container, "Archived cards")).toHaveLength(1);
+  });
+
+  it("folded, every action still works: Filters filters and keeps its count, Sort and Group open, New task and Clear filters run", () => {
+    bar.have = 634; bar.need = [708, 680, 600];
+    let asked = 0;
+    mount(<TasksPage initialView="list" onNewTask={() => { asked += 1; }} />);
+    openFilters();
+    pick("Gizai");
+    expect(rows().sort()).toEqual(["GA-1", "GA-2", "GA-4"]);
+    // the count after the icon (data-count, drawn by ::after) and in its tooltip; measured again with the Clear button there
+    expect(filtersButton().getAttribute("data-count")).toBe("1");
+    expect(filtersButton().getAttribute("title")).toBe("Filters: 1");
+    expect(toolbar().getAttribute("data-fold")).toBe("2");
+    act(() => { fire(button("Sort")!, "click"); });
+    expect(menu("Sort")).toBeDefined();
+    act(() => { fire(button("Group")!, "click"); });
+    expect(menu("Group")).toBeDefined();
+    act(() => { fire(button("New task")!, "click"); });
+    expect(asked).toBe(1);
+    act(() => { fire(byLabel(container, "Clear filters")[0]!, "click"); });
+    expect(rows().sort()).toEqual(tasks.map((t) => t.identifier).sort());
+    expect(filtersButton().getAttribute("data-count")).toBeNull();
+    expect(filtersButton().getAttribute("title")).toBe("Filters");
+  });
+
+  it("measures again when what it holds changes, and unfolds when it fits again", () => {
+    bar.have = 634; bar.need = [708, 680, 600];
+    mountTasks();
+    expect(toolbar().getAttribute("data-fold")).toBe("2");
+    // the island grows (here: a window made wider), and a filter changes what the toolbar holds
+    bar.have = 900;
+    openFilters();
+    pick("Gizai");
+    expect(toolbar().getAttribute("data-fold")).toBeNull();
+    expect(titles()).toEqual([["New task", null], ["Sort", null], ["Group", null]]);
+    expect(filtersButton().getAttribute("title")).toBeNull();
   });
 });

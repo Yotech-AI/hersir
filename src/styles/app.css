@@ -1,14 +1,64 @@
 /* Gizai app layout. Components come from components.css (the design system's stylesheet); this file only
    places them: the frame, page regions, tables and a few page-specific pieces. Tokens: tokens.css. */
 
-/* ---------- frame: sidebar | main ---------- */
+/* ---------- frame: the background, the sidebar island and the page's island (design/islands) ---------- */
 html, body, #root { height: 100%; margin: 0; }
-.app { display: grid; grid-template-columns: var(--size-side) minmax(0, 1fr); height: 100vh; overflow: hidden; }
-.side { width: auto; height: 100vh; }
-.main { display: flex; flex-direction: column; min-width: 0; overflow: hidden; background: var(--bg); }
+/* The window paints the background: a gradient straight down, canvas-from to canvas-to, with canvas-glow from the top
+   left, full for 45% of the way and gone at 60% of the width and 75% of the height. Opaque, unless the glass is on (below).
+   The islands sit on it, island-gap from the window's edges and from each other, with no border. */
+.app { display: grid; grid-template-columns: var(--size-side) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: var(--island-gap);
+  height: 100vh; padding: var(--island-gap); overflow: hidden;
+  background: radial-gradient(ellipse 60% 75% at 0 0, var(--canvas-glow) 45%, transparent), linear-gradient(180deg, var(--canvas-from), var(--canvas-to)); }
+/* The glass (GA-292; design/islands/README.md → The glass): html.glass while it is on (lib/glass.ts). The window is
+   see-through and the system blurs the desktop behind it; the page paints the same gradient at 92% in dark and 86% in
+   light (glass-from, glass-to, glass-glow). The body paints it, so the window is tinted from its first paint, before the
+   app is drawn, and .app paints nothing over it. No blur in CSS: backdrop-filter can't reach the desktop behind a window.
+   The islands and what floats keep their solid fills. */
+html.glass { background: transparent; }
+html.glass body { background: radial-gradient(ellipse 60% 75% at 0 0, var(--glass-glow) 45%, transparent), linear-gradient(180deg, var(--glass-from), var(--glass-to)); }
+html.glass .app { background: none; }
+.side { width: auto; height: auto; min-height: 0; }
+/* GA-291: closed, the sidebar island goes and the main column takes its width. The toolbar (SidebarToolbar) sits at the top
+   left on the background, island-gap from the window's edges, centred in the top bar's row, above .main's box; the page's
+   top bar starts after it (--side-tools: its width, set by App.tsx) and keeps its own 12px before the crumbs. */
+.app.side-closed { position: relative; grid-template-columns: minmax(0, 1fr); }
+.side-tools { position: absolute; top: var(--island-gap); left: var(--island-gap); z-index: 1; display: flex; align-items: center; gap: 2px; height: var(--size-topbar); }
+.app.side-closed .page-island .topbar { left: var(--side-tools, 0px); }
+/* The main column: each page's top bar on the background (size-topbar), then the page as one island under it. A page with
+   several panes keeps them in that one island for now. The top bar stays in the page's own markup, inside .page-island,
+   and is placed over the column's top: .main is its containing block and .page-island isn't positioned, so the island's
+   rounded clip doesn't cut it. So keep .page-island and the page's own wrappers (.ed-page, .term-page) unpositioned. */
+.main { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; padding-top: var(--size-topbar); overflow: hidden; }
+.page-island { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; overflow: hidden; border-radius: var(--island-radius); background: var(--island); }
+.page-island .topbar { position: absolute; top: 0; left: 0; right: 0; }
+/* on the background faint text and icons are text-2 (components.css: .topbar); .main for the weight over the pages' own rules */
+.main .topbar .faint, .main .topbar .sep, .main .topbar .id, .main .topbar .ed-standing > .icon, .main .topbar .term-where { color: var(--text-2); }
 .content { flex: 1; overflow: auto; min-height: 0; }
 .split { display: flex; flex: 1; min-height: 0; }
 .split > .content { min-width: 0; }
+/* Pages whose panes are islands of their own (design/islands-settings, GA-295): the page's island gives way, on the
+   background, and each pane is an island, island-gap apart, its fill and island-radius, no border (the gaps split them).
+   A doc: the doc and History (size-props). Memory with its notes: Notes, the note (or Recently changed), About this note and
+   the local graph (Graph keeps the one island). */
+.page-island:has(> .split.doc-split), .page-island:has(> .split.memory.islands) { background: none; border-radius: 0; }
+.split.doc-split, .split.memory.islands { gap: var(--island-gap); }
+/* the panes by name: a drawer the note opens (a version) is a child too, and keeps its own look */
+.doc-split > :is(.doc, .props), .memory.islands > :is(.mem-files, .mem-note, .mem-side, .mem-local) { min-height: 0; overflow-y: auto; border-radius: var(--island-radius); background: var(--island); }
+.doc-split > .props { border-left: 0; }
+.doc-split > .props > .props-body { padding: 0 6px 16px; }
+.doc-split > .doc > .error-banner { margin: 12px 20px 0; }
+/* A card's page in islands (GA-294, design/islands-pages): the page's island gives way to the card's own, on the
+   background. The card island (its header holds Card, Changes and Screenshots as island tabs; changes.css) takes the room;
+   Properties, while it shows, is an island of its own on its right, size-props wide, the full height, island-gap apart.
+   Its header is an island header with a title (t-body-strong, 6px in) and Close properties; its rows scroll under it. */
+.page-island:has(> .task-page) { background: none; border-radius: 0; }
+.task-page { display: flex; gap: var(--island-gap); flex: 1; min-width: 0; min-height: 0; }
+.card-island { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; overflow: hidden; border-radius: var(--island-radius); background: var(--island); }
+/* both headers grow with the interface size, as the top bar does (size-island-head at the defaults) */
+.card-island > .island-head { height: calc(var(--size-island-head) + var(--ui-box, 0px)); }
+.task-page > .props { display: flex; flex-direction: column; overflow: hidden; border-left: 0; border-radius: var(--island-radius); background: var(--island); }
+.task-page > .props > .props-head { flex: none; height: calc(var(--size-island-head) + var(--ui-box, 0px)); padding: 0 6px 0 12px; border-bottom: 0; font-size: var(--fs); line-height: 20px; }
+.task-page > .props > .props-body { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 12px 24px 14px; }
 
 /* ---------- old names kept for a few call sites ---------- */
 :root { --cordon: var(--live); --cordon-soft: var(--live-soft); --error: var(--danger); --font: var(--font-sans); --mono: var(--font-mono); }
@@ -20,6 +70,14 @@ html, body, #root { height: 100%; margin: 0; }
 .warn-banner { display: flex; align-items: center; gap: 10px; margin: 12px 20px; padding: 6px 6px 6px 12px; border: 1px solid var(--warning); border-radius: var(--radius); color: var(--text); background: var(--warning-soft); }
 .warn-banner > .icon { color: var(--warning); }
 .warn-banner .btn { margin-left: auto; }
+/* the notice after an unexpected end (GA-282): the warn banner's shape in the neutral note's colours (.restore-note), not
+   gold or yellow: nothing needs doing. Narrow, its buttons go to a line of their own at the right. */
+.info-banner { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin: 12px 20px; padding: 6px 6px 6px 12px; border: 1px solid var(--line-2); border-radius: var(--radius); color: var(--text); background: var(--raised); }
+.info-banner > .icon { flex: none; color: var(--accent); }
+.info-banner .ib-text { flex: 1 1 320px; min-width: 0; line-height: 1.4; overflow-wrap: anywhere; }
+.info-banner .ib-text .mono { white-space: nowrap; } /* the log's name in one piece, not broken at a hyphen */
+.info-banner .ib-error { display: block; font-size: var(--fs-sm); color: var(--danger); }
+.info-banner .ib-actions { display: flex; flex: none; gap: 6px; margin-left: auto; }
 .ok-banner { padding: 10px 14px; border-radius: var(--radius); background: var(--live-soft); color: var(--text); }
 
 /* ---------- data tables (clients, projects, users) ---------- */
@@ -47,7 +105,7 @@ select.chip { appearance: none; padding-right: 26px; background-image: url("data
 
 /* ---------- popover menus (filters, sort, group, pickers) ---------- */
 .pop-wrap { position: relative; display: inline-flex; }
-.pop { position: absolute; top: calc(100% + 6px); z-index: 30; min-width: 220px; max-height: 360px; overflow-y: auto; padding: 6px; border: 1px solid var(--line-2); border-radius: var(--radius-l); background: var(--overlay); box-shadow: var(--shadow-pop); }
+.pop { position: absolute; top: calc(100% + 6px); z-index: 30; min-width: 220px; max-height: 360px; overflow-y: auto; padding: 6px; border: 1px solid var(--line-2); border-radius: var(--radius-l); background: var(--float); box-shadow: var(--shadow-pop); }
 .pop.right { right: 0; }
 .pop .pop-label { padding: 6px 8px 4px; font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--text-3); }
 .pop .opt { display: flex; align-items: center; gap: 8px; width: 100%; height: calc(30px + var(--ui-box, 0px)); padding: 0 8px; border: 0; border-radius: var(--radius); background: none; color: var(--text); font: inherit; font-size: var(--fs); text-align: left; cursor: pointer; }
@@ -57,7 +115,7 @@ select.chip { appearance: none; padding-right: 26px; background-image: url("data
 
 /* ---------- command palette ---------- */
 .pal-backdrop { position: fixed; inset: 0; z-index: 50; background: var(--scrim); }
-.pal { position: fixed; left: 50%; top: 14vh; z-index: 51; transform: translateX(-50%); width: min(calc(640px + 20 * var(--ui-grow, 0px)), 92vw); padding: 6px 6px 10px; border: 1px solid var(--line-2); border-radius: var(--radius-xl); background: var(--overlay); box-shadow: var(--shadow-pop); }
+.pal { position: fixed; left: 50%; top: 14vh; z-index: 51; transform: translateX(-50%); width: min(calc(640px + 20 * var(--ui-grow, 0px)), 92vw); padding: 6px 6px 10px; border: 1px solid var(--line-2); border-radius: var(--radius-xl); background: var(--float); box-shadow: var(--shadow-pop); }
 .pal-in { display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin-bottom: 6px; border-bottom: 1px solid var(--line); color: var(--text-3); }
 .pal-in input { flex: 1; border: 0; outline: none; background: transparent; color: var(--text); font: inherit; font-size: calc(var(--fs) + 1.5px); }
 .pal-list { max-height: 50vh; overflow-y: auto; }
@@ -236,14 +294,14 @@ a.member:hover { border-color: var(--line-2); }
 .wf-confirm-move { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .wf-confirm-move .select { width: auto; height: calc(28px + var(--ui-box, 0px)); }
 .wf-confirm-actions { display: inline-flex; gap: 6px; margin-left: auto; }
-.agent-chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; max-width: 100%; padding: 0 3px 0 3px; border: 1px solid var(--line-2); border-radius: var(--radius-s); background: var(--bg); color: var(--text); font-size: var(--fs-sm); }
+.agent-chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; max-width: 100%; padding: 0 3px 0 3px; border: 1px solid var(--line-2); border-radius: var(--radius-s); background: var(--raised); color: var(--text); font-size: var(--fs-sm); }
 .agent-chip .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px; padding-right: 3px; }
 .agent-chip.paused { opacity: .62; }
 .agent-chip .chip-x { display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: var(--radius-s); background: none; color: var(--text-3); cursor: pointer; }
 .agent-chip .chip-x:hover { background: var(--hover); color: var(--text); }
 .agent-chip .chip-x:focus-visible { outline: 2px solid var(--focus); outline-offset: -1px; }
 .agent-chip .chip-x .icon { width: 13px; height: 13px; }
-.drag-chip { padding-right: 8px; background: var(--overlay); box-shadow: var(--shadow-drag); cursor: grabbing; }
+.drag-chip { padding-right: 8px; background: var(--float); box-shadow: var(--shadow-drag); cursor: grabbing; }
 .pop .pop-empty { padding: 6px 8px; color: var(--text-3); font-size: var(--fs-sm); }
 .pop .opt .faint { margin-left: auto; font-size: var(--fs-xs); }
 @media (max-width: 900px) {
@@ -303,7 +361,7 @@ a.member:hover { border-color: var(--line-2); }
 .kv .k { color: var(--text-3); }
 
 /* ---------- narrow windows ---------- */
-@media (max-width: 1100px) { .props { display: none; } }
+@media (max-width: 1100px) { .props, .task-page > .props { display: none; } }
 
 /* ---------- task list and board extras ---------- */
 .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
@@ -317,13 +375,36 @@ a.member:hover { border-color: var(--line-2); }
 .board-wrap { display: flex; flex: 1; min-height: 0; overflow: hidden; }
 .board-wrap .board { flex: 1; }
 .toolbar .search-input { width: 220px; height: calc(28px + var(--ui-box, 0px)); }
+/* In the Inbox the list starts 14px under Run this for me (design/islands-pages: padding 14 12 24); a group head keeps its
+   6px above */
+.inbox-list .task-list { padding-top: 8px; }
+/* GA-293 (design/islands, frame 273:1172): the Tasks page's view toolbar is its island's header (An island's header): 44
+   high, padding 0 8, its controls 28 to 30 high, the search and Board or List on raised; no line under it, so the columns
+   (or the list) start right below on the same fill. The board's columns sit 12px in and 4px under it and scroll sideways
+   inside the island, with the islands' 6px thumb 2px from its bottom. Other pages' toolbars stay as they are (cards 5, 6). */
+.toolbar.island-toolbar { flex: none; height: calc(44px + var(--ui-box, 0px)); padding: 0 8px; }
+.island-toolbar ~ .board-wrap > .board { padding: 4px 12px 12px; }
+/* GA-300: the toolbar folds so it fits a narrow island, such as the list's at 900px wide (TasksPage, src/lib/useFold.ts).
+   As drawn, the search and the team box keep their width. data-fold 1: Filters, Sort and Group become icon buttons, 30
+   square, their names in their tooltips; Filters keeps its count after the icon. data-fold 2: New task too, and the
+   search and the team box give up width (down to 120 and 80). A folded button keeps its text for screen readers, at no
+   size. */
+.island-toolbar .search-input, .island-toolbar select.chip { flex: none; }
+.island-toolbar[data-fold] .btn.fold, .island-toolbar[data-fold="2"] .btn.fold-2 { justify-content: center; width: calc(30px + var(--ui-box, 0px)); padding: 0; gap: 0; font-size: 0; }
+.island-toolbar[data-fold] .btn.fold[data-count] { width: auto; padding: 0 8px; }
+.island-toolbar[data-fold] .btn.fold[data-count]::after { content: attr(data-count); margin-left: 4px; font-size: var(--fs-sm); }
+.island-toolbar[data-fold="2"] .search-input { flex: 0 1 auto; min-width: 120px; }
+.island-toolbar[data-fold="2"] select.chip { flex: 0 1 auto; min-width: 80px; }
 .md-edit-box { margin-left: 0; }
 .composer .md-editor { background: var(--raised); }
 
-/* chat page layout: the chat list (--chat-list wide; src/lib/chatTerminal.ts's chatListWidth says the same), the conversation
-   or the Archive, and the chat's terminal panel or its rail (GA-278, below) */
-.chat { --chat-list: calc(260px + 6 * var(--ui-grow, 0px)); display: grid; grid-template-columns: var(--chat-list) minmax(0, 1fr); flex: 1; min-height: 0; }
-.chat-threads { display: flex; flex-direction: column; min-height: 0; overflow: hidden; border-right: 1px solid var(--line); background: var(--side); }
+/* chat page layout, in islands (GA-296, design/islands-chat): the page's island gives way to the Chat's own, on the
+   background: the chat list (--chat-list wide; src/lib/chatTerminal.ts's chatListWidth says the same), the conversation or
+   the Archive, and what is open beside the chat (the side island and the tool strip, below), island-gap apart. Each is an
+   island: its fill, island-radius, no border; the gaps split them. */
+.page-island:has(> .chat) { background: none; border-radius: 0; }
+.chat { --chat-list: calc(260px + 6 * var(--ui-grow, 0px)); display: grid; grid-template-columns: var(--chat-list) minmax(0, 1fr); column-gap: var(--island-gap); flex: 1; min-height: 0; }
+.chat-threads { display: flex; flex-direction: column; min-height: 0; overflow: hidden; border-radius: var(--island-radius); background: var(--island); }
 /* Recent scrolls; Archive stays at the bottom of the column, under it */
 .chat-threads-list { display: flex; flex-direction: column; gap: 2px; flex: 1; min-height: 0; padding: 10px 8px; overflow: auto; }
 .chat-threads-foot { flex: none; padding: 6px 8px; border-top: 1px solid var(--line); }
@@ -347,21 +428,26 @@ a.member:hover { border-color: var(--line-2); }
 .run-for-me-card > a { display: block; color: var(--text); text-decoration: none; }
 .run-for-me-card > a:hover { text-decoration: underline; }
 .run-for-me-card .run-for-me { margin-top: 8px; }
-.chat-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.chat-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; border-radius: var(--island-radius); background: var(--island); }
 .chat-scroll { flex: 1; min-height: 0; overflow: auto; }
-.chat-composer { border-top: 1px solid var(--line); background: var(--bg); }
+.chat-composer { background: var(--bg); }
 .chat-composer .chat-col { padding-top: 12px; padding-bottom: 14px; }
 @media (max-width: 1100px) { .chat { --chat-list: calc(220px + 6 * var(--ui-grow, 0px)); } }
-/* GA-278: the chat's terminal panel, a third column on the right while it shows. Its width is a share of the space right of
-   the chat list (--chat-term-share, 0.45 the first time), at least 360px, and leaves the conversation at least 400px; in a
-   window without room for the chat list besides, the list hides (no-list). The conversation, the text box and the Archive
-   then start at the left of their column instead of in its middle. Hidden with terminals: the rail, a narrow column. */
-.chat.has-term { --chat-term-w: clamp(360px, calc((100% - var(--chat-list)) * var(--chat-term-share, .45)), calc(100% - var(--chat-list) - 400px));
-  grid-template-columns: var(--chat-list) minmax(0, 1fr) var(--chat-term-w); }
-.chat.has-term.no-list { --chat-list: 0px; grid-template-columns: minmax(0, 1fr) var(--chat-term-w); }
+/* GA-296: what is open beside the chat. The tool strip (size-tool wide, its own gap before it) is the last column while the
+   chat has anything open, whether the side island shows or not; it ends at the main column's edge, island-gap from the
+   window's. The side island, while it shows, is the column before it: a share of the room right of the chat list (the
+   conversation and the island, --chat-side-share, 0.45 the first time), at least 360px, leaving the conversation at least
+   400px. In a window without room for the chat list besides, the list hides (no-list): the conversation keeps 400px, with
+   the strip alone too, and the strip stays. The
+   conversation, the text box and the Archive then start at the left of their column instead of in its middle. */
+.chat.has-strip { --chat-strip: var(--size-tool); grid-template-columns: var(--chat-list) minmax(0, 1fr) var(--chat-strip); }
+.chat.has-side { --chat-room: calc(100% - var(--chat-list) - 3 * var(--island-gap) - var(--chat-strip));
+  --chat-side-w: clamp(360px, calc(var(--chat-room) * var(--chat-side-share, .45)), calc(var(--chat-room) - 400px));
+  grid-template-columns: var(--chat-list) minmax(0, 1fr) var(--chat-side-w) var(--chat-strip); }
+.chat.has-strip.no-list { grid-template-columns: minmax(0, 1fr) var(--chat-strip); }
+.chat.has-side.no-list { --chat-list: calc(-1 * var(--island-gap)); grid-template-columns: minmax(0, 1fr) var(--chat-side-w) var(--chat-strip); }
 .chat.no-list > .chat-threads { display: none; }
-.chat.has-term .chat-col { margin-left: 0; }
-.chat.has-rail { grid-template-columns: var(--chat-list) minmax(0, 1fr) auto; }
+.chat.has-side .chat-col { margin-left: 0; }
 /* Chat → Archive (#/chats): the search on top, every chat under it; a row's snippet shows where the search matched */
 .archive-head { border-bottom: 1px solid var(--line); background: var(--bg); }
 .archive-head .chat-col { padding-top: 14px; padding-bottom: 14px; }
@@ -410,7 +496,8 @@ a.member:hover { border-color: var(--line-2); }
 .org-node.dragging { opacity: .45; }
 
 /* ---------- Settings: a tab per part (GA-42); every tab stays on the page, only the open one shows ---------- */
-.settings-page { gap: 18px; }
+/* the tabs are in the island's header above (design/islands-settings: Settings), so the form starts 16px under it */
+.settings-page { gap: 18px; padding-top: 16px; }
 .settings-panel[hidden] { display: none; }
 
 /* ---------- Settings → GitHub ---------- */
@@ -531,7 +618,11 @@ a.member:hover { border-color: var(--line-2); }
 .ct-label { color: var(--text-3); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.04em; }
 .mcp-builtin { margin: 0 0 6px; padding: 0 0 6px; list-style: none; border-bottom: 1px solid var(--line); }
 /* The Usage page (UsagePage): the period switch, the metrics, the bars per day and the agent and project tables. */
-.usage-page { gap: 18px; }
+/* Its island's header holds the four tabs and, right of them, what the toolbar held: the line on Subscription, the period
+   chips and UTC days on the others (design/islands-settings: Usage). */
+.usage-tools { flex: 1; justify-content: flex-end; min-width: 0; padding: 0 6px 0 12px; }
+.usage-tools > .faint { font-size: var(--fs-sm); }
+.usage-page { gap: 18px; padding-top: 16px; }
 .usage-page .usage-metric { margin-top: 10px; }
 .usage-unknown { text-decoration: underline dotted var(--text-3); text-underline-offset: 3px; cursor: help; }
 .usage-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; margin-top: 12px; }
@@ -580,12 +671,12 @@ a.member:hover { border-color: var(--line-2); }
 /* ---- Memory (GA-68): the file explorer, the note and its panel. No teal or gold: those are for agents at work and
    "needs you". ---- */
 .split.memory { min-height: 0; }
-.mem-files { display: flex; flex-direction: column; flex: none; width: 260px; min-height: 0; border-right: 1px solid var(--line); background: var(--side); }
-.mem-search { position: relative; display: flex; align-items: center; padding: 10px 10px 6px; }
-.mem-search > .icon { position: absolute; left: 20px; color: var(--text-3); pointer-events: none; }
+/* Notes, an island of its own (design/islands-settings: Memory): its header is the scope's name with New note and New
+   folder (.island-head), then the search box 8px in, then the tree or the search results */
+.mem-files { display: flex; flex-direction: column; flex: none; width: 260px; min-height: 0; }
+.mem-search { position: relative; display: flex; align-items: center; padding: 0 8px 6px; }
+.mem-search > .icon { position: absolute; left: 18px; color: var(--text-3); pointer-events: none; }
 .mem-search .input { height: calc(30px + var(--ui-box, 0px)); padding-left: 30px; font-size: var(--fs-sm); }
-.mem-files-head { display: flex; align-items: center; gap: 2px; padding: 4px 6px 4px 14px; font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--text-3); }
-.mem-files-head > span { flex: 1; }
 .mem-filter { display: flex; align-items: center; gap: 8px; padding: 2px 8px 6px 12px; font-size: var(--fs-sm); }
 .mem-filter .btn { margin-left: auto; }
 .mem-tree { flex: 1; overflow-y: auto; padding: 0 6px 16px; }
@@ -594,6 +685,7 @@ a.member:hover { border-color: var(--line-2); }
 .mem-item:hover { background: var(--hover); color: var(--text); }
 .mem-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .mem-item.on { background: var(--selected); color: var(--text); }
+.mem-item.on > .icon { color: var(--text); }
 .mem-item .icon { flex: none; color: var(--text-3); }
 .mem-item .chev { margin-right: -2px; }
 .mem-item.drop { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); color: var(--text); }
@@ -607,7 +699,7 @@ a.member:hover { border-color: var(--line-2); }
 .mem-acts .btn.sm.icon-only { width: 22px; height: 22px; }
 .mem-acts .btn .icon { width: 13px; height: 13px; }
 .mem-name.input { height: 24px; padding: 0 6px; font-size: var(--fs-sm); }
-.mem-drag { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--overlay); box-shadow: var(--shadow-pop); font-size: var(--fs-sm); }
+.mem-drag { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--float); box-shadow: var(--shadow-pop); font-size: var(--fs-sm); }
 .mem-pad { padding: 6px 14px; font-size: var(--fs-sm); }
 .mem-results { flex: 1; overflow-y: auto; padding: 0 6px 16px; }
 .mem-hit { display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 7px 8px; border: 0; border-radius: var(--radius); background: none; color: var(--text); font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; }
@@ -619,7 +711,12 @@ a.member:hover { border-color: var(--line-2); }
 .mem-hit mark, .mem-snippet mark { background: var(--accent-soft); color: var(--text); border-radius: 2px; padding: 0 1px; }
 
 .mem-note { flex: 1; min-width: 0; overflow-y: auto; }
-.mem-note-bar { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 6px 20px; border-bottom: 1px solid var(--line); background: var(--bg); font-size: var(--fs-sm); }
+/* The note's island: the note bar is its header (size-island-head, no line under it) and stays; the note scrolls under it */
+.mem-note.open, .memory.islands > .mem-note.open { display: flex; flex-direction: column; overflow: hidden; }
+.mem-note-body { flex: 1; min-height: 0; overflow-y: auto; }
+.mem-note-body > .error-banner, .mem-note > .error-banner { margin: 6px 20px 0; }
+.mem-note-bar { display: flex; flex: none; align-items: center; gap: 8px; height: var(--size-island-head); padding: 0 6px 0 14px; font-size: var(--fs-sm); }
+.mem-note-bar > [role="status"] { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .mem-note-bar .grow { flex: 1; }
 .mem-note-bar .seg button { display: inline-flex; gap: 5px; align-items: center; }
 .mem-note-in { max-width: 860px; padding-top: 16px; gap: 10px; }
@@ -643,7 +740,8 @@ a.member:hover { border-color: var(--line-2); }
 .note-preview-body .prose { font-size: var(--fs); max-width: none; }
 .note-preview .btn { margin-top: 4px; }
 
-.mem-side { width: 300px; flex: none; border-left: 1px solid var(--line); background: var(--bg); overflow-y: auto; padding-bottom: 24px; }
+/* About this note: an island of its own with no header; its folding sections start at the top */
+.mem-side { width: 300px; flex: none; overflow-y: auto; padding-bottom: 24px; }
 .mem-section { border-bottom: 1px solid var(--line); }
 .mem-section-head { display: flex; align-items: center; gap: 6px; width: 100%; height: 38px; padding: 0 14px; border: 0; background: none; color: var(--text); font: inherit; font-size: var(--fs-sm); font-weight: 600; cursor: pointer; text-align: left; }
 .mem-section-head:hover { background: var(--hover); }
@@ -698,6 +796,8 @@ span.mem-tag { cursor: default; }
 .mem-template { margin-top: 18px; }
 .mem-template pre { margin: 0; padding: 10px 12px; max-height: 260px; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--side); font-size: var(--fs-xs); white-space: pre-wrap; }
 .btn.mem-toggle.on { background: var(--selected); color: var(--text); }
+/* pressed in the top bar too, over its "no fill on the background" rule (design/islands-settings: Memory) */
+.main .topbar .btn.mem-toggle.on { background-color: var(--selected); }
 @media (max-width: 1300px) { .mem-files { width: 230px; } .mem-side { width: 270px; } .mem-prop { grid-template-columns: 84px minmax(0, 1fr) 26px; } }
 
 /* ---- The memory graph (GA-69): the canvas on the app's background, its tools and settings panel over its corners,
@@ -711,12 +811,12 @@ span.mem-tag { cursor: default; }
 .graph-tools { position: absolute; left: 12px; top: 10px; z-index: 2; display: flex; align-items: center; gap: 10px; pointer-events: none; }
 .graph-tools > * { pointer-events: auto; }
 .graph-count { font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
-.graph-zoom { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--overlay); }
+.graph-zoom { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--float); }
 .graph-zoom .btn.sm.icon-only { width: 24px; height: 24px; }
 .graph-panel-open { position: absolute; right: 12px; top: 10px; z-index: 2; }
 .graph-empty { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; padding: 24px; text-align: center; pointer-events: none; }
 .graph-panel { position: absolute; right: 12px; top: 10px; z-index: 3; width: 272px; max-height: calc(100% - 20px); overflow-y: auto; border: 1px solid var(--line-2);
-  border-radius: var(--radius-l); background: var(--overlay); box-shadow: var(--shadow-pop); font-size: var(--fs-sm); }
+  border-radius: var(--radius-l); background: var(--float); box-shadow: var(--shadow-pop); font-size: var(--fs-sm); }
 .graph-panel-head { display: flex; align-items: center; gap: 2px; padding: 6px 6px 6px 14px; border-bottom: 1px solid var(--line); }
 .graph-panel-head b { flex: 1; font-weight: 600; }
 .graph-section { border-bottom: 1px solid var(--line); }
@@ -744,15 +844,16 @@ span.mem-tag { cursor: default; }
 .graph-swatches { flex-wrap: wrap; gap: 6px; padding-left: 24px; }
 .graph-swatches .swatch { width: 18px; height: 18px; }
 .graph-connections { position: absolute; left: 12px; bottom: 12px; z-index: 2; width: 290px; max-height: 45%; overflow-y: auto; border: 1px solid var(--line-2);
-  border-radius: var(--radius-l); background: var(--overlay); box-shadow: var(--shadow-pop); font-size: var(--fs-sm); }
+  border-radius: var(--radius-l); background: var(--float); box-shadow: var(--shadow-pop); font-size: var(--fs-sm); }
 .graph-connections-head { display: flex; align-items: center; gap: 6px; padding: 6px 6px 6px 12px; border-bottom: 1px solid var(--line); }
 .graph-connections-head .link-btn { flex: 1; color: var(--text); text-align: left; font-weight: 600; text-decoration: none; }
 .graph-connections-head .link-btn:hover { text-decoration: underline; }
 .graph-conn-list { margin: 0; padding: 4px; list-style: none; }
 .graph-conn-list .mem-row .faint { max-width: 45%; }
 .graph-missing { color: var(--text-2); }
-.mem-local { display: flex; flex-direction: column; flex: none; width: 360px; min-height: 0; border-left: 1px solid var(--line); background: var(--bg); }
-.mem-local-head { display: flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 8px 0 14px; border-bottom: 1px solid var(--line); font-size: var(--fs-sm); }
+/* the local graph takes the note's panel's place, as an island of its own; its head is the island's header */
+.mem-local { display: flex; flex-direction: column; flex: none; width: 360px; min-height: 0; }
+.mem-local-head { display: flex; flex: none; align-items: center; gap: 6px; height: var(--size-island-head); padding: 0 6px 0 12px; font-size: var(--fs-sm); }
 .mem-local-head .faint { flex: 1; }
 .mem-local-head .btn.on { background: var(--selected); color: var(--text); }
 .graph-wrap.local { flex: none; height: 56%; min-height: 220px; border-bottom: 1px solid var(--line); }

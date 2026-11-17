@@ -6,7 +6,7 @@
 // template file (<team>.hersir-team.json) and the GIZAI_* variables their hersir names; the GIZAI_* ones are set too.
 // Files are read from disk; node:fs comes in through a computed specifier, as in band.test.ts.
 import { describe, expect, it } from "vitest";
-import { KEYS } from "./lib/appearance";
+import { GONE_KEYS, KEYS } from "./lib/appearance";
 import { nameProblem, TAKEN_NAMES } from "./lib/mcp";
 import { itemLink } from "./lib/itemLinks";
 import { templateFileName } from "./components/TeamTemplate";
@@ -73,7 +73,10 @@ describe("Quit: the same words as the tray (GA-232)", () => {
 
 describe("the code's names stay (GA-231): settings, drafts and open tabs survive an update", () => {
   it("the appearance's keys", () => {
-    expect(KEYS).toEqual({ font: "gizai-font", chat: "gizai-size-chat", ui: "gizai-size-ui", docs: "gizai-size-docs", theme: "gizai-theme", density: "gizai-density", band: "gizai-band" });
+    expect(KEYS).toEqual({ font: "gizai-font", chat: "gizai-size-chat", ui: "gizai-size-ui", docs: "gizai-size-docs", theme: "gizai-theme", density: "gizai-density",
+      glass: "gizai-glass" });
+    // GA-290: the mountains' switch went with the islands; its key keeps its gizai name, so an older Hersir's is found and taken out
+    expect(GONE_KEYS).toEqual(["gizai-band"]);
   });
 
   it("the other storage keys and events, each where it was", () => {

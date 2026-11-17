@@ -1,7 +1,8 @@
 // One note on the Memory page (GA-68): in the centre its title, the reading view or the editor (the doc page's editor,
 // saving and conflict handling: useDocEditor; switching to Read saves, leaving the editor doesn't), and on the right the
-// panel with collapsible sections: backlinks (linked and unlinked mentions, with Link), outgoing links (also those that
-// find no note yet), the outline, the properties as a small form, the tags (a click filters the tree) and the history.
+// panel with collapsible sections, in the islands design's order (GA-295): the outline, the properties as a small form,
+// the tags (a click filters the tree), the history, backlinks (linked and unlinked mentions, with Link) and outgoing
+// links (also those that find no note yet). The note and the panel are islands of their own.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { BookOpen, ChevronDown, ChevronRight, FileText, Hash, Link2, Pencil, Plus, X } from "lucide-react";
 import { docVersionBody, docVersions, renameDoc, saveDoc } from "../../api";
@@ -37,9 +38,11 @@ type Props = {
   heading?: string;
   /** The right panel is shown. */
   panel: boolean;
+  /** The page's error banner, shown at the top of the note's island under its header (design/islands-settings: Memory). */
+  banner?: ReactNode;
 };
 
-export function NotePane({ id, notes, scopeNotes, links, tagFilter, onTag, editing, heading, panel }: Props) {
+export function NotePane({ id, notes, scopeNotes, links, tagFilter, onTag, editing, heading, panel, banner }: Props) {
   const ed = useDocEditor(id);
   const { doc, text, base, status } = ed;
   const { data: versions } = useData(() => docVersions(id), [id]);
@@ -102,7 +105,8 @@ export function NotePane({ id, notes, scopeNotes, links, tagFilter, onTag, editi
 
   return (
     <>
-      <div className="mem-note">
+      {/* the note's island: the note bar is its header and stays; the note scrolls under it (design/islands-settings: Memory) */}
+      <div className="mem-note open">
         <div className="mem-note-bar">
           <span className={status === "saved" ? "faint" : "muted"} role="status">{statusText}{last && ` · ${last.authorName ?? "Someone"}, ${relTime(last.createdAt)}`}</span>
           <span className="grow" />
@@ -112,36 +116,37 @@ export function NotePane({ id, notes, scopeNotes, links, tagFilter, onTag, editi
           </div>
           <button className="btn sm primary" disabled={status === "saved" || status === "saving"} onClick={() => ed.save(text)}>Save</button>
         </div>
-        {ed.err && <div className="error-banner" role="alert">{ed.err}</div>}
-        {status === "conflict" && (
-          <div className="error-banner" role="alert">
-            This note was saved by someone else after you opened it (version {doc.currentVersion}). Your text is still in the editor.
-            <button className="btn" onClick={() => ed.save(text, true)}>Save mine as a new version</button>
-            <button className="btn ghost" onClick={() => ed.adopt(doc.bodyMd, doc.currentVersion)}>Discard mine, load theirs</button>
-          </div>
-        )}
-        <div className="doc-in mem-note-in">
-          <div className="mem-path faint">{folderOf(note.path)}</div>
-          <input className="title-input" aria-label="Note title" value={title} onChange={(e) => setTitle(e.target.value)} onBlur={saveTitle}
-            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") { setTitle(titleOf(note.path)); (e.target as HTMLInputElement).blur(); } }} />
-          {mode === "edit" ? (
-            <div className="doc-editor">
-              <MarkdownEditor value={text} ariaLabel="Note text" minHeight={420} handle={editor}
-                placeholder={`Write in Markdown: # headings, [[ links a note (${modKey()}+click opens it), #tags, KADE-12 refs and @mentions.`}
-                wiki={wiki} onChange={ed.edit} onSave={(md) => ed.save(md)} />
-            </div>
-          ) : (
-            <div ref={reading} onDoubleClick={(e) => { if (!(e.target as HTMLElement).closest("a, button")) switchMode("edit"); }}>
-              {text.trim() ? <NoteView md={withoutTitle(text, titleOf(note.path))} from={note} links={{ ...links, notes: all }} frontmatter />
-                : <p className="faint">This note is empty. <button className="link-btn" onClick={() => switchMode("edit")}>Write in it</button></p>}
+        <div className="mem-note-body">
+          {banner}
+          {ed.err && <div className="error-banner" role="alert">{ed.err}</div>}
+          {status === "conflict" && (
+            <div className="error-banner" role="alert">
+              This note was saved by someone else after you opened it (version {doc.currentVersion}). Your text is still in the editor.
+              <button className="btn" onClick={() => ed.save(text, true)}>Save mine as a new version</button>
+              <button className="btn ghost" onClick={() => ed.adopt(doc.bodyMd, doc.currentVersion)}>Discard mine, load theirs</button>
             </div>
           )}
+          <div className="doc-in mem-note-in">
+            <div className="mem-path faint">{folderOf(note.path)}</div>
+            <input className="title-input" aria-label="Note title" value={title} onChange={(e) => setTitle(e.target.value)} onBlur={saveTitle}
+              onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") { setTitle(titleOf(note.path)); (e.target as HTMLInputElement).blur(); } }} />
+            {mode === "edit" ? (
+              <div className="doc-editor">
+                <MarkdownEditor value={text} ariaLabel="Note text" minHeight={420} handle={editor}
+                  placeholder={`Write in Markdown: # headings, [[ links a note (${modKey()}+click opens it), #tags, KADE-12 refs and @mentions.`}
+                  wiki={wiki} onChange={ed.edit} onSave={(md) => ed.save(md)} />
+              </div>
+            ) : (
+              <div ref={reading} onDoubleClick={(e) => { if (!(e.target as HTMLElement).closest("a, button")) switchMode("edit"); }}>
+                {text.trim() ? <NoteView md={withoutTitle(text, titleOf(note.path))} from={note} links={{ ...links, notes: all }} frontmatter />
+                  : <p className="faint">This note is empty. <button className="link-btn" onClick={() => switchMode("edit")}>Write in it</button></p>}
+              </div>
+            )}
+          </div>
         </div>
       </div>
       {panel && (
         <aside className="mem-side" aria-label="About this note">
-          <Backlinks note={note} notes={all} index={index} links={links} onError={(e) => ed.setErr(e)} />
-          <Outgoing note={note} notes={all} index={index} links={links} />
           <Section id="outline" title="Outline" count={outline(text).length}>
             {outline(text).length === 0 ? <p className="faint">No headings.</p> : outline(text).map((h, i) => (
               <button key={i} className="mem-row" style={{ paddingLeft: 8 + (h.level - 1) * 12 }} onClick={() => show(h.text)}>
@@ -162,6 +167,8 @@ export function NotePane({ id, notes, scopeNotes, links, tagFilter, onTag, editi
               </button>
             ))}
           </Section>
+          <Backlinks note={note} notes={all} index={index} links={links} onError={(e) => ed.setErr(e)} />
+          <Outgoing note={note} notes={all} index={index} links={links} />
         </aside>
       )}
       {viewing && (

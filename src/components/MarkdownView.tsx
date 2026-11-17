@@ -3,8 +3,11 @@ import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { viewUrl } from "../lib/markdown";
-import { KIND_NAME, parseItemUrl, splitItemLinks, type ItemKind } from "../lib/itemLinks";
+import { parseItemUrl, splitItemLinks, type ItemKind } from "../lib/itemLinks";
 import { openItem } from "../lib/openItem";
+import { useBesideChat } from "../lib/besideChat";
+import { modClick } from "../lib/keys";
+import { useItemHover } from "./ItemHoverCard";
 
 /** Plain text (a message you sent in the chat) with its links to Gizai items shown as chips. */
 export function LinkedText({ text }: { text: string }) {
@@ -13,11 +16,22 @@ export function LinkedText({ text }: { text: string }) {
     : <Fragment key={i}>{p.text}</Fragment>)}</>;
 }
 
-/** A link to a Gizai item (the @ picker's): a chip with its name that opens the item's page in Gizai. */
+/** A link to a Gizai item (the @ picker's): a chip with its name that opens the item's page in Gizai. Resting the pointer
+ *  on it, or tabbing to it, shows its hover card (GA-287) in place of a browser tooltip. On the Chat page a card's chip
+ *  opens the card beside the chat instead, and Ctrl+click (Cmd+click on macOS) its page (GA-297). */
 export function ItemChip({ kind, itemKey, children }: { kind: ItemKind; itemKey: string; children: React.ReactNode }) {
+  const hover = useItemHover(kind, itemKey);
+  const beside = useBesideChat();
+  const open = (e: React.MouseEvent) => {
+    if (kind === "task" && beside && !modClick(e)) beside(itemKey);
+    else openItem(kind, itemKey).catch(() => {});
+  };
   return (
-    <a className={`item-chip kind-${kind}`} href={`gizai:${kind}/${encodeURIComponent(itemKey)}`} title={`Open ${KIND_NAME[kind].toLowerCase()}`}
-      onClick={(e) => { e.preventDefault(); e.stopPropagation(); openItem(kind, itemKey).catch(() => {}); }}>{children}</a>
+    <>
+      <a {...hover.chip} className={`item-chip kind-${kind}`} href={`gizai:${kind}/${encodeURIComponent(itemKey)}`}
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); hover.hide(); open(e); }}>{children}</a>
+      {hover.card}
+    </>
   );
 }
 

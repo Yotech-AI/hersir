@@ -8,6 +8,8 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { answerChatOn, chatClis, checkFiles, editQueuedChat, removeQueuedChat, sendChat, sendChatQueue, setAgentStatus, setChatCli, stopChat } from "../../api";
 import { go } from "../../router";
 import { chatRunsOn, groupMessages, SUGGESTIONS, toolName, type Group } from "../../lib/chat";
+import { adoptNewChat, chatSideKey, setChatCards } from "../../lib/chatSide";
+import { linkedCards } from "../../lib/chatOpen";
 import { addPaths } from "../../lib/files";
 import { placePending } from "../../lib/pending";
 import { usePending, type Pending } from "../../lib/usePending";
@@ -210,6 +212,8 @@ export function ChatThread({ threadId, thread, agent, youId }: { threadId: strin
       setFileNote(null);
       if (!working) setWorking(true);
       pinned.current = true;
+      // the first message made the chat: it takes what New chat had open beside it
+      if (!threadId) adoptNewChat(id);
       if (id !== threadId) go({ page: "chat", id });
     } catch (e) {
       setSendError(String(e));
@@ -249,6 +253,10 @@ export function ChatThread({ threadId, thread, agent, youId }: { threadId: strin
 
   // Worked out again only when the messages or the waiting calls change, not for each streamed piece (GA-176).
   const groups = useMemo(() => groupMessages(messages), [messages]);
+  // The cards the Chief's answers link are the chat's too (GA-298): the Board tab marks them, and their project is the
+  // chat's when the chat isn't about cards.
+  const named = useMemo(() => linkedCards(messages.filter((m) => m.role !== "user" && m.role !== "tool" && m.role !== "system").map((m) => m.bodyMd ?? "").join("\n\n")).join(" "), [messages]);
+  useEffect(() => { setChatCards(chatSideKey(threadId ?? undefined, false), "named", named ? named.split(" ") : []); }, [threadId, named]);
   // Only the groups in sight, and a margin around them, are in the page (GA-190): a long chat opens and scrolls like a
   // short one. Each group's height is measured as it shows; the others are space of the height they had, or are thought
   // to have. The list starts below what comes before it in the column (its padding, an error).

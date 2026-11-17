@@ -2,8 +2,8 @@
 // (design/onboarding/README.md). React itself renders OnboardingPage here (react-dom/client, so its state, effects and
 // focus really run) into a small stand-in DOM, as StreamParses.test.tsx does: there is no DOM library in the project.
 // Clicks, typing, ticks, the select and Enter go through React's own event listeners. The api is a fake over a small
-// world (the CLIs installed and listed, Claude Code's MCP servers, Settings' servers) that records each call; the
-// mountains are a marker. Step 1: the seeded name, the empty team name, Next needs both. Step 2: the CLIs found, the
+// world (the CLIs installed and listed, Claude Code's MCP servers, Settings' servers) that records each call. Since
+// GA-295 the steps sit in one island under the top row, without the mountains. Step 1: the seeded name, the empty team name, Next needs both. Step 2: the CLIs found, the
 // ticked ones added with save_clis, the agents' CLI picked, and without Claude Code the warning, its link and Look again.
 // Step 3: Settings' import rows and rules, importing and going on without. Step 4: the summary, and Open the Chief's
 // chat sends what finish_onboarding needs. Skip setup on every step; an error stays under its step.
@@ -126,10 +126,6 @@ vi.mock("../api", () => Object.fromEntries(["appInfo", "listUsers", "getTeam", "
   return f ? Promise.resolve().then(() => f(...a)) : new Promise(() => {});
 }])));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: (url: string) => { h.opened.push(url); return Promise.resolve(); } }));
-vi.mock("../components/Band", async () => {
-  const { createElement } = await import("react");
-  return { Band: () => createElement("div", { className: "band" }) };
-});
 
 const { createRoot } = await import("react-dom/client");
 const { createElement } = await import("react");
@@ -267,11 +263,14 @@ const select = () => byId("onb-agents-cli")!;
 const options = () => select().options.map((o) => text(o));
 
 describe("when the onboarding opens (GA-164: on a new install, step 1)", () => {
-  it("shows the top bar (the logo, the four steps, Skip setup), the mountains first and step 1, with Back off", async () => {
+  it("shows the top bar (the logo, the four steps, Skip setup), then step 1 in one island, with Back off and no mountains", async () => {
     await open();
     const onb = container.firstChild!;
     expect(onb.attrs.get("class")).toBe("onb");
-    expect(onb.firstChild!.attrs.get("class")).toBe("band"); // the mountains, as in the app
+    // GA-295 (design/islands-settings: Onboarding): the top row on the background, then one island; the mountains went
+    expect(onb.childNodes.map((n) => [n.nodeName, n.attrs.get("class")])).toEqual([["HEADER", "onb-top"], ["DIV", "onb-island"]]);
+    expect(byClass("band")).toEqual([]);
+    expect(container.all().some((n) => n.nodeName.toLowerCase() === "svg" && n.attrs.get("viewBox") === "0 0 19200 512")).toBe(false);
     expect(byClass("onb-logo")[0].innerHTML).toContain('aria-label="Hersir"');
     const steps = byClass("onb-steps")[0];
     expect(steps.childNodes.map((li) => text(li))).toEqual(["1You and your team", "2Coding CLIs", "3MCP servers", "4Ready"]);
@@ -283,6 +282,29 @@ describe("when the onboarding opens (GA-164: on a new install, step 1)", () => {
     expect(button("Skip setup")!.attrs.get("title")).toBe("Open the board. You can set things up later in Settings.");
     expect(off(button("Back"))).toBe(true);
     expect(off(button("Next"))).toBe(false);
+  });
+
+  it("keeps every step in the one island: the step scrolls in it and Back and Next sit at its foot (GA-295)", async () => {
+    await open();
+    const check = (title: string) => {
+      const island = byClass("onb-island")[0];
+      expect(byClass("onb-island")).toHaveLength(1);
+      expect(island.childNodes.map((n) => n.attrs.get("class"))).toEqual(["onb-scroll", "onb-actions"]);
+      expect(island.childNodes[0].childNodes.map((n) => [n.nodeName, n.attrs.get("class")])).toEqual([["MAIN", "onb-body"]]);
+      expect(heading().startsWith(title)).toBe(true);
+      expect(island.contains(container.all().find((n) => n.nodeName === "H1")!)).toBe(true);
+      const actions = island.childNodes[1];
+      expect(actions.childNodes.map((n) => text(n))[0]).toBe("Back");
+      expect(byClass("onb-top")[0].contains(button("Skip setup"))).toBe(true);
+    };
+    check("Welcome to Hersir");
+    await toClis();
+    check("Coding CLIs");
+    await click(button("Next"), () => on("MCP servers")() && !text().includes("Looking for the MCP servers"));
+    check("MCP servers");
+    await click(button("Next"), on("You're all set"));
+    check("You're all set");
+    expect(byClass("onb-actions")[0].contains(button("Open the Chief's chat"))).toBe(true);
   });
 
   it("fills in your name with the seeded one (your person) and leaves Team name empty with the placeholder My team, the cursor in it", async () => {
@@ -416,6 +438,9 @@ describe("step 2 · Coding CLIs", () => {
     expect(alert()).toBe("Couldn't save the coding CLIs: the database is read only.");
     expect(heading()).toBe("Coding CLIs");
     expect(off(button("Next"))).toBe(false);
+    // GA-295: inside the island, above the actions at its foot
+    const island = byClass("onb-island")[0];
+    expect(island.childNodes.map((n) => n.attrs.get("class"))).toEqual(["onb-scroll", "onb-error", "onb-actions"]);
   });
 });
 

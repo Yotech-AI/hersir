@@ -12,6 +12,7 @@ import { BitbucketSettings } from "../components/BitbucketSettings";
 import { CliSettings } from "../components/CliSettings";
 import { EditorFoldersSetting } from "../components/EditorFoldersSetting";
 import { GithubSettings } from "../components/GithubSettings";
+import { LogsSetting } from "../components/LogsSetting";
 import { McpSettings } from "../components/McpSettings";
 import { MemorySetting } from "../components/MemorySetting";
 import { OldWorktrees } from "../components/OldWorktrees";
@@ -79,8 +80,11 @@ export function SettingsPage({ tab }: { tab?: string } = {}) {
     <>
       <div className="topbar"><div className="crumbs"><b>Settings</b></div>
         <div className="actions"><button className="btn primary" onClick={() => save()}>Save settings</button></div></div>
+      {/* the island's header holds the six tabs as Island tabs (design/islands-settings: Settings); the open tab's form scrolls under it */}
+      <div className="island-head settings-head">
+        <Tabs island tabs={TABS} open={open} onOpen={(t) => go({ page: "settings", id: t })} label="Settings" />
+      </div>
       <div className="content"><div className="page settings-page" style={{ maxWidth: 1100 }}>
-        <Tabs tabs={TABS} open={open} onOpen={(t) => go({ page: "settings", id: t })} label="Settings" />
         {msg && <div className={msg.ok ? "ok-banner" : "error-banner"} role="status" style={{ margin: 0 }}>{msg.text}</div>}
         <div {...panel("general")}>
           <QuitSettings />
@@ -90,6 +94,7 @@ export function SettingsPage({ tab }: { tab?: string } = {}) {
             <Field label="Data folder" wide><span className="mono">{s.dataDir}</span></Field>
             <Field label="Worktrees" wide><span className="mono">{s.dataDir}/worktrees</span></Field>
             <Field label="Run logs" wide><span className="mono">{s.dataDir}/runs</span></Field>
+            <LogsSetting dataDir={s.dataDir} />
             <Field label="Worktrees of finished cards" wide hint="Done and Cancelled cards keep their worktree, so a new card of the same project can take it over with a warm build. Remove the ones you no longer need.">
               <OldWorktrees /></Field>
           </FormSection>

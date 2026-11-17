@@ -1,11 +1,12 @@
-// Open in terminal under a Chief answer that asks you to run commands (GA-279; src/lib/runCommands.ts finds them): a quiet
-// row right under the message, with a button for each folder it names that is one of the Editor's (at most 3), which shows
+// Open in terminal under a Chief answer that asks you to run commands (GA-279; src/lib/runCommands.ts finds them). Since
+// GA-298 it is the last part of the answer's row of buttons (AnswerRow.tsx: Open GA-12, Open board, Open in Editor come
+// first, as `lead`), one row under the whole answer: a quiet row with a button for each folder it names that is one of the Editor's (at most 3), which shows
 // a terminal in that folder in the chat's terminal panel (GA-278), or Open in terminal… with the folder picker when it names
 // none. It never types or runs anything: the terminal starts in the folder and waits for you.
 // The row is there from the message's first draw and its buttons once the Editor's folders are known, so the chat doesn't
 // jump. The folders are asked once for all the messages: when the chat shows them, when the window gets the focus, and when
 // a message names a path that isn't in one of them (not more than once in FOCUS_GAP).
-import { memo, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { memo, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Terminal as TerminalIcon } from "lucide-react";
 import { editorFolders } from "../../api";
 import type { EditorFolder } from "../../types";
@@ -56,19 +57,25 @@ const subscribe = (f: () => void) => {
 /** A message that names no path needs no folders. */
 const idle = () => () => {};
 const knownNow = () => known;
+/** The Editor's folders (undefined until asked), asked as above while `on`; for the answer's Open in Editor too. */
+export const useEditorFolders = (on: boolean) => useSyncExternalStore(on ? subscribe : idle, knownNow, knownNow);
+/** Asks for the Editor's folders again (unless it did FOCUS_GAP or less ago): a path in none of them may be in a new one. */
+export const refreshEditorFolders = loadFolders;
 
 // ---------- the row ----------
 
-/** Under a Chief text message: Open in terminal when it asks you to run at least one command, else nothing. `you`: for the
- *  folder picker, where a card's worktree that isn't pinned to you asks first. */
-export const OpenInTerminal = memo(function OpenInTerminal({ md, you }: { md: string; you?: string }) {
+/** Under a Chief answer: Open in terminal when it asks you to run at least one command, after `lead` (the answer's other
+ *  buttons, GA-298); the row with `lead` alone when it asks none; else nothing. `you`: for the folder picker, where a
+ *  card's worktree that isn't pinned to you asks first. */
+export const OpenInTerminal = memo(function OpenInTerminal({ md, you, lead }: { md: string; you?: string; lead?: ReactNode }) {
   const asks = useMemo(() => runCommands(md).length > 0, [md]);
-  return asks ? <OpenInTerminalRow md={md} you={you} /> : null;
+  if (asks) return <OpenInTerminalRow md={md} you={you} lead={lead} />;
+  return lead ? <div className="msg-term"><div className="msg-term-row">{lead}</div></div> : null;
 });
 
 /** The buttons, one per folder the message names, in the order named; Open in terminal… when it names none of the Editor's
  *  folders. Why a terminal couldn't start shows under them. */
-function OpenInTerminalRow({ md, you }: { md: string; you?: string }) {
+function OpenInTerminalRow({ md, you, lead }: { md: string; you?: string; lead?: ReactNode }) {
   const anyPath = useMemo(() => namedPaths(md).length > 0, [md]);
   const folders = useSyncExternalStore(anyPath ? subscribe : idle, knownNow, knownNow);
   const named = useMemo(() => (!anyPath ? [] : folders ? terminalFolders(md, folders) : undefined), [md, anyPath, folders]);
@@ -92,6 +99,7 @@ function OpenInTerminalRow({ md, you }: { md: string; you?: string }) {
   return (
     <div className="msg-term">
       <div className="msg-term-row">
+        {lead}
         {!named ? (
           // until the folders are known: a button's room, so the row doesn't move the chat when they come
           <span className="btn ghost sm msg-term-wait" aria-hidden><TerminalIcon className="icon" />Open in terminal</span>

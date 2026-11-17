@@ -63,9 +63,17 @@ const rows = (html: string, part: "tbody" | "tfoot") => {
 describe("the Usage page", () => {
   it("has the Subscription, Total, Agents and Projects tabs with the tabs' markup, and the period switch with This month on", () => {
     const html = render("total");
-    expect(html).toContain('<div class="tabs" role="tablist">');
+    // GA-295 (design/islands-settings: Usage): the tabs are Island tabs in the island's header, and right of them what the
+    // toolbar row held (the period chips and UTC days here); the toolbar row above the tabs is gone
+    const head = html.slice(html.indexOf('<div class="island-head usage-head">'), html.indexOf('<div class="content">'));
+    expect(head.startsWith('<div class="island-head usage-head"><div class="tabs island-tabs" role="tablist">')).toBe(true);
+    expect(head.indexOf('role="tablist"')).toBeLessThan(head.indexOf('<div class="toolbar usage-tools">'));
+    expect(head).toContain('aria-label="Period"');
+    expect(head).toContain(">UTC days</span>");
+    expect(html.match(/class="toolbar/g)).toHaveLength(1);
+    expect(html.slice(html.indexOf('<div class="content">'))).not.toContain('role="tablist"');
     expect(html.match(/<button class="tab"[^>]*>/g)).toHaveLength(4);
-    expect(strip(html.slice(html.indexOf('class="tabs"'), html.indexOf('role="tabpanel"')))).toContain("|Subscription|Total|Agents|Projects|");
+    expect(strip(html.slice(html.indexOf('class="tabs'), html.indexOf('role="tabpanel"')))).toContain("|Subscription|Total|Agents|Projects|");
     expect(html).toMatch(/<button class="tab" role="tab" aria-selected="true">.*?Total<\/button>/);
     const chips = html.slice(html.indexOf('aria-label="Period"'), html.indexOf('class="spacer"'));
     expect(strip(chips)).toContain("|Today|7 days|30 days|This month|");
@@ -175,7 +183,11 @@ describe("the Usage page's Subscription tab (GA-62)", () => {
 
   it("is the first tab and the one the page opens on; the period switch and the UTC days are for the other tabs", () => {
     const html = show();
-    expect(strip(html.slice(html.indexOf('class="tabs"'), html.indexOf('role="tabpanel"')))).toContain("|Subscription|Total|Agents|Projects|");
+    expect(strip(html.slice(html.indexOf('class="tabs'), html.indexOf('role="tabpanel"')))).toContain("|Subscription|Total|Agents|Projects|");
+    // GA-295: the toolbar line sits right of the tabs, in the island's header
+    const head = html.slice(html.indexOf('<div class="island-head usage-head">'), html.indexOf('<div class="content">'));
+    expect(head).toContain('role="tablist"');
+    expect(head).toContain('<div class="toolbar usage-tools"><span class="faint ellipsis">The newest numbers each coding CLI reported in your agents&#x27; runs and chat turns</span></div>');
     expect(html).toMatch(/<button class="tab" role="tab" aria-selected="true">.*?Subscription<\/button>/);
     expect(html).not.toContain('aria-label="Period"');
     expect(html).not.toContain("UTC days");

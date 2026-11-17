@@ -604,6 +604,9 @@ fn main() {
     }));
     // Its restore (contract BR): none runs, none is ready and none was just done. mock.ts answers Restore's steps.
     c.insert("restore_status".into(), val(restore::RestoreStatus { state: "none".into(), ..Default::default() }));
+    // Hersir's own log (GA-281, src-tauri's logs::LogsInfo): this start's file, and no unexpected end.
+    c.insert("get_logs_info".into(), json!({"folder": format!("{DATA}/logs"), "current": format!("{DATA}/logs/hersir-2026-11-13T14-50-26Z.log"),
+        "unexpectedEnd": null}));
     // Settings → GitHub and Bitbucket (src-tauri's github::Status and bitbucket::BitbucketStatus): gh logged in, no Bitbucket login.
     c.insert("github_status".into(), json!({"ghPath": "/usr/bin/gh", "ghVersion": "2.62.0", "ghProblem": null, "account": "jefsev",
         "accountProblem": null, "pushOver": "ssh", "login": null, "loginCommand": "gh auth login --hostname github.com --web"}));

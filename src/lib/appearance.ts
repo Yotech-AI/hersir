@@ -1,14 +1,14 @@
 // Settings → Appearance (GA-42): one font for the whole app, three text sizes (the chat, the interface, and tasks and
-// docs), the theme and the density, and the mountains along the bottom of the window (GA-143). Kept on this computer in
-// localStorage, like the theme always was, and put on <html> before the first paint (main.tsx): data-font, data-theme,
-// data-density and data-band, and the size steps that src/styles/appearance.css grows the text and the layout by. A
-// change shows at once; Save settings isn't involved.
+// docs), the theme and the density, and the glass behind the islands (GA-292). Kept on this computer in localStorage, like
+// the theme always was, and put on <html> before the first paint (main.tsx): data-font, data-theme and data-density, and the
+// size steps that src/styles/appearance.css grows the text and the layout by; the glass is lib/glass.ts's, as it also
+// depends on the system. A change shows at once; Save settings isn't involved.
 import { useEffect, useState } from "react";
 
 export type FontKey = "atkinson" | "jetbrains-mono" | "inter" | "geist" | "hack";
 export type Theme = "dark" | "light";
 export type Density = "comfortable" | "compact";
-export type Appearance = { font: FontKey; chat: number; ui: number; docs: number; theme: Theme; density: Density; band: boolean };
+export type Appearance = { font: FontKey; chat: number; ui: number; docs: number; theme: Theme; density: Density; glass: boolean };
 
 /** Each choice sets the text font and the code font (task IDs, code, run logs); appearance.css has their stacks. */
 export const FONTS: { key: FontKey; name: string; note: string }[] = [
@@ -23,14 +23,31 @@ export const FONTS: { key: FontKey; name: string; note: string }[] = [
 export const CHAT_SIZES = [14, 15, 16, 17, 18, 20];
 export const UI_SIZES = [12.5, 13.5, 14.5, 15.5, 16.5];
 export const DOCS_SIZES = [14, 15, 16, 17, 18, 20];
-export const DEFAULTS: Appearance = { font: "atkinson", chat: 15, ui: 13.5, docs: 15, theme: "dark", density: "comfortable", band: true };
+/** The glass's default (Settings → Appearance → Background): on where the system blurs the desktop behind a window, on
+ *  macOS and Windows (Windows 10 has no Mica: Settings shows the switch off there, lib/glass.ts); off on Linux, where the
+ *  desktop's compositor blurs a see-through window by its own rules (Hyprland does) and Hersir can't tell whether it does
+ *  (other desktops don't: the switch is off there too).
+ *  Read on each call from the user agent, as lib/keys.ts does, so a test can fake the system with a stubbed navigator. */
+export function glassByDefault(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /Macintosh|Mac OS X|Windows/.test(navigator.userAgent || "");
+}
+/** glass is a getter: the system's default (glassByDefault), read each time. */
+export const DEFAULTS: Appearance = {
+  font: "atkinson", chat: 15, ui: 13.5, docs: 15, theme: "dark", density: "comfortable",
+  get glass() { return glassByDefault(); },
+};
 
-/** Where each is kept. gizai-theme and gizai-density are the t and d keys' own, from before. The mountains are on by
- *  default, so gizai-band is only kept while they are off ("false"). */
+/** Where each is kept. gizai-theme and gizai-density are the t and d keys' own, from before. gizai-glass is kept only
+ *  while it differs from the system's default ("true" or "false"). */
 export const KEYS: Record<keyof Appearance, string> = {
   font: "gizai-font", chat: "gizai-size-chat", ui: "gizai-size-ui", docs: "gizai-size-docs", theme: "gizai-theme", density: "gizai-density",
-  band: "gizai-band",
+  glass: "gizai-glass",
 };
+
+/** Kept by an older Hersir and read no more: gizai-band, the mountains' switch (GA-143), which went with the islands. The
+ *  first read of the appearance takes them out. */
+export const GONE_KEYS = ["gizai-band"];
 
 /** What was kept, with anything unknown (or missing) at its default. */
 export function parseAppearance(get: (key: string) => string | null): Appearance {
@@ -39,12 +56,13 @@ export function parseAppearance(get: (key: string) => string | null): Appearance
     return sizes.includes(n) ? n : DEFAULTS[k];
   };
   const font = get(KEYS.font);
+  const glass = get(KEYS.glass);
   return {
     font: FONTS.find((f) => f.key === font)?.key ?? DEFAULTS.font,
     chat: size("chat", CHAT_SIZES), ui: size("ui", UI_SIZES), docs: size("docs", DOCS_SIZES),
     theme: get(KEYS.theme) === "light" ? "light" : "dark",
     density: get(KEYS.density) === "compact" ? "compact" : "comfortable",
-    band: get(KEYS.band) !== "false",
+    glass: glass === "true" ? true : glass === "false" ? false : DEFAULTS.glass,
   };
 }
 
@@ -85,16 +103,14 @@ export function sizeVars(a: Appearance): Partial<Record<(typeof SIZE_VARS)[numbe
   return v;
 }
 
-/** Puts `a` on <html>: the font, theme, density and mountains (data-band="on", for band.css), and the size variables
- *  (removed again at their defaults). */
+/** Puts `a` on <html>: the font, theme and density, and the size variables (removed again at their defaults). The glass
+ *  isn't put here: lib/glass.ts puts html.glass on when the system gives a blur too, and follows each change. */
 export function applyAppearance(root: HTMLElement, a: Appearance) {
   if (a.font === DEFAULTS.font) delete root.dataset.font;
   else root.dataset.font = a.font;
   root.dataset.theme = a.theme;
   if (a.density === "compact") root.dataset.density = "compact";
   else delete root.dataset.density;
-  if (a.band) root.dataset.band = "on";
-  else delete root.dataset.band;
   const vars = sizeVars(a);
   for (const name of SIZE_VARS) {
     const value = vars[name];
@@ -115,6 +131,7 @@ export function getAppearance(): Appearance {
   if (!current) {
     const s = prefs();
     current = parseAppearance((k) => { try { return s?.getItem(k) ?? null; } catch { return null; } });
+    for (const k of GONE_KEYS) { try { s?.removeItem(k); } catch { /* private mode: nothing was kept */ } }
   }
   return current;
 }

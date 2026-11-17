@@ -70,3 +70,41 @@ describe("DocPage crumbs", () => {
     expect(c).not.toContain("Memory");
   });
 });
+
+// GA-295 (design/islands-settings: 2. A doc): two islands, the doc (with its banners at the top) and History on the right,
+// whose head is the island's header with the title History; the top bar keeps the crumbs, Editor or Markdown, the status
+// and Save. The page's island gives way to them (app.css: .page-island:has(> .split.doc-split)).
+describe("DocPage in islands (GA-295)", () => {
+  const versions: DocVersion[] = [
+    { version: 2, authorName: "Jefsev", createdAt: Date.now() - 60_000 } as DocVersion,
+    { version: 1, authorName: null, createdAt: Date.now() - 3_600_000 } as DocVersion,
+  ];
+  const render = () => {
+    const d = doc({ kind: "doc", projectId: "p1", title: "Spec" });
+    answers.getDoc = () => d;
+    answers.docVersions = () => versions;
+    answers.getProject = () => ({ id: "p1", name: "Kade" }) as Project;
+    states.push(d.bodyMd, d.currentVersion);
+    return renderToStaticMarkup(<DocPage id={d.id} />);
+  };
+
+  it("draws the doc and History as the two panes of .split.doc-split, History's head an island header titled History", () => {
+    const html = render();
+    const split = html.slice(html.indexOf('<div class="split doc-split">'));
+    expect(split.startsWith('<div class="split doc-split"><div class="doc">')).toBe(true);
+    const history = split.slice(split.indexOf('<aside class="props" aria-label="History">'));
+    expect(history.startsWith('<aside class="props" aria-label="History"><div class="island-head"><span class="island-title">History</span></div><div class="props-body">')).toBe(true);
+    expect(html).not.toContain("props-head");
+    // the versions, the current one selected
+    expect([...history.matchAll(/<button class="(version(?: on)?)"><span class="mono">v(\d)<\/span><span>([^<]+)<\/span>/g)].map((m) => [m[1], m[2], m[3]]))
+      .toEqual([["version on", "2", "Jefsev"], ["version", "1", "Someone"]]);
+  });
+
+  it("keeps the crumbs, Editor or Markdown, the status and Save in the top bar, before the islands", () => {
+    const html = render();
+    const top = html.slice(0, html.indexOf('<div class="split doc-split">'));
+    expect(top.startsWith('<div class="topbar">')).toBe(true);
+    for (const s of ['aria-label="View"', ">Editor</button>", ">Markdown</button>", "Saved · version 2", ">Save</button>"]) expect([s, top.includes(s)]).toEqual([s, true]);
+    expect(top).not.toContain('class="error-banner"');
+  });
+});

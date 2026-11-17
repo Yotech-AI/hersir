@@ -2248,6 +2248,11 @@
       },
       "$by": "id"
     },
+    "get_logs_info": {
+      "current": "/home/you/.local/share/gizai-browser/logs/hersir-2026-11-13T14-50-26Z.log",
+      "folder": "/home/you/.local/share/gizai-browser/logs",
+      "unexpectedEnd": null
+    },
     "get_project": {
       "$answers": {
         "01a1b19a-2be5-77c9-94a7-49c1eb4154a3": {

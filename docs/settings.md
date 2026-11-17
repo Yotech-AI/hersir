@@ -7,7 +7,7 @@ Where each setting lives, what a backup holds and how to restore one, how Hersir
 | Tab | What it holds |
 |---|---|
 | General | Quit, Updates, the Editor's folders, Data: where Hersir keeps your data, and the worktrees of finished cards; and Backups: a folder for copies of your data, how often, how many to keep, Back up now, the backups there and Restore |
-| Appearance | The font, text sizes, theme, density and the mountains |
+| Appearance | The font, text sizes, theme and density, and the glass behind the islands |
 | Notifications | A switch for each kind of notification |
 | Agents and runs | Coding CLIs; Runs: limits, runs at once, memory for agent runs and per run, Pause all agents, memory and Ask the Chief first; and Screenshots: what Hersir keeps of agents' screenshots, and the previews' ports |
 | MCP servers | The outside services agents can use, and the built-in browser |
@@ -51,7 +51,7 @@ A restore never touches keys and passwords: they stay as they are on this comput
 - **Font:** one font for the whole app: Atkinson Hyperlegible, JetBrains Mono, Inter, Geist or Hack, all bundled.
 - **Text size:** one for the chat, one for the interface, and one for tasks and docs. Reading text grows, headings half as much, and IDs and labels stay put; the chat column gets wider with it.
 - **Theme and density**, also with the t and d keys.
-- **Mountains:** whether Hersir's wireframe mountains show along the bottom of the window, behind text and controls. They are on by default.
+- **Background → Glass:** Show the desktop through the background. The background behind the islands is a soft gradient; with this on, it is see-through and your desktop shows through it, blurred and tinted. The islands, menus and drawers stay solid. On by default on macOS (vibrancy) and Windows 11 (Mica). Off by default on Linux, where your desktop's compositor does the blurring: on Hyprland, which blurs see-through windows, you can turn it on. On Windows 10 and on Linux desktops other than Hyprland there is no blur: the checkbox is off and can't be turned on. While your system asks for reduced transparency, the background stays plain and the checkbox keeps its value.
 
 Changes show at once and are kept on this computer.
 
@@ -111,3 +111,5 @@ Hersir keeps running when you close its window (Super+W on Omarchy, or the X but
 - A tray icon (top right in Omarchy's Waybar, the menu bar on macOS) has Open Hersir and Quit Hersir completely.
 - Starting Hersir again also brings the window back.
 - Settings → Quit quits too, and says how many runs and chat answers it stops.
+
+The sidebar closes so the page gets its width: Close sidebar at its top right, or Ctrl+\ (Cmd+\ on macOS) on any page. Closed, a small toolbar at the top left keeps Show sidebar, New task, Search and the Inbox with its count; Ctrl+\ opens it again. In a terminal Ctrl+\ stays the shell's. The sidebar stays closed or open after a restart, kept on this computer.

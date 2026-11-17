@@ -25,11 +25,33 @@ Hersir keeps their scanning density and adds its own meaning for colour.
 ## Visual foundations
 
 **Dark first.** The `dark` theme is the default; `light` swaps the same token names (Settings →
-Appearance, or the t key). Surfaces go from dim to bright in this order: `side` → `bg` (the canvas) →
-`raised` (cards, panels) → `overlay` (drawers, palette). The sidebar is dimmer than the canvas so the work stands out.
-Separate regions with 1px borders in `line`; use `line-2` for controls (inputs, buttons, pills)
-and the drawer edge. Shadows only on things that float: `shadow-pop`, `shadow-drawer`,
-`shadow-drag`.
+Appearance, or the t key).
+
+**Islands on a background** (`design/islands/README.md` has the sizes, the states and the contrast). The window is a
+background with islands on it, and what floats goes over both:
+
+- **The background** is a gradient straight down, `canvas-from` to `canvas-to`, with `canvas-glow` falling from the top
+  left (full for 45% of the way, gone at 60% of the width and 75% of the height): one cool blue, low in chroma, the
+  window's own light, never `accent`, `live` or `needs`. In dark it is a clear step lighter than the islands; in
+  light a soft grey a step below the white islands. It is opaque for now; the glass (`glass-*`, the gradient partly
+  transparent over the desktop the system blurs) comes later.
+- **The islands**: the sidebar and each page, in `island` (`#181a1c` in dark, white in light), with `island-radius` (10)
+  corners, `island-gap` (6) from the window's edges and from each other. **No border and no shadow**: the step in fill
+  from the background alone sets an island apart, and the gaps split the window where 1px borders did. An island shows
+  no sign of the focus; what has the focus shows it.
+- **On the background**: each page's top bar (`size-topbar`, 44, no fill, no border) over its island. Faint text and
+  icons there are `text-2` (`text-3` falls under 3:1 on the glass); buttons have no fill until hovered
+  (`canvas-hover`, translucent), a secondary button keeping its `line-2` border; a chip with coloured text (the
+  Chief's) sits on `island`.
+- **On an island**, what sits on it steps up from it: `bg` is the island (code, terminals and the chat sit right on
+  it); `raised` for cards, panels, the text box and the controls (inputs, selects, checkboxes, `kbd`, segmented
+  controls); `hover` and `selected` fills; `side` for a recess (the board's rails, code blocks). Lines inside an
+  island stay: `line` for hairlines and card borders, `line-2` for controls. Scrollbars have no track: a
+  `size-scroll` (6px) pill in `scroll-thumb`, `scroll-thumb-hover` under the pointer, 2px from the edge.
+- **What floats** (menus, popovers, the palette, tooltips, drawers, toasts, a dragged card, the chip's hover card) is
+  `float`: a step lighter than the islands in dark, white in light, solid, with a 1px `line-2` border and
+  `shadow-pop` (`shadow-drawer` for a drawer, `shadow-drag` for a dragged card). `overlay` is its old name. Shadows
+  only on what floats.
 
 **Colour carries meaning, never decoration.**
 - `accent` (blue) is the one interactive colour: primary buttons, links, focus, selection.
@@ -41,9 +63,8 @@ and the drawer edge. Shadows only on things that float: `shadow-pop`, `shadow-dr
 - The terminal's own colours (`term-*`) are what programs print, not Hersir's states: `term-cyan` is a sky blue and
   `term-magenta` a violet, at least 35° of hue (OKLCH) from `live` and `needs`, so a program's cyan never reads as an
   agent at work, nor its magenta as "needs you".
-- The mountains along the bottom of the window (`band-*`, GA-139) are the window's own light, not a state: one cool
-  blue, at least 35° of hue (OKLCH) from `live` and `needs` and 30° from `accent`, low in chroma and alpha. They never
-  move and never run behind code; text and controls on them keep their contrast (`design/branding/README.md`).
+- The background's gradient (`canvas-*`) is the window's own light, not a state: one cool blue, low in chroma, as the
+  mountains along the bottom were (`band-*`, GA-139; gone from the onboarding too since GA-295).
 - `success`, `warning`, `danger` are run and form outcomes. Each badge pairs its colour with a word.
 - Status is shown by glyph shape *and* hue (see StatusIcon), so it reads without colour:
   Backlog dashed circle `st-backlog`, To do open circle `st-todo`, In progress half circle
@@ -104,19 +125,27 @@ gutter; detail pages `space-6`–`space-8`. Rows are `size-row` (40px). Radii by
 chips and small controls, `radius` for buttons, inputs, rows and nav items, `radius-l` for cards
 and panels, `radius-pill` for badges. Never round everything the same.
 
-**Layout.** Three zones: the sidebar (`size-side`), the main column, and on detail pages a
+**Layout.** Three zones: the sidebar island (`size-side`), the main column, and on detail pages a
 properties panel (`size-props`) that can be closed. There is no org rail: Hersir has one
-organisation. A top bar (`size-topbar`) holds breadcrumbs and page actions; list pages add a view
-toolbar below it (New task on the left; view switch, Filters, Sort, Group on the right). Pages with
-parts (Usage, Settings) show them as tabs, the open one in the address. The Editor adds a file
-tree (`size-tree`, rows `size-tree-row`), a tab strip (`size-tab`) and a status bar
-(`size-statusbar`), which grow with the text like the sidebar and rows. A terminal's tabs are
-`size-term-tab`; the Editor's terminal panel starts at `size-term-panel` of the code column, within
-`size-term-panel-min` and `size-term-code-min`, with a `size-handle` drag handle.
+organisation. The main column is the page's top bar (`size-topbar`, on the background) with breadcrumbs and page
+actions, over the page's island; a page with several panes keeps them in that one island for now, except the Editor
+(below). List pages have their
+view toolbar as their island's header (44 high, padding `0 8`, no line under it; New task on the left; view switch,
+Filters, Sort, Group on the right). A card's page is two islands (`design/islands-pages/README.md`): the card, with
+Card, Changes and Screenshots as island tabs in its header, and Properties beside it as an island of its own with a
+header. Pages with parts (Usage, Settings) show them as tabs, the open one in the address. The
+Editor is islands of its own, `island-gap` apart: the file tree (`size-tree`, rows `size-tree-row`); the code, with
+the open files as island tabs (`size-island-tab`, the open one a pill) in its header (`size-island-head`) and the
+status bar (`size-statusbar`) at its bottom; and the terminal panel. The tree's rows and the status bar grow with the
+text like the sidebar and rows. The Terminal page's tabs are `size-term-tab`; the Editor's terminal panel starts at
+`size-term-panel` of the code column, within `size-term-panel-min` and `size-term-code-min`, and the `size-handle`
+gap above it is its drag handle.
 
 **Drawers, not dialogs.** Every create and edit form (new task, new project, edit client, add
 agent, agent settings, new doc) slides in from the right in a Drawer at least `size-drawer`
-(1024px) wide, over a `scrim`. Forms inside use sections: a 220px intro column (heading + one
+(1024px) wide, over a `scrim`. The drawer is an island of its own floating over the work islands: `island-gap` in from
+the window's top, right and bottom edges, `island-radius` on every corner, `float` with a `line-2` border all round and
+`shadow-drawer`; the islands under it don't move. Forms inside use sections: a 220px intro column (heading + one
 sentence) and a two-column field grid. The footer is sticky with the primary action on the right.
 Centered dialogs are only for confirmations of one sentence.
 

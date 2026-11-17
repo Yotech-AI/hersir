@@ -31,6 +31,12 @@ vi.mock("../components/chat/ChatThread", () => ({
   ChatThread: ({ threadId, thread }: { threadId: string | null; thread?: ChatThread }) =>
     <section data-conversation={threadId ?? "new"}>{thread ? `title=${thread.title}` : "no thread"}</section>,
 }));
+// GA-296: the top bar's Open (ChatSide.test.tsx tests it) keeps its menu and picker in states that start null, which would
+// take the Archive's states below: a stand-in without state here.
+vi.mock("../components/chat/ChatSide", async (orig) => ({
+  ...(await orig<typeof import("../components/chat/ChatSide")>()),
+  OpenButton: () => <button type="button" className="btn sm chat-open">Open</button>,
+}));
 // The Archive's search results: its first null-initialised states (what was found, the error) take these values.
 const states: unknown[] = [];
 vi.mock("react", async (orig) => {

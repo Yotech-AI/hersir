@@ -128,6 +128,8 @@ export function MemoryPage({ route, youId }: { route: Route; youId: string }) {
     setPanel(!panel); localStorage.setItem(PANEL_KEY, panel ? "off" : "on");
   };
 
+  // An error shows at the top of the note's island, under its header; with Graph, at the top of the page's island
+  const banner = (all.error || err) ? <div className="error-banner" role="alert">{all.error ?? err}<button className="btn ghost sm" onClick={() => setErr(null)}>Dismiss</button></div> : null;
   return (
     <>
       <div className="topbar">
@@ -161,8 +163,10 @@ export function MemoryPage({ route, youId }: { route: Route; youId: string }) {
           <button className="btn primary" onClick={() => setNewNote({ folder: current ? folderOf(current.path) : undefined })}><FilePlus className="icon" />New note</button>
         </div>
       </div>
-      {(all.error || err) && <div className="error-banner" role="alert">{all.error ?? err}<button className="btn ghost sm" onClick={() => setErr(null)}>Dismiss</button></div>}
-      <div className="split memory">
+      {graphOn && banner}
+      {/* with the notes, each pane is an island of its own: Notes, the note, About this note (or the local graph); Graph fills
+          the page's one island (design/islands-settings: Memory) */}
+      <div className={graphOn ? "split memory" : "split memory islands"}>
         {graphOn ? (
           all.data && <GlobalGraph notes={notes} inScope={inPage} settings={prefs.global} onSettings={(g) => keepPrefs({ ...prefs, global: g })}
             onReset={() => keepPrefs({ ...prefs, global: { ...GRAPH_DEFAULTS, panel: prefs.global.panel, open: prefs.global.open } })} onOpen={openNode} focus={lastNote.current} />
@@ -171,9 +175,10 @@ export function MemoryPage({ route, youId }: { route: Route; youId: string }) {
             onOpen={open} onNewNote={(folder) => setNewNote({ folder })} onError={setErr} />
           {route.id ? (
             <NotePane key={route.id} id={route.id} notes={notes} scopeNotes={scoped} links={links} tagFilter={tag} onTag={setTag} panel={sidePanel}
-              editing={fresh === route.id} heading={jump?.id === route.id ? jump.heading : undefined} />
+              editing={fresh === route.id} heading={jump?.id === route.id ? jump.heading : undefined} banner={banner} />
           ) : (
             <div className="mem-note">
+              {banner}
               <div className="doc-in mem-home">
                 {all.data && scoped.length === 0
                   ? <MemoryEmpty scope={scope} onNew={() => setNewNote({})} />
@@ -269,20 +274,23 @@ function Files({ scope, scopeName, notes, selected, tag, onTag, query, onQuery, 
   const ctx: TreeCtx = { isOpen, toggle, selected, onOpen, onNewNote, renaming, setRenaming, rename, made, removeMade: (p) => keepMade(made.filter((f) => f !== p)) };
   return (
     <aside className="mem-files" aria-label="Notes">
+      {/* the island's header: the scope's name as its title, New note and New folder its actions (design/islands-settings: Memory) */}
+      <div className="island-head mem-files-head">
+        <span className="island-title" title={scopeName}>{scopeName}</span>
+        <div className="acts">
+          <button className="btn ghost sm icon-only" aria-label="New note" title="New note" onClick={() => onNewNote(sel ? folderOf(sel.path) : undefined)}><FilePlus className="icon" /></button>
+          <button className="btn ghost sm icon-only" aria-label="New folder" title="New folder"
+            onClick={() => { const at = sel ? folderOf(sel.path) : scope.kind === "agent" ? scope.folder : roots.find((r) => r !== AGENTS) ?? ""; onQuery(""); setRenaming({ kind: "new-folder", path: at }); setOpenSet((s) => new Set([...s, at])); }}>
+            <FolderPlus className="icon" />
+          </button>
+        </div>
+      </div>
       <div className="mem-search">
         <Search className="icon sm" />
         <input className="input" type="search" aria-label="Search notes" placeholder="Search, path: or tag:" title={'Words and "phrases"; path:Folder keeps the notes in a folder, tag:name those with a tag'} value={query}
           onChange={(e) => onQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape") onQuery(""); }} />
       </div>
       {query.trim() ? <SearchResults scope={scope} query={query} selected={selected} onOpen={onOpen} /> : <>
-        <div className="mem-files-head">
-          <span className="ellipsis" title={scopeName}>{scopeName}</span>
-          <button className="btn ghost sm icon-only" aria-label="New note" title="New note" onClick={() => onNewNote(sel ? folderOf(sel.path) : undefined)}><FilePlus className="icon" /></button>
-          <button className="btn ghost sm icon-only" aria-label="New folder" title="New folder"
-            onClick={() => { const at = sel ? folderOf(sel.path) : scope.kind === "agent" ? scope.folder : roots.find((r) => r !== AGENTS) ?? ""; setRenaming({ kind: "new-folder", path: at }); setOpenSet((s) => new Set([...s, at])); }}>
-            <FolderPlus className="icon" />
-          </button>
-        </div>
         {tag && (
           <div className="mem-filter">
             <span className="mem-tag on"><Hash className="icon sm" />{tag}</span><span className="faint">{shown.length} {shown.length === 1 ? "note" : "notes"}</span>

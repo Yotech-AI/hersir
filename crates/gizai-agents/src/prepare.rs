@@ -18,6 +18,10 @@ pub const COMMAND_LIMIT: Duration = Duration::from_secs(20 * 60);
 const COPY_LIMIT: Duration = Duration::from_secs(30 * 60);
 /// How much of a failed command's output is kept (the end of it).
 const TAIL_CHARS: usize = 1500;
+/// What Hersir's log calls the project's setup command, never showing its text (GA-281): that text can hold a secret as
+/// a plain argument that no redaction rule can tell from other words (`composer config http-basic.<host> <user> <key>`,
+/// `docker login -p …`), and users send us that log. The card shows the text.
+const SETUP_COMMAND: &str = "the setup command";
 
 /// A project's way of preparing a new worktree (project form → New worktrees).
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -59,7 +63,7 @@ impl Prepared {
         }
         let mut ran: Vec<String> = self.installed.clone();
         if self.setup {
-            ran.push("the setup command".into());
+            ran.push(SETUP_COMMAND.into());
         }
         if !ran.is_empty() {
             said.push(format!("ran {}", ran.join(" and ")));
@@ -77,6 +81,17 @@ pub struct PrepareFailed {
     pub why: String,
     /// The end of its output.
     pub output: String,
+    /// Whether `command` is the project's setup command, which Hersir's log names rather than shows (`logged`).
+    pub setup: bool,
+}
+
+impl PrepareFailed {
+    /// What failed and why, in one line for Hersir's log: "composer install failed (exit code 1)", and for the project's
+    /// setup command "the setup command failed (exit code 3)", without its text (`SETUP_COMMAND`). The card gets all of
+    /// it, its output too (`Display`).
+    pub fn logged(&self) -> String {
+        format!("{} {}", if self.setup { SETUP_COMMAND } else { &self.command }, self.why)
+    }
 }
 
 impl std::fmt::Display for PrepareFailed {
@@ -161,12 +176,12 @@ pub fn install_in(wt: &Path, p: &Prepare, since: Option<&str>, path: Option<&OsS
                 continue;
             }
             let (shown, program, args) = install_command(wt, dep);
-            run(&shown, program, args, wt, path, COMMAND_LIMIT, slice)?;
+            run(Shown::Own(&shown), program, args, wt, path, COMMAND_LIMIT, slice)?;
             out.installed.push(shown);
         }
     }
     if let Some(cmd) = p.setup.as_deref().map(str::trim).filter(|c| !c.is_empty()) {
-        run(cmd, bash(cmd, path)?, &["-c", cmd], wt, path, COMMAND_LIMIT, slice)?;
+        run(Shown::Setup(cmd), bash(cmd, path)?, &["-c", cmd], wt, path, COMMAND_LIMIT, slice)?;
         out.setup = true;
     }
     Ok(out)
@@ -176,10 +191,8 @@ pub fn install_in(wt: &Path, p: &Prepare, since: Option<&str>, path: Option<&OsS
 /// for on `path`, else Gizai's own PATH). Windows without Git for Windows has none.
 fn bash(shown: &str, path: Option<&OsStr>) -> Result<PathBuf, PrepareFailed> {
     let own = std::env::var_os("PATH").unwrap_or_default();
-    os::git_bash(path.unwrap_or(&own)).ok_or_else(|| PrepareFailed {
-        command: shown.to_string(),
-        why: "couldn't start: it runs in Git Bash, and Git for Windows isn't installed".into(),
-        output: String::new(),
+    os::git_bash(path.unwrap_or(&own)).ok_or_else(|| {
+        Shown::Setup(shown).failed("couldn't start: it runs in Git Bash, and Git for Windows isn't installed".into(), String::new())
     })
 }
 
@@ -189,10 +202,10 @@ fn bash(shown: &str, path: Option<&OsStr>) -> Result<PathBuf, PrepareFailed> {
 /// checkout and of a folder open in the Editor (`checkout::update`).
 pub fn install(dir: &Path, folder: &str, path: Option<&OsStr>) -> Result<(String, String), PrepareFailed> {
     let Some(dep) = DEPS.iter().find(|d| d.folder == folder) else {
-        return Err(PrepareFailed { command: format!("installing {folder}/"), why: "isn't something Hersir installs".into(), output: String::new() });
+        return Err(Shown::Own(&format!("installing {folder}/")).failed("isn't something Hersir installs".into(), String::new()));
     };
     let (shown, program, args) = install_command(dir, dep);
-    let printed = run(&shown, program, args, dir, path, COMMAND_LIMIT, None)?;
+    let printed = run(Shown::Own(&shown), program, args, dir, path, COMMAND_LIMIT, None)?;
     Ok((shown, printed))
 }
 
@@ -244,7 +257,7 @@ fn copy(from: &Path, to: &Path, path: Option<&OsStr>, slice: Option<&Slice>) -> 
     let (cp, options) = cp_program(path)?;
     let mut args: Vec<&OsStr> = options.iter().map(OsStr::new).collect();
     args.extend([OsStr::new("--"), from.as_os_str(), to.as_os_str()]);
-    run("cp", cp, &args, to.parent().unwrap_or(to), path, COPY_LIMIT, slice).map(|_| ()).map_err(|f| {
+    run(Shown::Own("cp"), cp, &args, to.parent().unwrap_or(to), path, COPY_LIMIT, slice).map(|_| ()).map_err(|f| {
         let detail = f.output.lines().last().unwrap_or_default().trim().to_string();
         if detail.is_empty() { f.why } else { detail }
     })
@@ -277,15 +290,36 @@ fn cp_program(path: Option<&OsStr>) -> Result<(PathBuf, &'static [&'static str])
     }
 }
 
+/// A command `run` runs, as you'd type it: one of Hersir's own ("composer install", "npm ci", "cp"), or the project's
+/// setup command, whose text Hersir's log leaves out (`SETUP_COMMAND`).
+#[derive(Clone, Copy)]
+enum Shown<'a> {
+    Own(&'a str),
+    Setup(&'a str),
+}
+
+impl Shown<'_> {
+    /// Its failure: `why`, and the end of its output.
+    fn failed(self, why: String, output: String) -> PrepareFailed {
+        let (command, setup) = match self { Shown::Own(c) => (c, false), Shown::Setup(c) => (c, true) };
+        PrepareFailed { command: command.to_string(), why, output, setup }
+    }
+
+    /// How Hersir's log names it: one of Hersir's own commands in backquotes, the setup command as `SETUP_COMMAND`.
+    fn logged(self) -> String {
+        match self { Shown::Own(c) => format!("`{c}`"), Shown::Setup(_) => SETUP_COMMAND.to_string() }
+    }
+}
+
 /// Runs `program args` in `dir` without prompts and returns the end of its output. After `limit` it is ended, with
 /// everything it started (its own process group, a Job Object on Windows: `os::Tree`). With `slice` it starts in a
 /// scope of its own there (`Slice::scoped`), a failure says when Linux ended a process in it at a memory limit, and
 /// which one (all runs together, or its own per run), and what it left running in its scope outside its group ends with
-/// it (GA-211).
-fn run<S: AsRef<OsStr>>(shown: &str, program: impl AsRef<OsStr>, args: &[S], dir: &Path, path: Option<&OsStr>, limit: Duration,
-                        slice: Option<&Slice>) -> Result<String, PrepareFailed> {
+/// it (GA-211); Hersir's log names that command as `shown` says (`Shown::logged`).
+fn run<S: AsRef<OsStr>>(shown: Shown<'_>, program: impl AsRef<OsStr>, args: &[S], dir: &Path, path: Option<&OsStr>,
+                        limit: Duration, slice: Option<&Slice>) -> Result<String, PrepareFailed> {
     let program = program.as_ref();
-    let fail = |why: String, output: String| PrepareFailed { command: shown.to_string(), why, output };
+    let fail = |why: String, output: String| shown.failed(why, output);
     // a program that can't be found starts as before, so it fails the usual way
     let (mut cmd, slice, scope) = match slice.and_then(|s| Some((s.scoped_for(program, path)?, s))) {
         Some(((c, scope), s)) => (c, Some(s), Some(scope)),
@@ -351,7 +385,9 @@ fn run<S: AsRef<OsStr>>(shown: &str, program: impl AsRef<OsStr>, args: &[S], dir
     if let Some(scope) = scope {
         let left = scope.end_leftovers(Some(child.id()));
         if !left.is_empty() {
-            eprintln!("gizai: ended {} in {}", crate::run_memory::leftovers_text(&left, &format!("`{shown}`")), dir.display());
+            // the project's setup command named, not shown (GA-281: users send us Hersir's log)
+            let ended = crate::run_memory::leftovers_text(&left, &shown.logged());
+            eprintln!("gizai: ended {}", crate::redact::hidden(&format!("{ended} in {}", dir.display())));
         }
     }
     for r in readers {

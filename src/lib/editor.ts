@@ -123,6 +123,25 @@ export function withTabs(kept: string | null, folder: string, tabs: KeptTabs): s
 export const loadTabs = (folder: string) => keptTabs(readKey(TABS_KEY), folder);
 export const keepTabs = (folder: string, tabs: KeptTabs) => writeKey(TABS_KEY, withTabs(readKey(TABS_KEY), folder, tabs));
 
+/** The folder's kept tabs with `path` open, as its last tab when it wasn't one. */
+export const withOpenTab = (tabs: KeptTabs, path: string): KeptTabs => ({ paths: tabs.paths.includes(path) ? tabs.paths : [...tabs.paths, path], active: path });
+
+// ---- the Editor page at a file and line (GA-298: Own page of the Chat's Editor tab) ----
+
+let pageAt: { folder: string; path: string; line: number; column: number } | null = null;
+/** Before the Editor page opens on `folder`: the file joins its kept tabs as the open one, and the page goes to `line`. */
+export function editorPageAt(folder: string, path: string, line: number | null) {
+  keepTabs(folder, withOpenTab(loadTabs(folder), path));
+  pageAt = line ? { folder, path, line, column: 1 } : null;
+}
+/** The line the Editor page on `folder` opens its file at, once (Own page); null without one. */
+export function takePageAt(folder: string): { path: string; line: number; column: number } | null {
+  if (!pageAt || pageAt.folder !== folder) return null;
+  const { path, line, column } = pageAt;
+  pageAt = null;
+  return { path, line, column };
+}
+
 // ---- paths ----
 
 /** The folder a path is in ("" at the top): "src/lib/editor.ts" → "src/lib". */

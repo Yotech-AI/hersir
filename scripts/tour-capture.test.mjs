@@ -268,8 +268,9 @@ describe("GA-245: stills of the Team page and of Usage per project, for the webs
     // Usage opens on Subscription, so the click changes the tab
     expect(usagePage).toMatch(/const TABS: TabDef<Tab>\[\] = \[\n\s+\["subscription", Gauge, "Subscription"\],.*\["projects", FolderKanban, "Projects"\],\n\];/);
     expect(usagePage).toContain('return <UsageTable rows={rows} total={u.total} nameHeader="Project" label="Usage per project" />;');
+    // the step's selector, .tabs .tab: the tablist keeps the class tabs, also as Island tabs (GA-295 adds island-tabs)
     const tabs = read("src", "components", "Tabs.tsx");
-    expect(tabs).toContain('<div className="tabs" role="tablist"');
+    expect(tabs).toContain('<div className={island ? "tabs island-tabs" : "tabs"} role="tablist"');
     expect(tabs).toContain('className="tab" role="tab"');
   });
 
@@ -340,7 +341,8 @@ describe("GA-250: the Editor shows Hersir's own RunForMe.tsx, and the Terminal b
     const panel = read("src", "components", "editor", "TerminalPanel.tsx");
     expect(panel).toContain('<button className="btn ghost sm term-btn"');
     expect(panel).toContain('className="term-panel"');
-    expect(panel).toMatch(/<span className="acts">\s*<button className="btn ghost sm" title=\{`Open \$\{s\?\.name \?\? name\} on its own page`\}/);
+    // GA-293: the panel's island header; Own page is an icon button in its .acts, after New terminal, with the same title
+    expect(panel).toMatch(/<span className="acts">\s*<button className=\{`btn ghost sm icon-only[^`]*`\} aria-label=\{`New terminal in \$\{name\}`\}[\s\S]*?<\/button>\s*<button className="btn ghost sm icon-only" aria-label="Own page" title=\{`Open \$\{s\?\.name \?\? name\} on its own page`\}/);
     const page = read("src", "pages", "TerminalPage.tsx");
     expect(page).toContain('<div className="term-page">');
     expect(page).toMatch(/<div className="term-where">\s*<span className="path" title=\{s\.folderPath\}>\{s\.folderPath\}<\/span>/);

@@ -4,7 +4,9 @@
 # Makes .devdata/demo when it is missing (and no data dir is given), and builds the app when it is missing or stale.
 # A new, empty data dir starts without the first start's onboarding (GIZAI_SKIP_ONBOARDING=1); GIZAI_SKIP_ONBOARDING=0
 # shows it.
-# usage: [MODE=open:project|steps:<sel>;#/route] [SHOT_WAIT=s] [SHOT_SIZE=WxH] scripts/shot-cage.sh <route e.g. tasks|clients|task/<id>> <out.png> [data-dir]
+# SHOT_HYPRLAND=1 gives the app HYPRLAND_INSTANCE_SIGNATURE, so it takes cage for Hyprland and lets the glass on (GA-292;
+# with MODE=appearance:glass=true the shot shows the glass over cage's black, unblurred: cage doesn't blur).
+# usage: [MODE=open:project|steps:<sel>;#/route] [SHOT_WAIT=s] [SHOT_SIZE=WxH] [SHOT_HYPRLAND=1] scripts/shot-cage.sh <route e.g. tasks|clients|task/<id>> <out.png> [data-dir]
 set -uo pipefail
 cd "$(dirname "$0")/.."
 GZ=$PWD; ROUTE=${1:-tasks}; OUT=${2:-$GZ/.devdata/shot.png}; DATA=${3:-$GZ/.devdata/demo}
@@ -29,6 +31,7 @@ kill \$APP 2>/dev/null; wait \$APP 2>/dev/null
 RUN
 chmod +x "$RUNNER"
 env -i HOME="$HOME" PATH="$PATH" USER="${USER:-gizai}" LANG="${LANG:-C.UTF-8}" XDG_RUNTIME_DIR="$DEV/run" \
+  ${SHOT_HYPRLAND:+HYPRLAND_INSTANCE_SIGNATURE=shot-cage} \
   WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1 WLR_RENDERER=gles2 WLR_RENDER_DRM_DEVICE=/dev/dri/renderD128 \
   GIZAI_DATA_DIR="$DATA" GIZAI_ROUTE="$ROUTE" GIZAI_SELFTEST_MODE="${MODE:-}" GIZAI_SKIP_ONBOARDING="${GIZAI_SKIP_ONBOARDING-1}" \
   XDG_DATA_HOME="$DEV/xdg/data" XDG_CACHE_HOME="$DEV/xdg/cache" XDG_CONFIG_HOME="$DEV/xdg/config" \

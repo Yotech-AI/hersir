@@ -1,17 +1,19 @@
 /* Generated from design/tokens.json by scripts/tokens-css.ts. Do not edit by hand. */
 :root, [data-theme="dark"] {
   color-scheme: dark;
-  --side: #0b0c0f;
-  --bg: #0f1013;
-  --raised: #15171b;
-  --overlay: #16181d;
-  --hover: #1b1d22;
-  --selected: #22252c;
-  --line: #23262c;
-  --line-2: #30333a;
+  --side: #141519;
+  --island: #181a1c;
+  --bg: var(--island);
+  --raised: #1f2125;
+  --overlay: var(--float);
+  --float: #22242a;
+  --hover: #292b30;
+  --selected: #2e3138;
+  --line: #31343b;
+  --line-2: #3f434a;
   --text: #ededf0;
   --text-2: #a5a8b1;
-  --text-3: #7f838d;
+  --text-3: #8a8e98;
   --accent: #6f97ff;
   --accent-hover: #8aabff;
   --accent-soft: rgba(111, 151, 255, 0.14);
@@ -27,6 +29,15 @@
   --warning-soft: rgba(220, 216, 57, 0.13);
   --danger: #f2706b;
   --danger-soft: rgba(242, 112, 107, 0.13);
+  --canvas-from: #26282e;
+  --canvas-to: #222b31;
+  --canvas-glow: #2b3946;
+  --glass-from: rgba(38, 40, 46, 0.92);
+  --glass-to: rgba(34, 43, 49, 0.92);
+  --glass-glow: rgba(43, 57, 70, 0.92);
+  --canvas-hover: rgba(255, 255, 255, 0.07);
+  --scroll-thumb: #414348;
+  --scroll-thumb-hover: #696c72;
   --st-backlog: #8a8e98;
   --st-todo: #60a5fa;
   --st-progress: #dcd839;
@@ -50,7 +61,7 @@
   --diff-del-soft: rgba(242, 112, 107, 0.10);
   --diff-add-strong: rgba(76, 195, 138, 0.20);
   --diff-del-strong: rgba(242, 112, 107, 0.20);
-  --diff-fold: #16181e;
+  --diff-fold: #202228;
   --syn-keyword: #b4a0fb;
   --syn-meta: var(--syn-keyword);
   --syn-function: #85adff;
@@ -72,7 +83,7 @@
   --term-bg: var(--bg);
   --term-cursor: var(--text);
   --term-cursor-text: var(--bg);
-  --term-selection: #283350;
+  --term-selection: #374260;
   --term-selection-inactive: var(--selected);
   --term-black: #30333a;
   --term-red: var(--diff-del);
@@ -91,10 +102,6 @@
   --term-bright-cyan: #86d1f7;
   --term-bright-white: #fafafb;
   --scrim: rgba(0, 0, 0, 0.55);
-  --band-subtle-line: rgba(160, 211, 235, 0.10);
-  --band-subtle-glow: rgba(20, 100, 128, 0.08);
-  --band-line: var(--band-subtle-line);
-  --band-glow: var(--band-subtle-glow);
   --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.45);
   --shadow-drawer: -24px 0 48px rgba(0, 0, 0, 0.5);
   --shadow-drag: 0 16px 36px rgba(0, 0, 0, 0.5);
@@ -102,9 +109,9 @@
 [data-theme="light"] {
   color-scheme: light;
   --side: #f3f4f7;
-  --bg: #ffffff;
+  --island: #ffffff;
   --raised: #ffffff;
-  --overlay: #ffffff;
+  --float: #ffffff;
   --hover: #f0f2f5;
   --selected: #e6e9f0;
   --line: #e3e5ea;
@@ -127,6 +134,15 @@
   --warning-soft: rgba(117, 106, 24, 0.10);
   --danger: #c93530;
   --danger-soft: rgba(201, 53, 48, 0.10);
+  --canvas-from: #ebedf1;
+  --canvas-to: #e2ecf1;
+  --canvas-glow: #dce9f4;
+  --glass-from: rgba(235, 237, 241, 0.86);
+  --glass-to: rgba(226, 236, 241, 0.86);
+  --glass-glow: rgba(220, 233, 244, 0.86);
+  --canvas-hover: rgba(20, 22, 27, 0.07);
+  --scroll-thumb: #caced3;
+  --scroll-thumb-hover: #9b9fa5;
   --st-backlog: #7f838d;
   --st-todo: #2563eb;
   --st-progress: #756a18;
@@ -161,8 +177,6 @@
   --term-bright-cyan: #06577f;
   --term-bright-white: #f3f4f7;
   --scrim: rgba(20, 22, 27, 0.28);
-  --band-subtle-line: rgba(32, 108, 137, 0.14);
-  --band-subtle-glow: rgba(201, 227, 239, 0.35);
   --shadow-pop: 0 12px 32px rgba(15, 17, 23, 0.14);
   --shadow-drawer: -24px 0 48px rgba(15, 17, 23, 0.12);
   --shadow-drag: 0 16px 36px rgba(15, 17, 23, 0.18);
@@ -189,7 +203,13 @@
   --size-side: 248px;
   --size-props: 320px;
   --size-drawer: 1024px;
-  --size-topbar: 52px;
+  --size-topbar: 44px;
+  --island-radius: 10px;
+  --island-gap: 6px;
+  --size-island-head: 40px;
+  --size-island-tab: 28px;
+  --size-tool: 28px;
+  --size-scroll: 6px;
   --size-row: 40px;
   --size-board-col: 286px;
   --size-tree: 260px;
@@ -214,6 +234,7 @@
 .t-nav-label { font-family: var(--font-sans); font-size: 11px; line-height: 16px; font-weight: 700; letter-spacing: 0.07em; }
 .t-row { font-family: var(--font-sans); font-size: 14px; line-height: 20px; font-weight: 500; }
 .t-body { font-family: var(--font-sans); font-size: 13.5px; line-height: 20px; font-weight: 400; }
+.t-body-strong { font-family: var(--font-sans); font-size: 13.5px; line-height: 20px; font-weight: 600; }
 .t-prose { font-family: var(--font-sans); font-size: 15px; line-height: 24px; font-weight: 400; }
 .t-small { font-family: var(--font-sans); font-size: 12.5px; line-height: 18px; font-weight: 400; }
 .t-caption { font-family: var(--font-sans); font-size: 11.5px; line-height: 16px; font-weight: 400; }

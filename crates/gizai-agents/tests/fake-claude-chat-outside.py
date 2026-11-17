@@ -20,6 +20,13 @@ makes one call to one of Gizai's tools, named in the prompt (stdin):
   EXIT_EARLY                     (GA-77) with NO_SHOW: the fake exits 0.3 s after the call went out, without waiting for it
   META                           (GA-77) the call names its tool use in _meta (claudecode/toolUseId), as Claude Code's
                                  calls do; META_ID=<id> names <id> instead of the tool use's own
+  REFUSED=<a>,<b>                (GA-289) first in the answer, before any other tool, it uses each of these tools, and Claude
+                                 Code refuses each as it refuses a tool the session doesn't have: the init line doesn't list
+                                 it, and its tool_result is the error "<tool_use_error>Error: No such tool available:
+                                 <name></tool_use_error>". When the run did get one of them (in --tools, or a server in
+                                 --mcp-config by its exact name), the fake exits with status 3 instead, so the test fails
+  UNLISTED                       (GA-289) the init line lists Read and Gizai's tools only, not the outside tools of OUTSIDE,
+                                 OUTSIDE_TOOL and OUTSIDE_TOO: the answer has them only by --tools and its MCP config
 
 The Gizai tool's result goes into the stream as its tool_result (is_error as the shim said), so the chat keeps it. The
 final text says how long Gizai took to answer the call: "(the call took N ms)"."""
@@ -73,9 +80,23 @@ ot = re.search(r"OUTSIDE_TOOL=(\S+)", prompt)
 outside = ot.group(1) if ot else "mcp__otus__search"
 t2 = re.search(r"OUTSIDE_TOO=(\S+)", prompt)
 too = t2.group(1) if t2 else None
+rf = re.search(r"REFUSED=(\S+)", prompt)
+refused = [n for n in rf.group(1).split(",") if n] if rf else []
+given = [t for t in (flag("--tools") or "").split(",") if t]
+configured = list(json.load(open(config))["mcpServers"].keys())
+for n in refused:
+    if n in given or any(n.startswith("mcp__%s__" % s) for s in configured):
+        sys.stderr.write("REFUSED=%s, but the run has it (--tools %s, servers %s)\n" % (n, given, configured))
+        sys.exit(3)
+listed = [t for t in ["Read"] + ([] if "UNLISTED" in prompt else [outside] + ([too] if too else [])) if t not in refused]
 out({"type": "system", "subtype": "init", "session_id": sid, "model": "fake-model",
-     "tools": ["Read", outside] + ([too] if too else []) + ["mcp__gizai__" + n for n in names],
+     "tools": listed + ["mcp__gizai__" + n for n in names],
      "mcp_servers": [{"name": "gizai", "status": status}, {"name": "otus", "status": "connected"}]})
+for i, n in enumerate(refused):
+    out({"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "toolu_refused_%d" % i, "name": n,
+        "input": {"command": "cargo test"}}]}, "session_id": sid})
+    out({"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_refused_%d" % i,
+        "content": "<tool_use_error>Error: No such tool available: %s</tool_use_error>" % n, "is_error": True}]}, "session_id": sid})
 
 m = re.search(r"CALL (\w+) (\{.*\})", prompt)
 name, args = (m.group(1), json.loads(m.group(2))) if m else ("get_overview", {})

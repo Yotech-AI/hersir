@@ -5,6 +5,8 @@
 // Editor's own use (no onPick) is checked to be as it was. There is no DOM here, so a small hook runtime stands in for React
 // (as in SidebarBehind.test.tsx), and the portal renders in place. GA-278 QA: the Chat's Open terminal opens this picker
 // titled "Open terminal in", with you and the note, and a folder where a terminal can't start says why with it still open.
+// GA-296 QA: Open terminal became the top bar's Open, a menu: its New terminal opens that picker while the chat has no
+// terminal, and New terminal in… opens it always; a pick opens a Terminal tab in the chat's side island.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactElement, ReactNode } from "react";
 import type { EditorFolder } from "../../types";
@@ -49,7 +51,17 @@ vi.mock("react", async (orig) => {
       h.effects.push(() => { s.cleanup?.(); const c = f(); s.cleanup = typeof c === "function" ? c : undefined; });
     }
   }) as typeof R.useEffect;
-  const hooks = { useState, useRef, useMemo, useCallback, useEffect, useLayoutEffect: useEffect };
+  // subscribes on the first draw and draws again when the store says it changed (OpenInTerminal.test.tsx's)
+  const useSyncExternalStore = ((subscribe: (f: () => void) => () => void, snapshot: () => unknown) => {
+    if (!h.cur) return snapshot();
+    const s = slot(() => ({ effect: true, first: true, sub: undefined as unknown, cleanup: undefined as (() => void) | undefined }));
+    if (s.sub !== subscribe) { s.cleanup?.(); s.sub = subscribe; s.cleanup = subscribe(() => { h.dirty = true; }); }
+    return snapshot();
+  }) as typeof R.useSyncExternalStore;
+  // GA-300: the tool strip's drawn tooltip has an id (useId), one per component, kept across draws
+  let ids = 0;
+  const useId = (() => (h.cur ? slot(() => `:t${++ids}:`) : R.useId())) as typeof R.useId;
+  const hooks = { useState, useRef, useMemo, useCallback, useEffect, useLayoutEffect: useEffect, useSyncExternalStore, useId };
   return { ...R, default: { ...R, ...hooks }, ...hooks };
 });
 vi.mock("react-dom", async (orig) => ({ ...(await orig<object>()), createPortal: (children: ReactNode) => children }));
@@ -83,7 +95,7 @@ vi.mock("../../api", async (orig) => {
     editorFolders: () => Promise.resolve(FOLDERS),
     getSettings: () => Promise.resolve({ editorRoots: ["~/Herd"] }),
     listTasks: () => Promise.resolve(TASKS),
-    listProjects: () => Promise.resolve([{ id: "p1", name: "Gizai", color: "var(--c-blue)" }]),
+    listProjects: () => Promise.resolve([{ id: "p1", key: "GA", name: "Gizai", color: "var(--c-blue)" }]),
     terminalOpen: (folder: string) => { chatT.opens.push(folder); return chatT.answer(folder); },
   };
 });
@@ -91,14 +103,30 @@ vi.mock("../../lib/terminals", async (orig) => ({
   ...(await orig<object>()), useTerminals: () => chatT.terms, noteOpened: () => {}, terminalsNow: () => [], watchTerminals: () => () => {},
 }));
 vi.mock("../../router", async (orig) => ({ ...(await orig<object>()), go: (r: unknown) => { s.went.push(r); } }));
+// GA-297: ChatSide brings the Card tab (its comment box and the pull request's counts load CodeMirror, which needs a DOM);
+// no card opens here
+vi.mock("../chat/ChatCard", () => ({ CardTab: () => null, ChatCardBody: () => null }));
+// GA-298: ChatSide brings the Editor tab (CodeMirror's view, which needs a DOM) and the Board tab; neither shows here, and
+// Open a file… opening a file is recorded
+vi.mock("../chat/ChatEditor", () => ({
+  ChatEditorBody: () => null, EditorCloseAsk: () => null, EditorTab: () => null, closeEditorTabs: () => {}, editorOwnPage: () => {},
+  openEditorTab: (...a: unknown[]) => { s.went.push(["openEditorTab", ...a]); },
+}));
+vi.mock("../chat/ChatBoard", () => ({ BoardTab: () => null, ChatBoardBody: () => null, boardName: () => "Board", boardOwnPage: () => {} }));
 
 const store = new Map<string, string>();
 vi.stubGlobal("localStorage", { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => { store.set(k, String(v)); }, removeItem: (k: string) => { store.delete(k); } });
-vi.stubGlobal("window", Object.assign(new EventTarget(), { innerWidth: 1280, innerHeight: 720 }));
-vi.stubGlobal("document", { body: {} });
+// GA-300: the tool strip's tooltip waits on window.setTimeout, and its timer is cleared when it goes
+vi.stubGlobal("window", Object.assign(new EventTarget(), { innerWidth: 1280, innerHeight: 720, setTimeout: (f: () => void, ms?: number) => setTimeout(f, ms), clearTimeout: (t?: number) => clearTimeout(t) }));
+vi.stubGlobal("document", { body: {}, addEventListener: () => {}, removeEventListener: () => {} });
+// GA-298: ChatSide's keys ask whether the key came from a terminal (e.target instanceof Element)
+vi.stubGlobal("Element", class {});
+// GA-300: the side island's header asks whether the focus is on a tab (document.activeElement instanceof HTMLElement)
+vi.stubGlobal("HTMLElement", class {});
 
 const { FolderPicker } = await import("./FolderPicker");
-const { OpenTerminalButton } = await import("../chat/ChatTerminal");
+const { ChatSide, OpenButton } = await import("../chat/ChatSide");
+const Side = await import("../../lib/chatSide");
 
 // ---- the hook runtime ----
 let root: () => ReactNode = () => null;
@@ -267,28 +295,55 @@ describe("New terminal's folder picker (design §2)", () => {
   });
 });
 
-describe("GA-278: the Chat's Open terminal opens it", () => {
-  const openTerminal = async () => {
-    root = () => <OpenTerminalButton youId="u1" />;
+describe("GA-278, GA-296: the Chat's Open opens it", () => {
+  const openBtn = () => one((f) => f.type === "button" && typeof f.props.className === "string" && f.props.className.includes("chat-open"));
+  const menu = () => one((f) => f.props.role === "menu");
+  const items = () => findAll(kids(menu()!), (f) => f.props.role === "menuitem");
+  const item = (label: string) => items().find((i) => textOf(kids(i)).startsWith(label) && (label.endsWith("…") || !textOf(kids(i)).includes("…")))!;
+  /** The top bar's Open, its menu opened. */
+  const openMenu = async () => {
+    root = () => <OpenButton youId="u1" />;
     render();
     await settle();
-    const btn = one((f) => f.type === "button" && textOf(kids(f)).includes("Open terminal"))!;
-    expect(btn.props["aria-expanded"]).toBe(false);
+    const btn = openBtn()!;
+    expect([btn.props["aria-haspopup"], btn.props["aria-expanded"]]).toEqual(["menu", false]);
     fire(btn, "onClick", { currentTarget: { getBoundingClientRect: () => ({ left: 900, bottom: 40 }) } });
+    await settle();
+  };
+  /** Open, then New terminal (the chat has no terminal yet: the picker). */
+  const openTerminal = async () => {
+    await openMenu();
+    fire(item("New terminal"), "onClick");
     await settle();
   };
   // the tree holds what the components drew: the picker is its dialog
   const picker = () => one((f) => f.props.role === "dialog");
   const classText = (cls: string) => { const f = one((x) => x.props.className === cls); return f ? textOf(kids(f)) : null; };
-  beforeEach(() => { chatT.opens = []; chatT.terms = []; chatT.answer = () => new Promise(() => {}); });
+  const kade = (f: string) => ({ id: "c1", name: "kade-portal", folder: f, folderPath: "~/Herd/kade-portal", taskId: null, shell: "sh", busy: null, ended: null, cols: 80, rows: 24, openedAt: 1 });
+  beforeEach(() => {
+    chatT.opens = []; chatT.terms = []; chatT.answer = () => new Promise(() => {});
+    // the chat on show starts with nothing open beside it
+    Side.showChat("c1");
+    Side.closeSideTabs(Side.sideNow().tabs.map(Side.tabKey));
+  });
 
-  it("titled 'Open terminal in', under the button, with you, and no note under 20 open terminals", async () => {
+  // GA-298 adds Open a file… (Alt+2) and Board (Alt+3) after New terminal (design/islands-chat → The top bar)
+  it("Open's menu, under it: New terminal with its key, then (no terminal in the chat yet) Open a file… and Board", async () => {
+    await openMenu();
+    const m = menu()!;
+    expect(m.props["aria-label"]).toBe("Open beside the chat");
+    expect(m.props.style, "under the button: its left, 6px under it").toMatchObject({ left: 900, top: 46 });
+    expect(openBtn()!.props["aria-expanded"]).toBe(true);
+    expect(items().map((i) => textOf(kids(i)))).toEqual(["New terminalCtrl+Shift+`", "Open a file…Alt+2", "BoardAlt+3"]);
+    expect([items()[0]!.props.title, items()[0]!.props.disabled]).toEqual(["New terminal in a folder you pick", false]);
+  });
+
+  it("New terminal opens the picker titled 'Open terminal in', with you, and no note under 20 open terminals", async () => {
     chatT.terms = Array.from({ length: 19 }, (_, i) => ({ id: `t${i}` }));
     await openTerminal();
+    expect(menu(), "the menu closed").toBeUndefined();
     const p = picker()!;
     expect([p.props["aria-label"], classText("ed-picker-title"), classText("ed-picker-note")]).toEqual(["Open terminal in", "Open terminal in", null]);
-    expect(p.props.style, "under the button: its left, 6px under it").toMatchObject({ left: 900, top: 46 });
-    expect(one((f) => f.type === "button" && textOf(kids(f)).includes("Open terminal"))?.props["aria-expanded"]).toBe(true);
     expect(groups().map(([g]) => g)).toEqual(["Projects", "In ~/Herd", "Cards"]);
   });
 
@@ -306,10 +361,10 @@ describe("GA-278: the Chat's Open terminal opens it", () => {
     expect(chatT.opens, "a new terminal in the folder picked (openChatTerminal(folder.id, false))").toEqual([`${HERD}/invoice-api`]);
     expect(picker()).toBeDefined();
     expect(textOf(kids(failedNote()!))).toBe("QA Agent is working on GA-118: a terminal there waits until its run ends.");
+    expect(Side.sideNow().tabs, "no tab").toEqual([]);
   });
 
   it("a card that isn't pinned to you asks first, as New terminal's; one pinned to you starts at once", async () => {
-    chatT.answer = () => new Promise(() => {});
     await openTerminal();
     fire(option("GA-112"), "onClick");
     await settle();
@@ -320,14 +375,180 @@ describe("GA-278: the Chat's Open terminal opens it", () => {
     expect(chatT.opens).toEqual([`${WT}/KADE/KADE-41`]);
   });
 
-  it("a pick that starts closes the picker", async () => {
-    chatT.answer = (f) => Promise.resolve({ id: "c1", name: "kade-portal", folder: f, folderPath: "~/Herd/kade-portal", taskId: null, shell: "sh", busy: null, ended: null, cols: 80, rows: 24, openedAt: 1 });
+  it("a pick that starts closes the picker, and the terminal is a tab in the chat's side island, shown", async () => {
+    chatT.answer = (f) => Promise.resolve(kade(f));
     await openTerminal();
     fire(option("kade-portal"), "onClick");
     await settle();
     expect(chatT.opens).toEqual([`${HERD}/kade-portal`]);
     expect(picker()).toBeUndefined();
-    expect(one((f) => f.type === "button" && textOf(kids(f)).includes("Open terminal"))?.props["aria-expanded"]).toBe(false);
+    expect(Side.sideNow()).toMatchObject({ tabs: [{ kind: "terminal", id: "c1" }], current: "terminal:c1", open: true });
+  });
+
+  it("with a terminal in the chat: New terminal starts in its folder without the picker, and New terminal in… asks for the folder", async () => {
+    chatT.answer = (f) => Promise.resolve(kade(f));
+    chatT.terms = [kade(`${HERD}/kade-portal`)];
+    Side.openSideTab({ kind: "terminal", id: "c1" });
+    await openMenu();
+    expect(items().map((i) => textOf(kids(i)))).toEqual(["New terminalCtrl+Shift+`", "New terminal in…", "Open a file…Alt+2", "BoardAlt+3"]);
+    expect(item("New terminal").props.title).toBe("New terminal in kade-portal");
+    expect(item("New terminal in…").props.title).toBe("New terminal in a folder you pick");
+    fire(item("New terminal"), "onClick");
+    await settle();
+    expect(picker(), "no picker").toBeUndefined();
+    expect(chatT.opens, "in the shown terminal's folder").toEqual([`${HERD}/kade-portal`]);
+    fire(openBtn()!, "onClick", { currentTarget: { getBoundingClientRect: () => ({ left: 900, bottom: 40 }) } });
+    await settle();
+    fire(item("New terminal in…"), "onClick");
+    await settle();
+    expect(picker()?.props["aria-label"]).toBe("Open terminal in");
+  });
+});
+
+// GA-298 QA: Open's menu (the same as the island's +) adds Open a file… and Board; Alt+2 and Alt+3 open them while the chat has
+// none of that kind open (design/islands-chat → The keys). Open a file…: Go to file over the chat project's folder, else the
+// folder picker titled "Open a file in" first. The Chat page here is Open and the side island (ChatSide).
+describe("GA-298: Open a file… and Board, from Open's menu and Alt+2 and Alt+3", () => {
+  const menu = () => one((f) => f.props.role === "menu");
+  const item = (label: string) => findAll(kids(menu()!), (f) => f.props.role === "menuitem").find((i) => textOf(kids(i)).startsWith(label))!;
+  const page = async () => { root = () => <><OpenButton youId="u1" /><ChatSide youId="u1" /></>; render(); await settle(); };
+  const openMenu = async () => {
+    const btn = one((f) => f.type === "button" && typeof f.props.className === "string" && f.props.className.includes("chat-open"))!;
+    fire(btn, "onClick", { currentTarget: { getBoundingClientRect: () => ({ left: 900, bottom: 40 }) } });
+    await settle();
+  };
+  const pick = async (label: string) => { fire(item(label), "onClick"); await settle(); };
+  const alt = async (n: number) => {
+    window.dispatchEvent(Object.assign(new Event("keydown", { cancelable: true }), { code: `Digit${n}`, key: String(n), altKey: true, ctrlKey: false, shiftKey: false, metaKey: false }));
+    render();
+    await settle();
+  };
+  const filePicker = () => one((f) => f.props.role === "dialog" && f.props["aria-label"] === "Open a file in");
+  const goTo = () => one((f) => f.props.role === "dialog" && f.props["aria-label"] === "Go to file");
+  const goToIn = () => { const g = goTo(); return g ? findAll(kids(g), (f) => f.type === "input")[0]?.props.placeholder : undefined; };
+  const shownSide = () => { const x = Side.sideNow(); return { tabs: x.tabs.map(Side.tabKey), current: x.current, open: x.open }; };
+  beforeEach(() => {
+    Side.showChat("c1");
+    Side.closeSideTabs(Side.sideNow().tabs.map(Side.tabKey));
+    Side.setChatCards("c1", "about", []);
+    Side.setChatCards("c1", "named", []);
+  });
+  afterEach(() => { root = () => null; render(); });
+
+  it("Board opens the chat's Board tab beside the chat", async () => {
+    await page();
+    await openMenu();
+    expect(item("Board").props.title).toBe("The board of the chat's project beside the chat");
+    await pick("Board");
+    expect(shownSide()).toEqual({ tabs: ["board:board"], current: "board:board", open: true });
+  });
+
+  it("Open a file… in a chat about a card goes to Go to file over its project's folder", async () => {
+    Side.setChatCards("c1", "about", ["GA-5"]);
+    await page();
+    await openMenu();
+    await pick("Open a file…");
+    expect(filePicker()).toBeUndefined();
+    expect(goToIn()).toBe("Go to file in gizai");
+  });
+
+  it("Open a file… in a chat without a project or an Editor tab asks for the folder first, then Go to file over the one picked", async () => {
+    await page();
+    await openMenu();
+    await pick("Open a file…");
+    expect(goTo()).toBeUndefined();
+    expect(filePicker()).toBeDefined();
+    fire(option("invoice-api"), "onClick");
+    await settle();
+    expect(filePicker()).toBeUndefined();
+    expect(goToIn()).toBe("Go to file in invoice-api");
+  });
+
+  it("Alt+3 with no Board tab opens it, Alt+3 on the Board hides the island; Alt+4 with no card does nothing; Alt+2 with no Editor tab opens Open a file…", async () => {
+    await page();
+    await alt(3);
+    expect(shownSide()).toEqual({ tabs: ["board:board"], current: "board:board", open: true });
+    await alt(3);
+    expect(shownSide()).toMatchObject({ tabs: ["board:board"], open: false });
+    await alt(4);
+    expect(shownSide()).toMatchObject({ tabs: ["board:board"], open: false });
+    await alt(3);
+    expect(shownSide()).toMatchObject({ current: "board:board", open: true });
+    await alt(2);
+    expect(filePicker(), "no chat project: the picker first").toBeDefined();
+  });
+
+  it("Open a file… asked once doesn't open again by itself when the Chat page draws again (you went to another page and back)", async () => {
+    await page();
+    await openMenu();
+    await pick("Open a file…");
+    expect(filePicker()).toBeDefined();
+    fire(option("invoice-api"), "onClick");
+    await settle();
+    expect(goTo()).toBeDefined();
+    // another page, then the Chat page again: a new ChatSide
+    root = () => null;
+    render();
+    await settle();
+    await page();
+    expect([filePicker(), goTo()], "nothing opens by itself").toEqual([undefined, undefined]);
+  });
+
+  // GA-298 QA, round 2 (the fix starts OpenAFile at the ask already made): each way in, the island's + and Alt+2 too, opens
+  // nothing by itself after another page, and Open a file… still opens on the first ask after coming back
+  const plus = async () => {
+    const btn = one((f) => f.type === "button" && f.props["aria-label"] === "Open beside the chat")!;
+    fire(btn, "onClick", { currentTarget: { getBoundingClientRect: () => ({ left: 1000, bottom: 60 }) } });
+    await settle();
+  };
+  const closeGoTo = async () => { fire(one((f) => f.props.className === "pal-backdrop")!, "onClick"); await settle(); };
+  const away = async () => { root = () => null; render(); await settle(); await page(); };
+  const nothing = () => [filePicker(), goTo()];
+
+  it("in a chat about a card: the island's + and Alt+2 open Go to file over its project once each, nothing after coming back, and the first ask afterwards opens it", async () => {
+    Side.setChatCards("c1", "about", ["GA-5"]);
+    await page();
+    await alt(3); // the Board tab: the island and its + show
+    await plus();
+    await pick("Open a file…");
+    expect(goToIn()).toBe("Go to file in gizai");
+    await closeGoTo();
+    expect(nothing()).toEqual([undefined, undefined]);
+    await away();
+    expect(nothing(), "back from another page after +: nothing opens by itself").toEqual([undefined, undefined]);
+    await plus();
+    await pick("Open a file…");
+    expect(goToIn(), "the first + → Open a file… after coming back opens it").toBe("Go to file in gizai");
+    await closeGoTo();
+    await alt(2);
+    expect(goToIn(), "Alt+2 with no Editor tab").toBe("Go to file in gizai");
+    await closeGoTo();
+    await away();
+    expect(nothing(), "back from another page after Alt+2: nothing opens by itself").toEqual([undefined, undefined]);
+    await away();
+    expect(nothing(), "and not after a second round trip either").toEqual([undefined, undefined]);
+    await alt(2);
+    expect(goToIn(), "the first Alt+2 after coming back opens it").toBe("Go to file in gizai");
+  });
+
+  it("in a chat without a project: the picker opens again on the first ask after coming back, and with an Editor tab Go to file goes over its folder", async () => {
+    await page();
+    await alt(2);
+    expect(filePicker()).toBeDefined();
+    await away();
+    expect(nothing(), "the picker left open on the other page doesn't come back by itself").toEqual([undefined, undefined]);
+    await openMenu();
+    await pick("Open a file…");
+    expect(filePicker(), "the first Open a file… after coming back asks for the folder").toBeDefined();
+    expect(goTo()).toBeUndefined();
+    // an Editor tab beside the chat: Open a file… goes over the last Editor tab's folder, with no picker
+    Side.openSideTab({ kind: "editor", id: Side.editorTabId(`${HERD}/kade-portal`, "src/app.ts") });
+    await away();
+    expect(nothing()).toEqual([undefined, undefined]);
+    await plus();
+    await pick("Open a file…");
+    expect(filePicker()).toBeUndefined();
+    expect(goToIn()).toBe("Go to file in kade-portal");
   });
 });
 
@@ -434,5 +655,91 @@ describe("the folder picker's styles (GA-146)", () => {
     const id = rule(components, '.ed-picker .opt[data-kind="card"] > .card-id');
     expect([id.get("width"), id.get("white-space")]).toEqual(["calc(var(--id-chars, 0) * 1ch)", "nowrap"]);
     expect(rule(components, ".ed-picker .opt .card-id").get("font-family")).toBe("var(--font-mono)");
+  });
+});
+
+// GA-300 QA: since GA-293 the picker ran past the bottom of a 683px high window (ui-test's GA-146 terminal:picker step): its
+// cards' titles come in after the folders and can take two lines, so it grew after it was placed. It is placed again
+// whenever its own size or the window's changes, and it is never taller than the window less 8px at each end, its list
+// scrolling inside it, down to the window's least height (600px).
+describe("the folder picker in a low window (GA-300)", () => {
+  type Watch = { f: () => void; on: unknown[] };
+  const watches: Watch[] = [];
+  const g = globalThis as { ResizeObserver?: unknown };
+  const box = { width: 480, height: 300 };
+  const win = window as unknown as { innerHeight: number };
+  const style = () => one((f) => f.props.role === "dialog")!.props.style as { left: number; top: number };
+  const withRef = () => { (one((f) => f.props.role === "dialog")!.props.ref as { current: unknown }).current = { getBoundingClientRect: () => ({ ...box }) }; };
+  const draw = (x: number, y: number) => { root = () => <FolderPicker at={{ x, y }} onClose={() => { closed += 1; }} />; render(); };
+  beforeEach(() => {
+    watches.length = 0;
+    g.ResizeObserver = class { w: Watch; constructor(f: () => void) { this.w = { f, on: [] }; watches.push(this.w); } observe(el: unknown) { this.w.on.push(el); } disconnect() { this.w.on = []; } };
+  });
+  afterEach(() => { delete g.ResizeObserver; win.innerHeight = 720; box.height = 300; });
+
+  it("is never taller than the window less 16px, nor than 460px; its list scrolls inside it, the search and the foot stay", () => {
+    const sheet = css("components.css");
+    const picker = rule(sheet, ".pop.ed-picker");
+    expect([picker.get("max-height"), picker.get("display"), picker.get("flex-direction"), picker.get("overflow")]).toEqual(["min(460px, calc(100vh - 16px))", "flex", "column", "hidden"]);
+    const list = rule(sheet, ".ed-picker-list");
+    expect([list.get("flex"), list.get("min-height"), list.get("overflow-y")]).toEqual(["1", "0", "auto"]);
+    expect(rule(sheet, ".ed-picker-in").get("flex")).toBe("none");
+    expect(rule(sheet, ".ed-picker-foot").get("flex")).toBe("none");
+  });
+
+  it("moves up when the window gets lower: at 600px high it ends 8px above the bottom", async () => {
+    draw(240, 300);
+    await settle();
+    box.height = 460;
+    withRef();
+    draw(240, 301);
+    expect([style().left, style().top]).toEqual([240, 720 - 460 - 8]);
+    win.innerHeight = 600;
+    h.dirty = false;
+    window.dispatchEvent(new Event("resize"));
+    expect(h.dirty, "the window's resize places it again").toBe(true);
+    render();
+    expect(style().top).toBe(600 - 460 - 8);
+    expect(style().top + box.height).toBeLessThanOrEqual(600 - 8);
+  });
+
+  it("moves up when it grows after it was placed (the cards' titles coming in), watching its own size", async () => {
+    win.innerHeight = 683;
+    draw(240, 299);
+    await settle();
+    withRef();
+    // a new place to open at measures it with its box there, and from then on watches its size; 300 high, it fits where asked
+    draw(240, 300);
+    expect(style().top).toBe(300);
+    const mine = watches.filter((w) => w.on.length > 0);
+    expect(mine).toHaveLength(1);
+    box.height = 420;
+    h.dirty = false;
+    mine[0]!.f();
+    expect(h.dirty, "its own size change places it again").toBe(true);
+    render();
+    expect(style().top).toBe(683 - 420 - 8);
+  });
+
+  it("stops listening once it closes: no resize listener and no size watch left", async () => {
+    const added: string[] = [];
+    const removed: string[] = [];
+    const add = window.addEventListener.bind(window), remove = window.removeEventListener.bind(window);
+    window.addEventListener = ((t: string, f: EventListener) => { added.push(t); add(t, f); }) as typeof window.addEventListener;
+    window.removeEventListener = ((t: string, f: EventListener) => { removed.push(t); remove(t, f); }) as typeof window.removeEventListener;
+    try {
+      draw(240, 100);
+      await settle();
+      withRef();
+      draw(240, 102);
+      root = () => null;
+      render();
+      expect(added.filter((t) => t === "resize").length).toBeGreaterThan(0);
+      expect(removed.filter((t) => t === "resize").length).toBe(added.filter((t) => t === "resize").length);
+      expect(watches.every((w) => w.on.length === 0)).toBe(true);
+    } finally {
+      window.addEventListener = add;
+      window.removeEventListener = remove;
+    }
   });
 });

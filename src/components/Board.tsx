@@ -1,6 +1,9 @@
 // Kanban board. The drag logic is the one the WebKitGTK spike proved (2026-10-06): pointerWithin, then
 // closestCenter inside the hovered column, at most one column change per frame. Backlog, Done and
 // Cancelled are narrow rails (still drop targets; click to open). At most 50 cards render per column.
+// Compact (GA-298, the Chat's Board tab; design/islands-chat → Board): columns 180 wide on side, compact cards (the id, the
+// assignee, the title in 3 lines at most, On hold), the chat's cards marked with an accent border and a chat icon; the
+// same drag and drop rules.
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   DndContext, MeasuringStrategy, PointerSensor, closestCenter, getFirstCollision, pointerWithin, useDroppable, useSensor, useSensors,
@@ -16,7 +19,7 @@ import { pullBadge, pullLabel } from "../lib/pulls";
 import { PriorityIcon, StatusIcon } from "./StatusIcon";
 import { Avatar } from "./Avatar";
 import { byHandTip } from "../lib/hand";
-import { Archive, Hourglass, Keyboard, Plus } from "lucide-react";
+import { Archive, Hourglass, Keyboard, MessagesSquare, Plus } from "lucide-react";
 import { BoardShotSign } from "./screenshots/ShotSign";
 import { waitsBadge, waitsTip } from "../lib/buildsOn";
 
@@ -24,9 +27,11 @@ const CAP = 50;
 const RAIL_CATEGORIES = new Set(["backlog", "done", "cancelled"]);
 
 type Cols = Record<string, string[]>;
+/** A click or Enter on a card: Ctrl and Cmd say whether it was a Ctrl+click (Cmd+click on macOS). */
+type OpenEvent = { ctrlKey: boolean; metaKey: boolean };
 
 const Card = memo(function Card({ task, onOpen, onArchive, working, shots, waitsFor }: {
-  task: Task; onOpen: (id: string) => void; working?: string;
+  task: Task; onOpen: (id: string, e?: OpenEvent) => void; working?: string;
   /** GA-228: the "Waits for" badge's tooltip, naming the cards it builds on that aren't merged yet (a string, so the card
    *  draws again only when it changes). */
   waitsFor?: string;
@@ -40,7 +45,7 @@ const Card = memo(function Card({ task, onOpen, onArchive, working, shots, waits
   return (
     <div ref={setNodeRef} className={"card" + (isDragging ? " dragging" : "")} data-card={task.identifier}
       style={{ transform: CSS.Transform.toString(transform), transition }} {...attributes} {...listeners}
-      onClick={() => onOpen(task.id)} onKeyDown={(e) => { if (e.key === "Enter") onOpen(task.id); }}>
+      onClick={(e) => onOpen(task.id, e)} onKeyDown={(e) => { if (e.key === "Enter") onOpen(task.id, e); }}>
       <div className="top"><span className="id">{task.identifier}</span>
         {task.prUrl && <span className={`badge ${pullBadge(task.prState).cls}`} title={`Pull request: ${pullBadge(task.prState).text.toLowerCase()} on ${hostName(task.prUrl)}`}>{pullLabel(task.prUrl)}</span>}
         {!!shots && task.stateCategory === "review" && <BoardShotSign taskId={task.id} count={shots} />}
@@ -66,11 +71,36 @@ const Card = memo(function Card({ task, onOpen, onArchive, working, shots, waits
   );
 });
 
-function Column({ state, ids, byId, rail, onToggleRail, onOpen, onAdd, onArchive, working, members, shots, titleOf }: {
+/** A compact card (the Chat's Board tab): the id (with the chat icon when it is one of the chat's cards), the assignee's
+ *  avatar, the title in 3 lines at most, and On hold when held. Dragged as a card on the Tasks page is. */
+const CompactCard = memo(function CompactCard({ task, onOpen, marked, working }: {
+  task: Task; onOpen: (id: string, e?: OpenEvent) => void; marked: boolean; working?: string;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
+  return (
+    <div ref={setNodeRef} className={"card compact" + (marked ? " marked" : "") + (isDragging ? " dragging" : "")} data-card={task.identifier}
+      style={{ transform: CSS.Transform.toString(transform), transition }} {...attributes} {...listeners}
+      aria-label={marked ? `${task.identifier}, in this chat` : undefined} title={task.title}
+      onClick={(e) => onOpen(task.id, e)} onKeyDown={(e) => { if (e.key === "Enter") onOpen(task.id, e); }}>
+      <div className="top">
+        <span className="id">{task.identifier}</span>
+        {marked && <MessagesSquare className="icon in-chat" aria-hidden />}
+        {working && <span className="pulse" title={`${working} is working`} />}
+        <span className="grow" />
+        {task.assigneeName && <Avatar name={task.assigneeName} kind={task.assigneeKind} size="sm" />}
+      </div>
+      <div className="title">{task.title}</div>
+      {task.hold && (task.withLead ? <span className="badge live" title="Its question is with the Chief">Chief</span> : <span className="badge needs">On hold</span>)}
+    </div>
+  );
+});
+
+function Column({ state, ids, byId, rail, onToggleRail, onOpen, onAdd, onArchive, working, members, shots, titleOf, compact, marked }: {
   state: WorkflowState; ids: string[]; byId: Map<string, Task>; rail: boolean; working: Map<string, string>; members?: Member[]; shots?: Map<string, number>;
   /** A card's title by its identifier, for the "Waits for" tooltips (GA-228). */
   titleOf: (identifier: string) => string | undefined;
-  onToggleRail: (id: string) => void; onOpen: (id: string) => void; onAdd?: (stateId: string) => void; onArchive?: (task: Task) => void;
+  onToggleRail: (id: string) => void; onOpen: (id: string, e?: OpenEvent) => void; onAdd?: (stateId: string) => void; onArchive?: (task: Task) => void;
+  compact?: boolean; marked?: ReadonlySet<string>;
 }) {
   // Only a card in Done can be archived (not Deploy, not Cancelled).
   const archive = state.category === "done" ? onArchive : undefined;
@@ -85,7 +115,7 @@ function Column({ state, ids, byId, rail, onToggleRail, onOpen, onAdd, onArchive
   }
   const visible = ids.slice(0, shown);
   // The note follows the column: your review, or who starts its cards (its agents when Auto, Run when Manual).
-  const note = boardNote(state, members);
+  const note = compact ? null : boardNote(state, members);
   return (
     <div className="col" data-col={state.name}>
       <div className="col-head">
@@ -102,6 +132,7 @@ function Column({ state, ids, byId, rail, onToggleRail, onOpen, onAdd, onArchive
           {visible.map((id) => {
             const t = byId.get(id);
             const waits = t?.waitsFor?.length ? waitsTip(t.waitsFor, titleOf) : undefined;
+            if (t && compact) return <CompactCard key={id} task={t} onOpen={onOpen} marked={!!marked?.has(t.identifier)} working={working.get(id)} />;
             return t ? <Card key={id} task={t} onOpen={onOpen} onArchive={archive} working={working.get(id)} shots={shots?.get(id)} waitsFor={waits} /> : null;
           })}
           {ids.length > shown && (
@@ -114,7 +145,7 @@ function Column({ state, ids, byId, rail, onToggleRail, onOpen, onAdd, onArchive
   );
 }
 
-export function Board({ tasks, states, onMove, onOpen, onAdd, onArchive, working = new Map(), members, shots }: {
+export function Board({ tasks, states, onMove, onOpen, onAdd, onArchive, working = new Map(), members, shots, compact, marked }: {
   tasks: Task[]; states: WorkflowState[];
   /** task id → the newest round's screenshots of a card in Review (GA-185); the other columns show none. */
   shots?: Map<string, number>;
@@ -123,8 +154,13 @@ export function Board({ tasks, states, onMove, onOpen, onAdd, onArchive, working
   /** task id → name of the agent working on it now */
   working?: Map<string, string>;
   onMove: (taskId: string, stateId: string, sortKey: string) => void;
-  onOpen: (taskId: string) => void;
+  /** A click or Enter on a card; `e` says whether Ctrl (Cmd on macOS) was down. */
+  onOpen: (taskId: string, e?: OpenEvent) => void;
   onAdd?: (stateId: string) => void;
+  /** The Chat's Board tab (GA-298): compact columns and cards. */
+  compact?: boolean;
+  /** The cards marked as the chat's, by their ids (GA-259). */
+  marked?: ReadonlySet<string>;
   /** Archive a card in a Done column (its button shows on hover and focus). */
   onArchive?: (task: Task) => void;
 }) {
@@ -221,9 +257,10 @@ export function Board({ tasks, states, onMove, onOpen, onAdd, onArchive, working
       onDragCancel={() => { dragging.current = null; setCols(groupByColumn(tasks, stateIds)); }}
       onDragOver={onDragOver}
       onDragEnd={onDragEnd}>
-      <div className="board">
+      <div className={compact ? "board compact" : "board"}>
         {states.map((s) => (
-          <Column key={s.id} state={s} ids={cols[s.id] ?? []} byId={byId} rail={isRail(s.id)} onToggleRail={toggleRail} onOpen={onOpen} onAdd={onAdd} onArchive={onArchive} working={working} members={members} shots={shots} titleOf={titleOf} />
+          <Column key={s.id} state={s} ids={cols[s.id] ?? []} byId={byId} rail={isRail(s.id)} onToggleRail={toggleRail} onOpen={onOpen} onAdd={onAdd} onArchive={onArchive} working={working} members={members} shots={shots} titleOf={titleOf}
+            compact={compact} marked={marked} />
         ))}
       </div>
     </DndContext>
