@@ -249,7 +249,8 @@ vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: (...a: unknown[]) => { h.
 vi.mock("./MarkdownEditor", () => ({ MarkdownEditor: () => null }));
 vi.mock("../lib/useDropZone", () => ({ useDropZone: () => false }));
 vi.mock("../lib/useLiveRuns", () => ({ useLiveRuns: () => h.live }));
-vi.mock("../lib/useData", () => ({ useData: () => ({ data: h.runs, error: null, reload: () => {}, setData: () => {} }) }));
+// onWrites: GA-298's chat project (components/chat/useChatProject.ts) listens for written projects
+vi.mock("../lib/useData", () => ({ useData: () => ({ data: h.runs, error: null, reload: () => {}, setData: () => {} }), onWrites: () => () => {} }));
 
 const { createRoot } = await import("react-dom/client");
 const { ChatThread } = await import("./chat/ChatThread");
