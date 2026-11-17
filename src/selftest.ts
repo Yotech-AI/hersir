@@ -2173,6 +2173,23 @@ const noteTitle = () => q<HTMLInputElement>('input[aria-label="Note title"]')?.v
 const hitPaths = () => [...document.querySelectorAll(".mem-hit")].map((h) => `${textOf(h.querySelector(":scope > .faint"))}/${textOf(h.querySelector(".mem-hit-title"))}`);
 const resultsCount = () => textOf(q(".mem-results > div.faint.mem-pad"));
 const mouse = (el: Element, type: "mouseover" | "mouseout") => el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, relatedTarget: type === "mouseout" ? document.body : null }));
+/** GA-300: a strip icon's tooltip, drawn as the notes' Islands/Tooltip (.strip-tip) in place of the browser's title, once the
+ *  pointer rests on the icon: "<label>|<key>|<px between it and the icon>|<px off the icon's middle>|<described>", or "none";
+ *  it goes again when the pointer leaves. */
+async function stripTip(b: HTMLElement | null): Promise<string> {
+  if (!b) return "no icon";
+  mouse(b, "mouseover");
+  const tip = await waitFor(() => q<HTMLElement>(".strip-tip"), 2000);
+  let out = "none";
+  if (tip) {
+    const r = b.getBoundingClientRect(), t = tip.getBoundingClientRect();
+    out = [textOf(tip.firstElementChild), textOf(tip.querySelector(".key")), Math.round(r.left - t.right), Math.round(Math.abs((t.top + t.bottom) / 2 - (r.top + r.bottom) / 2)),
+      tip.getAttribute("role") === "tooltip" && b.getAttribute("aria-describedby") === tip.id ? "described" : "not described"].join("|");
+  }
+  mouse(b, "mouseout");
+  const gone = await waitFor(() => (q(".strip-tip") ? null : true), 2000);
+  return gone ? out : `${out}|stays`;
+}
 
 /** GA-68, against prep_memory's notes, starting on Decisions/Use SQLite (`noteId`); `agentId`: the Backend Agent. The
  *  sidebar's Memory lists the Team Lead first with every note, then the Backend Agent with its own folder's two (its Notes
@@ -4588,8 +4605,11 @@ async function chatTerminalProbe(phase: "a" | "b") {
   const btnLook = (out.layout as { btnLook: { bg: string; h: number; w: number } | null }).btnLook;
   check(btnLook && btnLook.bg === ISLAND_DARK && btnLook.h === 42 && btnLook.w === 28 && !!btn?.querySelector("svg.lucide-terminal"),
     `the Terminal icon is a 28 × 42 button, selected: a pill in the island's fill (${JSON.stringify(btnLook)})`);
-  check(JSON.stringify(iconState()) === JSON.stringify({ pressed: "true", n: "1", label: "Terminal, 1 open", title: "Terminal, 1 open (Ctrl+`)" }),
-    `the Terminal icon says 1, selected, with its label and tooltip (${JSON.stringify(iconState())})`);
+  check(JSON.stringify(iconState()) === JSON.stringify({ pressed: "true", n: "1", label: "Terminal, 1 open", title: "" }),
+    `the Terminal icon says 1, selected, with its label and no title of its own (${JSON.stringify(iconState())})`);
+  // GA-300: its tooltip is drawn as the notes say, 6px left of it and centred on it, its key after the label
+  const tip1 = await stripTip(termIcon());
+  check(tip1 === "Terminal, 1 open|Ctrl+`|6|0|described", `the Terminal icon's tooltip says Terminal, 1 open and Ctrl+\` (${tip1})`);
   out.pwd = await pwdIn(term, site.id);
   check(out.pwd, `pwd prints chat-site's folder ${site.id} (screen: ${JSON.stringify(termLines(term, true).filter(Boolean).slice(-4))})`);
   check(term.cols >= 30 && term.rows >= 10, `the terminal fits the island (${term.cols} × ${term.rows})`);
@@ -4608,7 +4628,7 @@ async function chatTerminalProbe(phase: "a" | "b") {
   if (!id2 || !v2) return done();
   check(await waitFor(() => (document.activeElement === v2.term.textarea ? true : null), 2000), "the picked terminal has the focus");
   check(textOf(q(".chat-term-where")) === other.path, `the folder follows the shown terminal (${textOf(q(".chat-term-where"))})`);
-  check(JSON.stringify(iconState()) === JSON.stringify({ pressed: "true", n: "2", label: "Terminal, 2 open", title: "Terminal, 2 open (Ctrl+`)" }), `the strip says 2 (${JSON.stringify(iconState())})`);
+  check(JSON.stringify(iconState()) === JSON.stringify({ pressed: "true", n: "2", label: "Terminal, 2 open", title: "" }), `the strip says 2 (${JSON.stringify(iconState())})`);
   const plus = q<HTMLButtonElement>('.chat-side .island-head button[aria-label="Open beside the chat"]');
   const own = q<HTMLButtonElement>('.chat-side .island-head button[aria-label="Own page"]'), hide = q<HTMLButtonElement>('.chat-side .island-head button[aria-label="Hide"]');
   out.head = { tabs: q(".chat-side .island-tabs")?.getAttribute("aria-label"), plus: [plus?.title, plus?.getAttribute("aria-haspopup")], own: own?.title, hide: hide?.title };
@@ -4691,7 +4711,7 @@ async function chatTerminalProbe(phase: "a" | "b") {
   // the app is drawn wider than the window, so it may have scrolled sideways since: its right edge now
   out.hidden = { cls: chat()?.className, icon: iconState(), strip: rectOf(strip()), talk: rectOf(q(".chat > .chat-main")), appR: r1(app?.getBoundingClientRect().right ?? window.innerWidth),
     bg: termIcon() ? getComputedStyle(termIcon()!).backgroundColor : null };
-  check(chat()?.className === "chat has-strip" && JSON.stringify(iconState()) === JSON.stringify({ pressed: "false", n: "2", label: "Terminal, 2 open", title: "Terminal, 2 open (Ctrl+`)" })
+  check(chat()?.className === "chat has-strip" && JSON.stringify(iconState()) === JSON.stringify({ pressed: "false", n: "2", label: "Terminal, 2 open", title: "" })
     && (out.hidden as { bg: string }).bg === "rgba(0, 0, 0, 0)", `hidden: the strip with the Terminal icon, 2, none selected and no fill (${JSON.stringify(out.hidden)})`);
   const H = out.hidden as { strip: { l: number; r: number } | null; talk: { r: number } | null; appR: number };
   check(H.strip && H.talk && Math.abs(H.strip.l - H.talk.r - 6) <= 0.5 && Math.abs(H.appR - 6 - H.strip.r) <= 0.5, `the conversation reaches the strip, 6px before it, on the window's edge (${JSON.stringify(out.hidden)})`);
@@ -5170,7 +5190,7 @@ async function chatRunProbe() {
   // GA-296: the strip shows the Terminal icon with its count, selected
   const stripIcon = q<HTMLButtonElement>('.chat > .chat-strip .strip-btn[data-kind="terminal"]');
   out.strip = { pressed: stripIcon?.getAttribute("aria-pressed"), n: textOf(stripIcon?.querySelector(".n")), title: stripIcon?.title };
-  check(JSON.stringify(out.strip) === JSON.stringify({ pressed: "true", n: "1", title: "Terminal, 1 open (Ctrl+`)" }), `the strip shows Terminal, 1, selected (${JSON.stringify(out.strip)})`);
+  check(JSON.stringify(out.strip) === JSON.stringify({ pressed: "true", n: "1", title: "" }), `the strip shows Terminal, 1, selected (${JSON.stringify(out.strip)})`);
   check(await waitFor(() => (document.activeElement === t1.term.textarea ? true : null), 2000), "the terminal has the focus");
   check(textOf(q(".chat-term-where")) === doq.path, `the panel shows the folder (${textOf(q(".chat-term-where"))})`);
   await waitFor(() => termLines(t1.term).some((l) => l.trim()), 10000);
@@ -5426,7 +5446,10 @@ async function chatCardsProbe(phase: "a" | "b") {
   const opened = await waitFor(() => (tabKeys().length === 2 && body() ? true : null), 8000);
   out.opened = { tabs: tabKeys(), shown: shown(), strip: strip() };
   check(opened && same2(tabKeys(), ["card:KADE-1", "card:GFW-2"]) && shown() === "card:KADE-1", `the chat opens KADE-1 and GFW-2 as Card tabs, KADE-1 shown (${JSON.stringify(out.opened)})`);
-  check(JSON.stringify(strip()) === JSON.stringify({ pressed: "true", n: "2", title: "Card, 2 open (Alt+4)" }), `the strip shows Card, 2, selected (${JSON.stringify(out.opened)})`);
+  check(JSON.stringify(strip()) === JSON.stringify({ pressed: "true", n: "2", title: "" }), `the strip shows Card, 2, selected (${JSON.stringify(out.opened)})`);
+  // GA-300: the Card icon's tooltip is drawn (Islands/Tooltip), with its key
+  const cardTip = await stripTip(cardBtn());
+  check(cardTip === "Card, 2 open|Alt+4|6|0|described", `the Card icon's tooltip says Card, 2 open and Alt+4 (${cardTip})`);
   const tab1 = q<HTMLElement>('.chat-side .card-tab[data-tab="card:KADE-1"]');
   await waitFor(() => (tab1?.title.includes(":") ? true : null), 3000);
   out.tab = { text: textOf(tab1?.querySelector(".name")), title: tab1?.title, icon: !!tab1?.querySelector("svg.lucide-square-kanban") };
