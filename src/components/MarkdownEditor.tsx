@@ -505,6 +505,7 @@ export function MarkdownEditor({ value, onChange, onSave, onBlur, onCancel, onEn
   const host = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const hovered = useRef<string | null>(null); // the wikilink the mouse is on
+  const middleAt = useRef(0); // when the middle button last went down in the text (Linux pastes the primary selection then)
   const cb = useRef({ onChange, onSave, onBlur, onCancel, onEnter, onPasteNoText });
   cb.current = { onChange, onSave, onBlur, onCancel, onEnter, onPasteNoText };
   const conf = useRef({ editable: new Compartment(), placeholder: new Compartment(), marks: new Compartment() });
@@ -616,6 +617,7 @@ export function MarkdownEditor({ value, onChange, onSave, onBlur, onCancel, onEn
           EditorView.domEventHandlers({
             // Ctrl+click (Cmd+click on macOS) on a wikilink opens it, on a task ref its card.
             mousedown: (e, v) => {
+              if (e.button === 1) middleAt.current = Date.now();
               if (!modClick(e)) return false;
               const pos = v.posAtCoords({ x: e.clientX, y: e.clientY });
               const hit = pos === null ? null : linkAt(v, pos);
@@ -643,6 +645,8 @@ export function MarkdownEditor({ value, onChange, onSave, onBlur, onCancel, onEn
               const take = cb.current.onPasteNoText;
               const data = e.clipboardData;
               if (!take || !data || v.state.readOnly || data.getData("text/plain") || data.getData("text/uri-list")) return false;
+              // A middle-click pastes the primary selection, not the clipboard: as before, whatever the clipboard holds.
+              if (Date.now() - middleAt.current < 1500) return false;
               e.preventDefault();
               take();
               return true;
