@@ -31,13 +31,13 @@ These close Round 1's twelve open questions (section 7). Where they differ from 
 
 ## 1. Summary
 
-1. **Order** (decision 7): Cloud Backup for your own computers first, with a plan given by hand (cards 1 to 4); Stripe, the account page and the legal pack before the first sale (card 5); then Multiple devices (cards 6 to 9); then the Chief's chat on every computer (cards 10 and 11). Eleven cards, two repositories, about 38 to 50 agent-days.
-2. **The server** is one Laravel 12 app, `hersir-cloud` (private), at `cloud.hersir.dev` on a Forge-managed Hetzner server in Germany: Fortify with TOTP required, Passport, Cashier, Reverb, SQLite in WAL mode streamed by Litestream to R2, and the customers' encrypted chunks uploaded straight to R2 (EU jurisdiction) with presigned URLs. About €30 a month for 10 or 100 customers, about €105 at 1,000 (3.3).
+1. **Order** (decision 7): Cloud Backup for your own computers first, with a plan given by hand (cards 1 to 4); Stripe, the account page and the legal pack before the first sale (card 5); then Multiple devices (cards 6 to 9); then the Chief's chat on every computer (cards 10 and 11). Eleven cards, two repositories, about 40 to 60 agent-days.
+2. **The server** is one Laravel 13 app, `hersir-cloud` (private), at `cloud.hersir.dev` on a Forge-managed Hetzner server in Germany: Fortify with TOTP required, Passport, Cashier, Reverb, SQLite in WAL mode streamed by Litestream to R2, and the customers' encrypted chunks uploaded straight to R2 (EU jurisdiction) with presigned URLs. About €22 a month at 10 customers, €31 at 100 and €141 at 1,000, Forge included (3.3).
 3. **Sign-in**: `oauth.rs` works against Passport as it is, given a fixed client id (it then skips registration); it already finds the server through RFC 9728 and RFC 8414 documents, which Hersir Cloud publishes. The first token is exchanged once for the computer's own Passport token, which the account page withdraws (3.4).
 4. **Payments**: Stripe direct with Billing and Tax costs about 8% of the monthly price and 4% of the yearly one; Managed Payments (open to a Spanish S.L., +3.5%, sold through Link, LLC) about 12% and 7%. **Recommended against Managed Payments for now.** Selling directly, the S.L. charges Spanish VAT to EU consumers until EU sales to them pass €10,000 a year, then files the OSS quarterly; the UK needs registration from the first UK consumer (3.5).
 5. **The Chief's chat everywhere**: a message written on another computer goes as an encrypted, signed command through Hersir Cloud to the Chief's computer, which answers there; the answer and its Approve and Discard reach every computer through sync, and an approval from any computer runs once, on the Chief's computer. Reverb rings the doorbell; data goes over plain HTTPS (3.8).
 6. **Still true in the code** (main at 0.18.0): `changes` can't drive sync as it is, so sync gets a trigger-written log beside it (2.4, 3.7).
-7. **New open questions** (13 to 20, section 7): the first is to sell only in the EU and the UK at launch.
+7. **New open questions** (13 to 20, section 7): where to sell at launch, and **VERI*FACTU-compliant invoicing, which the S.L. needs by 1 January 2027** (Stripe doesn't claim its invoices comply).
 
 ## 2. The project now
 
@@ -112,7 +112,7 @@ End-to-end for both features: the server stores and orders ciphertext; your comp
 - **The warning** (decision 2), at setup and before every *Make a new recovery code*, in plain words: "Hersir encrypts your data on this computer before it leaves. Only your computers and this recovery code can open it. If you lose this code and every computer signed in to Hersir Cloud, your cloud backups can't be opened by anyone, Hersir included." Setup asks you to type the code's last group back before the first upload, as Apple asks for a recovery key before Advanced Data Protection (S-E2).
 - **What is lost when the key is lost**: only when every computer and the recovery code are gone. Then the cloud copies (backups and the sync log) can't be read by anyone; the data on your computers is untouched. The account itself (sign-in, plan) is not lost: it is protected by password and TOTP, not by the key (3.4).
 - **The roster** [I, new]: each computer keeps a list of the account's computers and their public keys, built from join records sealed with AK and signed by the joining computer. A computer that joined with the recovery code adds a tag made with a key derived from the code, so a thief who has only AK (from a stolen laptop) can't add a computer; a removal, signed by any computer on the roster, is final. The Chief's computer uses it to know who wrote a command (3.8).
-- **Ciphers** [V versions, S-E15 to S-E18]: XChaCha20-Poly1305 (`chacha20poly1305` 0.11, Apache-2.0 or MIT), HKDF and HMAC with SHA-256 (`hkdf`, `hmac` and `sha2`, already in Hersir's `Cargo.lock`), Ed25519 (`ed25519-dalek`, already in the lock through `ssh-key`) and X25519 (`x25519-dalek`, BSD-3). Each object is at most a 4 MiB chunk sealed whole, with a random 24-byte nonce and its id as associated data. Not `age` (beta, scrypt passphrases).
+- **Ciphers** [V versions, S-E15 to S-E18]: XChaCha20-Poly1305 (`chacha20poly1305` 0.11, Apache-2.0 or MIT), HKDF and HMAC with SHA-256 (`hkdf`, `hmac` and `sha2`, already in Hersir's `Cargo.lock`), Ed25519 (`ed25519-dalek`, BSD-3, already in the lock through `ssh-key`) and X25519 (`x25519-dalek`, BSD-3). Each object is at most a 4 MiB chunk sealed whole, with a random 24-byte nonce and its id as associated data. Not `age` (beta, scrypt passphrases).
 
 #### Removing a computer, and whether the key must change (decision 12)
 
@@ -270,9 +270,9 @@ If every customer filled the 10 GB quota, 1,000 customers would store about 15 T
 
 1. **One public client** in Passport, *Hersir desktop*, made with `passport:client --public`, redirect `http://127.0.0.1/callback`. Passport hands the client's redirect to `league/oauth2-server`'s `RedirectUriValidator`, which matches 127.0.0.1 and `[::1]` "excluding port", so the random port `oauth.rs` binds (`oauth.rs:299-301`) is accepted (RFC 8252 §7.3). `localhost` doesn't get that treatment, and `oauth.rs` doesn't use it. The client id is built into Hersir: a public client's id isn't a secret (RFC 8252 §8.4).
 2. **Discovery**: Passport publishes no RFC 8414 metadata and no RFC 9728 document, and Laravel MCP's `Mcp::oauthRoutes()` would add open client registration and an `mcp:use` scope Hersir Cloud doesn't want. So Hersir Cloud serves two small JSON documents itself:
-   - `/.well-known/oauth-protected-resource` → `{ "resource": "https://cloud.hersir.dev/api", "authorization_servers": ["https://cloud.hersir.dev"], "resource_name": "Hersir Cloud" }`;
-   - `/.well-known/oauth-authorization-server` → `{ "issuer": "https://cloud.hersir.dev", "authorization_endpoint": ".../oauth/authorize", "token_endpoint": ".../oauth/token", "code_challenge_methods_supported": ["S256"], "response_types_supported": ["code"], "grant_types_supported": ["authorization_code"], "scopes_supported": ["device:register"] }`.
-   `oauth.rs::discover("https://cloud.hersir.dev/api", None)` finds both (`oauth.rs:169-250`), and `begin(&d, Some(HERSIR_CLOUD_CLIENT_ID))` skips registration (`:293-302`). **No change to `oauth.rs` is needed** [V the code paths; I that it works end to end, which card 3 tests].
+   - `/.well-known/oauth-protected-resource` (and the same at `/.well-known/oauth-protected-resource/api`) → `{ "resource": "https://cloud.hersir.dev/api", "authorization_servers": ["https://cloud.hersir.dev"], "scopes_supported": ["device:register"], "resource_name": "Hersir Cloud" }`;
+   - `/.well-known/oauth-authorization-server` → `{ "issuer": "https://cloud.hersir.dev", "authorization_endpoint": "https://cloud.hersir.dev/oauth/authorize", "token_endpoint": "https://cloud.hersir.dev/oauth/token", "code_challenge_methods_supported": ["S256"], "response_types_supported": ["code"], "grant_types_supported": ["authorization_code", "refresh_token"] }`.
+   `oauth.rs::discover("https://cloud.hersir.dev/api", None)` reads the first (with the URL's path, then without: `oauth.rs:177-181`), takes its resource, its first authorization server and its `scopes_supported` as the scope to ask for (`:194-213`), then the second, and checks that S256 is offered (`:228-231`); `begin(&d, Some(HERSIR_CLOUD_CLIENT_ID))` skips registration (`:293-302`). **No change to `oauth.rs` is needed** [V the code paths on main; I that it works end to end, which cards 2 and 3 test].
 3. **Two details to test in card 2**: `league/oauth2-server` also accepts the weaker `plain` PKCE method, so a middleware refuses an authorize request without `code_challenge_method=S256`; and `oauth.rs` sends `resource` (RFC 8707), which the league's grant doesn't read: it should be ignored (not verified).
 4. **The exchange: a token per computer.** The browser's token has only the scope `device:register`. The app sends it once to `POST /api/v1/devices` with the computer's id, name, platform, Hersir version and public keys. The server records the computer, makes it a Passport personal access token named `device:<id>` with the scope `cloud` (valid a year; the app renews it in its last 30 days with `POST /api/v1/devices/me/token`), revokes the browser's token and its refresh token, and answers with the new token. The app keeps it in the keychain (`cloud/<account>/token`). One package (Passport) does both the browser sign-in and the tokens per computer, so Sanctum isn't needed [I].
 5. **Withdrawing a computer**: the account page and Settings → Hersir Cloud on another computer list the computers (name, platform, Hersir version, last seen, added) with **Remove**, which revokes its token (`$token->revoke()`, checked on every request), sets `devices.revoked_at`, and adds the removal to the roster (3.2). That computer's next call gets 401 and it says "This computer was removed from Hersir Cloud on the account page." **Sign out** on a computer does the same for itself, and also removes the account key and its own keys from its keychain.
@@ -575,7 +575,7 @@ Remove (account page or Settings) withdraws its token at once, so it can't reach
 
 ### 3.9 Legal [Round 1, updated for selling directly and the new sub-processors]
 
-**Recommendation** [I]: do the template work now (rows 1 to 7, with the European Commission's and the AEPD's material), then one fixed-fee job for a Spanish consumer and technology lawyer: the terms of service and of sale in a business and a consumer version, a review of the DPA, and the consumer rules of the other EU countries you sell to. Don't charge before the terms, the checkout's consent texts and the VAT set-up are signed off. **Changed by decision 9**: the S.L. is now the seller to every customer, so the consumer rules (row 8), the invoices (3.5) and the refunds are YoTech's, not a merchant of record's. This is research, not legal advice (S-L* of Round 1).
+**Recommendation** [I]: do the template work now (rows 1 to 7, with the European Commission's and the AEPD's material), then one fixed-fee job for a Spanish consumer and technology lawyer: the terms of service and of sale in a business and a consumer version, a review of the DPA, and the consumer rules of the other EU countries you sell to. Don't charge before the terms, the checkout's consent texts and the VAT set-up are signed off. **Changed by decision 9**: the S.L. is now the seller to every customer, so the consumer rules (row 8), the invoices (3.5) and the refunds are YoTech's, not a merchant of record's. This is research, not legal advice (Round 1's legal sources, section 9).
 
 YoTech's two roles: **controller** for account, billing, support and website data; **processor** for the data customers back up and sync. Using that data for its own purposes would make YoTech its controller (LOPDGDD art. 33.2).
 
@@ -634,7 +634,7 @@ The decisions fix the stack; what is left to choose is how the computers hear ab
 | News reaches another computer in | about a second | up to the polling interval | about a second (long polling in Rust is cheap) |
 | Load at 1,000 customers | thousands of idle sockets in one Reverb process (with an event loop), a fetch per change | a few hundred requests a second at 5 seconds; at 30 seconds a slow chat | small |
 | Extra work | a Pusher-protocol client in Rust (about a day); Reverb on Forge is a switch | none | the account pages by hand, Zitadel's set-up, Paddle's review |
-| Libraries | Laravel 13, Fortify, Passport 13, Cashier 16, Reverb (all MIT); Litestream (Apache-2.0); app: `chacha20poly1305`, `hkdf`, `hmac`, `x25519-dalek`, `ed25519-dalek`, `fastcdc`, `tungstenite` (MIT or Apache-2.0, BSD-3 for x25519) | the same without Reverb and `tungstenite` | `axum`, `rusqlite`, `rusty-s3`, `jsonwebtoken` |
+| Libraries | Laravel 13, Fortify, Passport 13, Cashier 16, Reverb (all MIT); Litestream (Apache-2.0); app: `chacha20poly1305`, `hkdf`, `hmac`, `x25519-dalek`, `ed25519-dalek`, `fastcdc`, `tungstenite` (MIT or Apache-2.0; the two dalek crates BSD-3) | the same without Reverb and `tungstenite` | `axum`, `rusqlite`, `rusty-s3`, `jsonwebtoken` |
 | Risks | a websocket that some networks block (polling covers it); Reverb past 1,000 connections needs its event loop; two US sub-processors | a slow chat, or a busy server | a sign-in service at $100 a month before the first customer; not the stack you know |
 | Monthly cost at 10 / 100 / 1,000 customers | about €22 / €31 / €141 | about the same, more CPU at 1,000 | about €14 / €14 / €71 plus Zitadel Pro ($100) |
 | Size, all eleven cards | **about 40 to 60 agent-days** | about 1 day less | about 30 to 40, for eight cards without the chat |
@@ -738,7 +738,7 @@ Elsewhere for Multiple devices: "Running on Laptop" on a card claimed by another
 
 ### 5.3 What changes in which files
 
-**The app** (`Yotech-AI/hersir`, open source):
+**The app** (this repository, open source):
 
 | Where | What | Card |
 |---|---|---|
@@ -922,4 +922,224 @@ onOutgoing(f: (o: Outgoing) => void)                        // event "chat-outgo
 
 The phone chat and its PWA (designed in 3.8, built later); changing the account key (question 18); approval of a new computer from another one (the recovery code does it in v1); agents across devices and agents' questions to a Chief on another computer (question 19); teams and SSO; passkeys; server-side search or a web view of the data; a self-hosted server; sharing with clients.
 
-<!-- Section 6 onwards follows. -->
+## 6. Proposed cards
+
+Eleven cards in three features, each one pull request in one repository: **the app** (this repository, open source) or **`Yotech-AI/hersir-cloud`** (new, private). Sizes in agent-days [I].
+
+**At the same time**: cards 1, 2, 3 and 6 can start together (2 and 3 meet at 5.4's contract; 3 builds against a fake server). Then 4 (after 1 and 3), 5 and 7 (after 2; both in the server repository, in different files, so they can run together), 8 (after 3, 6 and 7), 9 (after 1 and 8), 10 (after 7 and 8), 11 (after 1 and 10).
+
+### Cloud Backup (cards 1 to 5)
+
+**1. Design: Hersir Cloud on the desktop and the web, with Multiple devices and the Chief's chat on another computer**
+- Repository: the app (`design/hersir-cloud.md` and its screens). Column: Design. Role: design. Builds on: none. Size: 2 to 3.
+- Builds: every state of 5.1. The Hersir Cloud tab: signed out, signing in, the recovery code and its warning, signed in, a backup running, a failure, the quota full, a lapsed plan, *Make a new recovery code*, Your computers with *Remove…* and its question, the Chief's computer. *Restore from Hersir Cloud* (first screen and Settings) with its steps. Multiple devices: "Running on Laptop", "not synced yet", *Runs on*, the offline and update bands. The Chief's chat on another computer: sent, waiting for an offline Chief's computer, the live answer, Approve from here, "Approving on Desktop…", an expired approval, not delivered with *Send again*. The web pages: create an account, check your email, set up two-factor authentication, the account page, the desktop sign-in's done page.
+- Acceptance:
+  - [ ] every state drawn, in dark and light, with the final texts, decision 2's warning word for word
+  - [ ] only existing components and tokens (5.1); gold only where you are needed
+  - [ ] each screen names its component and the commands of 5.4 it shows
+  - [ ] the web pages say which starter-kit views they change and which of Hersir's tokens they take
+
+**2. Hersir Cloud server: accounts with required 2FA, computers, keys and encrypted backup storage**
+- Repository: `Yotech-AI/hersir-cloud`. Column: To do. Role: backend. Builds on: none (your set-up, 3.10 rows 1 to 6 and 8). Size: 5 to 7.
+- Builds: a Laravel 13 app from the Livewire starter kit; Fortify with `RequireTwoFactor` on every web route, Passport's included; Passport 13 with the public client *Hersir desktop*, S256 only, the two well-known documents of 3.4, the exchange (`POST /devices`), a token per computer and Remove; the calls marked card 2 in 5.4 (devices, entitlements from `comps`, keys and roster, objects with presigned R2 URLs and size checks, snapshots); retention (decision 8) and garbage collection; the quota; `hersir:comp`; Litestream's config, the nightly copy, the Forge deploy script, `RUNBOOK.md` with the restore drill, `PROTOCOL.md`; healthchecks pings; a minimal account page with the computers and Remove.
+- Acceptance:
+  - [ ] every call marked card 2 in 5.4, with its errors, covered by Pest tests against an S3 fake
+  - [ ] the sign-in `oauth.rs` makes works: a redirect to 127.0.0.1 on a random port with S256 is accepted; `plain` is refused; `resource` is ignored
+  - [ ] no web route, `/oauth/authorize` included, opens without confirmed 2FA (a test lists the routes)
+  - [ ] a computer can't reach another account's objects or snapshots; a removed computer gets 401 at once
+  - [ ] retention keeps every snapshot 7 days and the newest of each day to 90; garbage collection never deletes an object a kept snapshot uses (fake-clock tests)
+  - [ ] deployed by Forge at `cloud.hersir.dev`; one restore drill from Litestream done and written down
+
+**3. Cloud Backup in the app: sign in, encrypt, upload and restore**
+- Repository: the app. Column: To do. Role: backend. Builds on: card 2's contract (can be built at the same time, against a fake server). Size: 5 to 7.
+- Builds: the crate `gizai-cloud-client` (`api`, `keys` with the computer's keys and the roster, `chunks`, `backup`, `restore`, `entitlement`) and `src-tauri/src/cloud.rs`; sign-in through `oauth.rs` with the built-in client id, then the exchange; the account key, the recovery code (never stored) and the key id; the page-for-page copy, chunks, sealing and upload; daily, On quit and Back up now; *Restore from Hersir Cloud* into a format-1 folder and on through GA-218's restore; the Hersir Cloud tab's commands and event of 5.4; the entitlement's public key.
+- Acceptance:
+  - [ ] a backup made on one computer restores on a clean one (scratch data folders), with the device rule and this computer's settings kept
+  - [ ] the second daily backup of an unchanged database uploads nothing but the manifest
+  - [ ] a wrong recovery code is refused with a sentence; nothing unencrypted leaves the computer (a test reads what the fake server got); the recovery code is in no keychain entry, file or log
+  - [ ] a lapsed plan stops uploads and still restores
+  - [ ] `cargo test --workspace`, `npm test`, `npm run build` pass on Linux, macOS and Windows CI
+
+**4. Settings → Hersir Cloud**
+- Repository: the app. Column: To do. Role: frontend. Builds on: cards 1 and 3. Size: 3 to 4.
+- Builds: `CloudSettings.tsx`, the tab, *Restore from Hersir Cloud* on the first screen, Your computers with *Remove…*, every Cloud Backup state of card 1's design, on the commands of 5.4.
+- Acceptance:
+  - [ ] each state of card 1 shows from the matching `CloudStatus` and `CloudComputer` (component tests)
+  - [ ] the recovery code and its warning can't be skipped before the first backup
+  - [ ] restore shows GA-218's steps and Restart now; `scripts/ui-test.sh` covers sign-in to restore against the local server
+
+**5. Stripe with Cashier, and the account page**
+- Repository: `Yotech-AI/hersir-cloud`. Column: To do. Role: backend. Builds on: card 2 (and card 1's web pages). Size: 3 to 4. Needed before the first customer, not for your own use.
+- Builds: Cashier 16 with Checkout (monthly and yearly, `Cashier::calculateTaxes()`, VAT numbers, the billing country), the customer portal, the webhook with `stripe_events`, the plan worked out from Cashier into the signed entitlement with `entitlement.changed`; the account page of 5.1 (plan, Subscribe, Manage billing, storage, backups, computers, 2FA, password, Withdraw, Delete account); the lapse emails and the deletion after 60 days; the countries question 13 decides, refused before Checkout opens.
+- Acceptance:
+  - [ ] a sandbox subscription turns the plan on in the app within a minute; a cancelled one stays active to the period's end, then lapses
+  - [ ] webhooks are checked by signature and handled once each, in any order (Stripe's fixtures)
+  - [ ] in the sandbox, Stripe Tax charges Spanish VAT to a Spanish consumer and reverse-charges an EU business with a valid VAT number
+  - [ ] Withdraw and Delete account work, with their emails
+
+### Multiple devices (cards 6 to 9)
+
+**6. Sync engine in the core**
+- Repository: the app. Column: To do. Role: backend. Builds on: none (no network; can start with cards 2 and 3). Size: 8 to 12.
+- Builds: `crates/gizai-core/src/sync/` and `0023_sync.sql`: the table lists (synced, local, derived, with their one-computer columns) and a test that every table is on one; the triggers and `sync_log`; the HLC; apply with last writer wins per field, row deletes, counters, the numbering rule and document conflicts; the Chief's chat tables with one writer; `agent_configs.home_device_id`; the property tests with faults of 3.7.
+- Acceptance:
+  - [ ] three replicas converge after random edits with drops, duplicates, reorders, a partition, a crash before an answer, a clock an hour behind and a server that goes back
+  - [ ] no two live cards share a number; a provisional number settles the same way everywhere
+  - [ ] a transaction from a newer schema stops the apply; nothing in "never syncs" is captured
+  - [ ] the activity feed shows another computer's changes as its own lines
+
+**7. Hersir Cloud server: sync, claims, commands and Reverb**
+- Repository: `Yotech-AI/hersir-cloud`. Column: To do. Role: backend. Builds on: card 2. Size: 3 to 5.
+- Builds: the calls marked card 7 in 5.4 (workspaces, transactions, file sets, claims, the Chief's computer, commands with their lifetimes and statuses, live answers); Reverb on Forge with 5.4's channels and events, authorised by a computer's token; garbage collection that keeps file sets' objects; sequences never reused after a restore.
+- Acceptance:
+  - [ ] every call marked card 7 in 5.4, with its errors (Pest)
+  - [ ] the first claim wins, a second gets 409 with who holds it, a lease runs out
+  - [ ] a command is stored only for one of the account's computers, delivered oldest first, deleted on ack, and expires after its lifetime; the sender hears each status
+  - [ ] a computer can't subscribe to another account's channels; `chat.live` is never stored
+  - [ ] Reverb runs on Forge with its event loop; a test client gets `sync.tx` after a push
+
+**8. Sync through Hersir Cloud, with card claims, in the app**
+- Repository: the app. Column: To do. Role: backend. Builds on: cards 3, 6 and 7. Size: 5 to 7.
+- Builds: `src-tauri/src/sync.rs`: push, pull, file blobs by keyed hash and file sets, a new computer from the latest cloud backup and the log after it, the schema gate, the server-went-back rule; the doorbell (`doorbell.rs`: a Pusher-protocol client on `tungstenite`, with 30-second polling without it); the home computer in the dispatcher and a claim before each start (10-minute lease, renewed); no automatic start offline (decision 6); the Chief's computer setting and the board check's `chief:board` claim; the Multiple devices commands and fields of 5.4.
+- Acceptance:
+  - [ ] two Hersirs (scratch data folders) against the local server converge after offline edits on both; a change shows on the other within 2 seconds while the doorbell is up
+  - [ ] a card runs on one computer only: the second claim gets 409 and its board says where it runs; a computer that dies mid-run frees the card when its lease runs out
+  - [ ] offline, a synced workspace starts no card by itself, and no board check runs
+  - [ ] with the websocket blocked, sync still works by polling
+
+**9. Multiple devices on screen**
+- Repository: the app. Column: To do. Role: frontend. Builds on: cards 1 and 8. Size: 2 to 3.
+- Builds: the sync switch, the Chief's computer choice and sync's status in Settings → Hersir Cloud; "Running on Laptop" on cards; "not synced yet" numbers; *Runs on* in the agent form; the offline and update bands; per card 1's design.
+- Acceptance:
+  - [ ] each state shows from `SyncStatus` and the card and agent fields (component tests)
+  - [ ] `scripts/ui-test.sh` covers turning sync on, choosing the Chief's computer and a claimed card
+
+### The Chief's chat on every computer (cards 10 and 11)
+
+**10. The Chief's chat from another computer: commands, approvals and live answers**
+- Repository: the app. Column: To do. Role: backend. Builds on: cards 7 and 8. Size: 3 to 5.
+- Builds: `commands.rs` in the client crate (5.4's command format: seal, sign, open, check); the roster's join and removal records; `0024_cloud_chat.sql`; `src-tauri/src/chief_remote.rs`. On another computer, the chat and approval commands of 5.4 become commands, with an outbox. On the Chief's computer, commands are fetched on the doorbell, checked (seal, signature, roster, id, counter, epoch, addressed here) and run through the existing paths (`send_with_files`, the queue, stop, Runs on, `approve`, `approve_all`, `discard`), the message stored under the command's id with its computer noted; `moved` when this isn't the Chief's computer; live answers out (sealed `chat-events` batches, at most 4 a second) and in (emitted as `chat-events`); approvals expire after 24 hours, the rest after 7 days.
+- Acceptance:
+  - [ ] a message from Laptop is answered on Desktop, and the answer streams on Laptop while it is written
+  - [ ] an approval from Laptop runs once on Desktop, also when Desktop's own Approve is clicked too
+  - [ ] a command changed by one byte, replayed, from a removed computer or under an old epoch is refused and nothing runs (tests with a fake server that tampers)
+  - [ ] a message to an offline Desktop waits and is answered when it comes back; an approval older than 24 hours doesn't run
+  - [ ] on a computer that isn't the Chief's, no code path writes the Chief's messages, queue or pending actions
+
+**11. The Chief's chat on every computer, on screen**
+- Repository: the app. Column: To do. Role: frontend. Builds on: cards 1 and 10. Size: 2 to 3.
+- Builds: the Chat page on a computer that isn't the Chief's: the lines under a message (sent, waiting for an offline Chief's computer, delivered, not delivered with *Send again*, moved), the note above the text box, "Approving on Desktop…" and "Approved on Laptop" under waiting calls, "from Laptop" on messages, the Inbox's Approval on every computer; per card 1's design.
+- Acceptance:
+  - [ ] each `Outgoing` status shows as card 1 draws it (component tests)
+  - [ ] `scripts/ui-test.sh` covers a message and an approval from a second Hersir against the local server, and a Chief's computer that is off
+
+## 7. Open questions for Jefsev
+
+### Round 1's questions 1 to 12: closed by the decisions of 17 November
+
+| # | Round 1's question | Closed by |
+|---|---|---|
+| 1 | End-to-end for both? | decision 1: yes |
+| 2 | A recovery code only? | decision 2: yes, with a clear warning |
+| 3 | Hetzner, Rust, SQLite with Litestream? | decisions 3 and 4: SQLite with Litestream, in a Laravel app on Forge, R2 EU |
+| 4 | Zitadel Cloud? | decision 4: no; Fortify and Passport |
+| 5 | No magic link at launch? | decision 5: email, password and TOTP required; no magic links, SMS or email codes |
+| 6 | No automatic starts offline? | decision 6: yes; claims need the cloud |
+| 7 | Sell with Cloud Backup first? | decision 7: yes |
+| 8 | 7 days, then daily to 90? | decision 8: yes |
+| 9 | Paddle? | decision 9: no; Stripe with Cashier, Checkout and Tax |
+| 10 | The domain? | decision 10: `cloud.hersir.dev`, for now |
+| 11 | A private server repository? | decision 11: yes |
+| 12 | The Chief's chat read-only elsewhere? | decision 12: no; writable on every computer, and later in a PWA |
+
+### New open questions (Round 2)
+
+13. **Where to sell at launch.** Consumers in the EU and businesses anywhere; UK consumers from the day the S.L. registers for UK VAT; other countries' consumers not yet, since some tax a foreign seller from the first sale? *Recommended: yes*, with the account page refusing other consumer countries before Checkout opens. If you'd rather sell everywhere at once, Managed Payments only for those countries is possible per Checkout Session (untested).
+14. **VERI*FACTU by 1 January 2027.** Stripe's invoices are the S.L.'s invoices, and Stripe doesn't claim they comply. *Recommended*: ask your gestor now which route (Stripe with Invopop, or the SII); the S.L.'s other invoices need it from the same day anyway. Card 5 waits for the answer only for its invoice settings.
+15. **A copy of the server's database outside Cloudflare.** Every copy (Litestream, the nightly one) is at Cloudflare. *Recommended: yes*, a nightly copy to a Hetzner Storage Box (a few euros a month), before the first customer.
+16. **Small seller or the OSS from the start.** Spanish VAT on EU consumers until €10,000 a year, then the OSS; or the OSS at once (binding for two years). *Recommended*: small seller at launch, which Stripe Tax supports, unless the S.L. already sells electronic services to EU consumers in another business (they count towards the €10,000); the gestor decides.
+17. **The PWA's key.** Decision 12 says a device that holds the account key; a **chat key** derived from it would let a phone write to and read the Chief's chat, but not the backups or the sync log. *Recommended: the chat key*, given by pairing with a QR code (3.8).
+18. **Changing the account key** when a lost or stolen computer is removed: v1 or later? *Recommended: later*, after card 11: removal already stops the computer from writing, a stolen laptop holds your local data anyway, and reading the cloud copies would also need a breach of Hersir Cloud.
+19. **Agents' questions to the Chief when the agent runs on another computer.** In v1 they come to you (the Inbox, on every computer). *Recommended: yes*; sending them to the Chief's computer is agents across devices.
+20. **How long a command waits for an offline Chief's computer.** Approvals 24 hours, messages 7 days. *Recommended: yes*: an approval is a decision about the board as it was; a message is a question that still makes sense later.
+
+## 8. Changes proposed to `docs/PAID-FEATURES.md` (not made)
+
+1. **Line 18 and P1**: Personal holds Cloud Backup, Multiple devices and the Chief's chat on every computer (once sync is there); the phone chat later.
+2. **Lines 65-77 (How it fits together)**: `cloud.hersir.dev`, a Laravel 13 app (Fortify, Passport, Cashier, Reverb; SQLite with Litestream; R2 EU), instead of `api.hersir.dev (Rust, axum)`; the relay is the commands to the Chief's computer.
+3. **Line 80**: the keychain (service `hersir`) holds this computer's Passport token, the account key and the computer's own keys; never the recovery code.
+4. **Lines 82-87 (encryption)**: end-to-end for backups and sync, decided; a random account key with a recovery code only, no passphrase (decision 2); objects named by a keyed hash; computer keys and a roster; why (3.2).
+5. **Line 108**: the server is a Laravel 13 app in the private repository `hersir-cloud`, on a Forge-managed Hetzner server in Germany; SQLite with Litestream (decision 3); R2 in its EU jurisdiction for the objects and the database's copies; Cloudflare in DNS only.
+6. **Line 110**: email and password with TOTP required (Fortify; decision 5); no magic links, passkeys, Google or GitHub; the desktop signs in through `oauth.rs` against Passport, then gets a token per computer.
+7. **Lines 111-115**: computers with their public keys, removed at once; backups as page-for-page chunks; every backup kept 7 days, then one a day to 90 (decision 8); billing webhooks from Stripe through Cashier.
+8. **Line 120**: no "back up on change": daily, on quit and by hand.
+9. **Lines 126-140 (Phase 2)**: the trigger-written `sync_log`, the real HLC, numbers settled in the server's order, home computers and cloud claims, no automatic start offline (decision 6), Reverb as the doorbell, what never syncs.
+10. **A new phase after Phase 2**: the Chief's chat on every computer (3.8), with the PWA's design.
+11. **Line 167 and P2**: Stripe direct with Billing and Tax (decision 9); Managed Payments weighed (3.5% more, sold through Link, LLC; open to a Spanish S.L.); Paddle replaced.
+12. **Line 171 and P3**: done: NEXO IV GRUPO, S.L. (Spain); the VAT duties of 3.5 (small seller or OSS, ROI, 349, VERI*FACTU by 1 January 2027, the UK from the first consumer).
+13. **Lines 172-178**: the Spanish legal list of 3.9, with Cloudflare and Laravel as US sub-processors.
+14. **Line 187**: the cost table of 3.3 (about €22, €31 and €141 a month at 10, 100 and 1,000 customers), Forge included.
+15. **Decisions table**: P2 and P3 as above; add P10 (the Laravel stack, decision 4), P11 (sign-in with TOTP required, decision 5), P12 (agents offline, decision 6), P13 (retention, decision 8), P14 (`cloud.hersir.dev`, decision 10), P15 (the Chief's chat on every computer, decision 12).
+16. **Phases 1 and 2's sizes**: the eleven cards of section 6, about 40 to 60 agent-days.
+
+## 9. Sources
+
+Round 2's sources were read on **2026-11-17** by this card's research (the R&D Agent and its helpers); Round 1's, read on **2026-11-09**, are kept for what still holds. *Search result only* where the page itself wasn't opened.
+
+**Laravel, Forge, Reverb, R2, Litestream, Hetzner** (2026-11-17)
+- S-L1 Laravel 13 release notes: https://laravel.com/docs/releases ; laravel/framework: https://packagist.org/packages/laravel/framework
+- S-L2 Fortify: https://laravel.com/docs/13.x/fortify ; its config stub: https://github.com/laravel/fortify/blob/1.x/stubs/fortify.php ; requiring 2FA with a middleware (a Laracasts thread, search result only)
+- S-L3 Starter kits: https://laravel.com/docs/13.x/starter-kits
+- S-L4 Passport: https://laravel.com/docs/master/passport ; releases: https://github.com/laravel/passport/releases ; its routes: https://github.com/laravel/passport/blob/13.x/routes/web.php
+- S-L5 league/oauth2-server (`RedirectUriValidator`, `AuthCodeGrant`, `AbstractGrant`): https://github.com/thephpleague/oauth2-server/tree/master/src ; Laravel MCP's OAuth routes: https://laravel.com/docs/master/mcp , https://github.com/laravel/mcp
+- S-L6 Cashier (Stripe): https://laravel.com/docs/13.x/billing ; releases: https://github.com/laravel/cashier-stripe/releases ; source: https://github.com/laravel/cashier-stripe/tree/16.x/src
+- S-L7 Reverb: https://laravel.com/docs/13.x/reverb , https://github.com/laravel/reverb ; broadcasting: https://laravel.com/docs/13.x/broadcasting
+- S-L8 Pusher crates on crates.io: https://crates.io/api/v1/crates?q=pusher
+- S-L9 Laravel's filesystem (`temporaryUploadUrl`): https://laravel.com/docs/13.x/filesystem ; databases (SQLite): https://laravel.com/docs/13.x/database
+- S-L10 Litestream: https://github.com/benbjohnson/litestream/releases , https://litestream.io/guides/s3-compatible/ , https://litestream.io/reference/restore/ , https://litestream.io/reference/config/ , https://litestream.io/guides/systemd/
+- S-L11 R2 pricing: https://developers.cloudflare.com/r2/pricing/
+- S-L12 R2 data location: https://developers.cloudflare.com/r2/reference/data-location/ ; Cloudflare's customer DPA (v6.4): https://www.cloudflare.com/cloudflare-customer-dpa/ ; its privacy policy: https://www.cloudflare.com/privacypolicy/
+- S-L13 R2 presigned URLs: https://developers.cloudflare.com/r2/api/s3/presigned-urls/ ; its S3 API: https://developers.cloudflare.com/r2/api/s3/api/ ; bucket locks: https://developers.cloudflare.com/r2/buckets/bucket-locks/ ; lifecycles: https://developers.cloudflare.com/r2/buckets/object-lifecycles/
+- S-L14 Hetzner backups (2026-11-09): https://docs.hetzner.com/cloud/servers/backups-snapshots/overview/
+- S-L15 Forge's server providers: https://laravel.com/forge/docs/server-providers.md ; sites and Reverb: https://laravel.com/forge/docs/sites/laravel.md
+- S-L16 Forge pricing: https://laravel.com/forge/pricing ; database backups: https://laravel.com/forge/docs/resources/database-backups.md ; monitoring: https://laravel.com/forge/docs/servers/monitoring.md ; heartbeats: https://laravel.com/forge/docs/resources/scheduler.md
+- S-L17 Nightwatch pricing: https://laravel.com/nightwatch/pricing
+- S-L18 (2026-11-09) healthchecks.io pricing: https://healthchecks.io/pricing/ ; Sentry pricing: https://sentry.io/pricing/
+- S-L19 Hetzner Cloud prices: https://www.hetzner.com/cloud/cost-optimized/ , https://www.hetzner.com/cloud/regular-performance/
+
+**Payments** (2026-11-17)
+- S-P8 Managed Payments eligibility: https://docs.stripe.com/payments/managed-payments/eligibility
+- S-P9 Stripe's prices in Spain: https://stripe.com/es/pricing , https://stripe.com/en-es/pricing
+- S-P10 Managed Payments: https://stripe.com/en-es/managed-payments , https://docs.stripe.com/payments/managed-payments
+- S-P11 How it works: https://docs.stripe.com/payments/managed-payments/how-it-works ; its pricing: https://support.stripe.com/questions/managed-payments-pricing
+- S-P12 "Sold through Link, LLC": https://support.stripe.com/questions/why-is-sold-through-link-llc-the-legal-entity-on-my-invoice-for-stripe-managed-payments-fees
+- S-P13 Checkout changes: https://docs.stripe.com/payments/managed-payments/update-checkout ; the changelog: https://docs.stripe.com/changelog/dahlia/2026-04-22/managed-payments
+- S-P14 Payouts: https://support.stripe.com/questions/understand-managed-payments-payout-speed ; invoices: https://support.stripe.com/questions/which-invoices-will-i-receive-for-managed-payments-transactions ; tax compliance: https://docs.stripe.com/payments/managed-payments/tax-compliance
+- S-P15 Stripe Tax pricing: https://stripe.com/en-es/tax/pricing
+- S-P16 Stripe Tax filing: https://docs.stripe.com/tax/filing
+- S-P17 Paddle: https://www.paddle.com/pricing ; https://www.paddle.com/help/manage/reporting/how-are-my-earnings-calculated ; https://www.paddle.com/help/manage/risk-prevention/understanding-chargebacks-with-paddle
+- The USD rate (ECB, 11 Nov 2026): search result only
+
+**Tax** (2026-11-17)
+- S-T1 LIVA (Ley 37/1992), art. 73: https://www.boe.es/buscar/act.php?id=BOE-A-1992-28740
+- S-T2 AEAT, VAT on electronic services: https://sede.agenciatributaria.gob.es/Sede/iva/iva-comercio-electronico/iva-telecomunicaciones-servicios-electronicos.html ; AEAT's VAT manual 2025, *régimen de la Unión*
+- S-T3 The Commission's OSS pages: https://vat-one-stop-shop.ec.europa.eu/one-stop-shop/register-oss_en , https://vat-one-stop-shop.ec.europa.eu/one-stop-shop/declare-and-pay-oss_en ; the OSS Guide (July 2026 revision)
+- S-T4 Implementing Regulation 282/2011, Art. 24b (the UK's copy of the EU text; EUR-Lex didn't load): https://www.legislation.gov.uk/eur/2011/282/article/24b
+- S-T5 Your Europe, cross-border VAT: https://europa.eu/youreurope/business/taxation/vat/cross-border-vat/index_en.htm ; AEAT on the ROI: https://sede.agenciatributaria.gob.es/Sede/iva/iva-operaciones-comercio-exterior/identificacion-realizar-operaciones-otros-empresarios-ue.html ; Modelo 349 (AEAT leaflet, section 5.9)
+- S-T6 RD 1619/2012 (invoicing): https://www.boe.es/buscar/act.php?id=BOE-A-2012-14696 ; RD 1007/2023 (VERI*FACTU): https://www.boe.es/buscar/act.php?id=BOE-A-2023-24840 ; AEAT's VERI*FACTU FAQ; Stripe on VERI*FACTU: https://stripe.com/resources/more/what-is-verifactu-spain
+- S-T7 HMRC VAT Notice 700/1: https://www.gov.uk/guidance/who-should-register-for-vat-vat-notice-7001 ; the Swiss ESTV: https://www.estv.admin.ch ; Canada's GST/HST for the digital economy: https://www.canada.ca ; Norway, Australia, the US, Japan and Singapore: search results only; the zero-threshold countries: not verified
+- S-T8 Stripe Tax monitoring: https://docs.stripe.com/tax/monitoring
+- S-T9 Stripe Tax in the EU: https://docs.stripe.com/tax/supported-countries/european-union
+- S-T10 Stripe Tax filing: https://docs.stripe.com/tax/filing
+
+**Round 1's sources this document still cites** (2026-11-09; the full list is in section 9 of this document at commit `496f976`)
+- S-E2 Apple, Advanced Data Protection: https://support.apple.com/en-us/102651
+- S-E15 to S-E18 chacha20poly1305: https://crates.io/api/v1/crates/chacha20poly1305 , https://github.com/RustCrypto/AEADs/tree/master/chacha20poly1305 ; age: https://crates.io/api/v1/crates/age ; RFC 9106: https://www.rfc-editor.org/rfc/rfc9106.html
+- S-E19 Court of Justice press release 107/25 (C-413/23 P): https://curia.europa.eu/site/upload/docs/application/pdf/2025-09/cp250107en.pdf
+- S-B1 sqlite3_rsync: https://sqlite.org/rsync.html ; S-B2 restic's design: https://raw.githubusercontent.com/restic/restic/master/doc/design.rst
+- S-B3 the HLC paper: https://cse.buffalo.edu/tech-reports/2014-04.pdf ; S-B4 Actual Budget: https://archive.jlongster.com/using-crdts-in-the-wild
+- S-B5 Linear's sync engine: https://linear.app/now/scaling-the-linear-sync-engine ; S-B9: https://github.com/wzhudev/reverse-linear-sync-engine
+- RFC 8252 (OAuth for native apps): https://www.rfc-editor.org/rfc/rfc8252.html
+- The legal texts behind 3.9 (LSSI-CE, LOPDGDD, TRLGDCU on the BOE; the AEPD's tools; the Commission's standard clauses; the Data Act, DSA and NIS2 pages)
+
+**In this repository** (main at `99ce4e3`, read 2026-11-17): `docs/PAID-FEATURES.md`, `docs/backup-format.md`, `docs/features/chief.md`, `docs/agent-tools.md`, `README.md`, `crates/gizai-core/src/{db,tasks,runs,scope,settings,columns,workflow,chat,pending,questions}.rs`, `crates/gizai-core/migrations/{0001_init,0003_chat,0012_chat_runs_on,0017_pending_actions,0022_outside_marks}.sql`, `crates/gizai-agents/src/{oauth,secrets,release_sig}.rs`, `src-tauri/src/{lib,chat,pending}.rs`, `src/api.ts`, `src/router.ts`, `src/pages/SettingsPage.tsx`, `src-tauri/tauri.conf.json`, `Cargo.lock`.
