@@ -13,10 +13,34 @@ fn linux_is_hyprland_only_with_its_signature() {
     assert_eq!(linux_support(Some(OsStr::new("4520b30d498daca8079365bdb909a8dea38e8d55_1731772800_1234567890"))), "compositor");
 }
 
-#[test]
-fn the_command_answers_one_of_the_four_the_ui_knows() {
-    assert_eq!(glass_support(), support());
+/// GA-299: the command is async (it runs on the async runtime, not on the main thread) and answers what `support()` does.
+#[tokio::test]
+async fn the_command_answers_one_of_the_four_the_ui_knows() {
+    assert_eq!(glass_support().await, support());
     assert!(["vibrancy", "mica", "compositor", "none"].contains(&support()), "{}", support());
+}
+
+/// GA-299: what the window gets is the answer as a JSON string, the text src/lib/glass.ts reads, as it was when the
+/// command wasn't async.
+#[tokio::test]
+async fn the_window_gets_the_same_text_as_before() {
+    let answer = glass_support().await;
+    assert_eq!(serde_json::to_value(answer).unwrap(), serde_json::Value::String(support().to_string()));
+    assert_eq!(serde_json::to_string(answer).unwrap(), format!("\"{}\"", support()));
+}
+
+/// GA-299: glass_support is written as an async Tauri command, and the window can still call it.
+#[test]
+fn glass_support_is_an_async_command_in_the_handler() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let rs = std::fs::read_to_string(dir.join("glass.rs")).unwrap();
+    let at = rs.find("#[tauri::command]").expect("glass.rs has a command");
+    let fn_at = at + rs[at..].find("fn ").unwrap();
+    assert!(rs[fn_at..].starts_with("fn glass_support()"), "{}", &rs[at..fn_at + 30]);
+    assert!(rs[at..fn_at].contains("async"), "glass_support is async: {}", &rs[at..fn_at + 30]);
+    let lib = std::fs::read_to_string(dir.join("lib.rs")).unwrap();
+    let handler = &lib[lib.find("generate_handler![").expect("lib.rs has generate_handler")..];
+    assert!(handler[..handler.find(']').unwrap()].contains("glass::glass_support"));
 }
 
 #[cfg(target_os = "linux")]
