@@ -68,16 +68,17 @@ export function DocPage({ id }: { id: string }) {
           <span className={status === "saved" ? "faint" : "muted"} role="status">{statusText}</span>
           <button className="btn primary" title={`Save as a new version (${modKey()}+S)`} disabled={status === "saved" || status === "saving"} onClick={() => save(text)}>Save</button></div>
       </div>
-      {err && <div className="error-banner" role="alert">{err}</div>}
-      {status === "conflict" && (
-        <div className="error-banner" role="alert">
-          This doc was saved by someone else after you opened it (version {doc.currentVersion}). Your text is still in the editor.
-          <button className="btn" onClick={() => save(text, true)}>Save mine as a new version</button>
-          <button className="btn ghost" onClick={() => adopt(doc.bodyMd, doc.currentVersion)}>Discard mine, load theirs</button>
-        </div>
-      )}
-      <div className="split">
+      {/* two islands (design/islands-settings: A doc): the doc, with its banners at the top, and History on the right */}
+      <div className="split doc-split">
         <div className="doc">
+          {err && <div className="error-banner" role="alert">{err}</div>}
+          {status === "conflict" && (
+            <div className="error-banner" role="alert">
+              This doc was saved by someone else after you opened it (version {doc.currentVersion}). Your text is still in the editor.
+              <button className="btn" onClick={() => save(text, true)}>Save mine as a new version</button>
+              <button className="btn ghost" onClick={() => adopt(doc.bodyMd, doc.currentVersion)}>Discard mine, load theirs</button>
+            </div>
+          )}
           <div className="doc-in" style={{ maxWidth: 980 }}>
             <input className="title-input" aria-label="Doc title" value={title} onChange={(e) => setTitle(e.target.value)} onBlur={saveTitle}
               onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
@@ -89,7 +90,7 @@ export function DocPage({ id }: { id: string }) {
           </div>
         </div>
         <aside className="props" aria-label="History">
-          <div className="props-head">History</div>
+          <div className="island-head"><span className="island-title">History</span></div>
           <div className="props-body">
           {(versions ?? []).map((v) => (
             <button key={v.version} className={`version${v.version === base ? " on" : ""}`} onClick={() => openVersion(v.version)}>

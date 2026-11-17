@@ -204,11 +204,42 @@ export async function docProbe(
   await sleep(300);
   ctrlS();
   const banner = await waitFor(() => [...document.querySelectorAll(".error-banner")].find((b) => b.textContent?.includes("saved by someone else")) as HTMLElement | undefined, 3000);
+  const islands = docIslands(banner ?? null);
   const keep = banner?.querySelector("button") as HTMLButtonElement | null;
   keep?.click();
   const d3 = await until((d) => d.currentVersion === v0 + 3);
   const kept = d3.bodyMd.includes("Probe two.") && d3.bodyMd.includes("Probe one.");
-  return { ok: first && !!banner && kept, first_save: first, conflict_shown: !!banner, kept_mine: kept, versions: [v0, d1.currentVersion, d3.currentVersion] };
+  return { ok: first && !!banner && kept && islands.ok, first_save: first, conflict_shown: !!banner, kept_mine: kept, versions: [v0, d1.currentVersion, d3.currentVersion], islands };
+}
+
+/** GA-295 QA (design/islands-settings: 2. A doc): two islands right of the sidebar, the doc and History (320 wide) on its
+ *  right, island-gap (6) apart, each in the sidebar island's fill with island-radius and no border, the page's own island
+ *  giving way (no fill); History's head is the island's header (40 high) titled History, with no line under it; the
+ *  conflict banner sits at the top of the doc island; the top bar keeps the status and Save. */
+function docIslands(banner: HTMLElement | null) {
+  const errors: string[] = [];
+  const check = (ok: unknown, what: string) => { if (!ok) errors.push(what); };
+  const doc = document.querySelector<HTMLElement>(".split.doc-split > .doc");
+  const props = document.querySelector<HTMLElement>('.split.doc-split > aside.props[aria-label="History"]');
+  const side = document.querySelector<HTMLElement>(".side");
+  if (!doc || !props || !side) return { ok: false, errors: [`the doc's islands are missing (doc ${!!doc}, History ${!!props}, sidebar ${!!side})`] };
+  const look = (el: Element) => { const s = getComputedStyle(el); return { bg: s.backgroundColor, radius: s.borderTopLeftRadius, border: s.borderLeftWidth, shadow: s.boxShadow }; };
+  const island = look(side).bg;
+  const d = doc.getBoundingClientRect(), p = props.getBoundingClientRect();
+  const out = { island, doc: { ...look(doc), w: Math.round(d.width) }, history: { ...look(props), w: Math.round(p.width) }, gap: Math.round(p.left - d.right),
+    page_bg: getComputedStyle(doc.closest(".page-island") ?? doc).backgroundColor };
+  for (const [name, l] of [["doc", out.doc], ["History", out.history]] as const)
+    check(l.bg === island && l.radius === "10px" && l.border === "0px" && l.shadow === "none", `the ${name} island: the sidebar island's fill, radius 10, no border (${JSON.stringify(l)}, island ${island})`);
+  check(out.history.w === 320, `History is 320 wide (${out.history.w})`);
+  check(out.gap === 6 && Math.round(p.top) === Math.round(d.top) && Math.round(p.bottom) === Math.round(d.bottom), `the doc and History side by side, 6 apart (${out.gap})`);
+  check(out.page_bg === "rgba(0, 0, 0, 0)", `the page's own island gives way to them (${out.page_bg})`);
+  const head = props.firstElementChild as HTMLElement | null;
+  check(head?.classList.contains("island-head") && Math.round(head.getBoundingClientRect().height) === 40 && head.textContent === "History"
+    && getComputedStyle(head).borderBottomWidth === "0px", `History's header: 40 high, the title History, no line (${head?.className}, ${head?.getBoundingClientRect().height}, ${head?.textContent})`);
+  check(banner && doc.contains(banner) && banner.getBoundingClientRect().top - d.top < 24, `the conflict banner at the top of the doc island (${banner ? Math.round(banner.getBoundingClientRect().top - d.top) : "none"})`);
+  const bar = document.querySelector(".topbar");
+  check(bar && !doc.contains(bar) && [...bar.querySelectorAll("button")].some((b) => b.textContent === "Save") && bar.textContent?.includes("Not saved"), `the top bar keeps the status and Save (${bar?.textContent})`);
+  return { ok: errors.length === 0, errors, ...out };
 }
 
 /** GA-122: closing Gizai with unsaved text in the doc page's or the Memory page's editor. scripts/close-save-test.sh quits
@@ -1840,9 +1871,10 @@ export async function appearanceProbe(phase: "set" | "kept") {
   const controlsOk = JSON.stringify(controls.groups) === JSON.stringify(["Font", "Chat size", "Interface size", "Tasks and docs size", "Theme", "Density"])
     && JSON.stringify(controls.fonts) === JSON.stringify(["Atkinson Hyperlegible", "JetBrains Mono", "Inter", "Geist", "Hack"])
     && controls.reset_disabled === true && controls.reset_text === "Reset to defaults";
+  // tab: the Settings tab's name, t-label (fs-sm, 12.5; a label grows 1px at most) since GA-295 made them Island tabs
   const defaultsOk = Object.keys(defaults.html_vars).length === 0 && defaults.font_attr === null && defaults.theme === "dark" && defaults.density === null
     && Object.keys(defaults.kept).length === 0 && defaults.nav.fs === 13.5 && defaults.nav.h === 32 && defaults.side === 248 && defaults.topbar === 44
-    && defaults.save === 30 && defaults.tab === 13.5 && defaults.bubble === 13.5 && defaults.agent === 15 && defaults.docs === 15 && defaults.docs_h3 === 15.5
+    && defaults.save === 30 && defaults.tab === 12.5 && defaults.bubble === 13.5 && defaults.agent === 15 && defaults.docs === 15 && defaults.docs_h3 === 15.5
     && JSON.stringify(defaults.pressed) === JSON.stringify({ chat: ["15"], ui: ["13.5"], docs: ["15"], theme: ["Dark"], density: ["Comfortable"] })
     && defaults.nav.family === "Atkinson Hyperlegible Next";
   // GA-290: the window in islands at the defaults (Settings has a top bar), in dark; the mountains' checkbox is gone.
@@ -1964,7 +1996,7 @@ export async function appearanceProbe(phase: "set" | "kept") {
     islands: islandsState() };
   const bigOk = clicked.every(Boolean) && big.html_vars["--chat-grow"] === "5px" && big.html_vars["--ui-grow"] === "3px" && big.html_vars["--docs-grow"] === "5px"
     && JSON.stringify(big.kept) === JSON.stringify({ "gizai-size-chat": "20", "gizai-size-ui": "16.5", "gizai-size-docs": "20" }) && big.reset_disabled === false
-    && big.nav.fs === 16.5 && big.nav.h === 37 && big.side === 266 && big.topbar === 49 && big.save === 35 && big.tab === 16.5
+    && big.nav.fs === 16.5 && big.nav.h === 37 && big.side === 266 && big.topbar === 49 && big.save === 35 && big.tab === 13.5
     && big.bubble === 18.5 && big.agent === 20 && big.docs === 20 && big.docs_h3 === 18 && near(big.section, 16.5, 0.01)
     && big.settings_cut.length === 0 && big.settings_wide.length === 0 && islandsOn(big.islands, "dark", 49);
 
@@ -2182,6 +2214,9 @@ export async function memoryProbe(noteId: string, agentId: string) {
     if (!q(".mem-side")) { q<HTMLButtonElement>(".mem-toggle")?.click(); await sleep(200); }
     for (const h of document.querySelectorAll<HTMLButtonElement>('.mem-side .mem-section-head[aria-expanded="false"]')) h.click();
     await sleep(200);
+    // GA-295: Notes, the note and About this note, each an island of its own
+    const islands = memoryIslands();
+    out.islands = islands;
 
     // The reading view: links, the missing one dashed, the embed and the card chip.
     await waitFor(() => (wikiLinks().length >= 3 && q(".mem-note .note-view a.item-chip") ? true : null), 6000);
@@ -2434,8 +2469,8 @@ export async function memoryProbe(noteId: string, agentId: string) {
     const ok =navOk && agentsFirst && linksOk && missingDashed && embedOk && chipOk && selectedOk && outgoingOk && panelOk && !!preview && previewGone
       && !!offer && opened && deployOn && backlinksOk && linkedNow && byTag && byWord && narrowed && filtered && unfiltered && palOpened && openKept && renamed && dragged
       && embedFollowed && drawerOk && madeOk && editorOk && ctrlClicked && nowFound && card && agentOk && agentSearchOk && recentOk
-      && previewStays && previewLeft && leadSearchOk && sharedSearchOk;
-    return { ok, nav_ok: navOk, agents_first: agentsFirst, links_ok: linksOk, missing_dashed: missingDashed, embed_ok: embedOk, chip_ok: chipOk,
+      && previewStays && previewLeft && leadSearchOk && sharedSearchOk && islands.ok;
+    return { ok, islands_ok: islands.ok, nav_ok: navOk, agents_first: agentsFirst, links_ok: linksOk, missing_dashed: missingDashed, embed_ok: embedOk, chip_ok: chipOk,
       selected_ok: selectedOk, outgoing_ok: outgoingOk, panel_ok: panelOk, previewed: !!preview, preview_gone: previewGone, offer: !!offer, opened,
       lead_search_ok: leadSearchOk, shared_search_ok: sharedSearchOk,
       deploy_on: deployOn, crumbs, backlinks_ok: backlinksOk, linked_now: linkedNow, by_tag: byTag, by_word: byWord, narrowed, filtered, unfiltered,
@@ -2444,6 +2479,57 @@ export async function memoryProbe(noteId: string, agentId: string) {
   } finally {
     for (const [k, v] of Object.entries(prefs)) { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); }
   }
+}
+
+/** GA-295 QA (design/islands-settings: 1. Memory): with a note open, three islands right of the sidebar, island-gap (6)
+ *  apart and as high as each other: Notes (260), the note (the rest) and About this note (300), each in the sidebar island's
+ *  fill with island-radius and no border, the page's own island giving way (no fill). Notes' header is the scope's name
+ *  (t-body-strong, text) with New note and New folder, above the search box; the note bar is the note island's header (40,
+ *  no line), at its top; About this note has no header: Outline, Properties, Tags, History, Backlinks and Outgoing links,
+ *  in that order; the open note's row is selected with its icon in text; the panel toggle shows pressed in the top bar. */
+function memoryIslands() {
+  const errors: string[] = [];
+  const check = (ok: unknown, what: string) => { if (!ok) errors.push(what); };
+  const split = q<HTMLElement>(".split.memory.islands");
+  const files = q<HTMLElement>(".split.memory.islands > .mem-files"), note = q<HTMLElement>(".split.memory.islands > .mem-note");
+  const side = q<HTMLElement>(".split.memory.islands > .mem-side"), sidebar = q<HTMLElement>(".side");
+  if (!split || !files || !note || !side || !sidebar) return { ok: false, errors: [`the islands are missing (${[split, files, note, side, sidebar].map((x) => !!x).join(", ")})`] };
+  const island = getComputedStyle(sidebar).backgroundColor;
+  const look = (el: Element) => { const s = getComputedStyle(el); return { bg: s.backgroundColor, radius: s.borderTopLeftRadius, border: [s.borderLeftWidth, s.borderRightWidth].join(" ") }; };
+  const f = files.getBoundingClientRect(), n = note.getBoundingClientRect(), a = side.getBoundingClientRect();
+  const out = { island, notes: { ...look(files), w: Math.round(f.width) }, note: look(note), about: { ...look(side), w: Math.round(a.width) },
+    gaps: [Math.round(n.left - f.right), Math.round(a.left - n.right)], page_bg: getComputedStyle(split.parentElement ?? split).backgroundColor };
+  for (const [name, l] of [["Notes", out.notes], ["note", out.note], ["About this note", out.about]] as const)
+    check(l.bg === island && l.radius === "10px" && l.border === "0px 0px", `the ${name} island: the sidebar island's fill, radius 10, no border (${JSON.stringify(l)}, island ${island})`);
+  // as today: 260 and 300, or 230 and 270 in a window up to 1300 wide (the cage's is 1280)
+  const [nw, aw] = window.innerWidth > 1300 ? [260, 300] : [230, 270];
+  check(out.notes.w === nw && out.about.w === aw, `Notes ${nw} and About this note ${aw} wide in a ${window.innerWidth}px window (${out.notes.w}, ${out.about.w})`);
+  check(out.gaps.every((g) => g === 6) && [f, n, a].every((r) => Math.round(r.top) === Math.round(f.top) && Math.round(r.bottom) === Math.round(f.bottom)), `side by side, 6 apart, as high as each other (${out.gaps})`);
+  check(out.page_bg === "rgba(0, 0, 0, 0)", `the page's own island gives way to them (${out.page_bg})`);
+  // Notes' header: the scope's name with New note and New folder, above the search box
+  const head = files.firstElementChild as HTMLElement | null;
+  const title = head?.querySelector<HTMLElement>(".island-title");
+  const acts = [...(head?.querySelectorAll(".acts button") ?? [])].map((b) => b.getAttribute("aria-label"));
+  check(head?.classList.contains("island-head") && Math.round(head.getBoundingClientRect().height) === 40 && textOf(title) === "Chief"
+    && getComputedStyle(title!).color === getComputedStyle(document.body).color && getComputedStyle(title!).textTransform === "none"
+    && JSON.stringify(acts) === JSON.stringify(["New note", "New folder"]) && head.nextElementSibling?.classList.contains("mem-search"),
+    `Notes' header: Chief with New note and New folder, above the search (${head?.className}, ${textOf(title)}, ${acts})`);
+  // the note bar: the note island's header, at its top, 40 high, no line under it
+  const bar = note.firstElementChild as HTMLElement | null;
+  check(bar?.classList.contains("mem-note-bar") && Math.round(bar.getBoundingClientRect().height) === 40 && Math.round(bar.getBoundingClientRect().top) === Math.round(n.top)
+    && getComputedStyle(bar).borderBottomWidth === "0px", `the note bar is the note island's header (${bar?.className}, ${bar?.getBoundingClientRect().height})`);
+  // the note scrolls under it: its body scrolls, the bar stays
+  const body = note.querySelector<HTMLElement>(".mem-note-body");
+  check(body && getComputedStyle(body).overflowY === "auto" && getComputedStyle(note).overflowY === "hidden", "the note scrolls under its bar");
+  // About this note: no header, its sections in the frame's order
+  const sections = [...side.querySelectorAll(".mem-section-head")].map((h) => textOf(h).replace(/\d+$/, "").trim());
+  check(JSON.stringify(sections) === JSON.stringify(["Outline", "Properties", "Tags", "History", "Backlinks", "Outgoing links"])
+    && side.firstElementChild?.classList.contains("mem-section"), `About this note: no header, the sections in order (${sections.join(", ")})`);
+  const row = q(".mem-tree .mem-item.note.on");
+  check(row && getComputedStyle(row.querySelector(".icon")!).color === getComputedStyle(row).color, "the open note's row: its icon in text");
+  const toggle = q<HTMLElement>(".topbar .mem-toggle.on");
+  check(toggle && getComputedStyle(toggle).backgroundColor !== "rgba(0, 0, 0, 0)", `the panel toggle shows pressed in the top bar (${toggle ? getComputedStyle(toggle).backgroundColor : "missing"})`);
+  return { ok: errors.length === 0, errors, ...out, sections };
 }
 
 // ---- GA-69: the memory graph --------------------------------------------------------------------------------------------
@@ -3745,7 +3831,8 @@ export async function terminalProbe(folder: string) {
       && getComputedStyle(sideRow.querySelector(".card-id")!).fontFamily !== getComputedStyle(sideRow).fontFamily,
     `the terminal has its row in the sidebar, the card's identifier in mono, selected (${JSON.stringify(out.row)})`);
   const pageTab = q(`.term-tabs [role=tab][data-term="${CSS.escape(id)}"]`);
-  check(pageTab?.getAttribute("aria-selected") === "true" && Math.round(q(".term-tabs")?.getBoundingClientRect().height ?? 0) === 32, `the page has the folder's tab, selected, in a 32px strip (${q(".term-tabs")?.getBoundingClientRect().height})`);
+  // GA-295 (design/islands-settings: A terminal's own page): the tabs are the island's header, size-island-head (40) high
+  check(pageTab?.getAttribute("aria-selected") === "true" && Math.round(q(".term-page > .term-tabs")?.getBoundingClientRect().height ?? 0) === 40, `the page has the folder's tab, selected, in its island's 40px header (${q(".term-page > .term-tabs")?.getBoundingClientRect().height})`);
   await sleep(200);
   out.where = q(".term-where")?.textContent;
   check(out.where === `${q(".term-where .path")?.textContent}·sh·${term.cols} × ${term.rows}`, `the top bar says the folder, the shell and its size (${out.where})`);

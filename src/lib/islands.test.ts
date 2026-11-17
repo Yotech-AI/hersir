@@ -3,8 +3,8 @@
 // page as islands (island fill, island-radius, island-gap from the edges and each other, no border); each page's top bar
 // sits on the background (size-topbar 44, no fill, no border, its buttons without fill until hovered, faint text text-2);
 // scrollbars are a 6px thumb in scroll-thumb; inputs, selects, checkboxes, kbd and segmented controls fill with raised; what
-// floats is float (no overlay left in the app's styles); the mountains are gone from the app (the onboarding keeps its band,
-// as the README says); and design/README.md's Visual foundations describes the islands. Files are read from disk (Vitest
+// floats is float (no overlay left in the app's styles); the mountains are gone from the app (and, since GA-295, from the
+// onboarding too); and design/README.md's Visual foundations describes the islands. Files are read from disk (Vitest
 // hands .css back empty); node:fs comes in through a computed specifier, as in terminalTokens.test.ts.
 import { describe, expect, it } from "vitest";
 import { tokensCss, type Tokens } from "./tokensCss";
@@ -282,13 +282,17 @@ describe("the mountains are gone from the window (the gradient took their place)
     expect(read("src/lib/appearance.ts")).not.toMatch(/dataset\.band/);
   });
 
-  it("keeps the first start's onboarding's band until the card that draws it (the README's 'onboarding keeps its band')", () => {
+  // GA-290 kept the onboarding's band "until the card that draws it"; GA-295 is that card (design/islands-settings: 9.
+  // Onboarding, "The band goes here as well"), so the band, its rules and mountains.svg are gone from the onboarding too
+  it("and from the first start's onboarding since GA-295, the card that draws it in islands", () => {
     expect(islandsMd).toContain("The first start's onboarding (no islands) keeps its band until the card that draws it.");
-    const onb = css["onboarding.css"] ?? "";
-    expect(onb).toContain(".onb > .band {");
-    expect(rules(onb).find((r) => r.selector === ".onb > .band")?.decl.get("pointer-events")).toBe("none");
-    expect(read("src/pages/OnboardingPage.tsx")).toContain('className="band" aria-hidden="true"');
-    expect(exists("src/assets/mountains.svg")).toBe(true);
+    const onb = (css["onboarding.css"] ?? "").replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(onb).not.toMatch(/\.band\b|--onb-band|band-line|band-glow|size-band/);
+    const page = read("src/pages/OnboardingPage.tsx").replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
+    expect(page).not.toMatch(/mountains|className="band"/);
+    expect(exists("src/assets/mountains.svg")).toBe(false);
+    // nothing else in the app still loads it
+    for (const f of ["src/App.tsx", "src/main.tsx", "src/components/AppearanceSettings.tsx"]) expect([f, read(f).includes("mountains.svg")]).toEqual([f, false]);
   });
 });
 

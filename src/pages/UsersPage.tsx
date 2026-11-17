@@ -18,7 +18,8 @@ export function UsersPage() {
   return (
     <>
       <div className="topbar"><div className="crumbs"><b>Users</b><span className="faint">{data?.length ?? ""} people</span></div></div>
-      <div className="toolbar">
+      {/* the toolbar is the island's header, 44 high (design/islands-settings: Users) */}
+      <div className="toolbar island-head bar">
         <button className="btn" onClick={() => open({ kind: "person" })}><Plus className="icon" />Add person</button>
         <span className="spacer" /><span className="faint" style={{ fontSize: "var(--fs-sm)" }}>People can be assigned tasks and mentioned. Agents are set up on the Team page.</span>
       </div>

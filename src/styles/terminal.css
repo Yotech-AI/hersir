@@ -59,6 +59,25 @@
 /* The shell ended or couldn't start: the bar is the Editor's file bar, under the tabs; the screen stays as it was. Not the
    global .file card (app.css): the bar keeps its height and the terminal takes the rest (GA-136). */
 .term-page > .ed-bar.file, .chat-side-in > .ed-bar.file { flex: none; border-width: 0 0 1px; border-radius: 0; cursor: default; }
+
+/* In islands (design/islands-settings: A terminal's own page, GA-295): the page is one island, its header the folder's
+   terminals as Island tabs (size-island-head, padding 0 6px, 2px apart, no line under it) with New terminal (+) on the
+   right; then the terminal on term-bg (= island), 6px under the header and 14px in. An Island tab: size-island-tab high,
+   radius 6, padding 0 6px 0 10px, the name t-label in text-2; hover fill hover, name text; the open one a pill in selected
+   (no accent line). Close (12px x in an 18px box, radius 4) shows on the open tab and the hovered one; the others keep no
+   room for it. */
+.term-page > .term-tabs { align-items: center; gap: 2px; height: var(--size-island-head); padding: 0 6px; background: none; box-shadow: none; }
+.term-page > .term-tabs > .ed-tab { height: var(--size-island-tab); padding: 0 6px 0 10px; border: 0; border-radius: var(--radius); background: none; box-shadow: none;
+  color: var(--text-2); font-size: var(--fs-sm); font-weight: 500; }
+.term-page > .term-tabs > .ed-tab:hover { background: var(--hover); color: var(--text); }
+.term-page > .term-tabs > .ed-tab[aria-selected="true"] { background: var(--selected); color: var(--text); box-shadow: none; }
+.term-page > .term-tabs > .ed-tab:hover > .icon { color: var(--text-2); }
+.term-page > .term-tabs > .ed-tab .x { display: none; width: 18px; height: 18px; margin-left: 0; border-radius: var(--radius-s); visibility: visible; }
+.term-page > .term-tabs > .ed-tab .x .icon { width: 12px; height: 12px; }
+.term-page > .term-tabs > .ed-tab:hover .x, .term-page > .term-tabs > .ed-tab:focus-within .x, .term-page > .term-tabs > .ed-tab[aria-selected="true"] .x { display: grid; color: var(--text-2); }
+.term-page > .term-tabs > .ed-tab .x:hover { background: var(--hover); color: var(--text); }
+.term-page > .term-tabs > .btn.icon-only { width: 26px; height: 26px; margin: 0 0 0 auto; }
+.term-page > .term-place { padding: 6px 14px 8px; }
 .term-place.ended { cursor: default; }
 
 /* Find (Ctrl+Shift+F, Cmd+F): a small box at the top right, over the terminal, so the terminal keeps its size */

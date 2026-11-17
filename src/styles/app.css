@@ -36,6 +36,17 @@ html.glass .app { background: none; }
 .content { flex: 1; overflow: auto; min-height: 0; }
 .split { display: flex; flex: 1; min-height: 0; }
 .split > .content { min-width: 0; }
+/* Pages whose panes are islands of their own (design/islands-settings, GA-295): the page's island gives way, on the
+   background, and each pane is an island, island-gap apart, its fill and island-radius, no border (the gaps split them).
+   A doc: the doc and History (size-props). Memory with its notes: Notes, the note (or Recently changed), About this note and
+   the local graph (Graph keeps the one island). */
+.page-island:has(> .split.doc-split), .page-island:has(> .split.memory.islands) { background: none; border-radius: 0; }
+.split.doc-split, .split.memory.islands { gap: var(--island-gap); }
+/* the panes by name: a drawer the note opens (a version) is a child too, and keeps its own look */
+.doc-split > :is(.doc, .props), .memory.islands > :is(.mem-files, .mem-note, .mem-side, .mem-local) { min-height: 0; overflow-y: auto; border-radius: var(--island-radius); background: var(--island); }
+.doc-split > .props { border-left: 0; }
+.doc-split > .props > .props-body { padding: 0 6px 16px; }
+.doc-split > .doc > .error-banner { margin: 12px 20px 0; }
 /* A card's page in islands (GA-294, design/islands-pages): the page's island gives way to the card's own, on the
    background. The card island (its header holds Card, Changes and Screenshots as island tabs; changes.css) takes the room;
    Properties, while it shows, is an island of its own on its right, size-props wide, the full height, island-gap apart.
@@ -466,7 +477,8 @@ a.member:hover { border-color: var(--line-2); }
 .org-node.dragging { opacity: .45; }
 
 /* ---------- Settings: a tab per part (GA-42); every tab stays on the page, only the open one shows ---------- */
-.settings-page { gap: 18px; }
+/* the tabs are in the island's header above (design/islands-settings: Settings), so the form starts 16px under it */
+.settings-page { gap: 18px; padding-top: 16px; }
 .settings-panel[hidden] { display: none; }
 
 /* ---------- Settings → GitHub ---------- */
@@ -587,7 +599,11 @@ a.member:hover { border-color: var(--line-2); }
 .ct-label { color: var(--text-3); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.04em; }
 .mcp-builtin { margin: 0 0 6px; padding: 0 0 6px; list-style: none; border-bottom: 1px solid var(--line); }
 /* The Usage page (UsagePage): the period switch, the metrics, the bars per day and the agent and project tables. */
-.usage-page { gap: 18px; }
+/* Its island's header holds the four tabs and, right of them, what the toolbar held: the line on Subscription, the period
+   chips and UTC days on the others (design/islands-settings: Usage). */
+.usage-tools { flex: 1; justify-content: flex-end; min-width: 0; padding: 0 6px 0 12px; }
+.usage-tools > .faint { font-size: var(--fs-sm); }
+.usage-page { gap: 18px; padding-top: 16px; }
 .usage-page .usage-metric { margin-top: 10px; }
 .usage-unknown { text-decoration: underline dotted var(--text-3); text-underline-offset: 3px; cursor: help; }
 .usage-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; margin-top: 12px; }
@@ -636,12 +652,12 @@ a.member:hover { border-color: var(--line-2); }
 /* ---- Memory (GA-68): the file explorer, the note and its panel. No teal or gold: those are for agents at work and
    "needs you". ---- */
 .split.memory { min-height: 0; }
-.mem-files { display: flex; flex-direction: column; flex: none; width: 260px; min-height: 0; border-right: 1px solid var(--line); background: var(--side); }
-.mem-search { position: relative; display: flex; align-items: center; padding: 10px 10px 6px; }
-.mem-search > .icon { position: absolute; left: 20px; color: var(--text-3); pointer-events: none; }
+/* Notes, an island of its own (design/islands-settings: Memory): its header is the scope's name with New note and New
+   folder (.island-head), then the search box 8px in, then the tree or the search results */
+.mem-files { display: flex; flex-direction: column; flex: none; width: 260px; min-height: 0; }
+.mem-search { position: relative; display: flex; align-items: center; padding: 0 8px 6px; }
+.mem-search > .icon { position: absolute; left: 18px; color: var(--text-3); pointer-events: none; }
 .mem-search .input { height: calc(30px + var(--ui-box, 0px)); padding-left: 30px; font-size: var(--fs-sm); }
-.mem-files-head { display: flex; align-items: center; gap: 2px; padding: 4px 6px 4px 14px; font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--text-3); }
-.mem-files-head > span { flex: 1; }
 .mem-filter { display: flex; align-items: center; gap: 8px; padding: 2px 8px 6px 12px; font-size: var(--fs-sm); }
 .mem-filter .btn { margin-left: auto; }
 .mem-tree { flex: 1; overflow-y: auto; padding: 0 6px 16px; }
@@ -650,6 +666,7 @@ a.member:hover { border-color: var(--line-2); }
 .mem-item:hover { background: var(--hover); color: var(--text); }
 .mem-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .mem-item.on { background: var(--selected); color: var(--text); }
+.mem-item.on > .icon { color: var(--text); }
 .mem-item .icon { flex: none; color: var(--text-3); }
 .mem-item .chev { margin-right: -2px; }
 .mem-item.drop { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); color: var(--text); }
@@ -675,7 +692,12 @@ a.member:hover { border-color: var(--line-2); }
 .mem-hit mark, .mem-snippet mark { background: var(--accent-soft); color: var(--text); border-radius: 2px; padding: 0 1px; }
 
 .mem-note { flex: 1; min-width: 0; overflow-y: auto; }
-.mem-note-bar { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 6px 20px; border-bottom: 1px solid var(--line); background: var(--bg); font-size: var(--fs-sm); }
+/* The note's island: the note bar is its header (size-island-head, no line under it) and stays; the note scrolls under it */
+.mem-note.open, .memory.islands > .mem-note.open { display: flex; flex-direction: column; overflow: hidden; }
+.mem-note-body { flex: 1; min-height: 0; overflow-y: auto; }
+.mem-note-body > .error-banner, .mem-note > .error-banner { margin: 6px 20px 0; }
+.mem-note-bar { display: flex; flex: none; align-items: center; gap: 8px; height: var(--size-island-head); padding: 0 6px 0 14px; font-size: var(--fs-sm); }
+.mem-note-bar > [role="status"] { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .mem-note-bar .grow { flex: 1; }
 .mem-note-bar .seg button { display: inline-flex; gap: 5px; align-items: center; }
 .mem-note-in { max-width: 860px; padding-top: 16px; gap: 10px; }
@@ -699,7 +721,8 @@ a.member:hover { border-color: var(--line-2); }
 .note-preview-body .prose { font-size: var(--fs); max-width: none; }
 .note-preview .btn { margin-top: 4px; }
 
-.mem-side { width: 300px; flex: none; border-left: 1px solid var(--line); background: var(--bg); overflow-y: auto; padding-bottom: 24px; }
+/* About this note: an island of its own with no header; its folding sections start at the top */
+.mem-side { width: 300px; flex: none; overflow-y: auto; padding-bottom: 24px; }
 .mem-section { border-bottom: 1px solid var(--line); }
 .mem-section-head { display: flex; align-items: center; gap: 6px; width: 100%; height: 38px; padding: 0 14px; border: 0; background: none; color: var(--text); font: inherit; font-size: var(--fs-sm); font-weight: 600; cursor: pointer; text-align: left; }
 .mem-section-head:hover { background: var(--hover); }
@@ -754,6 +777,8 @@ span.mem-tag { cursor: default; }
 .mem-template { margin-top: 18px; }
 .mem-template pre { margin: 0; padding: 10px 12px; max-height: 260px; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--side); font-size: var(--fs-xs); white-space: pre-wrap; }
 .btn.mem-toggle.on { background: var(--selected); color: var(--text); }
+/* pressed in the top bar too, over its "no fill on the background" rule (design/islands-settings: Memory) */
+.main .topbar .btn.mem-toggle.on { background-color: var(--selected); }
 @media (max-width: 1300px) { .mem-files { width: 230px; } .mem-side { width: 270px; } .mem-prop { grid-template-columns: 84px minmax(0, 1fr) 26px; } }
 
 /* ---- The memory graph (GA-69): the canvas on the app's background, its tools and settings panel over its corners,
@@ -807,8 +832,9 @@ span.mem-tag { cursor: default; }
 .graph-conn-list { margin: 0; padding: 4px; list-style: none; }
 .graph-conn-list .mem-row .faint { max-width: 45%; }
 .graph-missing { color: var(--text-2); }
-.mem-local { display: flex; flex-direction: column; flex: none; width: 360px; min-height: 0; border-left: 1px solid var(--line); background: var(--bg); }
-.mem-local-head { display: flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 8px 0 14px; border-bottom: 1px solid var(--line); font-size: var(--fs-sm); }
+/* the local graph takes the note's panel's place, as an island of its own; its head is the island's header */
+.mem-local { display: flex; flex-direction: column; flex: none; width: 360px; min-height: 0; }
+.mem-local-head { display: flex; flex: none; align-items: center; gap: 6px; height: var(--size-island-head); padding: 0 6px 0 12px; font-size: var(--fs-sm); }
 .mem-local-head .faint { flex: 1; }
 .mem-local-head .btn.on { background: var(--selected); color: var(--text); }
 .graph-wrap.local { flex: none; height: 56%; min-height: 220px; border-bottom: 1px solid var(--line); }

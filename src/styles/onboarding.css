@@ -1,45 +1,40 @@
-/* The first start's onboarding (GA-164; GA-168's design: design/onboarding/README.md has the sizes). It takes the whole
-   window, without the sidebar: the top bar (the logo, the steps centred on the window, Skip setup), the step body (640
-   wide and centred; it scrolls between the top bar and the actions when it is taller) and the actions (Back and Next,
-   at one place on every step: 24px above the mountains along the bottom). The onboarding is see-through over the
-   mountains; panels, fields and notices keep their own fill. Everything else is
-   components.css as it is: .btn, .input, .select, .check, .field, .fields, .panel, .badge, .agent-chip, .empty, .link-btn.
-   Only OnboardingPage.tsx loads this file, so a normal start doesn't. */
-/* Its top bar keeps the 52px it was drawn with (size-topbar is the app's top bar on the islands' background, 44px).
-   isolation: the band's z-index -1 stays inside the onboarding, over its background and under the rest. Its own bg, the
-   page's as before: with the glass on (html.glass, app.css) the page is see-through, and the onboarding gets the glass
-   only with the card that draws it in islands. */
-.onb { --onb-w: min(calc(640px + 20 * var(--ui-grow, 0px)), calc(100vw - 48px)); --onb-band: clamp(var(--size-band-min), 14vh, var(--size-band));
-  display: grid; grid-template-rows: calc(52px + var(--ui-box, 0px)) minmax(0, 1fr) auto auto; height: 100vh; overflow: hidden; isolation: isolate; background: var(--bg); }
-
-/* ---------- the mountains along the bottom (GA-139's design) ---------- */
-/* The app's window has the islands' gradient in their place (design/islands); the onboarding keeps them until the card
-   that draws it in islands. Fixed along the window's bottom edge, the window's width: the lines are currentColor
-   (band-line) on a glow that rises from band-glow at the bottom edge to nothing at the band's top. The artwork keeps its
-   height and is cut at the sides (xMidYMax slice), its lines 1px at every width. It takes no clicks, no focus and no text
-   selection. It goes in a window under 560px high, with more contrast, in forced colours and on paper. */
-.onb > .band { position: fixed; left: 0; right: 0; bottom: 0; z-index: -1; height: var(--onb-band); overflow: hidden; pointer-events: none; user-select: none;
-  color: var(--band-line); background: linear-gradient(transparent, var(--band-glow)); }
-.onb > .band > svg { display: block; width: 100%; height: 100%; color: inherit; }
-@media (max-height: 559px), (prefers-contrast: more), (forced-colors: active), print { .onb > .band { display: none; } }
+/* The first start's onboarding (GA-164; GA-168's design: design/onboarding/README.md has the sizes), in islands
+   (design/islands-settings: Onboarding, GA-295). It takes the whole window, without the sidebar: the window's background
+   (the islands' gradient, as .app paints it), the top row on it (the logo, the steps centred on the window, Skip setup),
+   and under it one island, 760 wide (the 640 column and 60 each side), centred, down to island-gap above the window's
+   bottom edge. In the island the step scrolls (the eyebrow, the heading, the lead, the step's parts), and at its foot the
+   step's error and the actions (Back and Next) above a line. Everything else is components.css as it is: .btn, .input,
+   .select, .check, .field, .fields, .panel, .badge, .agent-chip, .empty, .link-btn. Only OnboardingPage.tsx loads this
+   file, so a normal start doesn't. */
+/* The top row is size-topbar (44) high, on the background, with no border. The window is never narrower than 900, so the
+   island always fits; --onb-w is the column, which grows with the interface size. */
+.onb { --onb-w: min(calc(640px + 20 * var(--ui-grow, 0px)), calc(100vw - 2 * var(--island-gap) - 120px));
+  display: grid; grid-template-rows: calc(var(--size-topbar) + var(--ui-box, 0px)) minmax(0, 1fr); height: 100vh; padding: 0 var(--island-gap) var(--island-gap);
+  overflow: hidden; box-sizing: border-box;
+  background: radial-gradient(ellipse 60% 75% at 0 0, var(--canvas-glow) 45%, transparent), linear-gradient(180deg, var(--canvas-from), var(--canvas-to)); }
+/* the island: its fill, island-radius, no border and no shadow */
+.onb-island { display: flex; flex-direction: column; width: calc(var(--onb-w) + 120px); min-height: 0; margin: 0 auto; overflow: hidden;
+  border-radius: var(--island-radius); background: var(--island); }
 
 /* ---------- the top bar ---------- */
-.onb-top { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 16px; padding: 0 20px;
-  border-bottom: 1px solid var(--line); }
+.onb-top { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 16px; padding: 0 18px; }
 /* the logo, 24px high (its mark on its own 24px grid, the least the whole mark is drawn at), in one colour: inside the
    app the gold means only "needs you", so the logo is never gold (design/brand/README.md) */
 .onb-logo { display: flex; color: var(--text-2); }
 .onb-logo svg { display: block; width: 81.16px; height: 24px; }
+/* Skip setup, a ghost button on the background: no fill until hovered (canvas-hover), as the top bars' */
 .onb-skip { justify-self: end; }
+.onb-skip:hover:not(:disabled) { background: var(--canvas-hover); color: var(--text); }
 
 /* the steps: a 20px circle and the name, 8 apart; 12, a 32 × 1 connector and 12 between two steps. Done: a check on
-   selected, and a button that opens the step again; current: the number in accent on accent-soft with an accent ring, the
-   name bold; upcoming: a line-2 ring, all in text-3. The shape and the weight say it too, not the colour alone. */
+   selected, and a button that opens the step again; current: an accent ring on island, the name text and bold; upcoming:
+   a line-2 ring, all in text-2 (on the background text-3 would drop under AA). The shape and the weight say it too, not
+   the colour alone. */
 .onb-steps { display: flex; align-items: center; gap: 12px; margin: 0; padding: 0; list-style: none; }
 .onb-steps li { display: flex; align-items: center; gap: 12px; }
 .onb-steps li + li::before { content: ""; width: 32px; height: 1px; background: var(--line-2); flex: none; }
 .onb-step { display: inline-flex; align-items: center; gap: 8px; padding: 0; border: 0; border-radius: var(--radius); background: none;
-  color: var(--text-3); font: inherit; font-size: var(--fs); line-height: 20px; white-space: nowrap; }
+  color: var(--text-2); font: inherit; font-size: var(--fs); line-height: 20px; white-space: nowrap; }
 .onb-step .num { display: grid; place-items: center; width: 20px; height: 20px; flex: none; border: 1px solid var(--line-2); border-radius: 50%;
   font-size: 11.5px; font-weight: 600; line-height: 1; }
 button.onb-step { color: var(--text-2); cursor: pointer; }
@@ -48,23 +43,24 @@ button.onb-step:disabled { cursor: default; }
 .onb-step.done .num { border-color: transparent; background: var(--selected); color: var(--text); }
 .onb-step.done .num .icon { width: 12px; height: 12px; stroke-width: 2.25; }
 .onb-step.on { color: var(--text); font-weight: 600; }
-.onb-step.on .num { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.onb-step.on .num { border-color: var(--accent); background: var(--island); color: var(--text); }
 /* a narrow window: only the current step keeps its name on screen (screen readers still get every name) */
 @media (max-width: 1023px) {
   .onb-step:not(.on) .nm { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 }
 
 /* ---------- the step body: the eyebrow, 8, the heading, 8, the line under it, then 32 (step 1) or 24 to the parts ---------- */
-.onb-scroll { min-height: 0; overflow-y: auto; }
-.onb-body { display: flex; flex-direction: column; width: var(--onb-w); margin: 0 auto; padding: 64px 0 24px; }
-.onb-eyebrow { margin: 0 0 8px; font-size: var(--fs-sm); color: var(--text-3); }
+/* the step scrolls inside the island, its actions stay at the island's foot */
+.onb-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+.onb-body { display: flex; flex-direction: column; width: var(--onb-w); margin: 0 auto; padding: 48px 0 24px; }
+.onb-eyebrow { margin: 0 0 8px; font-size: var(--fs-sm); color: var(--text-2); }
 .onb-body h1 { display: flex; align-items: center; gap: 10px; margin: 0; font-size: var(--fs-xl); line-height: 1.15; font-weight: 700; letter-spacing: -.015em; }
 .onb-body h1:focus { outline: none; }
 .onb-body h1 .badge { letter-spacing: normal; }
 .onb-lead { margin: 8px 0 0; font-size: var(--fs-md); line-height: 1.6; color: var(--text-2); }
 .onb-parts { display: flex; flex-direction: column; gap: 24px; margin-top: 24px; }
 .onb-parts.first { margin-top: 32px; }
-@media (max-height: 700px) { .onb-body { padding-top: 32px; } }
+@media (max-height: 700px) { .onb-body { padding-top: 28px; } }
 
 /* a part: its head 8 above the list, a caption 8 under it (10 on step 3) */
 .onb-part { display: flex; flex-direction: column; gap: 8px; }
@@ -119,8 +115,7 @@ button.onb-step:disabled { cursor: default; }
 .onb-link .icon { width: 13px; height: 13px; }
 
 /* ---------- the step's error and the actions, under the body ---------- */
-.onb-error { width: var(--onb-w); margin: 0 auto 16px; }
-/* the actions stay 24px above the mountains (24px from the bottom where the mountains go) */
-.onb-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: var(--onb-w); margin: 0 auto calc(var(--onb-band) + 24px);
+.onb-error { flex: none; width: var(--onb-w); margin: 0 auto 16px; }
+/* the actions at the island's foot, 24px from its bottom edge, above a line */
+.onb-actions { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 12px; width: var(--onb-w); margin: 0 auto 24px;
   padding-top: 16px; border-top: 1px solid var(--line); }
-@media (max-height: 559px), (prefers-contrast: more), (forced-colors: active), print { .onb-actions { margin-bottom: 24px; } }

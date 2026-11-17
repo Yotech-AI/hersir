@@ -40,6 +40,11 @@ https://www.figma.com/design/Q2dp2xiv8MMm90Xwj3ToCI/Giz-AI?node-id=135-2
 The onboarding takes the whole window, without the sidebar: nothing in the sidebar works yet, and the steps get the
 focus. From the top:
 
+**Since GA-295 the onboarding is drawn in islands** (`design/islands-settings/README.md`, 9. Onboarding): the top row
+is 44 high on the window's background, with no line under it; the step body and its actions sit in one island, 760 wide,
+centred, down to 6 px above the window's bottom edge, the actions 24 px from the island's foot; the mountains are gone.
+The table below is GA-168's first drawing; where it differs, the islands notes win.
+
 | Part | Where | What |
 |---|---|---|
 | Top bar | y 0, 1440 × 52 (`size-topbar`) | Padding 0 20, 1 px `line` under it. Left (300 wide): the logo, horizontal, 24 px high (81.16 wide; GA-230, Hersir's longboat H on its 24 px grid), one colour `text-2` (`design/brand/README.md`: inside the app the logo is never gold). Middle: the step indicator, centred on the window. Right (300 wide): Skip setup. |
