@@ -1,6 +1,7 @@
 # Builds and tests Gizai on Linux, macOS (Apple silicon) and Windows, on every pull request and every push to main.
 # A pull request into main that only bumps Gizai's version passes without building or testing (the "Version only?"
-# step). It signs, releases and uploads nothing.
+# step). When one changes the AUR package (packaging/), install.sh or this workflow, Arch Linux builds, checks and
+# installs the AUR package too (the arch job). It signs, releases, publishes and uploads nothing.
 name: CI
 
 on:
@@ -206,3 +207,171 @@ jobs:
       # Every test binary, also after one fails, so one run shows all the failures on a system.
       - run: cargo test --workspace --no-fail-fast
         if: steps.version.outputs.only != 'true'
+
+  # Whether this pull request (or push to main) changes what the arch job checks: the AUR package and its licence
+  # (packaging/), install.sh, whose launcher and desktop entry the package makes, and this workflow. The rest of Hersir
+  # never goes into the package, which installs a release's ready-made build; so a version bump changes none of it.
+  # HEAD is the pull request's merge commit, and HEAD^1 is main; for a push, the commit main was at before. When the
+  # fetch or the check fails, the arch job runs.
+  aur-changes:
+    name: AUR package changed?
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      changed: ${{ steps.check.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: AUR package changed?
+        id: check
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            git fetch --quiet --no-tags --depth=2 origin "$GITHUB_SHA" && base="HEAD^1" || base=""
+          else
+            git fetch --quiet --no-tags --depth=1 origin "$BEFORE" && base="$BEFORE" || base=""
+          fi
+          if [ -n "$base" ] && git diff --quiet "$base" HEAD -- packaging install.sh .github/workflows/ci.yml; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # hersir-bin, the AUR package (packaging/aur/hersir-bin), built on Arch Linux as its users build it: makepkg as a user
+  # of its own, with the package's dependencies, from the release its PKGBUILD names. makepkg checks the release's
+  # archive against its line in that release's signed SHA256SUMS, and install.sh, the icons and NOTICE against their
+  # sha256s in git at the release's commit. namcap must report no error on the PKGBUILD or the package. Then pacman
+  # installs it, and:
+  # - hersir --version says the PKGBUILD's version, and /usr/lib/hersir/hersir-package.txt says aur (GA-199);
+  # - the package holds exactly its files, its programs as the release built them;
+  # - the launcher, the desktop entry and the icons are the ones install.sh --skip-build makes at the release's commit,
+  #   and the PKGBUILD makes this commit's install.sh's launcher and desktop entry too, for the next release;
+  # - pacman -Rns removes it and leaves a data folder as it was.
+  # It publishes nothing: the AUR gets a package only from scripts/packages.sh, on Jeffrey's computer.
+  arch:
+    name: Arch Linux (hersir-bin)
+    needs: aur-changes
+    if: needs.aur-changes.outputs.changed == 'true'
+    runs-on: ubuntu-24.04
+    container: archlinux:latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      BUILD: /home/builder/hersir-bin
+    steps:
+      # Arch rolls, so a full upgrade first: installing from fresh lists onto an older system is a partial upgrade. git
+      # before the checkout, which makes no git repository without it; base-devel for makepkg, and namcap.
+      - name: Package lists, git, base-devel and namcap
+        run: |
+          set -eux
+          pacman -Syu --noconfirm
+          pacman -S --needed --noconfirm base-devel git namcap
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - uses: actions/checkout@v4
+
+      # makepkg never runs as root. Like yay, it installs the package's dependencies with sudo pacman.
+      - name: A user that builds the package
+        run: |
+          set -eux
+          useradd --create-home builder
+          echo 'builder ALL=(root) NOPASSWD: /usr/bin/pacman' > /etc/sudoers.d/builder
+          cp -r packaging/aur/hersir-bin "$BUILD"
+          chown -R builder:builder "$BUILD"
+
+      - name: .SRCINFO is what makepkg --printsrcinfo makes of the PKGBUILD
+        working-directory: ${{ env.BUILD }}
+        run: sudo -u builder makepkg --printsrcinfo | diff -u .SRCINFO -
+
+      - name: makepkg
+        working-directory: ${{ env.BUILD }}
+        run: sudo -u builder makepkg --syncdeps --noconfirm
+
+      - name: namcap reports no error on the PKGBUILD or the package
+        working-directory: ${{ env.BUILD }}
+        run: |
+          set -o pipefail
+          namcap PKGBUILD | tee namcap.txt
+          namcap hersir-bin-*.pkg.tar.zst | tee -a namcap.txt
+          if grep ' E: ' namcap.txt; then echo "namcap reports an error (above)."; exit 1; fi
+
+      - name: Install it with pacman
+        run: pacman -U --noconfirm "$BUILD"/hersir-bin-*.pkg.tar.zst
+
+      - name: Hersir says its version, hersir-package.txt says aur, and the package holds exactly its files
+        working-directory: ${{ env.BUILD }}
+        run: |
+          set -euxo pipefail
+          . ./PKGBUILD
+          # As you run it: the hersir command, through the launcher, as a user.
+          test "$(sudo -u builder hersir --version)" = "hersir $pkgver"
+          test "$(cat /usr/lib/hersir/hersir-package.txt)" = aur
+          test "$(readlink /usr/bin/hersir)" = /usr/lib/hersir/hersir-launch
+          cmp /usr/lib/hersir/hersir src/target/release/hersir
+          cmp /usr/lib/hersir/hersir-mcp src/target/release/hersir-mcp
+          pacman -Qlq hersir-bin | grep -v '/$' | sort > files.txt
+          printf '%s\n' /usr/bin/hersir /usr/lib/hersir/hersir /usr/lib/hersir/hersir-launch /usr/lib/hersir/hersir-mcp \
+            /usr/lib/hersir/hersir-package.txt /usr/share/applications/hersir.desktop \
+            /usr/share/icons/hicolor/32x32/apps/hersir.png /usr/share/icons/hicolor/64x64/apps/hersir.png \
+            /usr/share/icons/hicolor/128x128/apps/hersir.png /usr/share/icons/hicolor/256x256/apps/hersir.png \
+            /usr/share/icons/hicolor/512x512/apps/hersir.png /usr/share/icons/hicolor/scalable/apps/hersir.svg \
+            /usr/share/licenses/hersir-bin/NOTICE | sort | diff -u - files.txt
+
+      # install.sh itself, at the release's commit, with the release's programs where --skip-build takes them, into a
+      # scratch folder: its launcher, desktop entry and icons, with that folder as /usr/lib/hersir, are the package's.
+      - name: The launcher, the desktop entry and the icons are the ones install.sh makes at the release's commit
+        run: |
+          set -euxo pipefail
+          . "$BUILD/PKGBUILD"
+          src="$RUNNER_TEMP/release-source" scratch="$RUNNER_TEMP/install-sh"
+          git init -q "$src"
+          git -C "$src" fetch -q --depth=1 --no-tags "https://github.com/Yotech-AI/hersir.git" "$_commit"
+          git -C "$src" checkout -q FETCH_HEAD
+          mkdir -p "$src/target/release"
+          cp "$BUILD/src/target/release/hersir" "$BUILD/src/target/release/hersir-mcp" "$src/target/release/"
+          HOME="$scratch/home" XDG_DATA_HOME="$scratch/share" HERSIR_PREFIX="$scratch/prefix" bash "$src/install.sh" --skip-build
+          lib="$scratch/prefix/lib/hersir"
+          diff -u <(sed "s#$lib#/usr/lib/hersir#g" "$lib/hersir-launch") /usr/lib/hersir/hersir-launch
+          diff -u <(sed "s#$lib#/usr/lib/hersir#g" "$scratch/share/applications/hersir.desktop") /usr/share/applications/hersir.desktop
+          test "$(readlink "$scratch/prefix/bin/hersir")" = "$lib/hersir-launch"
+          icons="$scratch/share/icons/hicolor"
+          cmp "$icons/32x32/apps/hersir.png" /usr/share/icons/hicolor/32x32/apps/hersir.png
+          cmp "$icons/64x64/apps/hersir.png" /usr/share/icons/hicolor/64x64/apps/hersir.png
+          cmp "$icons/128x128/apps/hersir.png" /usr/share/icons/hicolor/128x128/apps/hersir.png
+          cmp "$icons/256x256/apps/hersir.png" /usr/share/icons/hicolor/256x256/apps/hersir.png
+          cmp "$icons/512x512/apps/hersir.png" /usr/share/icons/hicolor/512x512/apps/hersir.png
+          cmp "$icons/scalable/apps/hersir.svg" /usr/share/icons/hicolor/scalable/apps/hersir.svg
+
+      # The next release's package makes its launcher and desktop entry from this commit's install.sh: the PKGBUILD's
+      # way must still give what install.sh itself writes.
+      - name: The PKGBUILD makes this commit's install.sh's launcher and desktop entry too
+        run: |
+          set -euxo pipefail
+          work="$RUNNER_TEMP/this-commit" scratch="$RUNNER_TEMP/install-sh-this-commit"
+          mkdir -p "$work" target/release
+          (
+            . "$BUILD/PKGBUILD"
+            srcdir="$work"
+            cp install.sh "$srcdir/hersir-$pkgver-install.sh"
+            _install_sh LAUNCH > "$work/hersir-launch"
+            _install_sh DESKTOP > "$work/hersir.desktop"
+          )
+          cp "$BUILD/src/target/release/hersir" "$BUILD/src/target/release/hersir-mcp" target/release/
+          HOME="$scratch/home" XDG_DATA_HOME="$scratch/share" HERSIR_PREFIX="$scratch/prefix" bash ./install.sh --skip-build
+          lib="$scratch/prefix/lib/hersir"
+          diff -u <(sed "s#$lib#/usr/lib/hersir#g" "$lib/hersir-launch") "$work/hersir-launch"
+          diff -u <(sed "s#$lib#/usr/lib/hersir#g" "$scratch/share/applications/hersir.desktop") "$work/hersir.desktop"
+
+      - name: Removing the package leaves the data folder as it was
+        run: |
+          set -euxo pipefail
+          home=/home/builder
+          sudo -u builder mkdir -p "$home/.local/share/hersir/backups" "$home/.local/share/dev.hersir.app"
+          sudo -u builder sh -c 'printf "your data\n" > "$1/hersir/gizai.db"; printf "a backup\n" > "$1/hersir/backups/gizai-manual.db"; printf "storage\n" > "$1/dev.hersir.app/storage"' sh "$home/.local/share"
+          before="$(cd "$home/.local/share" && find hersir dev.hersir.app -exec ls -ld --time-style=+%s {} + | sort && find hersir dev.hersir.app -type f -exec sha256sum {} + | sort)"
+          pacman -Rns --noconfirm hersir-bin
+          test ! -e /usr/lib/hersir && test ! -e /usr/bin/hersir && test ! -e /usr/share/applications/hersir.desktop
+          test "$(cd "$home/.local/share" && find hersir dev.hersir.app -exec ls -ld --time-style=+%s {} + | sort && find hersir dev.hersir.app -type f -exec sha256sum {} + | sort)" = "$before"
