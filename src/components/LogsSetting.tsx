@@ -23,8 +23,9 @@ export function LogsSetting({ dataDir }: { dataDir: string }) {
   };
   return (
     <Field label="Hersir's logs" wide hint={LOGS_HINT} error={err}>
-      <div className="input-group logs-folder"><span className="mono bk-folder">{folder ?? `${dataDir}/logs`}</span>
-        <button type="button" className="btn sm" onClick={open}><FolderOpen className="icon" />Open folder</button></div>
+      {/* the folder on its own line like the rows above, its button under it as Backups → Folder has it */}
+      <span className="mono bk-folder">{folder ?? `${dataDir}/logs`}</span>
+      <div className="bk-actions"><button type="button" className="btn sm" onClick={open}><FolderOpen className="icon" />Open folder</button></div>
     </Field>
   );
 }
