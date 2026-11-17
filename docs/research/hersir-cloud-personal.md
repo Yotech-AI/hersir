@@ -573,4 +573,353 @@ Remove (account page or Settings) withdraws its token at once, so it can't reach
 - **Notifications**: Web Push with no content ("The Chief answered", "The Chief waits for your OK"), so nothing readable passes through Apple's or Google's push services.
 - **The web's weak point**: the page's code comes from a server, so a hacked server could serve code that takes the key. Serve the PWA as static files from their own origin, built from a public repository, with a strict Content Security Policy; that is the PWA card's work, not this card's.
 
-<!-- Section 3.9 onwards follows. -->
+### 3.9 Legal [Round 1, updated for selling directly and the new sub-processors]
+
+**Recommendation** [I]: do the template work now (rows 1 to 7, with the European Commission's and the AEPD's material), then one fixed-fee job for a Spanish consumer and technology lawyer: the terms of service and of sale in a business and a consumer version, a review of the DPA, and the consumer rules of the other EU countries you sell to. Don't charge before the terms, the checkout's consent texts and the VAT set-up are signed off. **Changed by decision 9**: the S.L. is now the seller to every customer, so the consumer rules (row 8), the invoices (3.5) and the refunds are YoTech's, not a merchant of record's. This is research, not legal advice (S-L* of Round 1).
+
+YoTech's two roles: **controller** for account, billing, support and website data; **processor** for the data customers back up and sync. Using that data for its own purposes would make YoTech its controller (LOPDGDD art. 33.2).
+
+| # | What | What it needs | Template or lawyer |
+|---|---|---|---|
+| 1 | Legal notice (LSSI-CE art. 10) | NEXO IV GRUPO, S.L., its address, email, Registro Mercantil entry and NIF, on the website and the account pages; before an order the steps, the language and storable terms (art. 27); a confirmation within 24 hours (art. 28) | template |
+| 2 | Privacy policy (GDPR art. 13) | purposes, legal bases, recipients (below), retention (IP addresses 30 days, invoices as tax law says), rights, the AEPD | template, a quick review |
+| 3 | Records of processing (art. 30) | as controller and as processor (the AEPD's Gestiona RGPD) | template |
+| 4 | DPO | not needed (LOPDGDD art. 34.1, GDPR art. 37); a memo says why | in-house |
+| 5 | DPA offered to customers (art. 28) | the Commission's standard clauses (Decision 2021/915), sub-processors by general authorisation with notice and a right to object; deletion or return at the end (LOPDGDD art. 33.3-4) | template, lawyer review |
+| 6 | **Sub-processors** (changed) | Hetzner Online GmbH (Germany): the server; **Cloudflare, Inc. (US)**: R2 in the EU jurisdiction, as a processor under its DPA v6.4, with the EU-US Data Privacy Framework and standard clauses, 30 days' notice of its own new sub-processors [V S-L12]; **Laravel Holdings Inc. (US)**: Forge, which has root access to the server, and Nightwatch if used (check its DPA); the EU email sender. Stripe (Stripe Payments Europe, Ireland) for payments, partly a controller of its own. **Two US companies now**, where Round 1's set-up had none: say so, with the transfer basis, in the list and the privacy policy. What they store or reach of customers' data is ciphertext | in-house |
+| 7 | Breach procedure | AEPD within 72 hours as controller, every breach recorded; each customer without undue delay as processor; with end-to-end encryption the content stays unreadable | template |
+| 8 | **Consumers** (TRLGDCU), now the S.L.'s own | the total price with VAT per period (art. 97.1 e), so the pricing page shows consumers the price with VAT; 14 days to withdraw (art. 102); starting at once needs the consumer's express request and a confirmation on a durable medium (98.7-98.8), and a withdrawal then pays for the days used (108.4); a withdrawal function in the account (Directive 2023/2673, from 19 June 2026; its Spanish transposition still missing in June [I]); refunds by Stripe, from the account page; conformity and free export of the consumer's content (119 ter). Selling to consumers in another EU country can bring that country's mandatory rules too (Rome I art. 6), such as Germany's cancellation button [I] | lawyer, with the checkout's texts |
+| 9 | Terms of service and of sale | transparent and accepted; for consumers no exclusion of liability for death or injury or of conformity remedies (art. 86); for businesses a cap (12 months' fees) and no indirect loss [I]; renewal, cancellation at the period's end, refunds; the lapse (read-only for 60 days, deletion after notice); the recovery code: losing it with every computer loses the cloud copies; the Data Act's switching terms | lawyer |
+| 10 | Data Act, chapter VI | at most 2 months' notice to switch, at least 30 days to take the data out; a restore gives the cloud copy back decrypted, and local data is always complete: say so in the terms | in-house, in the terms |
+| 11 | Digital Services Act | a hosting service: points of contact, terms on content, a notice form, statements of reasons; a small company is spared the transparency reports | in-house |
+| 12 | NIS2, accessibility | NIS2 covers medium and large entities; the EAA spares micro-enterprises that provide services; a file note | in-house |
+| 13 | Invoicing and VAT | VERI*FACTU by 1 January 2027, the OSS, the ROI (3.5) | the gestor |
+
+### 3.10 The order, and what you do by hand
+
+**What you can use first** (decision 7) [I]:
+
+1. **Cloud Backup on your own computers**, with a plan given by hand (`php artisan hersir:comp`): cards 1 to 4, and card 2 deployed on Forge. It reuses 0.16.0's snapshot and restore almost whole, and it is the safety net under sync.
+2. **Before the first sale**: card 5 (Stripe and the account page), the legal pack (3.9), the VERI*FACTU route and the OSS choice with the gestor (3.5), the website's pricing and legal pages. Then sell Personal with Cloud Backup, "with sync coming to the same plan".
+3. **Multiple devices**: card 6 (the engine, no network) can be built at the same time as Cloud Backup; then 7, 8 and 9.
+4. **The Chief's chat on every computer**: cards 10 and 11, after sync.
+
+**What you must do by hand** (no agent can: accounts, money, keys, signatures, DNS):
+
+| # | Where | What |
+|---|---|---|
+| 1 | GitHub | a private repository `Yotech-AI/hersir-cloud`; give Forge access to it; a repository secret with Forge's deploy hook for the Actions workflow |
+| 2 | Hetzner | an account for NEXO IV GRUPO, S.L., its DPA (AVV) accepted in the console; a project and an API token for Forge; check that a CX23 can be ordered in Falkenstein or Nuremberg (the price pages showed "currently unavailable", perhaps only when signed out) |
+| 3 | Laravel Forge | Hobby ($12 a month) for the S.L.; connect Hetzner; create the server (Germany, PHP 8.4; no database server, the app uses SQLite); the site `cloud.hersir.dev` from the repository with zero-downtime deploys; Let's Encrypt; the *Laravel Reverb* switch; daemons for the queue and Litestream (a recipe installs Litestream and its systemd unit); the scheduler; the `.env`; the firewall (22, 80, 443); accept Laravel's terms and DPA |
+| 4 | Cloudflare R2 | turn R2 on in the Cloudflare account that holds `hersir.dev`; three buckets **in the EU jurisdiction** (it can't be changed later): `hersir-cloud-objects`, `hersir-cloud-db`, `hersir-cloud-db-nightly` (a 30-day bucket lock on the last); two API tokens, each limited to its buckets, into Forge's `.env`; Cloudflare's DPA is part of its self-serve terms |
+| 5 | Cloudflare DNS | `cloud.hersir.dev`: A and AAAA records to the server, **DNS only** (grey cloud), so TLS ends on the server and Reverb's websockets go straight to it; later `status.hersir.dev`; SPF, DKIM and DMARC for the email sender |
+| 6 | An EU email sender | an account, the domain verified, its key into `.env` (verification, password reset, lapse emails) |
+| 7 | Stripe (the S.L.'s account) | a sandbox first; the product *Hersir Personal* with two prices (€5 a month, €48 a year, EUR, tax *exclusive*) and the tax code `txcd_10103000`; Stripe Tax: the head office in Spain, the Spanish registration, *small seller* or OSS as the gestor decides; tax IDs collected; billing address required in Checkout; the customer portal (cancel at the period's end, cards, invoices); Billing's retries and emails; the invoice numbering; the webhook to `https://cloud.hersir.dev/stripe/webhook` (Cashier's `cashier:webhook` makes it) and its secret; restricted API keys into `.env`. Not Managed Payments (3.5) |
+| 8 | Keys | make the Ed25519 key pair that signs entitlements, offline; the private key into `.env` and your password manager; the public key goes into Hersir's code with card 3; after `passport:keys` on the server, Passport's key pair into the password manager too |
+| 9 | Monitoring | Nightwatch with its EU region (else Sentry EU); healthchecks.io checks; an uptime check and the status page |
+| 10 | A second copy of the server's database at another company (question 15) | for example a Hetzner Storage Box, with an SSH key for the nightly copy |
+| 11 | Your gestor | small seller or OSS from the start; the ROI (Modelo 036) and Modelo 349; the VERI*FACTU route for Stripe's invoices (Invopop, or the SII); the invoices' wording; the location-evidence policy; the UK registration if you sell there; the Swiss check |
+| 12 | A lawyer | the terms of service and of sale (business and consumer), the checkout's consent and withdrawal texts, the DPA review, other EU countries' consumer rules |
+| 13 | The website (`gizai-website`) | the pricing page (consumers see the price with VAT), the legal pages (notice, privacy, terms, DPA, sub-processors), links to `cloud.hersir.dev` |
+
+**No longer needed** (replaced): Zitadel, Paddle and its domain review, Hetzner Object Storage, a Scaleway or Backblaze bucket, `api.`, `account.` and `login.` records.
+
+## 4. Options
+
+The decisions fix the stack; what is left to choose is how the computers hear about news, and the decisions themselves are compared with Round 1's choice [I; sizes in agent-days, like `PAID-FEATURES.md`].
+
+| | **A. One Forge server: Laravel, SQLite with Litestream, Reverb as the doorbell** (recommended) | B. The same Laravel app, polling only | C. Round 1's option A: a Rust server on Hetzner, Zitadel, Paddle (replaced) |
+|---|---|---|---|
+| What it is | 3.3 to 3.8 | no websockets: every open Hersir asks every 5 to 30 seconds | one Rust binary, Hetzner Object Storage, a bought sign-in service, a merchant of record |
+| News reaches another computer in | about a second | up to the polling interval | about a second (long polling in Rust is cheap) |
+| Load at 1,000 customers | thousands of idle sockets in one Reverb process (with an event loop), a fetch per change | a few hundred requests a second at 5 seconds; at 30 seconds a slow chat | small |
+| Extra work | a Pusher-protocol client in Rust (about a day); Reverb on Forge is a switch | none | the account pages by hand, Zitadel's set-up, Paddle's review |
+| Libraries | Laravel 13, Fortify, Passport 13, Cashier 16, Reverb (all MIT); Litestream (Apache-2.0); app: `chacha20poly1305`, `hkdf`, `hmac`, `x25519-dalek`, `ed25519-dalek`, `fastcdc`, `tungstenite` (MIT or Apache-2.0, BSD-3 for x25519) | the same without Reverb and `tungstenite` | `axum`, `rusqlite`, `rusty-s3`, `jsonwebtoken` |
+| Risks | a websocket that some networks block (polling covers it); Reverb past 1,000 connections needs its event loop; two US sub-processors | a slow chat, or a busy server | a sign-in service at $100 a month before the first customer; not the stack you know |
+| Monthly cost at 10 / 100 / 1,000 customers | about €22 / €31 / €141 | about the same, more CPU at 1,000 | about €14 / €14 / €71 plus Zitadel Pro ($100) |
+| Size, all eleven cards | **about 40 to 60 agent-days** | about 1 day less | about 30 to 40, for eight cards without the chat |
+
+**Recommended: A.** It is the decisions as Jefsev made them, it keeps the chat as quick as a local one, and polling remains its fallback, so B costs nothing to keep in reserve.
+
+## 5. The design (option A)
+
+### 5.1 The screens
+
+**On the desktop**: a new Settings tab, **Hersir Cloud** (`#/settings/cloud`, after GitHub and Bitbucket in `SettingsPage.tsx:34-36` and `router.ts:16`), and *Restore from Hersir Cloud* on the first screen of a new install (`src/pages/OnboardingPage.tsx`). The local Backups section stays in General as it is.
+
+Signed out:
+
+```
+Hersir Cloud
+  Encrypted backups of your data, kept off your computer. Restore them on a new one.
+  Personal: €5 a month or €48 a year, excl. VAT. Hersir can't read what it stores.
+  [Sign in]  [Create an account ↗]                Signing in opens your browser.
+```
+
+After the first sign-in, before anything is uploaded (once per account; decision 2's warning):
+
+```
+Save your recovery code
+  Hersir encrypts your data on this computer before it leaves. Only your computers and this
+  recovery code can open it. If you lose this code and every computer signed in to Hersir Cloud,
+  your cloud backups can't be opened by anyone, Hersir included. Hersir won't show it again.
+
+      HC-7K2Q-M4XD-9TRP-B6WN-3HFJ-Q8YC          (mono)
+  [Copy]  [Save as a file…]
+  Type its last group to show you have it:  [____]                 [Turn on Cloud Backup]
+```
+
+Signed in:
+
+```
+Hersir Cloud
+  Account        jeffrey@… · Personal, renews 9 Nov 2027               [Account page ↗]  [Sign out]
+  Storage        ▓▓▓▓░░░░░░░░░░░░  1.4 of 10 GB
+  Recovery code  Made on 9 Nov 2026                                    [Make a new recovery code]
+
+Cloud Backup
+  Back up        (•) Daily   ( ) Only when I ask       [x] Also when I quit Hersir completely
+  Last backup    Today 09:02 · 38 MB sent · next tomorrow 09:02       [Back up now]
+  Backups        Today 09:02       Daily · this computer      1.2 GB  [Restore]
+                 Yesterday 18:40   On quit · Laptop           1.2 GB  [Restore]
+
+Your computers                                                          (Multiple devices)
+  Desktop · this computer · the Chief's computer     synced 1 minute ago
+  Laptop                                             synced 2 hours ago        [Remove…]
+  [x] Keep my clients, projects and cards in sync on my computers
+  The Chief's computer  [Desktop ▾]   The Chief answers and checks the board there.
+```
+
+*Remove…* asks: "Remove Laptop from Hersir Cloud? It is signed out at once and can no longer write to the Chief. Is it lost or stolen?" with **Remove** and, once the key change exists (question 18), **Remove and change the key**.
+
+A new computer (the first screen, or Settings → Hersir Cloud while signed out):
+
+```
+Restore from Hersir Cloud
+  1  Sign in              [Sign in]   opens your browser (password, then your authenticator's code)
+  2  Your recovery code   [HC-____-____-____-____-____-____]
+  3  Pick a backup        Today 09:02 · Desktop · 1.2 GB      [Restore]
+     Hersir restarts to finish, as a restore from a folder does.
+```
+
+**The Chief's chat on a computer that isn't the Chief's** (the Chat page as it is; only the lines under your message and above the text box are new):
+
+```
+  You · from this computer                                            09:14
+  Can you split GA-310 into a backend and a frontend card?
+  Sent to Desktop · waiting for the Chief                      (then: "Desktop is answering…")
+
+  The Chief                                                            09:14
+  I split it in two: GA-311 (backend) and GA-312 (frontend) …         (streams in as it is written)
+  Waiting for your OK:  update_task GA-310 …        [Approve]  [Discard]
+
+  (Desktop off)  Waiting for Desktop: offline since 09:12. The Chief answers when Desktop is back.
+  [ Message the Chief…                                                                     ]
+  The Chief works on Desktop. Your messages go there.
+```
+
+Elsewhere for Multiple devices: "Running on Laptop" on a card claimed by another computer; "not synced yet" beside a number made offline; *Runs on* in the agent form; a band when Hersir Cloud can't be reached ("Agents start again when it can") or another computer runs a newer Hersir ("Update Hersir to go on syncing").
+
+**On the web** (`cloud.hersir.dev`, the Livewire starter kit with Hersir's colours and type): *Create an account* (name, email, password) → *Check your email* → *Set up two-factor authentication* (QR code, a code to confirm, the 8 recovery codes to save; required) → *Your account*: plan and renewal with **Subscribe** (Stripe Checkout: monthly or yearly) or **Manage billing** (Stripe's portal), storage used, the backups list, your computers with **Remove**, two-factor and recovery codes, password, **Withdraw from the contract** (consumers, in their first 14 days) and **Delete account** (password and code; the cloud copies go after 7 days). A sign-in from the desktop shows *Signed in. You can close this tab and go back to Hersir.*
+
+**How it fits the design system** (`design/README.md`) [V components; I use]: `FormSection` and `Field` as every Settings section; buttons `btn`, `btn primary`, `btn ghost`, `btn sm`; the radios and check of `BackupSettings.tsx`; its `backup-list` rows for the cloud list and the computers; its `ask` dialog for Restore and Remove; status lines with the step and `LoaderCircle`; `ok-banner` and `error-banner`. The recovery code and sizes in mono. Blue `accent` for actions; gold `needs` only for "Save your recovery code", "Waiting for your OK" and "Update Hersir", which need you; teal `live` for the Chief's answer while it streams, as on the Chief's own computer; `danger` for failures. Sentence case, buttons that say what happens. Each state in dark and light.
+
+### 5.2 The data
+
+**On the computer** [I]:
+
+- **This computer's settings** (added to `scope::THIS_COMPUTER`, so a restore keeps them): `cloud_account` (`{ id, email }`), `cloud_backup` (`{ on, every: "daily"|"manual", onQuit }`), `cloud_last_backup`, `cloud_last_error`.
+- **A shared setting** (syncs): `chief_device` (the Chief's computer's device id).
+- **Keychain** (service `hersir`): `cloud/<account>/token` (this computer's Passport token), `cloud/<account>/key` (the account key, with its epoch), `cloud/<account>/device` (this computer's Ed25519 and X25519 secret keys). Never the recovery code.
+- **Migration `0023_sync.sql`** (card 6): `sync_log`, `sync_clock`, `cloud_link` (3.7) and the synced column `agent_configs.home_device_id`.
+- **Migration `0024_cloud_chat.sql`** (card 10), local tables never synced: `cloud_roster(device_id PK, name, sign_pub, box_pub, joined_at, removed_at)`; `cloud_outbox(id PK, thread_id, kind, args_json, to_device, status, created_at, expires_at, note)`; `cloud_commands_seen(from_device PK, last_seq)`.
+
+**On the server**: 3.3's tables.
+
+### 5.3 What changes in which files
+
+**The app** (`Yotech-AI/hersir`, open source):
+
+| Where | What | Card |
+|---|---|---|
+| new `crates/gizai-cloud-client` (no Tauri) | `api.rs` (HTTP with `ureq`, as `oauth.rs`); `keys.rs` (AK, HKDF, the recovery code with its check character, sealing, the computer's keys, the roster); `chunks.rs` (page chunks, FastCDC, zstd, seal and open); `backup.rs`; `restore.rs` (download into a format-1 folder); `entitlement.rs` (Ed25519 check); `doorbell.rs` (the Pusher-protocol client, card 8); `commands.rs` (seal, sign, open, check, card 10) | 3, 8, 10 |
+| `crates/gizai-agents/src/oauth.rs` | nothing: `discover` and `begin` with a fixed client id already fit (3.4) | none |
+| `crates/gizai-core/src/backups.rs` | a page-for-page copy (rusqlite's `backup` feature) beside `VACUUM INTO`; the manifest stays format 1 | 3 |
+| `crates/gizai-core/src/scope.rs` | the cloud settings as this computer's | 3 |
+| `crates/gizai-core/src/sync/` (new), `migrations/0023_sync.sql` | the sync engine | 6 |
+| `src-tauri/src/cloud.rs` (new), `lib.rs` | the commands, the schedule (on the ticks of `backups.rs`), On quit, the event `cloud-changed` | 3 |
+| `src-tauri/src/sync.rs` (new), `workflow.rs`, `runs.rs` | the sync loop, the doorbell, the home computer and claims | 8 |
+| `src-tauri/src/chief_remote.rs` (new), `chat.rs`, `pending.rs`, `migrations/0024_cloud_chat.sql` | commands in and out, the Chief's computer, live answers out and in | 10 |
+| `src/api.ts`, `src/types.ts`, `src/router.ts` | the commands and types; `cloud` in `SETTINGS_TABS` | 4, 9, 11 |
+| `src/components/CloudSettings.tsx` (new), `src/pages/SettingsPage.tsx`, `src/pages/OnboardingPage.tsx` | the tab and *Restore from Hersir Cloud* | 4 |
+| the board, the card, the agent form, the Chat page, the Inbox | "Running on Laptop", "not synced yet", *Runs on*, the bands; the chat's lines and states | 9, 11 |
+
+**The server** (`Yotech-AI/hersir-cloud`, private; a Laravel 13 app from the Livewire starter kit):
+
+| Where | What | Card |
+|---|---|---|
+| `app/Http/Middleware/RequireTwoFactor.php`, `RequirePkceS256.php` | 2FA before anything; S256 only | 2 |
+| `routes/web.php` (the well-known documents, the account pages), `routes/api.php` (`/api/v1`), `routes/channels.php` | 5.4's routes | 2, 5, 7 |
+| `app/Http/Controllers/Api/{Device,Key,Object,Snapshot,Entitlement}Controller.php` | Cloud Backup's API | 2 |
+| `app/Http/Controllers/Api/{Workspace,Tx,Claim,Command,Live}Controller.php`, `app/Events/*` | sync, claims, commands, Reverb events | 7 |
+| `app/Models/*`, `database/migrations/*` | 3.3's tables | 2, 5, 7 |
+| `app/Console/Commands/{PruneSnapshots,CollectObjects,NightlyCopy,Comp}.php`, `routes/console.php` | retention, garbage collection, the nightly copy, plans by hand | 2 |
+| `app/Listeners/StripeWebhook.php`, `app/Support/Entitlements.php`, `resources/views/livewire/account/*` | the plan from Cashier, the signed entitlement, the account page, emails | 5 |
+| `deploy/litestream.yml`, `deploy/forge-deploy.sh`, `RUNBOOK.md`, `PROTOCOL.md` | Litestream's config, the deploy script, the restore drill, the published protocol (P4) | 2 |
+| `tests/` (Pest) | per card | all |
+
+### 5.4 Contracts
+
+#### The server's API (cards 2, 5 and 7; used by cards 3, 8 and 10)
+
+JSON over HTTPS at `https://cloud.hersir.dev/api/v1`. `Authorization: Bearer <this computer's Passport token>` (scope `cloud`), except `POST /devices`, which takes the browser's token (scope `device:register`). Errors: `{ "error": "<code>", "message": "<a sentence for people>" }` with 401 (`signed_out`, `removed`), 402 (`plan_required`, `read_only`), 403 (`not_yours`), 404 (`not_found`), 409 (`claimed`, `exists`, `epoch`), 413 (`quota`), 422 (`invalid`, `missing_objects`), 426 (`update_hersir`), 429 (`slow_down`). Times are Unix milliseconds; ids are the app's UUIDv7 strings; object ids are 64 hex characters; `body` and sealed blobs are base64.
+
+| Call | Body → answer | Card |
+|---|---|---|
+| `POST /devices` | `{ device_id, name, platform, app_version, sign_pub, box_pub }` → 201 `{ account: { id, email }, device_token, expires_at }` (the browser's token is revoked) | 2 |
+| `POST /devices/me/token` | `{}` → `{ device_token, expires_at }` (the old one is revoked) | 2 |
+| `GET /devices` | → `[{ id, name, platform, app_version, created_at, last_seen_at, online, this, sign_pub, box_pub, revoked_at }]` | 2 |
+| `DELETE /devices/{id}` (`me` to sign out) | `{ lost: boolean }` → 204 | 2 |
+| `GET /me/entitlements` | → `{ payload, sig }`; payload `{ v: 1, account, plan: "personal"\|"none", status: "active"\|"past_due"\|"lapsed"\|"none", features: ["backup","sync"], quota_bytes, used_bytes, valid_until, read_only_until, issued_at }` | 2 (comps), 5 (Stripe) |
+| `GET /keys` | → `{ key_id, epoch, sealed_by_code, roster, roster_version }` or 404 | 2 |
+| `PUT /keys` | `{ key_id, epoch, sealed_by_code, if_epoch }` → 201 (first) or 200; 409 `epoch` when `if_epoch` isn't the current one | 2 |
+| `PUT /keys/roster` | `{ roster, roster_version, if_version }` → 200; 409 `exists` when another computer changed it first | 2 |
+| `POST /objects/missing` | `{ ids: [hex64] }` (at most 1,000) → `{ missing: [hex64] }` | 2 |
+| `POST /objects/upload` | `{ objects: [{ id, bytes }] }` (at most 4,194,368 bytes each) → `{ urls: [{ id, url, headers, expires_at }] }`; 402, 413 | 2 |
+| `POST /objects/download` | `{ ids }` → `{ urls: [{ id, url, expires_at }] }` (also while read-only) | 2 |
+| `POST /snapshots` | `{ name, made_at, device_id, reason: "daily"\|"manual"\|"quit"\|"before-restore", schema_version, app_version, manifest_id, object_ids, bytes }` → 201; 422 `missing_objects` with `{ ids }`; 413 | 2 |
+| `GET /snapshots` | → `[{ name, made_at, device_id, device_name, reason, schema_version, app_version, bytes, manifest_id, deleted_at }]`, newest first | 2 |
+| `DELETE /snapshots/{name}`, `POST /snapshots/{name}/undelete` | → 204 (kept 7 more days); → 200 | 2 |
+| `PUT /workspaces/{ws}` | `{ min_schema }` → 201 or 200 | 7 |
+| `POST /workspaces/{ws}/txs` | `{ txs: [{ id, device_id, body }] }` (at most 500, 64 KiB each) → `{ acked: [{ id, seq }] }`; 426 under `min_schema` | 7 |
+| `GET /workspaces/{ws}/txs?after=<seq>&limit=500` | → `{ txs: [{ seq, id, device_id, body }], last_seq }` | 7 |
+| `PUT /workspaces/{ws}/files` | `{ add: [hex64], remove: [hex64] }` → 204 | 7 |
+| `POST /workspaces/{ws}/claims` | `{ task_id, run_id, lease_ms }` → 201 `{ expires_at }`, or 409 `{ device_id, device_name, expires_at }` | 7 |
+| `PUT /workspaces/{ws}/claims/{task_id}`, `DELETE …?run_id=`, `GET /workspaces/{ws}/claims` | renew `{ run_id, lease_ms }` → `{ expires_at }`; release → 204; → `[{ task_id, device_id, device_name, run_id, expires_at }]` | 7 |
+| `PUT /workspaces/{ws}/chief` | `{ device_id }` → 200 `{ device_id }` | 7 |
+| `POST /workspaces/{ws}/commands` | `{ id, to, body }` (at most 64 KiB) → 201 `{ to_online, to_last_seen_at, expires_at }`; 404 when `to` isn't one of the account's computers | 7 |
+| `GET /workspaces/{ws}/commands` | → `{ commands: [{ id, from, body, created_at }] }`: those for this computer, oldest first | 7 |
+| `POST /workspaces/{ws}/commands/ack` | `{ results: [{ id, status: "done"\|"moved"\|"refused" }] }` → 204 (each sender hears `command.status`) | 7 |
+| `GET /workspaces/{ws}/commands/sent` | → `[{ id, to, status: "waiting"\|"done"\|"moved"\|"refused"\|"expired", created_at, expires_at }]` | 7 |
+| `POST /workspaces/{ws}/live` | `{ body }` (at most 16 KiB, 4 a second) → 202; broadcast as `chat.live`, never stored | 7 |
+
+**Reverb** (Pusher protocol, `wss://cloud.hersir.dev/app/<key>`, authorised at `POST /broadcasting/auth` with the computer's token): `private-account.<user id>`: `entitlement.changed {}`, `device.removed { id }`; `presence-workspace.<ws>` (members: the online computers, `{ device_id, name }`): `sync.tx { seq }`, `command { id, to }`, `command.status { id, status }`, `claim.changed { task_id }`, `chief.changed { device_id }`, `chat.live { from, body }`.
+
+**The webhook** (card 5): `POST /stripe/webhook`, Cashier's, with `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, `invoice.payment_failed`, `checkout.session.completed`.
+
+#### A command (card 10 makes and opens them; card 7 only stores `body`)
+
+```
+body = "HCC1" ‖ epoch (1 byte) ‖ nonce (24) ‖ XChaCha20-Poly1305(command key, nonce, plaintext,
+       associated data = id ‖ workspace ‖ to) ‖ Ed25519 signature (64) by the sender's computer key over all before it
+
+plaintext (JSON):
+{ "v": 1, "id": "<UUIDv7>", "from": "<device id>", "to": "<device id>", "seq": 42, "at": 1763380000000,
+  "kind": "chat.send" | "chat.new" | "chat.stop" | "chat.send_now" | "chat.queue_edit" | "chat.queue_remove"
+        | "chat.set_cli" | "pending.approve" | "pending.approve_all" | "pending.discard",
+  "args": {…} }
+
+args: chat.send { thread_id, text, files: [{ id, name, bytes, mime }] }   (the message is stored under the command's id)
+      chat.new { thread_id, agent_id, text, files }      chat.stop { thread_id }      chat.send_now { thread_id }
+      chat.queue_edit { queued_id, text }                chat.queue_remove { queued_id }
+      chat.set_cli { thread_id, cli: string | null }     pending.approve { pending_id }
+      pending.approve_all { pending_ids }                pending.discard { pending_id }
+lifetime: 24 hours for pending.*, 7 days for the rest
+a live answer (POST …/live): "HCL1" ‖ epoch ‖ nonce ‖ sealed { thread_id, events: ChatEvent[] } ‖ signature
+```
+
+#### Hersir's commands for the Hersir Cloud tab (cards 3 and 4), in `src/api.ts` with the Tauri command in the comment
+
+```ts
+type CloudPlan = { name: "personal" | "none"; status: "active" | "past_due" | "lapsed" | "none";
+  validUntil: number | null; readOnlyUntil: number | null; quotaBytes: number; usedBytes: number };
+type CloudStep = "copying" | "chunking" | "uploading" | "registering" | "downloading" | "checking";
+type CloudStatus = {
+  signedIn: boolean; email: string | null; signingIn: boolean;
+  plan: CloudPlan | null;                       // from the signed entitlement; null while signed out
+  key: "missing" | "here" | "needed";           // missing: none made yet; needed: the account has one, this computer doesn't
+  recoveryMadeAt: number | null;
+  backup: { on: boolean; every: "daily" | "manual"; onQuit: boolean;
+            running: { step: CloudStep; done: number; total: number } | null;
+            last: { at: number; name: string; sentBytes: number } | null; next: number | null;
+            lastError: { at: number; message: string } | null };
+};
+type CloudBackup = { name: string; madeAt: number; device: { id: string; name: string; this: boolean };
+  reason: "daily" | "manual" | "quit" | "before-restore"; bytes: number; restorable: boolean; problem: string | null };
+type CloudComputer = { id: string; name: string; platform: string; appVersion: string; lastSeenAt: number | null;
+  online: boolean; this: boolean; chief: boolean };
+
+cloudStatus(): Promise<CloudStatus>                                   // cloud_status
+cloudSignIn(): Promise<CloudStatus>                                   // cloud_sign_in: opens the browser, waits up to 10 min
+cloudCancelSignIn(): Promise<void>                                    // cloud_cancel_sign_in
+cloudSignOut(): Promise<CloudStatus>                                  // cloud_sign_out
+cloudMakeKey(): Promise<{ recoveryCode: string }>                     // cloud_make_key: the first computer only
+cloudConfirmRecovery(lastGroup: string): Promise<CloudStatus>         // cloud_confirm_recovery: turns Cloud Backup on
+cloudEnterRecovery(code: string): Promise<CloudStatus>                // cloud_enter_recovery: a computer whose key is "needed"
+cloudNewRecovery(): Promise<{ recoveryCode: string }>                 // cloud_new_recovery: the old code stops working
+cloudSaveSettings(s: { on?: boolean; every?: "daily" | "manual"; onQuit?: boolean }): Promise<CloudStatus>  // cloud_save_settings
+cloudBackUpNow(): Promise<CloudStatus>                                // cloud_back_up_now
+cloudListBackups(): Promise<CloudBackup[]>                            // cloud_list_backups
+cloudStartRestore(name: string): Promise<RestoreStatus>               // cloud_start_restore: then GA-218's restore
+cloudComputers(): Promise<CloudComputer[]>                            // cloud_computers
+cloudRemoveComputer(id: string, lost: boolean): Promise<CloudComputer[]>   // cloud_remove_computer
+cloudOpenAccount(): Promise<void>                                     // cloud_open_account: the account page in the browser
+onCloudChanged(f: (s: CloudStatus) => void): Promise<() => void>      // event "cloud-changed"
+```
+
+Refusals are sentences: "Sign in to Hersir Cloud first.", "That recovery code doesn't open this account's backups.", "Hersir Cloud is full: 10.0 of 10 GB.", "Your plan ended on 9 Dec 2026: backups can be restored until 7 Feb 2027.".
+
+#### Hersir's commands for Multiple devices (cards 8 and 9)
+
+```ts
+type SyncStatus = { on: boolean; lastSyncAt: number | null; toSend: number; live: boolean;   // live: the doorbell is connected
+  problem: null | { kind: "offline" | "update_hersir" | "plan" | "error"; message: string };
+  chief: { deviceId: string; deviceName: string; online: boolean; here: boolean } | null };
+syncStatus(): Promise<SyncStatus>                       // sync_status
+syncSet(on: boolean): Promise<SyncStatus>               // sync_set
+chiefSetComputer(deviceId: string): Promise<SyncStatus> // chief_set_computer
+onSyncChanged(f: (s: SyncStatus) => void)               // event "sync-changed"
+// on a card (types.ts Task): runningOn: { deviceId: string; deviceName: string } | null; numberSynced: boolean
+// on an agent (AgentConfig): homeDeviceId: string | null   (saved with the agent's form)
+```
+
+#### The Chief's chat on another computer (cards 10 and 11)
+
+The chat's commands keep their names and arguments (`src/api.ts:440-467` on main): `sendChat`, `sendChatQueue`, `editQueuedChat`, `removeQueuedChat`, `setChatCli`, `stopChat`, `approvePendingAction`, `approvePendingActions`, `discardPendingAction`. On the Chief's computer they work as today; on another one they send a command and resolve once it is stored on the server (or refuse with a sentence: "Sign in to Hersir Cloud to write to the Chief from this computer."). The live answer from the Chief's computer arrives as the same `chat-events` event the Chat page already listens to (`onChatEvent`, `src/api.ts:472`). New:
+
+```ts
+type OutgoingStatus = "sending" | "waiting" | "delivered" | "done" | "moved" | "refused" | "expired";
+type Outgoing = { id: string; threadId: string;
+  kind: "message" | "new_chat" | "stop" | "send_now" | "queue_edit" | "queue_remove" | "runs_on" | "approve" | "approve_all" | "discard";
+  text: string | null; status: OutgoingStatus; to: { deviceId: string; deviceName: string; online: boolean; lastSeenAt: number | null };
+  at: number; expiresAt: number; note: string | null };      // note: "Waiting for Desktop: offline since 09:12."
+chatOutbox(threadId: string): Promise<Outgoing[]>           // chat_outbox
+resendOutgoing(id: string): Promise<Outgoing>               // resend_outgoing: an expired or moved one, again
+cancelOutgoing(id: string): Promise<void>                   // cancel_outgoing: one still waiting on the server
+onOutgoing(f: (o: Outgoing) => void)                        // event "chat-outgoing"
+// on a message (types.ts ChatMessage): fromDevice: { id: string; name: string } | null
+// on a pending action (PendingAction): decidedOn: { id: string; name: string } | null
+```
+
+### 5.5 Security and privacy
+
+- **Keys** only in the keychain, wiped from memory after use (`zeroize`), never in errors or logs (as `oauth.rs` keeps tokens out of them). The recovery code is never stored.
+- **The server** sees ciphertext, keyed object names, sizes, times, computer names and who sends commands to whom; never content, never a command's text.
+- **Tokens**: one Passport token per computer, revocable, checked on every request; the browser's token is single-use. Presigned URLs last 10 minutes; computers never get delete URLs.
+- **The account**: 2FA required on every route, the desktop's sign-in included; S256 only; Fortify's rate limits; an email on every new computer, on a removal and on a 2FA reset.
+- **Commands**: sealed by AK's command key, signed by the computer, checked against the roster, numbered and given an id, so the server can't add, change or replay one (3.8). Approvals expire after 24 hours.
+- **The server itself**: SSH keys only, Forge's firewall, unattended security updates, `.env` outside the repository, the R2 tokens limited to their buckets; Cloudflare in DNS only for `cloud.hersir.dev`.
+- **A stolen laptop with a running Hersir has the key**: remove it, and change the key once that exists (question 18).
+
+### 5.6 How it is tested
+
+- **The client crate**: test vectors for HKDF, the recovery code and the command format; seal and open; a tampered byte, a replayed id, a lower counter, a removed computer and an old epoch are refused; restore(backup(db)) equals db; an unchanged database uploads no new chunks; an upload cut halfway resumes; the entitlement signature (good, bad, expired). A fake server on 127.0.0.1 and the memory keychain.
+- **The app**: the commands under `scripts/ui-test.sh` with `HERSIR_FAKE_KEYCHAIN` and `HERSIR_CLOUD_URL` pointing at the Laravel app run locally (`php artisan serve`, `reverb:start`, an S3 fake); never a real account in tests.
+- **The server** (Pest): every route with its errors; a computer can't reach another account's objects, snapshots, workspaces or commands; 2FA required on every web route, `/oauth/authorize` included (a test lists the routes); the loopback redirect on a random port; Cashier webhooks from Stripe's fixtures (signature, retries, out of order); retention and garbage collection with a fake clock; the quota with real sizes; the lapse dates; a restore drill from Litestream in CI.
+- **Sync and the chat**: 3.7's property tests and fault injection; two Hersirs against the local server, one the Chief's computer: a message from the other is answered, an approval from the other runs once, a message to an offline Chief's computer waits and says so, a removed computer's command is refused.
+
+### 5.7 What is left out
+
+The phone chat and its PWA (designed in 3.8, built later); changing the account key (question 18); approval of a new computer from another one (the recovery code does it in v1); agents across devices and agents' questions to a Chief on another computer (question 19); teams and SSO; passkeys; server-side search or a web view of the data; a self-hosted server; sharing with clients.
+
+<!-- Section 6 onwards follows. -->
