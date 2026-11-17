@@ -204,9 +204,9 @@ export const unsavedQuestion = (names: string[]) =>
 /** Own page: the Editor page at the file and the caret's line; its tab closes here (asking first with changes not saved). */
 export function editorOwnPage(id: string, at: { x: number; y: number } | null) {
   const { folder, path } = editorTabOf(id);
+  const s = views.get(id)?.state ?? states.get(id);
+  const line = s ? s.doc.lineAt(s.selection.main.head).number : files.get(id)?.line ?? null;
   closeEditorTabs([id], at, () => {
-    const s = states.get(id);
-    const line = s ? s.doc.lineAt(s.selection.main.head).number : files.get(id)?.line ?? null;
     editorPageAt(folder, path, line);
     go({ page: "editor", id: folder });
   });
