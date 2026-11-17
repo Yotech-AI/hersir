@@ -176,9 +176,19 @@ describe("the side island, with terminals opened in the chat", () => {
 
   it("has its left edge as a vertical separator, at 45% the first time", () => {
     const html = page("c1");
-    expect(html).toMatch(/class="term-handle" role="separator" aria-orientation="vertical" aria-label="Side island&#x27;s width" aria-valuenow="45"/);
+    expect(html).toMatch(/class="term-handle" role="separator" aria-orientation="vertical" aria-label="Side panel&#x27;s width" aria-valuenow="45"/);
     // the handle comes first: the island's left edge
     expect(between(html, 'class="chat-side"', 'class="chat-side-in"')).toContain("term-handle");
+  });
+
+  it("says panel, never island, in what people read (GA-305): the handle, the tabs, the buttons and the strip; the classes keep their names", () => {
+    const html = page("c1");
+    const attrs = [...html.matchAll(/(?:aria-label|title|placeholder|alt)="([^"]*)"/g)].map((m) => m[1].replace(/&#x27;/g, "'"));
+    const words = html.replace(/<[^>]+>/g, " ").replace(/&#x27;/g, "'").replace(/\s+/g, " ");
+    expect([words, ...attrs].filter((s) => /island/i.test(s))).toEqual([]);
+    expect(attrs).toContain("Side panel's width");
+    // GA-305 changes words only: the side panel's header keeps its class names, so it looks as before
+    expect(html).toContain('<div class="island-head"><div class="island-tabs" role="tablist" aria-label="Beside the chat">');
   });
 });
 
@@ -292,9 +302,29 @@ describe("the layout's CSS", () => {
     expect(rule(terminalCss, ".island-head"), "no line under the island's header").not.toContain("border");
   });
 
-  it("centres the conversation without the island, and starts it at the left of its column while the island shows", () => {
+  // GA-302: GA-296 started the conversation, the text box and the Archive at the left of their column while the island
+  // showed (.chat.has-side .chat-col { margin-left: 0; }); they stay centred in it now, with the island as without it
+  it("centres the conversation, the text box and the Archive in their column, with the side island as without it", () => {
     expect(rule(componentsCss, ".chat-col")).toMatch(/max-width: calc\(760px \* var\(--chat-scale, 1\)\);\s*margin: 0 auto;\s*padding: 24px;/);
-    expect(rule(appCss, ".chat.has-side .chat-col").trim()).toBe("margin-left: 0;");
+    expect(rule(appCss, ".chat.has-side .chat-col"), "GA-296's rule is gone").toBe("");
+    // no other rule of any style sheet moves a .chat-col sideways (the island, the strip, the narrow window, the text box,
+    // the Archive's head): besides .chat-col's own, the rules for it set only its padding
+    const sheets = (fs.readdirSync(new URL("../../styles/", import.meta.url)) as string[]).filter((n) => n.endsWith(".css"));
+    expect(sheets).toEqual(expect.arrayContaining(["app.css", "components.css", "terminal.css", "appearance.css"]));
+    const others: string[] = [];
+    for (const name of sheets) {
+      const flat = read(name).replace(/\/\*[\s\S]*?\*\//g, "");
+      for (const m of flat.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+        const selectors = m[1].trim(), body = m[2];
+        if (!selectors.split(",").some((s) => /\.chat-col\s*$/.test(s.trim())) || selectors === ".chat-col") continue;
+        others.push(`${name}: ${selectors}`);
+        expect(body, `${name}: ${selectors}`).not.toMatch(/(^|;|\s)(margin(-left|-right|-inline(-start|-end)?)?|left|right|inset|translate|transform|justify-self|align-self|float)\s*:/);
+      }
+    }
+    expect(others.sort()).toEqual(["app.css: .archive-head .chat-col", "app.css: .chat-composer .chat-col"]);
+    // the comment above the side island's rules says so too
+    expect(appCss).toContain("The conversation, the text box and the Archive stay centred in their column,\n   with the side island as without it (GA-302).");
+    expect(appCss).not.toContain("start at the left of their column");
   });
 
   it("puts the strip in a last column, size-tool wide, while the chat has anything open", () => {

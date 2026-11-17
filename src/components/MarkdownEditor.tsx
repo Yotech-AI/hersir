@@ -470,8 +470,8 @@ export type EditorHandle = { focus: () => void; clear: () => void; startLink: ()
 
 type Pick = { from: number; query: string; at: PickerAt | null };
 
-export function MarkdownEditor({ value, onChange, onSave, onBlur, onCancel, onEnter, placeholder, autoFocus, ariaLabel, minHeight, hint, toolbar = true,
-  disabled = false, pickerUp, handle, className, wiki, marks = "dim" }: {
+export function MarkdownEditor({ value, onChange, onSave, onBlur, onCancel, onEnter, onPasteNoText, placeholder, autoFocus, ariaLabel, minHeight, hint,
+  toolbar = true, disabled = false, pickerUp, handle, className, wiki, marks = "dim" }: {
   value: string;
   onChange?: (md: string) => void;
   onSave?: (md: string) => void;
@@ -479,6 +479,9 @@ export function MarkdownEditor({ value, onChange, onSave, onBlur, onCancel, onEn
   onCancel?: () => void;
   /** Enter calls this instead of adding a line (Shift+Enter adds one): the chat composer sends. */
   onEnter?: (md: string) => void;
+  /** A paste with no text in it (neither `text/plain` nor `text/uri-list`), such as a screenshot (GA-304): the editor
+   *  pastes nothing (its text and selection stay as they are) and calls this. Without it, CodeMirror pastes as before. */
+  onPasteNoText?: () => void;
   placeholder?: string;
   autoFocus?: boolean;
   ariaLabel?: string;
@@ -502,8 +505,9 @@ export function MarkdownEditor({ value, onChange, onSave, onBlur, onCancel, onEn
   const host = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const hovered = useRef<string | null>(null); // the wikilink the mouse is on
-  const cb = useRef({ onChange, onSave, onBlur, onCancel, onEnter });
-  cb.current = { onChange, onSave, onBlur, onCancel, onEnter };
+  const middleAt = useRef(0); // when the middle button last went down in the text (Linux pastes the primary selection then)
+  const cb = useRef({ onChange, onSave, onBlur, onCancel, onEnter, onPasteNoText });
+  cb.current = { onChange, onSave, onBlur, onCancel, onEnter, onPasteNoText };
   const conf = useRef({ editable: new Compartment(), placeholder: new Compartment(), marks: new Compartment() });
   const shownMarks = useRef(marks);
 
@@ -613,6 +617,7 @@ export function MarkdownEditor({ value, onChange, onSave, onBlur, onCancel, onEn
           EditorView.domEventHandlers({
             // Ctrl+click (Cmd+click on macOS) on a wikilink opens it, on a task ref its card.
             mousedown: (e, v) => {
+              if (e.button === 1) middleAt.current = Date.now();
               if (!modClick(e)) return false;
               const pos = v.posAtCoords({ x: e.clientX, y: e.clientY });
               const hit = pos === null ? null : linkAt(v, pos);
@@ -633,6 +638,19 @@ export function MarkdownEditor({ value, onChange, onSave, onBlur, onCancel, onEn
               return false;
             },
             mouseleave: () => { if (hovered.current) { hovered.current = null; wikiRef.current?.hover?.(null, null); } return false; },
+            // Ctrl+V, Shift+Insert or the right-click menu's Paste with no text on the clipboard (an image only): the
+            // parent's (GA-304), before CodeMirror's own paste, which would put nothing in place of the selection. A paste
+            // with text, also with an image, is CodeMirror's as before.
+            paste: (e, v) => {
+              const take = cb.current.onPasteNoText;
+              const data = e.clipboardData;
+              if (!take || !data || v.state.readOnly || data.getData("text/plain") || data.getData("text/uri-list")) return false;
+              // A middle-click pastes the primary selection, not the clipboard: as before, whatever the clipboard holds.
+              if (Date.now() - middleAt.current < 1500) return false;
+              e.preventDefault();
+              take();
+              return true;
+            },
           }),
           conf.current.placeholder.of(cmPlaceholder(placeholder ?? "")),
           conf.current.editable.of([EditorView.editable.of(!disabled), EditorState.readOnly.of(disabled)]),
