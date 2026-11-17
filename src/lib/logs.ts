@@ -1,6 +1,6 @@
 // Hersir's own log (GA-281, GA-282): what the notice after an unexpected end and Settings → General → Data say about it.
 
-/** The name of a log from its full path ("/…/logs/hersir-2026-11-13T14-50-26Z.log" → "hersir-2026-11-13T14-50-26Z.log");
+/** The name of a log from its full path: from /…/logs/hersir-2026-11-13T14-50-26Z.log it is hersir-2026-11-13T14-50-26Z.log.
  *  Windows' backslashes count as separators too. */
 export function logName(path: string): string {
   return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
