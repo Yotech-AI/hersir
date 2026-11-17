@@ -64,10 +64,24 @@ export function FolderPicker({ at, onClose, title, onPick, current, note, you }:
     window.addEventListener("mousedown", down);
     return () => window.removeEventListener("mousedown", down);
   }, [onClose]);
-  useLayoutEffect(() => {
+  // Its place: its top left corner where it was asked for, moved up and left as far as it must to fit the window. Again
+  // after each change and whenever its size or the window's changes (GA-300): the cards' titles come in after the folders
+  // and can take two lines, a question opens under a row, so it never runs past the window's bottom. It is never taller
+  // than the window less 8 at each end (components.css), and its list scrolls inside it.
+  const place = () => {
     const r = ref.current?.getBoundingClientRect();
-    setPos({ left: Math.max(8, Math.min(at.x, window.innerWidth - (r?.width ?? 0) - 8)), top: Math.max(8, Math.min(at.y, window.innerHeight - (r?.height ?? 0) - 8)) });
-  }, [at.x, at.y, folders, asking, failed]);
+    const left = Math.max(8, Math.min(at.x, window.innerWidth - (r?.width ?? 0) - 8));
+    const top = Math.max(8, Math.min(at.y, window.innerHeight - (r?.height ?? 0) - 8));
+    setPos((p) => (p.left === left && p.top === top ? p : { left, top }));
+  };
+  useLayoutEffect(place);
+  useEffect(() => {
+    const el = ref.current;
+    window.addEventListener("resize", place);
+    const watch = el && typeof ResizeObserver !== "undefined" ? new ResizeObserver(place) : null;
+    if (el) watch?.observe(el);
+    return () => { window.removeEventListener("resize", place); watch?.disconnect(); };
+  }, [at.x, at.y]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const byHand = (f: EditorFolder) => !!(f.taskId && tasks.get(f.taskId)?.byHand);
   const groups = useMemo(() => currentFirst(pickerGroups(folders ?? [], roots, query, byHand), current), [folders, roots, query, tasks, current]); // eslint-disable-line react-hooks/exhaustive-deps

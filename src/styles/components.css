@@ -759,7 +759,7 @@ button.label-pill[aria-pressed="true"] { border-color: var(--accent); color: var
 .pop .pop-note { padding: 6px 8px 4px; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.45; }
 
 /* ---------- the folder picker: a popover from + on the Editor heading, like the @ picker ---------- */
-.pop.ed-picker { display: flex; flex-direction: column; width: 480px; max-width: calc(100vw - 16px); max-height: 460px; padding: 0; overflow: hidden; }
+.pop.ed-picker { display: flex; flex-direction: column; width: 480px; max-width: calc(100vw - 16px); max-height: min(460px, calc(100vh - 16px)); padding: 0; overflow: hidden; }
 .ed-picker-in { position: relative; flex: none; padding: var(--space-2); border-bottom: 1px solid var(--line); }
 .ed-picker-in > .icon { position: absolute; left: 18px; top: 50%; transform: translateY(-50%); color: var(--text-3); pointer-events: none; }
 .ed-picker-in .input { height: calc(30px + var(--ui-box, 0px)); padding-left: 30px; }
