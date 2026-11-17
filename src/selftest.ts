@@ -4438,6 +4438,12 @@ async function terminalPanelProbe(phase: "a" | "b", card: string) {
 // another page and back: A's tabs are there, sleep 600 still running; Own page closes the tab here; a narrow window hides
 // the chat list first and the strip stays; the largest text size and light; Close all asks while sleep runs, then closes
 // every terminal of the chat: no island, no strip. (b) After the restart: the width kept.
+// GA-302 (GA-296 started them at the left while the island showed): the messages and the text box stay centred in the
+// conversation, each as wide as before the island or filling a narrower conversation, when the island opens, hidden, dragged
+// 80px, to its widest and its narrowest and back with the keys, 1100 and 1000px wide, at 900 × 600 (filling the
+// conversation, laid out to the pixel as with GA-296's rule, the text box in it in full, the page not scrolling sideways), at
+// the largest text size and after Close all; the Archive with a terminal of its own beside it: its search and its list
+// centred, one under the other, also with the island narrowed, and closing it leaves no island and no strip.
 
 const CHAT_SHARE = "gizai.chat.panel";
 
@@ -4479,12 +4485,23 @@ async function chatTerminalProbe(phase: "a" | "b") {
   /** The strip's Terminal icon: pressed, its count, label and tooltip. */
   const iconState = () => { const b = termIcon(); return b ? { pressed: b.getAttribute("aria-pressed"), n: textOf(b.querySelector(".n")), label: b.getAttribute("aria-label"), title: b.title } : null; };
   /** Where each .chat-col of the conversation starts and ends against its column: left-aligned or centred. */
+  // GA-302 QA: against the room its box gives it, so a box's scrollbar (the Archive's list scrolls: 10px in the cage) isn't
+  // taken for room on the column's right; for the text box and the Archive's head that is the conversation's width
   const cols = () => [...document.querySelectorAll<HTMLElement>(".chat > .chat-main .chat-col")].map((c) => {
-    const m = c.closest(".chat-main")!.getBoundingClientRect(), r = c.getBoundingClientRect();
-    return { left: r1(r.left - m.left), right: r1(m.right - r.right), w: r1(r.width) };
+    const p = c.parentElement!, b = p.getBoundingClientRect(), r = c.getBoundingClientRect();
+    const from = b.left + p.clientLeft, to = from + p.clientWidth;
+    return { left: r1(r.left - from), right: r1(to - r.right), w: r1(r.width) };
   });
-  const atLeft = () => { const c = cols(); return c.length > 0 && c.every((x) => Math.abs(x.left) <= 1); };
   const centred = () => { const c = cols(); return c.length > 0 && c.every((x) => Math.abs(x.left - x.right) <= 1.5); };
+  /** GA-302: each .chat-col of the conversation (or the Archive) as wide as it may be (its max-width, 760px at the default
+   *  sizes), or, in a box narrower than that, as wide as its box: it fills it, and nothing in it is cut off at the side. */
+  const colFit = () => [...document.querySelectorAll<HTMLElement>(".chat > .chat-main .chat-col")].map((c) => {
+    const room = c.parentElement?.clientWidth ?? 0, max = parseFloat(getComputedStyle(c).maxWidth);
+    return { w: r1(c.getBoundingClientRect().width), want: r1(Math.min(max, room)), over: c.scrollWidth - c.clientWidth };
+  });
+  const fits = () => { const f = colFit(); return f.length > 0 && f.every((x) => Math.abs(x.w - x.want) <= 1 && x.over <= 1); };
+  /** Centred and fitting, with what was measured for the message. */
+  const colsOk = (where: string) => check(centred() && fits(), `${where}: the messages and the text box are centred in the conversation, as wide as they may be or filling it (${JSON.stringify({ cols: cols(), fit: colFit(), talk: r1(wd(q(".chat > .chat-main"))) })})`);
   // The cage's window is 1280px wide, which leaves the island no room between its limits beside the chat list. The app is
   // drawn 1920px wide for the width and the alignment, and narrower for the narrow window, the largest text size and light.
   const app = q<HTMLElement>(".app");
@@ -4560,6 +4577,8 @@ async function chatTerminalProbe(phase: "a" | "b") {
   check(ob && /\bbtn\b/.test(ob.className) && ob.title === "Open a terminal, a file or the board beside the chat" && ob.getAttribute("aria-haspopup") === "menu"
     && !!ob.querySelector("svg.lucide-panel-right") && !!ob.querySelector("svg.lucide-chevron-down"), `Open has panel-right, a chevron, its tooltip and a menu (${JSON.stringify(out.openButton)})`);
   check(!island() && !strip() && chat()?.className === "chat" && centred(), `without anything open no island, no strip, the conversation centred (${chat()?.className}, ${JSON.stringify(cols())})`);
+  out.colsBefore = cols();
+  colsOk("without anything open");
   ob?.click();
   const menu0 = await waitFor(() => menuOf("Open beside the chat"), 2000);
   out.openMenu = itemsOf(menu0);
@@ -4591,8 +4610,13 @@ async function chatTerminalProbe(phase: "a" | "b") {
   check(textOf(q(".chat-term-where")) === site.path && /Mono|monospace/.test(getComputedStyle(q(".chat-term-where")!).fontFamily),
     `the island shows the terminal's folder in mono (${textOf(q(".chat-term-where"))})`);
   check(await waitFor(() => q(`.side [aria-label="Terminal"] a[data-term="${CSS.escape(id1)}"]`), 3000), "the sidebar's Terminal section lists it");
-  out.left = cols();
-  check(atLeft(), `while the island shows, the messages and the text box start at the left of their column (${JSON.stringify(out.left)})`);
+  // GA-302: while the island shows, the messages and the text box stay centred in the conversation (GA-296 started them at
+  // its left), each as wide as before the island or filling the conversation when it is narrower than that
+  out.withIsland = { cols: cols(), fit: colFit(), talk: r1(wd(q(".chat > .chat-main"))) };
+  colsOk("while the island shows");
+  const before = out.colsBefore as { w: number }[];
+  check(before.length === cols().length && colFit().every((x, i) => Math.abs(x.w - Math.min(before[i].w, x.want)) <= 1),
+    `while the island shows each column is as wide as before it, or as its box when that is narrower (${JSON.stringify({ before, now: colFit() })})`);
   // the islands: the conversation, the island (its inner box) and the strip, 6px apart; the strip at the window's right edge
   const talk = q(".chat > .chat-main"), inner = q(".chat > .chat-side > .chat-side-in"), stripEl = strip(), btn = termIcon();
   const appRight = app?.getBoundingClientRect().right ?? window.innerWidth;
@@ -4721,6 +4745,7 @@ async function chatTerminalProbe(phase: "a" | "b") {
   check(H.strip && H.talk && Math.abs(H.strip.l - H.talk.r - 6) <= 0.5 && Math.abs(H.appR - 6 - H.strip.r) <= 0.5, `the conversation reaches the strip, 6px before it, on the window's edge (${JSON.stringify(out.hidden)})`);
   out.centredAgain = cols();
   check(centred(), `hidden, the conversation is centred as before (${JSON.stringify(out.centredAgain)})`);
+  colsOk("hidden, the strip staying");
   const running = (await terminalList()).find((s) => s.id === id1);
   check(running && !running.ended && running.busy === "sleep", `its shell keeps running sleep 600 (${JSON.stringify(running && { busy: running.busy, ended: running.ended })})`);
   termIcon()?.click();
@@ -4820,9 +4845,17 @@ async function chatTerminalProbe(phase: "a" | "b") {
   const grown = await drag(-80);
   check(Math.abs(grown.island - start.island - 80) <= 2 && Math.abs(start.talk - grown.talk - 80) <= 2, `dragging the edge left 80px widens the island 80px (${JSON.stringify({ start, grown })})`);
   check(Math.abs(Number(localStorage.getItem(CHAT_SHARE)) - shareNow()) < 0.2, `the width is kept when the pointer lets go (${localStorage.getItem(CHAT_SHARE)})`);
+  colsOk("the island dragged 80px wider");
   const widest = await drag(-5000);
+  // GA-302: the conversation at its 400px is narrower than a column may be: each fills it, with the same space either side
+  const atWidest = { cols: cols(), fit: colFit() };
+  colsOk("the island at its widest");
   const narrow = await drag(5000);
-  out.drag = { start, grown, widest, narrow };
+  // and with the island at its 360px the conversation has room beside its columns: the same on their left and right
+  const atNarrow = { cols: cols(), fit: colFit() };
+  colsOk("the island at its narrowest");
+  check(atNarrow.cols.length > 0 && atNarrow.cols.every((x) => x.left >= 20), `with the island at 360px the columns have room on their left and right (${JSON.stringify(atNarrow)})`);
+  out.drag = { start, grown, widest, narrow, atWidest, atNarrow };
   check(Math.abs(widest.talk - 400) <= 1.5, `dragging far left leaves the conversation 400px (${JSON.stringify(widest)})`);
   check(Math.abs(narrow.island - 360) <= 1.5, `dragging far right stops at 360px of island (${JSON.stringify(narrow)})`);
   check(Math.abs(widest.strip - 28) <= 0.5 && Math.abs(narrow.strip - 28) <= 0.5, "the strip keeps its 28px while dragging");
@@ -4837,6 +4870,7 @@ async function chatTerminalProbe(phase: "a" | "b") {
   keyOn(handle, "ArrowRight");
   await sleep(150);
   check(Math.abs(shareNow() - 45) < 0.6, `→ narrows it 5% (${r1(shareNow())})`);
+  colsOk("back at 45% from the keys");
   await sleep(200);
   check(Math.abs(term.cols - (out.opened as { cols: number }).cols) <= 2, `back at 45% the terminal has the columns it opened with (${term.cols}, ${(out.opened as { cols: number }).cols})`);
 
@@ -4867,6 +4901,35 @@ async function chatTerminalProbe(phase: "a" | "b") {
   await waitFor(() => (location.hash === "#/chats" && q(".chat-archive") ? true : null), 5000);
   await sleep(300);
   nothingOpen("the Archive");
+  // GA-302: a terminal opened in the Archive shows in the Archive's own side island; its search and its list stay centred
+  // in their island, one under the other, and closing it (no program runs) leaves no island and no strip
+  const idArc = await pick("chat-site");
+  const vArc = idArc ? await viewInIsland(idArc) : null;
+  await sleep(300);
+  const arcHead = () => rectOf(q(".chat > .chat-archive > .archive-head .chat-col")), arcList = () => rectOf(q(".chat > .chat-archive > .chat-scroll .chat-col"));
+  out.archiveSide = { cls: chat()?.className, tabs: tabIds(), cols: cols(), fit: colFit(), head: arcHead(), list: arcList(), rows: document.querySelectorAll(".chat-archive .archive-row").length };
+  check(vArc && chat()?.className === "chat has-side has-strip" && same2(tabIds(), [idArc]) && q(".chat > .chat-archive"),
+    `a terminal opened in the Archive shows in its own side island (${JSON.stringify(out.archiveSide)})`);
+  colsOk("the Archive with its island");
+  // one under the other: their middles apart by at most half the list's scrollbar (the list is centred in the room left of it)
+  const aH = arcHead(), aL = arcList(), arcScroll = q<HTMLElement>(".chat > .chat-archive > .chat-scroll");
+  const arcBar = arcScroll ? arcScroll.offsetWidth - arcScroll.clientWidth : 0;
+  (out.archiveSide as Record<string, unknown>).scrollbar = arcBar;
+  check(aH && aL && Math.abs((aH.l + aH.r) / 2 - (aL.l + aL.r) / 2) <= arcBar / 2 + 1 && document.querySelectorAll(".chat-archive .archive-row").length > 0,
+    `the Archive's search and its list are centred the same way, one under the other (${JSON.stringify(out.archiveSide)})`);
+  // the island narrowed 15% with → on its edge: the Archive's island now has room beside its columns, on both sides the
+  // same; ← three times gives the width back
+  const arcEdge = q<HTMLElement>(".chat > .chat-side > .term-handle"), arcShare = r1(shareNow());
+  if (arcEdge) { arcEdge.focus(); for (let i = 0; i < 3; i++) { keyOn(arcEdge, "ArrowRight"); await sleep(150); } }
+  out.archiveRoom = { share: r1(shareNow()), talk: r1(wd(q(".chat > .chat-main"))), cols: cols(), fit: colFit() };
+  colsOk("the Archive with its island narrowed");
+  check(arcEdge && shareNow() < arcShare - 5 && cols().every((x) => x.left >= 20), `with its island narrowed the Archive's columns have room on their left and right (${JSON.stringify(out.archiveRoom)})`);
+  if (arcEdge) { for (let i = 0; i < 3; i++) { keyOn(arcEdge, "ArrowLeft"); await sleep(150); } }
+  check(Math.abs(shareNow() - arcShare) < 0.6, `← three times gives the island its width back (${r1(shareNow())}, ${arcShare})`);
+  (document.activeElement as HTMLElement | null)?.blur();
+  if (idArc) tabOf(idArc)?.querySelector<HTMLButtonElement>(".x")?.click();
+  check(await waitFor(() => (!island() && !strip() && chat()?.className === "chat" ? true : null), 5000), `closing the Archive's terminal hides its island and its strip (${chat()?.className})`);
+  colsOk("the Archive after its terminal closed");
   await toChat(A);
   check(await waitFor(() => (island()?.contains(term.element ?? null) ? true : null), 5000), "back in chat A the view is in the island again");
   await sleep(300);
@@ -4969,8 +5032,35 @@ async function chatTerminalProbe(phase: "a" | "b") {
     const n1100 = await at(1100);
     check(n1100.cls?.includes("no-list") && n1100.threads === "none" && n1100.talk >= 399.5 && n1100.island >= 359.5 && Math.abs(n1100.strip - 28) <= 0.5
       && Math.abs(n1100.appR - 6 - n1100.stripR) <= 0.5, `1100px wide: the chat list hides, the conversation keeps 400px, the island 360px, the strip stays at the edge (${JSON.stringify(n1100)})`);
+    colsOk("1100px wide with the island");
     const n1000 = await at(1000);
+    colsOk("1000px wide with the island");
+    // GA-302: at 900 × 600 with the island (the sidebar open, the conversation narrower than its 400px there) the columns
+    // fill the conversation, the text box in it in full and nothing scrolls the page sideways. The same drawn with GA-296's
+    // rule back (the columns at the conversation's left) must be the same to the pixel: a column that fills its conversation
+    // can't move, so whatever is too wide for it at this width (`wide`) was so before GA-302 too.
+    app.style.height = "600px";
     const n900 = await at(900);
+    const look900 = () => ({ cls: chat()?.className, cols: cols(), fit: colFit(), box: rectOf(q(".chat > .chat-main .composer-box")), talk: rectOf(q(".chat > .chat-main")),
+      wide: sideways([".main", ".chat-main", ".chat-scroll", ".chat-col", ".composer-box", ".chat-msg"]) });
+    const now900 = look900();
+    const ga296 = document.createElement("style");
+    ga296.textContent = ".chat.has-side .chat-col { margin-left: 0; }";
+    document.head.appendChild(ga296);
+    await sleep(200);
+    const was900 = look900();
+    ga296.remove();
+    await sleep(200);
+    const app900 = rectOf(app);
+    out.at900x600 = { now: now900, withGA296: was900, app: app900, scroll: n900.scroll };
+    check(now900.cols.length > 0 && now900.cols.every((x) => Math.abs(x.left) <= 1 && Math.abs(x.right) <= 1) && now900.fit.every((x) => Math.abs(x.w - x.want) <= 1),
+      `at 900 × 600 with the island the columns fill the conversation (${JSON.stringify(out.at900x600)})`);
+    check(JSON.stringify(now900) === JSON.stringify(was900), `at 900 × 600 with the island the conversation is laid out as before GA-302, with GA-296's rule (${JSON.stringify(out.at900x600)})`);
+    const { box: box900, talk: talk900 } = now900;
+    check(box900 && talk900 && app900 && box900.l >= talk900.l - 0.5 && box900.r <= talk900.r + 0.5 && box900.t >= talk900.t - 0.5 && box900.b <= talk900.b + 0.5
+      && talk900.b <= app900.b + 0.5 && n900.scroll <= 0 && !now900.wide.some((w) => w.startsWith("page ")),
+    `at 900 × 600 with the island the text box is in the conversation in full, and the page doesn't scroll sideways (${JSON.stringify(out.at900x600)})`);
+    app.style.height = "";
     out.narrow = { n1100, n1000, n900 };
     check([n1000, n900].every((n) => n.cls?.includes("no-list") && n.threads === "none" && Math.abs(n.strip - 28) <= 0.5 && Math.abs(n.appR - 6 - n.stripR) <= 0.5),
       `narrower still the list stays hidden and the strip stays at the edge (${JSON.stringify(out.narrow)})`);
@@ -4998,6 +5088,7 @@ async function chatTerminalProbe(phase: "a" | "b") {
   out.largest = { ...sizes(), cls: chat()?.className, scroll: document.documentElement.scrollWidth - document.documentElement.clientWidth };
   check(island() && wd(island()) >= 359.5 && wd(q(".chat > .chat-main")) >= 399.5 && Math.abs(wd(strip()) - 28) <= 0.5 && document.documentElement.scrollWidth <= document.documentElement.clientWidth,
     `at the largest text size the island, the conversation and the strip fit (${JSON.stringify(out.largest)})`);
+  colsOk("at the largest text size with the island");
   setAppearance({ theme: "light" }, false);
   await sleep(300);
   out.light = { island: getComputedStyle(q(".chat-side-in")!).backgroundColor, pill: termIcon() ? getComputedStyle(termIcon()!).backgroundColor : null, list: getComputedStyle(q(".chat-threads")!).backgroundColor };
@@ -5045,6 +5136,7 @@ async function chatTerminalProbe(phase: "a" | "b") {
   const left = (await terminalList()).filter((s) => all.includes(s.id));
   check(left.length === 0, `and ends them (${JSON.stringify(left.map((s) => s.name))})`);
   check(centred(), `and the conversation is centred again (${JSON.stringify(cols())})`);
+  colsOk("after Close all");
   for (const s of await terminalList()) await Promise.race([terminalClose(s.id).catch(() => {}), sleep(3000)]);
   await wide(false);
   await sleep(1500); // WebKit writes localStorage to disk a moment later
