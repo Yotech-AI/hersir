@@ -1,6 +1,6 @@
 // The Editor's menus (GA-113): a right-click menu (the tree's rows, the sidebar's folders) and Open in VS Code, Zed or
 // PhpStorm, which lists only the editors Gizai found on this computer.
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, ExternalLink } from "lucide-react";
 import { editorApps, openInApp } from "../../api";
@@ -8,7 +8,8 @@ import type { EditorApp } from "../../types";
 import { Popover } from "../Popover";
 
 export type MenuItem =
-  | { label: string; kbd?: string; disabled?: boolean; title?: string; danger?: boolean; run: () => void }
+  /** `icon`: before the label (the side island's tabs that don't fit, each with its kind's icon). */
+  | { label: string; kbd?: string; disabled?: boolean; title?: string; danger?: boolean; icon?: ReactNode; run: () => void }
   | { sep: true }
   | { note: string }
   /** A heading over the items (the Chat's tool strip: "Terminal · 2 open"). */
@@ -48,7 +49,7 @@ export function ContextMenu({ at, items, label, onClose }: { at: { x: number; y:
         : "note" in it ? <div key={i} className="pop-note">{it.note}</div>
         : "head" in it ? <div key={i} className="pop-head">{it.head}</div>
         : <button key={i} className={`opt${it.danger ? " danger" : ""}`} role="menuitem" disabled={it.disabled} title={it.title} onClick={() => { onClose(); it.run(); }}>
-            {it.label}{it.kbd && <span className="kbd">{it.kbd}</span>}
+            {it.icon}{it.label}{it.kbd && <span className="kbd">{it.kbd}</span>}
           </button>)}
     </div>,
     document.body,

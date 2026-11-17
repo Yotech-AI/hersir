@@ -185,6 +185,16 @@
 .island-tabs::-webkit-scrollbar { display: none; }
 .island-head > .acts { display: flex; flex: none; align-items: center; gap: 2px; }
 .island-head > .acts .btn.icon-only { width: 26px; height: 26px; }
+/* Tabs that don't fit (GA-300; design/islands-chat → Its header) are hidden (data-off, ChatSide's fitTabs); the overflow
+   button sits right after the last that fits, chevron-down after the number ("2 more"), and the actions stay on the right.
+   Its menu lists them with their icons. */
+.island-tabs > [data-off] { display: none; }
+.island-tabs.some-off { flex: 0 1 auto; }
+.island-head > .tabs-more { flex: none; gap: 4px; padding: 0 6px 0 8px; color: var(--text-2); }
+.island-head > .tabs-more:hover, .island-head > .tabs-more[aria-expanded="true"] { color: var(--text); }
+.island-head > .tabs-more > .icon { width: 14px; height: 14px; }
+.island-head > .tabs-more + .acts { margin-left: auto; }
+.pop .opt > .icon.kind-icon { flex: none; width: 14px; height: 14px; color: var(--text-3); }
 /* Island tab: size-island-tab high, radius 6, padding 0 6px 0 10px, 6px between icon, name and close. Default no fill, name
    text-2, icon 14px text-3; hover fill hover, name text; shown: a pill in selected, name text, icon text-2. Close (x, 12px in
    an 18px box, radius 4) shows on the shown tab and the hovered one; the others keep no room for it. */
@@ -217,6 +227,13 @@
 .strip-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .strip-btn .icon { width: 16px; height: 16px; }
 .strip-btn .n { font-size: 11px; font-weight: 600; line-height: 14px; font-variant-numeric: tabular-nums; }
+/* An icon's tooltip (GA-300), drawn as the notes say (Islands/Tooltip) in place of the browser's: float, a 1px line-2
+   border, radius 4, shadow-pop; 6px left of the icon, centred on it; the kind and its count in text, its key in text-3
+   (t-caption). */
+.strip-tip { position: fixed; z-index: 1000; display: flex; align-items: baseline; gap: 8px; padding: 4px 8px; border: 1px solid var(--line-2);
+  border-radius: var(--radius-s); background: var(--float); box-shadow: var(--shadow-pop); color: var(--text); font-size: var(--fs-sm); line-height: 18px;
+  white-space: nowrap; pointer-events: none; transform: translateY(-50%); }
+.strip-tip > .key { color: var(--text-3); font-size: 11.5px; line-height: 16px; }
 /* the strip's menu: its head in t-caption text-3; Close all in danger */
 .pop .pop-head { padding: 6px 8px 4px; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.45; }
 .pop .opt.danger { color: var(--danger); }
