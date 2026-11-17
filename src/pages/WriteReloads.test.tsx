@@ -22,6 +22,10 @@ class FakeNode {
   listeners = new Map<string, Listener[]>();
   style: Record<string, unknown> = { setProperty(k: string, v: string) { (this as Record<string, unknown>)[k] = v; }, removeProperty() {} };
   nodeValue: string | null = null;
+  // data-* through dataset, and a width with nothing sticking out, as the Tasks toolbar measures itself to fold (GA-300, useFold)
+  dataset: Record<string, string> = {};
+  scrollWidth = 0;
+  clientWidth = 0;
   scrollTop = 0;
   scrollHeight = 0;
   clientHeight = 0;

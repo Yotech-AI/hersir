@@ -51,7 +51,13 @@ describe("the term-* tokens (design/terminal/new-tokens.json)", () => {
     // GA-143 put the band's two sizes right after size-statusbar, as GA-139's new-tokens.json says; TD's five follow them
     const sat = sizes.findIndex((t) => t.name === "size-band-min") + 1;
     expect(sizes[sat - 3]?.name).toBe("size-statusbar");
-    expect(sizes.slice(sat, sat + 5)).toEqual(td.size.tokens);
+    // GA-300: two usages say what the sizes are in the islands: the Editor's terminal panel under a 40px header, and the
+    // handle as the 6px gap itself; the values stay TD's
+    const usage: Record<string, string> = {
+      "size-term-panel-min": "The Editor's terminal panel's least height: its 40px header (size-island-head) and 3 lines of the terminal (20px each, 4px above and below), under the 6px gap that is its handle.",
+      "size-handle": "The drag handle: the 6px gap between two islands itself (= island-gap), all of it to grab: above the Editor's terminal panel, and on the Chat's side island's left edge.",
+    };
+    expect(sizes.slice(sat, sat + 5)).toEqual(td.size.tokens.map((t) => (usage[t.name] ? { ...t, usage: usage[t.name] } : t)));
     expect(tokensFile).toBe(tokensCss(tokensJson));
   });
 

@@ -329,8 +329,10 @@ describe("the place's text (design §8)", () => {
     expect(awayText(g, PAGE)).toBe("gizai 2 is on its own page.");
     expect(awayText(g, PANEL)).toBe("gizai 2 is in gizai's Editor.");
     expect(awayText(session("t2", { name: "GA-118", folderPath: "C:\\Users\\you\\.gizai\\worktrees\\GA\\GA-118\\" }), PANEL)).toBe("GA-118 is in GA-118's Editor.");
-    // GA-278, word for word as the card gives it
-    expect(awayText(g, CHAT)).toBe("gizai 2 is in the Chat's terminal panel.");
+    // GA-300: the terminal beside the Chief Chat sits in the side island (GA-296), in design/islands-chat's words ("beside
+    // the chat"); GA-278's "is in the Chat's terminal panel." is gone
+    expect(awayText(g, CHAT)).toBe("gizai 2 is beside the chat.");
+    expect(awayText(g, CHAT)).not.toContain("terminal panel");
     expect(awayText(g, null)).toBe("gizai 2 isn't shown anywhere.");
   });
 });

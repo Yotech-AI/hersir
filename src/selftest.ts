@@ -1979,10 +1979,9 @@ export async function appearanceProbe(phase: "set" | "kept") {
   const barOk = (b: any) => !!b && b.t === 6 && b.h === 44 && b.l === 0 && b.r === 0 && b.page_t === 50 && b.bg === "rgba(0, 0, 0, 0)" && b.border === "0px 0px 0px 0px" && b.fills.length === 0;
   const fitsOk = (b: any) => barOk(b) && b.app_b === 600 && b.page_b === 594 && b.bar_over <= 1 && b.page_over.every((n: number) => n <= 1) && b.side_over.every((n: number) => n <= 1) && b.outside.length === 0;
   const barsOk = BAR_PAGES.every((h) => barOk(bars[h]));
-  // Known and older than the islands (GA-290 QA): at 900 wide the task list's toolbar (list view: New task, the search, the
-  // view switch, Filters, Sort, Group and Archived cards) needs 708px and the page gets 634 (652 before the islands), so
-  // Group and Archived cards are cut off. Reported (small["#/tasks"].sticking); it counts here again once the toolbar fits.
-  const SMALL_KNOWN = new Set(["#/tasks"]);
+  // GA-290 QA found the task list's toolbar (list view: New task, the search, the view switch, Filters, Sort, Group and
+  // Archived cards) 74px too wide at 900; since GA-300 it folds to fit (useFold), so #/tasks counts here again like the rest.
+  const SMALL_KNOWN = new Set<string>();
   const smallOk = BAR_PAGES.every((h) => SMALL_KNOWN.has(h) ? barOk(small[h]) : fitsOk(small[h]));
 
   // The largest sizes, picked with clicks on Settings → Appearance: at once, and kept.
@@ -6689,16 +6688,16 @@ async function templatesSteps(dir: string, dialog: { asked: { cmd: string; optio
   out.empty = empty;
   if (!madeEmpty.id) return fail("Empty made no team");
 
-  // 3. Export without warnings, on the empty team: straight to the save dialog with <team name>.gizai-team.json, the file
+  // 3. Export without warnings, on the empty team: straight to the save dialog with <team name>.hersir-team.json (GA-249), the file
   //    is written and the toast says so.
   const noWarnings = await checkTeamExport(madeEmpty.id);
-  const emptyPath = `${dir}/Empty probe team.gizai-team.json`;
+  const emptyPath = `${dir}/Empty probe team.hersir-team.json`;
   dialog.answer(emptyPath);
   let n = dialog.asked.length;
   exportBtn()?.click();
   const plainAsk = await lastAsk(n);
   const plainQuestion = !!q("[role=alertdialog]");
-  const plainToast = await toast("Saved Empty probe team.gizai-team.json");
+  const plainToast = await toast("Saved Empty probe team.hersir-team.json");
   let plainFile: unknown;
   try { const p = await previewTeamTemplate({ path: emptyPath }); plainFile = { columns: p.columns.map((c) => c.name), agents: p.agents.length }; } catch (e) { plainFile = String(e); }
   out.export_plain = { warnings: noWarnings.length, asked: plainAsk?.cmd, default_path: plainAsk?.options.defaultPath, filters: plainAsk?.options.filters,
@@ -6796,13 +6795,13 @@ async function templatesSteps(dir: string, dialog: { asked: { cmd: string; optio
   keyOn((document.activeElement as HTMLElement | null) ?? (dlg as HTMLElement | null) ?? document.body, "Escape");
   await sleep(600);
   warn.escape = { shown: !!dlg, closed: !q("[role=alertdialog]"), saved_nothing: dialog.asked.length === n };
-  const warnPath = `${dir}/Mobile team export.gizai-team.json`;
+  const warnPath = `${dir}/Mobile team export.hersir-team.json`;
   dialog.answer(warnPath);
   exportBtn()?.click();
   dlg = await waitFor(() => q("[role=alertdialog]"), 4000);
   buttonByText(dlg ?? document, "Export anyway")?.click();
   const anywayAsk = await lastAsk(n);
-  const anywayToast = await toast("Saved Mobile team export.gizai-team.json");
+  const anywayToast = await toast("Saved Mobile team export.hersir-team.json");
   let anywayFile: unknown;
   try { anywayFile = (await previewTeamTemplate({ path: warnPath })).agents.length; } catch (e) { anywayFile = String(e); }
   warn.anyway = { asked: anywayAsk?.cmd, default_path: anywayAsk?.options.defaultPath, toast: anywayToast, file_agents: anywayFile, closed: !q("[role=alertdialog]") };
@@ -6840,13 +6839,13 @@ async function templatesSteps(dir: string, dialog: { asked: { cmd: string; optio
   pickTeam(madeSw.id);
   const swOpen = !!(await waitFor(() => (shownName() === "Probe software team" ? true : null), 5000));
   const swWarnings = await checkTeamExport(madeSw.id);
-  const swPath = `${dir}/Probe software team.gizai-team.json`;
+  const swPath = `${dir}/Probe software team.hersir-team.json`;
   dialog.answer(swPath);
   n = dialog.asked.length;
   exportBtn()?.click();
   if (swWarnings.length) buttonByText((await waitFor(() => q("[role=alertdialog]"), 4000)) ?? document, "Export anyway")?.click();
   const swAsk = await lastAsk(n);
-  const swToast = await toast("Saved Probe software team.gizai-team.json");
+  const swToast = await toast("Saved Probe software team.hersir-team.json");
   const round: Record<string, unknown> = { opened: swOpen, warnings: swWarnings.map((w) => `${w.agent ?? "the team"} ${w.field} ${w.kind}`), default_path: swAsk?.options.defaultPath, toast: swToast };
   if (!(await openDrawer())) return fail("New team opened no drawer (round trip)");
   // each drawer starts at Empty, so a click on A template file… opens the dialog (answered with the exported file)
@@ -6887,7 +6886,7 @@ async function templatesSteps(dir: string, dialog: { asked: { cmd: string; optio
       && e.starts[e.starts.length - 1] === "A template file…" && e.notes[0] === "The seven usual columns, no agents."
       && e.subtitle === "A new team gets the seven usual columns and no agents. Move a project to it in the project's form.",
     empty_made: e.made.on && e.made.closed && e.made.shown && e.made.picked && e.made.name === "Empty probe team" && same(e.made.columns, usual) && e.made.agents === 0,
-    export_plain: ep.warnings === 0 && !ep.question && ep.asked === "save" && ep.default_path === "Empty probe team.gizai-team.json" && ep.toast
+    export_plain: ep.warnings === 0 && !ep.question && ep.asked === "save" && ep.default_path === "Empty probe team.hersir-team.json" && ep.toast
       && typeof ep.file === "object" && same(ep.file.columns, usual.map((u) => u[0])) && ep.file.agents === 0,
     software_check: sw.shown && sw.description === "The five agents a new install gets, and the seven usual columns." && sw.name === sw.plan_name
       && sw.plan_name.startsWith("Software team") && sw.plan_columns === 7 && sw.plan_agents === 5 && sw.rows === 7 && sw.rows_match && sw.cards.length === 5
@@ -6905,10 +6904,10 @@ async function templatesSteps(dir: string, dialog: { asked: { cmd: string; optio
     file_made: f.made.on && f.made.closed && f.made.shown && f.made.name === f.plan_name && !!f.made.agents?.length && f.made.agents.every((a) => a[1] !== "active"),
     export_question: w.expected > 0 && w.shown && w.title === "This may share private details" && w.each && same(w.buttons, ["Cancel", "Export anyway"]) && w.focus_cancel,
     export_cancel: Object.values(w.cancel).every(Boolean) && Object.values(w.escape).every(Boolean),
-    export_anyway: w.anyway.asked === "save" && w.anyway.default_path === `${f.made.name}.gizai-team.json` && w.anyway.toast && typeof w.anyway.file_agents === "number" && w.anyway.closed,
+    export_anyway: w.anyway.asked === "save" && w.anyway.default_path === `${f.made.name}.hersir-team.json` && w.anyway.toast && typeof w.anyway.file_agents === "number" && w.anyway.closed,
     bad_file: !!b.refusal && b.banner === b.refusal && b.off && b.no_check && b.off_with_name,
     bad_file_keyboard: b.cancel_asked && b.cancel_keeps && b.escape_asks && b.closed && b.no_team,
-    round_trip: r.opened && r.default_path === "Probe software team.gizai-team.json" && r.toast && r.starts_empty && r.shown && r.made.on && r.made.shown
+    round_trip: r.opened && r.default_path === "Probe software team.hersir-team.json" && r.toast && r.starts_empty && r.shown && r.made.on && r.made.shown
       && r.made.name === "Round trip team" && r.same,
   };
   const failed = Object.entries(checks).filter(([, v]) => !v).map(([k]) => k);

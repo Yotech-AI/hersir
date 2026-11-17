@@ -144,7 +144,13 @@ describe("the background", () => {
     }
   });
   it("the first start's onboarding keeps its own opaque background with the glass on", () => {
-    expect(decl("onboarding.css", ".onb").get("background")).toBe("var(--bg)");
+    // GA-295 (design/islands-settings: Onboarding) gave it the window's background, the islands' opaque canvas gradient as
+    // .app paints it without the glass, in place of var(--bg); never the glass-* colours, so the desktop doesn't show through
+    expect(decl("onboarding.css", ".onb").get("background")).toBe(gradient("canvas-glow", "canvas-from", "canvas-to"));
+    for (const t of ["dark", "light"] as const) {
+      for (const n of ["--canvas-from", "--canvas-to", "--canvas-glow"]) expect([t, n, rgba(colour(t, n))[3]]).toEqual([t, n, 1]);
+    }
+    expect(all.filter((r) => r.selector.startsWith("html.glass") && r.selector.includes(".onb"))).toEqual([]);
   });
 });
 

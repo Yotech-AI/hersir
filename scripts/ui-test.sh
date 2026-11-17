@@ -158,7 +158,7 @@
 #     as before 2.54.1); with "GA-222 text" on the clipboard the same paste puts exactly that in the field.
 # 22. team templates (GA-227), on the demo data, with the file dialogs answered inside the app (no window opens): the top
 #     bar's Export template before New team; New team with Empty as before (focus, subtitle, seven columns, no agents, opened);
-#     Export without warnings goes straight to the save dialog with "<team name>.gizai-team.json", writes the file and says
+#     Export without warnings goes straight to the save dialog with "<team name>.hersir-team.json", writes the file and says
 #     "Saved …"; Software team's check (seven columns, five agents, no extra commands), renamed, made and opened; a template
 #     file (JSON only) and its check against preview_team_template: columns, agents, CLIs, modes, the extra commands under
 #     their heading in the error banner's colours, missing servers, labels, every note and the paused line above the agents,

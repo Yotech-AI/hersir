@@ -188,7 +188,10 @@ describe("the tool strip", () => {
     expect(bar).toMatch(/^<div class="chat-strip" role="toolbar" aria-label="Beside the chat" aria-orientation="vertical">/);
     const btns = [...bar.matchAll(/<button [^>]*class="strip-btn"[^>]*>[^]*?<\/button>/g)].map((m) => m[0]);
     expect(btns).toHaveLength(1);
-    expect(btns[0]).toMatch(/data-kind="terminal" aria-pressed="true" aria-label="Terminal, 2 open" title="Terminal, 2 open \(Ctrl\+`\)"/);
+    // GA-300: the tooltip is drawn as the notes' Islands/Tooltip (.strip-tip, on hover or keyboard focus), so the button has
+    // no title for the browser to draw its own
+    expect(btns[0]).toMatch(/data-kind="terminal" aria-pressed="true" aria-label="Terminal, 2 open">/);
+    expect(btns[0]).not.toContain("title=");
     expect(btns[0]).toContain("lucide-terminal");
     expect(btns[0], "the count under the icon").toMatch(/<\/svg><span class="n">2<\/span><\/button>$/);
   });
@@ -202,12 +205,13 @@ describe("the tool strip", () => {
     S.openSideTab({ kind: "editor", id: "src/a.ts" });
     S.openSideTab({ kind: "card", id: "GA-3" });
     const bar = strip(page("c9"));
-    const btns = [...bar.matchAll(/data-kind="(\w+)" aria-pressed="(\w+)" aria-label="([^"]+)" title="([^"]+)"/g)].map((m) => [m[1], m[2], m[3], m[4]]);
+    const btns = [...bar.matchAll(/data-kind="(\w+)" aria-pressed="(\w+)" aria-label="([^"]+)">/g)].map((m) => [m[1], m[2], m[3]]);
     expect(btns).toEqual([
-      ["editor", "false", "Editor, 1 open", "Editor, 1 open (Alt+2)"],
-      ["board", "false", "Board, 1 open", "Board, 1 open (Alt+3)"],
-      ["card", "true", "Card, 3 open", "Card, 3 open (Alt+4)"],
+      ["editor", "false", "Editor, 1 open"],
+      ["board", "false", "Board, 1 open"],
+      ["card", "true", "Card, 3 open"],
     ]);
+    expect(bar, "no browser tooltips: the strip draws its own (GA-300)").not.toContain("title=");
     expect(bar.indexOf("lucide-file-code")).toBeLessThan(bar.indexOf("lucide-columns-3"));
     expect(bar.indexOf("lucide-columns-3")).toBeLessThan(bar.indexOf("lucide-square-kanban"));
     S.closeSideTabs(["card:GA-1", "card:GA-2", "card:GA-3", "board:hersir", "editor:src/a.ts"], "c9");
@@ -221,7 +225,7 @@ describe("the tool strip", () => {
     expect(chatDiv(html)).toBe("chat has-strip");
     expect(html).not.toContain('<div class="chat-side">');
     const bar = strip(html);
-    expect(bar).toMatch(/data-kind="terminal" aria-pressed="false" aria-label="Terminal, 2 open" title="Terminal, 2 open \(Ctrl\+`\)"/);
+    expect(bar).toMatch(/data-kind="terminal" aria-pressed="false" aria-label="Terminal, 2 open">/);
     expect(bar).toContain('<span class="n">2</span>');
     expect(f.list.map((s) => s.id), "the terminals keep running").toEqual(["t1", "t2"]);
     S.showSide();
