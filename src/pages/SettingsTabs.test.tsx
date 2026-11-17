@@ -463,3 +463,34 @@ function checkboxLabelled(t: ReactNode, label: string) {
   expect(labels.length).toBe(1);
   return findAll(labels[0].children as ReactNode, (p) => p.type === "checkbox")[0] as unknown as { onChange: (e: unknown) => void };
 }
+
+// GA-282: Settings → General → Data has Hersir's logs right after Run logs: the logs folder in mono like the rows above it
+// (<data folder>/logs until get_logs_info answers; LogsSetting.test.tsx tests the answer), Open folder, and the card's hint
+// word for word. The other rows of Data stay as they were, and no other tab has it.
+describe("Hersir's logs in General → Data (GA-282)", () => {
+  const HINT = "One file per start; the 20 newest are kept. If Hersir crashed, send us the file of that start.";
+  const dataOf = (html: string) => {
+    const general = panels(html).find((p) => p.label === "General")?.html ?? "";
+    const from = general.indexOf("<h3>Data</h3>");
+    return general.slice(from, general.indexOf("<h3>Backups</h3>", from));
+  };
+  const labels = (html: string) => [...html.matchAll(/<div class="field wide"[^>]*><label[^>]*>([^<]+)<\/label>/g)].map((m) => m[1]!.replace(/&#x27;/g, "'"));
+  it("comes right after Run logs, and Data's other rows are as they were", () => {
+    expect(labels(dataOf(render()))).toEqual(["Data folder", "Worktrees", "Run logs", "Hersir's logs", "Worktrees of finished cards"]);
+  });
+  it("shows the folder in mono like the rows above it, an Open folder button and the hint word for word", () => {
+    const data = dataOf(render());
+    const row = data.slice(data.indexOf("<label>Hersir&#x27;s logs</label>"), data.indexOf("<label>Worktrees of finished cards</label>"));
+    expect(row).toContain('<span class="mono bk-folder">/home/you/.local/share/gizai/logs</span>');
+    expect(data).toContain('<span class="mono">/home/you/.local/share/gizai/runs</span>');
+    expect(row).toMatch(/<button type="button" class="btn sm"><svg[^>]*>.*<\/svg>Open folder<\/button>/);
+    expect(text(row)).toBe(`Hersir's logs /home/you/.local/share/gizai/logs Open folder ${HINT}`);
+  });
+  it("follows the data folder in Settings until Hersir names the logs folder", () => {
+    const data = dataOf(render(undefined, { ...SETTINGS, dataDir: "/srv/hersir" }));
+    expect(data).toContain('<span class="mono bk-folder">/srv/hersir/logs</span>');
+  });
+  it("is on General only", () => {
+    for (const p of panels(render()).filter((p) => p.label !== "General")) expect(text(p.html)).not.toContain("Hersir's logs");
+  });
+});
