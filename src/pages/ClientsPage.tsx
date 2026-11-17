@@ -31,7 +31,7 @@ export function ClientsPage() {
   return (
     <>
       <div className="topbar"><div className="crumbs"><b>Clients</b><span className="faint">{data?.length ?? ""}</span></div></div>
-      <div className="toolbar">
+      <div className="toolbar island-bar">
         <button className="btn" onClick={() => open({ kind: "client" })}><Plus className="icon" />New client</button>
         <input className="input search-input" type="search" aria-label="Filter clients" placeholder="Name, city, KvK, BTW, contact" value={q} onChange={(e) => setQ(e.target.value)} />
         <span className="spacer" />

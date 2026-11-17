@@ -285,86 +285,94 @@ export function TaskPage({ id, view = "card", run, youId }: { id: string; view?:
           {!showProps && <button className="btn ghost sm icon-only" aria-label="Show properties" title="Show properties (])" onClick={() => openProps(true)}><PanelRight className="icon" /></button>}
         </div>
       </div>
-      <div className="tabs task-tabs" role="tablist" aria-label="The card, its changes and its screenshots">
-        <a className="tab" role="tab" aria-selected={!wide} href={href({ page: "task", id })}><SquareKanban className="icon" />Card</a>
-        <a className="tab" role="tab" aria-selected={onChanges} href={href({ page: "task", id, view: "changes" })}
-          title={label === null ? undefined : "What this card changed"}>
-          <FileDiff className="icon" />Changes
-          {label === "none" ? <span className="n">No changes</span> : label && <> <Diffstat add={label.add} del={label.del} /></>}</a>
-        {shotsTab && (
-          <a className="tab" role="tab" aria-selected={onShots} href={href({ page: "task", id, view: "screenshots" })}
-            title={shotsCount === null ? undefined : "What the agents saw of the screens they built"}>
-            <Images className="icon" />Screenshots
-            {shotsCount !== null && <span className="n">{shotsCount > 0 ? shotsCount : "None"}</span>}</a>
-        )}
-      </div>
-      {err && <div className="error-banner" role="alert">{err}<button className="btn ghost sm" onClick={() => setErr(null)}>Dismiss</button></div>}
-      <div className="split">
-        {onChanges ? <ChangesView task={task} card={changes} runId={run} runs={runs} />
-          : onShots ? <ScreenshotsView task={task} sets={shots.data} error={shots.error} runId={run} project={project} agent={agent}
-            onShowProps={showShotsSwitch} onViewRun={viewRun} />
-          : <div className="doc">
-          <div className="doc-in">
-            <div className="task-head">
-              <StatusIcon category={task.stateCategory} hold={task.hold} /><PriorityIcon priority={task.priority} />
-              <span className="id">{task.identifier}</span>
-              {task.projectName && <a className="proj" href={href({ page: "project", id: task.projectId! })}><span className="dot" style={{ width: 8, height: 8, borderRadius: "50%", background: task.projectColor ?? "var(--text-3)" }} />{task.projectName}</a>}
-              {live && <span className="badge live"><span className="pulse" />Live</span>}
-              {task.byHand && <span className="badge" title={byHandTip(task)}><Keyboard className="icon sm" />By hand</span>}
-              {task.hold && <span className="badge needs">On hold</span>}
-              {archived && <span className="badge"><Archive className="icon sm" />Archived</span>}
+      {/* GA-294 (design/islands-pages): the card is an island whose header holds Card, Changes and Screenshots as island tabs;
+          Properties is an island of its own beside it (Properties.tsx) */}
+      <div className="task-page">
+        <div className="card-island">
+          <div className="island-head">
+            <div className="tabs task-tabs" role="tablist" aria-label="The card, its changes and its screenshots">
+              <a className="tab" role="tab" aria-selected={!wide} href={href({ page: "task", id })}><SquareKanban className="icon" />Card</a>
+              <a className="tab" role="tab" aria-selected={onChanges} href={href({ page: "task", id, view: "changes" })}
+                title={label === null ? undefined : "What this card changed"}>
+                <FileDiff className="icon" />Changes
+                {label === "none" ? <span className="n">No changes</span> : label && <> <Diffstat add={label.add} del={label.del} /></>}</a>
+              {shotsTab && (
+                <a className="tab" role="tab" aria-selected={onShots} href={href({ page: "task", id, view: "screenshots" })}
+                  title={shotsCount === null ? undefined : "What the agents saw of the screens they built"}>
+                  <Images className="icon" />Screenshots
+                  {shotsCount !== null && <span className="n">{shotsCount > 0 ? shotsCount : "None"}</span>}</a>
+              )}
             </div>
-            {archived && (
-              <div className="archived-note" role="note">
-                <span className="grow">Archived {relTime(task.archivedAt!)}{task.archivedBy ? ` by ${task.archivedBy}` : ""}. It is read-only: Restore puts it back at the bottom of {task.stateName}.</span>
-              </div>
-            )}
-            <TitleInput title={task.title} readOnly={archived} onSave={(t) => updateTask(id, { title: t }).catch(fail)} />
-            <EditableMarkdown label="Description" value={task.descriptionMd} readOnly={archived}
-              placeholder="Describe the task. Markdown works: headings, bold, checklists. @ links a task, project, client or agent."
-              onSave={(md) => updateTask(id, { descriptionMd: md }).catch(fail)} />
-            <EditableMarkdown label="Acceptance criteria" value={task.acceptanceMd ?? ""} hint="QA checks these one by one" readOnly={archived}
-              placeholder="- [ ] What must be true when this task is done"
-              onSave={(md) => updateTask(id, { acceptanceMd: md }).catch(fail)} />
-            <section className="block">
-              <div className="block-head"><h3>Attachments</h3><span className="faint" style={{ fontSize: "var(--fs-sm)" }}>Screenshots, exports, specs</span></div>
-              <FileDrop ownerType="task" ownerId={task.id} readOnly={archived} />
-            </section>
-            {team && !archived && <RunPanel task={task} team={team} />}
-            {!archived && <PullPanel task={task} live={live} mergeTo={mergeTo} changes={changes.data} />}
-
-            <div className="tabs" role="tablist" ref={thread}>
-              {([["comments", MessageSquare, "Comments", comments?.length], ["activity", Activity, "Activity", undefined], ["runs", Play, "Runs", runs?.length]] as const).map(([k, I, l, n]) => (
-                <button key={k} className="tab" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}><I className="icon" />{l}{n ? <span className="n">{n}</span> : null}</button>
-              ))}
-            </div>
-
-            {tab === "comments" && (
-              <div>
-                {(comments ?? []).map((c) => (
-                  <div className="comment" key={c.id} id={`comment-${c.id}`}>
-                    <Avatar name={c.authorName} kind={c.authorKind} size="lg" />
-                    <div className="body">
-                      <div className="by"><b>{c.authorName}</b><span className="faint" title={new Date(c.createdAt).toLocaleString("en-GB")}>{relTime(c.createdAt)}</span>{c.runId && <span className="badge info">from a run</span>}</div>
-                      <MarkdownView md={c.bodyMd} />
-                    </div>
-                  </div>
-                ))}
-                {comments && comments.length === 0 && <p className="faint">No comments yet.</p>}
-                {!archived && <CommentComposer key={id} taskId={id} onPost={post} />}
-              </div>
-            )}
-            {tab === "activity" && (
-              <ul className="activity">
-                {(activity ?? []).slice().reverse().map((a, i) => (
-                  <li key={i}><b>{a.actorName ?? "Hersir"}</b><span className="grow">{describeChange(a)}</span><span className="faint" title={new Date(a.at).toLocaleString("en-GB")}>{relTime(a.at)}</span></li>
-                ))}
-                {activity && activity.length === 0 && <li className="faint">Nothing yet.</li>}
-              </ul>
-            )}
-            {tab === "runs" && <RunHistory runs={runs} />}
           </div>
-        </div>}
+          {err && <div className="error-banner" role="alert">{err}<button className="btn ghost sm" onClick={() => setErr(null)}>Dismiss</button></div>}
+          <div className="split">
+            {onChanges ? <ChangesView task={task} card={changes} runId={run} runs={runs} />
+              : onShots ? <ScreenshotsView task={task} sets={shots.data} error={shots.error} runId={run} project={project} agent={agent}
+                onShowProps={showShotsSwitch} onViewRun={viewRun} />
+              : <div className="doc">
+              <div className="doc-in">
+                <div className="task-head">
+                  <StatusIcon category={task.stateCategory} hold={task.hold} /><PriorityIcon priority={task.priority} />
+                  <span className="id">{task.identifier}</span>
+                  {task.projectName && <a className="proj" href={href({ page: "project", id: task.projectId! })}><span className="dot" style={{ width: 8, height: 8, borderRadius: "50%", background: task.projectColor ?? "var(--text-3)" }} />{task.projectName}</a>}
+                  {live && <span className="badge live"><span className="pulse" />Live</span>}
+                  {task.byHand && <span className="badge" title={byHandTip(task)}><Keyboard className="icon sm" />By hand</span>}
+                  {task.hold && <span className="badge needs">On hold</span>}
+                  {archived && <span className="badge"><Archive className="icon sm" />Archived</span>}
+                </div>
+                {archived && (
+                  <div className="archived-note" role="note">
+                    <span className="grow">Archived {relTime(task.archivedAt!)}{task.archivedBy ? ` by ${task.archivedBy}` : ""}. It is read-only: Restore puts it back at the bottom of {task.stateName}.</span>
+                  </div>
+                )}
+                <TitleInput title={task.title} readOnly={archived} onSave={(t) => updateTask(id, { title: t }).catch(fail)} />
+                <EditableMarkdown label="Description" value={task.descriptionMd} readOnly={archived}
+                  placeholder="Describe the task. Markdown works: headings, bold, checklists. @ links a task, project, client or agent."
+                  onSave={(md) => updateTask(id, { descriptionMd: md }).catch(fail)} />
+                <EditableMarkdown label="Acceptance criteria" value={task.acceptanceMd ?? ""} hint="QA checks these one by one" readOnly={archived}
+                  placeholder="- [ ] What must be true when this task is done"
+                  onSave={(md) => updateTask(id, { acceptanceMd: md }).catch(fail)} />
+                <section className="block">
+                  <div className="block-head"><h3>Attachments</h3><span className="faint" style={{ fontSize: "var(--fs-sm)" }}>Screenshots, exports, specs</span></div>
+                  <FileDrop ownerType="task" ownerId={task.id} readOnly={archived} />
+                </section>
+                {team && !archived && <RunPanel task={task} team={team} />}
+                {!archived && <PullPanel task={task} live={live} mergeTo={mergeTo} changes={changes.data} />}
+
+                <div className="tabs" role="tablist" ref={thread}>
+                  {([["comments", MessageSquare, "Comments", comments?.length], ["activity", Activity, "Activity", undefined], ["runs", Play, "Runs", runs?.length]] as const).map(([k, I, l, n]) => (
+                    <button key={k} className="tab" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}><I className="icon" />{l}{n ? <span className="n">{n}</span> : null}</button>
+                  ))}
+                </div>
+
+                {tab === "comments" && (
+                  <div>
+                    {(comments ?? []).map((c) => (
+                      <div className="comment" key={c.id} id={`comment-${c.id}`}>
+                        <Avatar name={c.authorName} kind={c.authorKind} size="lg" />
+                        <div className="body">
+                          <div className="by"><b>{c.authorName}</b><span className="faint" title={new Date(c.createdAt).toLocaleString("en-GB")}>{relTime(c.createdAt)}</span>{c.runId && <span className="badge info">from a run</span>}</div>
+                          <MarkdownView md={c.bodyMd} />
+                        </div>
+                      </div>
+                    ))}
+                    {comments && comments.length === 0 && <p className="faint">No comments yet.</p>}
+                    {!archived && <CommentComposer key={id} taskId={id} onPost={post} />}
+                  </div>
+                )}
+                {tab === "activity" && (
+                  <ul className="activity">
+                    {(activity ?? []).slice().reverse().map((a, i) => (
+                      <li key={i}><b>{a.actorName ?? "Hersir"}</b><span className="grow">{describeChange(a)}</span><span className="faint" title={new Date(a.at).toLocaleString("en-GB")}>{relTime(a.at)}</span></li>
+                    ))}
+                    {activity && activity.length === 0 && <li className="faint">Nothing yet.</li>}
+                  </ul>
+                )}
+                {tab === "runs" && <RunHistory runs={runs} />}
+              </div>
+            </div>}
+          </div>
+        </div>
         {showProps && team && people && <Properties task={task} team={team} people={people} onError={setErr} onClose={() => openProps(false)} readOnly={archived}
           changes={changes.data}
           onReadComments={() => { setTab("comments"); setReadReason((n) => n + 1); }} />}

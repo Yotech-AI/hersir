@@ -55,6 +55,12 @@
 #     see-through), in light too; "Show mountains along the bottom" turns them off and on at once, and leaves them off for the
 #     second start, where they are still off and Reset to defaults turns them on. Then a second start: Geist, light, compact and
 #     the sizes are still there, and Reset to defaults brings everything back (so later starts begin at the defaults).
+#     GA-294 (islandsPagesState), at the defaults in dark and at the largest sizes in light: the Inbox's, the task list's,
+#     Projects' and Clients' toolbars are their island's header (at its top, 44px + --ui-box, no fill or line); a card's
+#     page is the card island (its 40px header with Card, Changes and Screenshots as 28px tabs, the selected one in
+#     `selected`) and Properties' island (320 wide, 6px to its right, its 40px header); the New task drawer floats 6px in
+#     from the window's top, right and bottom edges, 1024 wide, 10px corners, float with a line-2 border all round, over a
+#     scrim covering the window, nothing under it moving; the palette and the Filters popover are float with a line-2 border.
 #     GA-291, first, at the defaults: Close sidebar sits at the top right of New task's row (28px, its tooltip with Ctrl+\,
 #     aria-expanded, aria-controls #sidebar); a click closes the sidebar and the focus moves to Show sidebar. Closed, on every
 #     page but #/terminal and again at 900 x 600: the toolbar 6px from the window's top left in the top bar's 44px row (Show
