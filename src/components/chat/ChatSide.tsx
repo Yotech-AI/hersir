@@ -169,7 +169,8 @@ function OpenAFile({ side, you }: { side: ChatSide; you: string }) {
   const { project } = useChatProject();
   const [goto, setGoto] = useState<EditorFolder | null>(null);
   const [picker, setPicker] = useState<{ x: number; y: number } | null>(null);
-  const done = useRef(0);
+  // an ask made before this mount (the Chat page drawn again after another page) was handled then: it doesn't open again
+  const done = useRef(fileAsk?.n ?? 0);
   useEffect(() => {
     if (!asked || asked.n === done.current || !folders || project === undefined) return;
     done.current = asked.n;
