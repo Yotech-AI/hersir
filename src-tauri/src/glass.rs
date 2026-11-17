@@ -12,8 +12,10 @@
 ///   is on in yours);
 /// - `"none"` on Linux other than Hyprland: KWin blurs only a window that asks for it and GNOME doesn't blur, so there
 ///   the background stays plain (design/islands/README.md → How it is built).
+///
+/// Async, like every command but GA-191's six, so it runs on the async runtime and not on the main thread (GA-299).
 #[tauri::command]
-pub fn glass_support() -> &'static str {
+pub async fn glass_support() -> &'static str {
     support()
 }
 
