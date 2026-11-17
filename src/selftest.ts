@@ -6752,7 +6752,8 @@ async function chatPasteProbe() {
       view.focus();
       await sleep(200);
       const asked = calls.length;
-      const step: Record<string, unknown> = { name, focused: view.hasFocus, selected: view.state.sliceDoc(o.from, o.to) };
+      // the text's own element has the focus (CodeMirror's hasFocus also asks for the window's, which a cage may not give)
+      const step: Record<string, unknown> = { name, focused: content.contains(document.activeElement), selected: view.state.sliceDoc(o.from, o.to) };
       try {
         const before = await selftestPaste("Paste", o.clipboard);
         let count = before;
