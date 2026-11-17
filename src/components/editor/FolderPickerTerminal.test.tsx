@@ -487,6 +487,63 @@ describe("GA-298: Open a file… and Board, from Open's menu and Alt+2 and Alt+3
     await page();
     expect([filePicker(), goTo()], "nothing opens by itself").toEqual([undefined, undefined]);
   });
+
+  // GA-298 QA, round 2 (the fix starts OpenAFile at the ask already made): each way in, the island's + and Alt+2 too, opens
+  // nothing by itself after another page, and Open a file… still opens on the first ask after coming back
+  const plus = async () => {
+    const btn = one((f) => f.type === "button" && f.props["aria-label"] === "Open beside the chat")!;
+    fire(btn, "onClick", { currentTarget: { getBoundingClientRect: () => ({ left: 1000, bottom: 60 }) } });
+    await settle();
+  };
+  const closeGoTo = async () => { fire(one((f) => f.props.className === "pal-backdrop")!, "onClick"); await settle(); };
+  const away = async () => { root = () => null; render(); await settle(); await page(); };
+  const nothing = () => [filePicker(), goTo()];
+
+  it("in a chat about a card: the island's + and Alt+2 open Go to file over its project once each, nothing after coming back, and the first ask afterwards opens it", async () => {
+    Side.setChatCards("c1", "about", ["GA-5"]);
+    await page();
+    await alt(3); // the Board tab: the island and its + show
+    await plus();
+    await pick("Open a file…");
+    expect(goToIn()).toBe("Go to file in gizai");
+    await closeGoTo();
+    expect(nothing()).toEqual([undefined, undefined]);
+    await away();
+    expect(nothing(), "back from another page after +: nothing opens by itself").toEqual([undefined, undefined]);
+    await plus();
+    await pick("Open a file…");
+    expect(goToIn(), "the first + → Open a file… after coming back opens it").toBe("Go to file in gizai");
+    await closeGoTo();
+    await alt(2);
+    expect(goToIn(), "Alt+2 with no Editor tab").toBe("Go to file in gizai");
+    await closeGoTo();
+    await away();
+    expect(nothing(), "back from another page after Alt+2: nothing opens by itself").toEqual([undefined, undefined]);
+    await away();
+    expect(nothing(), "and not after a second round trip either").toEqual([undefined, undefined]);
+    await alt(2);
+    expect(goToIn(), "the first Alt+2 after coming back opens it").toBe("Go to file in gizai");
+  });
+
+  it("in a chat without a project: the picker opens again on the first ask after coming back, and with an Editor tab Go to file goes over its folder", async () => {
+    await page();
+    await alt(2);
+    expect(filePicker()).toBeDefined();
+    await away();
+    expect(nothing(), "the picker left open on the other page doesn't come back by itself").toEqual([undefined, undefined]);
+    await openMenu();
+    await pick("Open a file…");
+    expect(filePicker(), "the first Open a file… after coming back asks for the folder").toBeDefined();
+    expect(goTo()).toBeUndefined();
+    // an Editor tab beside the chat: Open a file… goes over the last Editor tab's folder, with no picker
+    Side.openSideTab({ kind: "editor", id: Side.editorTabId(`${HERD}/kade-portal`, "src/app.ts") });
+    await away();
+    expect(nothing()).toEqual([undefined, undefined]);
+    await plus();
+    await pick("Open a file…");
+    expect(filePicker()).toBeUndefined();
+    expect(goToIn()).toBe("Go to file in kade-portal");
+  });
 });
 
 describe("the Editor's own picker (no onPick) is as it was", () => {

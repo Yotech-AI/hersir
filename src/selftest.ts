@@ -4638,9 +4638,10 @@ async function chatTerminalProbe(phase: "a" | "b") {
   altDigit(1);
   await waitFor(() => (island() ? true : null), 2000);
   (document.activeElement as HTMLElement | null)?.blur();
-  const before234 = { cls: chat()?.className, tabs: tabIds().join(","), icons: [...document.querySelectorAll(".chat-strip .strip-btn")].map((b) => b.getAttribute("data-kind")) };
   const now234 = () => ({ cls: chat()?.className, tabs: tabIds().join(","), shown: shownTab(), icons: [...document.querySelectorAll(".chat-strip .strip-btn")].map((b) => b.getAttribute("data-kind")) });
-  const shown234 = shownTab();
+  // taken as the later ones are (with the tab shown), so the checks below compare like with like
+  const before234 = now234();
+  const shown234 = before234.shown;
   // GA-298: Alt+4 with no card does nothing; Alt+3 with no Board tab opens it (closed again here); Alt+2 with no Editor tab
   // opens Open a file…: the folder picker titled "Open a file in", as this chat has no project (closed again by a click outside)
   altDigit(4);
