@@ -7,7 +7,7 @@ Where each setting lives, what a backup holds and how to restore one, how Hersir
 | Tab | What it holds |
 |---|---|
 | General | Quit, Updates, the Editor's folders, Data: where Hersir keeps your data, and the worktrees of finished cards; and Backups: a folder for copies of your data, how often, how many to keep, Back up now, the backups there and Restore |
-| Appearance | The font, text sizes, theme and density, and the glass behind the islands |
+| Appearance | The font, text sizes, theme and density, and the glass behind the panels |
 | Notifications | A switch for each kind of notification |
 | Agents and runs | Coding CLIs; Runs: limits, runs at once, memory for agent runs and per run, Pause all agents, memory and Ask the Chief first; and Screenshots: what Hersir keeps of agents' screenshots, and the previews' ports |
 | MCP servers | The outside services agents can use, and the built-in browser |
@@ -51,7 +51,7 @@ A restore never touches keys and passwords: they stay as they are on this comput
 - **Font:** one font for the whole app: Atkinson Hyperlegible, JetBrains Mono, Inter, Geist or Hack, all bundled.
 - **Text size:** one for the chat, one for the interface, and one for tasks and docs. Reading text grows, headings half as much, and IDs and labels stay put; the chat column gets wider with it.
 - **Theme and density**, also with the t and d keys.
-- **Background → Glass:** Show the desktop through the background. The background behind the islands is a soft gradient; with this on, it is see-through and your desktop shows through it, blurred and tinted. The islands, menus and drawers stay solid. On by default on macOS (vibrancy) and Windows 11 (Mica). Off by default on Linux, where your desktop's compositor does the blurring: on Hyprland, which blurs see-through windows, you can turn it on. On Windows 10 and on Linux desktops other than Hyprland there is no blur: the checkbox is off and can't be turned on. While your system asks for reduced transparency, the background stays plain and the checkbox keeps its value.
+- **Background → Glass:** Show the desktop through the background. The background behind the panels is a soft gradient; with this on, it is see-through and your desktop shows through it, blurred and tinted. The panels, menus and drawers stay solid. On by default on macOS (vibrancy) and Windows 11 (Mica). Off by default on Linux, where your desktop's compositor does the blurring: on Hyprland, which blurs see-through windows, you can turn it on. On Windows 10 and on Linux desktops other than Hyprland there is no blur: the checkbox is off and can't be turned on. While your system asks for reduced transparency, the background stays plain and the checkbox keeps its value.
 
 Changes show at once and are kept on this computer.
 

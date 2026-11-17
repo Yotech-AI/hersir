@@ -59,7 +59,7 @@ const under = (el: Element | null | undefined) => { const r = el?.getBoundingCli
 /** The island's left edge: its width is a share of the room right of the chat list (the conversation and the island), at
  *  least 360px of island and 400px of conversation. */
 const SIDE_EDGE: HandleEdge = {
-  side: "left", label: "Side island's width", clamp: clampChatPanel, share: chatShareFor, first: CHAT_FIRST_SHARE, step: CHAT_SHARE_STEP,
+  side: "left", label: "Side panel's width", clamp: clampChatPanel, share: chatShareFor, first: CHAT_FIRST_SHARE, step: CHAT_SHARE_STEP,
   keep: keepChatShare,
   measure: (el) => {
     const talk = el.parentElement?.querySelector<HTMLElement>(":scope > .chat-main");

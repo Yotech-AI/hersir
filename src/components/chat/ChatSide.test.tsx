@@ -176,9 +176,19 @@ describe("the side island, with terminals opened in the chat", () => {
 
   it("has its left edge as a vertical separator, at 45% the first time", () => {
     const html = page("c1");
-    expect(html).toMatch(/class="term-handle" role="separator" aria-orientation="vertical" aria-label="Side island&#x27;s width" aria-valuenow="45"/);
+    expect(html).toMatch(/class="term-handle" role="separator" aria-orientation="vertical" aria-label="Side panel&#x27;s width" aria-valuenow="45"/);
     // the handle comes first: the island's left edge
     expect(between(html, 'class="chat-side"', 'class="chat-side-in"')).toContain("term-handle");
+  });
+
+  it("says panel, never island, in what people read (GA-305): the handle, the tabs, the buttons and the strip; the classes keep their names", () => {
+    const html = page("c1");
+    const attrs = [...html.matchAll(/(?:aria-label|title|placeholder|alt)="([^"]*)"/g)].map((m) => m[1].replace(/&#x27;/g, "'"));
+    const words = html.replace(/<[^>]+>/g, " ").replace(/&#x27;/g, "'").replace(/\s+/g, " ");
+    expect([words, ...attrs].filter((s) => /island/i.test(s))).toEqual([]);
+    expect(attrs).toContain("Side panel's width");
+    // GA-305 changes words only: the side panel's header keeps its class names, so it looks as before
+    expect(html).toContain('<div class="island-head"><div class="island-tabs" role="tablist" aria-label="Beside the chat">');
   });
 });
 
