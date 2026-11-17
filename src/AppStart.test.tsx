@@ -304,3 +304,28 @@ describe("a route change", () => {
     expect(h.sets).toEqual([{ value: { page: "memory", view: "graph" }, transition: true }]);
   });
 });
+
+// GA-282 QA: the notice after an unexpected end (UnexpectedEnd) is in the page's island, above the page: after the error
+// and warn banners and right before the page area's Suspense, not inside it, so it shows on every page and stays while a
+// page's code loads. It has no key and no props, so a page change doesn't mount it again (it reads getLogsInfo once).
+describe("the notice after an unexpected end (GA-282)", () => {
+  it.each(["#/board", "#/inbox", "#/chat/c1", "#/task/t1", "#/settings", "#/memory/graph", "#/terminal/s1"])("sits in the page island right above the page area on '%s'", async (hash) => {
+    const tree = await start({}, hash);
+    const islands: ReactElement<{ children?: ReactNode }>[] = [];
+    const walk = (n: ReactNode) => {
+      if (!n || typeof n !== "object") return;
+      if (Array.isArray(n)) { n.forEach(walk); return; }
+      const el = n as ReactElement<{ className?: string; children?: ReactNode }>;
+      if (el.props?.className === "page-island") islands.push(el);
+      walk(el.props?.children);
+    };
+    walk(tree);
+    expect(islands).toHaveLength(1);
+    const kids = ([] as ReactNode[]).concat(islands[0]!.props.children).filter(Boolean) as ReactElement[];
+    const names = kids.map((k) => (k.type === Suspense ? "Suspense" : typeof k.type === "function" ? k.type.name : String(k.type)));
+    expect(names).toEqual(["UnexpectedEnd", "Suspense"]);
+    expect(kids[0]!.key).toBeNull();
+    expect(kids[0]!.props).toEqual({});
+    expect(placed(tree).get("UnexpectedEnd")).toBe(false);
+  });
+});

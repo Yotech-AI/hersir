@@ -12,6 +12,7 @@ import { BitbucketSettings } from "../components/BitbucketSettings";
 import { CliSettings } from "../components/CliSettings";
 import { EditorFoldersSetting } from "../components/EditorFoldersSetting";
 import { GithubSettings } from "../components/GithubSettings";
+import { LogsSetting } from "../components/LogsSetting";
 import { McpSettings } from "../components/McpSettings";
 import { MemorySetting } from "../components/MemorySetting";
 import { OldWorktrees } from "../components/OldWorktrees";
@@ -93,6 +94,7 @@ export function SettingsPage({ tab }: { tab?: string } = {}) {
             <Field label="Data folder" wide><span className="mono">{s.dataDir}</span></Field>
             <Field label="Worktrees" wide><span className="mono">{s.dataDir}/worktrees</span></Field>
             <Field label="Run logs" wide><span className="mono">{s.dataDir}/runs</span></Field>
+            <LogsSetting dataDir={s.dataDir} />
             <Field label="Worktrees of finished cards" wide hint="Done and Cancelled cards keep their worktree, so a new card of the same project can take it over with a warm build. Remove the ones you no longer need.">
               <OldWorktrees /></Field>
           </FormSection>

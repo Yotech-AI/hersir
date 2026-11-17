@@ -70,6 +70,14 @@ html.glass .app { background: none; }
 .warn-banner { display: flex; align-items: center; gap: 10px; margin: 12px 20px; padding: 6px 6px 6px 12px; border: 1px solid var(--warning); border-radius: var(--radius); color: var(--text); background: var(--warning-soft); }
 .warn-banner > .icon { color: var(--warning); }
 .warn-banner .btn { margin-left: auto; }
+/* the notice after an unexpected end (GA-282): the warn banner's shape in the neutral note's colours (.restore-note), not
+   gold or yellow: nothing needs doing. Narrow, its buttons go to a line of their own at the right. */
+.info-banner { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin: 12px 20px; padding: 6px 6px 6px 12px; border: 1px solid var(--line-2); border-radius: var(--radius); color: var(--text); background: var(--raised); }
+.info-banner > .icon { flex: none; color: var(--accent); }
+.info-banner .ib-text { flex: 1 1 320px; min-width: 0; line-height: 1.4; overflow-wrap: anywhere; }
+.info-banner .ib-text .mono { white-space: nowrap; } /* the log's name in one piece, not broken at a hyphen */
+.info-banner .ib-error { display: block; font-size: var(--fs-sm); color: var(--danger); }
+.info-banner .ib-actions { display: flex; flex: none; gap: 6px; margin-left: auto; }
 .ok-banner { padding: 10px 14px; border-radius: var(--radius); background: var(--live-soft); color: var(--text); }
 
 /* ---------- data tables (clients, projects, users) ---------- */

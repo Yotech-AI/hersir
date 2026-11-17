@@ -7,6 +7,7 @@ import { Sidebar } from "./components/Sidebar";
 import { SidebarToolbar } from "./components/SidebarToolbar";
 import { CommandPalette } from "./components/CommandPalette";
 import { CloseGuard } from "./components/CloseGuard";
+import { UnexpectedEnd } from "./components/UnexpectedEnd";
 import { TasksPage } from "./pages/TasksPage";
 import { DrawerHost, type DrawerReq } from "./lib/drawers";
 import { appearanceOf, setAppearance, toggleDensity, toggleTheme } from "./lib/appearance";
@@ -274,6 +275,8 @@ export default function App({ onboarding = false }: { onboarding?: boolean }) {
             <div className="warn-banner" role="status"><TriangleAlert className="icon" /><span>{note}</span>
               <button type="button" className="btn ghost sm icon-only" aria-label="Close" title="Close" onClick={() => setNote(null)}><X className="icon" /></button></div>
           )}
+          {/* after a Hersir that ended without quitting, its log, until it is dismissed (GA-282) */}
+          <UnexpectedEnd />
           {/* while a page's code loads the first time, the page area stays empty (no spinner); useRoute's transition keeps
               the page you came from until the next one is ready (GA-178) */}
           <Suspense fallback={null}>
