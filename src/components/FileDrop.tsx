@@ -65,9 +65,10 @@ export function FileDrop({ ownerType, ownerId, emptyText, readOnly }: { ownerTyp
 }
 
 /** Picked paths, each with its type badge, name, folder and an X that takes it off the list (the New task drawer's Files,
- *  and the chips above the chat's text box with `compact`). Nothing when there are none. */
-export function PendingFileList({ paths, onRemove, disabled, compact }: {
-  paths: string[]; onRemove: (path: string) => void; disabled?: boolean; compact?: boolean;
+ *  and the chips above the chat's text box with `compact`). Nothing when there are none. `under`: what shows under a
+ *  path's name instead of its folder, when it says something (an image pasted into the chat: "Pasted from the clipboard"). */
+export function PendingFileList({ paths, onRemove, disabled, compact, under }: {
+  paths: string[]; onRemove: (path: string) => void; disabled?: boolean; compact?: boolean; under?: (path: string) => string | undefined;
 }) {
   if (paths.length === 0) return null;
   return (
@@ -78,7 +79,7 @@ export function PendingFileList({ paths, onRemove, disabled, compact }: {
           <li key={p}>
             <span className="file pending" title={p}>
               <span className="ext">{ext(name)}</span>
-              <span className="fname"><b>{name}</b><span>{fileFolder(p)}</span></span>
+              <span className="fname"><b>{name}</b><span>{under?.(p) ?? fileFolder(p)}</span></span>
             </span>
             <button type="button" className="btn ghost sm icon-only" aria-label={`Remove ${name}`} title="Remove" disabled={disabled} onClick={() => onRemove(p)}>
               <X className="icon" /></button>
