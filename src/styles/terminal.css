@@ -203,3 +203,86 @@
 .pop .opt.danger { color: var(--danger); }
 /* the top bar's Open: its chevron after the word, in text-2 */
 .btn.chat-open > .icon:last-child { width: 14px; height: 14px; color: var(--text-2); }
+
+/* The Card tab (GA-297; design/islands-chat → Card, frames 1, 7 and 8): the card scrolls, padding 8 16 16, 16 between
+   blocks; its actions sit in a foot under it (1px line above, padding 10 12), so they stay in reach. */
+.chat-card { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+.chat-card-body { display: flex; flex-direction: column; gap: var(--space-4); flex: 1; min-height: 0; padding: 8px 16px 16px; overflow-y: auto; overflow-wrap: anywhere; }
+.chat-card-gone { display: grid; place-items: center; padding: var(--space-6); color: var(--text-2); text-align: center; }
+/* Head: the status glyph (with the hold), the id in t-id text-2, the project's dot and name in t-small text-2 */
+.chat-card-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--text-2); }
+.chat-card-head .proj { display: inline-flex; align-items: center; gap: 6px; }
+.chat-card-head .proj .dot { flex: none; width: 8px; height: 8px; border-radius: 50%; }
+.chat-card-title { margin: 0; color: var(--text); }
+/* Properties: labels 76 wide in t-small text-3, values in t-small text; 8 between rows */
+.chat-card-props { display: flex; flex-direction: column; gap: 8px; margin: 0; }
+.chat-card-props > div { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 8px; align-items: start; }
+.chat-card-props dt { color: var(--text-3); line-height: 18px; }
+.chat-card-props dd { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; min-height: 18px; margin: 0; color: var(--text); }
+.chat-card-props dd .avatar, .chat-card-props dd svg { flex: none; }
+.chat-card-props dd.hold { flex-direction: column; align-items: flex-start; gap: 4px; }
+.chat-card-props dd.hold .reason { color: var(--text-2); }
+.chat-card-props dd.labels { gap: 4px; }
+.chat-card-props .none, .chat-card .none { color: var(--text-2); margin: 0; }
+/* Blocks: the heading in t-group text-2 (the count after it in t-small text-3), 8 under it */
+.chat-card-sec { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+.chat-card-sec > h3 { display: flex; align-items: baseline; gap: 6px; margin: 0; color: var(--text-2); text-transform: uppercase; }
+.chat-card-sec > h3 .n { color: var(--text-3); font-size: var(--fs-sm); font-weight: 400; letter-spacing: 0; text-transform: none; }
+.chat-card .link { align-self: flex-start; color: var(--accent); font-size: var(--fs-sm); }
+.chat-card .link:hover { color: var(--accent-hover); text-decoration: underline; text-underline-offset: 2px; }
+.chat-card .link:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-radius: var(--radius-s); }
+/* Text in t-body; the description folds after 4 lines, a comment after 3 (--fold-lines), with Show more */
+.chat-card .prose { max-width: none; font-size: 13.5px; line-height: 20px; }
+.chat-card .prose > :last-child { margin-bottom: 0; }
+/* a quick read: the text's own headings as strong body text, so the folded lines stay lines */
+.chat-card .prose :is(h1, h2, h3, h4, h5, h6) { margin: 8px 0 4px; font-size: 13.5px; line-height: 20px; font-weight: 600; letter-spacing: 0; }
+.chat-card .prose > :first-child { margin-top: 0; }
+.chat-card .fold:not(.open) { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--fold-lines); line-clamp: var(--fold-lines); overflow: hidden; }
+/* Acceptance criteria: the box (14, radius 3; checked: accent with a check) and the words; checked ones in text-2 */
+.chat-card-criteria { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.chat-card-criteria > li { display: flex; gap: 8px; min-width: 0; }
+.chat-card-criteria > li > .prose { flex: 1; min-width: 0; }
+.chat-card-criteria > li > .prose p { margin: 0; }
+.chat-card-criteria .box { display: grid; place-items: center; flex: none; width: 14px; height: 14px; margin-top: 3px; border: 1.5px solid var(--line-2); border-radius: 3px; }
+.chat-card-criteria .done .box { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+.chat-card-criteria .box .icon { width: 11px; height: 11px; stroke-width: 3; }
+.chat-card-criteria .done > .prose { color: var(--text-2); }
+/* Comments: the avatar, then the name (t-body-strong), the time (t-small text-3) and the text */
+.chat-card-comment { display: flex; gap: 8px; min-width: 0; }
+.chat-card-comment > .avatar { margin-top: 1px; }
+.chat-card-comment > .body { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.chat-card-comment .by { display: flex; align-items: baseline; gap: 6px; }
+.chat-card-comment .when { color: var(--text-3); }
+.chat-card-comment .prose p { margin: 0 0 4px; }
+/* Runs: Run 2, the agent in text-2, the badge, the time in text-3; a row is a button to the run on the card's page */
+.chat-card-run { display: flex; align-items: center; gap: 8px; width: calc(100% + 8px); margin: 0 -4px; padding: 3px 4px; border: 0; border-radius: var(--radius-s);
+  background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.chat-card-run:hover { background: var(--hover); }
+.chat-card-run:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; }
+.chat-card-run .n { flex: none; }
+.chat-card-run .agent { flex: 1; min-width: 0; overflow: hidden; color: var(--text-2); text-overflow: ellipsis; white-space: nowrap; }
+.chat-card-run .when { flex: none; color: var(--text-3); }
+/* In Review, first: the pull request (PullPanel) and QA's verdict, each raised with a 1px line, radius 10, padding 10 12 */
+.chat-card .run-card { flex: none; border-radius: 10px; }
+.chat-card .run-card .run-head { gap: 6px; padding: 10px 12px; font-size: var(--fs-sm); }
+.chat-card .run-card .run-head > .icon { width: 16px; height: 16px; color: var(--text-2); }
+.chat-card .run-card .run-head > .icon.ok { color: var(--success); }
+.chat-card .run-card .run-head > .icon.fail { color: var(--danger); }
+.chat-card .run-card .run-summary { padding: 0 12px 10px; color: var(--text-2); font-size: var(--fs-sm); line-height: 18px; }
+.chat-card .run-card .run-summary .prose { font-size: var(--fs-sm); line-height: 18px; color: inherit; }
+/* the hand-over: 3 lines (18px each), then an ellipsis; the height holds them where WebKit's clamp leaves more */
+.chat-card-verdict .handover { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; max-height: 54px; overflow: hidden;
+  margin-bottom: 10px; padding-bottom: 0; cursor: pointer; }
+.chat-card-verdict .handover:hover { color: var(--text); }
+.chat-card-verdict .handover:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: var(--radius-s); }
+.chat-card-verdict .handover .prose p { margin: 0; }
+/* The foot: Comment, Run or Continue, and Move to on the right; with Comment, the comment box */
+.chat-card-foot { display: flex; flex-direction: column; gap: 8px; flex: none; padding: 10px 12px; border-top: 1px solid var(--line); }
+.chat-card-foot:empty { display: none; }
+.chat-card-foot > .row { display: flex; align-items: center; gap: 6px; }
+.chat-card-foot .grow { flex: 1; }
+.chat-card-foot .err { margin: 0; color: var(--danger); }
+.chat-card-foot .btn > .icon:last-child:not(:first-child) { width: 14px; height: 14px; color: var(--text-2); }
+.chat-card-foot .pop .opt svg:first-child { flex: none; }
+.chat-card-foot.writing .md-surface { max-height: 40vh; overflow-y: auto; }
+.chat-card-foot .hint { color: var(--text-3); white-space: nowrap; }

@@ -100,6 +100,9 @@ vi.mock("../../lib/terminals", async (orig) => ({
   ...(await orig<object>()), useTerminals: () => chatT.terms, noteOpened: () => {}, terminalsNow: () => [], watchTerminals: () => () => {},
 }));
 vi.mock("../../router", async (orig) => ({ ...(await orig<object>()), go: (r: unknown) => { s.went.push(r); } }));
+// GA-297: ChatSide brings the Card tab (its comment box and the pull request's counts load CodeMirror, which needs a DOM);
+// no card opens here
+vi.mock("../chat/ChatCard", () => ({ CardTab: () => null, ChatCardBody: () => null }));
 
 const store = new Map<string, string>();
 vi.stubGlobal("localStorage", { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => { store.set(k, String(v)); }, removeItem: (k: string) => { store.delete(k); } });

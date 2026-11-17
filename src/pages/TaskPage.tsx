@@ -36,6 +36,7 @@ import { tabLabel } from "../lib/changes";
 import { ScreenshotsView } from "../components/screenshots/ScreenshotsView";
 import { roundCount } from "../lib/screenshots";
 import { reveal } from "../lib/reveal";
+import { takeRunsTab } from "../lib/cardPage";
 import type { CardChanges, ScreenshotSet } from "../types";
 
 function readPref(k: string): string | null { try { return localStorage.getItem(k); } catch { return null; } }
@@ -170,7 +171,8 @@ export function TaskPage({ id, view = "card", run, youId }: { id: string; view?:
   const { data: runs } = useData(() => listRuns(id), [id]);
   const liveRun = useLiveRuns().find((r) => r.taskId === id);
   const live = !!liveRun;
-  const [tab, setTab] = useState<"comments" | "activity" | "runs">("comments");
+  // GA-297: a run picked in the Chat's Card tab opens the page on Runs.
+  const [tab, setTab] = useState<"comments" | "activity" | "runs">(() => (takeRunsTab(id) ? "runs" : "comments"));
   const [err, setErr] = useState<string | null>(null);
   const [props, setPropsState] = useState(() => readPref("gizai-props") !== "closed");
   const setProps = (on: boolean) => { setPropsState(on); writePref("gizai-props", on ? "open" : "closed"); };

@@ -232,3 +232,59 @@ describe("the chip", () => {
     expect(html).not.toContain("chip-card");
   });
 });
+
+// GA-297 QA: on the Chat page (the BesideChat context it gives) a card chip's hover card ends with "Click to open beside the
+// chat" (design/islands-chat → What opens, and when → Chips); other kinds, and every chip elsewhere, keep "Click to open".
+describe("the last line on the Chat page (GA-297)", () => {
+  const BESIDE = '<p class="t-caption chip-card-foot">Click to open beside the chat</p>';
+  const onChat = async (kind: ItemKind, item: ItemPreview | undefined, text = "the chip's text") => {
+    const { BesideChat } = await import("../lib/besideChat");
+    vi.stubGlobal("document", { body: {} });
+    try {
+      return renderToStaticMarkup(
+        <BesideChat.Provider value={() => {}}>
+          <ItemHoverCard id="hc1" kind={kind} text={text} item={item} anchor={() => undefined} onEnter={() => {}} onLeave={() => {}} />
+        </BesideChat.Provider>);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  };
+
+  it("a card's hover card says Click to open beside the chat, as its last line, once", async () => {
+    const html = await onChat("task", { kind: "task", task: task() });
+    expect(html.endsWith(`${BESIDE}</div>`)).toBe(true);
+    expect(html.match(/chip-card-foot/g)).toHaveLength(1);
+    expect(html).not.toContain(FOOT);
+    expect(words(html).slice(-1)).toEqual(["Click to open beside the chat"]);
+  });
+
+  it("so does a card's while it is on its way", async () => {
+    expect(words(await onChat("task", undefined, "GA-12 - Fix the login"))).toEqual(["GA-12 - Fix the login", "Task", "Click to open beside the chat"]);
+  });
+
+  it("a card that doesn't exist has no last line there either", async () => {
+    const html = await onChat("task", { kind: "missing" });
+    expect(html).not.toContain("Click to open");
+  });
+
+  it("every other kind keeps Click to open on the Chat page", async () => {
+    const items: [ItemKind, ItemPreview][] = [
+      ["project", { kind: "project", project: project() }],
+      ["client", { kind: "client", client: client() }],
+      ["agent", { kind: "agent", agent: agent(), workingOn: undefined }],
+      ["person", { kind: "person", person: person() }],
+      ["doc", { kind: "doc", doc: doc(), project: project() }],
+    ];
+    for (const [kind, item] of items) {
+      const html = await onChat(kind, item);
+      expect(endsWithFoot(html), kind).toBe(true);
+      expect(html).not.toContain("beside the chat");
+    }
+  });
+
+  it("outside the Chat page a card's hover card keeps Click to open", () => {
+    const html = card("task", { kind: "task", task: task() });
+    expect(endsWithFoot(html)).toBe(true);
+    expect(html).not.toContain("beside the chat");
+  });
+});

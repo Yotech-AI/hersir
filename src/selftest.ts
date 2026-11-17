@@ -890,20 +890,25 @@ async function chatPickerAndFilesProbe() {
   window.location.hash = `#/chat/${threadId}`;
   const reopenedChip = await waitFor(() => document.querySelector(".chat-msg.user .bubble a.item-chip.kind-task") as HTMLElement | null, 5000);
   const reopenedFile = textOf(await waitFor(() => document.querySelector(".chat-msg.user .msg-files b"), 5000));
-  // A click on the chip opens the task.
+  // A click on the chip opens the task: beside the chat since GA-297 (a Card tab, the chat stays), its page with Ctrl+click
+  // (Cmd+click on macOS).
+  const chatHash = window.location.hash;
   reopenedChip?.click();
+  const chipKey = decodeURIComponent((reopenedChip?.getAttribute("href") ?? "").replace(/^gizai:task\//, "")).toUpperCase();
+  const beside = await waitFor(() => (document.querySelector(`.chat-side .card-tab[aria-selected=true][data-tab="card:${chipKey}"]`) && window.location.hash === chatHash ? chipKey : null), 3000);
+  reopenedChip?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0, ctrlKey: !isMac(), metaKey: isMac() }));
   const opened = await waitFor(() => (window.location.hash.startsWith("#/task/") ? window.location.hash : null), 3000);
 
   const ok = JSON.stringify(items) === JSON.stringify(["Add files", "Link an item"]) && menuUp && menuClosed && JSON.stringify(kinds) === JSON.stringify(KINDS)
     && typedAt && pickerUp && !!tasks && enterLinks && chipInBox && twoLines && !!sentChip && cleared
     && dropState === "Drop to add to this message" && JSON.stringify(chips) === '["gizai.db"]' && dropGone && refused.includes("is a folder, not a file") && removed
     && JSON.stringify(again) === '["gizai.db"]' && textOf(sentFile) === "gizai.db" && chipsCleared && saved?.files?.[0]?.name === "gizai.db"
-    && !!reopenedChip && reopenedFile === "gizai.db" && !!opened && grows && pausedOk && chipsAbove && shrinks;
+    && !!reopenedChip && reopenedFile === "gizai.db" && !!beside && !!opened && grows && pausedOk && chipsAbove && shrinks;
   return { ok, grows: { ok: grows, one_line: oneLine, tall, overflow, sent_saved: sentSaved, sent_in_page: sentCount() - before, back_to_two_lines: shrinks, sent_back_to_two_lines: sentBackToTwo, empty: emptyH }, chips_above_text: chipsAbove, paused: { ok: pausedOk, off, plus_off: plusOff, no_menu: noMenu, no_drop_state: noDropState,
     no_drop: noDrop, on_again: on }, menu: items, menu_up: menuUp, menu_closed: menuClosed, kinds, typed_at: typedAt, picker_up: pickerUp, tasks: tasks?.slice(0, 3),
     enter_links_without_sending: enterLinks, chip_in_box: chipInBox, shift_enter_new_line: twoLines, sent_chip: sentChip?.textContent, cleared,
     drop_state: dropState, chips, drop_state_gone: dropGone, refused, removed, dropped_again: again, sent_file: textOf(sentFile), chips_cleared: chipsCleared,
-    saved_files: saved?.files?.map((f) => f.name), reopened_chip: reopenedChip?.textContent, reopened_file: reopenedFile, chip_opens: opened };
+    saved_files: saved?.files?.map((f) => f.name), reopened_chip: reopenedChip?.textContent, reopened_file: reopenedFile, chip_beside: beside, chip_opens: opened };
 }
 const picker = () => document.querySelector('.composer-foot select[aria-label="Runs on"]') as HTMLSelectElement | null;
 const userSaid = (text: string) => [...document.querySelectorAll(".chat-msg.user:not(.queued)")].some((e) => (e.textContent ?? "").includes(text));
@@ -3597,6 +3602,8 @@ export async function terminalProbe(folder: string) {
   if (folder === "chat-a" || folder === "chat-b") return chatTerminalProbe(folder === "chat-a" ? "a" : "b");
   // GA-279: MODE=terminal:chat-run runs the probe of Open in terminal under a Chief answer
   if (folder === "chat-run") return chatRunProbe();
+  // GA-297: MODE=terminal:chat-cards-a and terminal:chat-cards-b run the probe of the Card tab beside the chat, before and after a restart
+  if (folder === "chat-cards-a" || folder === "chat-cards-b") return chatCardsProbe(folder === "chat-cards-a" ? "a" : "b");
   const errors: string[] = [];
   const out: Record<string, unknown> = {};
   const check = (ok: unknown, what: string) => { if (!ok) errors.push(what); };
@@ -4980,6 +4987,275 @@ async function chatRunProbe() {
   return done();
 }
 const same2 =(a: unknown[], b: unknown[]) => a.length === b.length && a.every((x, i) => x === b[i]);
+
+// GIZAI_SELFTEST_MODE=terminal:chat-cards-a, then terminal:chat-cards-b (a restart on the same WebKit storage), on route
+// terminal (GA-297 QA; scripts/ui-test.sh: prep_chats' Chief and prep_chat_cards' chat "Check KADE-1 and GFW-2", a question
+// the Chief started about KADE-1 and GFW-2). (a) Opening the chat opens the side island with KADE-1 and GFW-2 as Card tabs
+// (square-kanban, the id, its id and title as the tooltip), KADE-1 shown; the strip's Card icon with 2, selected, "Card, 2 open
+// (Alt+4)". KADE-1's tab: the head (id, project), the title; Column, Hold (Needs your decision, the reason's end, Read in
+// comments), Assignee, Labels; the description folded after 4 lines with Show more and Show less; the criteria "2 of 5", the
+// first 3 and Show all 5; the latest 2 of 4 comments and Show all 4; the 2 runs, newest first; a foot with Comment and Move to
+// and no Run or Continue (held, no active agent). Read in comments unfolds the comments and brings the one with the reason
+// into sight. GFW-2's tab (Review): the pull request and QA's verdict before the fields, QA passed, Run 1, the hand-over; no
+// Run or Continue. Comment posts from the tab, and Move to moves KADE-1 to Testing; the tab follows both. In the chat a card
+// chip's hover card says "Click to open beside the chat" (a project's "Click to open"); a click opens KADE-3 in a Card tab at
+// the end, without leaving the chat, a click on KADE-1's shows its tab; Ctrl+click opens KADE-3's page. Alt+4 hides and shows
+// the cards; Ctrl+W closes the shown Card tab; Own page opens GFW-2's page and closes its tab here. On KADE-1's page its
+// comment's chip says "Click to open" and opens KADE-3's page. Every tab closed, the chat opened again opens none.
+// (b) After the restart the chat opens with nothing beside it.
+async function chatCardsProbe(phase: "a" | "b") {
+  const errors: string[] = [];
+  const out: Record<string, unknown> = {};
+  const check = (ok: unknown, what: string) => { if (!ok) errors.push(what); };
+  const done = () => ({ ok: errors.length === 0, errors, ...out });
+
+  const thread = (await listChatThreads(50)).find((t) => t.title === "Check KADE-1 and GFW-2");
+  if (!thread) { errors.push("no chat Check KADE-1 and GFW-2"); return done(); }
+  const chatHash = `#/chat/${thread.id}`;
+  const tasks = await listTasks();
+  const idOf = (identifier: string) => tasks.find((t) => t.identifier === identifier)?.id ?? "";
+  const island = () => q<HTMLElement>(".chat > .chat-side");
+  const tabKeys = () => [...document.querySelectorAll(".chat-side .card-tab, .chat-side .term-tab")].map((t) => t.getAttribute("data-tab") ?? `terminal:${t.getAttribute("data-term")}`);
+  const shown = () => q(".chat-side .card-tab[aria-selected=true]")?.getAttribute("data-tab") ?? null;
+  const cardBtn = () => q<HTMLButtonElement>('.chat > .chat-strip .strip-btn[data-kind="card"]');
+  const strip = () => { const b = cardBtn(); return b ? { pressed: b.getAttribute("aria-pressed"), n: textOf(b.querySelector(".n")), title: b.title } : null; };
+  const body = () => q<HTMLElement>(".chat-side .chat-card-body");
+  const sec = (label: string) => q<HTMLElement>(`.chat-side section[aria-label="${label}"]`);
+  const prop = (label: string) => [...document.querySelectorAll(".chat-side .chat-card-props > div")].find((d) => textOf(d.querySelector("dt")) === label)?.querySelector("dd") ?? null;
+  const footButtons = () => [...document.querySelectorAll<HTMLButtonElement>(".chat-side .chat-card-foot button")].map((b) => textOf(b));
+  const linkIn = (root: Element | null, text: string) => [...(root?.querySelectorAll<HTMLButtonElement>("button.link") ?? [])].find((b) => textOf(b) === text) ?? null;
+  /** Text without the icons (a StatusIcon has its name as an svg <title>). */
+  const plain = (el: Element | null | undefined) => { if (!el) return ""; const c = el.cloneNode(true) as Element; c.querySelectorAll("svg").forEach((x) => x.remove()); return (c.textContent ?? "").trim(); };
+  /** The lines of text that show inside the element (a folded one hides the rest). */
+  const visibleLines = (el: Element | null | undefined) => {
+    if (!el) return 0;
+    const box = el.getBoundingClientRect(), tops = new Set<number>();
+    const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+      const r = document.createRange();
+      r.selectNodeContents(n);
+      for (const x of r.getClientRects()) if (x.height > 0 && x.top >= box.top - 1 && x.bottom <= box.bottom + 1) tops.add(Math.round(x.top));
+    }
+    return tops.size;
+  };
+  const goChat = async () => {
+    window.location.hash = chatHash;
+    return waitFor(() => (location.hash === chatHash && q(".chat-main .chat-msg.agent") ? true : null), 8000);
+  };
+
+  if (phase === "b") {
+    // after a restart: the chat's cards opened once already, so nothing opens now
+    if (!(await goChat())) { errors.push("the chat didn't open"); return done(); }
+    await sleep(1500);
+    out.b = { island: !!island(), strip: strip(), kept: localStorage.getItem("gizai.chat.sideOpened") };
+    check(!island() && !cardBtn(), `after a restart the chat opens with nothing beside it (${JSON.stringify(out.b)})`);
+    check((localStorage.getItem("gizai.chat.sideOpened") ?? "").includes(thread.id), `the chat is kept in gizai.chat.sideOpened (${JSON.stringify(out.b)})`);
+    return done();
+  }
+
+  // 1. opening the chat: KADE-1 and GFW-2 as Card tabs, KADE-1 shown; the strip's Card icon, 2, selected
+  if (!(await goChat())) { errors.push("the chat didn't open"); return done(); }
+  const opened = await waitFor(() => (tabKeys().length === 2 && body() ? true : null), 8000);
+  out.opened = { tabs: tabKeys(), shown: shown(), strip: strip() };
+  check(opened && same2(tabKeys(), ["card:KADE-1", "card:GFW-2"]) && shown() === "card:KADE-1", `the chat opens KADE-1 and GFW-2 as Card tabs, KADE-1 shown (${JSON.stringify(out.opened)})`);
+  check(JSON.stringify(strip()) === JSON.stringify({ pressed: "true", n: "2", title: "Card, 2 open (Alt+4)" }), `the strip shows Card, 2, selected (${JSON.stringify(out.opened)})`);
+  const tab1 = q<HTMLElement>('.chat-side .card-tab[data-tab="card:KADE-1"]');
+  await waitFor(() => (tab1?.title.includes(":") ? true : null), 3000);
+  out.tab = { text: textOf(tab1?.querySelector(".name")), title: tab1?.title, icon: !!tab1?.querySelector("svg.lucide-square-kanban") };
+  check(JSON.stringify(out.tab) === JSON.stringify({ text: "KADE-1", title: "KADE-1: Export invoices as CSV from the portal", icon: true }), `the tab: square-kanban, the id, its id and title as the tooltip (${JSON.stringify(out.tab)})`);
+
+  // 2. KADE-1's fields
+  await waitFor(() => (prop("Column") && sec("Runs")?.querySelector(".chat-card-run") ? true : null), 6000);
+  out.head = { id: textOf(q(".chat-side .chat-card-head .id")), project: textOf(q(".chat-side .chat-card-head .proj")), title: textOf(q(".chat-side .chat-card-title")) };
+  check(JSON.stringify(out.head) === JSON.stringify({ id: "KADE-1", project: "Kade portal", title: "Export invoices as CSV from the portal" }), `the head and title (${JSON.stringify(out.head)})`);
+  check(!q('.chat-side section[aria-label="Pull request"]') && !sec("QA's verdict"), "no pull request or verdict on a card that isn't in Review");
+  out.props = [...document.querySelectorAll(".chat-side .chat-card-props dt")].map((d) => textOf(d));
+  check(same2(out.props as string[], ["Column", "Hold", "Assignee", "Labels"]), `the fields Column, Hold, Assignee, Labels (${JSON.stringify(out.props)})`);
+  const hold = prop("Hold");
+  out.fields = { column: plain(prop("Column")), badge: textOf(hold?.querySelector(".badge")), reason: textOf(hold?.querySelector(".reason")),
+    readIn: !!linkIn(hold, "Read in comments"), assignee: textOf(prop("Assignee")), labels: prop("Labels")?.querySelectorAll(".label-pill").length ?? 0 };
+  check(plain(prop("Column")) === "In progress", `Column In progress (${JSON.stringify(out.fields)})`);
+  check(textOf(hold?.querySelector(".badge.needs")) === "Needs your decision", `Hold: Needs your decision (${JSON.stringify(out.fields)})`);
+  const reason = textOf(hold?.querySelector(".reason"));
+  check(reason.startsWith("…") && reason.endsWith("the Exact Online import file?") && reason.length <= 61, `the reason's end, 60 characters (${JSON.stringify(out.fields)})`);
+  check(linkIn(hold, "Read in comments"), "Read in comments");
+  check(textOf(prop("Assignee")).endsWith("Jeffrey") && !!prop("Assignee")?.querySelector(".avatar"), `Assignee Jeffrey (${JSON.stringify(out.fields)})`);
+  check(out.fields && (out.fields as { labels: number }).labels === 2, `two labels (${JSON.stringify(out.fields)})`);
+
+  // the description folds after 4 lines (Show more, Show less)
+  const desc = sec("Description");
+  const fold = desc?.querySelector<HTMLElement>(".fold");
+  out.description = { lines: visibleLines(fold), height: Math.round(fold?.getBoundingClientRect().height ?? 0), more: !!linkIn(desc, "Show more") };
+  check(fold && visibleLines(fold) === 4 && linkIn(desc, "Show more"), `the description folds after 4 lines with Show more (${JSON.stringify(out.description)})`);
+  linkIn(desc, "Show more")?.click();
+  await sleep(150);
+  const openLines = visibleLines(fold);
+  check(openLines >= 8 && linkIn(desc, "Show less"), `Show more unfolds it (${openLines} lines)`);
+  linkIn(desc, "Show less")?.click();
+  await sleep(150);
+  check(visibleLines(fold) === 4 && linkIn(desc, "Show more"), `Show less folds it again (${visibleLines(fold)} lines)`);
+
+  // the criteria: 2 of 5, the first 3, Show all 5
+  const crit = sec("Acceptance criteria");
+  const items = () => crit?.querySelectorAll(".chat-card-criteria li").length ?? 0;
+  out.criteria = { count: textOf(crit?.querySelector("h3 .n")), items: items(), done: crit?.querySelectorAll(".chat-card-criteria li.done").length, all: !!linkIn(crit, "Show all 5") };
+  check(JSON.stringify(out.criteria) === JSON.stringify({ count: "2 of 5", items: 3, done: 2, all: true }), `the criteria: 2 of 5, the first 3, Show all 5 (${JSON.stringify(out.criteria)})`);
+  linkIn(crit, "Show all 5")?.click();
+  await sleep(100);
+  check(items() === 5 && linkIn(crit, "Show less"), `Show all 5 shows all (${items()})`);
+
+  // the comments: the latest 2 of 4, oldest first, Show all 4; the runs newest first
+  const com = sec("Comments");
+  const comments = () => [...(com?.querySelectorAll(".chat-card-comment") ?? [])].map((c) => textOf(c.querySelector(".body .fold")).slice(0, 14));
+  out.comments = { count: textOf(com?.querySelector("h3 .n")), shown: comments(), all: !!linkIn(com, "Show all 4") };
+  check(JSON.stringify(out.comments) === JSON.stringify({ count: "4", shown: ["Second comment", "Third comment,"], all: true }), `the latest 2 of 4 comments and Show all 4 (${JSON.stringify(out.comments)})`);
+  const runsSec = sec("Runs");
+  out.runs = { count: textOf(runsSec?.querySelector("h3 .n")), lines: [...(runsSec?.querySelectorAll(".chat-card-run") ?? [])].map((r) => [textOf(r.querySelector(".n")), textOf(r.querySelector(".agent")), textOf(r.querySelector(".badge"))]) };
+  const runLines = (out.runs as { lines: string[][] }).lines;
+  check(textOf(runsSec?.querySelector("h3 .n")) === "2" && runLines.length === 2 && runLines[0]?.[0] === "Run 2" && runLines[1]?.[0] === "Run 1" && runLines[0]?.[1] === "QA Agent"
+    && runLines[1]?.[2] === "QA failed", `the runs, newest first (${JSON.stringify(out.runs)})`);
+  out.foot = footButtons();
+  check(same2(footButtons(), ["Comment", "Move to"]), `the foot: Comment and Move to, no Run or Continue on a held card no agent can go on with (${JSON.stringify(out.foot)})`);
+
+  // Read in comments: every comment unfolds, and the one with the reason comes into sight
+  linkIn(prop("Hold"), "Read in comments")?.click();
+  await sleep(400);
+  const third = [...(com?.querySelectorAll<HTMLElement>(".chat-card-comment") ?? [])].find((c) => textOf(c).includes("Third comment"));
+  const bodyBox = body()?.getBoundingClientRect(), thirdBox = third?.getBoundingClientRect();
+  out.readIn = { shown: comments().length, top: Math.round(thirdBox?.top ?? -1), bodyTop: Math.round(bodyBox?.top ?? -1), bodyBottom: Math.round(bodyBox?.bottom ?? -1) };
+  check(comments().length === 4 && thirdBox && bodyBox && thirdBox.top >= bodyBox.top - 1 && thirdBox.top < bodyBox.bottom, `Read in comments shows all 4 and the reason's comment in sight (${JSON.stringify(out.readIn)})`);
+
+  // 3. GFW-2 in Review: the pull request and QA's verdict first; no Run or Continue
+  q<HTMLElement>('.chat-side .card-tab[data-tab="card:GFW-2"]')?.click();
+  await waitFor(() => (textOf(q(".chat-side .chat-card-head .id")) === "GFW-2" && sec("QA's verdict") && prop("Column") ? true : null), 6000);
+  const kids = [...(body()?.children ?? [])].map((c) => c.getAttribute("aria-label") ?? [...c.classList].find((k) => k.startsWith("chat-card")) ?? c.className);
+  const pr = q<HTMLElement>('.chat-side section[aria-label="Pull request"]');
+  const verdict = sec("QA's verdict");
+  out.review = { order: kids, pr: textOf(pr?.querySelector("a")), verdict: { icon: !!verdict?.querySelector("svg.lucide-circle-check"), badge: textOf(verdict?.querySelector(".badge")),
+    line: textOf(verdict?.querySelector(".right")), handover: textOf(verdict?.querySelector(".handover")) }, foot: footButtons() };
+  check(same2(kids.slice(0, 5), ["chat-card-head", "chat-card-title", "Pull request", "QA's verdict", "chat-card-props"]), `in Review the pull request and QA's verdict come first (${JSON.stringify(out.review)})`);
+  check(textOf(pr?.querySelector("a")) === "#231", `the pull request #231 (${JSON.stringify(out.review)})`);
+  check(verdict?.querySelector("svg.lucide-circle-check") && textOf(verdict?.querySelector(".badge")) === "QA passed" && textOf(verdict?.querySelector(".right")).startsWith("Run 1 · ")
+    && textOf(verdict?.querySelector(".handover")).startsWith("QA passed: the slider"), `QA's verdict: QA passed, Run 1, the hand-over (${JSON.stringify(out.review)})`);
+  check(same2(footButtons(), ["Comment", "Move to"]), `no Run or Continue in Review (${JSON.stringify(out.review)})`);
+
+  // 4. Comment from the tab (KADE-1): the box, no formatting bar; it posts, and the tab shows it
+  q<HTMLElement>('.chat-side .card-tab[data-tab="card:KADE-1"]')?.click();
+  await waitFor(() => (textOf(q(".chat-side .chat-card-head .id")) === "KADE-1" && prop("Column") ? true : null), 6000);
+  [...document.querySelectorAll<HTMLButtonElement>(".chat-side .chat-card-foot button")].find((b) => textOf(b) === "Comment")?.click();
+  const box = await waitFor(() => q<HTMLElement>(".chat-side .chat-card-foot.writing .cm-content"), 3000);
+  out.composer = { box: !!box, toolbar: !!q(".chat-side .chat-card-foot.writing .md-toolbar, .chat-side .chat-card-foot.writing [role=toolbar]"),
+    buttons: [...document.querySelectorAll(".chat-side .chat-card-foot.writing .row button")].map((b) => textOf(b)) };
+  check(box && same2((out.composer as { buttons: string[] }).buttons, ["Comment", "Cancel"]) && !(out.composer as { toolbar: boolean }).toolbar, `Comment opens the box with Comment and Cancel, no formatting bar (${JSON.stringify(out.composer)})`);
+  if (box) {
+    box.focus();
+    await sleep(100);
+    document.execCommand("insertText", false, "Posted from the Card tab beside the chat.");
+    await sleep(150);
+    [...document.querySelectorAll<HTMLButtonElement>(".chat-side .chat-card-foot.writing .row button")].find((b) => textOf(b) === "Comment")?.click();
+    const posted = await waitFor(() => (textOf(sec("Comments")?.querySelector("h3 .n")) === "5" && textOf(sec("Comments")).includes("Posted from the Card tab") ? true : null), 6000);
+    out.posted = { count: textOf(sec("Comments")?.querySelector("h3 .n")), box: !!q(".chat-side .chat-card-foot.writing"), foot: footButtons() };
+    check(posted && !q(".chat-side .chat-card-foot.writing"), `the comment posts, shows under Comments and the box closes (${JSON.stringify(out.posted)})`);
+  }
+
+  // 5. Move to: the board's columns with In progress checked; Testing moves it, and the tab follows
+  q<HTMLButtonElement>('.chat-side .chat-card-foot button[aria-label="Move to"]')?.click();
+  const opts = await waitFor(() => { const o = [...document.querySelectorAll<HTMLElement>("[role=menuitemradio]")]; return o.length ? o : null; }, 3000);
+  out.moveTo = { columns: (opts ?? []).map((o) => plain(o)), checked: (opts ?? []).filter((o) => o.getAttribute("aria-checked") === "true").map((o) => plain(o)) };
+  check(same2((out.moveTo as { columns: string[] }).columns, ["Backlog", "To do", "In progress", "Testing", "Review", "Deploy", "Done"]) && same2((out.moveTo as { checked: string[] }).checked, ["In progress"]),
+    `Move to lists the columns, In progress checked (${JSON.stringify(out.moveTo)})`);
+  opts?.find((o) => plain(o) === "Testing")?.click();
+  const moved = await waitFor(() => (plain(prop("Column")) === "Testing" ? true : null), 6000);
+  out.moved = { column: plain(prop("Column")), db: (await getTask(idOf("KADE-1"))).stateName };
+  check(moved && (out.moved as { db: string }).db === "Testing", `Move to Testing moves the card, and the tab follows (${JSON.stringify(out.moved)})`);
+
+  // 6. chips in the chat: the hover card's last line; a click opens KADE-3 beside the chat; KADE-1's shows its tab
+  const chip = (key: string) => q<HTMLAnchorElement>(`.chat-main .chat-msg.agent a.item-chip[href="${key}"]`);
+  const foot = async (el: HTMLElement | null) => {
+    el?.focus();
+    const t = await waitFor(() => textOf(q(".chip-card .chip-card-foot")) || null, 3000);
+    el?.blur();
+    await waitFor(() => (!q(".chip-card") ? true : null), 2000);
+    return t;
+  };
+  out.hover = { task: await foot(chip("gizai:task/KADE-3")), project: await foot(chip("gizai:project/KADE")) };
+  check(JSON.stringify(out.hover) === JSON.stringify({ task: "Click to open beside the chat", project: "Click to open" }), `the hover cards' last lines on the Chat page (${JSON.stringify(out.hover)})`);
+  chip("gizai:task/KADE-3")?.click();
+  const k3 = await waitFor(() => (shown() === "card:KADE-3" ? true : null), 3000);
+  out.chipClick = { hash: location.hash, tabs: tabKeys(), shown: shown(), strip: strip() };
+  check(k3 && location.hash === chatHash && same2(tabKeys(), ["card:KADE-1", "card:GFW-2", "card:KADE-3"]), `a click on KADE-3's chip opens it in a Card tab at the end, in the chat (${JSON.stringify(out.chipClick)})`);
+  check(strip()?.n === "3", `the strip counts 3 (${JSON.stringify(out.chipClick)})`);
+  chip("gizai:task/KADE-1")?.click();
+  await waitFor(() => (shown() === "card:KADE-1" ? true : null), 3000);
+  check(shown() === "card:KADE-1" && tabKeys().length === 3, `a click on KADE-1's chip shows its tab, no second one (${tabKeys().join(", ")}, ${shown()})`);
+
+  // 7. Alt+4 hides the island while a card shows, and shows it again; the strip stays
+  const alt4 = () => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: isMac() ? "¢" : "4", code: "Digit4", altKey: true, bubbles: true, cancelable: true }));
+  (document.activeElement as HTMLElement | null)?.blur();
+  alt4();
+  const hidden = await waitFor(() => (!island() ? true : null), 2000);
+  out.alt4 = { hidden: !!hidden, strip: strip() };
+  check(hidden && strip()?.pressed === "false", `Alt+4 hides the cards, the strip stays (${JSON.stringify(out.alt4)})`);
+  alt4();
+  const back = await waitFor(() => (island() && shown() === "card:KADE-1" ? true : null), 2000);
+  check(back && strip()?.pressed === "true", `Alt+4 shows them again on KADE-1 (${shown()}, ${JSON.stringify(strip())})`);
+
+  // 8. Ctrl+W on the shown Card tab closes it (KADE-3 shown first)
+  q<HTMLElement>('.chat-side .card-tab[data-tab="card:KADE-3"]')?.click();
+  await waitFor(() => (shown() === "card:KADE-3" ? true : null), 2000);
+  const kTab = q<HTMLElement>('.chat-side .card-tab[data-tab="card:KADE-3"]');
+  kTab?.focus();
+  kTab?.dispatchEvent(new KeyboardEvent("keydown", { key: "w", code: "KeyW", ctrlKey: !isMac(), metaKey: isMac(), bubbles: true, cancelable: true }));
+  const closedW = await waitFor(() => (!tabKeys().includes("card:KADE-3") ? true : null), 2000);
+  check(closedW && same2(tabKeys(), ["card:KADE-1", "card:GFW-2"]), `Ctrl+W closes the shown Card tab (${tabKeys().join(", ")})`);
+
+  // 9. Ctrl+click on a chip opens the card's page
+  const ctrlClick = (el: HTMLElement | null) => el?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0, ctrlKey: !isMac(), metaKey: isMac() }));
+  ctrlClick(chip("gizai:task/KADE-3"));
+  const k3page = await waitFor(() => (location.hash === `#/task/${idOf("KADE-3")}` ? true : null), 4000);
+  out.ctrlClick = { hash: location.hash };
+  check(k3page, `Ctrl+click on KADE-3's chip opens its page (${location.hash})`);
+  check(!tabKeys().includes("card:KADE-3"), "and opens no tab");
+
+  // 10. a chip outside the Chat page (KADE-1's comment on its page) says Click to open and opens the page
+  window.location.hash = `#/task/${idOf("KADE-1")}`;
+  const pageChip = await waitFor(() => q<HTMLAnchorElement>('.comment a.item-chip[href="gizai:task/KADE-3"]'), 6000);
+  out.pageChip = { found: !!pageChip, foot: await foot(pageChip) };
+  check(pageChip && (out.pageChip as { foot: string }).foot === "Click to open", `a chip on the card's page says Click to open (${JSON.stringify(out.pageChip)})`);
+  pageChip?.click();
+  const leftTo = await waitFor(() => (location.hash === `#/task/${idOf("KADE-3")}` ? true : null), 4000);
+  check(leftTo, `and a click opens KADE-3's page (${location.hash})`);
+
+  // 11. back in the chat its tabs are as they were; Own page opens GFW-2's page and closes its tab here
+  if (!(await goChat())) { errors.push("the chat didn't open again"); return done(); }
+  await waitFor(() => (tabKeys().length === 2 ? true : null), 4000);
+  out.backAgain = { tabs: tabKeys(), shown: shown() };
+  check(same2(tabKeys(), ["card:KADE-1", "card:GFW-2"]), `back in the chat its Card tabs are still open (${JSON.stringify(out.backAgain)})`);
+  q<HTMLElement>('.chat-side .card-tab[data-tab="card:GFW-2"]')?.click();
+  await waitFor(() => (shown() === "card:GFW-2" ? true : null), 2000);
+  const own = q<HTMLButtonElement>('.chat-side button[aria-label="Own page"]');
+  out.own = { title: own?.title, disabled: own?.disabled };
+  check(own && !own.disabled && own.title === "Open GFW-2 on its own page", `Own page for a card (${JSON.stringify(out.own)})`);
+  own?.click();
+  const ownPage = await waitFor(() => (location.hash === `#/task/${idOf("GFW-2")}` ? true : null), 4000);
+  check(ownPage, `Own page opens GFW-2's page (${location.hash})`);
+  if (!(await goChat())) { errors.push("the chat didn't open again"); return done(); }
+  await waitFor(() => (tabKeys().length ? true : null), 3000);
+  check(same2(tabKeys(), ["card:KADE-1"]), `GFW-2's tab closed here (${tabKeys().join(", ")})`);
+
+  // 12. the last tab closed: no island, no strip; opening the chat again opens nothing (once per chat)
+  q<HTMLButtonElement>('.chat-side .card-tab[data-tab="card:KADE-1"] button.x')?.click();
+  await waitFor(() => (!island() && !cardBtn() ? true : null), 2000);
+  check(!island() && !cardBtn(), "the last Card tab closed: no island, no strip");
+  window.location.hash = "#/chat";
+  await sleep(500);
+  if (!(await goChat())) { errors.push("the chat didn't open again"); return done(); }
+  await sleep(1500);
+  out.again = { island: !!island(), strip: strip(), kept: (localStorage.getItem("gizai.chat.sideOpened") ?? "").includes(thread.id) };
+  check(!island() && !cardBtn(), `opened again, the chat opens no cards (${JSON.stringify(out.again)})`);
+  check((out.again as { kept: boolean }).kept, "the chat is kept in gizai.chat.sideOpened");
+  return done();
+}
 
 // GIZAI_SELFTEST_MODE=steps:<step>;<step>… (scripts/shot-cage.sh, scripts/tour-capture.sh), run after
 // the start route opens. A step is one of:

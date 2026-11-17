@@ -21,7 +21,8 @@
 #     task without sending and the sent message shows it as a chip; Tauri's drag-and-drop events (sent through its event
 #     system: a real OS drop can't be made headless) show the drop state and add a file (a folder is refused), which is
 #     sent and shown; the text box stops growing at 200 px; while the Team Lead is paused, + and drops are off; after
-#     reopening the chat the chip and the file are still there and the chip opens the task.
+#     reopening the chat the chip and the file are still there; the chip opens the task in a Card tab beside the chat
+#     (GA-297), and Ctrl+click (Cmd+click on macOS) opens its page.
 #  7. usage (GA-33): Usage in the sidebar's Company section above Team. GA-62: it opens on the Subscription tab, a block
 #     per coding CLI entry (Claude Code, Claude Code 2, Codex, Gemini) with prep_usage's limits and the agents on each.
 #     Then the Total, Agents and Projects tabs and the period
@@ -186,6 +187,16 @@
 #     same one; while sleep 30 runs a click starts a new tab there, which the subfolder's button shows again; the second
 #     folder's button opens its own; Open in terminal… opens the picker titled "Open terminal in" under it and a pick opens
 #     the terminal there; beside the panel the row of three buttons wraps.
+# 25. cards beside the chat (GA-297), against prep_chats' Chief and prep_chat_cards' chat about KADE-1 and GFW-2, in two starts
+#     on the same WebKit storage: (a) the chat opens both as Card tabs, KADE-1 shown, the strip's Card 2 selected with Alt+4 in
+#     its title; KADE-1's tab: id, project, title, Column, Hold with the reason's end and Read in comments, Assignee, Labels,
+#     the description folded after 4 lines, the criteria 2 of 5 with Show all 5, the latest 2 of 4 comments, the runs newest
+#     first, a foot with Comment and Move to; GFW-2 in Review: the pull request and QA's verdict first, no Run or Continue;
+#     Comment posts from the tab and Move to moves the card, the tab following both; a card chip's hover card says Click to
+#     open beside the chat (a project's Click to open), a click opens the card in a tab or shows its tab, Ctrl+click opens its
+#     page; Alt+4 hides and shows the cards, Ctrl+W closes the shown one, Own page opens the card's page and closes its tab;
+#     on a card's page a chip still opens the page; every tab closed, the chat opened again opens none. (b) After a restart,
+#     the chat opens with nothing beside it.
 # Makes .devdata/demo when it is missing, and builds the app when it is missing or stale (scripts/app-ready.sh).
 # usage: scripts/ui-test.sh
 set -uo pipefail
@@ -355,4 +366,11 @@ rm -rf .devdata/uitest-home && mkdir -p .devdata/uitest-home/Herd/doq-studio/res
   .devdata/uitest-home/Herd/kade-portal .devdata/uitest-home/Herd/invoice-api
 (source scripts/env.sh && cargo run -q -p gizai-core --example prep_chat_terminal -- .devdata/uitest "$PWD/.devdata/uitest-home" > /dev/null)
 DATA=$PWD/.devdata/uitest ROUTE=terminal MODE=terminal:chat-run GZ_SHELL=/bin/sh GZ_HOME=$PWD/.devdata/uitest-home TIMEOUT=120 scripts/smoke-cage.sh || fail=1
+fresh
+# GA-297: cards beside the chat, with the Chief of prep_chats and prep_chat_cards' chat; b is a restart on the same WebKit storage
+(source scripts/env.sh && cargo run -q -p gizai-core --example prep_chats -- .devdata/uitest "$PWD/crates/gizai-agents/tests/fake-claude.sh")
+(source scripts/env.sh && cargo run -q -p gizai-core --example prep_chat_cards -- .devdata/uitest > /dev/null)
+rm -rf .devdata/uitest-home && mkdir -p .devdata/uitest-home
+DATA=$PWD/.devdata/uitest ROUTE=terminal MODE=terminal:chat-cards-a GZ_SHELL=/bin/sh GZ_HOME=$PWD/.devdata/uitest-home TIMEOUT=120 scripts/smoke-cage.sh || fail=1
+DATA=$PWD/.devdata/uitest ROUTE=terminal MODE=terminal:chat-cards-b GZ_SHELL=/bin/sh GZ_HOME=$PWD/.devdata/uitest-home TIMEOUT=60 scripts/smoke-cage.sh || fail=1
 exit $fail
