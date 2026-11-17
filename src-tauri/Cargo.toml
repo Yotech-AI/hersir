@@ -33,11 +33,15 @@ tokio = { workspace = true, features = ["signal"] }
 tauri-plugin-opener = "2"
 libc = { workspace = true }
 tauri-plugin-single-instance = "2"
-# Reading the clipboard's text for a terminal's Ctrl+Shift+V on Linux (the window's only clipboard right); the same
-# version as the npm package @tauri-apps/plugin-clipboard-manager.
+# Reading the clipboard's text for a terminal's Ctrl+Shift+V on Linux (the window's only clipboard right), and its image
+# in Rust for one pasted into the Chief Chat (src/pasted.rs); the same version as the npm package
+# @tauri-apps/plugin-clipboard-manager.
 tauri-plugin-clipboard-manager = "2.4.2"
 # Desktop notifications (see src/notifications.rs): tauri-plugin-notification can't tell a click on Linux, this can.
 notify-rust = "4.18"
+# An image pasted into the Chief Chat, saved as a PNG (src/pasted.rs): the version and the one format the clipboard
+# plugin's arboard already uses, so no new crate.
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 # Ends WebKit's page process before Gizai quits (see src/quit.rs); with GTK, the paste guard's self-test step (see
 # src/paste_guard.rs) makes WebKit paste and puts a text on the clipboard.
