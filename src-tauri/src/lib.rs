@@ -24,6 +24,8 @@ pub mod onboarding;
 // Keeps WebKitGTK 2.54.1 from crashing Gizai on a paste with an empty clipboard (GA-222).
 #[cfg(target_os = "linux")]
 pub mod paste_guard;
+// An image pasted into the Chief Chat's text box, read from the clipboard and saved as a PNG (GA-304).
+pub mod pasted;
 pub mod pending;
 pub mod pulls;
 mod quit;
@@ -375,6 +377,12 @@ fn open_data(dir: PathBuf, notify: Arc<dyn Fn(runs::Note) + Send + Sync>, defaul
     // Messages queued in a chat wait for Send now: the answer they waited for is gone.
     let _ = gizai_core::chat::hold_all_queues(&db);
     chat::remove_stray_configs(&dir);
+    // Images pasted into a chat a day ago or more (GA-304): sending copied them into the file store, and a message not
+    // sent then is gone with the Hersir that wrote it.
+    let pasted = pasted::clear_old(&dir, gizai_core::ids::now_ms());
+    if pasted > 0 {
+        eprintln!("gizai: removed {pasted} images pasted into a chat a day ago or more");
+    }
     timed.part("the recovery");
     housekeeping(&db, &dir);
     timed.part("the housekeeping");
@@ -645,6 +653,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         // The window may only read the clipboard's text (capabilities/default.json): a terminal's Ctrl+Shift+V on Linux.
+        // Its image is read in Rust (pasted.rs), for an image pasted into the Chief Chat.
         .plugin(tauri_plugin_clipboard_manager::init())
         .setup(move |app| {
             if let (Some(label), Some(w)) = (data_label(&dir), app.get_webview_window("main")) {
@@ -829,7 +838,7 @@ pub fn run() {
             commands::list_chat_threads, commands::get_chat_thread, commands::pinned_chats, commands::pin_chat, commands::unpin_chat,
             commands::search_chat_threads, commands::chat_messages, commands::send_chat, commands::stop_chat, commands::chat_live, commands::chat_agent,
             commands::dismiss_chat, commands::chat_queue, commands::edit_queued_chat, commands::remove_queued_chat, commands::send_chat_queue,
-            commands::check_files, commands::item_id,
+            commands::check_files, commands::item_id, pasted::paste_clipboard_image,
             commands::set_chat_cli, commands::answer_chat_on, commands::chat_clis,
             commands::onboarding_pending, commands::finish_onboarding, commands::skip_onboarding,
             commands::pending_actions, commands::approve_pending_action, commands::approve_pending_actions, commands::discard_pending_action,

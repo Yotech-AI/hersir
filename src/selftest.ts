@@ -6664,6 +6664,8 @@ export async function perfProbe(spec: string): Promise<PerfResult> {
  *  2.54.1 (the guard only turns GTK's count of -1 into 0). With a text on the clipboard the paste puts exactly that text
  *  in. The middle-click paste goes before anything is selected: a selection fills the primary selection. */
 export async function pasteProbe() {
+  // GA-304 QA: the same mode on route chat, in a cage of its own, is the Chief Chat's text box (chatPasteProbe)
+  if (location.hash.startsWith("#/chat")) return chatPasteProbe();
   const steps: Record<string, unknown>[] = [];
   await goTo("#/team", ".topbar .actions");
   buttonByText(document, "Add agent")?.click();
@@ -6710,6 +6712,133 @@ export async function pasteProbe() {
   await paste("empty clipboard, text selected", "Paste", { value: "keep me", select: true, want: "", guarded: true });
   await paste("a text on the clipboard", "Paste", { value: "", clipboard: "GA-222 text", want: "GA-222 text", guarded: false });
   return { ok: steps.length === 6 && steps.every((s) => s.ok), steps };
+}
+
+/** GA-304 QA (Linux): GIZAI_SELFTEST_MODE=paste on route chat (scripts/ui-test.sh, on prep_chats' data, in a cage of its own
+ *  whose clipboard starts empty): pasting in the Chief Chat's text box through WebKit's own paste (selftest_paste "Paste",
+ *  the way Ctrl+V, Shift+Insert and the right-click menu's Paste do), so the paste event, its clipboard data and
+ *  paste_clipboard_image (the clipboard plugin's Rust API) are the real ones. The calls to paste_clipboard_image and what
+ *  they returned are read from Tauri's IPC (it goes through fetch here). The Chief of prep_chats is paused: Resume first.
+ *  (a) Nothing copied, text selected: the composer takes the paste (CodeMirror's own paste of no text would delete the
+ *  selection), asks paste_clipboard_image once and it says null: no chip, no banner, the text and its selection unchanged,
+ *  the paste guard's count rises (GA-222) and Hersir still answers. (b) The same in an empty box. (c) "GA-304 text" on the
+ *  clipboard: the paste puts it in place of the selection, no chip, paste_clipboard_image isn't asked. (d) An image the page
+ *  puts on the clipboard (navigator.clipboard.write): the window has no right to, so this only says whether it could; when
+ *  it can, the paste adds one chip pasted-image-<date>_<time>.png, Pasted from the clipboard. (e) The Chief paused: the box
+ *  is off and a paste adds nothing. A cage has no data-control protocol, so nothing outside Hersir can put an image there. */
+async function chatPasteProbe() {
+  const steps: Record<string, unknown>[] = [];
+  const calls: { status: number; body: string }[] = [];
+  const realFetch = window.fetch;
+  window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = decodeURIComponent(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+    const res = await realFetch(input, init);
+    if (/\/paste_clipboard_image$/.test(url)) calls.push({ status: res.status, body: await res.clone().text() });
+    return res;
+  }) as typeof window.fetch;
+  try {
+    await waitFor(() => q(".chat-composer"), 8000);
+    (await waitFor(() => q<HTMLButtonElement>(".chat-composer .chat-banner .btn"), 6000))?.click();
+    const content = await waitFor(() => (q(".composer-box:not(.disabled)") ? composer() : null), 8000);
+    const view = content ? EditorView.findFromDOM(content) : null;
+    if (!content || !view) return { ok: false, error: "no composer to type in (the Chief not resumed?)", steps, calls };
+    const answers = async () => { try { return !!(await appInfo()).version; } catch { return false; } };
+    const chips = () => [...document.querySelectorAll(".composer-box .files li .fname")].map((f) => [f.querySelector("b")?.textContent ?? "", f.querySelector(":scope > span")?.textContent ?? ""]);
+    const banner = () => q(".chat-composer .chat-banner.warn")?.textContent ?? null;
+    const TEXT = "Look at this screenshot please";
+    const paste = async (name: string, o: { text: string; from: number; to: number; clipboard?: string; want: string; wantSel: [number, number];
+      guarded: boolean; asks: number; chips?: number }) => {
+      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: o.text }, selection: { anchor: o.from, head: o.to } });
+      view.focus();
+      await sleep(200);
+      const asked = calls.length;
+      // the text's own element has the focus (CodeMirror's hasFocus also asks for the window's, which a cage may not give)
+      const step: Record<string, unknown> = { name, focused: content.contains(document.activeElement), selected: view.state.sliceDoc(o.from, o.to) };
+      try {
+        const before = await selftestPaste("Paste", o.clipboard);
+        let count = before;
+        const landed = await until(async () => {
+          count = await selftestPaste(null);
+          return o.guarded ? count > before : view.state.doc.toString() === o.want;
+        }, 50);
+        // paste_clipboard_image reads the clipboard off the main thread: its answer, and anything after it, are in by now
+        await until(() => calls.length >= asked + o.asks, 30);
+        await sleep(1000);
+        count = await selftestPaste(null);
+        Object.assign(step, { before, after: count, landed, rose: count > before });
+      } catch (e) {
+        step.error = String(e);
+      }
+      const sel = view.state.selection.main;
+      Object.assign(step, { value: view.state.doc.toString(), selection: [sel.from, sel.to], chips: chips(), banner: banner(),
+        asked: calls.slice(asked), answers: await answers() });
+      const got = calls.slice(asked);
+      step.ok = !step.error && step.focused === true && step.answers === true && step.value === o.want && step.rose === o.guarded
+        && step.selected === o.text.slice(o.from, o.to) && sel.from === o.wantSel[0] && sel.to === o.wantSel[1]
+        && got.length === o.asks && (o.chips ?? 0) === chips().length && step.banner === null
+        && (o.asks === 0 || o.chips || (got[0].status === 200 && got[0].body === "null"));
+      steps.push(step);
+    };
+    // (a), (b): nothing copied
+    await paste("empty clipboard, text selected", { text: TEXT, from: 8, to: 23, want: TEXT, wantSel: [8, 23], guarded: true, asks: 1 });
+    await paste("empty clipboard, empty box", { text: "", from: 0, to: 0, want: "", wantSel: [0, 0], guarded: true, asks: 1 });
+    // (c): a text on the clipboard
+    await paste("a text on the clipboard, text selected", { text: TEXT, from: 8, to: 23, clipboard: "GA-304 text", want: "Look at GA-304 text please",
+      wantSel: [19, 19], guarded: false, asks: 0 });
+    // (d): an image the page puts on the clipboard, when WebKit lets it
+    const png = await new Promise<Blob | null>((r) => {
+      const c = document.createElement("canvas");
+      c.width = 3; c.height = 2;
+      const g = c.getContext("2d");
+      if (g) { g.fillStyle = "#3366ff"; g.fillRect(0, 0, 3, 2); }
+      c.toBlob(r, "image/png");
+    });
+    let wrote = "no PNG made";
+    if (png) {
+      try {
+        await Promise.race([navigator.clipboard.write([new ClipboardItem({ "image/png": png })]), sleep(3000).then(() => { throw new Error("no answer in 3 s"); })]);
+        wrote = "yes";
+      } catch (e) {
+        wrote = String(e);
+      }
+    }
+    const image: Record<string, unknown> = { name: "an image the page put on the clipboard", wrote };
+    if (wrote === "yes") {
+      const asked = calls.length;
+      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: TEXT }, selection: { anchor: 8, head: 23 } });
+      view.focus();
+      await sleep(200);
+      await selftestPaste("Paste");
+      await until(() => calls.length > asked && chips().length > 0, 50);
+      await sleep(500);
+      const sel = view.state.selection.main;
+      Object.assign(image, { value: view.state.doc.toString(), selection: [sel.from, sel.to], chips: chips(), banner: banner(), asked: calls.slice(asked) });
+      const c = chips();
+      image.ok = c.length === 1 && /^pasted-image-\d{4}-\d\d-\d\d_\d\d-\d\d-\d\d\.png$/.test(c[0][0]) && c[0][1] === "Pasted from the clipboard"
+        && image.value === TEXT && sel.from === 8 && sel.to === 23 && banner() === null;
+      // the chip's X takes it off again
+      (q<HTMLButtonElement>(`.composer-box .files li button[aria-label="Remove ${c[0]?.[0]}"]`))?.click();
+      await sleep(300);
+      image.removed = chips().length === 0;
+    }
+    steps.push(image);
+    // (e): the Chief paused
+    let lead: string | null = null;
+    for (const t of await listTeams()) lead ??= (await teamById(t.id)).members.find((m) => m.roleKey === "lead")?.actorId ?? null;
+    if (lead) await setAgentStatus(lead, "paused");
+    const off = await waitFor(() => q(".composer-box.disabled"), 6000);
+    const asked = calls.length;
+    const was = view.state.doc.toString();
+    await selftestPaste("Paste", "GA-304 paused");
+    await sleep(1500);
+    steps.push({ name: "the Chief paused", lead, off: !!off, value: view.state.doc.toString(), was, chips: chips(), asked: calls.slice(asked), answers: await answers(),
+      ok: !!lead && !!off && view.state.doc.toString() === was && chips().length === 0 && calls.length === asked && await answers() });
+    // (d) counts only when the page could put an image on the clipboard
+    const ok = steps.every((s) => s.ok !== false) && steps.filter((s) => s.ok === true).length === (wrote === "yes" ? 5 : 4);
+    return { ok, imageOnClipboard: wrote, steps, calls };
+  } finally {
+    window.fetch = realFetch;
+  }
 }
 
 /** GIZAI_SELFTEST_MODE=templates:<folder> on route team (GA-227 QA; scripts/ui-test.sh, on the demo data). <folder> holds

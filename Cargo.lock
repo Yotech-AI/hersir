@@ -1672,6 +1672,7 @@ dependencies = [
  "gizai-core",
  "gizai-mcp",
  "gtk",
+ "image",
  "libc",
  "notify-rust",
  "serde",

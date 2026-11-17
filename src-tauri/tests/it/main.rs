@@ -52,6 +52,7 @@ mod onboarding_flow_test;
 mod outside_chat_mark_test;
 mod own_push_test;
 mod paste_guard_test;
+mod pasted_test;
 mod pending_actions_test;
 mod pr_check_rounds_test;
 mod pull_flow_test;

@@ -1,11 +1,11 @@
 // The conversation in one thread (or a new, empty one), the live answer, the messages queued meanwhile, and the
 // composer. The composer is one box: a Markdown editor without a toolbar (@ links a Gizai item), and under the text a row
-// with + (add files, or link an item; a drop on the Chat page adds files too), the tips, Runs on (the coding CLI the
-// chat's answers run on) and Send, or Stop while the Team Lead answers.
+// with + (add files, or link an item; a drop on the Chat page adds files too, and so does an image pasted into the text),
+// the tips, Runs on (the coding CLI the chat's answers run on) and Send, or Stop while the Team Lead answers.
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowUp, AtSign, Paperclip, Pencil, Plus, Square, X } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { answerChatOn, chatClis, checkFiles, editQueuedChat, removeQueuedChat, sendChat, sendChatQueue, setAgentStatus, setChatCli, stopChat } from "../../api";
+import { answerChatOn, chatClis, checkFiles, editQueuedChat, pasteClipboardImage, removeQueuedChat, sendChat, sendChatQueue, setAgentStatus, setChatCli, stopChat } from "../../api";
 import { go } from "../../router";
 import { chatRunsOn, groupMessages, SUGGESTIONS, toolName, type Group } from "../../lib/chat";
 import { adoptNewChat, chatSideKey, setChatCards } from "../../lib/chatSide";
@@ -33,9 +33,11 @@ type ComposerText = { text: () => string; set: (text: string) => void; clear: ()
 
 /** The text box on top; under it, in the same box, + on the left, the tips, `picker` (Runs on), and Send (Stop while the
  *  Team Lead answers) on the right. The text being typed is the composer's own state, so a keystroke redraws the composer
- *  and not the thread (GA-190); the thread reaches it through `box`. */
-function Composer({ box, files, onAddFiles, onRemoveFile, onSend, onStop, working, disabled, busy, pending, editor, picker }: {
+ *  and not the thread (GA-190); the thread reaches it through `box`. `onNote`: a sentence for the warning banner (an image
+ *  that couldn't be pasted). */
+function Composer({ box, files, onAddFiles, onRemoveFile, onNote, onSend, onStop, working, disabled, busy, pending, editor, picker }: {
   box: React.Ref<ComposerText>; files: string[]; onAddFiles: (paths: string[]) => void; onRemoveFile: (path: string) => void;
+  onNote: (note: string) => void;
   onSend: (text?: string) => void; onStop: () => void; working: boolean; disabled: boolean; busy: boolean; pending: ChatButtons;
   editor: React.MutableRefObject<EditorHandle | null>; picker: ReactNode;
 }) {
@@ -45,6 +47,17 @@ function Composer({ box, files, onAddFiles, onRemoveFile, onSend, onStop, workin
   useImperativeHandle(box, () => ({ text: () => valueRef.current, set: setValue, clear: () => { setValue(""); editor.current?.clear(); } }), [editor]);
   useEffect(() => { if (!disabled) editor.current?.focus(); }, [disabled, editor]);
   const ready = !!value.trim() || files.length > 0;
+  // Images pasted from the clipboard (GA-304): their chips say so, instead of naming the folder Hersir saved them in.
+  const pasted = useRef(new Set<string>());
+  // A paste with no text, such as a screenshot: Hersir reads the clipboard's image itself (WebKitGTK may not hand it to
+  // the page) and saves it as a PNG, which the message adds like a picked file. No image on the clipboard: nothing happens.
+  const pasteImage = () => {
+    pasteClipboardImage().then((path) => {
+      if (!path) return;
+      pasted.current.add(path);
+      onAddFiles([path]);
+    }).catch((e) => onNote(String(e)));
+  };
   // A click in the box around the text (its edges, the tips) puts the cursor in the text, as in one big text field.
   const toText = (e: React.MouseEvent) => {
     if (disabled || (e.target as Element).closest("button, select, label, a, .md-editor, .pop")) return;
@@ -53,9 +66,11 @@ function Composer({ box, files, onAddFiles, onRemoveFile, onSend, onStop, workin
   };
   return (
     <div className={`composer-box${disabled ? " disabled" : ""}`} onMouseDown={toText}>
-      <PendingFileList paths={files} onRemove={onRemoveFile} disabled={disabled} compact />
+      <PendingFileList paths={files} onRemove={onRemoveFile} disabled={disabled} compact
+        under={(p) => (pasted.current.has(p) ? "Pasted from the clipboard" : undefined)} />
       {/* While the Team Lead answers, Enter queues the message: it goes when the answer is done. */}
       <MarkdownEditor className="composer-editor" toolbar={false} value={value} onChange={setValue} onEnter={(md) => onSend(md)} disabled={disabled}
+        onPasteNoText={disabled ? undefined : pasteImage}
         pickerUp handle={editor} ariaLabel="Message the Chief"
         placeholder={working ? "Queue a message for when this answer is done…" : "Message the Chief…"} />
       <div className="composer-foot">
@@ -150,7 +165,7 @@ export function ChatThread({ threadId, thread, agent, youId }: { threadId: strin
   // GA-102: the Team Lead's calls that wait for your approval in this chat, each under the answer that tried it.
   const waitingCalls = useMemo(() => (calls ?? []).filter((a) => a.threadId === threadId), [calls, threadId]);
   const box = useRef<ComposerText>(null);
-  // Files added to the message (+ → Add files, or dropped on the Chat page): their paths, until it is sent.
+  // Files added to the message (+ → Add files, dropped on the Chat page, or an image pasted): their paths, until it is sent.
   const [files, setFiles] = useState<string[]>([]);
   const [fileNote, setFileNote] = useState<string | null>(null);
   const editor = useRef<EditorHandle | null>(null);
@@ -339,7 +354,7 @@ export function ChatThread({ threadId, thread, agent, youId }: { threadId: strin
             <div className="chat-banner warn" role="alert"><span>{fileNote}</span>
               <button className="btn ghost sm icon-only" aria-label="Close" title="Close" onClick={() => setFileNote(null)}><X className="icon sm" /></button></div>
           )}
-          <Composer box={box} files={files} onAddFiles={addFiles} onRemoveFile={(p) => setFiles((f) => f.filter((x) => x !== p))}
+          <Composer box={box} files={files} onAddFiles={addFiles} onRemoveFile={(p) => setFiles((f) => f.filter((x) => x !== p))} onNote={setFileNote}
             onSend={send} onStop={() => { if (threadId) pending.act("stop", () => stopChat(threadId), fail); }}
             working={working} disabled={paused} busy={busy} pending={pending} editor={editor}
             picker={<RunsOn value={runsOn} clis={clis} disabled={working} onChange={pickCli} />} />

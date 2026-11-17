@@ -441,6 +441,9 @@ export const sendChat = (threadId: string | null, text: string, cli?: string | n
   invoke<string>("send_chat", { threadId, text, cli: cli ?? null, files });
 /** Which picked or dropped paths can be added to a chat message, and a plain sentence for each that can't (a folder, over 1 GB). */
 export const checkFiles = (paths: string[]) => invoke<T.FileCheck>("check_files", { paths });
+/** The clipboard's image (GA-304), read by Hersir itself and saved as a PNG under `<data dir>/pasted/`: its path, or null
+ *  when the clipboard holds no image. Fails with one sentence starting "The clipboard's image couldn't be pasted: ". */
+export const pasteClipboardImage = () => invoke<string | null>("paste_clipboard_image");
 /** The id of the page a gizai: link opens: a task by identifier (GA-12), a project by key (GA); others name their id already. */
 export const itemId = (kind: string, key: string) => invoke<string>("item_id", { kind, key });
 export const chatQueue = (threadId: string) => invoke<T.QueuedMessage[]>("chat_queue", { threadId });
