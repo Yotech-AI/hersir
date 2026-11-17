@@ -129,8 +129,11 @@ and panels, `radius-pill` for badges. Never round everything the same.
 properties panel (`size-props`) that can be closed. There is no org rail: Hersir has one
 organisation. The main column is the page's top bar (`size-topbar`, on the background) with breadcrumbs and page
 actions, over the page's island; a page with several panes keeps them in that one island for now, except the Editor
-(below). The Tasks page's view toolbar is its island's header, 44 high (New task on the left; view switch, Filters,
-Sort, Group on the right). Pages with parts (Usage, Settings) show them as tabs, the open one in the address. The
+(below). List pages have their
+view toolbar as their island's header (44 high, padding `0 8`, no line under it; New task on the left; view switch,
+Filters, Sort, Group on the right). A card's page is two islands (`design/islands-pages/README.md`): the card, with
+Card, Changes and Screenshots as island tabs in its header, and Properties beside it as an island of its own with a
+header. Pages with parts (Usage, Settings) show them as tabs, the open one in the address. The
 Editor is islands of its own, `island-gap` apart: the file tree (`size-tree`, rows `size-tree-row`); the code, with
 the open files as island tabs (`size-island-tab`, the open one a pill) in its header (`size-island-head`) and the
 status bar (`size-statusbar`) at its bottom; and the terminal panel. The tree's rows and the status bar grow with the
@@ -140,7 +143,9 @@ gap above it is its drag handle.
 
 **Drawers, not dialogs.** Every create and edit form (new task, new project, edit client, add
 agent, agent settings, new doc) slides in from the right in a Drawer at least `size-drawer`
-(1024px) wide, over a `scrim`. Forms inside use sections: a 220px intro column (heading + one
+(1024px) wide, over a `scrim`. The drawer is an island of its own floating over the work islands: `island-gap` in from
+the window's top, right and bottom edges, `island-radius` on every corner, `float` with a `line-2` border all round and
+`shadow-drawer`; the islands under it don't move. Forms inside use sections: a 220px intro column (heading + one
 sentence) and a two-column field grid. The footer is sticky with the primary action on the right.
 Centered dialogs are only for confirmations of one sentence.
 

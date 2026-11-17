@@ -97,9 +97,14 @@ input[type="checkbox"]:checked:disabled:hover { border-color: var(--accent); bac
 .field .error { font-size: var(--fs-xs); color: var(--danger); }
 
 /* ---------- drawer: every create / edit form opens here, from the right, at least 1024px wide ---------- */
+/* The scrim dims the whole window (the islands, the background and the glass); a click on it closes the drawer. */
 .scrim { position: fixed; inset: 0; background: var(--scrim); z-index: 40; animation: gz-fade .16s ease-out; }
-.drawer { position: fixed; top: 0; right: 0; bottom: 0; z-index: 41; width: min(var(--size-drawer), calc(100vw - 48px)); display: flex; flex-direction: column;
-  background: var(--float); border-left: 1px solid var(--line-2); box-shadow: var(--shadow-drawer); animation: gz-slide .2s cubic-bezier(.2, .8, .2, 1); }
+/* A drawer is an island of its own floating over the work islands (GA-294, design/islands-pages: How a drawer sits):
+   island-gap in from the window's top, right and bottom edges, island-radius on all four corners, float with a line-2
+   border all round and shadow-drawer. The islands under it don't move; its content keeps to the round corners. */
+.drawer { position: fixed; top: var(--island-gap); right: var(--island-gap); bottom: var(--island-gap); z-index: 41; width: min(var(--size-drawer), calc(100vw - 48px));
+  display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line-2); border-radius: var(--island-radius);
+  background: var(--float); box-shadow: var(--shadow-drawer); animation: gz-slide .2s cubic-bezier(.2, .8, .2, 1); }
 .drawer.wide { width: min(1280px, calc(100vw - 48px)); }
 .drawer-head { display: flex; align-items: flex-start; gap: 12px; padding: 18px 28px 16px; border-bottom: 1px solid var(--line); }
 .drawer-head .titles { flex: 1; min-width: 0; }
@@ -189,6 +194,9 @@ input[type="checkbox"]:checked:disabled:hover { border-color: var(--accent); bac
 .toolbar { display: flex; align-items: center; gap: 8px; padding: 12px 20px; }
 .toolbar .spacer { flex: 1; }
 .toolbar .btn.ghost.on { color: var(--accent); }
+/* A page's toolbar as its island's header (GA-294, design/islands-pages: On every page): 44px high as the board's, padding
+   0 8px, no line under it; its controls 28 to 30px high, the search box on raised (an input). */
+.toolbar.island-bar { flex: none; min-height: calc(44px + var(--ui-box, 0px)); padding: 0 8px; }
 
 /* ---------- status glyphs: one shape and one hue per column category ---------- */
 .st { width: 16px; height: 16px; flex: none; }

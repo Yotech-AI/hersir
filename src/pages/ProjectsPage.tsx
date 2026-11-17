@@ -35,7 +35,7 @@ export function ProjectsPage() {
   return (
     <>
       <div className="topbar"><div className="crumbs"><b>Projects</b><span className="faint">{data?.length ?? ""}</span></div></div>
-      <div className="toolbar">
+      <div className="toolbar island-bar">
         <button className="btn" onClick={() => open({ kind: "project" })}><Plus className="icon" />New project</button>
         <span className="spacer" />
         <div className="chips">{[null, "planned", "active", "paused", "done"].map((s) => (
