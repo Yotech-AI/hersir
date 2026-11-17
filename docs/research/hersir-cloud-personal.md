@@ -280,4 +280,297 @@ If every customer filled the 10 GB quota, 1,000 customers would store about 15 T
 
 Weighed: Passport's device-code grant (RFC 8628) needs no listener, but `oauth.rs` already has one; Sanctum tokens would need a second package beside Passport [I].
 
-<!-- Section 3.5 onwards follows. -->
+### 3.5 Payments: Stripe with Cashier (decision 9)
+
+**Recommendation** [I]: sell directly through the S.L.'s own Stripe account: Cashier 16 with Stripe Checkout for the subscription, Stripe Billing for renewals, Stripe Tax (Basic, 0.5%) to work out and collect VAT, Stripe's customer portal for cards, cancelling and invoices. **Not Managed Payments, for now**: it costs about 3.5 points more of every sale, puts Link, LLC's name on your customers' statements and receipts, and takes away VAT-number collection for business buyers, while what it saves (registrations outside the EU) matters little to an EU-first launch. **Replaced**: Round 1's Paddle.
+
+#### Can a Spanish S.L. use Stripe Managed Payments today? Yes, at 3.5% on top [V S-P8 to S-P16, read 2026-11-17]
+
+| | What Stripe says |
+|---|---|
+| Who can use it | a business based in a supported location; the list includes ES and every other EU country, GB, CH, NO, US, CA, AU, HK, JP and SG. "Stripe determines access to Managed Payments based on an eligibility review." The sign-up page says *Start now*; no page calls it a preview, and none says "generally available" either |
+| What it sells | "fully automated digital product[s]": software, "electronically supplied business and web services"; each product needs an eligible tax code, such as `txcd_10103000` (SaaS, personal use) |
+| What it costs | "3,5 % por transacción exitosa de Managed Payments además de las tarifas de Payments", on "the full transaction amount, including any indirect taxes"; Stripe Tax is included, "billing fees apply separately" (0.7%) |
+| Who sells to your customer | "Sold through Link, LLC, the legal entity providing the Merchant of Record service" (LemonSqueezy LLC on invoices before 6 April 2026); statements show `LINK.COM* <your descriptor>`; receipts and tax invoices come from Link; you get a monthly self-billed invoice |
+| How it is built | only Stripe Checkout and Payment Links (`managed_payments[enabled]` on the Checkout Session, API `2025-03-31.basil` or later); `automatic_tax`, `tax_id_collection` and some other options must be left out; no subscriptions made outside Checkout; "Existing subscriptions aren't eligible"; the customer portal still works |
+| Refunds and payouts | "Stripe can issue refunds within 60 days", and may refund without you after 48 hours without an answer; funds "within 5-7 business days" |
+| With Cashier | not in Cashier's docs; Cashier 16 passes Checkout options through, so `->checkout(['managed_payments' => ['enabled' => true]])` without `Cashier::calculateTaxes()` should work, untested [I from the source] |
+
+Not found: how Managed Payments treats an EU business buyer's VAT number (reverse charge) once `tax_id_collection` is left out.
+
+#### What it costs: Stripe direct, Managed Payments and Paddle [V fees S-P9, S-P11, S-P17; I sums]
+
+Assumptions: a standard EEA card in EUR; every percentage taken from the amount with VAT (Stripe says so for Managed Payments, Paddle's example shows it; assumed for the card, Billing and Tax fees); Billing 0.7% in both Stripe columns; Stripe Tax 0.5% only in the first (Managed Payments includes it); Paddle's $0.50 = €0.45. Disputes and refunds left out. Each cell: **fees / what YoTech keeps / fees as a share of the price without VAT.**
+
+| A consumer in | Stripe direct, Billing and Tax | Managed Payments | Paddle (replaced) |
+|---|---|---|---|
+| Spain, monthly (pays €6.05) | €0.41 / €4.59 / 8.3% | €0.59 / €4.41 / 11.9% | €0.75 / €4.25 / 15.0% |
+| Spain, yearly (pays €58.08) | €1.82 / €46.18 / 3.8% | €3.56 / €44.44 / 7.4% | €3.35 / €44.65 / 7.0% |
+| Germany, monthly (pays €5.95) | €0.41 / €4.59 / 8.2% | €0.59 / €4.41 / 11.8% | €0.75 / €4.25 / 14.9% |
+| Germany, yearly (pays €57.12) | €1.79 / €46.21 / 3.7% | €3.51 / €44.49 / 7.3% | €3.31 / €44.69 / 6.9% |
+
+Stripe direct leaves YoTech about €0.18 more a month and €1.74 more a year per customer than Managed Payments; it doesn't count the cost of filing VAT yourself (below). Push the yearly plan: its fees are half the monthly one's.
+
+#### Selling directly: what the S.L. registers and files, and from when [V S-T1 to S-T10 unless marked; research, not tax advice]
+
+| What | Form | From when |
+|---|---|---|
+| Spanish VAT, 21%, on Spanish consumers, and on consumers in other EU countries while under the €10,000 threshold | Modelo 303 each quarter, 390 each year | now (the S.L. files them already) |
+| **The €10,000 threshold** (LIVA art. 73): the S.L.'s total sales of electronic services (and distance sales of goods) to consumers in other EU countries, without VAT, in the previous or the current calendar year. Below it, Spanish VAT applies; above it, the customer's country's VAT | (Stripe Tax's *small seller* option applies Spanish VAT and tracks the €10,000) | it counts all of the S.L.'s such sales, not only Hersir's [I] |
+| **OSS, Union scheme**: the customer's country's VAT on EU consumers | Modelo 035 to register; Modelo 369 each quarter, also with nothing to declare, paid in the following month (by 30 April, 31 July, 31 October, 31 January) | from the sale that crosses €10,000 [Commission guidance, search result only], or earlier by choice (binding for at least two calendar years); the scheme applies from the next quarter, or from the first sale when the tax office is told by the 10th of the following month |
+| ROI (the intra-EU VAT number) for business customers in other EU countries, who reverse-charge ("inversión del sujeto pasivo" on the invoice); check their VAT numbers in VIES | Modelo 036 (box 582) | before the first sale to an EU business; no answer in 3 months counts as a refusal |
+| Intra-EU services summary | Modelo 349, each quarter while under €50,000 | from the quarter of the first sale to an EU business |
+| **VERI*FACTU** invoicing software (RD 1007/2023): every invoice the S.L. issues, also when another party issues them for it | compliant software, or the SII (whose users are exempt) | **before 1 January 2027** for companies that pay corporate tax, so an S.L.; Stripe doesn't claim its invoices comply and points to Invopop. Open question 14 |
+| Records and evidence | the customer's location: two pieces that agree, or one from a third party (the card's country) while these sales stay under €100,000 a year; kept 10 years | from the first sale |
+| **The UK**: 20% VAT, no threshold for a business not established there | register "within 30 days of the date of making the supply"; returns through Making Tax Digital software | from the first UK consumer |
+| Switzerland | registration and a Swiss tax representative, once the S.L.'s **worldwide** turnover is at least CHF 100,000 | from then, on the first Swiss consumer |
+| Norway (VOEC) NOK 50,000; Canada C$30,000 (and Québec C$30,000); Australia A$75,000 [search results]; the US by state, mostly $100,000 [search results]; Japan ¥10 million [search result] | local registration | at each threshold |
+| South Korea, India, Turkey, Saudi Arabia, the UAE, Serbia and others [not verified] | local registration | from the first consumer |
+
+**What Stripe Tax does** [V S-T8 to S-T10]: works out and collects VAT in Checkout and Billing; collects business customers' VAT numbers and applies the reverse charge; with *small seller* it charges Spanish VAT and tells you when EU sales pass €10,000; its monitoring "highlights potential registration obligations, but it's up to you to confirm" (alerts start once the account had USD 10,000 the year before); exports per country, including for an OSS return; stores the location evidence, although it decides on one address, so the two-piece rule stays yours. **What it doesn't do**: register you, file or pay. Stripe files itself only in the US, for Ireland's non-Union OSS and Canada; in the EU it uses partners (Taxually, Marosa; Tax Complete from €80 a month with 2 registrations and 4 filings a year).
+
+**What stays with the S.L.'s gestor**: filing 303, 390, 349, 035 and 369; the ROI; whether to opt into the OSS at once or start as a small seller; the VERI*FACTU route (Stripe with Invopop, or the SII); the invoices' wording (a simplified invoice is allowed up to €400 with VAT, so for consumers; a full invoice with the reverse-charge line for businesses); the location-evidence policy; the UK registration if the UK is sold to; the Swiss check against the S.L.'s turnover.
+
+**Where to sell at launch** [I]: the EU (consumers and businesses) and businesses anywhere; the UK's consumers once you register there; other countries' consumers, from zero-threshold countries especially, not until the gestor agrees (open question 13). Stripe Checkout asks for the billing country; the account page can refuse a country before Checkout opens.
+
+#### How a plan reaches the app: signed entitlements [Round 1, adapted to Cashier]
+
+```
+account page ── Subscribe ──► Stripe Checkout (automatic tax, VAT numbers, prices excl. VAT)
+                                   │ webhooks: customer.subscription.created / updated / deleted,
+                                   │           invoice.paid, invoice.payment_failed
+                                   ▼
+Cashier (/stripe/webhook, signature checked; stripe_events: each event once) → subscriptions
+   → a listener on Cashier's WebhookHandled event works out the account's plan
+   → Reverb: `entitlement.changed` to the account's computers
+                                   │
+GET /api/v1/me/entitlements  →  { payload, sig }, Ed25519, the public key built into Hersir
+                                   │
+the app: plan badge, storage bar, "renew" notice: display only
+every upload and sync call: the server checks the plan itself
+```
+
+- **The plan from Cashier** [I]: `subscribed('default')` → `active`; `pastDue()` (Stripe retrying a failed renewal) → `past_due`, uploads go on; cancelled but paid to the period's end (`onGracePeriod()`) → `active` until `valid_until`; ended → `lapsed`, with `read_only_until` 60 days later (P7). A row in `comps` (a plan given by hand with `php artisan hersir:comp`) counts as `active`: that is how you use Cloud Backup before Stripe is live.
+- **The entitlement**: `{ v: 1, account, plan, status, features, quota_bytes, used_bytes, valid_until, read_only_until, issued_at }` and an Ed25519 signature (`ed25519-dalek`, already in Hersir's lock). The app never locks or deletes local data over it (`PAID-FEATURES.md:81`).
+- **Lapse** (P7): uploads stop when the plan ends; the list and restore work, read-only, for 60 days; emails when it lapses, after 30 days and a week before the end; then the objects are deleted.
+
+### 3.6 Cloud Backup in detail [Round 1, still holds; storage now R2]
+
+**Recommendation** [I]: keep format 1's manifest and restore, and change only how the bytes travel and sit in the cloud: cut them into chunks, compress and encrypt each chunk on the computer, name each by a keyed hash, and upload only what the server lacks. A cloud restore downloads into a local format-1 folder and hands over to GA-218's restore.
+
+#### What goes up, and how
+
+```
+the database: copied with SQLite's online backup API (page for page, page numbers kept),
+              then cut into fixed 256 KiB chunks (64 pages of 4 KiB)
+the blobs the copy names: a blob up to 4 MiB is one chunk; a bigger one is cut by content (FastCDC)
+                    │
+each chunk:  id = HMAC-SHA256(id key, its bytes)        never the plain SHA-256
+             body = XChaCha20-Poly1305(data key, nonce, zstd(chunk)), with the id as associated data
+                    │
+POST /api/v1/objects/missing  →  POST /api/v1/objects/upload  →  PUT each to its presigned R2 URL
+                    │
+the manifest: format 1's JSON, plus the ordered chunk ids of the database and of each blob,
+encrypted the same way, then registered (POST /api/v1/snapshots) with every chunk id it uses
+```
+
+- **A page-for-page copy, not `VACUUM INTO`** [V S-B1; I]: `VACUUM INTO` (format 1's copy) renumbers pages, so chunks of it would barely repeat from one day to the next; the backup API keeps each page where it is, so a day's upload is the chunks holding changed pages, plus new blobs. Each chunk is compressed on its own, as restic does (S-B2). The card measures chunk sizes on a month of real use before it settles. A page-for-page copy keeps free pages, which may hold deleted text; they are encrypted and age out with the snapshot.
+- **R2 states no minimum billable object size** [V S-L11], so chunks needn't be packed (Round 1 worried about Hetzner's 64 KB minimum).
+- **A keyed hash as the name**: a plain SHA-256 would tell the server which known files you have. The same file still has the same name across your snapshots and computers, which is all dedup needs.
+- **Each chunk its own object**: an upload that stops resumes at the next missing chunk; no S3 multipart; the server counts and deletes objects without reading them.
+- **What the server sees**: object ids, sizes, times, the snapshot list (name, time, computer, reason, schema version, total size) and which objects a snapshot uses. Not one byte of content.
+
+#### When it goes up
+
+| When | What | Why |
+|---|---|---|
+| Daily, when something changed since the last cloud snapshot | reason `daily` | nothing changed means nothing to do |
+| On quit, when On quit is on | reason `quit`, as format 1 | the end of a working day |
+| Back up now | reason `manual` | before something risky |
+| Before a restore | reason `before-restore`, as format 1 | what a restore already does |
+
+Not on every change: with Multiple devices every change goes to the cloud anyway. The cloud backup runs beside the local one, never instead of it.
+
+#### History and restore
+
+- **Kept** (decision 8, by the server, 3.3): every snapshot 7 days, then the newest of each day up to 90 days.
+- **Restore on this computer or a new one**: the list comes from the server (newest first, with the computer that made it); Restore downloads the manifest and its chunks into `<data folder>/restore/cloud/`, checks every hash, and from there it is GA-218's restore as it is (`docs/backup-format.md:127-196`): the checks, today's data saved first, the swap at the next start, the device rule, this computer's settings.
+- **A new computer**: install Hersir; *Restore from Hersir Cloud* on the first screen or in Settings: sign in in the browser (password and the authenticator's code), type the recovery code, pick a backup, restart.
+
+#### The quota and a lapsed plan
+
+- **10 GB counts what is stored**: each object once, across kept snapshots and synced files (3.3).
+- **A lapsed plan**: uploads stop; restore works for 60 days; then deletion after the emails (3.5). Local data is never touched.
+
+### 3.7 Multiple devices in detail [Round 1, still holds, with decision 6 and Reverb]
+
+**Recommendation** [I]: build sync on a new, complete log beside `changes`, written by triggers, with a real hybrid logical clock, last writer wins per field, and a server that only stores and orders encrypted transactions: Actual Budget's model with Linear's server sequence numbers (S-B4, S-B5). Keep `changes` as the activity feed it is, and carry its rows along, so another computer's feed shows the same lines. No sync engine can be adopted instead: PowerSync, ElectricSQL, Turso Sync and SQLite Sync all need a server that reads the rows, which end-to-end encryption rules out (S-B5).
+
+#### The `changes` log as the code has it now [V]
+
+| Column | What it holds now | Enough for sync? |
+|---|---|---|
+| `seq` | local order | yes, as the order to push in |
+| `id` | UUIDv7 of the change | yes |
+| `hlc` | `<ms>-<counter 0000-9999>-<8 chars of the device>`, made at write time (`db.rs:365-367`) | no: not an HLC (2.4, 3) |
+| `device_id`, `actor_id`, `run_id` | who and where | yes |
+| `table_name`, `row_id`, `op` | the row | only for single-key tables (`task_labels` has a two-column key) |
+| `diff_json` | a summary for the feed | no (2.4, 1) |
+| `schema_version` | `SCHEMA_VERSION` at write time | yes |
+| `pushed_at` | NULL; nothing sets it | the right idea |
+
+So **triggers write a sync log**: on each synced table an `AFTER INSERT/UPDATE/DELETE` trigger, generated from one list in code, appends the changed columns' new values to `sync_log`, in the same transaction as the write. Nothing can bypass it, the existing write code (about 200 statements) stays as it is, and `changes` keeps its job. `Db::write` registers SQL functions on the writer connection: `hersir_hlc()` gives the next clock value and `hersir_capture()` says 0 while remote changes are applied or a migration runs.
+
+#### The new local tables (migration `0023_sync.sql`; main is at schema 22)
+
+```sql
+CREATE TABLE sync_log (            -- local and remote transactions' row changes
+  seq INTEGER PRIMARY KEY,         -- local order
+  tx_id TEXT NOT NULL,             -- one Db::write = one transaction, pushed as one
+  hlc TEXT NOT NULL,               -- '<13-digit ms>-<6-digit counter>-<full device id>': sorts as text
+  device_id TEXT NOT NULL,
+  table_name TEXT NOT NULL,
+  row_key TEXT NOT NULL,           -- the id, or a JSON array for a two-column key
+  op TEXT NOT NULL CHECK (op IN ('upsert','delete')),
+  cols_json TEXT,                  -- new values of the changed columns
+  schema_version INTEGER NOT NULL,
+  server_seq INTEGER               -- NULL until the server has it
+) STRICT;
+CREATE TABLE sync_clock (          -- the last write that won, per field
+  table_name TEXT NOT NULL, row_key TEXT NOT NULL, col TEXT NOT NULL, hlc TEXT NOT NULL,
+  PRIMARY KEY (table_name, row_key, col)
+) STRICT;
+CREATE TABLE cloud_link (          -- one row: this computer's link to Hersir Cloud; never synced, never restored over
+  account_id TEXT NOT NULL, workspace_id TEXT NOT NULL,      -- workspace = orgs.id
+  pulled_to INTEGER NOT NULL DEFAULT 0,                       -- the last server_seq applied here
+  hlc_state TEXT                                              -- the clock's last value, so it never goes back
+) STRICT;
+```
+
+#### The clock
+
+A hybrid logical clock (Kulkarni and others, 2014, S-B3): a local write takes `l = max(l, now)`, with the counter + 1 when `l` didn't move and 0 when it did; a received change takes `l = max(l, l_remote, now)`. Four changes to `db.rs:365-367`: the receive rule; the last value kept (`cloud_link.hlc_state`), so a restart or a clock set back never goes behind; a change more than a minute ahead of the server's time refused (as Actual Budget does); and ties broken by the whole device id (`docs/backup-format.md:206`). The server's sequence number decides the order of delivery; the HLC decides which write wins.
+
+#### Applying another computer's changes, and conflicts
+
+Pull returns transactions in the server's order. For each, in one write with `hersir_capture()` off:
+
+1. **Seen already** (its `tx_id` is in `sync_log`): skip. A retry, a duplicate or an echo does nothing.
+2. **Schema**: one from a newer schema stops the pull there: "Your laptop uses a newer Hersir. Update this computer to go on syncing." Local changes keep queuing. One from an older schema is applied (migrations that only add are safe; any other needs a translation in sync's code, enforced by a test when `SCHEMA_VERSION` changes).
+3. **Per field, last writer wins**, by HLC against `sync_clock`. Two computers editing different fields of one card both keep their edit.
+4. **Deletes** are `deleted_at` values like any other field, so an edit doesn't bring a deleted card back, and an explicit restore does. Rows removed for real (a card's labels, a column's agents, `task_builds_on`) sync as row deletes.
+5. **Counters take the maximum**: `next_task_number` never goes down.
+6. **Colliding task numbers**: a card's UUID is its identity; its number is settled in the server's order. The card the server got first keeps `EUQR-13`; a later one takes the next number free. Every computer applies the same transactions in the same order, so each works out the same answer (S-B9). A card made offline shows its number as "not synced yet" until then; links survive (they hold the UUID). The same rule serves project keys, label names and actor handles.
+7. **A document's text**: when both computers changed `docs.body_md` since they last agreed, the newer wins and the other is kept as a version "from Laptop, kept after a conflict".
+8. **Foreign keys**: each batch runs with `PRAGMA defer_foreign_keys = ON`.
+9. **The server went back** (restored from Litestream, 3.3): a computer whose `pulled_to` is past the server's last sequence pushes again its own transactions after it [I, new].
+
+#### Files
+
+Files sync by keyed hash, as backups store them: a push uploads the blobs the server lacks before the transaction that names them, and updates the workspace's `file_sets` (ids only), so the server's garbage collection keeps them; a pull fetches a blob when it is opened, and the rest in the background.
+
+#### What never syncs
+
+| What | Why |
+|---|---|
+| `runs`, `run_refusals`, run logs, worktrees, the Chief's code copies | a run lives on the computer that ran it |
+| `api_tokens` | this computer's MCP tokens |
+| `doc_links`, `search` | derived: rebuilt from what syncs |
+| `devices` | the server's list and the roster replace it |
+| this computer's settings (`scope::THIS_COMPUTER`) | `scope.rs:6-9` already says so |
+| the columns of 2.4, 5 (local paths, CLI sessions, claims) | true on one computer only |
+| `sync_log`, `sync_clock`, `cloud_link`, the keychain | the machinery itself, and secrets |
+
+**Changed in Round 2**: `chat_queue` and `pending_actions` now sync (Round 1 kept them local), with one writer, the Chief's computer, so every computer sees what waits and can approve it (3.8). Everything else syncs: organisations, people and agents (without their folders), teams and columns, clients and contacts, projects and repositories (without local paths), cards, labels, comments, docs and memory notes, files, the Chief's threads and messages, and the shared settings. A test lists every table and fails on one that is in neither list.
+
+#### Agents: a card runs on one computer, and claims need the cloud (decision 6)
+
+- **Each agent has a home computer** (a synced column `agent_configs.home_device_id`): the computer it was made on, or, when sync is first switched on, that computer. Its form gets *Runs on*. Only the home computer's dispatcher starts its runs.
+- **A claim in the cloud before each start**: `POST /api/v1/workspaces/{ws}/claims` with the card, the run and a 10-minute lease, renewed every 3 minutes while the run lives and released when it ends. The first claim wins; the other gets 409 with who holds it, and its board shows "Running on Desktop". A computer that dies leaves a lease that runs out.
+- **Offline** (decision 6): on a synced workspace no agent starts by itself, because the claim can't be made; the band says "Hersir Cloud can't be reached: agents start again when it can." Run by hand still works after a warning ("Another computer could start this card too"), since you chose it [I].
+- **The Chief** runs only on the Chief's computer, the board check included (3.8). The board check needs the cloud too, as it starts agents.
+- **Agents ask the Chief first** (`questions.rs`) only on the Chief's computer in v1: an agent on another computer that ends with a question asks you, and the card's hold shows on every computer (open question 19).
+
+#### How changes and chat messages reach the other computers quickly: Reverb as a doorbell [V S-L7, S-L8; I design]
+
+- **Reverb rings, HTTPS carries.** Each signed-in Hersir keeps one websocket to Reverb (Pusher protocol, `wss://cloud.hersir.dev`), subscribed to `private-account.<user id>` and `presence-workspace.<ws>` (authorised by `/broadcasting/auth` with the computer's Passport token on the `api` guard). The server sends small events: `sync.tx { seq }`, `command { to }`, `command.status { id, status }`, `claim.changed { task_id }`, `entitlement.changed`, and `chat.live { body }`, the Chief's answer while it is written, sealed with the command key and never stored. The computer then fetches what it needs with normal calls.
+- **Presence** says which computers are online right now, so a message to an offline Chief's computer can say so at once (3.8).
+- **Without the socket** (blocked, down, reconnecting): poll every 30 seconds while Hersir is open, and catch up once on every reconnect, so nothing depends on the doorbell.
+- **Not PHP long polling**: each waiting request holds a PHP worker for its whole wait, so a few hundred open Hersirs would need a few hundred workers; Reverb holds thousands of connections in one process (with an event loop past 1,000).
+- **The Rust side**: no maintained Pusher client crate exists (`pusher` 0.4.5 is from 2022 and only covers the HTTP API; `pusher-rs` 0.1.3 is barely used) [V S-L8]. The Pusher protocol needs about 300 lines on `tungstenite` (MIT or Apache-2.0): connect, `pusher:connection_established`, authorise a channel over HTTPS, `pusher:subscribe`, ping and pong, reconnect with back-off [I].
+- **Weighed**: polling only (option B in section 4): no websocket client to write, but a message to the Chief would take up to the polling interval to arrive, and 1,000 customers polling every 5 seconds would be a few hundred requests a second on one server.
+
+#### How to test two devices, with fault injection [Round 1, still holds]
+
+1. **In the core, without a network** (`crates/gizai-core/tests/it/sync_test.rs`): two or three in-memory databases and a fake server; a property test (`proptest`) makes random edits on each, then delivers with drops, duplicates, reorders, a partition, a crash after the push but before the answer, one clock an hour behind, and a server that goes back a few transactions. Checks: all replicas equal after delivery, nothing acknowledged lost, identifiers unique, an older schema stops instead of applying.
+2. **Against the real server**: the Laravel app run locally (`php artisan serve` and `reverb:start`, with an S3 fake for R2), two Hersirs with their own data folders (`HERSIR_DATA_DIR`) and fake keychains (`HERSIR_FAKE_KEYCHAIN`), driven through their commands; `toxiproxy` between them for latency and cuts.
+3. **In real use**: your desktop and laptop, with sync's log visible in Settings until it has run a few weeks without surprises.
+
+### 3.8 The Chief's chat on every computer (decision 12)
+
+**Recommendation** [I]: one computer per workspace is **the Chief's computer**, chosen in Settings. The Chief runs there and only there: its chat answers, its board checks, its approvals. Every other computer writes to it through Hersir Cloud with **commands**: small messages sealed with the account's command key and signed by the computer that wrote them, which the server stores and forwards but can't read, add or change. What the Chief does comes back to every computer through sync, since its threads, messages, queue and pending actions are synced rows with one writer. While it writes, its answer streams live through Reverb.
+
+#### How a message reaches the Chief's computer, and the answer comes back
+
+```
+Laptop (you type)                          Hersir Cloud                         Desktop (the Chief's computer)
+  chat.send {id, thread, text, files}
+  sealed (command key) + signed (Laptop) ─► commands: to=Desktop ── Reverb `command` ──► fetches, checks seal,
+  outbox: "Sent to Desktop"                 (stored ≤ 7 days)                         signature, roster, id, seq
+                                                                                      → chat::enqueue / send, as if typed
+                                                                                        there, by you, "from Laptop"
+                              ◄── Reverb `chat.live` (sealed, not stored) ──────────── the answer, as it is written
+  shows the answer as it comes
+                              ◄── sync: chat_messages, pending_actions, chat_queue ─── the answer and its waiting calls
+  the outbox row goes when the synced message with the same id arrives
+```
+
+- **The message's id is the command's id**, and Desktop stores your message under it, so Laptop knows when its message has arrived and drops its outbox row.
+- **Files** go first, as synced files do (by keyed hash), and the command names them.
+- **Desktop treats it as typed there**, through the same code (`src-tauri/src/chat.rs:655` `send_with_files`; the queue when the Chief is answering, `crates/gizai-core/src/chat.rs:747`), with every rule as it is: the outside-tool mark, the limits, Runs on. The message notes the computer it came from ("from Laptop").
+- **Other commands**: `chat.stop`, `chat.send_now` (release a held queue), `chat.queue_edit`, `chat.queue_remove`, `chat.set_cli` (Runs on), `chat.new` (a new thread). Pins and titles are plain synced fields any computer may change.
+- **Only Desktop writes** the Chief's threads' messages, queue and pending actions; on another computer those writes become commands. A test checks that no other path writes them on a computer that isn't the Chief's.
+
+#### Approvals from any computer
+
+- `pending_actions` sync, so **Waiting for your OK**, with each call's preview, **Approve**, **Discard** and **Approve all**, shows on every computer, and the Inbox's Approval item too.
+- **Approve on Laptop** sends `pending.approve { id }` (or `pending.approve_all { ids }`, `pending.discard { id }`). Desktop runs it through the same path as its own button (`src-tauri/src/pending.rs:114, 136, 152`), whose `pending::claim` (`crates/gizai-core/src/pending.rs:155`) runs a call once: an approval from a second computer, or a second click, gets the usual refusal. Laptop shows "Approving on Desktop…" until the synced row changes; the note says where it was decided ("Approved on Laptop: …").
+- **An approval waits at most 24 hours** for an offline Desktop; after that it expires with a note ("Your OK from Laptop expired: Desktop was off. Approve again.") so a stale approval never runs days later (open question 20) [I].
+
+#### While the Chief's computer is off
+
+- Laptop knows at once from Reverb's presence (or Desktop's `last_seen_at`). Under your message: "Waiting for Desktop: it has been offline since 09:12. The Chief answers when Desktop is back." The text box stays open; more messages queue behind it.
+- The command waits on the server for up to **7 days**; then it expires and the message says "Not delivered: Desktop was off for 7 days. Send again" with a button. When Desktop comes back, it fetches its commands in order and answers them as it would a queue.
+- The Inbox, the board and the cards work on Laptop as always; only what the Chief does waits.
+
+#### Choosing the Chief's computer
+
+- **Settings → Hersir Cloud → The Chief's computer**: a choice of the account's computers, shared by sync (`chief_device`, a shared setting) and recorded on the server (`workspaces.chief_device_id`). The first computer to turn sync on is the Chief's computer.
+- **Switching**: the new computer starts the Chief's chats with a hand-over of the conversation, as switching Runs on does today (`crates/gizai-core/src/chat.rs:655` `handover`), because the old CLI sessions live on the old computer. A command that reaches a computer that is no longer the Chief's is answered with `command.status: moved`, and the sender sends it again to the new one.
+- **One Chief at a time**: the board check takes a cloud claim (`chief:board`, the same lease as a card's) before it starts, so two computers never check the board at once during a switch.
+
+#### Who can write, and why the server can't (decision 12)
+
+A command is accepted by the Chief's computer only when all of these hold [I]:
+
+1. **It opens with the command key** (XChaCha20-Poly1305, derived from AK): only a computer that holds the account key could have sealed it. The server, which never has AK, can't add a command or change one; a changed byte fails the tag.
+2. **Its signature is from a computer on the roster** (Ed25519, 3.2), and that computer wasn't removed. So Desktop knows which computer wrote it, and a removed computer is refused even if the server forwarded its command.
+3. **Its id is new and its counter is higher** than the last one from that computer, and it is addressed to this computer: the server can't replay an old approval or deliver one twice. It can only hold commands back or drop them, which shows as "Waiting for Desktop".
+4. **It is under the current key epoch** (after a key change, 3.2).
+
+The server sees who sends to whom, when, and the size; never the text.
+
+#### What removing a computer does
+
+Remove (account page or Settings) withdraws its token at once, so it can't reach Hersir Cloud; adds its removal to the roster, so the Chief's computer refuses anything it signed, also commands already waiting; and deletes the commands it sent that wait. **The account key doesn't have to change for the chat**: without a token and with its signature refused, the computer can't write, and without the recovery code it can't join again. Change the key when the computer is lost or stolen, so it can't read what you send from now on (3.2; open question 18).
+
+#### A later PWA on a phone: just another device
+
+- **Sign-in**: the same account, in the browser (password and authenticator), as a public client of Passport with an `https` redirect on the PWA's own origin.
+- **The key, by pairing** (recommended): Settings → Hersir Cloud → *Add a phone* shows a QR code holding a one-time pairing secret; the phone makes its own keys (X25519 and Ed25519, kept as non-extractable WebCrypto keys in IndexedDB), sends its public keys through the server tagged with the secret, and the computer seals the key to the phone and signs its join to the roster. The server can't step in between without the secret. **Or** typing the recovery code on the phone, as a computer does.
+- **Which key**: the decision says a device that holds the account key; recommended instead is a **chat key** derived from AK, so a phone holds what the chat needs and nothing else: it can write commands and read the chat, not the backups or the sync log (open question 17).
+- **What the phone reads**: it doesn't apply the sync log. The Chief's computer also posts each finished message and waiting call to a chat feed sealed with the chat key, kept 30 days on the server; the phone reads that feed and the live answers, and writes commands like any computer.
+- **Notifications**: Web Push with no content ("The Chief answered", "The Chief waits for your OK"), so nothing readable passes through Apple's or Google's push services.
+- **The web's weak point**: the page's code comes from a server, so a hacked server could serve code that takes the key. Serve the PWA as static files from their own origin, built from a public repository, with a strict Content Security Policy; that is the PWA card's work, not this card's.
+
+<!-- Section 3.9 onwards follows. -->
