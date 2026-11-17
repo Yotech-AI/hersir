@@ -2182,9 +2182,13 @@ async function stripTip(b: HTMLElement | null): Promise<string> {
   const tip = await waitFor(() => q<HTMLElement>(".strip-tip"), 2000);
   let out = "none";
   if (tip) {
-    const r = b.getBoundingClientRect(), t = tip.getBoundingClientRect();
-    out = [textOf(tip.firstElementChild), textOf(tip.querySelector(".key")), Math.round(r.left - t.right), Math.round(Math.abs((t.top + t.bottom) / 2 - (r.top + r.bottom) / 2)),
+    // the gap as in a window the app fits: a probe that draws the app wider than the cage's window (1920 in 1280) gives the
+    // page a scrollbar, and the tooltip (fixed, placed from the window's width) sits that much further left
+    const r = b.getBoundingClientRect(), t = tip.getBoundingClientRect(), bar = window.innerWidth - document.documentElement.clientWidth;
+    out = [textOf(tip.firstElementChild), textOf(tip.querySelector(".key")), Math.round(r.left - t.right - bar), Math.round(Math.abs((t.top + t.bottom) / 2 - (r.top + r.bottom) / 2)),
       tip.getAttribute("role") === "tooltip" && b.getAttribute("aria-describedby") === tip.id ? "described" : "not described"].join("|");
+    // off its place: what it was placed by (the window's width, the page's without a scrollbar, its right, the icon's left)
+    if (Math.round(r.left - t.right - bar) !== 6) out += `|window ${window.innerWidth}, page ${document.documentElement.clientWidth}, right ${getComputedStyle(tip).right}, icon at ${Math.round(r.left)}`;
   }
   mouse(b, "mouseout");
   const gone = await waitFor(() => (q(".strip-tip") ? null : true), 2000);
