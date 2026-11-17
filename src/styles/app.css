@@ -4,12 +4,26 @@
 /* ---------- frame: the background, the sidebar island and the page's island (design/islands) ---------- */
 html, body, #root { height: 100%; margin: 0; }
 /* The window paints the background: a gradient straight down, canvas-from to canvas-to, with canvas-glow from the top
-   left, full for 45% of the way and gone at 60% of the width and 75% of the height. Opaque for now (islands card 3
-   brings the glass). The islands sit on it, island-gap from the window's edges and from each other, with no border. */
+   left, full for 45% of the way and gone at 60% of the width and 75% of the height. Opaque, unless the glass is on (below).
+   The islands sit on it, island-gap from the window's edges and from each other, with no border. */
 .app { display: grid; grid-template-columns: var(--size-side) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: var(--island-gap);
   height: 100vh; padding: var(--island-gap); overflow: hidden;
   background: radial-gradient(ellipse 60% 75% at 0 0, var(--canvas-glow) 45%, transparent), linear-gradient(180deg, var(--canvas-from), var(--canvas-to)); }
+/* The glass (GA-292; design/islands/README.md → The glass): html.glass while it is on (lib/glass.ts). The window is
+   see-through and the system blurs the desktop behind it; the page paints the same gradient at 92% in dark and 86% in
+   light (glass-from, glass-to, glass-glow). The body paints it, so the window is tinted from its first paint, before the
+   app is drawn, and .app paints nothing over it. No blur in CSS: backdrop-filter can't reach the desktop behind a window.
+   The islands and what floats keep their solid fills. */
+html.glass { background: transparent; }
+html.glass body { background: radial-gradient(ellipse 60% 75% at 0 0, var(--glass-glow) 45%, transparent), linear-gradient(180deg, var(--glass-from), var(--glass-to)); }
+html.glass .app { background: none; }
 .side { width: auto; height: auto; min-height: 0; }
+/* GA-291: closed, the sidebar island goes and the main column takes its width. The toolbar (SidebarToolbar) sits at the top
+   left on the background, island-gap from the window's edges, centred in the top bar's row, above .main's box; the page's
+   top bar starts after it (--side-tools: its width, set by App.tsx) and keeps its own 12px before the crumbs. */
+.app.side-closed { position: relative; grid-template-columns: minmax(0, 1fr); }
+.side-tools { position: absolute; top: var(--island-gap); left: var(--island-gap); z-index: 1; display: flex; align-items: center; gap: 2px; height: var(--size-topbar); }
+.app.side-closed .page-island .topbar { left: var(--side-tools, 0px); }
 /* The main column: each page's top bar on the background (size-topbar), then the page as one island under it. A page with
    several panes keeps them in that one island for now. The top bar stays in the page's own markup, inside .page-island,
    and is placed over the column's top: .main is its containing block and .page-island isn't positioned, so the island's
@@ -345,13 +359,22 @@ a.member:hover { border-color: var(--line-2); }
 /* In the Inbox the list starts 14px under Run this for me (design/islands-pages: padding 14 12 24); a group head keeps its
    6px above */
 .inbox-list .task-list { padding-top: 8px; }
+/* GA-293 (design/islands, frame 273:1172): the Tasks page's view toolbar is its island's header (An island's header): 44
+   high, padding 0 8, its controls 28 to 30 high, the search and Board or List on raised; no line under it, so the columns
+   (or the list) start right below on the same fill. The board's columns sit 12px in and 4px under it and scroll sideways
+   inside the island, with the islands' 6px thumb 2px from its bottom. Other pages' toolbars stay as they are (cards 5, 6). */
+.toolbar.island-toolbar { flex: none; height: calc(44px + var(--ui-box, 0px)); padding: 0 8px; }
+.island-toolbar ~ .board-wrap > .board { padding: 4px 12px 12px; }
 .md-edit-box { margin-left: 0; }
 .composer .md-editor { background: var(--raised); }
 
-/* chat page layout: the chat list (--chat-list wide; src/lib/chatTerminal.ts's chatListWidth says the same), the conversation
-   or the Archive, and the chat's terminal panel or its rail (GA-278, below) */
-.chat { --chat-list: calc(260px + 6 * var(--ui-grow, 0px)); display: grid; grid-template-columns: var(--chat-list) minmax(0, 1fr); flex: 1; min-height: 0; }
-.chat-threads { display: flex; flex-direction: column; min-height: 0; overflow: hidden; border-right: 1px solid var(--line); background: var(--side); }
+/* chat page layout, in islands (GA-296, design/islands-chat): the page's island gives way to the Chat's own, on the
+   background: the chat list (--chat-list wide; src/lib/chatTerminal.ts's chatListWidth says the same), the conversation or
+   the Archive, and what is open beside the chat (the side island and the tool strip, below), island-gap apart. Each is an
+   island: its fill, island-radius, no border; the gaps split them. */
+.page-island:has(> .chat) { background: none; border-radius: 0; }
+.chat { --chat-list: calc(260px + 6 * var(--ui-grow, 0px)); display: grid; grid-template-columns: var(--chat-list) minmax(0, 1fr); column-gap: var(--island-gap); flex: 1; min-height: 0; }
+.chat-threads { display: flex; flex-direction: column; min-height: 0; overflow: hidden; border-radius: var(--island-radius); background: var(--island); }
 /* Recent scrolls; Archive stays at the bottom of the column, under it */
 .chat-threads-list { display: flex; flex-direction: column; gap: 2px; flex: 1; min-height: 0; padding: 10px 8px; overflow: auto; }
 .chat-threads-foot { flex: none; padding: 6px 8px; border-top: 1px solid var(--line); }
@@ -375,21 +398,26 @@ a.member:hover { border-color: var(--line-2); }
 .run-for-me-card > a { display: block; color: var(--text); text-decoration: none; }
 .run-for-me-card > a:hover { text-decoration: underline; }
 .run-for-me-card .run-for-me { margin-top: 8px; }
-.chat-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.chat-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; border-radius: var(--island-radius); background: var(--island); }
 .chat-scroll { flex: 1; min-height: 0; overflow: auto; }
-.chat-composer { border-top: 1px solid var(--line); background: var(--bg); }
+.chat-composer { background: var(--bg); }
 .chat-composer .chat-col { padding-top: 12px; padding-bottom: 14px; }
 @media (max-width: 1100px) { .chat { --chat-list: calc(220px + 6 * var(--ui-grow, 0px)); } }
-/* GA-278: the chat's terminal panel, a third column on the right while it shows. Its width is a share of the space right of
-   the chat list (--chat-term-share, 0.45 the first time), at least 360px, and leaves the conversation at least 400px; in a
-   window without room for the chat list besides, the list hides (no-list). The conversation, the text box and the Archive
-   then start at the left of their column instead of in its middle. Hidden with terminals: the rail, a narrow column. */
-.chat.has-term { --chat-term-w: clamp(360px, calc((100% - var(--chat-list)) * var(--chat-term-share, .45)), calc(100% - var(--chat-list) - 400px));
-  grid-template-columns: var(--chat-list) minmax(0, 1fr) var(--chat-term-w); }
-.chat.has-term.no-list { --chat-list: 0px; grid-template-columns: minmax(0, 1fr) var(--chat-term-w); }
+/* GA-296: what is open beside the chat. The tool strip (size-tool wide, its own gap before it) is the last column while the
+   chat has anything open, whether the side island shows or not; it ends at the main column's edge, island-gap from the
+   window's. The side island, while it shows, is the column before it: a share of the room right of the chat list (the
+   conversation and the island, --chat-side-share, 0.45 the first time), at least 360px, leaving the conversation at least
+   400px. In a window without room for the chat list besides, the list hides (no-list): the conversation keeps 400px, with
+   the strip alone too, and the strip stays. The
+   conversation, the text box and the Archive then start at the left of their column instead of in its middle. */
+.chat.has-strip { --chat-strip: var(--size-tool); grid-template-columns: var(--chat-list) minmax(0, 1fr) var(--chat-strip); }
+.chat.has-side { --chat-room: calc(100% - var(--chat-list) - 3 * var(--island-gap) - var(--chat-strip));
+  --chat-side-w: clamp(360px, calc(var(--chat-room) * var(--chat-side-share, .45)), calc(var(--chat-room) - 400px));
+  grid-template-columns: var(--chat-list) minmax(0, 1fr) var(--chat-side-w) var(--chat-strip); }
+.chat.has-strip.no-list { grid-template-columns: minmax(0, 1fr) var(--chat-strip); }
+.chat.has-side.no-list { --chat-list: calc(-1 * var(--island-gap)); grid-template-columns: minmax(0, 1fr) var(--chat-side-w) var(--chat-strip); }
 .chat.no-list > .chat-threads { display: none; }
-.chat.has-term .chat-col { margin-left: 0; }
-.chat.has-rail { grid-template-columns: var(--chat-list) minmax(0, 1fr) auto; }
+.chat.has-side .chat-col { margin-left: 0; }
 /* Chat → Archive (#/chats): the search on top, every chat under it; a row's snippet shows where the search matched */
 .archive-head { border-bottom: 1px solid var(--line); background: var(--bg); }
 .archive-head .chat-col { padding-top: 14px; padding-bottom: 14px; }

@@ -168,13 +168,17 @@ impl Drop for Busy {
     }
 }
 
-/// A problem in the background, logged once until it changes or goes away.
+/// A problem in the background, logged once until it changes or goes away. Hersir's log gets it without what looks like a
+/// secret, such as a login in a remote's address in git's or gh's words (GA-281).
 fn log_once(st: &AppState, key: &str, msg: &str) {
     let mut errors = st.pulls.errors.lock().unwrap();
-    if errors.get(key).map(String::as_str) != Some(msg) {
-        eprintln!("gizai: {msg}");
-        errors.insert(key.to_string(), msg.to_string());
+    if errors.get(key).map(String::as_str) == Some(msg) {
+        return;
     }
+    errors.insert(key.to_string(), msg.to_string());
+    // the line is made after the lock is let go, so nothing in it can poison the lock
+    drop(errors);
+    eprintln!("gizai: {}", gizai_agents::redact::hidden(msg));
 }
 
 fn forget_error(st: &AppState, key: &str) {

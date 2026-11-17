@@ -131,6 +131,17 @@ input[type="checkbox"]:checked:disabled:hover { border-color: var(--accent); bac
 .side-main { display: flex; flex-direction: column; gap: 2px; flex: 1; min-height: 0; padding: 6px 10px 14px; overflow-y: auto; }
 .side-foot { display: flex; flex-direction: column; flex-shrink: 0; gap: 8px; padding: 0 10px 12px; border-top: 1px solid var(--line); }
 .side-foot .nav-section { margin-top: 8px; }
+/* New task's row (GA-291): New task takes the row but Close sidebar, 4px before it */
+.side-top { display: flex; flex-shrink: 0; align-items: center; gap: 4px; }
+.side-top > .nav-item { flex: 1; width: auto; min-width: 0; }
+/* A tool button (Figma Islands/Tool button): size-tool square, radius 6, a 16px icon in text-2, no fill until hovered. On
+   the background (the closed sidebar's toolbar) its hover is canvas-hover, in the sidebar island hover; the icon turns
+   text; pressed is as hover, keyboard focus the 2px focus ring outside. A count (the Inbox) widens it, 4px after the icon. */
+.tool { display: inline-flex; flex: none; align-items: center; justify-content: center; gap: 4px; min-width: var(--size-tool); height: var(--size-tool); padding: 0 6px; border: 0; border-radius: var(--radius); background: none; color: var(--text-2); font: inherit; text-decoration: none; cursor: pointer; }
+.tool:hover, .tool:active { background: var(--canvas-hover); color: var(--text); }
+.side .tool:hover, .side .tool:active { background: var(--hover); }
+/* the Inbox count on the background: needs on needs-soft over island, so it keeps AA on the glass (design/islands) */
+.tool .count { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: var(--radius-pill); background: linear-gradient(var(--needs-soft), var(--needs-soft)), var(--island); color: var(--needs); font-size: 11px; font-weight: 600; line-height: 1; }
 .data-tag { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px; border: 1px dashed var(--line-2); border-radius: var(--radius); color: var(--text-2); font-size: var(--fs-sm); }
 .side-org { display: flex; align-items: center; gap: 10px; height: calc(40px + var(--ui-box, 0px)); padding: 0 8px; margin-bottom: 6px; border-radius: var(--radius); font-weight: 650; cursor: pointer; }
 .side-org:hover { background: var(--hover); }
@@ -186,10 +197,6 @@ input[type="checkbox"]:checked:disabled:hover { border-color: var(--accent); bac
 /* A page's toolbar as its island's header (GA-294, design/islands-pages: On every page): 44px high as the board's, padding
    0 8px, no line under it; its controls 28 to 30px high, the search box on raised (an input). */
 .toolbar.island-bar { flex: none; min-height: calc(44px + var(--ui-box, 0px)); padding: 0 8px; }
-
-/* ---------- an island's header (design/islands): size-island-head high, padding 0 6px, items 2px apart, no line under it;
-   tabs (or a title) on the left, the island's actions on the right ---------- */
-.island-head { display: flex; flex: none; align-items: center; gap: 2px; height: var(--size-island-head); padding: 0 6px; }
 
 /* ---------- status glyphs: one shape and one hue per column category ---------- */
 .st { width: 16px; height: 16px; flex: none; }
@@ -661,6 +668,32 @@ button.label-pill[aria-pressed="true"] { border-color: var(--accent); color: var
 .org-node.ghost:hover { border-color: var(--accent); color: var(--text); }
 .org-node.ghost:hover .org-icon { color: var(--accent); border-color: var(--accent); }
 
+/* ---------- an island's header and its tabs (design/islands: An island's header; Islands/Island header, Island tab) ---------- */
+/* size-island-head high, padding 0 6px, items 2px apart; the tabs on the left scroll sideways (no scrollbar), the island's
+   actions (App/Icon button, 26 × 26) on the right. No line under it: the content starts right below, on the same fill.
+   The Editor's open files and its terminal panel use it (GA-293), as the Chat's side island does (GA-296). */
+.island-head { display: flex; flex: none; align-items: center; gap: 2px; height: var(--size-island-head); padding: 0 6px; }
+.island-tabs { display: flex; flex: 1; align-items: center; gap: 2px; min-width: 0; height: 100%; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.island-tabs::-webkit-scrollbar { display: none; }
+.island-head > .acts { display: flex; flex: none; align-items: center; gap: 2px; }
+.island-head > .acts .btn.icon-only { width: 26px; height: 26px; }
+/* Island tab: size-island-tab high, radius 6, padding 0 6px 0 10px, 6px between icon, name, mark and close; the name in
+   t-label. Default no fill, name text-2, icon 14px text-3; hover fill hover, name text, icon text-2; the shown one a pill in
+   selected (it replaces the Editor tab's accent top line). Close (x, 12px in an 18px box, radius 4, text-3; text-2 on the
+   shown and the hovered tab; hover fill hover) shows on the shown tab, the hovered one and one not saved; the others keep
+   no room for it. */
+.island-tabs > .ed-tab { flex: none; gap: 6px; height: var(--size-island-tab); padding: 0 6px 0 10px; border: 0; border-radius: var(--radius); background: none; box-shadow: none;
+  color: var(--text-2); font-size: var(--fs-sm); font-weight: 500; }
+.island-tabs > .ed-tab:hover { background: var(--hover); color: var(--text); }
+.island-tabs > .ed-tab[aria-selected="true"] { background: var(--selected); color: var(--text); box-shadow: none; }
+.island-tabs > .ed-tab > .icon { width: 14px; height: 14px; color: var(--text-3); }
+.island-tabs > .ed-tab:hover > .icon, .island-tabs > .ed-tab[aria-selected="true"] > .icon { color: var(--text-2); }
+.island-tabs > .ed-tab .x { display: none; width: 18px; height: 18px; border-radius: var(--radius-s); visibility: visible; }
+.island-tabs > .ed-tab .x .icon { width: 12px; height: 12px; }
+.island-tabs > .ed-tab:hover .x, .island-tabs > .ed-tab:focus-within .x, .island-tabs > .ed-tab[aria-selected="true"] .x, .island-tabs > .ed-tab.unsaved .x { display: grid; }
+.island-tabs > .ed-tab:hover .x, .island-tabs > .ed-tab[aria-selected="true"] .x { color: var(--text-2); }
+.island-tabs > .ed-tab .x:hover { background: var(--hover); color: var(--text); }
+
 /* ---------- the Editor (GA-105's design, D2 of the Code Editor; built in GA-113, F2) ---------- */
 /* From design/code-editor/editor.css, which the design page uses. The sidebar's Editor section, the folder picker, the file
    tree, the tabs, the status bar, the bars over them, find in the file, search in the folder and Go to file. The behind bar
@@ -705,10 +738,19 @@ button.label-pill[aria-pressed="true"] { border-color: var(--accent); color: var
 .ed-picker-foot { flex: none; padding: var(--space-2) var(--space-3); border-top: 1px solid var(--line); color: var(--text-3); font-size: var(--fs-xs); line-height: 1.45; }
 .ed-picker-foot a { color: var(--text-2); }
 
-/* ---------- the Editor page: top bar, at most one bar, the tree beside the tabs and the code, the status bar ---------- */
+/* ---------- the Editor page: top bar, the tree beside the code (its tabs, at most two bars, the code, the status bar) ---------- */
+/* In islands (GA-293, design/islands: Editor, frames 274:1564 and 274:2270): with a folder open the page's island gives way
+   to the Editor's own, on the background, island-gap apart: the files panel (size-tree), and on its right the code island
+   over the terminal panel's island (terminal.css). Each is an island: its fill, island-radius, no border; the gaps split
+   them. With no folder open (or one that can't be read) the page stays one island. */
+.page-island:has(> .ed-page > .ed) { background: none; border-radius: 0; }
 .ed-page { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-.ed { display: flex; flex: 1; min-height: 0; }
-.ed-main { display: flex; flex-direction: column; flex: 1; min-width: 0; background: var(--bg); }
+.ed { display: flex; gap: var(--island-gap); flex: 1; min-height: 0; }
+.ed-main { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.ed-code-island { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; overflow: hidden; border-radius: var(--island-radius); background: var(--island); }
+/* the code island's header: the open files as island tabs (Show the file tree first while it is folded) */
+.ed-code-island > .ed-tabs { flex: none; height: var(--size-island-head); padding: 0 6px; background: none; box-shadow: none; }
+.ed-code-island > .ed-tabs > .btn { margin: 0; }
 .ed-empty { display: grid; place-items: center; flex: 1; padding: var(--space-8); }
 .ed-empty .empty { max-width: 460px; }
 /* How the folder stands, in the top bar after the breadcrumbs: its branch, then behind, ahead and changed, in words */
@@ -750,12 +792,15 @@ button.label-pill[aria-pressed="true"] { border-color: var(--accent); color: var
 .ed-card-state { color: var(--text-2); font-size: var(--fs-sm); white-space: nowrap; }
 
 /* ---------- the left panel: Files or Search, Go to file, then the tree (size-tree wide; Ctrl+B folds it) ---------- */
-.ed-side { display: flex; flex-direction: column; flex: none; width: var(--size-tree); min-height: 0; border-right: 1px solid var(--line); background: var(--side); }
+/* In islands (GA-293): an island of its own; its header (size-island-head, padding 0 6px) is Files or Search with Fold the
+   file tree; then Go to file and the tree. Go to file stays a box on raised, as the notes' token table says (the frame
+   draws it as a plain row), 6px in, as the header's controls are. */
+.ed-side { display: flex; flex-direction: column; flex: none; width: var(--size-tree); min-height: 0; overflow: hidden; border-radius: var(--island-radius); background: var(--island); }
 .ed-side[hidden] { display: none; }
-.ed-side-top { display: flex; align-items: center; gap: var(--space-1); padding: var(--space-2) var(--space-2) 0; }
+.ed-side-top { display: flex; flex: none; align-items: center; gap: var(--space-1); height: var(--size-island-head); padding: 0 6px; }
 .ed-side-top .seg { flex: 1; }
 .ed-side-top .seg button { display: inline-flex; flex: 1; justify-content: center; align-items: center; gap: 5px; }
-.ed-goto { display: flex; align-items: center; gap: var(--space-2); width: calc(100% - 2 * var(--space-2)); height: calc(30px + var(--ui-box, 0px)); margin: var(--space-2) var(--space-2) 0; padding: 0 var(--space-2);
+.ed-goto { display: flex; flex: none; align-items: center; gap: var(--space-2); width: calc(100% - 12px); height: calc(30px + var(--ui-box, 0px)); margin: 0 6px var(--space-1); padding: 0 var(--space-2);
   border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--raised); color: var(--text-3); font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; }
 .ed-goto:hover { border-color: var(--text-3); color: var(--text-2); }
 .ed-goto .kbd { margin-left: auto; }
@@ -764,7 +809,7 @@ button.label-pill[aria-pressed="true"] { border-color: var(--accent); color: var
   font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
 .ed-tree-head > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ed-tree-head .btn.sm.icon-only { width: 24px; height: 24px; }
-.ed-tree { flex: 1; min-height: 0; overflow: auto; padding: 0 var(--space-1) var(--space-4); }
+.ed-tree { flex: 1; min-height: 0; overflow: auto; padding: 0 6px var(--space-4); }
 
 /* A row: size-tree-row high, 16px in a level (--depth on the row): the caret (a file has its room), its icon, the name, then
    on the right a lock when it is read-only and git's mark. Ignored: greyed. The open file's row is selected. */
@@ -797,7 +842,8 @@ button.label-pill[aria-pressed="true"] { border-color: var(--accent); color: var
 .ed-dot { flex: none; width: 6px; height: 6px; margin: 0 3px; border-radius: 50%; background: var(--git-modified); }
 
 /* ---------- tabs: one per open file, in a strip that scrolls sideways. The open tab joins the code below it, with an accent
-   line on top; a dot stands in for × while the file isn't saved, and × shows on hover. ---------- */
+   line on top; a dot stands in for × while the file isn't saved, and × shows on hover. In the Editor's code island (GA-293)
+   they are island tabs (above: .island-tabs > .ed-tab), the open one a pill; the Terminal page keeps this strip. ---------- */
 .ed-tabs { display: flex; flex: none; height: var(--size-tab); overflow-x: auto; overflow-y: hidden; background: var(--side); box-shadow: inset 0 -1px 0 var(--line); scrollbar-width: none; }
 .ed-tabs > .btn { flex: none; align-self: center; margin: 0 var(--space-1); }
 .ed-tab { display: inline-flex; align-items: center; gap: var(--space-2); flex: none; max-width: 240px; height: 100%; padding: 0 var(--space-1) 0 var(--space-3); border-right: 1px solid var(--line);
@@ -857,9 +903,10 @@ button.label-pill[aria-pressed="true"] { border-color: var(--accent); color: var
 .ed-hit:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 
 /* ---------- the status bar: the open file. Its path and git status on the left; its language, line endings, the cursor and
-   whether it is saved on the right. The cursor (go to line) and Not saved (save) are small buttons. ---------- */
+   whether it is saved on the right. The cursor (go to line) and Not saved (save) are small buttons. At the code island's
+   bottom (GA-293), on the island, its 1px line above it. ---------- */
 .ed-status { display: flex; align-items: center; gap: var(--space-2); flex: none; height: var(--size-statusbar); padding: 0 var(--space-2) 0 var(--space-3); border-top: 1px solid var(--line);
-  background: var(--side); color: var(--text-3); font-size: var(--fs-xs); white-space: nowrap; }
+  background: none; color: var(--text-3); font-size: var(--fs-xs); white-space: nowrap; }
 .ed-status .path { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-mono); color: var(--text-2); }
 .ed-status .grow { flex: 1; min-width: var(--space-4); }
 .ed-status .item { display: inline-flex; align-items: center; gap: 5px; height: calc(var(--size-statusbar) - 6px); padding: 0 6px; border: 0; border-radius: var(--radius-s); background: none;

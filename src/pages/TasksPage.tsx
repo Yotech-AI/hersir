@@ -233,8 +233,8 @@ export function TasksPage({ initialView, onNewTask, inboxFor }: { initialView?: 
           <b>{inbox ? "Inbox" : "Tasks"}</b><span className="faint">{fetched ? shown.length + chats.length + asks.length : ""}</span>
         </div>
       </div>
-      {/* the toolbar is the island header (GA-294, design/islands-pages) */}
-      <div className="toolbar island-bar">
+      {/* the view toolbar is the page island's header (GA-293, design/islands: Tasks as a board; GA-294, design/islands-pages) */}
+      <div className="toolbar island-bar island-toolbar">
         <button className="btn" onClick={() => onNewTask()}><Plus className="icon" />New task</button>
         <input className="input search-input" type="search" aria-label="Search tasks" placeholder="Search ID or title" value={filter.text ?? ""} onChange={(e) => setFilter({ ...filter, text: e.target.value })} />
         {several && !inbox && team && <select className="chip" aria-label="Team" title="The team whose board shows" value={team.id} onChange={(e) => onTeam(e.target.value)}>
@@ -269,7 +269,7 @@ export function TasksPage({ initialView, onNewTask, inboxFor }: { initialView?: 
         {view === "list" && <Popover label="Group" align="right" button={() => <button className="btn ghost"><Layers className="icon" />Group</button>}>
           {(close) => GROUPS.map(([k, l]) => <button key={k} className="opt" onClick={() => { setGroup(k); close(); }}>{l}{group === k && <Check className="icon tick" />}</button>)}
         </Popover>}
-        {!inbox && <button className="btn ghost icon-only" aria-label="Archived cards" title="Archived cards" onClick={() => setBin(true)}><Trash2 className="icon" /></button>}
+        {!inbox && <button className="btn ghost sm icon-only" aria-label="Archived cards" title="Archived cards" onClick={() => setBin(true)}><Trash2 className="icon" /></button>}
       </div>
       {(error || teamErr) && <div className="error-banner">{error ?? teamErr}</div>}
       {noProjects ? (

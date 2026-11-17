@@ -38,7 +38,10 @@ rusqlite_migration = { path = "third_party/rusqlite_migration" }
 [profile.dev]
 debug = "line-tables-only"
 
+# Release builds keep their symbols, without debug info: a panic's backtrace in Hersir's log names the functions it
+# went through (GA-281), where `strip = true` left only unknown frames. Not on Windows, which keeps a program's function
+# names in a separate .pdb file that Hersir doesn't ship.
 [profile.release]
 lto = "thin"
 codegen-units = 4
-strip = true
+strip = "debuginfo"

@@ -27,7 +27,8 @@ On a new install, the first start ends in a welcome chat: the Chief welcomes you
 - **Pinned:** Pin to the top keeps a chat under Pinned, above Recent, until you unpin it, also when it is older than the 30 in Recent: for a chat you want to come back to. The pin button is beside each chat on the left (when you point at it or tab to it), in a chat's top bar and on each row of Archive; on a pinned chat it says Unpin. The chat pinned last is at the top. A pinned chat isn't listed again under Recent; Unpin puts it back there when it is one of the 30 newest, else it is in Archive. Pins are kept with your data, so they stay after a restart and are in backups.
 - **A long chat** opens and scrolls like a short one: only the messages in sight, and a few around them, are on the page. So the window's Find (Ctrl+F) only finds words in those; to find a message further up or down, search in Archive.
 - **Files:** + next to the text box adds files to a message (Add files, or drop them on the Chat page) or links an item. A message's files are kept with it; the Chief reads a copy of each in its own folder and can attach one to a task, project or client.
-- **A terminal beside the chat:** Open terminal, next to New chat, starts a terminal in a folder you pick, in a panel on the right of the conversation, so you can run the commands the Chief asks for without leaving the chat ([Terminals in the Chat](editor-and-terminal.md#in-the-chat)).
+- **A terminal beside the chat:** Open, next to New chat, starts a terminal in a folder you pick, in the side island on the right of the conversation, so you can run the commands the Chief asks for without leaving the chat. Each chat keeps its own, and the tool strip on the window's right edge shows or hides them ([Terminals in the Chat](editor-and-terminal.md#in-the-chat)).
+- **Cards beside the chat:** a click on a card's chip in the chat (GA-259) opens the card in a Card tab in the side island, or shows its tab when it is open already; Ctrl+click (Cmd+click on macOS) opens the card's page instead. On the Chat page the chip's hover card says **Click to open beside the chat**. A chat the Chief started about cards (a board check's question) opens them as Card tabs the first time you open it, the first one shown; once you close them or hide the island, the chat opens as you left it, also after a restart. See [Cards beside the chat](#cards-beside-the-chat).
 - **Open in terminal under an answer:** when the Chief asks you to run commands (in code after Run, or in a sh code block), **Open in terminal** shows under its answer, with the folder the answer names, such as `~/Herd/shop`: a project's folder or a folder in your Editor folders, also when it names a folder or a file inside one. A click opens a terminal in that folder beside the chat; a second click shows the same one while it waits for a command. An answer that names no such folder has Open in terminal…, which asks for the folder. It never types or runs anything for you: the terminal starts in the folder and waits for you.
 
 ## Link anything with @
@@ -128,6 +129,14 @@ When a project's linked folder has dependencies behind main (`vendor/` or `node_
 Each of the Chief's answers has a time and a tool-call limit, and so do its board check and its look at an agent's question. Set them in Settings → Runs: Minutes and Tool calls per chat answer, 15 and 60 unless you change them (5 to 240 minutes, 20 to 500 tool calls).
 
 A change counts from the next answer, and an answer that stops at a limit says which one.
+
+## Cards beside the chat
+
+A Card tab is for reading and checking a card without leaving the chat. Top to bottom: the card's status (with its hold), its id and project, its title; on a card in Review its pull request and QA's verdict first (the QA Agent's hand-over; a click opens its comment on the card's page); then its column, its hold and the reason, who it is assigned to and its labels; the description (folded after 4 lines, **Show more**), the acceptance criteria (**2 of 6** checked, the first 3, then **Show all 6**), the latest 2 comments (**Show all**) and the latest 3 runs (a click opens the run on the card's page). It stays up to date while the card changes.
+
+Its foot has **Comment** (the foot becomes the comment box: Ctrl+Enter or Comment posts it, Esc or Cancel closes it), **Run** or **Continue** where the card's page has them (not on a card in Review or Done), and **Move to**, which moves the card to the bottom of the column you pick. **Own page** in the island's header opens the card's page, and its tab closes. A card that was archived, or is gone, keeps its tab, which says so.
+
+The tool strip shows the Card icon with how many cards are open; a click or Alt+4 (Option+4 on macOS) shows or hides them, and its right-click menu has **Close all**. Ctrl+W (Cmd+W) closes the shown Card tab.
 
 ## Read more
 

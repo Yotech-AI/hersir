@@ -44,7 +44,8 @@ const code = (path: string) => read(path).replace(/\{\/\*[\s\S]*?\*\/\}|\/\*[\s\
 describe("a page's toolbar is its island's header", () => {
   it.each(["src/pages/TasksPage.tsx", "src/pages/ProjectsPage.tsx", "src/pages/ClientsPage.tsx"])("%s: its one toolbar is an island-bar", (path) => {
     const src = code(path);
-    expect(src.match(/className="toolbar island-bar"/g)?.length).toBe(1);
+    // the Tasks page's also carries GA-293's island-toolbar (its board's rules and probe)
+    expect(src.match(/className="toolbar island-bar( island-toolbar)?"/g)?.length).toBe(1);
     expect(src).not.toMatch(/className="toolbar"/);
   });
 
