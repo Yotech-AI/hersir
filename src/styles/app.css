@@ -384,6 +384,17 @@ a.member:hover { border-color: var(--line-2); }
    inside the island, with the islands' 6px thumb 2px from its bottom. Other pages' toolbars stay as they are (cards 5, 6). */
 .toolbar.island-toolbar { flex: none; height: calc(44px + var(--ui-box, 0px)); padding: 0 8px; }
 .island-toolbar ~ .board-wrap > .board { padding: 4px 12px 12px; }
+/* GA-300: the toolbar folds so it fits a narrow island, such as the list's at 900px wide (TasksPage, src/lib/useFold.ts).
+   As drawn, the search and the team box keep their width. data-fold 1: Filters, Sort and Group become icon buttons, 30
+   square, their names in their tooltips; Filters keeps its count after the icon. data-fold 2: New task too, and the
+   search and the team box give up width (down to 120 and 80). A folded button keeps its text for screen readers, at no
+   size. */
+.island-toolbar .search-input, .island-toolbar select.chip { flex: none; }
+.island-toolbar[data-fold] .btn.fold, .island-toolbar[data-fold="2"] .btn.fold-2 { justify-content: center; width: calc(30px + var(--ui-box, 0px)); padding: 0; gap: 0; font-size: 0; }
+.island-toolbar[data-fold] .btn.fold[data-count] { width: auto; padding: 0 8px; }
+.island-toolbar[data-fold] .btn.fold[data-count]::after { content: attr(data-count); margin-left: 4px; font-size: var(--fs-sm); }
+.island-toolbar[data-fold="2"] .search-input { flex: 0 1 auto; min-width: 120px; }
+.island-toolbar[data-fold="2"] select.chip { flex: 0 1 auto; min-width: 80px; }
 .md-edit-box { margin-left: 0; }
 .composer .md-editor { background: var(--raised); }
 
