@@ -10,6 +10,7 @@ import { PENDING_MS } from "../lib/usePending";
 import { asksToRun, chatLabel, chatLabelTitle, hasPending, needsYou, waitingChats } from "../lib/inbox";
 import { relTime } from "../lib/format";
 import { modKey } from "../lib/keys";
+import { useFold } from "../lib/useFold";
 import type { ChatThread, Team } from "../types";
 import { filterCount, filterTasks, groupTasks, sortTasks, type Filter, type GroupBy, type SortBy } from "../lib/taskView";
 import type { Task } from "../types";
@@ -224,6 +225,13 @@ export function TasksPage({ initialView, onNewTask, inboxFor }: { initialView?: 
     setPicked(id);
     if (filter.projectId && firstTeam && teamOfProject(filter.projectId, projects ?? [], firstTeam) !== id) setFilter({ ...filter, projectId: null });
   };
+  // GA-300: in a narrow island (900px wide) the toolbar folds so nothing on it is cut off: first Filters, Sort and Group
+  // become icon buttons, their names in their tooltips (Filters keeps its count); then New task too, and the search and
+  // the team box give up width. The CSS for each level is under .island-toolbar[data-fold] in app.css.
+  const barRef = useRef<HTMLDivElement>(null);
+  // what the toolbar holds: the Team box is as wide as its longest team name
+  const teamBox = several && !inbox && team ? (teams ?? []).map((t) => t.name).join("/") : "";
+  const fold = useFold(barRef, 2, `${inbox}|${view}|${nFilters}|${teamBox}`);
 
   return (
     <>
@@ -234,8 +242,8 @@ export function TasksPage({ initialView, onNewTask, inboxFor }: { initialView?: 
         </div>
       </div>
       {/* the view toolbar is the page island's header (GA-293, design/islands: Tasks as a board; GA-294, design/islands-pages) */}
-      <div className="toolbar island-bar island-toolbar">
-        <button className="btn" onClick={() => onNewTask()}><Plus className="icon" />New task</button>
+      <div className="toolbar island-bar island-toolbar" ref={barRef} data-fold={fold || undefined}>
+        <button className="btn fold-2" title={fold >= 2 ? "New task (N)" : undefined} onClick={() => onNewTask()}><Plus className="icon" />New task</button>
         <input className="input search-input" type="search" aria-label="Search tasks" placeholder="Search ID or title" value={filter.text ?? ""} onChange={(e) => setFilter({ ...filter, text: e.target.value })} />
         {several && !inbox && team && <select className="chip" aria-label="Team" title="The team whose board shows" value={team.id} onChange={(e) => onTeam(e.target.value)}>
           {(teams ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
@@ -245,7 +253,8 @@ export function TasksPage({ initialView, onNewTask, inboxFor }: { initialView?: 
           <button aria-pressed={view === "board"} aria-label="Board" title={`Board (${modKey()}+B)`} onClick={() => setView("board")}><Columns3 className="icon" /></button>
           <button aria-pressed={view === "list"} aria-label="List" title={`List (${modKey()}+B)`} onClick={() => setView("list")}><List className="icon" /></button>
         </div>}
-        <Popover label="Filters" align="right" button={() => <button className={`btn ghost${nFilters ? " on" : ""}`}><ListFilter className="icon" />{nFilters ? `Filters: ${nFilters}` : "Filters"}</button>}>
+        <Popover label="Filters" align="right" button={() => <button className={`btn ghost fold${nFilters ? " on" : ""}`} data-count={nFilters || undefined}
+          title={fold ? (nFilters ? `Filters: ${nFilters}` : "Filters") : undefined}><ListFilter className="icon" />{nFilters ? `Filters: ${nFilters}` : "Filters"}</button>}>
           {() => (<>
             <div className="pop-label">Project</div>
             <button className="opt" onClick={() => setFilter({ ...filter, projectId: null })}>All projects{!filter.projectId && <Check className="icon tick" />}</button>
@@ -263,10 +272,10 @@ export function TasksPage({ initialView, onNewTask, inboxFor }: { initialView?: 
           </>)}
         </Popover>
         {nFilters > 0 && <button className="btn ghost sm icon-only" aria-label="Clear filters" title="Clear filters" onClick={() => setFilter({})}><X className="icon" /></button>}
-        <Popover label="Sort" align="right" button={() => <button className="btn ghost"><ArrowUpDown className="icon" />Sort</button>}>
+        <Popover label="Sort" align="right" button={() => <button className="btn ghost fold" title={fold ? "Sort" : undefined}><ArrowUpDown className="icon" />Sort</button>}>
           {(close) => SORTS.map(([k, l]) => <button key={k} className="opt" onClick={() => { setSort(k); close(); }}>{l}{sort === k && <Check className="icon tick" />}</button>)}
         </Popover>
-        {view === "list" && <Popover label="Group" align="right" button={() => <button className="btn ghost"><Layers className="icon" />Group</button>}>
+        {view === "list" && <Popover label="Group" align="right" button={() => <button className="btn ghost fold" title={fold ? "Group" : undefined}><Layers className="icon" />Group</button>}>
           {(close) => GROUPS.map(([k, l]) => <button key={k} className="opt" onClick={() => { setGroup(k); close(); }}>{l}{group === k && <Check className="icon tick" />}</button>)}
         </Popover>}
         {!inbox && <button className="btn ghost sm icon-only" aria-label="Archived cards" title="Archived cards" onClick={() => setBin(true)}><Trash2 className="icon" /></button>}

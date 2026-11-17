@@ -53,8 +53,8 @@ nothing changes and the next start tries again. It runs once per database (the `
 for approval still works.
 
 The rule is written once, in `gizai_core::memory::can_read` and `can_write`: the Chief and people read and write
-everything; an agent reads the shared folders and its own (in a group, the group's), and writes only its own. The Team
-Lead moves useful notes from an agent's folder into a shared one (`memory_move`).
+everything; an agent reads the shared folders and its own (in a group, the group's), and writes only its own. The Chief
+moves useful notes from an agent's folder into a shared one (`memory_move`).
 
 ### Agents that share a folder (GA-96)
 
@@ -80,8 +80,8 @@ owner, keeps *Its own folder*:
   notes (`Agents/<owner name>/GA (<agent name>)` when the owner has a `GA` already).
 - **Leaving** (back to *Its own folder*): the agent gets a fresh `Agents/<name>/Notes`; the group's notes stay where they
   are. From one group to another, its notes stay with the old group.
-- **The owner renamed:** its folder moves as before, and the group follows. **The owner removed** (or made the Team
-  Lead): its notes stay, and the group's next agent (the oldest of the others) becomes the owner, so the folder is
+- **The owner renamed:** its folder moves as before, and the group follows. **The owner removed** (or made the
+  Chief): its notes stay, and the group's next agent (the oldest of the others) becomes the owner, so the folder is
   renamed to that agent's name and the others share it. Hersir does this when an agent becomes the Chief, and for a
   removed owner when it starts.
 
@@ -259,8 +259,8 @@ When a task agent ends its run with `needs_decision`, the Chief looks at the que
    `run_for_me` request, a gate's hold (QA bounces, an answer the role can't give) or a failed push,
    the card goes to the Inbox as before.
 2. **Meanwhile.** The card stays on hold `needs_decision` but is "with the Chief": not in the Inbox (`tasks::needs_you`
-   and the UI's `needsYou`), no notification, and the board check leaves it out. The card's Hold row says With the Team
-   Lead.
+   and the UI's `needsYou`), no notification, and the board check leaves it out. The card's Hold row says With the
+   Chief.
 3. **The Chief's run on the question** (trigger `question`, role lead, no card of its own, so the card's latest run
    stays the agent's): a fresh session with the question, the card, its description, acceptance criteria and last
    comments, and its Memory block. It only reads: memory, the card and the project's docs through the `gizai` tools (the

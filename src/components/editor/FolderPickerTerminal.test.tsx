@@ -58,7 +58,10 @@ vi.mock("react", async (orig) => {
     if (s.sub !== subscribe) { s.cleanup?.(); s.sub = subscribe; s.cleanup = subscribe(() => { h.dirty = true; }); }
     return snapshot();
   }) as typeof R.useSyncExternalStore;
-  const hooks = { useState, useRef, useMemo, useCallback, useEffect, useLayoutEffect: useEffect, useSyncExternalStore };
+  // GA-300: the tool strip's drawn tooltip has an id (useId), one per component, kept across draws
+  let ids = 0;
+  const useId = (() => (h.cur ? slot(() => `:t${++ids}:`) : R.useId())) as typeof R.useId;
+  const hooks = { useState, useRef, useMemo, useCallback, useEffect, useLayoutEffect: useEffect, useSyncExternalStore, useId };
   return { ...R, default: { ...R, ...hooks }, ...hooks };
 });
 vi.mock("react-dom", async (orig) => ({ ...(await orig<object>()), createPortal: (children: ReactNode) => children }));
@@ -113,10 +116,13 @@ vi.mock("../chat/ChatBoard", () => ({ BoardTab: () => null, ChatBoardBody: () =>
 
 const store = new Map<string, string>();
 vi.stubGlobal("localStorage", { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => { store.set(k, String(v)); }, removeItem: (k: string) => { store.delete(k); } });
-vi.stubGlobal("window", Object.assign(new EventTarget(), { innerWidth: 1280, innerHeight: 720 }));
+// GA-300: the tool strip's tooltip waits on window.setTimeout, and its timer is cleared when it goes
+vi.stubGlobal("window", Object.assign(new EventTarget(), { innerWidth: 1280, innerHeight: 720, setTimeout: (f: () => void, ms?: number) => setTimeout(f, ms), clearTimeout: (t?: number) => clearTimeout(t) }));
 vi.stubGlobal("document", { body: {}, addEventListener: () => {}, removeEventListener: () => {} });
 // GA-298: ChatSide's keys ask whether the key came from a terminal (e.target instanceof Element)
 vi.stubGlobal("Element", class {});
+// GA-300: the side island's header asks whether the focus is on a tab (document.activeElement instanceof HTMLElement)
+vi.stubGlobal("HTMLElement", class {});
 
 const { FolderPicker } = await import("./FolderPicker");
 const { ChatSide, OpenButton } = await import("../chat/ChatSide");
@@ -649,5 +655,91 @@ describe("the folder picker's styles (GA-146)", () => {
     const id = rule(components, '.ed-picker .opt[data-kind="card"] > .card-id');
     expect([id.get("width"), id.get("white-space")]).toEqual(["calc(var(--id-chars, 0) * 1ch)", "nowrap"]);
     expect(rule(components, ".ed-picker .opt .card-id").get("font-family")).toBe("var(--font-mono)");
+  });
+});
+
+// GA-300 QA: since GA-293 the picker ran past the bottom of a 683px high window (ui-test's GA-146 terminal:picker step): its
+// cards' titles come in after the folders and can take two lines, so it grew after it was placed. It is placed again
+// whenever its own size or the window's changes, and it is never taller than the window less 8px at each end, its list
+// scrolling inside it, down to the window's least height (600px).
+describe("the folder picker in a low window (GA-300)", () => {
+  type Watch = { f: () => void; on: unknown[] };
+  const watches: Watch[] = [];
+  const g = globalThis as { ResizeObserver?: unknown };
+  const box = { width: 480, height: 300 };
+  const win = window as unknown as { innerHeight: number };
+  const style = () => one((f) => f.props.role === "dialog")!.props.style as { left: number; top: number };
+  const withRef = () => { (one((f) => f.props.role === "dialog")!.props.ref as { current: unknown }).current = { getBoundingClientRect: () => ({ ...box }) }; };
+  const draw = (x: number, y: number) => { root = () => <FolderPicker at={{ x, y }} onClose={() => { closed += 1; }} />; render(); };
+  beforeEach(() => {
+    watches.length = 0;
+    g.ResizeObserver = class { w: Watch; constructor(f: () => void) { this.w = { f, on: [] }; watches.push(this.w); } observe(el: unknown) { this.w.on.push(el); } disconnect() { this.w.on = []; } };
+  });
+  afterEach(() => { delete g.ResizeObserver; win.innerHeight = 720; box.height = 300; });
+
+  it("is never taller than the window less 16px, nor than 460px; its list scrolls inside it, the search and the foot stay", () => {
+    const sheet = css("components.css");
+    const picker = rule(sheet, ".pop.ed-picker");
+    expect([picker.get("max-height"), picker.get("display"), picker.get("flex-direction"), picker.get("overflow")]).toEqual(["min(460px, calc(100vh - 16px))", "flex", "column", "hidden"]);
+    const list = rule(sheet, ".ed-picker-list");
+    expect([list.get("flex"), list.get("min-height"), list.get("overflow-y")]).toEqual(["1", "0", "auto"]);
+    expect(rule(sheet, ".ed-picker-in").get("flex")).toBe("none");
+    expect(rule(sheet, ".ed-picker-foot").get("flex")).toBe("none");
+  });
+
+  it("moves up when the window gets lower: at 600px high it ends 8px above the bottom", async () => {
+    draw(240, 300);
+    await settle();
+    box.height = 460;
+    withRef();
+    draw(240, 301);
+    expect([style().left, style().top]).toEqual([240, 720 - 460 - 8]);
+    win.innerHeight = 600;
+    h.dirty = false;
+    window.dispatchEvent(new Event("resize"));
+    expect(h.dirty, "the window's resize places it again").toBe(true);
+    render();
+    expect(style().top).toBe(600 - 460 - 8);
+    expect(style().top + box.height).toBeLessThanOrEqual(600 - 8);
+  });
+
+  it("moves up when it grows after it was placed (the cards' titles coming in), watching its own size", async () => {
+    win.innerHeight = 683;
+    draw(240, 299);
+    await settle();
+    withRef();
+    // a new place to open at measures it with its box there, and from then on watches its size; 300 high, it fits where asked
+    draw(240, 300);
+    expect(style().top).toBe(300);
+    const mine = watches.filter((w) => w.on.length > 0);
+    expect(mine).toHaveLength(1);
+    box.height = 420;
+    h.dirty = false;
+    mine[0]!.f();
+    expect(h.dirty, "its own size change places it again").toBe(true);
+    render();
+    expect(style().top).toBe(683 - 420 - 8);
+  });
+
+  it("stops listening once it closes: no resize listener and no size watch left", async () => {
+    const added: string[] = [];
+    const removed: string[] = [];
+    const add = window.addEventListener.bind(window), remove = window.removeEventListener.bind(window);
+    window.addEventListener = ((t: string, f: EventListener) => { added.push(t); add(t, f); }) as typeof window.addEventListener;
+    window.removeEventListener = ((t: string, f: EventListener) => { removed.push(t); remove(t, f); }) as typeof window.removeEventListener;
+    try {
+      draw(240, 100);
+      await settle();
+      withRef();
+      draw(240, 102);
+      root = () => null;
+      render();
+      expect(added.filter((t) => t === "resize").length).toBeGreaterThan(0);
+      expect(removed.filter((t) => t === "resize").length).toBe(added.filter((t) => t === "resize").length);
+      expect(watches.every((w) => w.on.length === 0)).toBe(true);
+    } finally {
+      window.addEventListener = add;
+      window.removeEventListener = remove;
+    }
   });
 });

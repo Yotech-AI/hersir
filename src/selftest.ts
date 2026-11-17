@@ -1979,10 +1979,9 @@ export async function appearanceProbe(phase: "set" | "kept") {
   const barOk = (b: any) => !!b && b.t === 6 && b.h === 44 && b.l === 0 && b.r === 0 && b.page_t === 50 && b.bg === "rgba(0, 0, 0, 0)" && b.border === "0px 0px 0px 0px" && b.fills.length === 0;
   const fitsOk = (b: any) => barOk(b) && b.app_b === 600 && b.page_b === 594 && b.bar_over <= 1 && b.page_over.every((n: number) => n <= 1) && b.side_over.every((n: number) => n <= 1) && b.outside.length === 0;
   const barsOk = BAR_PAGES.every((h) => barOk(bars[h]));
-  // Known and older than the islands (GA-290 QA): at 900 wide the task list's toolbar (list view: New task, the search, the
-  // view switch, Filters, Sort, Group and Archived cards) needs 708px and the page gets 634 (652 before the islands), so
-  // Group and Archived cards are cut off. Reported (small["#/tasks"].sticking); it counts here again once the toolbar fits.
-  const SMALL_KNOWN = new Set(["#/tasks"]);
+  // GA-290 QA found the task list's toolbar (list view: New task, the search, the view switch, Filters, Sort, Group and
+  // Archived cards) 74px too wide at 900; since GA-300 it folds to fit (useFold), so #/tasks counts here again like the rest.
+  const SMALL_KNOWN = new Set<string>();
   const smallOk = BAR_PAGES.every((h) => SMALL_KNOWN.has(h) ? barOk(small[h]) : fitsOk(small[h]));
 
   // The largest sizes, picked with clicks on Settings → Appearance: at once, and kept.
@@ -2174,6 +2173,27 @@ const noteTitle = () => q<HTMLInputElement>('input[aria-label="Note title"]')?.v
 const hitPaths = () => [...document.querySelectorAll(".mem-hit")].map((h) => `${textOf(h.querySelector(":scope > .faint"))}/${textOf(h.querySelector(".mem-hit-title"))}`);
 const resultsCount = () => textOf(q(".mem-results > div.faint.mem-pad"));
 const mouse = (el: Element, type: "mouseover" | "mouseout") => el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, relatedTarget: type === "mouseout" ? document.body : null }));
+/** GA-300: a strip icon's tooltip, drawn as the notes' Islands/Tooltip (.strip-tip) in place of the browser's title, once the
+ *  pointer rests on the icon: "<label>|<key>|<px between it and the icon>|<px off the icon's middle>|<described>", or "none";
+ *  it goes again when the pointer leaves. */
+async function stripTip(b: HTMLElement | null): Promise<string> {
+  if (!b) return "no icon";
+  mouse(b, "mouseover");
+  const tip = await waitFor(() => q<HTMLElement>(".strip-tip"), 2000);
+  let out = "none";
+  if (tip) {
+    // the gap as in a window the app fits: a probe that draws the app wider than the cage's window (1920 in 1280) gives the
+    // page a scrollbar, and the tooltip (fixed, placed from the window's width) sits that much further left
+    const r = b.getBoundingClientRect(), t = tip.getBoundingClientRect(), bar = window.innerWidth - document.documentElement.clientWidth;
+    out = [textOf(tip.firstElementChild), textOf(tip.querySelector(".key")), Math.round(r.left - t.right - bar), Math.round(Math.abs((t.top + t.bottom) / 2 - (r.top + r.bottom) / 2)),
+      tip.getAttribute("role") === "tooltip" && b.getAttribute("aria-describedby") === tip.id ? "described" : "not described"].join("|");
+    // off its place: what it was placed by (the window's width, the page's without a scrollbar, its right, the icon's left)
+    if (Math.round(r.left - t.right - bar) !== 6) out += `|window ${window.innerWidth}, page ${document.documentElement.clientWidth}, right ${getComputedStyle(tip).right}, icon at ${Math.round(r.left)}`;
+  }
+  mouse(b, "mouseout");
+  const gone = await waitFor(() => (q(".strip-tip") ? null : true), 2000);
+  return gone ? out : `${out}|stays`;
+}
 
 /** GA-68, against prep_memory's notes, starting on Decisions/Use SQLite (`noteId`); `agentId`: the Backend Agent. The
  *  sidebar's Memory lists the Team Lead first with every note, then the Backend Agent with its own folder's two (its Notes
@@ -4589,8 +4609,11 @@ async function chatTerminalProbe(phase: "a" | "b") {
   const btnLook = (out.layout as { btnLook: { bg: string; h: number; w: number } | null }).btnLook;
   check(btnLook && btnLook.bg === ISLAND_DARK && btnLook.h === 42 && btnLook.w === 28 && !!btn?.querySelector("svg.lucide-terminal"),
     `the Terminal icon is a 28 × 42 button, selected: a pill in the island's fill (${JSON.stringify(btnLook)})`);
-  check(JSON.stringify(iconState()) === JSON.stringify({ pressed: "true", n: "1", label: "Terminal, 1 open", title: "Terminal, 1 open (Ctrl+`)" }),
-    `the Terminal icon says 1, selected, with its label and tooltip (${JSON.stringify(iconState())})`);
+  check(JSON.stringify(iconState()) === JSON.stringify({ pressed: "true", n: "1", label: "Terminal, 1 open", title: "" }),
+    `the Terminal icon says 1, selected, with its label and no title of its own (${JSON.stringify(iconState())})`);
+  // GA-300: its tooltip is drawn as the notes say, 6px left of it and centred on it, its key after the label
+  const tip1 = await stripTip(termIcon());
+  check(tip1 === "Terminal, 1 open|Ctrl+`|6|0|described", `the Terminal icon's tooltip says Terminal, 1 open and Ctrl+\` (${tip1})`);
   out.pwd = await pwdIn(term, site.id);
   check(out.pwd, `pwd prints chat-site's folder ${site.id} (screen: ${JSON.stringify(termLines(term, true).filter(Boolean).slice(-4))})`);
   check(term.cols >= 30 && term.rows >= 10, `the terminal fits the island (${term.cols} × ${term.rows})`);
@@ -4609,7 +4632,7 @@ async function chatTerminalProbe(phase: "a" | "b") {
   if (!id2 || !v2) return done();
   check(await waitFor(() => (document.activeElement === v2.term.textarea ? true : null), 2000), "the picked terminal has the focus");
   check(textOf(q(".chat-term-where")) === other.path, `the folder follows the shown terminal (${textOf(q(".chat-term-where"))})`);
-  check(JSON.stringify(iconState()) === JSON.stringify({ pressed: "true", n: "2", label: "Terminal, 2 open", title: "Terminal, 2 open (Ctrl+`)" }), `the strip says 2 (${JSON.stringify(iconState())})`);
+  check(JSON.stringify(iconState()) === JSON.stringify({ pressed: "true", n: "2", label: "Terminal, 2 open", title: "" }), `the strip says 2 (${JSON.stringify(iconState())})`);
   const plus = q<HTMLButtonElement>('.chat-side .island-head button[aria-label="Open beside the chat"]');
   const own = q<HTMLButtonElement>('.chat-side .island-head button[aria-label="Own page"]'), hide = q<HTMLButtonElement>('.chat-side .island-head button[aria-label="Hide"]');
   out.head = { tabs: q(".chat-side .island-tabs")?.getAttribute("aria-label"), plus: [plus?.title, plus?.getAttribute("aria-haspopup")], own: own?.title, hide: hide?.title };
@@ -4692,7 +4715,7 @@ async function chatTerminalProbe(phase: "a" | "b") {
   // the app is drawn wider than the window, so it may have scrolled sideways since: its right edge now
   out.hidden = { cls: chat()?.className, icon: iconState(), strip: rectOf(strip()), talk: rectOf(q(".chat > .chat-main")), appR: r1(app?.getBoundingClientRect().right ?? window.innerWidth),
     bg: termIcon() ? getComputedStyle(termIcon()!).backgroundColor : null };
-  check(chat()?.className === "chat has-strip" && JSON.stringify(iconState()) === JSON.stringify({ pressed: "false", n: "2", label: "Terminal, 2 open", title: "Terminal, 2 open (Ctrl+`)" })
+  check(chat()?.className === "chat has-strip" && JSON.stringify(iconState()) === JSON.stringify({ pressed: "false", n: "2", label: "Terminal, 2 open", title: "" })
     && (out.hidden as { bg: string }).bg === "rgba(0, 0, 0, 0)", `hidden: the strip with the Terminal icon, 2, none selected and no fill (${JSON.stringify(out.hidden)})`);
   const H = out.hidden as { strip: { l: number; r: number } | null; talk: { r: number } | null; appR: number };
   check(H.strip && H.talk && Math.abs(H.strip.l - H.talk.r - 6) <= 0.5 && Math.abs(H.appR - 6 - H.strip.r) <= 0.5, `the conversation reaches the strip, 6px before it, on the window's edge (${JSON.stringify(out.hidden)})`);
@@ -5171,7 +5194,7 @@ async function chatRunProbe() {
   // GA-296: the strip shows the Terminal icon with its count, selected
   const stripIcon = q<HTMLButtonElement>('.chat > .chat-strip .strip-btn[data-kind="terminal"]');
   out.strip = { pressed: stripIcon?.getAttribute("aria-pressed"), n: textOf(stripIcon?.querySelector(".n")), title: stripIcon?.title };
-  check(JSON.stringify(out.strip) === JSON.stringify({ pressed: "true", n: "1", title: "Terminal, 1 open (Ctrl+`)" }), `the strip shows Terminal, 1, selected (${JSON.stringify(out.strip)})`);
+  check(JSON.stringify(out.strip) === JSON.stringify({ pressed: "true", n: "1", title: "" }), `the strip shows Terminal, 1, selected (${JSON.stringify(out.strip)})`);
   check(await waitFor(() => (document.activeElement === t1.term.textarea ? true : null), 2000), "the terminal has the focus");
   check(textOf(q(".chat-term-where")) === doq.path, `the panel shows the folder (${textOf(q(".chat-term-where"))})`);
   await waitFor(() => termLines(t1.term).some((l) => l.trim()), 10000);
@@ -5427,7 +5450,10 @@ async function chatCardsProbe(phase: "a" | "b") {
   const opened = await waitFor(() => (tabKeys().length === 2 && body() ? true : null), 8000);
   out.opened = { tabs: tabKeys(), shown: shown(), strip: strip() };
   check(opened && same2(tabKeys(), ["card:KADE-1", "card:GFW-2"]) && shown() === "card:KADE-1", `the chat opens KADE-1 and GFW-2 as Card tabs, KADE-1 shown (${JSON.stringify(out.opened)})`);
-  check(JSON.stringify(strip()) === JSON.stringify({ pressed: "true", n: "2", title: "Card, 2 open (Alt+4)" }), `the strip shows Card, 2, selected (${JSON.stringify(out.opened)})`);
+  check(JSON.stringify(strip()) === JSON.stringify({ pressed: "true", n: "2", title: "" }), `the strip shows Card, 2, selected (${JSON.stringify(out.opened)})`);
+  // GA-300: the Card icon's tooltip is drawn (Islands/Tooltip), with its key
+  const cardTip = await stripTip(cardBtn());
+  check(cardTip === "Card, 2 open|Alt+4|6|0|described", `the Card icon's tooltip says Card, 2 open and Alt+4 (${cardTip})`);
   const tab1 = q<HTMLElement>('.chat-side .card-tab[data-tab="card:KADE-1"]');
   await waitFor(() => (tab1?.title.includes(":") ? true : null), 3000);
   out.tab = { text: textOf(tab1?.querySelector(".name")), title: tab1?.title, icon: !!tab1?.querySelector("svg.lucide-square-kanban") };
@@ -6689,16 +6715,16 @@ async function templatesSteps(dir: string, dialog: { asked: { cmd: string; optio
   out.empty = empty;
   if (!madeEmpty.id) return fail("Empty made no team");
 
-  // 3. Export without warnings, on the empty team: straight to the save dialog with <team name>.gizai-team.json, the file
+  // 3. Export without warnings, on the empty team: straight to the save dialog with <team name>.hersir-team.json (GA-249), the file
   //    is written and the toast says so.
   const noWarnings = await checkTeamExport(madeEmpty.id);
-  const emptyPath = `${dir}/Empty probe team.gizai-team.json`;
+  const emptyPath = `${dir}/Empty probe team.hersir-team.json`;
   dialog.answer(emptyPath);
   let n = dialog.asked.length;
   exportBtn()?.click();
   const plainAsk = await lastAsk(n);
   const plainQuestion = !!q("[role=alertdialog]");
-  const plainToast = await toast("Saved Empty probe team.gizai-team.json");
+  const plainToast = await toast("Saved Empty probe team.hersir-team.json");
   let plainFile: unknown;
   try { const p = await previewTeamTemplate({ path: emptyPath }); plainFile = { columns: p.columns.map((c) => c.name), agents: p.agents.length }; } catch (e) { plainFile = String(e); }
   out.export_plain = { warnings: noWarnings.length, asked: plainAsk?.cmd, default_path: plainAsk?.options.defaultPath, filters: plainAsk?.options.filters,
@@ -6796,13 +6822,13 @@ async function templatesSteps(dir: string, dialog: { asked: { cmd: string; optio
   keyOn((document.activeElement as HTMLElement | null) ?? (dlg as HTMLElement | null) ?? document.body, "Escape");
   await sleep(600);
   warn.escape = { shown: !!dlg, closed: !q("[role=alertdialog]"), saved_nothing: dialog.asked.length === n };
-  const warnPath = `${dir}/Mobile team export.gizai-team.json`;
+  const warnPath = `${dir}/Mobile team export.hersir-team.json`;
   dialog.answer(warnPath);
   exportBtn()?.click();
   dlg = await waitFor(() => q("[role=alertdialog]"), 4000);
   buttonByText(dlg ?? document, "Export anyway")?.click();
   const anywayAsk = await lastAsk(n);
-  const anywayToast = await toast("Saved Mobile team export.gizai-team.json");
+  const anywayToast = await toast("Saved Mobile team export.hersir-team.json");
   let anywayFile: unknown;
   try { anywayFile = (await previewTeamTemplate({ path: warnPath })).agents.length; } catch (e) { anywayFile = String(e); }
   warn.anyway = { asked: anywayAsk?.cmd, default_path: anywayAsk?.options.defaultPath, toast: anywayToast, file_agents: anywayFile, closed: !q("[role=alertdialog]") };
@@ -6840,13 +6866,13 @@ async function templatesSteps(dir: string, dialog: { asked: { cmd: string; optio
   pickTeam(madeSw.id);
   const swOpen = !!(await waitFor(() => (shownName() === "Probe software team" ? true : null), 5000));
   const swWarnings = await checkTeamExport(madeSw.id);
-  const swPath = `${dir}/Probe software team.gizai-team.json`;
+  const swPath = `${dir}/Probe software team.hersir-team.json`;
   dialog.answer(swPath);
   n = dialog.asked.length;
   exportBtn()?.click();
   if (swWarnings.length) buttonByText((await waitFor(() => q("[role=alertdialog]"), 4000)) ?? document, "Export anyway")?.click();
   const swAsk = await lastAsk(n);
-  const swToast = await toast("Saved Probe software team.gizai-team.json");
+  const swToast = await toast("Saved Probe software team.hersir-team.json");
   const round: Record<string, unknown> = { opened: swOpen, warnings: swWarnings.map((w) => `${w.agent ?? "the team"} ${w.field} ${w.kind}`), default_path: swAsk?.options.defaultPath, toast: swToast };
   if (!(await openDrawer())) return fail("New team opened no drawer (round trip)");
   // each drawer starts at Empty, so a click on A template file… opens the dialog (answered with the exported file)
@@ -6887,7 +6913,7 @@ async function templatesSteps(dir: string, dialog: { asked: { cmd: string; optio
       && e.starts[e.starts.length - 1] === "A template file…" && e.notes[0] === "The seven usual columns, no agents."
       && e.subtitle === "A new team gets the seven usual columns and no agents. Move a project to it in the project's form.",
     empty_made: e.made.on && e.made.closed && e.made.shown && e.made.picked && e.made.name === "Empty probe team" && same(e.made.columns, usual) && e.made.agents === 0,
-    export_plain: ep.warnings === 0 && !ep.question && ep.asked === "save" && ep.default_path === "Empty probe team.gizai-team.json" && ep.toast
+    export_plain: ep.warnings === 0 && !ep.question && ep.asked === "save" && ep.default_path === "Empty probe team.hersir-team.json" && ep.toast
       && typeof ep.file === "object" && same(ep.file.columns, usual.map((u) => u[0])) && ep.file.agents === 0,
     software_check: sw.shown && sw.description === "The five agents a new install gets, and the seven usual columns." && sw.name === sw.plan_name
       && sw.plan_name.startsWith("Software team") && sw.plan_columns === 7 && sw.plan_agents === 5 && sw.rows === 7 && sw.rows_match && sw.cards.length === 5
@@ -6905,10 +6931,10 @@ async function templatesSteps(dir: string, dialog: { asked: { cmd: string; optio
     file_made: f.made.on && f.made.closed && f.made.shown && f.made.name === f.plan_name && !!f.made.agents?.length && f.made.agents.every((a) => a[1] !== "active"),
     export_question: w.expected > 0 && w.shown && w.title === "This may share private details" && w.each && same(w.buttons, ["Cancel", "Export anyway"]) && w.focus_cancel,
     export_cancel: Object.values(w.cancel).every(Boolean) && Object.values(w.escape).every(Boolean),
-    export_anyway: w.anyway.asked === "save" && w.anyway.default_path === `${f.made.name}.gizai-team.json` && w.anyway.toast && typeof w.anyway.file_agents === "number" && w.anyway.closed,
+    export_anyway: w.anyway.asked === "save" && w.anyway.default_path === `${f.made.name}.hersir-team.json` && w.anyway.toast && typeof w.anyway.file_agents === "number" && w.anyway.closed,
     bad_file: !!b.refusal && b.banner === b.refusal && b.off && b.no_check && b.off_with_name,
     bad_file_keyboard: b.cancel_asked && b.cancel_keeps && b.escape_asks && b.closed && b.no_team,
-    round_trip: r.opened && r.default_path === "Probe software team.gizai-team.json" && r.toast && r.starts_empty && r.shown && r.made.on && r.made.shown
+    round_trip: r.opened && r.default_path === "Probe software team.hersir-team.json" && r.toast && r.starts_empty && r.shown && r.made.on && r.made.shown
       && r.made.name === "Round trip team" && r.same,
   };
   const failed = Object.entries(checks).filter(([, v]) => !v).map(([k]) => k);

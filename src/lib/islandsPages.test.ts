@@ -363,7 +363,9 @@ describe("design/README.md says how the pages and the drawer sit now", () => {
   describe("panes as islands of their own: a doc and Memory with its notes (app.css)", () => {
     it("the page's island gives way (no fill, no radius) and the panes sit island-gap apart", () => {
       const own = rules(css["app.css"]).filter((r) => r.selector.startsWith(".page-island:has("));
-      expect(own.map((r) => r.selector)).toEqual([".page-island:has(> .split.doc-split)", ".page-island:has(> .split.memory.islands)"]);
+      // a doc and Memory (GA-295); the card's page (GA-297) and the Chat (GA-296) give way the same since
+      expect(own.map((r) => r.selector)).toEqual([".page-island:has(> .split.doc-split)", ".page-island:has(> .split.memory.islands)",
+        ".page-island:has(> .task-page)", ".page-island:has(> .chat)"]);
       for (const r of own) expect([r.selector, r.decl.get("background"), r.decl.get("border-radius")]).toEqual([r.selector, "none", "0"]);
       expect(decl("app.css", ".split.doc-split").get("gap")).toBe("var(--island-gap)");
       expect(decl("app.css", ".split.memory.islands").get("gap")).toBe("var(--island-gap)");
@@ -439,9 +441,11 @@ describe("design/README.md says how the pages and the drawer sit now", () => {
       expect(decl("terminal.css", ".term-page > .term-tabs > .ed-tab .x").get("display")).toBe("none");
       expect(decl("terminal.css", '.term-page > .term-tabs > .ed-tab[aria-selected="true"] .x').get("display")).toBe("grid");
     });
-    it("leaves the Editor's panel and the Chat's terminal tabs as they were (only .term-page > .term-tabs)", () => {
-      const added = rules(css["terminal.css"]).filter((r) => r.selector.includes("island") || (r.selector.startsWith(".term-tabs") && r.decl.get("height") === "var(--size-island-head)"));
-      expect(added).toEqual([]);
+    it("no rule outside .term-page gives .term-tabs the island header's height", () => {
+      // GA-296 and GA-298 put the side island's .island-head, .island-tabs and .ed-code-island rules in terminal.css; what
+      // this checks is that the Terminal page's header doesn't reach the Editor's panel or the Chat's terminal tabs
+      const tall = rules(css["terminal.css"]).filter((r) => r.selector.includes(".term-tabs") && r.decl.get("height") === "var(--size-island-head)");
+      expect(tall.map((r) => r.selector)).toEqual([".term-page > .term-tabs"]);
     });
   });
 

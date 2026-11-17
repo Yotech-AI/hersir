@@ -12,7 +12,11 @@
   display: grid; grid-template-rows: calc(var(--size-topbar) + var(--ui-box, 0px)) minmax(0, 1fr); height: 100vh; padding: 0 var(--island-gap) var(--island-gap);
   overflow: hidden; box-sizing: border-box;
   background: radial-gradient(ellipse 60% 75% at 0 0, var(--canvas-glow) 45%, transparent), linear-gradient(180deg, var(--canvas-from), var(--canvas-to)); }
-/* the island: its fill, island-radius, no border and no shadow */
+/* With the glass on (html.glass, app.css), the glass (Islands/Window background) is behind it, as behind .app: the body
+   paints the glass gradient, so .onb paints nothing over it and it shows behind the top row and around the island
+   (design/islands-settings/README.md, 9. Onboarding). With the glass off, the opaque gradient above stays. */
+html.glass .onb { background: none; }
+/* the island: its fill, island-radius, no border and no shadow; solid with the glass on or off */
 .onb-island { display: flex; flex-direction: column; width: calc(var(--onb-w) + 120px); min-height: 0; margin: 0 auto; overflow: hidden;
   border-radius: var(--island-radius); background: var(--island); }
 

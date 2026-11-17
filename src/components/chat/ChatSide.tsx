@@ -2,11 +2,13 @@
 // panel and its rail. What is open beside a chat is src/lib/chatSide.ts's, kept per chat while Hersir runs.
 // - The side island, right of the conversation: a header with the chat's tabs (each kind's icon and title; Terminal,
 //   Card (GA-297, ChatCard.tsx), Board and Editor (GA-298, ChatBoard.tsx and ChatEditor.tsx)), + (a menu: New terminal,
-//   Open a file…, Board), Own page and Hide; then the shown tab.
+//   Open a file…, Board), Own page and Hide; then the shown tab. Tabs that don't fit go in an overflow button after the
+//   last that fits ("2 more", GA-300): its menu lists them, and picking one shows it in the row in place of the last.
 //   Its left edge, the gap to the conversation, is the drag handle; its width is kept on this computer (gizai.chat.panel).
 // - The tool strip, on the background along the window's right edge, while the chat has anything open: an icon per kind
 //   open, with its count, the shown kind's selected. A click shows that kind's last tab, or hides the island while that
-//   kind is on show; a right click (or the context menu key) opens a menu: Show or Hide, and Close all.
+//   kind is on show; a right click (or the context menu key) opens a menu: Show or Hide, and Close all. Each icon's tooltip
+//   is drawn as the notes say (Islands/Tooltip, GA-300), not the browser's.
 // - The top bar's Open, before New chat: a menu with New terminal, Open a file… (Go to file over the chat project's folder,
 //   else the last Editor tab's, else the folder picker first) and Board, the same as the header's +.
 // - Keys on the Chat page: Ctrl+` and Alt+1 show or hide Terminal, Alt+2, Alt+3 and Alt+4 Editor, Board and Card (Option on
@@ -16,7 +18,7 @@
 //   Ctrl+` and Ctrl+Shift+` are Hersir's: Alt with a digit reaches the shell.
 // The page itself only follows whether the island or the strip shows (useChatSideLayout), so the conversation isn't drawn
 // again when a terminal changes or the island is dragged.
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import {
   ChevronDown, ChevronRight, CircleAlert, Columns3, FileCode, Maximize2, PanelRight, Plus, SquareKanban, Terminal as TerminalIcon, X,
@@ -34,7 +36,7 @@ import {
 } from "../../lib/chatTerminal";
 import {
   closeAllQuestion, closeSideTabs, editorTabOf, idOf, kindKey, kindOf, kindsOpen, lastOfKind, openBoardTab, shownKind, showChat, showSide, showSideTab,
-  sideKindKey, stripLabel, stripMenuHead, stripTitle, tabKey, toggleSideKind, hideSide, useChatSide, useSideShows, type ChatSide, type SideKind,
+  sideKindKey, stripLabel, stripMenuHead, tabKey, toggleSideKind, hideSide, useChatSide, useSideShows, type ChatSide, type SideKind,
 } from "../../lib/chatSide";
 import { nameOf, tabNames } from "../../lib/editor";
 import type { EditorFolder } from "../../types";
@@ -67,6 +69,63 @@ const SIDE_EDGE: HandleEdge = {
     return { size, other, whole: size + other };
   },
 };
+
+// ---------- tabs that don't fit (GA-300; design/islands-chat → Its header) ----------
+
+/** The room a tab's × takes when it shows on hover: 18 wide, 6 from the name. */
+const X_ROOM = 24;
+/** The overflow button's width before it is first drawn. */
+const MORE_GUESS = 72;
+/** How long the pointer rests on a strip icon before its tooltip shows. */
+const TIP_REST_MS = 400;
+
+/** Which of the side island's tabs don't fit in its header beside +, Own page and Hide. Measured with every tab in the row
+ *  at rest, and room kept for the × that shows on the one under the pointer (so hovering doesn't change the row). When they
+ *  don't all fit, the overflow button takes room after the last that fits, and the row keeps the shown tab first, then the
+ *  ones picked from the overflow's menu (the latest first), then the others in the order they opened while they fit.
+ *  Marks the others `data-off` (hidden, terminal.css) and returns their keys in the order they opened; null without a header. */
+export function fitTabs(head: HTMLElement | null, more: HTMLElement | null, current: string, picked: string[]): string[] | null {
+  const list = head?.querySelector<HTMLElement>(":scope > .island-tabs");
+  const acts = head?.querySelector<HTMLElement>(":scope > .acts");
+  if (!head || !list || !acts) return null;
+  const els = [...list.children] as HTMLElement[];
+  for (const el of els) delete el.dataset.off;
+  const px = (v: string) => parseFloat(v) || 0;
+  const hs = getComputedStyle(head);
+  const gap = px(hs.columnGap);
+  const tabGap = px(getComputedStyle(list).columnGap);
+  const tabs = els.map((el) => {
+    const x = el.querySelector<HTMLElement>(".x");
+    const shows = !!x && x.offsetWidth > 0;
+    // a tab under the pointer shows its × only while it is there: its width at rest is without it
+    const onHover = shows && el.matches(":hover") && el.getAttribute("aria-selected") !== "true" && !el.matches(":focus-within");
+    return { el, key: el.dataset.tab ?? `terminal:${el.dataset.term}`, w: el.getBoundingClientRect().width - (onHover ? X_ROOM : 0), bare: !shows || onHover };
+  });
+  const room = head.clientWidth - px(hs.paddingLeft) - px(hs.paddingRight) - acts.getBoundingClientRect().width - gap
+    - (tabs.some((t) => t.bare) ? X_ROOM : 0);
+  if (tabs.reduce((sum, t) => sum + t.w, 0) + tabGap * Math.max(0, tabs.length - 1) <= room + 0.5) return [];
+  const left = room - (more?.getBoundingClientRect().width || MORE_GUESS) - gap;
+  const byKey = new Map(tabs.map((t) => [t.key, t]));
+  const keep = new Set<string>();
+  let used = 0;
+  /** Takes the tab into the row when it fits (the first always does); false when it doesn't. */
+  const take = (key: string) => {
+    const t = byKey.get(key);
+    if (!t || keep.has(key)) return true;
+    const need = t.w + (keep.size ? tabGap : 0);
+    if (keep.size && used + need > left + 0.5) return false;
+    keep.add(key);
+    used += need;
+    return true;
+  };
+  for (const key of [current, ...picked]) take(key);
+  for (const t of tabs) if (!take(t.key)) break;
+  const off = tabs.filter((t) => !keep.has(t.key));
+  for (const t of off) t.el.dataset.off = "";
+  return off.map((t) => t.key);
+}
+
+const sameKeys = (a: string[], b: string[]) => a.length === b.length && a.every((k, i) => k === b[i]);
 
 // ---------- the page's layout ----------
 
@@ -341,6 +400,54 @@ function SideIsland({ islandRef, side, all, focus, focusNext, fresh, you, hide }
   };
   const pickBelow = (el: HTMLElement | null) => { const r = el?.getBoundingClientRect(); setPicker({ x: r?.left ?? 200, y: (r?.bottom ?? 100) + 6 }); };
 
+  // Tabs that don't fit (GA-300): measured before the header is drawn, after each change here, and when the header or a
+  // tab changes size (the island dragged, a terminal's program, a card's tab coming in); fitTabs says how.
+  const headRef = useRef<HTMLDivElement>(null);
+  const moreRef = useRef<HTMLButtonElement>(null);
+  const [off, setOff] = useState<string[]>([]);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [moreMenu, setMoreMenu] = useState<{ x: number; y: number } | null>(null);
+  const fit = useRef(() => {});
+  useLayoutEffect(() => {
+    fit.current = () => {
+      const next = fitTabs(headRef.current, moreRef.current, current, picked);
+      if (next) setOff((was) => (sameKeys(was, next) ? was : next));
+    };
+    fit.current();
+    // ← or → to a tab that wasn't in the row: it is now, and takes the focus the hidden tab couldn't
+    const at = document.activeElement;
+    if (at instanceof HTMLElement && at.getAttribute("role") === "tab" && headRef.current?.contains(at) && at.getAttribute("aria-selected") !== "true") {
+      headRef.current.querySelector<HTMLElement>(':scope > .island-tabs > [aria-selected="true"]')?.focus();
+    }
+  });
+  useEffect(() => {
+    const head = headRef.current;
+    const list = head?.querySelector(":scope > .island-tabs");
+    if (!head || !list || typeof ResizeObserver === "undefined") return;
+    const seen = new WeakSet<Element>();
+    const sizes = new ResizeObserver(() => fit.current());
+    const watch = () => { for (const el of [head, ...list.children]) if (!seen.has(el)) { seen.add(el); sizes.observe(el); } };
+    watch();
+    const tabs = new MutationObserver(watch);
+    tabs.observe(list, { childList: true });
+    return () => { sizes.disconnect(); tabs.disconnect(); };
+  }, []);
+  /** A tab's name, as its tab says it. */
+  const tabName = (key: string) => {
+    const id = idOf(key);
+    switch (kindOf(key)) {
+      case "terminal": return terms.find((s) => s.id === id)?.name ?? id;
+      case "editor": return fileNames.get(id)?.name ?? nameOf(editorTabOf(id).path);
+      case "board": return boardName(project);
+      default: return id;
+    }
+  };
+  /** The overflow's menu: the tabs that don't fit, each with its icon; picking one shows it in the row. */
+  const moreItems = (): MenuItem[] => off.map((key) => {
+    const Icon = KIND_ICON[kindOf(key)];
+    return { label: tabName(key), icon: <Icon className="icon kind-icon" />, run: () => { setPicked((p) => [key, ...p.filter((k) => k !== key && keys.includes(k))]); showSideTab(key); } };
+  });
+
   return (
     <div ref={islandRef} className="chat-side"
       onKeyDown={(e) => {
@@ -363,8 +470,8 @@ function SideIsland({ islandRef, side, all, focus, focusNext, fresh, you, hide }
       }}>
       <Handle panel={islandRef} share={share} setShare={setShare} edge={SIDE_EDGE} />
       <div className="chat-side-in">
-        <div className="island-head">
-          <div className="island-tabs" role="tablist" aria-label="Beside the chat">
+        <div ref={headRef} className="island-head">
+          <div className={`island-tabs${off.length ? " some-off" : ""}`} role="tablist" aria-label="Beside the chat">
             {side.tabs.map((t) => {
               const key = tabKey(t);
               if (t.kind === "terminal") {
@@ -381,6 +488,13 @@ function SideIsland({ islandRef, side, all, focus, focusNext, fresh, you, hide }
               return <EditorTab key={key} id={t.id} on={key === current} keys={keys} name={n?.name ?? nameOf(editorTabOf(t.id).path)} dir={n?.dir ?? null} />;
             })}
           </div>
+          {off.length > 0 && (
+            <button ref={moreRef} type="button" className="btn ghost sm tabs-more" aria-haspopup="menu" aria-expanded={!!moreMenu}
+              onMouseDown={(e) => { if (moreMenu) e.stopPropagation(); }}
+              onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMoreMenu(moreMenu ? null : { x: r.left, y: r.bottom + 4 }); }}>
+              {off.length} more<ChevronDown className="icon" />
+            </button>
+          )}
           <span className="acts">
             <button ref={plusRef} type="button" className="btn ghost sm icon-only" aria-label="Open beside the chat" title="Open beside the chat"
               aria-haspopup="menu" aria-expanded={!!menu} onMouseDown={(e) => { if (menu) e.stopPropagation(); }}
@@ -409,6 +523,7 @@ function SideIsland({ islandRef, side, all, focus, focusNext, fresh, you, hide }
       </div>
       {menu && <ContextMenu at={menu} label="Open beside the chat" onClose={() => setMenu(null)}
         items={openItems(fresh.s, fresh.off, () => pickBelow(plusRef.current), () => under(plusRef.current))} />}
+      {moreMenu && off.length > 0 && <ContextMenu at={moreMenu} label={`${off.length} more`} onClose={() => setMoreMenu(null)} items={moreItems()} />}
       {picker && <OpenTerminalPicker at={picker} you={you} onClose={() => setPicker(null)} />}
       {asking && createPortal(
         <AskClose at={asking} label={`Close ${asking.s.name}`} text={`${asking.s.busy} is still running in ${asking.s.name}. Close it and end ${asking.s.busy}?`}
@@ -427,8 +542,28 @@ function ToolStrip({ side, all, toggle }: { side: ChatSide; all: TerminalSession
   const [menu, setMenu] = useState<{ kind: SideKind; count: number; at: { x: number; y: number }; under: { x: number; y: number } } | null>(null);
   const [asking, setAsking] = useState<{ text: string; at: { x: number; y: number }; run: () => void } | null>(null);
   const [failed, setFail] = useState<string>();
+  // the icon's tooltip (GA-300; design/islands-chat → The tool strip): drawn as Islands/Tooltip, 6px left of the icon and
+  // centred on it, in place of the browser's: after a short rest of the pointer, at once from the keyboard (and while one
+  // shows); it goes when the pointer leaves, on a click, a right click and when the icon loses the focus
+  const [tip, setTip] = useState<{ kind: SideKind; right: number; y: number } | null>(null);
+  const tipTimer = useRef(0);
+  const tipId = useId();
+  const showTip = (kind: SideKind, el: HTMLElement, now: boolean) => {
+    window.clearTimeout(tipTimer.current);
+    const put = () => {
+      if (!el.isConnected) return;
+      const r = el.getBoundingClientRect();
+      setTip({ kind, right: window.innerWidth - r.left + 6, y: r.top + r.height / 2 });
+    };
+    if (now || tip) put();
+    else tipTimer.current = window.setTimeout(put, TIP_REST_MS);
+  };
+  const hideTip = () => { window.clearTimeout(tipTimer.current); setTip(null); };
+  useEffect(() => () => window.clearTimeout(tipTimer.current), []);
+  const tipCount = tip ? kinds.find((k) => k.kind === tip.kind)?.count : undefined;
 
   const openMenu = (kind: SideKind, count: number, btn: HTMLElement, at: { x: number; y: number } | null) => {
+    hideTip();
     const r = btn.getBoundingClientRect();
     setMenu({ kind, count, at: at ?? { x: r.left - 222, y: r.top }, under: { x: r.left, y: r.bottom + 4 } });
   };
@@ -468,7 +603,9 @@ function ToolStrip({ side, all, toggle }: { side: ChatSide; all: TerminalSession
         const Icon = KIND_ICON[kind];
         return (
           <button key={kind} type="button" className="strip-btn" data-kind={kind} aria-pressed={on === kind} aria-label={stripLabel(kind, count)}
-            title={stripTitle(kind, count)} onClick={() => toggle(kind)}
+            aria-describedby={tip?.kind === kind && tipCount ? tipId : undefined} onClick={() => { hideTip(); toggle(kind); }}
+            onMouseEnter={(e) => showTip(kind, e.currentTarget, false)} onMouseLeave={hideTip}
+            onFocus={(e) => { if (e.currentTarget.matches(":focus-visible")) showTip(kind, e.currentTarget, true); }} onBlur={hideTip}
             onContextMenu={(e) => { e.preventDefault(); openMenu(kind, count, e.currentTarget, e.clientX || e.clientY ? { x: e.clientX, y: e.clientY } : null); }}
             onKeyDown={(e) => {
               if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) { e.preventDefault(); openMenu(kind, count, e.currentTarget, null); }
@@ -478,6 +615,12 @@ function ToolStrip({ side, all, toggle }: { side: ChatSide; all: TerminalSession
           </button>
         );
       })}
+      {tip && tipCount ? createPortal(
+        <div id={tipId} className="strip-tip" role="tooltip" style={{ right: tip.right, top: tip.y }}>
+          <span>{stripLabel(tip.kind, tipCount)}</span><span className="key">{kindKey(tip.kind)}</span>
+        </div>,
+        document.body,
+      ) : null}
       {menu && <ContextMenu at={menu.at} label={stripMenuHead(menu.kind, menu.count)} items={items(menu)} onClose={() => setMenu(null)} />}
       {asking && createPortal(
         <AskClose at={asking.at} label="Close all terminals" text={asking.text} cancel={() => setAsking(null)} close={() => { const run = asking.run; setAsking(null); run(); }} />,

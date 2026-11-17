@@ -172,3 +172,38 @@ describe("the feature doc is docs/features/chief.md", () => {
     }
   });
 });
+
+// GA-300 QA: GA-256's check went line by line, so a "Team Lead" split over two lines stayed in docs/memory.md three times
+// (its lines 56-57, 83-84 and 262-263). The docs now say Chief there too; the only Team Lead left is the Memory folder's old
+// path, and the historical notes (GA-256's list, docs/research/ and docs/superpowers/) keep the name they had.
+describe("no Team Lead over two lines either (GA-300)", () => {
+  const flat = (doc) => read(doc).replace(/\s+/g, " ");
+  it("no doc in the list says Team Lead with a line break inside it, but for docs/memory.md on the folder's old path", () => {
+    const left = DOCS.flatMap((doc) => {
+      const text = doc === "docs/memory.md" ? flat(doc).replace(OLD_FOLDER, "") : flat(doc);
+      return [...text.matchAll(/team\s*lead/gi)].map((m) => `${doc}: …${text.slice(Math.max(0, m.index - 40), m.index + 30)}…`);
+    });
+    expect(left).toEqual([]);
+  });
+
+  it("docs/memory.md says the Chief where the three split ones were", () => {
+    const text = flat("docs/memory.md");
+    expect(text).toContain("writes only its own. The Chief moves useful notes from an agent's folder into a shared one (`memory_move`).");
+    expect(text).toContain("**The owner removed** (or made the Chief): its notes stay");
+    expect(text).toContain("The card's Hold row says With the Chief.");
+  });
+
+  it("keeps the paragraph on how the Team Lead/ folder became Chief/ as it was", () => {
+    const text = flat("docs/memory.md");
+    expect(text).toContain("**`Team Lead/` became `Chief/` (GA-258).** The Chief's folder used to be `Team Lead/`.");
+    expect(text).toContain("`[[Team Lead/Notes]]` becomes `[[Chief/Notes]]`");
+  });
+
+  it("no other doc under docs/ says it, but the historical notes", () => {
+    const old = (f) => HISTORICAL.includes(f) || f.startsWith("docs/research/") || f.startsWith("docs/superpowers/");
+    const all = git("ls-files", "docs").stdout.split("\n").filter((f) => f.endsWith(".md") && !old(f) && f !== "docs/memory.md");
+    expect(all.length).toBeGreaterThan(10);
+    const left = all.filter((f) => /team\s*lead/i.test(flat(f)));
+    expect(left).toEqual([]);
+  });
+});

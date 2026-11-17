@@ -130,9 +130,9 @@ describe("the background", () => {
       }
     }
   });
-  it("html.glass touches only html, body and .app: the islands, menus, popovers, the palette and drawers keep their solid fills", () => {
+  it("html.glass touches only html, body, .app and the onboarding's .onb: the islands, menus, popovers, the palette and drawers keep their solid fills", () => {
     const glassRules = all.filter((r) => r.selector.startsWith("html.glass"));
-    expect(glassRules.map((r) => r.selector).sort()).toEqual(["html.glass", "html.glass .app", "html.glass body"]);
+    expect(glassRules.map((r) => r.selector).sort()).toEqual(["html.glass", "html.glass .app", "html.glass .onb", "html.glass body"]);
     expect(decl("components.css", ".side").get("background")).toBe("var(--island)");
     expect(decl("app.css", ".page-island").get("background")).toBe("var(--island)");
     for (const sel of [".pop", ".pal", ".drawer", ".toast", ".ask"]) {
@@ -143,8 +143,22 @@ describe("the background", () => {
       for (const name of ["--island", "--float", "--raised", "--bg"]) expect([t, name, rgba(colour(t, name))[3]]).toEqual([t, name, 1]);
     }
   });
-  it("the first start's onboarding keeps its own opaque background with the glass on", () => {
-    expect(decl("onboarding.css", ".onb").get("background")).toBe("var(--bg)");
+  it("the first start's onboarding shows the glass with the glass on, and keeps its opaque gradient without it; its island is solid in both", () => {
+    // GA-300 item 8 (design/islands-settings/README.md, 9. Onboarding: 'The glass (Islands/Window background) behind it'):
+    // without the glass, .onb paints the window's background, the islands' opaque canvas gradient as .app paints it
+    expect(decl("onboarding.css", ".onb").get("background")).toBe(gradient("canvas-glow", "canvas-from", "canvas-to"));
+    for (const t of ["dark", "light"] as const) {
+      for (const n of ["--canvas-from", "--canvas-to", "--canvas-glow"]) expect([t, n, rgba(colour(t, n))[3]]).toEqual([t, n, 1]);
+    }
+    // with the glass on, .onb paints no background of its own, as .app: the body's glass shows behind the top row and around
+    // the island; the rule changes nothing else, and outweighs .onb's (html.glass .onb is more specific)
+    expect(decl("onboarding.css", "html.glass .onb").get("background")).toBe("none");
+    expect([...decl("onboarding.css", "html.glass .onb").keys()]).toEqual(["background"]);
+    expect(all.filter((r) => r.selector.startsWith("html.glass") && r.selector.includes(".onb")).map((r) => [r.file, r.selector]))
+      .toEqual([["onboarding.css", "html.glass .onb"]]);
+    // the island stays var(--island), solid in both themes, with or without the glass
+    expect(decl("onboarding.css", ".onb-island").get("background")).toBe("var(--island)");
+    for (const t of ["dark", "light"] as const) expect([t, rgba(colour(t, "--island"))[3]]).toEqual([t, 1]);
   });
 });
 
