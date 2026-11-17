@@ -5,6 +5,8 @@
 // Editor's own use (no onPick) is checked to be as it was. There is no DOM here, so a small hook runtime stands in for React
 // (as in SidebarBehind.test.tsx), and the portal renders in place. GA-278 QA: the Chat's Open terminal opens this picker
 // titled "Open terminal in", with you and the note, and a folder where a terminal can't start says why with it still open.
+// GA-296 QA: Open terminal became the top bar's Open, a menu: its New terminal opens that picker while the chat has no
+// terminal, and New terminal in… opens it always; a pick opens a Terminal tab in the chat's side island.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactElement, ReactNode } from "react";
 import type { EditorFolder } from "../../types";
@@ -49,7 +51,14 @@ vi.mock("react", async (orig) => {
       h.effects.push(() => { s.cleanup?.(); const c = f(); s.cleanup = typeof c === "function" ? c : undefined; });
     }
   }) as typeof R.useEffect;
-  const hooks = { useState, useRef, useMemo, useCallback, useEffect, useLayoutEffect: useEffect };
+  // subscribes on the first draw and draws again when the store says it changed (OpenInTerminal.test.tsx's)
+  const useSyncExternalStore = ((subscribe: (f: () => void) => () => void, snapshot: () => unknown) => {
+    if (!h.cur) return snapshot();
+    const s = slot(() => ({ effect: true, first: true, sub: undefined as unknown, cleanup: undefined as (() => void) | undefined }));
+    if (s.sub !== subscribe) { s.cleanup?.(); s.sub = subscribe; s.cleanup = subscribe(() => { h.dirty = true; }); }
+    return snapshot();
+  }) as typeof R.useSyncExternalStore;
+  const hooks = { useState, useRef, useMemo, useCallback, useEffect, useLayoutEffect: useEffect, useSyncExternalStore };
   return { ...R, default: { ...R, ...hooks }, ...hooks };
 });
 vi.mock("react-dom", async (orig) => ({ ...(await orig<object>()), createPortal: (children: ReactNode) => children }));
@@ -91,6 +100,9 @@ vi.mock("../../lib/terminals", async (orig) => ({
   ...(await orig<object>()), useTerminals: () => chatT.terms, noteOpened: () => {}, terminalsNow: () => [], watchTerminals: () => () => {},
 }));
 vi.mock("../../router", async (orig) => ({ ...(await orig<object>()), go: (r: unknown) => { s.went.push(r); } }));
+// GA-297: ChatSide brings the Card tab (its comment box and the pull request's counts load CodeMirror, which needs a DOM);
+// no card opens here
+vi.mock("../chat/ChatCard", () => ({ CardTab: () => null, ChatCardBody: () => null }));
 
 const store = new Map<string, string>();
 vi.stubGlobal("localStorage", { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => { store.set(k, String(v)); }, removeItem: (k: string) => { store.delete(k); } });
@@ -98,7 +110,8 @@ vi.stubGlobal("window", Object.assign(new EventTarget(), { innerWidth: 1280, inn
 vi.stubGlobal("document", { body: {} });
 
 const { FolderPicker } = await import("./FolderPicker");
-const { OpenTerminalButton } = await import("../chat/ChatTerminal");
+const { OpenButton } = await import("../chat/ChatSide");
+const Side = await import("../../lib/chatSide");
 
 // ---- the hook runtime ----
 let root: () => ReactNode = () => null;
@@ -267,28 +280,54 @@ describe("New terminal's folder picker (design §2)", () => {
   });
 });
 
-describe("GA-278: the Chat's Open terminal opens it", () => {
-  const openTerminal = async () => {
-    root = () => <OpenTerminalButton youId="u1" />;
+describe("GA-278, GA-296: the Chat's Open opens it", () => {
+  const openBtn = () => one((f) => f.type === "button" && typeof f.props.className === "string" && f.props.className.includes("chat-open"));
+  const menu = () => one((f) => f.props.role === "menu");
+  const items = () => findAll(kids(menu()!), (f) => f.props.role === "menuitem");
+  const item = (label: string) => items().find((i) => textOf(kids(i)).startsWith(label) && (label.endsWith("…") || !textOf(kids(i)).includes("…")))!;
+  /** The top bar's Open, its menu opened. */
+  const openMenu = async () => {
+    root = () => <OpenButton youId="u1" />;
     render();
     await settle();
-    const btn = one((f) => f.type === "button" && textOf(kids(f)).includes("Open terminal"))!;
-    expect(btn.props["aria-expanded"]).toBe(false);
+    const btn = openBtn()!;
+    expect([btn.props["aria-haspopup"], btn.props["aria-expanded"]]).toEqual(["menu", false]);
     fire(btn, "onClick", { currentTarget: { getBoundingClientRect: () => ({ left: 900, bottom: 40 }) } });
+    await settle();
+  };
+  /** Open, then New terminal (the chat has no terminal yet: the picker). */
+  const openTerminal = async () => {
+    await openMenu();
+    fire(item("New terminal"), "onClick");
     await settle();
   };
   // the tree holds what the components drew: the picker is its dialog
   const picker = () => one((f) => f.props.role === "dialog");
   const classText = (cls: string) => { const f = one((x) => x.props.className === cls); return f ? textOf(kids(f)) : null; };
-  beforeEach(() => { chatT.opens = []; chatT.terms = []; chatT.answer = () => new Promise(() => {}); });
+  const kade = (f: string) => ({ id: "c1", name: "kade-portal", folder: f, folderPath: "~/Herd/kade-portal", taskId: null, shell: "sh", busy: null, ended: null, cols: 80, rows: 24, openedAt: 1 });
+  beforeEach(() => {
+    chatT.opens = []; chatT.terms = []; chatT.answer = () => new Promise(() => {});
+    // the chat on show starts with nothing open beside it
+    Side.showChat("c1");
+    Side.closeSideTabs(Side.sideNow().tabs.map(Side.tabKey));
+  });
 
-  it("titled 'Open terminal in', under the button, with you, and no note under 20 open terminals", async () => {
+  it("Open's menu, under it: New terminal with its key, and (no terminal in the chat yet) nothing else", async () => {
+    await openMenu();
+    const m = menu()!;
+    expect(m.props["aria-label"]).toBe("Open beside the chat");
+    expect(m.props.style, "under the button: its left, 6px under it").toMatchObject({ left: 900, top: 46 });
+    expect(openBtn()!.props["aria-expanded"]).toBe(true);
+    expect(items().map((i) => textOf(kids(i)))).toEqual(["New terminalCtrl+Shift+`"]);
+    expect([items()[0]!.props.title, items()[0]!.props.disabled]).toEqual(["New terminal in a folder you pick", false]);
+  });
+
+  it("New terminal opens the picker titled 'Open terminal in', with you, and no note under 20 open terminals", async () => {
     chatT.terms = Array.from({ length: 19 }, (_, i) => ({ id: `t${i}` }));
     await openTerminal();
+    expect(menu(), "the menu closed").toBeUndefined();
     const p = picker()!;
     expect([p.props["aria-label"], classText("ed-picker-title"), classText("ed-picker-note")]).toEqual(["Open terminal in", "Open terminal in", null]);
-    expect(p.props.style, "under the button: its left, 6px under it").toMatchObject({ left: 900, top: 46 });
-    expect(one((f) => f.type === "button" && textOf(kids(f)).includes("Open terminal"))?.props["aria-expanded"]).toBe(true);
     expect(groups().map(([g]) => g)).toEqual(["Projects", "In ~/Herd", "Cards"]);
   });
 
@@ -306,10 +345,10 @@ describe("GA-278: the Chat's Open terminal opens it", () => {
     expect(chatT.opens, "a new terminal in the folder picked (openChatTerminal(folder.id, false))").toEqual([`${HERD}/invoice-api`]);
     expect(picker()).toBeDefined();
     expect(textOf(kids(failedNote()!))).toBe("QA Agent is working on GA-118: a terminal there waits until its run ends.");
+    expect(Side.sideNow().tabs, "no tab").toEqual([]);
   });
 
   it("a card that isn't pinned to you asks first, as New terminal's; one pinned to you starts at once", async () => {
-    chatT.answer = () => new Promise(() => {});
     await openTerminal();
     fire(option("GA-112"), "onClick");
     await settle();
@@ -320,14 +359,33 @@ describe("GA-278: the Chat's Open terminal opens it", () => {
     expect(chatT.opens).toEqual([`${WT}/KADE/KADE-41`]);
   });
 
-  it("a pick that starts closes the picker", async () => {
-    chatT.answer = (f) => Promise.resolve({ id: "c1", name: "kade-portal", folder: f, folderPath: "~/Herd/kade-portal", taskId: null, shell: "sh", busy: null, ended: null, cols: 80, rows: 24, openedAt: 1 });
+  it("a pick that starts closes the picker, and the terminal is a tab in the chat's side island, shown", async () => {
+    chatT.answer = (f) => Promise.resolve(kade(f));
     await openTerminal();
     fire(option("kade-portal"), "onClick");
     await settle();
     expect(chatT.opens).toEqual([`${HERD}/kade-portal`]);
     expect(picker()).toBeUndefined();
-    expect(one((f) => f.type === "button" && textOf(kids(f)).includes("Open terminal"))?.props["aria-expanded"]).toBe(false);
+    expect(Side.sideNow()).toMatchObject({ tabs: [{ kind: "terminal", id: "c1" }], current: "terminal:c1", open: true });
+  });
+
+  it("with a terminal in the chat: New terminal starts in its folder without the picker, and New terminal in… asks for the folder", async () => {
+    chatT.answer = (f) => Promise.resolve(kade(f));
+    chatT.terms = [kade(`${HERD}/kade-portal`)];
+    Side.openSideTab({ kind: "terminal", id: "c1" });
+    await openMenu();
+    expect(items().map((i) => textOf(kids(i)))).toEqual(["New terminalCtrl+Shift+`", "New terminal in…"]);
+    expect(item("New terminal").props.title).toBe("New terminal in kade-portal");
+    expect(item("New terminal in…").props.title).toBe("New terminal in a folder you pick");
+    fire(item("New terminal"), "onClick");
+    await settle();
+    expect(picker(), "no picker").toBeUndefined();
+    expect(chatT.opens, "in the shown terminal's folder").toEqual([`${HERD}/kade-portal`]);
+    fire(openBtn()!, "onClick", { currentTarget: { getBoundingClientRect: () => ({ left: 900, bottom: 40 }) } });
+    await settle();
+    fire(item("New terminal in…"), "onClick");
+    await settle();
+    expect(picker()?.props["aria-label"]).toBe("Open terminal in");
   });
 });
 

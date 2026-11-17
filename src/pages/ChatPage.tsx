@@ -1,7 +1,11 @@
-// Chat with the Team Lead (design system: ChatMessage, ToolCard, ChatSetup): on the left the pinned chats (Pinned, GA-257)
-// and the 30 newest chats (Recent) with Archive under them, the conversation or the Archive (#/chats) in the middle, and on
-// the right the chat's terminal panel while it shows (GA-278: Open terminal in the top bar, components/chat/ChatTerminal.tsx).
+// Chat with the Team Lead (design system: ChatMessage, ToolCard, ChatSetup), in islands (GA-296, design/islands-chat): on the
+// left the pinned chats (Pinned, GA-257) and the 30 newest chats (Recent) with Archive under them, the conversation or the
+// Archive (#/chats) in the middle, and on the right what is open beside the chat: the side island while it shows and the
+// tool strip on the window's right edge (Open in the top bar, components/chat/ChatSide.tsx). A card chip opens the card in
+// a Card tab there (GA-297; Ctrl+click, Cmd+click on macOS, its page), and a chat the Chief started about cards opens them
+// there the first time it opens.
 // Without a Team Lead, a panel explains how to set one up.
+import { useEffect } from "react";
 import { Crown, History, MessagesSquare, Plus, Settings } from "lucide-react";
 import { chatAgent, getChatThread, listChatThreads } from "../api";
 import { go, href } from "../router";
@@ -11,9 +15,12 @@ import { useCurrentTeam } from "../lib/team";
 import { relTime } from "../lib/format";
 import { chatLabel, chatLabelTitle, chatWaits } from "../lib/inbox";
 import { RECENT_MAX } from "../lib/chat";
+import { chatSideKey, openCardTab } from "../lib/chatSide";
+import { openChatCardsOnce } from "../lib/chatCard";
+import { BesideChat } from "../lib/besideChat";
 import { Avatar } from "../components/Avatar";
 import { ChatArchive } from "../components/chat/ChatArchive";
-import { ChatTerminals, OpenTerminalButton, useChatTerminalLayout } from "../components/chat/ChatTerminal";
+import { ChatSide, OpenButton, useChatSideLayout } from "../components/chat/ChatSide";
 import { ChatThread } from "../components/chat/ChatThread";
 import { PinButton } from "../components/chat/PinButton";
 import { useChatLive } from "../components/chat/useChat";
@@ -54,8 +61,8 @@ function ThreadRow({ t, on, live, pins }: { t: Thread; on: boolean; live: ChatSt
   );
 }
 
-/** `archive`: Chat → Archive (#/chats) instead of a conversation. `youId`: you, for the folder picker of Open terminal and of
- *  Open in terminal under a message. */
+/** `archive`: Chat → Archive (#/chats) instead of a conversation. `youId`: you, for the folder picker of Open and of Open
+ *  in terminal under a message. */
 export function ChatPage({ id, archive = false, youId = "" }: { id?: string; archive?: boolean; youId?: string }) {
   const agent = useData(() => chatAgent().then((a) => ({ a })));
   const threads = useData(() => listChatThreads(RECENT_MAX));
@@ -73,7 +80,13 @@ export function ChatPage({ id, archive = false, youId = "" }: { id?: string; arc
   const thread = listed ?? (older.data && older.data.id === id ? older.data : undefined)
     ?? (id ? pins.list.find((t) => t.id === id) : undefined);
   const working = live.length > 0;
-  const term = useChatTerminalLayout(!!lead);
+  const side = useChatSideLayout(!!lead, chatSideKey(id, archive));
+  // A chat the Chief started about cards: the first time it opens, its cards open beside it, the first one shown (once per
+  // chat, also after a restart: lib/chatCard.ts).
+  const cards = thread && thread.id === id ? thread.tasks?.join(" ") ?? "" : "";
+  useEffect(() => {
+    if (lead && id && cards) openChatCardsOnce(id, cards.split(" "));
+  }, [!!lead, id, cards]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <>
       <div className="topbar">
@@ -88,7 +101,7 @@ export function ChatPage({ id, archive = false, youId = "" }: { id?: string; arc
               {working ? <span className="live-tag"><span className="pulse" />working</span> : lead.status !== "active" ? <span className="faint">paused</span> : null}
             </a>
             <button className="btn ghost sm icon-only" title={`${lead.name} settings`} aria-label={`${lead.name} settings`} onClick={() => open({ kind: "agent", id: lead.actorId })}><Settings className="icon" /></button>
-            <OpenTerminalButton youId={youId} />
+            <OpenButton youId={youId} />
             <button className="btn sm" onClick={() => go({ page: "chat" })}><Plus className="icon" />New chat</button>
           </div>
         )}
@@ -96,25 +109,27 @@ export function ChatPage({ id, archive = false, youId = "" }: { id?: string; arc
       {agent.error && <div className="error-banner">{agent.error}</div>}
       {agent.data && !lead && <ChatSetup />}
       {lead && (
-        <div ref={term.chatRef} className={term.className}>
-          <aside className="chat-threads" aria-label="Chats">
-            <div className="chat-threads-list" data-pins="">
-              <a className={`th${!id && !archive ? " on" : ""}`} href={href({ page: "chat" })}><span className="t"><Plus className="icon sm" />New chat</span></a>
-              {pins.list.length > 0 && <div className="nav-label">Pinned</div>}
-              {pins.list.map((t) => <ThreadRow key={t.id} t={t} on={t.id === id} live={live} pins={pins} />)}
-              {recent.length > 0 && <div className="nav-label">Recent</div>}
-              {recent.map((t) => <ThreadRow key={t.id} t={t} on={t.id === id} live={live} pins={pins} />)}
-            </div>
-            {(newest.length > 0 || pins.list.length > 0) && (
-              <div className="chat-threads-foot">
-                <a className={`th${archive ? " on" : ""}`} href={href({ page: "chats" })} aria-current={archive ? "page" : undefined}
-                  title="Every chat, with a search through their titles and messages"><span className="t"><History className="icon sm" />Archive</span></a>
+        <BesideChat.Provider value={openCardTab}>
+          <div ref={side.chatRef} className={side.className}>
+            <aside className="chat-threads" aria-label="Chats">
+              <div className="chat-threads-list" data-pins="">
+                <a className={`th${!id && !archive ? " on" : ""}`} href={href({ page: "chat" })}><span className="t"><Plus className="icon sm" />New chat</span></a>
+                {pins.list.length > 0 && <div className="nav-label">Pinned</div>}
+                {pins.list.map((t) => <ThreadRow key={t.id} t={t} on={t.id === id} live={live} pins={pins} />)}
+                {recent.length > 0 && <div className="nav-label">Recent</div>}
+                {recent.map((t) => <ThreadRow key={t.id} t={t} on={t.id === id} live={live} pins={pins} />)}
               </div>
-            )}
-          </aside>
-          {archive ? <ChatArchive live={live} pins={pins} /> : <ChatThread threadId={id ?? null} thread={thread} agent={lead} youId={youId} />}
-          <ChatTerminals />
-        </div>
+              {(newest.length > 0 || pins.list.length > 0) && (
+                <div className="chat-threads-foot">
+                  <a className={`th${archive ? " on" : ""}`} href={href({ page: "chats" })} aria-current={archive ? "page" : undefined}
+                    title="Every chat, with a search through their titles and messages"><span className="t"><History className="icon sm" />Archive</span></a>
+                </div>
+              )}
+            </aside>
+            {archive ? <ChatArchive live={live} pins={pins} /> : <ChatThread threadId={id ?? null} thread={thread} agent={lead} youId={youId} />}
+            <ChatSide youId={youId} />
+          </div>
+        </BesideChat.Provider>
       )}
       {pins.error && <div className="toast" role="status">{pins.error}</div>}
     </>

@@ -1686,6 +1686,7 @@ dependencies = [
  "tokio",
  "webkit2gtk",
  "windows-sys 0.61.2",
+ "windows-version",
 ]
 
 [[package]]

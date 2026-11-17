@@ -8,6 +8,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { answerChatOn, chatClis, checkFiles, editQueuedChat, removeQueuedChat, sendChat, sendChatQueue, setAgentStatus, setChatCli, stopChat } from "../../api";
 import { go } from "../../router";
 import { chatRunsOn, groupMessages, SUGGESTIONS, toolName, type Group } from "../../lib/chat";
+import { adoptNewChat } from "../../lib/chatSide";
 import { addPaths } from "../../lib/files";
 import { placePending } from "../../lib/pending";
 import { usePending, type Pending } from "../../lib/usePending";
@@ -210,6 +211,8 @@ export function ChatThread({ threadId, thread, agent, youId }: { threadId: strin
       setFileNote(null);
       if (!working) setWorking(true);
       pinned.current = true;
+      // the first message made the chat: it takes what New chat had open beside it
+      if (!threadId) adoptNewChat(id);
       if (id !== threadId) go({ page: "chat", id });
     } catch (e) {
       setSendError(String(e));

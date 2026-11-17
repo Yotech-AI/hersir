@@ -192,6 +192,7 @@ Each variable Hersir reads has a `HERSIR_` name and, from before 0.17.0, a `GIZA
 It cleans up after itself when it starts and once a day while it runs:
 
 - **Run and chat logs** (`runs/` and `chat/`): kept for 30 days after the run, chat answer or board check ended, then removed. The run stays in the history with its summary, cost and commits; Show output says its log is gone.
+- **Hersir's own logs** (`logs/`): one file per start, with what Hersir printed ([When Hersir crashed](../README.md#when-hersir-crashed)). At each start the 20 newest stay, and the log of a start that ended unexpectedly stays until its notice is dismissed.
 - **Keys for the Chief's tools** (`api_tokens` in `gizai.db`): each one lasts a chat answer or board check, and is removed a day after it expired or was revoked.
 - **Screenshots** of what agents built (`files/`): a card keeps its newest 3 sets, and all of them go 30 days after it reached Done or Cancelled (0 days keeps them). What you attached to a card is never removed.
 - **Stored files nothing uses any more** (`files/`): a file no attachment, screenshot or chat message names any more is removed, a day after it was last stored.

@@ -1,18 +1,20 @@
 // The Editor page (GA-113, F2 of the Code Editor; research §5.2, design design/code-editor/editor.html §3, §4, §7):
-// #/editor/<folder>. The top bar is the folder's (breadcrumbs, branch and how many files changed, Open in); under it at
-// most one bar about the folder (read-only, a card that isn't yours, the card bar of your card by hand and where Hand over
-// sent it, GA-115); then the file tree or search in the folder beside the tabs and the code; under the tabs at most one
-// bar about the open file (changed on disk, read-only, couldn't save); the status bar at the bottom is the open file's.
+// #/editor/<folder>. The top bar is the folder's (breadcrumbs, branch and how many files changed, Open in), on the
+// background. Under it the page is islands (GA-293, design/islands: Editor), island-gap apart: the file tree or search in
+// the folder, and the code island: the open files as tabs in its header; under them at most one bar about the folder
+// (read-only, a card that isn't yours, the card bar of your card by hand and where Hand over sent it, GA-115) and at most
+// one about the open file (changed on disk, read-only, couldn't save); the code; the status bar, the open file's, at its
+// bottom. The terminal panel is an island under the code island.
 // Outside changes (research §5.3): every 3 seconds the open files' versions (an untouched tab reloads, a tab with changes
 // here offers Reload and Keep mine); every 10 seconds and when the window gets the focus, git's status; on the focus also
 // the tree's open folders. A focus 5 seconds or less after the last refresh leaves it alone (GA-177). No file watcher.
 // Behind main (GA-114, F3; design §5, contract C3): the top bar says how the folder stands against main, with Fetch; main
 // is fetched when the folder opens and every 10 minutes while the page shows it, and looked at (locally) every 10 seconds.
-// Under the top bar, the behind bar: Update and what it will do, or why it can't; Update running; how it ended, with
-// Show output; a fetch that failed. A card's worktree has its own bars there (read-only, the card's), and no behind bar.
-// The terminal panel (GA-137, TF2; components/editor/TerminalPanel.tsx): the Terminal button between Fetch and Open in,
-// the panel between the code and the status bar; Ctrl+` shows or hides it, Ctrl+Shift+` starts a terminal in it. While a
-// terminal has the focus, the Editor's own keys leave it alone.
+// In the folder's bar's place, the behind bar: Update and what it will do, or why it can't; Update running; how it ended,
+// with Show output; a fetch that failed. A card's worktree has its own bars there (read-only, the card's), and no behind
+// bar. The terminal panel (GA-137, TF2; components/editor/TerminalPanel.tsx): the Terminal button between Fetch and Open
+// in, the panel under the code island with the gap above it as its drag handle; Ctrl+` shows or hides it, Ctrl+Shift+`
+// starts a terminal in it. While a terminal has the focus, the Editor's own keys leave it alone.
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { CircleCheck, FileCode, FolderCode, Lock, PanelLeft, PanelLeftClose, Search, TriangleAlert, X } from "lucide-react";
@@ -588,44 +590,6 @@ function FolderEditor({ folderId, youId }: { folderId: string; youId: string }) 
           {folder && <OpenInAtCursor cursor={cursor} folder={id} name={name} path={t?.path ?? null} fail={setBanner} />}
         </div>
       </div>
-      {banner && <div className="error-banner" role="alert" style={{ margin: 0 }}>{banner}<button className="btn ghost sm icon-only" aria-label="Dismiss" style={{ marginLeft: 8 }} onClick={() => setBanner(null)}><X className="icon" /></button></div>}
-
-      {agentAtWork ? (
-        <div className="ed-bar" role="status">
-          <span className="pulse" />
-          <span className="say">{dirtyCount > 0
-            ? `${folder?.readOnlyWhy ?? "An agent is working on it"}: its worktree is read-only again. ${dirtyCount === 1 ? "1 tab has" : `${dirtyCount} tabs have`} changes that weren't saved: copy what you need, then close ${dirtyCount === 1 ? "it" : "them"}.`
-            : `${folder?.readOnlyWhy ?? "An agent is working on it"}: its worktree is read-only until the run ends.`}</span>
-          {folder?.taskId && <span className="acts"><button className="btn sm" onClick={() => go({ page: "task", id: folder.taskId! })}>Open card</button></span>}
-        </div>
-      ) : handed ? (
-        <div className="ed-bar done" role="status">
-          <CircleCheck className="icon" />
-          <span className="say">{handed}</span>
-          {folder?.taskId && <span className="acts"><button className="btn ghost sm" onClick={() => go({ page: "task", id: folder.taskId! })}>Open card</button></span>}
-        </div>
-      ) : cardMine && task ? (
-        <CardBar task={task} folder={id} git={git} onChanged={() => { refreshGit(); refreshTree(); }} onHanded={setHanded} />
-      ) : notMine && !editAnyway ? (
-        <div className="ed-bar" role="status">
-          <Lock className="icon" />
-          <span className="say">{owner ? `${name} is ${owner}'s card` : `${name} isn't assigned to anyone`}: its worktree is read-only here. Edit anyway puts your changes in it, uncommitted, for {owner ? "the agent's" : "its"} next run.</span>
-          <span className="acts">
-            <button className="btn sm" onClick={() => setEditAnyway(true)}>Edit anyway</button>
-            {folder?.taskId && <button className="btn sm" onClick={() => go({ page: "task", id: folder.taskId! })}>Open card</button>}
-          </span>
-        </div>
-      ) : notMine && editAnyway ? (
-        <div className="ed-bar" role="status">
-          <TriangleAlert className="icon" />
-          <span className="say">You're editing {name}'s worktree. {owner ? `${owner}'s` : "Its"} next run gets your changes, uncommitted.</span>
-          <span className="acts"><button className="btn sm" onClick={() => setEditAnyway(false)}>Done editing</button></span>
-        </div>
-      ) : behind ? (
-        <BehindBar bar={behind} output={showOutput} fetching={fetching} update={startUpdate} fetch={fetchMain}
-          toggleOutput={() => setShowOutput((x) => !x)} dismiss={() => { setEnded(null); setShowOutput(false); }} />
-      ) : null}
-
       <div className="ed">
         <aside className="ed-side" hidden={!treeShown} aria-label="Files and search">
           <div className="ed-side-top">
@@ -650,77 +614,119 @@ function FolderEditor({ folderId, youId }: { folderId: string; youId: string }) 
         </aside>
 
         <div className={`ed-main${term.visible ? " has-term" : ""}`}>
-          <div className="ed-tabs" role="tablist" aria-label="Open files">
-            {!treeShown && <button className="btn ghost sm icon-only" aria-label={`Show the file tree (${modKey()}+B)`} title={`Show the file tree (${modKey()}+B)`} onClick={() => setTreeShown(true)}><PanelLeft className="icon" /></button>}
-            {tabs.map((x) => {
-              const n = names.get(x.path);
-              const m = markOf(x.path, git);
-              const ro = tabLocked(x);
-              const ign = !!entryOf(x.path)?.ignored || !!ignoredFolderOf(x.path, levels);
-              return (
-                <div key={x.path} className={`ed-tab${x.dirty ? " unsaved" : ""}${ign ? " ignored" : ""}`} role="tab" data-path={x.path} tabIndex={x.path === active ? 0 : -1}
-                  aria-selected={x.path === active} aria-label={`${n?.name ?? nameOf(x.path)}${x.dirty ? ", not saved" : ""}`} title={x.path}
-                  onClick={() => setActive(x.path)}
-                  onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); askClose(x.path, e.currentTarget); } }}
-                  onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
-                  onKeyDown={(e) => {
-                    if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
-                      e.preventDefault();
-                      const next = stepTab(tabs.map((y) => y.path), x.path, e.key === "ArrowRight" ? 1 : -1);
-                      setActive(next);
-                      (e.currentTarget.parentElement?.querySelector(`[data-path="${CSS.escape(next ?? "")}"]`) as HTMLElement | null)?.focus();
-                    }
-                  }}
-                  ref={x.path === active ? activeTabEl : undefined}>
-                  {ro && <Lock className="ro" aria-label="Read-only" />}
-                  <span className="name">{n?.name ?? nameOf(x.path)}</span>
-                  {n?.dir && <span className="dir">{n.dir}</span>}
-                  {m && <span className={`ed-mark ${m}`} title={MARK_TIP[m]} aria-label={MARK_TIP[m]}>{m === "modified" ? "M" : m === "added" ? "A" : m === "renamed" ? "R" : m === "untracked" ? "U" : m === "conflicted" ? "C" : "D"}</span>}
-                  <button className="x" aria-label={`Close ${n?.name ?? nameOf(x.path)}`} title={`Close (${modKey()}+W)`} tabIndex={-1}
-                    onClick={(e) => { e.stopPropagation(); askClose(x.path, e.currentTarget.parentElement); }}><X className="icon" /></button>
-                </div>
-              );
-            })}
-          </div>
+          {/* the code island (design/islands: Editor): its open files as tabs in its header, the folder's and the file's bars,
+              the code, and the status bar at its bottom; the terminal panel is an island of its own under it */}
+          <div className="ed-code-island">
+            <div className="ed-tabs island-tabs" role="tablist" aria-label="Open files">
+              {!treeShown && <button className="btn ghost sm icon-only" aria-label={`Show the file tree (${modKey()}+B)`} title={`Show the file tree (${modKey()}+B)`} onClick={() => setTreeShown(true)}><PanelLeft className="icon" /></button>}
+              {tabs.map((x) => {
+                const n = names.get(x.path);
+                const m = markOf(x.path, git);
+                const ro = tabLocked(x);
+                const ign = !!entryOf(x.path)?.ignored || !!ignoredFolderOf(x.path, levels);
+                return (
+                  <div key={x.path} className={`ed-tab${x.dirty ? " unsaved" : ""}${ign ? " ignored" : ""}`} role="tab" data-path={x.path} tabIndex={x.path === active ? 0 : -1}
+                    aria-selected={x.path === active} aria-label={`${n?.name ?? nameOf(x.path)}${x.dirty ? ", not saved" : ""}`} title={x.path}
+                    onClick={() => setActive(x.path)}
+                    onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); askClose(x.path, e.currentTarget); } }}
+                    onMouseDown={(e) => { if (e.button === 1) e.preventDefault(); }}
+                    onKeyDown={(e) => {
+                      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+                        e.preventDefault();
+                        const next = stepTab(tabs.map((y) => y.path), x.path, e.key === "ArrowRight" ? 1 : -1);
+                        setActive(next);
+                        (e.currentTarget.parentElement?.querySelector(`[data-path="${CSS.escape(next ?? "")}"]`) as HTMLElement | null)?.focus();
+                      }
+                    }}
+                    ref={x.path === active ? activeTabEl : undefined}>
+                    {ro && <Lock className="ro" aria-label="Read-only" />}
+                    <span className="name">{n?.name ?? nameOf(x.path)}</span>
+                    {n?.dir && <span className="dir">{n.dir}</span>}
+                    {m && <span className={`ed-mark ${m}`} title={MARK_TIP[m]} aria-label={MARK_TIP[m]}>{m === "modified" ? "M" : m === "added" ? "A" : m === "renamed" ? "R" : m === "untracked" ? "U" : m === "conflicted" ? "C" : "D"}</span>}
+                    <button className="x" aria-label={`Close ${n?.name ?? nameOf(x.path)}`} title={`Close (${modKey()}+W)`} tabIndex={-1}
+                      onClick={(e) => { e.stopPropagation(); askClose(x.path, e.currentTarget.parentElement); }}><X className="icon" /></button>
+                  </div>
+                );
+              })}
+            </div>
 
-          {t && <FileBar t={t} name={nameOf(t.path)} locked={locked} folderBar={agentAtWork || notMine} ignoredIn={ignoredIn} size={entry?.size ?? null}
-            reload={() => reload(t.path, false)} keepMine={() => keepMine(t.path)} save={() => save(t.path)}
-            cancel={() => patch(t.path, { disk: "kept" })} closeTab={() => close(t.path)} openIn={<OpenInAtCursor cursor={cursor} folder={id} name={nameOf(t.path)} path={t.path} fail={setBanner} />} />}
+            {banner && <div className="error-banner" role="alert" style={{ margin: 0 }}>{banner}<button className="btn ghost sm icon-only" aria-label="Dismiss" style={{ marginLeft: 8 }} onClick={() => setBanner(null)}><X className="icon" /></button></div>}
 
-          {/* with the terminal panel the code keeps its least height (terminal.css) */}
-          <div className="ed-code" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: term.visible ? undefined : 0, position: "relative" }}>
-            <div ref={host} className="ed-host" style={{ flex: 1, minHeight: 0, display: activeState ? "flex" : "none", flexDirection: "column" }} />
-            {!activeState && (
-              <div className="ed-empty">
-                {!t ? <span className="faint">Open a file from the tree, or press {modKey()}+P to go to one.</span>
-                  : t.status === "loading" ? <span className="faint">Loading…</span>
-                  : t.status === "error" ? <div className="empty"><b>{t.error}</b><button className="btn sm" onClick={() => close(t.path)}>Close tab</button></div>
-                  : t.disk === "gone" ? <div className="empty"><b>{t.path} isn't there any more.</b><button className="btn sm" onClick={() => close(t.path)}>Close tab</button></div>
-                  : file?.tooLarge ? <div className="empty"><FileCode className="icon" /><b>Too big to show here{entry ? ` (${sizeLabel(entry.size)})` : ""}.</b>{openInFirst(t.path)}</div>
-                  : file?.binary ? <div className="empty"><FileCode className="icon" /><b>A binary file{entry ? ` (${sizeLabel(entry.size)})` : ""}: Hersir shows text only.</b>{openInFirst(t.path)}</div>
-                  : null}
+            {agentAtWork ? (
+              <div className="ed-bar" role="status">
+                <span className="pulse" />
+                <span className="say">{dirtyCount > 0
+                  ? `${folder?.readOnlyWhy ?? "An agent is working on it"}: its worktree is read-only again. ${dirtyCount === 1 ? "1 tab has" : `${dirtyCount} tabs have`} changes that weren't saved: copy what you need, then close ${dirtyCount === 1 ? "it" : "them"}.`
+                  : `${folder?.readOnlyWhy ?? "An agent is working on it"}: its worktree is read-only until the run ends.`}</span>
+                {folder?.taskId && <span className="acts"><button className="btn sm" onClick={() => go({ page: "task", id: folder.taskId! })}>Open card</button></span>}
               </div>
-            )}
+            ) : handed ? (
+              <div className="ed-bar done" role="status">
+                <CircleCheck className="icon" />
+                <span className="say">{handed}</span>
+                {folder?.taskId && <span className="acts"><button className="btn ghost sm" onClick={() => go({ page: "task", id: folder.taskId! })}>Open card</button></span>}
+              </div>
+            ) : cardMine && task ? (
+              <CardBar task={task} folder={id} git={git} onChanged={() => { refreshGit(); refreshTree(); }} onHanded={setHanded} />
+            ) : notMine && !editAnyway ? (
+              <div className="ed-bar" role="status">
+                <Lock className="icon" />
+                <span className="say">{owner ? `${name} is ${owner}'s card` : `${name} isn't assigned to anyone`}: its worktree is read-only here. Edit anyway puts your changes in it, uncommitted, for {owner ? "the agent's" : "its"} next run.</span>
+                <span className="acts">
+                  <button className="btn sm" onClick={() => setEditAnyway(true)}>Edit anyway</button>
+                  {folder?.taskId && <button className="btn sm" onClick={() => go({ page: "task", id: folder.taskId! })}>Open card</button>}
+                </span>
+              </div>
+            ) : notMine && editAnyway ? (
+              <div className="ed-bar" role="status">
+                <TriangleAlert className="icon" />
+                <span className="say">You're editing {name}'s worktree. {owner ? `${owner}'s` : "Its"} next run gets your changes, uncommitted.</span>
+                <span className="acts"><button className="btn sm" onClick={() => setEditAnyway(false)}>Done editing</button></span>
+              </div>
+            ) : behind ? (
+              <BehindBar bar={behind} output={showOutput} fetching={fetching} update={startUpdate} fetch={fetchMain}
+                toggleOutput={() => setShowOutput((x) => !x)} dismiss={() => { setEnded(null); setShowOutput(false); }} />
+            ) : null}
+
+            {t && <FileBar t={t} name={nameOf(t.path)} locked={locked} folderBar={agentAtWork || notMine} ignoredIn={ignoredIn} size={entry?.size ?? null}
+              reload={() => reload(t.path, false)} keepMine={() => keepMine(t.path)} save={() => save(t.path)}
+              cancel={() => patch(t.path, { disk: "kept" })} closeTab={() => close(t.path)} openIn={<OpenInAtCursor cursor={cursor} folder={id} name={nameOf(t.path)} path={t.path} fail={setBanner} />} />}
+
+            {/* with the terminal panel the code island keeps room for the code's least height (terminal.css) */}
+            <div className="ed-code" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, position: "relative" }}>
+              <div ref={host} className="ed-host" style={{ flex: 1, minHeight: 0, display: activeState ? "flex" : "none", flexDirection: "column" }} />
+              {!activeState && (
+                <div className="ed-empty">
+                  {!t ? <span className="faint">Open a file from the tree, or press {modKey()}+P to go to one.</span>
+                    : t.status === "loading" ? <span className="faint">Loading…</span>
+                    : t.status === "error" ? <div className="empty"><b>{t.error}</b><button className="btn sm" onClick={() => close(t.path)}>Close tab</button></div>
+                    : t.disk === "gone" ? <div className="empty"><b>{t.path} isn't there any more.</b><button className="btn sm" onClick={() => close(t.path)}>Close tab</button></div>
+                    : file?.tooLarge ? <div className="empty"><FileCode className="icon" /><b>Too big to show here{entry ? ` (${sizeLabel(entry.size)})` : ""}.</b>{openInFirst(t.path)}</div>
+                    : file?.binary ? <div className="empty"><FileCode className="icon" /><b>A binary file{entry ? ` (${sizeLabel(entry.size)})` : ""}: Hersir shows text only.</b>{openInFirst(t.path)}</div>
+                    : null}
+                </div>
+              )}
+            </div>
+
+            <div className="ed-status" role="status" aria-label="Status bar">
+              {t && <>
+                <span className="path" title={t.path}>{t.path}</span>
+                {entry?.ignored && !ignoredIn ? <span className="item">Ignored by git</span> : mark ? <span className={`item git ${mark}`}>{MARK_WORD[mark]}</span> : null}
+                <span className="grow" />
+                {activeState && <CursorItem cursor={cursor} onClick={() => { if (view.current) gotoLine(view.current); }} />}
+                {file?.text != null && <span className="item" title="Line endings, kept as the file has them">{endingsLabel(file.crlf, file.bom)}</span>}
+                {file?.text != null && <span className="item">{languageName(t.path)}</span>}
+                {t.saving ? <span className="item">Saving…</span>
+                  : t.saveError ? <span className="item bad">Couldn't save</span>
+                  : locked && file?.text != null ? <span className="item"><Lock className="icon" />{readOnlyStatus(lockWhy)}</span>
+                  : t.dirty ? <button className="item unsaved" title={`Save (${modKey()}+S)`} onClick={() => save(t.path)}>Not saved</button>
+                  : Date.now() - t.reloaded < 5000 ? <span className="item">Reloaded: changed on disk</span>
+                  : file?.text != null ? <span className="item">Saved</span> : null}
+              </>}
+            </div>
           </div>
 
           {term.visible && <TerminalPanel p={term} name={name} />}
-
-          <div className="ed-status" role="status" aria-label="Status bar">
-            {t && <>
-              <span className="path" title={t.path}>{t.path}</span>
-              {entry?.ignored && !ignoredIn ? <span className="item">Ignored by git</span> : mark ? <span className={`item git ${mark}`}>{MARK_WORD[mark]}</span> : null}
-              <span className="grow" />
-              {activeState && <CursorItem cursor={cursor} onClick={() => { if (view.current) gotoLine(view.current); }} />}
-              {file?.text != null && <span className="item" title="Line endings, kept as the file has them">{endingsLabel(file.crlf, file.bom)}</span>}
-              {file?.text != null && <span className="item">{languageName(t.path)}</span>}
-              {t.saving ? <span className="item">Saving…</span>
-                : t.saveError ? <span className="item bad">Couldn't save</span>
-                : locked && file?.text != null ? <span className="item"><Lock className="icon" />{readOnlyStatus(lockWhy)}</span>
-                : t.dirty ? <button className="item unsaved" title={`Save (${modKey()}+S)`} onClick={() => save(t.path)}>Not saved</button>
-                : Date.now() - t.reloaded < 5000 ? <span className="item">Reloaded: changed on disk</span>
-                : file?.text != null ? <span className="item">Saved</span> : null}
-            </>}
-          </div>
         </div>
       </div>
 

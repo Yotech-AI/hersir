@@ -287,8 +287,10 @@ const fileBar = () => findAll(tree, (f) => String(f.props.className ?? "").start
 const folderBar = () => findAll(tree, (f) => f.props.className === "ed-bar").map((f) => textOf(f.props.children as ReactNode)).join(" | ");
 const barButtons = () => findAll(tree, (f) => f.type === "button" && findAll(tree, (b) => String(b.props.className ?? "").startsWith("ed-bar file")).length > 0
   && String(f.props.className ?? "").startsWith("btn sm")).map((f) => textOf(f.props.children as ReactNode).trim());
+/** A button by its text, or an icon button (no text) by its aria-label: since GA-293 the terminal panel's Own page and Hide
+ *  are icon buttons in its island's header, named by their aria-label. */
 function button(name: string) {
-  const all = findAll(tree, (f) => f.type === "button" && textOf(f.props.children as ReactNode).trim() === name);
+  const all = findAll(tree, (f) => f.type === "button" && (textOf(f.props.children as ReactNode).trim() || String(f.props["aria-label"] ?? "")) === name);
   if (all.length !== 1) throw new Error(`${all.length} buttons called ${name}`);
   return all[0]!.props as { onClick: (e?: unknown) => unknown; disabled?: boolean; title?: string };
 }
@@ -923,5 +925,104 @@ describe("the terminal panel: the Terminal button, its states and the keys (GA-1
     task = { id: "t21", identifier: "GA-21", title: "Mine", byHand: true, assigneeId: "u1", assigneeName: "You" } as unknown as Task;
     await open();
     expect([termButton()["aria-disabled"], termButton().title]).toEqual([undefined, "Show the terminal (Ctrl+`)"]);
+  });
+});
+
+// GA-293 QA (design/islands/README.md: Editor, frame 274:1564): with a folder open the Editor is islands of its own: the
+// files panel beside the code island, the terminal panel's island under the code island. The code island holds, in this
+// order, its header (the open files as island tabs), the folder's and the file's bars and the error banner, the code, and
+// the status bar at its bottom (moved from under the terminal panel). The terminal panel is the gap above it (its drag
+// handle) and its island: the header (its tabs, then New terminal, Own page and Hide as icon buttons), then the terminal.
+describe("the Editor in islands (GA-293 QA)", () => {
+  const cls = (f: Found) => String(f.props.className ?? "");
+  /** The elements directly inside `node` (what renders nothing is left out). */
+  function direct(node: ReactNode): Found[] {
+    if (Array.isArray(node)) return node.flatMap(direct);
+    if (node && typeof node === "object" && "props" in node) { const el = node as ReactElement<Record<string, unknown>>; return [{ type: el.type, props: el.props }]; }
+    return [];
+  }
+  const byClass = (c: string) => one((f) => cls(f) === c, c);
+  const codeIsland = () => direct(byClass("ed-code-island").props.children as ReactNode).map(cls);
+  const session = (more: Partial<TerminalSession> = {}): TerminalSession => ({
+    id: "term-1", name: "kade-portal", folder: FOLDER, folderPath: FOLDER, taskId: null, shell: "sh", busy: null, ended: null, cols: 80, rows: 24, openedAt: 1, ...more,
+  });
+  async function backquote() {
+    win.dispatchEvent(Object.assign(new Event("keydown", { cancelable: true }), { key: "`", code: "Backquote", ctrlKey: true, metaKey: false, altKey: false, shiftKey: false }));
+    await settle();
+  }
+  beforeEach(() => { h.terms = []; h.termView = null; h.placed = ""; });
+  afterEach(() => { h.terms = []; h.termView = null; h.placed = ""; });
+
+  it("the files panel and the code island sit side by side; the code island holds its header, the code and the status bar at its bottom", async () => {
+    await open();
+    await clickRow("README.md");
+    expect(direct(byClass("ed").props.children as ReactNode).map(cls), "two islands side by side").toEqual(["ed-side", "ed-main"]);
+    expect(direct(one((f) => cls(f).startsWith("ed-main"), "code columns").props.children as ReactNode).map(cls), "no terminal panel yet").toEqual(["ed-code-island"]);
+    expect(codeIsland()).toEqual(["ed-tabs island-tabs", "ed-code", "ed-status"]);
+    // the header: the open files as island tabs, the open one selected (drawn as a pill); the status bar is the open file's
+    const head = byClass("ed-tabs island-tabs");
+    expect([head.props.role, head.props["aria-label"]]).toEqual(["tablist", "Open files"]);
+    expect(direct(head.props.children as ReactNode).map((f) => [f.props["data-path"], f.props["aria-selected"]])).toEqual([["README.md", true]]);
+    expect(statusBar()).toContain("README.md");
+    // the files panel: its header (Files or Search, Fold the file tree), then Go to file and the tree
+    const side = direct(byClass("ed-side").props.children as ReactNode).map(cls);
+    expect(side[0]).toBe("ed-side-top");
+  });
+
+  it("the folder's bar sits at the top of the code island, under its header, above the code (the notes' Editor)", async () => {
+    folderInfo = folder({ name: "GA-20", kind: "card", taskId: "t20" });
+    task = { id: "t20", identifier: "GA-20", title: "Fix it", byHand: true, assigneeId: "u2", assigneeName: "Sam" } as unknown as Task;
+    await open();
+    await clickRow("README.md");
+    expect(codeIsland()).toEqual(["ed-tabs island-tabs", "ed-bar", "ed-code", "ed-status"]);
+    expect(textOf(byClass("ed-bar").props.children as ReactNode)).toContain("GA-20 is Sam's card");
+    // nothing about the folder is left between the top bar and the islands
+    expect(direct(byClass("ed-page").props.children as ReactNode).map(cls).filter((c) => c.startsWith("ed-bar") || c === "error-banner")).toEqual([]);
+    await click("Edit anyway");
+    expect(codeIsland()).toEqual(["ed-tabs island-tabs", "ed-bar", "ed-code", "ed-status"]);
+  });
+
+  it("the terminal panel is the gap above its island (the drag handle), then the island: its header, then the terminal", async () => {
+    h.terms = [session(), session({ id: "term-2", name: "kade-portal 2" })];
+    await open();
+    await clickRow("README.md");
+    await backquote();
+    const main = one((f) => cls(f).startsWith("ed-main"), "code columns");
+    expect(cls(main)).toBe("ed-main has-term");
+    expect(direct(main.props.children as ReactNode).map(cls), "the terminal panel under the code island").toEqual(["ed-code-island", "term-panel"]);
+    // the status bar stays in the code island while the terminal panel shows
+    expect(codeIsland().at(-1)).toBe("ed-status");
+    const panel = direct(byClass("term-panel").props.children as ReactNode);
+    expect(panel.map(cls)).toEqual(["term-handle", "term-panel-in"]);
+    expect([panel[0]!.props.role, panel[0]!.props["aria-orientation"], panel[0]!.props["aria-label"]]).toEqual(["separator", "horizontal", "Terminal panel's height"]);
+    const head = byClass("island-head term-tabs");
+    const parts = direct(head.props.children as ReactNode);
+    expect(parts.map(cls)).toEqual(["island-tabs", "acts"]);
+    expect([parts[0]!.props.role, parts[0]!.props["aria-label"]]).toEqual(["tablist", "Terminals in kade-portal"]);
+    expect(direct(parts[0]!.props.children as ReactNode).map((f) => f.props["data-term"])).toEqual(["term-1", "term-2"]);
+    // New terminal, Own page and Hide: icon buttons, 26px (sm icon-only), named and with their tooltips as before
+    const acts = direct(parts[1]!.props.children as ReactNode);
+    expect(acts.map((f) => [f.type, cls(f), f.props["aria-label"], f.props.title])).toEqual([
+      ["button", "btn ghost sm icon-only", "New terminal in kade-portal", "New terminal in kade-portal (Ctrl+Shift+`)"],
+      ["button", "btn ghost sm icon-only", "Own page", "Open kade-portal on its own page"],
+      ["button", "btn ghost sm icon-only", "Hide", "Hide the terminal (Ctrl+`): its shells keep running"],
+    ]);
+    expect(acts.every((f) => textOf(f.props.children as ReactNode).trim() === ""), "icons only").toBe(true);
+    // the island's header comes first, then the terminal
+    expect(direct(byClass("term-panel-in").props.children as ReactNode).map((f) => cls(f) || String(f.type))[0]).toBe("island-head term-tabs");
+    expect(h.termView?.id).toBe("term-1");
+  });
+
+  it("Ctrl+B folds the files panel and the code island's header offers it back first; Ctrl+B shows it again", async () => {
+    await open();
+    await clickRow("README.md");
+    expect(byClass("ed-side").props.hidden).toBe(false);
+    await key("b");
+    expect(byClass("ed-side").props.hidden, "folded").toBe(true);
+    const first = direct(byClass("ed-tabs island-tabs").props.children as ReactNode)[0]!;
+    expect([first.type, first.props["aria-label"]]).toEqual(["button", "Show the file tree (Ctrl+B)"]);
+    await key("b");
+    expect(byClass("ed-side").props.hidden).toBe(false);
+    expect(direct(byClass("ed-tabs island-tabs").props.children as ReactNode).map((f) => f.type)).toEqual(["div"]);
   });
 });

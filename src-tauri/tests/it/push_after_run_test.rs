@@ -430,3 +430,31 @@ echo draft > draft.txt\nexec bash '{FAKE}' \"$@\"\n"));
     assert_eq!(notes(&c.st, &s.run_id), [format!("Hersir pushed {branch} (1 commit)."),
                                          "Its worktree has 1 uncommitted change, which Hersir doesn't push.".to_string()]);
 }
+
+/// GA-281 QA, round 3: git in the user's own language. Git in Bulgarian (LANGUAGE=bg) puts `„` right before a remote's
+/// address, and Hersir's log line for a failed push after a run (`push_after_run`) runs git's words through
+/// `redact::hidden`, which panicked there in round 2 (byte index … is not a char boundary), before the run was recorded as
+/// ended. Here "GitHub" refuses the push with that line, a login's password in the address. The run ends and is recorded,
+/// the card is held with git's words (so the line went through the log), and nothing starts again.
+#[tokio::test]
+async fn a_push_refused_in_bulgarian_with_an_address_after_a_quote_ends_the_run_without_a_panic() {
+    let tmp = tempfile::tempdir().unwrap();
+    let c = linked_card(tmp.path());
+    describe(&c, "Make two commits. FAKE_COMMIT_TWICE");
+    write_script(&c.bare.join("hooks/pre-receive"), "#!/bin/sh\n\
+echo 'error: ФАТАЛНА ГРЕШКА: няма достъп до „https://me:hunter2@github.com/acme/shop.git/“: The requested URL returned error: 403' >&2\n\
+exit 1\n");
+
+    let s = gizai_lib::runs::run_once(&c.st, &c.task, None, Some(FAKE.into())).await.unwrap();
+    let (run, _, branch) = run_of(&c, &s.run_id);
+    assert!(!has_branch(&c.bare, &branch));
+    assert_eq!(run.status, "succeeded", "{:?}", run.error);
+    assert!(run.ended_at.is_some(), "the run is recorded as ended");
+    assert!(gizai_lib::runs::live(&c.st).is_empty(), "no run stays live");
+    let t = task(&c);
+    assert_eq!((t.state_name.as_str(), t.hold.as_deref()), ("In progress", Some("blocked")));
+    let reason = t.hold_reason.unwrap();
+    assert!(reason.contains("ФАТАЛНА ГРЕШКА") && reason.contains("„https://"), "git's own words reached the log line: {reason}");
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    assert_eq!(gizai_core::runs::list_for_task(&c.st.db, &c.task).unwrap().len(), 1, "nothing starts again");
+}

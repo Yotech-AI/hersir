@@ -214,6 +214,14 @@ export type TemplatePlan = { teamName: string; columns: { name: string; kind: st
 // preview_team_template(source: TemplateSource) -> TemplatePlan        (a refusal is an error string)
 // import_team_template(source: TemplateSource, name: string) -> string  (the new team's id)
 export type AppInfo = { version: string; data_dir: string; selftest: boolean; you_id: string; start_route?: string | null; selftest_mode?: string | null; data_label?: string | null };
+/** Hersir's own log (GA-281, src-tauri's logs.rs): the logs folder, this start's log (full paths; current is "" when this
+ *  Hersir keeps none), and the previous start that ended without quitting, until it is dismissed. Times are ISO 8601 UTC
+ *  ("2026-11-13T14:50:26Z"); lastWrittenAt is its log's modification time, at most a minute before it ended. */
+export type LogsInfo = {
+  folder: string;
+  current: string;
+  unexpectedEnd: { file: string; startedAt: string; lastWrittenAt: string } | null;
+};
 /** What the first start's onboarding saves (GA-162): your name, the team's, and the id of a CLI in Settings → Coding CLIs
  *  for the Backend, Frontend, QA and DevOps Agents (null: they stay where the seed put them). */
 export type OnboardingInput = { youName: string; teamName: string; agentsCli: string | null };

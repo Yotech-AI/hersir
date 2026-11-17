@@ -58,7 +58,7 @@
 .term-panel .term-place { padding: var(--space-1) var(--space-3); }
 /* The shell ended or couldn't start: the bar is the Editor's file bar, under the tabs; the screen stays as it was. Not the
    global .file card (app.css): the bar keeps its height and the terminal takes the rest (GA-136). */
-.term-page > .ed-bar.file, .chat-term-in > .ed-bar.file { flex: none; border-width: 0 0 1px; border-radius: 0; cursor: default; }
+.term-page > .ed-bar.file, .chat-side-in > .ed-bar.file { flex: none; border-width: 0 0 1px; border-radius: 0; cursor: default; }
 
 /* In islands (design/islands-settings: A terminal's own page, GA-295): the page is one island, its header the folder's
    terminals as Island tabs (size-island-head, padding 0 6px, 2px apart, no line under it) with New terminal (+) on the
@@ -92,18 +92,36 @@
 .term-away { display: flex; align-items: center; justify-content: center; gap: var(--space-3); height: 100%; color: var(--text-3); font-family: var(--font-sans); font-size: var(--fs); }
 .term-away .icon { color: var(--text-3); }
 
-/* ---------- the Editor's terminal panel: in the code column, between the code and the status bar ---------- */
+/* ---------- the Editor's terminal panel: in the code column, an island under the code island (GA-293) ---------- */
 /* Its height is a share of the column (.ed-main), 30% the first time, kept in localStorage gizai.editor.panel; the code keeps
-   at least size-term-code-min, the panel at least size-term-panel-min (its tabs and 4 lines). */
-.term-panel { display: flex; flex-direction: column; flex: 0 1 var(--term-share, var(--size-term-panel)); min-height: var(--size-term-panel-min); background: var(--term-bg); }
-.ed-main.has-term .ed-code { min-height: var(--size-term-code-min); }
-/* The drag handle is the panel's top border: a 1px line in line, with a size-handle grab area centred on it. Hover and
-   dragging: 2px of accent; focus: 2px of focus. role="separator", aria-orientation="horizontal", the share in aria-valuenow. */
+   at least size-term-code-min, the panel at least size-term-panel-min (its tabs and 4 lines). The panel is the gap above
+   it, which is its drag handle, and its island (.term-panel-in): the header (its tabs, then New terminal, Own page and
+   Hide) and the terminal on term-bg (= island). */
+.term-panel { display: flex; flex-direction: column; flex: 0 1 var(--term-share, var(--size-term-panel)); min-height: var(--size-term-panel-min); }
+.term-panel-in { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; border-radius: var(--island-radius); background: var(--island); }
+.island-head.term-tabs > .acts { position: static; margin-left: 0; padding: 0; background: none; box-shadow: none; }
+.island-tabs > .ed-tab.term-tab .x { margin-left: 0; }
+/* the code island keeps room for its header, the code's least height and the status bar */
+.ed-main.has-term > .ed-code-island { min-height: calc(var(--size-island-head) + var(--size-term-code-min) + var(--size-statusbar)); }
+/* The drag handle: a 1px line in line, with a size-handle grab area centred on it. Hover and dragging: 2px of accent;
+   focus: 2px of focus. role="separator", aria-orientation="horizontal", the share in aria-valuenow. The Chat's terminal
+   panel has it upright on its left edge (below); the Editor's is the gap above the panel's island (GA-293, below). */
 .term-handle { position: relative; z-index: 2; flex: none; height: 1px; background: var(--line); cursor: row-resize; touch-action: none; }
 .term-handle::before { content: ""; position: absolute; left: 0; right: 0; top: calc((var(--size-handle) - 1px) / -2); height: var(--size-handle); }
 .term-handle:hover, .term-handle.is-drag { background: var(--accent); box-shadow: 0 -1px 0 var(--accent); }
 .term-handle:focus-visible { outline: none; background: var(--focus); box-shadow: 0 -1px 0 var(--focus); }
 .ed-main.is-dragging, .ed-main.is-dragging * { cursor: row-resize; user-select: none; }
+/* In islands (GA-293, design/islands: The gap as a resize handle): the Editor's handle is the whole gap above the panel's
+   island, size-handle (= island-gap) high, the glass showing through it at rest; hover: a 2px accent line across the gap's
+   middle, the islands' full width, round ends; dragging: the line and accent-soft across the whole gap (radius 4); keyboard
+   focus: the line in focus. */
+.term-panel > .term-handle { height: var(--size-handle); border-radius: 4px; background: transparent; box-shadow: none; }
+.term-panel > .term-handle::before { top: 0; height: 100%; }
+.term-panel > .term-handle::after { content: ""; position: absolute; left: 0; right: 0; top: calc(50% - 1px); height: 2px; border-radius: 1px; }
+.term-panel > .term-handle:hover, .term-panel > .term-handle:focus-visible { background: transparent; box-shadow: none; }
+.term-panel > .term-handle:hover::after, .term-panel > .term-handle.is-drag::after { background: var(--accent); }
+.term-panel > .term-handle.is-drag { background: var(--accent-soft); box-shadow: none; }
+.term-panel > .term-handle:focus-visible::after { background: var(--focus); }
 
 /* The handle on a panel's left edge (the Chat's terminal panel, GA-278): the same line, upright, its grab area centred on it */
 .term-handle[aria-orientation="vertical"] { width: 1px; height: auto; cursor: col-resize; }
@@ -140,26 +158,150 @@
 .term-open a > .icon { flex: none; width: 16px; height: 16px; color: var(--text-3); }
 .term-open .where { margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); font-family: var(--font-mono); font-size: var(--fs-xs); }
 
-/* ---------- the Chat's terminal panel (GA-278): the third column of the Chat page (app.css .chat.has-term) ---------- */
-/* Its left edge is the drag handle; then the Editor panel's tabs with +, Own page and Hide, the shown terminal's folder in
-   mono, a bar when + couldn't start one, and the terminal on term-bg. The panel is often narrow (360px at least): +, Own
-   page and Hide are icons on the right of the strip, in sight while the tabs scroll under them, and the open tab scrolls
-   clear of them. */
-.chat-term { display: flex; min-width: 0; min-height: 0; background: var(--term-bg); }
-.chat-term-in { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
-.chat-term .term-tabs { scroll-padding-inline-end: 84px; }
-.chat-term .term-tabs .acts .btn.icon-only { width: 24px; height: 24px; }
-.chat-term .term-tabs .acts .btn[aria-disabled="true"] { pointer-events: auto; }
-.chat-term .term-tabs .acts .btn[aria-disabled="true"]:hover { background: transparent; color: var(--text-2); }
-/* The folder, cut at its start when it is too long, so its own name stays in sight (the whole path is the tooltip) */
-.chat-term-where { flex: none; padding: var(--space-1) var(--space-3); overflow: hidden; border-bottom: 1px solid var(--line); background: var(--side);
-  color: var(--text-2); font-family: var(--font-mono); font-size: var(--fs-xs); line-height: 1.6; text-overflow: ellipsis; white-space: nowrap;
-  direction: rtl; text-align: left; }
+/* ---------- the Chat's side island and tool strip (GA-296, design/islands-chat; app.css .chat.has-side, .has-strip) ---------- */
+/* The side island: the column right of the conversation. Its left edge is the drag handle, the gap to the conversation
+   (design/islands: The gap as a resize handle); then the island itself: its header (the tabs, then +, Own page and Hide),
+   a bar when New terminal couldn't start, and the shown tab: for a terminal, its folder in mono and the terminal on
+   term-bg (= island). */
+.chat-side { position: relative; display: flex; min-width: 0; min-height: 0; }
+.chat-side-in { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; overflow: hidden; border-radius: var(--island-radius); background: var(--island); }
+.chat-side-body { flex: 1; min-height: 0; }
+/* the handle: the whole gap left of the island, the glass showing through it at rest; a 2px accent line down its middle
+   on hover, with accent-soft across the gap while dragging; the line in focus with the keyboard */
+.chat-side > .term-handle[aria-orientation="vertical"] { position: absolute; top: 0; bottom: 0; left: calc(-1 * var(--island-gap)); width: var(--island-gap); height: auto;
+  border-radius: 4px; background: transparent; box-shadow: none; }
+.chat-side > .term-handle[aria-orientation="vertical"]::before { left: 0; width: 100%; }
+.chat-side > .term-handle::after { content: ""; position: absolute; top: 0; bottom: 0; left: calc(50% - 1px); width: 2px; border-radius: 1px; }
+.chat-side > .term-handle:hover::after, .chat-side > .term-handle.is-drag::after { background: var(--accent); }
+.chat-side > .term-handle.is-drag { background: var(--accent-soft); box-shadow: none; }
+.chat-side > .term-handle:hover { box-shadow: none; }
+.chat-side > .term-handle:focus-visible { background: transparent; box-shadow: none; }
+.chat-side > .term-handle:focus-visible::after { background: var(--focus); }
+
+/* An island's header (design/islands: An island's header): size-island-head high, padding 0 6px, items 2px apart; the tabs
+   on the left scroll sideways (no scrollbar) and the shown one scrolls into sight; the actions on the right. No line under it. */
+.island-head { display: flex; flex: none; align-items: center; gap: 2px; height: var(--size-island-head); padding: 0 6px; }
+.island-tabs { display: flex; flex: 1; align-items: center; gap: 2px; min-width: 0; height: 100%; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.island-tabs::-webkit-scrollbar { display: none; }
+.island-head > .acts { display: flex; flex: none; align-items: center; gap: 2px; }
+.island-head > .acts .btn.icon-only { width: 26px; height: 26px; }
+/* Island tab: size-island-tab high, radius 6, padding 0 6px 0 10px, 6px between icon, name and close. Default no fill, name
+   text-2, icon 14px text-3; hover fill hover, name text; shown: a pill in selected, name text, icon text-2. Close (x, 12px in
+   an 18px box, radius 4) shows on the shown tab and the hovered one; the others keep no room for it. */
+.chat-side .island-tabs > .ed-tab { gap: 6px; height: var(--size-island-tab); padding: 0 6px 0 10px; border: 0; border-radius: var(--radius); background: none; color: var(--text-2); box-shadow: none; font-size: var(--fs-sm); }
+.chat-side .island-tabs > .ed-tab:hover { background: var(--hover); color: var(--text); }
+.chat-side .island-tabs > .ed-tab[aria-selected="true"] { background: var(--selected); color: var(--text); box-shadow: none; }
+.chat-side .island-tabs > .ed-tab > .icon { width: 14px; height: 14px; color: var(--text-3); }
+.chat-side .island-tabs > .ed-tab:hover > .icon, .chat-side .island-tabs > .ed-tab[aria-selected="true"] > .icon { color: var(--text-2); }
+.chat-side .island-tabs > .ed-tab .x { display: none; width: 18px; height: 18px; margin-left: 0; border-radius: 4px; }
+.chat-side .island-tabs > .ed-tab .x .icon { width: 12px; height: 12px; }
+.chat-side .island-tabs > .ed-tab:hover .x, .chat-side .island-tabs > .ed-tab:focus-within .x, .chat-side .island-tabs > .ed-tab[aria-selected="true"] .x { display: grid; }
+.chat-side .island-tabs > .ed-tab .x:hover { background: var(--hover); color: var(--text); }
+.chat-side .island-tabs > .ed-tab[aria-selected="true"] .x:hover { background: var(--hover); }
+/* The folder, cut at its start when it is too long, so its own name stays in sight (the whole path is the tooltip); on the
+   island, no fill and no line */
+.chat-term-where { flex: none; padding: 0 var(--space-3) var(--space-1); overflow: hidden; color: var(--text-2); font-family: var(--font-mono); font-size: var(--fs-xs);
+  line-height: 1.6; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
 .chat-term-where > bdi { direction: ltr; }
-/* Hidden while the chat has terminals: a narrow rail on the chat's right edge, the terminal icon and how many there are */
-.chat-term-rail { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); width: calc(36px + var(--ui-box, 0px)); padding: var(--space-3) 0;
-  border: 0; border-left: 1px solid var(--line); background: var(--side); color: var(--text-2); font: inherit; cursor: pointer; }
-.chat > .chat-term-rail:hover { background: var(--hover); color: var(--text); }
-.chat-term-rail:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
-.chat-term-rail .icon { width: 16px; height: 16px; }
-.chat-term-rail .n { font-size: var(--fs-xs); font-weight: 600; font-variant-numeric: tabular-nums; }
+.chat-side .term-place { padding-top: var(--space-1); }
+
+/* The tool strip (design/islands-chat: The tool strip): on the background, size-tool wide, from the islands' top to their
+   bottom; a button per kind open (Islands/Strip button): 28 × 42, radius 6, 4px apart, the icon (16) with its count
+   (t-count) 1px under it. Default no fill, text-2 (on the glass); hover canvas-hover, text; the kind on show a pill in
+   island, text; keyboard focus the 2px focus ring outside. */
+.chat-strip { display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 0; }
+.strip-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; flex: none; width: var(--size-tool); height: 42px; padding: 0;
+  border: 0; border-radius: var(--radius); background: none; color: var(--text-2); font: inherit; cursor: pointer; }
+.strip-btn:hover { background: var(--canvas-hover); color: var(--text); }
+.strip-btn[aria-pressed="true"] { background: var(--island); color: var(--text); }
+.strip-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.strip-btn .icon { width: 16px; height: 16px; }
+.strip-btn .n { font-size: 11px; font-weight: 600; line-height: 14px; font-variant-numeric: tabular-nums; }
+/* the strip's menu: its head in t-caption text-3; Close all in danger */
+.pop .pop-head { padding: 6px 8px 4px; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.45; }
+.pop .opt.danger { color: var(--danger); }
+/* the top bar's Open: its chevron after the word, in text-2 */
+.btn.chat-open > .icon:last-child { width: 14px; height: 14px; color: var(--text-2); }
+
+/* The Card tab (GA-297; design/islands-chat → Card, frames 1, 7 and 8): the card scrolls, padding 8 16 16, 16 between
+   blocks; its actions sit in a foot under it (1px line above, padding 10 12), so they stay in reach. */
+.chat-card { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+.chat-card-body { display: flex; flex-direction: column; gap: var(--space-4); flex: 1; min-height: 0; padding: 8px 16px 16px; overflow-y: auto; overflow-wrap: anywhere; }
+.chat-card-gone { display: grid; place-items: center; padding: var(--space-6); color: var(--text-2); text-align: center; }
+/* Head: the status glyph (with the hold), the id in t-id text-2, the project's dot and name in t-small text-2 */
+.chat-card-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--text-2); }
+.chat-card-head .proj { display: inline-flex; align-items: center; gap: 6px; }
+.chat-card-head .proj .dot { flex: none; width: 8px; height: 8px; border-radius: 50%; }
+.chat-card-title { margin: 0; color: var(--text); }
+/* Properties: labels 76 wide in t-small text-3, values in t-small text; 8 between rows */
+.chat-card-props { display: flex; flex-direction: column; gap: 8px; margin: 0; }
+.chat-card-props > div { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 8px; align-items: start; }
+.chat-card-props dt { color: var(--text-3); line-height: 18px; }
+.chat-card-props dd { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; min-height: 18px; margin: 0; color: var(--text); }
+.chat-card-props dd .avatar, .chat-card-props dd svg { flex: none; }
+.chat-card-props dd.hold { flex-direction: column; align-items: flex-start; gap: 4px; }
+.chat-card-props dd.hold .reason { color: var(--text-2); }
+.chat-card-props dd.labels { gap: 4px; }
+.chat-card-props .none, .chat-card .none { color: var(--text-2); margin: 0; }
+/* Blocks: the heading in t-group text-2 (the count after it in t-small text-3), 8 under it */
+.chat-card-sec { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+.chat-card-sec > h3 { display: flex; align-items: baseline; gap: 6px; margin: 0; color: var(--text-2); text-transform: uppercase; }
+.chat-card-sec > h3 .n { color: var(--text-3); font-size: var(--fs-sm); font-weight: 400; letter-spacing: 0; text-transform: none; }
+.chat-card .link { align-self: flex-start; color: var(--accent); font-size: var(--fs-sm); }
+.chat-card .link:hover { color: var(--accent-hover); text-decoration: underline; text-underline-offset: 2px; }
+.chat-card .link:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-radius: var(--radius-s); }
+/* Text in t-body; the description folds after 4 lines, a comment after 3 (--fold-lines), with Show more */
+.chat-card .prose { max-width: none; font-size: 13.5px; line-height: 20px; }
+.chat-card .prose > :last-child { margin-bottom: 0; }
+/* a quick read: the text's own headings as strong body text, so the folded lines stay lines */
+.chat-card .prose :is(h1, h2, h3, h4, h5, h6) { margin: 8px 0 4px; font-size: 13.5px; line-height: 20px; font-weight: 600; letter-spacing: 0; }
+.chat-card .prose > :first-child { margin-top: 0; }
+.chat-card .fold:not(.open) { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--fold-lines); line-clamp: var(--fold-lines); overflow: hidden; }
+/* Acceptance criteria: the box (14, radius 3; checked: accent with a check) and the words; checked ones in text-2 */
+.chat-card-criteria { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.chat-card-criteria > li { display: flex; gap: 8px; min-width: 0; }
+.chat-card-criteria > li > .prose { flex: 1; min-width: 0; }
+.chat-card-criteria > li > .prose p { margin: 0; }
+.chat-card-criteria .box { display: grid; place-items: center; flex: none; width: 14px; height: 14px; margin-top: 3px; border: 1.5px solid var(--line-2); border-radius: 3px; }
+.chat-card-criteria .done .box { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+.chat-card-criteria .box .icon { width: 11px; height: 11px; stroke-width: 3; }
+.chat-card-criteria .done > .prose { color: var(--text-2); }
+/* Comments: the avatar, then the name (t-body-strong), the time (t-small text-3) and the text */
+.chat-card-comment { display: flex; gap: 8px; min-width: 0; }
+.chat-card-comment > .avatar { margin-top: 1px; }
+.chat-card-comment > .body { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.chat-card-comment .by { display: flex; align-items: baseline; gap: 6px; }
+.chat-card-comment .when { color: var(--text-3); }
+.chat-card-comment .prose p { margin: 0 0 4px; }
+/* Runs: Run 2, the agent in text-2, the badge, the time in text-3; a row is a button to the run on the card's page */
+.chat-card-run { display: flex; align-items: center; gap: 8px; width: calc(100% + 8px); margin: 0 -4px; padding: 3px 4px; border: 0; border-radius: var(--radius-s);
+  background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.chat-card-run:hover { background: var(--hover); }
+.chat-card-run:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; }
+.chat-card-run .n { flex: none; }
+.chat-card-run .agent { flex: 1; min-width: 0; overflow: hidden; color: var(--text-2); text-overflow: ellipsis; white-space: nowrap; }
+.chat-card-run .when { flex: none; color: var(--text-3); }
+/* In Review, first: the pull request (PullPanel) and QA's verdict, each raised with a 1px line, radius 10, padding 10 12 */
+.chat-card .run-card { flex: none; border-radius: 10px; }
+.chat-card .run-card .run-head { gap: 6px; padding: 10px 12px; font-size: var(--fs-sm); }
+.chat-card .run-card .run-head > .icon { width: 16px; height: 16px; color: var(--text-2); }
+.chat-card .run-card .run-head > .icon.ok { color: var(--success); }
+.chat-card .run-card .run-head > .icon.fail { color: var(--danger); }
+.chat-card .run-card .run-summary { padding: 0 12px 10px; color: var(--text-2); font-size: var(--fs-sm); line-height: 18px; }
+.chat-card .run-card .run-summary .prose { font-size: var(--fs-sm); line-height: 18px; color: inherit; }
+/* the hand-over: 3 lines (18px each), then an ellipsis; the height holds them where WebKit's clamp leaves more */
+.chat-card-verdict .handover { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; max-height: 54px; overflow: hidden;
+  margin-bottom: 10px; padding-bottom: 0; cursor: pointer; }
+.chat-card-verdict .handover:hover { color: var(--text); }
+.chat-card-verdict .handover:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: var(--radius-s); }
+.chat-card-verdict .handover .prose p { margin: 0; }
+/* The foot: Comment, Run or Continue, and Move to on the right; with Comment, the comment box */
+.chat-card-foot { display: flex; flex-direction: column; gap: 8px; flex: none; padding: 10px 12px; border-top: 1px solid var(--line); }
+.chat-card-foot:empty { display: none; }
+.chat-card-foot > .row { display: flex; align-items: center; gap: 6px; }
+.chat-card-foot .grow { flex: 1; }
+.chat-card-foot .err { margin: 0; color: var(--danger); }
+.chat-card-foot .btn > .icon:last-child:not(:first-child) { width: 14px; height: 14px; color: var(--text-2); }
+.chat-card-foot .pop .opt svg:first-child { flex: none; }
+.chat-card-foot.writing .md-surface { max-height: 40vh; overflow-y: auto; }
+.chat-card-foot .hint { color: var(--text-3); white-space: nowrap; }
