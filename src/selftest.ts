@@ -4542,7 +4542,8 @@ async function chatTerminalProbe(phase: "a" | "b") {
   await waitFor(() => (island() ? true : null), 2000);
   (document.activeElement as HTMLElement | null)?.blur();
   const before234 = { cls: chat()?.className, tabs: tabIds().join(","), icons: [...document.querySelectorAll(".chat-strip .strip-btn")].map((b) => b.getAttribute("data-kind")) };
-  const now234 = () => ({ cls: chat()?.className, tabs: tabIds().join(","), icons: [...document.querySelectorAll(".chat-strip .strip-btn")].map((b) => b.getAttribute("data-kind")) });
+  const now234 = () => ({ cls: chat()?.className, tabs: tabIds().join(","), shown: shownTab(), icons: [...document.querySelectorAll(".chat-strip .strip-btn")].map((b) => b.getAttribute("data-kind")) });
+  const shown234 = shownTab();
   // GA-298: Alt+4 with no card does nothing; Alt+3 with no Board tab opens it (closed again here); Alt+2 with no Editor tab
   // opens Open a file…: the folder picker titled "Open a file in", as this chat has no project (closed again by a click outside)
   altDigit(4);
@@ -4552,6 +4553,10 @@ async function chatTerminalProbe(phase: "a" | "b") {
   const boardOpened = !!(await waitFor(() => q('.chat-side [data-tab="board:board"][aria-selected=true]'), 2000));
   q<HTMLButtonElement>('.chat-side [data-tab="board:board"] button.x')?.click();
   await waitFor(() => (!q('.chat-side [data-tab="board:board"]') ? true : null), 2000);
+  // closing the Board shows the tab left of it (the last terminal): the one shown before is picked again, as the steps below use it
+  if (shown234) q<HTMLElement>(`.chat-side .term-tab[data-term="${CSS.escape(shown234)}"]`)?.click();
+  await waitFor(() => (shownTab() === shown234 ? true : null), 2000);
+  (document.activeElement as HTMLElement | null)?.blur();
   altDigit(2);
   const filePicker = !!(await waitFor(() => q('.ed-picker[aria-label="Open a file in"]'), 3000));
   window.dispatchEvent(new MouseEvent("mousedown"));
@@ -4667,6 +4672,11 @@ async function chatTerminalProbe(phase: "a" | "b") {
   await toChat(A);
   check(await waitFor(() => (island()?.contains(term.element ?? null) ? true : null), 5000), "back on the Chat page the view is in chat A's island");
   await sleep(200);
+  // GA-298 QA: Open a file… was asked once in this chat (Alt+2 above); back on the Chat page nothing opens by itself
+  await sleep(500);
+  out.backOpened = { picker: q(".ed-picker")?.getAttribute("aria-label") ?? null, goTo: !!q(".ed-goto-pal") };
+  check(!q(".ed-picker") && !q(".ed-goto-pal"), `back on the Chat page from another page, Open a file… doesn't open again by itself (${JSON.stringify(out.backOpened)})`);
+  if (q(".ed-picker")) { window.dispatchEvent(new MouseEvent("mousedown")); await sleep(200); }
   backInA("from another page");
   // chat B's own terminal: back there it shows, and × closes it (no program runs): its island and strip go
   await toChat(B);
