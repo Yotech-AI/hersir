@@ -183,6 +183,10 @@
 #     hides the chat list while the island shows, the strip stays; the largest text size and light; Close all asks while
 #     sleep runs (Cancel keeps them), then closes them all: no island, no strip. (b) After a restart the island opens at the
 #     width kept (55%).
+#     GA-302: with the island as without it the messages and the text box stay centred in the conversation, as wide as
+#     before or filling a narrower one (opened, hidden, dragged to its limits, 1100 and 1000px wide, 900 × 600 as with
+#     GA-296's rule and the text box in full, the largest text size, after Close all), and the Archive with a terminal of its
+#     own: its search and list centred, also with the island narrowed.
 # 24. Open in terminal (GA-279), against prep_chats' Chief and prep_chat_terminal's chat, with /bin/sh in a scratch home
 #     folder with ~/Herd/doq-studio (and resources/embed-test in it), ~/Herd/shop, ~/Herd/kade-portal and ~/Herd/invoice-api:
 #     a row under each of the Chief's text messages that asks you to run a command and nowhere else (not under a tool call,
