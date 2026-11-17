@@ -197,7 +197,7 @@ describe("text on the glass stays readable over a light and a dark desktop (the 
 describe("docs/settings.md", () => {
   it("describes Background → Glass: on by default on macOS and Windows 11, off on Linux, and when it stays plain", () => {
     const md = read("docs/settings.md");
-    expect(md).toContain("| Appearance | The font, text sizes, theme and density, and the glass behind the islands |");
+    expect(md).toContain("| Appearance | The font, text sizes, theme and density, and the glass behind the panels |");
     const glass = md.slice(md.indexOf("- **Background → Glass:**"), md.indexOf("\n", md.indexOf("- **Background → Glass:**")));
     for (const s of ["Show the desktop through the background", "On by default on macOS (vibrancy) and Windows 11 (Mica)", "Off by default on Linux",
       "Hyprland", "reduced transparency"]) expect(glass).toContain(s);

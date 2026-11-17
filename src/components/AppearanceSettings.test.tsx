@@ -123,7 +123,7 @@ describe("Settings → Appearance", () => {
     expect(sections.filter((h) => h !== "Acceptance criteria")).toEqual(["Font", "Text size", "Theme and density", "Background"]);
     expect(html.match(/type="checkbox"/g)).toHaveLength(1);
     const background = html.slice(html.indexOf("<h3>Background</h3>"));
-    expect(background).toContain("<p>Behind the islands: a soft gradient, and glass where your system blurs windows.</p>");
+    expect(background).toContain("<p>Behind the panels: a soft gradient, and glass where your system blurs windows.</p>");
     expect(background).toMatch(/<div class="field wide"><label>Glass<\/label><label class="check glass-check"><input type="checkbox"\/>Show the desktop through the background<\/label><span class="hint">Blurred and tinted, on macOS, Windows 11 and Hyprland\. Off gives a plain background\.<\/span><\/div>/);
     const t = text(html);
     for (const gone of ["Mountains", "Show mountains along the bottom", "A landscape of wireframe mountains along the bottom of the window. It stays behind text and controls.",
@@ -154,6 +154,17 @@ describe("Settings → Appearance", () => {
     expect(hint(glass())).toBe("Plain while your system reduces transparency.");
     setAppearance({ glass: false });
     expect(box(glass())).toBe('<input type="checkbox"/>');
+  });
+  it("says panel, never island, in what people read, in each of the glass's states (GA-305)", () => {
+    const states = [["vibrancy", false], ["mica", false], ["compositor", false], ["none", false], ["vibrancy", true]] as const;
+    for (const [support, reduced] of states) for (const glass of [true, false]) {
+      sys.glass = { support, reduced };
+      setAppearance({ glass });
+      const html = render();
+      const seen = [text(html), ...[...html.matchAll(/(?:aria-label|title|placeholder|alt)="([^"]*)"/g)].map((m) => m[1])];
+      expect([support, reduced, glass, seen.filter((s) => /island/i.test(s))]).toEqual([support, reduced, glass, []]);
+      expect(text(html)).toContain("Behind the panels: a soft gradient, and glass where your system blurs windows.");
+    }
   });
   it("Reset to defaults is off at the defaults and on as soon as anything differs", () => {
     expect(render()).toMatch(/<button class="link" disabled="" title="Everything is at its default">Reset to defaults<\/button>/);

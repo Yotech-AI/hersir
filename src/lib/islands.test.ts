@@ -312,7 +312,7 @@ describe("design/README.md's Visual foundations", () => {
   });
   it("and docs/settings.md's Appearance no longer lists the mountains (it has the glass, GA-292)", () => {
     const settings = read("docs/settings.md");
-    expect(settings).toContain("| Appearance | The font, text sizes, theme and density, and the glass behind the islands |");
+    expect(settings).toContain("| Appearance | The font, text sizes, theme and density, and the glass behind the panels |");
     expect(settings).not.toMatch(/Mountains/);
   });
 });
