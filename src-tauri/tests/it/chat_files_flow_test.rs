@@ -251,3 +251,83 @@ async fn the_team_lead_reads_a_projects_files_at_the_paths_get_project_gives_and
     assert_eq!(lines[at + 1], "- Files on a project, task or client: get_project, get_task and get_client give each one's path in your folder: read them there.",
                "{sys}");
 }
+
+/// A pasted image as Hersir saves it (`pasted::save_png`, what `paste_clipboard_image` does with the clipboard's image),
+/// `w` by `h` with pixels that differ, named for `later_s` seconds from now: its path and its pixels.
+fn pasted_png(t: &T, w: u32, h: u32, later_s: i64) -> (PathBuf, Vec<u8>) {
+    let rgba: Vec<u8> = (0..w * h * 4).map(|i| (i % 251) as u8).collect();
+    (gizai_lib::pasted::save_png(&t.st.data_dir, &rgba, w, h, gizai_core::ids::now_ms() + later_s * 1000).unwrap(), rgba)
+}
+
+/// Decodes a PNG file: its width, height and RGBA pixels.
+fn png_at(p: &Path) -> (u32, u32, Vec<u8>) {
+    let img = image::load_from_memory_with_format(&std::fs::read(p).unwrap(), image::ImageFormat::Png).unwrap().into_rgba8();
+    (img.width(), img.height(), img.into_raw())
+}
+
+#[tokio::test]
+async fn a_pasted_image_alone_is_sent_and_the_chief_gets_a_png_of_the_same_size() {
+    // GA-304 QA: a message of only an image pasted into the text box. The message keeps the file, and the Chief's copy in
+    // its folder is that PNG with the copied image's width and height, also once the pasted folder is gone.
+    let t = setup().await;
+    let (pasted, rgba) = pasted_png(&t, 64, 48, 0);
+    let name = pasted.file_name().unwrap().to_string_lossy().into_owned();
+    assert!(pasted.starts_with(t.st.data_dir.join("pasted")), "{}", pasted.display());
+    let (thread, s) = t.send(None, "", vec![pasted.display().to_string()]).await;
+    assert_eq!(s.status, "succeeded", "{s:?}");
+    assert_eq!(chat::get_thread(&t.st.db, &thread).unwrap().title, name);
+
+    let msgs = chat::messages(&t.st.db, &thread).unwrap();
+    assert_eq!(names(&msgs[0].files), [name.as_str()]);
+    assert_eq!(msgs[0].files[0].mime.as_deref(), Some("image/png"));
+    let copy = app_chat::lead_file_path(&t.st, &msgs[0].files[0]);
+    assert!(copy.starts_with(t.st.data_dir.join("lead")), "{}", copy.display());
+    let prompt = t.calls()[0]["prompt"].as_str().unwrap().to_string();
+    assert!(prompt.contains(&format!("\n- {name}: {}", copy.display())), "{prompt}");
+
+    // sending copied it: the message's file and the Chief's copy stay when Hersir removes the pasted folder
+    std::fs::remove_dir_all(pasted.parent().unwrap()).unwrap();
+    assert_eq!(png_at(&copy), (64, 48, rgba.clone()));
+    assert_eq!(png_at(&files::blob_path(&t.st.data_dir, &msgs[0].files[0].sha256)), (64, 48, rgba));
+}
+
+#[tokio::test]
+async fn a_pasted_image_goes_with_a_message_queued_while_the_chief_answers_also_with_no_text() {
+    // GA-304 QA: while the Chief answers, a message with a pasted image (one with text, one of only the image) is queued
+    // with it, and the next turn names it.
+    let t = setup().await;
+    let (thread, done) = app_chat::send_with_files(&t.st, None, "FAKE_CHAT_WAIT first".into(), None, vec![], None).await.unwrap();
+    let waiting = t.st.data_dir.join("chat/fake-waiting");
+    for _ in 0..200 {
+        if waiting.exists() { break; }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    assert!(waiting.exists(), "the fake never started waiting");
+    let (a, _) = pasted_png(&t, 30, 20, 0);
+    let (b, b_rgba) = pasted_png(&t, 7, 300, 2);
+    let (a_name, b_name) = (a.file_name().unwrap().to_string_lossy().into_owned(), b.file_name().unwrap().to_string_lossy().into_owned());
+    let (_, h) = app_chat::send_with_files(&t.st, Some(thread.clone()), "see this".into(), None, vec![a.display().to_string()], None)
+        .await.unwrap();
+    assert_eq!(h.await.unwrap().status, "queued");
+    let (_, h) = app_chat::send_with_files(&t.st, Some(thread.clone()), "".into(), None, vec![b.display().to_string()], None)
+        .await.unwrap();
+    assert_eq!(h.await.unwrap().status, "queued");
+    let q = chat::queue(&t.st.db, &thread).unwrap();
+    assert_eq!(q.len(), 2, "{q:?}");
+    assert_eq!((q[0].body_md.as_str(), names(&q[0].files)), ("see this", vec![a_name.as_str()]));
+    assert_eq!((q[1].body_md.as_str(), names(&q[1].files)), ("", vec![b_name.as_str()]));
+    // the queued message holds its own copy: the pasted folders can go
+    std::fs::remove_dir_all(a.parent().unwrap()).unwrap();
+    std::fs::remove_dir_all(b.parent().unwrap()).unwrap();
+
+    std::fs::write(t.st.data_dir.join("chat/fake-go"), "").unwrap();
+    let s = tokio::time::timeout(std::time::Duration::from_secs(30), done).await.expect("the answers done").unwrap();
+    assert_eq!(s.status, "succeeded", "{s:?}");
+    let calls = t.calls();
+    let rest: String = calls[1..].iter().map(|c| c["prompt"].as_str().unwrap().to_string()).collect();
+    assert!(rest.contains(&format!("\n- {a_name}: ")) && rest.contains(&format!("\n- {b_name}: ")), "{rest}");
+    let sent: Vec<_> = chat::messages(&t.st.db, &thread).unwrap().into_iter().filter(|m| m.role == "user").collect();
+    let with_b = sent.iter().find(|m| m.files.iter().any(|f| f.name == b_name)).expect("the message of only the image");
+    assert_eq!(png_at(&app_chat::lead_file_path(&t.st, &with_b.files[0])), (7, 300, b_rgba));
+    assert!(chat::queue(&t.st.db, &thread).unwrap().is_empty());
+}
