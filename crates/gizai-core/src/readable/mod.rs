@@ -341,7 +341,13 @@ fn inline(blocks: &[Block]) -> String {
 /// A document opened as a zip: its parts are read into memory by name, never unpacked to disk.
 struct Zip {
     z: zip::ZipArchive<BufReader<File>>,
+    /// What has been read from its parts so far (unpacked), at most `MAX_TOTAL_BYTES`.
+    read: u64,
 }
+
+/// At most this much is read from all of a document's parts together (unpacked): a file with hundreds of large parts
+/// would keep the Chief's tools waiting.
+pub const MAX_TOTAL_BYTES: u64 = 1 << 30;
 
 /// The first bytes of an OLE file: an old .doc, .xls or .ppt, and also an Office file protected with a password.
 const OLE_MAGIC: [u8; 8] = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
@@ -359,7 +365,7 @@ impl Zip {
             return Err(format!("it can't be opened as {what}: it is protected with a password, or it is an older kind of file under a new name"));
         }
         let f = File::open(path).map_err(|e| format!("it can't be read: {e}"))?;
-        zip::ZipArchive::new(BufReader::new(f)).map(|z| Zip { z }).map_err(|e| format!("it can't be opened as {what} ({e})"))
+        zip::ZipArchive::new(BufReader::new(f)).map(|z| Zip { z, read: 0 }).map_err(|e| format!("it can't be opened as {what} ({e})"))
     }
 
     /// The index of the part called `name` (as in the zip, else with case ignored, as part names are in Office files).
@@ -377,11 +383,15 @@ impl Zip {
         if f.size() > MAX_PART_BYTES {
             return Err(format!("its part {name} is larger than 200 MB unpacked"));
         }
+        if self.read + f.size() > MAX_TOTAL_BYTES {
+            return Err("its parts are larger than 1 GB unpacked in all".into());
+        }
         let mut buf = Vec::with_capacity(f.size() as usize);
         f.take(MAX_PART_BYTES + 1).read_to_end(&mut buf).map_err(|e| format!("its part {name} can't be read ({e})"))?;
         if buf.len() as u64 > MAX_PART_BYTES {
             return Err(format!("its part {name} is larger than 200 MB unpacked"));
         }
+        self.read += buf.len() as u64;
         Ok(Some(buf))
     }
 
@@ -390,15 +400,23 @@ impl Zip {
         Ok(self.part(name)?.map(xml_text))
     }
 
-    /// Checks that no part is larger than `MAX_PART_BYTES` unpacked, before another reader (calamine) reads them: the
-    /// zip reader stops a part at the size it declares, so none can give more.
+    /// Checks that no part is larger than `MAX_PART_BYTES` unpacked, and that its XML and binary parts (what calamine
+    /// reads; not its pictures) are at most `MAX_TOTAL_BYTES` together, before calamine reads them: the zip reader stops
+    /// a part at the size it declares, so none can give more.
     fn check_sizes(&self) -> Result<(), String> {
+        let mut total = 0u64;
         for i in 0..self.z.len() {
             let e = self.z.by_index_data(i).map_err(|e| format!("its parts can't be read ({e})"))?;
+            let name = e.name().map(|n| n.to_ascii_lowercase()).unwrap_or_default();
             if e.size() > MAX_PART_BYTES {
-                let name = e.name().map(|n| n.into_owned()).unwrap_or_default();
                 return Err(format!("its part {name} is larger than 200 MB unpacked"));
             }
+            if name.ends_with(".xml") || name.ends_with(".bin") || name.ends_with(".rels") {
+                total += e.size();
+            }
+        }
+        if total > MAX_TOTAL_BYTES {
+            return Err("its parts are larger than 1 GB unpacked in all".into());
         }
         Ok(())
     }
