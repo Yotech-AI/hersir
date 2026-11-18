@@ -78,6 +78,15 @@ describe("which refusals are kept calls", () => {
       .toMatchObject({ verb: "Couldn't start an agent on", label: "DU-37", state: "error" });
   });
 
+  it("GA-312 fix round: a call GA-102 kept (2 to 9 Nov: 'this answer used') reads as waiting too; one it couldn't keep reads Couldn't", () => {
+    const old = (name: string) => `${name} wasn't run: this answer used mcp__otus__search, a tool from outside Hersir. Hersir keeps the call for the user to approve with one click. Tell them in a sentence what it does.`;
+    const oldNotKept = "memory_append wasn't run: this answer used mcp__otus__search, a tool from outside Hersir, and Hersir couldn't keep the call for the user to approve (full). Tell the user what you would do and ask them to confirm it in a new message.";
+    expect(toolCard(call("memory_append", { input: { note: "Chief/Notes" }, result: old("memory_append"), isError: true })))
+      .toEqual({ verb: "Waiting for your OK: add to note", label: "Chief/Notes", state: "waiting" });
+    expect(toolCard(call("memory_append", { input: { note: "Chief/Notes" }, result: oldNotKept, isError: true })))
+      .toMatchObject({ verb: "Couldn't add to note", label: "Chief/Notes", state: "error" });
+  });
+
   it("each kept call names what it would do, with the note's whole path for memory", () => {
     const cases: [string, Record<string, unknown>, string, string][] = [
       ["memory_write", { path: "Chief/Notes", body_md: "x" }, "Waiting for your OK: save note", "Chief/Notes"],

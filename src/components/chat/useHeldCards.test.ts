@@ -103,6 +103,21 @@ describe("useHeldCards", () => {
     expect(r.state).toBe(first);
   });
 
+  it("GA-312 fix round: takes a card's new hold time (held again, e.g. by another chat), though nothing else it shows changed", async () => {
+    api.cards.set("t37", card(37, { holdAt: 1_000 }));
+    await mount(["t37"]);
+    const first = r.state;
+    api.cards.set("t37", card(37, { holdAt: 2_000 }));
+    await tasksChanged();
+    expect(r.state).not.toBe(first);
+    expect(useHeldCards(["t37"]).get("t37")?.holdAt).toBe(2_000);
+    // the same time again: the same list
+    const second = r.state;
+    api.cards.set("t37", card(37, { holdAt: 2_000, descriptionMd: "changed" }));
+    await tasksChanged();
+    expect(r.state).toBe(second);
+  });
+
   it("while the window is hidden, asks once it shows again", async () => {
     api.cards.set("t37", card(37));
     await mount(["t37"]);

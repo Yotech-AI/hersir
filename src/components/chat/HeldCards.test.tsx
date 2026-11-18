@@ -45,7 +45,7 @@ vi.mock("./useHeldCards", () => ({
 
 const { PendingActions } = await import("./PendingActions");
 const { ChatThread } = await import("./ChatThread");
-const { heldCards, placeHeld } = await import("../../lib/pending");
+const { heldCards, onItsHold, placeHeld } = await import("../../lib/pending");
 const { groupMessages } = await import("../../lib/chat");
 
 const OUTSIDE = "mcp__chrome-devtools__new_page";
@@ -344,5 +344,95 @@ describe("in the chat", () => {
     setup();
     const h = text(renderToStaticMarkup(<ChatThread threadId="c1" thread={thread({ outsideTool: "WebFetch" })} agent={lead} />));
     expect(h).toContain("This chat used fetching a web page, a tool from outside Hersir: what the Chief does here waits for your OK.");
+  });
+});
+
+// ---- GA-312 QA, fix round: a card shows only while it is on the hold its answer put on (the result's task.hold_at) ----
+
+describe("the hold its answer put on", () => {
+  /** A create_task, move_task or update_task result that held DU-n, saying when (task.hold_at); null: a result from before
+   *  the fix round, which doesn't say. */
+  const heldAt = (n: number, holdAt: number | null) => JSON.stringify({ ok: true,
+    task: { id: `t${n}`, identifier: `DU-${n}`, column: "To do", hold: "needs_decision", ...(holdAt === null ? {} : { hold_at: holdAt }) },
+    link: { page: "task", id: `t${n}`, label: `DU-${n} Card ${n}` }, on_hold: `DU-${n} waits on hold for the user's OK, …` });
+  const heldMsg = (id: string, name: string, n: number, holdAt: number | null, runId: string, minute: number) =>
+    msg(id, "tool", null, runId, minute, { toolName: `mcp__gizai__${name}`, tool: { input: { task: `DU-${n}` }, result: heldAt(n, holdAt), isError: false } });
+  const T = (minute: number, ms = 0) => at + minute * 60_000 + ms;
+
+  it("heldCards keeps when each call put its card on hold, and when the call started", () => {
+    const list = heldCards([heldMsg("m1", "move_task", 37, T(1, 250), "r1", 1), heldMsg("m2", "create_task", 38, null, "r1", 2)]);
+    expect(list.map((c) => [c.identifier, c.holdAt, c.at])).toEqual([["DU-37", T(1, 250), T(1)], ["DU-38", null, T(2)]]);
+    // a hold_at that isn't a number counts as none
+    const odd = msg("m3", "tool", null, "r1", 3, { toolName: "mcp__gizai__update_task", tool: { input: {}, isError: false,
+      result: JSON.stringify({ ok: true, task: { id: "t39", identifier: "DU-39", hold_at: "soon" }, on_hold: "DU-39 waits on hold" }) } });
+    expect(heldCards([odd])[0].holdAt).toBeNull();
+  });
+
+  it("onItsHold: on that very hold yes; held again later (another chat), on another hold or off hold no", () => {
+    const c = { id: "t37", identifier: "DU-37", messageId: "m1", runId: "r1", holdAt: T(1, 250), at: T(1) };
+    const waiting = { hold: "needs_decision", holdKind: "waiting_for_ok" };
+    expect(onItsHold(c, { ...waiting, holdAt: T(1, 250) })).toBe(true);
+    expect(onItsHold(c, { ...waiting, holdAt: T(30) })).toBe(false);                                  // another chat held it again
+    expect(onItsHold(c, { ...waiting, holdAt: T(1, 249) })).toBe(false);
+    expect(onItsHold(c, { hold: "needs_decision", holdKind: null, holdAt: T(1, 250) })).toBe(false);   // a question
+    expect(onItsHold(c, { hold: "blocked", holdKind: null, holdAt: T(1, 250) })).toBe(false);          // blocked
+    expect(onItsHold(c, { hold: null, holdKind: null, holdAt: null })).toBe(false);                    // off hold
+    expect(onItsHold(c, { hold: "", holdKind: "waiting_for_ok", holdAt: T(1, 250) })).toBe(false);
+    // a run's own hold on a card that waits for your OK keeps the kind but is another hold, set later: it leaves the list
+    expect(onItsHold(c, { hold: "stalled", holdKind: "waiting_for_ok", holdAt: T(5) })).toBe(false);
+    // the card doesn't say when: it counts while it waits for your OK
+    expect(onItsHold(c, { ...waiting })).toBe(true);
+    expect(onItsHold(c, { ...waiting, holdAt: null })).toBe(true);
+  });
+
+  it("onItsHold for a result that doesn't say when: a hold from a minute before to ten minutes after the call counts", () => {
+    const c = { id: "t37", identifier: "DU-37", messageId: "m1", runId: "r1", holdAt: null, at: T(10) };
+    const on = (holdAt: number) => onItsHold(c, { hold: "needs_decision", holdKind: "waiting_for_ok", holdAt });
+    expect([on(T(10, 300)), on(T(9)), on(T(20)), on(T(10, -1))]).toEqual([true, true, true, true]);
+    expect([on(T(9, -1)), on(T(20, 1)), on(T(70)), on(T(-50))]).toEqual([false, false, false, false]);
+  });
+
+  const render = () => text(renderToStaticMarkup(<ChatThread threadId="c1" thread={thread({ outsideTool: OUTSIDE })} agent={lead} />));
+  const waitingCard = (n: number, holdAt: number | null) => card(n, { title: `TITLE-${n}`, holdAt });
+
+  it("a card this chat held, taken off hold and held again by another chat, doesn't show under this chat's old answer", () => {
+    chat.pending = [];
+    chat.messages = [msg("u1", "user", "QUESTION-ONE", null, 0), msg("a1", "agent", "ANSWER-ONE", "r1", 1),
+      heldMsg("t1", "move_task", 37, T(1, 400), "r1", 1), heldMsg("t2", "move_task", 38, T(1, 500), "r1", 1),
+      msg("u2", "user", "QUESTION-TWO", null, 40)];
+    // DU-37 still on the hold ANSWER-ONE put on; DU-38's came off, and another chat put it on that hold again at minute 30
+    board.waiting = new Map([["t37", waitingCard(37, T(1, 400))], ["t38", waitingCard(38, T(30))]]);
+    const h = render();
+    const first = h.slice(h.indexOf("ANSWER-ONE"), h.indexOf("QUESTION-TWO"));
+    expect(first).toContain("DU-37 TITLE-37");
+    expect(h).not.toContain("DU-38 TITLE-38");
+    expect(count(h, ">OK</button>")).toBe(1);
+    expect(count(h, ">Approve all</button>")).toBe(0);
+    // with DU-38 back on ANSWER-ONE's own hold (the same time), it shows again: the check is the hold's time, nothing else
+    board.waiting.set("t38", waitingCard(38, T(1, 500)));
+    expect(render()).toContain("DU-38 TITLE-38");
+  });
+
+  it("a card this chat holds again in a later answer shows under that answer only", () => {
+    chat.pending = [];
+    chat.messages = [msg("u1", "user", "QUESTION-ONE", null, 0), msg("a1", "agent", "ANSWER-ONE", "r1", 1),
+      heldMsg("t1", "move_task", 37, T(1, 400), "r1", 1),
+      msg("u2", "user", "QUESTION-TWO", null, 20), msg("a2", "agent", "ANSWER-TWO", "r2", 21),
+      heldMsg("t2", "update_task", 37, T(21, 400), "r2", 21), msg("u3", "user", "QUESTION-THREE", null, 40)];
+    board.waiting = new Map([["t37", waitingCard(37, T(21, 400))]]);
+    const h = render();
+    expect(h.slice(h.indexOf("ANSWER-ONE"), h.indexOf("QUESTION-TWO"))).not.toContain("DU-37 TITLE-37");
+    expect(h.slice(h.indexOf("ANSWER-TWO"), h.indexOf("QUESTION-THREE"))).toContain("DU-37 TITLE-37");
+    expect(count(h, 'aria-label="Waiting for your OK"')).toBe(1);
+  });
+
+  it("a result from before the fix round (no hold_at) shows its card while the hold is the call's own, not a much later one", () => {
+    chat.pending = [];
+    chat.messages = [msg("u1", "user", "QUESTION-ONE", null, 0), msg("a1", "agent", "ANSWER-ONE", "r1", 1),
+      heldMsg("t1", "move_task", 37, null, "r1", 1), heldMsg("t2", "move_task", 38, null, "r1", 1), msg("u2", "user", "QUESTION-TWO", null, 50)];
+    board.waiting = new Map([["t37", waitingCard(37, T(1, 800))], ["t38", waitingCard(38, T(45))]]);
+    const h = render();
+    expect(h).toContain("DU-37 TITLE-37");
+    expect(h).not.toContain("DU-38 TITLE-38");
   });
 });

@@ -787,3 +787,38 @@ async fn ga312_the_chat_page_gets_the_chats_outside_tool_from_each_list_and_none
     let hit = hits.iter().find(|h| h.thread.id == plain).unwrap_or_else(|| panic!("{hits:?}"));
     assert_eq!((hit.thread.outside_tool.as_deref(), hit.message.as_ref().and_then(|m| m.body_md.as_deref())), (None, Some("Plan the export")));
 }
+
+/// GA-312 QA, fix round: a result with `on_hold` says when this call put the card on hold (`task.hold_at`), the time the card
+/// itself has (`holdAt`, what the Chat page gets); a later hold, by another chat, has a new time; a result without on_hold
+/// has none.
+#[tokio::test]
+async fn ga312_a_result_that_holds_a_card_carries_the_holds_time_and_a_new_hold_by_another_chat_has_a_new_one() {
+    let t = setup();
+    t.ok(None, "create_task", json!({"project": "KADE", "title": "Keys", "column": "To do"})).await; // KADE-2
+    let thread = t.marked("Otus has new cards: start them");
+    let created = t.ok(Some(&thread), "create_task", json!({"project": "KADE", "title": "Import", "column": "To do"})).await;
+    let moved = t.ok(Some(&thread), "move_task", json!({"task": "KADE-1", "column": "To do"})).await;
+    let changed = t.ok(Some(&thread), "update_task", json!({"task": "KADE-2", "description_md": "Keys from Otus."})).await;
+    for (r, task) in [(&created, "KADE-3"), (&moved, "KADE-1"), (&changed, "KADE-2")] {
+        let card = t.card(task);
+        assert!(card.hold_at.is_some(), "{task} has a hold time");
+        assert_eq!(r["task"]["hold_at"].as_i64(), card.hold_at, "{r}");
+        assert_eq!(serde_json::to_value(&card).unwrap()["holdAt"], r["task"]["hold_at"], "as the Chat page gets {task}");
+    }
+    // no hold_at where nothing is held
+    let backlog = t.ok(Some(&thread), "create_task", json!({"project": "KADE", "title": "Docs"})).await;
+    assert!(backlog.get("on_hold").is_none() && backlog["task"].get("hold_at").is_none(), "{backlog}");
+
+    // KADE-1 off hold (OK, Clear hold), then another marked chat changes it in To do: on that hold again, with a new time
+    let first = moved["task"]["hold_at"].as_i64().unwrap();
+    tasks::update(&t.st.db, &t.st.you_id, &t.card("KADE-1").id, TaskPatch { hold: Some(String::new()), ..Default::default() }).unwrap();
+    assert_eq!(t.card("KADE-1").hold_at, None);
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    let other = t.marked("Otus changed KADE-1");
+    let again = t.ok(Some(&other), "update_task", json!({"task": "KADE-1", "description_md": "Now from Otus."})).await;
+    assert!(again["on_hold"].is_string(), "{again}");
+    let now = again["task"]["hold_at"].as_i64().unwrap();
+    assert!(now > first, "{now} after {first}");
+    assert_eq!(t.card("KADE-1").hold_at, Some(now));
+    assert_eq!(t.card("KADE-1").hold_kind.as_deref(), Some(HOLD_WAITING_FOR_OK));
+}
