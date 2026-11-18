@@ -7,6 +7,7 @@ The Chief is the agent you chat with: it looks after your board for you, and ans
 The Chief manages clients, projects, cards and agents with Hersir's own tools. In a chat it can:
 
 - make and change clients, projects, cards and docs, and comment on and move cards;
+- archive cards in Done when you ask, and restore them ([below](#archiving-cards-in-done));
 - split bigger work into cards that build on each other, so they start in order by themselves ([below](#cards-that-build-on-others));
 - start and continue agents' runs, and add or change agents and columns;
 - attach a file you gave it to a card, project or client;
@@ -45,9 +46,9 @@ Once a chat used a tool from outside Hersir (an MCP server, the web, the browser
 
 A tool the Chief doesn't have marks nothing. A chat answer has Read, Glob and Grep, web search and fetching pages while Web is on, and the tools of the MCP servers and the browser it gets (agent form → Tools). When the Chief calls any other tool, like Bash, Edit or a tool of a server it doesn't have, Claude Code refuses the call without running it ("No such tool available"), so nothing came in from outside: the chat isn't marked and says nothing about it.
 
-The Chief's calls that wait start or continue runs, change agents or columns, attach a file, update a linked folder, save to memory, merge a pull request, comment on a card, change a card's description, acceptance criteria, assignee or the cards it builds on (in a column that isn't Auto; in an Auto column the card waits on hold instead, [below](#cards-that-wait-for-your-ok)), or change a project's repository, folder, main branch or goal. A change to a project's name, colour, status, client or Test runs at once applies at once. Each call that waits shows under the answer that tried it:
+The Chief's calls that wait start or continue runs, change agents or columns, attach a file, update a linked folder, save to memory, merge a pull request, archive cards, comment on a card, change a card's description, acceptance criteria, assignee or the cards it builds on (in a column that isn't Auto; in an Auto column the card waits on hold instead, [below](#cards-that-wait-for-your-ok)), or change a project's repository, folder, main branch or goal. A change to a project's name, colour, status, client or Test runs at once applies at once, and so does restoring archived cards, which only undoes an archive. Each call that waits shows under the answer that tried it:
 
-- with a line about what it does and a preview: a note's new text and what changes, the card and agent, the settings that change, the file and where it goes, the comment's text, and each field of a card or project that changes, old and new;
+- with a line about what it does and a preview: a note's new text and what changes, the card and agent, the settings that change, the file and where it goes, the comment's text, each field of a card or project that changes, old and new, and the cards an archive takes, like "Archive 683 cards in Done" (one card: "Archive GA-12"), with the ones it would skip and why;
 - with **Approve** and **Discard**, and **Approve all** when there are several.
 
 Approve runs exactly that call once, with every other rule in force; it isn't kept again, and a card it changes doesn't go on hold. Discard runs nothing. The chat notes what happened and the Chief hears it in its next answer. Approving doesn't start a new answer: once nothing waits and the Chief isn't answering, a last note says its answer is done, so send a message to go on. Until you decide, the chat waits for you at the top of [the Inbox](inbox.md), also after a restart.
@@ -89,6 +90,17 @@ With more than one team, each with its own board ([Several teams](board.md#sever
 - `get_workflow` takes `team` for one team's columns; without it, each team's columns come under its name. `list_agents` takes `team` for one team's agents, and with more than one team says each agent's team.
 - `create_project` takes `team` (the first team when left out). `update_project` with `team` moves the project and all its cards, as the project form does, with the same refusal while one of its cards has a run live or starting. A board check never moves a project, and neither does a chat that used a tool from outside Hersir.
 - `get_project` and `list_projects` show each project's team.
+
+## Archiving cards in Done
+
+Ask the Chief in a chat, like "Archive Done", and it archives the cards in Done, as the board's Archive all does ([Many cards at once](board.md#many-cards-at-once)). Archived cards leave the board and every list, and keep their ID, comments, runs and branch; the bin on the Tasks page keeps them.
+
+- `archive_tasks` takes `tasks`, the cards' identifiers like `["GA-12"]`, or `all_done: true` for every card in the team's Done column, with `project` for only that project's cards. Exactly one of the two: neither or both is refused with why, and nothing is archived. With more than one team and no project, `all_done` needs `team`, as `add_column` does.
+- A card outside Done, one already archived and one an agent is working on are skipped with why; the others are archived, in one go.
+- Its answer says how many it archived and names them, at most 50 with `more` for the rest, and every skipped card with its reason: `{"ok": true, "done": "archived", "archived": 683, "tasks": ["GA-12", …], "more": 633, "skipped": [{"task": "GA-303", "reason": "An agent is working on this card"}]}`.
+- `restore_tasks` takes `tasks`, the archived cards' identifiers, and puts them back at the bottom of their Done column, as they were. A card that isn't archived is skipped: "GA-12 isn't archived".
+- `list_tasks` with `archived: true` lists the archived cards, and `get_task` finds one by its identifier.
+- A board check never archives or restores cards: it asks you in a chat instead. In a chat that used a tool from outside Hersir, an archive waits for your Approve ([Approve with one click](#approve-with-one-click)); a restore runs at once.
 
 ## The board check
 
