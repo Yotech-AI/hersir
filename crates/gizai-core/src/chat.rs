@@ -47,6 +47,9 @@ pub struct ChatThread {
     /// GA-102: the Chief's calls that wait for your approval in it (`pending`). While there are any, the chat waits
     /// for you in the Inbox, whoever started it.
     pub pending_actions: i64,
+    /// GA-261: the first tool from outside Hersir the chat used (`outside_tool`), like `mcp__otus__search`: from then on what
+    /// the Chief does there waits for your OK. None: the chat isn't marked. GA-312: the Chat page says so above the text box.
+    pub outside_tool: Option<String>,
 }
 
 impl ChatThread {
@@ -145,7 +148,7 @@ pub fn title_from(text: &str) -> String {
 
 const THREAD_COLS: &str = "id, agent_actor_id, COALESCE(title, 'New chat'), session_id, created_at, updated_at, cost_usd_micros, input_tokens, output_tokens,
     created_by, kind, task_ids_json, answered_at, dismissed_at, cli, session_cli,
-    (SELECT count(*) FROM pending_actions p WHERE p.thread_id = chat_threads.id AND p.status = 'pending')";
+    (SELECT count(*) FROM pending_actions p WHERE p.thread_id = chat_threads.id AND p.status = 'pending'), chat_threads.outside_tool";
 
 fn thread_row(r: &rusqlite::Row) -> rusqlite::Result<ChatThread> {
     let task_ids: Vec<String> = serde_json::from_str(&r.get::<_, String>(11)?).unwrap_or_default();
@@ -153,7 +156,7 @@ fn thread_row(r: &rusqlite::Row) -> rusqlite::Result<ChatThread> {
     Ok(ChatThread { id: r.get(0)?, agent_id: r.get(1)?, title: r.get(2)?, session_id: r.get(3)?, created_at: r.get(4)?, updated_at: r.get(5)?,
                     cost_usd_micros: r.get(6)?, input_tokens: r.get(7)?, output_tokens: r.get(8)?, created_by: r.get(9)?,
                     waiting: kind.is_some() && answered_at.is_none() && dismissed_at.is_none(), kind, task_ids, tasks: vec![], answered_at, dismissed_at,
-                    cli: r.get(14)?, session_cli: r.get(15)?, pending_actions: r.get(16)? })
+                    cli: r.get(14)?, session_cli: r.get(15)?, pending_actions: r.get(16)?, outside_tool: r.get(17)? })
 }
 
 /// The chats with calls of the Chief's that wait for your approval (GA-102), newest activity first: they wait for
@@ -295,7 +298,7 @@ pub fn search_threads(db: &Db, query: &str) -> Result<Vec<ThreadHit>> {
                ON hit.thread_id = chat_threads.id
              WHERE chat_threads.deleted_at IS NULL AND (COALESCE(title, 'New chat') LIKE ?1 ESCAPE '\\' OR hit.message_rowid IS NOT NULL)
              ORDER BY chat_threads.updated_at DESC, chat_threads.rowid DESC"))?;
-        let found = st.query_map([&pattern], |r| Ok((thread_row(r)?, r.get::<_, Option<i64>>(17)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
+        let found = st.query_map([&pattern], |r| Ok((thread_row(r)?, r.get::<_, Option<i64>>(18)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
         let (threads, rowids): (Vec<_>, Vec<_>) = found.into_iter().unzip();
         let mut msg = c.prepare(&format!("{MSG_SELECT} WHERE m.rowid=?1"))?;
         with_tasks(c, threads)?.into_iter().zip(rowids).map(|(thread, rowid)| -> Result<ThreadHit> {
