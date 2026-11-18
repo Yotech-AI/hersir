@@ -11,7 +11,7 @@ import { chatRunsOn, groupMessages, SUGGESTIONS, toolName, type Group } from "..
 import { adoptNewChat, chatSideKey, setChatCards } from "../../lib/chatSide";
 import { linkedCards } from "../../lib/chatOpen";
 import { addPaths } from "../../lib/files";
-import { placePending } from "../../lib/pending";
+import { heldCards, outsideLabel, placeHeld, placePending } from "../../lib/pending";
 import { usePending, type Pending } from "../../lib/usePending";
 import { useDropZone } from "../../lib/useDropZone";
 import type { ChatCli, ChatMessage, ChatThread as Thread, Member, QueuedMessage } from "../../types";
@@ -21,6 +21,7 @@ import { PendingFileList, pickFiles } from "../FileDrop";
 import { Popover } from "../Popover";
 import { MessageGroup, UserBubble } from "./ChatMessage";
 import { PendingActions } from "./PendingActions";
+import { useHeldCards } from "./useHeldCards";
 import { Avatar } from "../Avatar";
 import { BusyButton } from "../BusyButton";
 import { useChat } from "./useChat";
@@ -164,6 +165,11 @@ export function ChatThread({ threadId, thread, agent, youId }: { threadId: strin
   const { messages, draft, tool, working, queue, error, setWorking, pending: calls } = useChat(threadId);
   // GA-102: the Team Lead's calls that wait for your approval in this chat, each under the answer that tried it.
   const waitingCalls = useMemo(() => (calls ?? []).filter((a) => a.threadId === threadId), [calls, threadId]);
+  // GA-312: the cards this chat's answers put on the waiting-for-OK hold, and of those, the ones on it now (kept live).
+  const held = useMemo(() => heldCards(messages), [messages]);
+  const heldNow = useHeldCards(useMemo(() => held.map((c) => c.id), [held]));
+  // GA-261: the chat used a tool from outside Hersir (the line above the text box says so); of this chat only.
+  const outsideTool = thread && thread.id === threadId ? thread.outsideTool ?? null : null;
   const box = useRef<ComposerText>(null);
   // Files added to the message (+ → Add files, dropped on the Chat page, or an image pasted): their paths, until it is sent.
   const [files, setFiles] = useState<string[]>([]);
@@ -186,7 +192,7 @@ export function ChatThread({ threadId, thread, agent, youId }: { threadId: strin
   useLayoutEffect(() => {
     const s = scroller.current;
     if (s && pinned.current) s.scrollTop = s.scrollHeight;
-  }, [messages, draft, working, tool, queue, waitingCalls.length]);
+  }, [messages, draft, working, tool, queue, waitingCalls.length, heldNow.size]);
   // The queue goes by itself when the answer is done; after a stopped or failed answer (or a restart) it waits.
   const waiting = queue.filter((q) => !working || q.held);
   // Stop spins until the answer has stopped, Send now until its messages have gone, Answer on until the answer starts.
@@ -295,7 +301,11 @@ export function ChatThread({ threadId, thread, agent, youId }: { threadId: strin
   });
   const last = groups[groups.length - 1];
   const placed = useMemo(() => placePending(groups, waitingCalls), [groups, waitingCalls]);
-  const under = useMemo(() => new Map([...placed].map(([key, actions]) => [key, <PendingActions actions={actions} onError={setSendError} />])), [placed]);
+  const placedCards = useMemo(() => placeHeld(groups, held.filter((c) => heldNow.has(c.id))), [groups, held, heldNow]);
+  // under each answer, its calls and its cards that wait for your OK, in one section
+  const under = useMemo(() => new Map([...new Set([...placed.keys(), ...placedCards.keys()])].map((key) => [key,
+    <PendingActions actions={placed.get(key) ?? []} cards={(placedCards.get(key) ?? []).map((c) => heldNow.get(c.id)!)} outsideTool={outsideTool}
+      threadId={threadId} onError={setSendError} />])), [placed, placedCards, heldNow, outsideTool, threadId]);
   const callsUnder = (key: string) => under.get(key);
   const liveBits = working ? (
     <>
@@ -353,6 +363,11 @@ export function ChatThread({ threadId, thread, agent, youId }: { threadId: strin
           {fileNote && (
             <div className="chat-banner warn" role="alert"><span>{fileNote}</span>
               <button className="btn ghost sm icon-only" aria-label="Close" title="Close" onClick={() => setFileNote(null)}><X className="icon sm" /></button></div>
+          )}
+          {outsideTool && (
+            <div className="chat-banner outside" role="note"><span>This chat used {outsideLabel(outsideTool)}, a tool from outside Hersir: what the Chief does here waits for your OK.</span>
+              <button className="btn sm" title="Starts a new chat, which hasn't used that tool" onClick={() => go({ page: "chat" })}>
+                <Plus className="icon" />New chat</button></div>
           )}
           <Composer box={box} files={files} onAddFiles={addFiles} onRemoveFile={(p) => setFiles((f) => f.filter((x) => x !== p))} onNote={setFileNote}
             onSend={send} onStop={() => { if (threadId) pending.act("stop", () => stopChat(threadId), fail); }}
