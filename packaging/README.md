@@ -6,6 +6,7 @@ Hersir's packages for package managers, made from the ready-made builds of its r
 |---|---|---|---|
 | [`aur/hersir-bin`](aur/hersir-bin) | `hersir-bin` on the AUR, for Arch Linux and Omarchy | `yay -S hersir-bin` | `ssh://aur@aur.archlinux.org/hersir-bin.git` |
 | [`homebrew`](homebrew) | the formula `hersir` in the Homebrew tap `yotech-ai/tap`, for Macs with Apple silicon | `brew install yotech-ai/tap/hersir` | `https://github.com/Yotech-AI/homebrew-tap.git`, its `main` |
+| [`scoop`](scoop) | `hersir` in the Scoop bucket `Yotech-AI/scoop-bucket`, for Windows | `scoop bucket add hersir https://github.com/Yotech-AI/scoop-bucket`, then `scoop install hersir/hersir` | `https://github.com/Yotech-AI/scoop-bucket.git` (`main`) |
 
 ## aur/hersir-bin
 
@@ -37,6 +38,22 @@ What the formula installs, and from where:
 - Uninstalling removes only the formula's files: the data folder, `~/Library/Application Support/Hersir`, stays.
 
 To change the formula, edit `hersir.rb` here. CI's Homebrew job (`.github/workflows/ci.yml`, the homebrew job) makes a test build of the pull request's commit, packed as Release builds packs a release's, installs the formula for it from a local tap, and runs `brew test`, `brew audit`, `codesign --verify` on the installed app and a check that nothing the formula installed has the quarantine mark. It publishes nothing.
+
+## scoop
+
+The bucket `Yotech-AI/scoop-bucket` as it is for one release, the one `hersir.json` names: `hersir.json` goes into the bucket as `bucket/hersir.json`, with `scripts/hersir-shortcut.ps1`, `README.md` (the bucket's own README, for people who install Hersir with Scoop) and [`LICENSE`](LICENSE) beside it. For each signed release, `scripts/packages.sh vX.Y.Z` writes the release's version, the zip's address and its sha256 into `hersir.json`, puts the four files into a copy of the bucket's `main` (only them: what else is there goes), shows the change and pushes it to `main` after `y`, with gh's GitHub login (git asks gh for it, whatever login git has of its own). The files here stay as they are.
+
+What the manifest takes, and what it does:
+
+- **The programs:** the release's `hersir-X.Y.Z-windows-x86_64.zip`, with its sha256 from the release's `SHA256SUMS`, which the release's signature covers. `extract_dir` takes `hersir.exe` and `hersir-mcp.exe` out of the zip's `target\release`, exactly as the release built them.
+- **The commands:** `bin` puts `hersir-mcp.exe` on the PATH as `hersir-mcp`, and for `hersir` the script `hersir.ps1`, which `pre_install` writes beside the programs. `hersir.exe` is a window app, and Scoop's shim for a window app returns at once and passes on nothing it prints, so through that shim `hersir --version` would print nothing. `hersir.ps1` runs `hersir.exe` itself: with `--version`, `--help` or `--backup` it waits and passes on what `hersir.exe` printed (from files, as `install.ps1` reads it) and its exit code; with anything else it starts Hersir and returns at once. Scoop makes the shims `hersir.ps1` for PowerShell, `hersir.cmd` for cmd and `hersir` for Git Bash; the last two run the script in PowerShell.
+- **No `checkver` or `autoupdate`:** only `scripts/packages.sh` changes the version, after the signature. Nothing of Scoop's own, such as its Excavator, may write a version into the bucket.
+- **The mark:** `post_install` writes `hersir-package.txt`, which says `scoop`, beside the programs. With it, Hersir doesn't update itself, and Settings → Updates says to update it with `scoop update; scoop update hersir`.
+- **The Start menu shortcut:** `post_install` then runs the bucket's `scripts/hersir-shortcut.ps1`, which makes `Start Menu\Programs\Scoop Apps\Hersir.lnk` with `install.ps1`'s own C#: it starts `hersir.exe` in Scoop's `current` folder, so it outlives updates, and carries Hersir's AppUserModelID, `dev.hersir.app`, without which Windows shows none of Hersir's notifications. Scoop's own `shortcuts` can't carry one, and `scoop reset` would make them again without it. `pre_uninstall` removes the shortcut, but not while a Hersir from the app's folder runs: `scoop uninstall` runs `pre_uninstall` before it finds that and stops, and would leave Hersir without its shortcut. On an update, Scoop runs the old version's `pre_uninstall`, then the new version's `post_install`.
+- **No `persist`:** Hersir's data is in `%APPDATA%\Hersir`, which Scoop never touches: `scoop uninstall hersir` keeps it, also with `--purge`.
+- **The Visual C++ runtime:** `hersir.exe` carries it already (tauri-build links it in), and `install.ps1` builds `hersir-mcp.exe` with a static C runtime (`-C target-feature=+crt-static`), so neither needs `VCRUNTIME140.dll`. The bucket takes releases built that way: the first release after 0.18.1, not 0.18.1 itself or an earlier one.
+
+To change the package, edit the files here. CI's Scoop job (`.github/workflows/ci.yml`, the scoop job) builds Hersir with `install.ps1 -BuildOnly` as Release builds does, checks with `dumpbin /dependents` that neither program needs `VCRUNTIME140.dll`, packs the zip as Release builds packs it, and installs it with Scoop from a local bucket of these files, filled in for that zip. Then `hersir --version` must say the version, in Windows PowerShell and in cmd, `hersir` without an option must start `hersir.exe` in `current`, `hersir-package.txt` must say `scoop`, the shortcut must carry `dev.hersir.app` and start `hersir.exe` in `current`, and the programs must have no `Zone.Identifier` stream; after an update, the shortcut, the mark and `hersir --version`, in PowerShell 7, must still be there; `scoop uninstall hersir` must remove the commands and keep the data folder as it was. It publishes nothing.
 
 ## Licence
 

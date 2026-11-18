@@ -7,7 +7,8 @@
 #   hersir-X.Y.Z-windows-x86_64.zip    target/release/hersir.exe and target/release/hersir-mcp.exe
 #   SHA256SUMS                         one line per archive, "<sha256>  <file name>", as sha256sum writes it
 # Each archive is checked before it counts: unpacked into a fresh checkout of the same commit, it installs with
-# --skip-build (-SkipBuild) into a scratch folder, and the installed hersir --version says the version.
+# --skip-build (-SkipBuild) into a scratch folder, and the installed hersir --version says the version. On Windows, first
+# dumpbin /dependents must list no VCRUNTIME140.dll for either program, as a fresh Windows has none.
 # - A published release: it builds the release's tag and attaches the four files to the release, with the workflow's
 #   own token, in the one job that may write. By hand, with a release's tag, it does the same for a release that exists
 #   (and replaces the builds it has).
@@ -175,6 +176,25 @@ jobs:
         run: |
           powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -BuildOnly
           if ($LASTEXITCODE -ne 0) { 'install.ps1 -BuildOnly failed'; exit 1 }
+
+      # A fresh Windows has no Visual C++ Redistributable, so neither program may need its VCRUNTIME140.dll or another
+      # of its DLLs: hersir.exe carries the VC runtime (tauri-build), and install.ps1 builds hersir-mcp.exe with a
+      # static C runtime. What each program needs to start, from dumpbin of the Visual Studio the build used.
+      - name: hersir.exe and hersir-mcp.exe need no VCRUNTIME140.dll
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          $dumpbin = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find 'VC\Tools\MSVC\**\bin\Hostx64\x64\dumpbin.exe' | Select-Object -First 1
+          if (-not $dumpbin) { "vswhere found no dumpbin.exe"; exit 1 }
+          foreach ($exe in @('hersir.exe', 'hersir-mcp.exe')) {
+            $deps = @(& $dumpbin /nologo /dependents "target\release\$exe")
+            if ($LASTEXITCODE -ne 0) { "dumpbin /dependents $exe failed"; exit 1 }
+            $deps | ForEach-Object { Write-Host $_ }
+            if (-not ($deps -match '^\s*KERNEL32\.dll\s*$')) { "dumpbin /dependents $exe lists no KERNEL32.dll: it didn't list the dependencies"; exit 1 }
+            $runtime = @($deps -match '^\s*(vcruntime|msvcp)\d+\w*\.dll\s*$' | ForEach-Object { $_.Trim() })
+            if ($runtime) { "$exe needs $($runtime -join ', '), which a fresh Windows doesn't have."; exit 1 }
+          }
 
       # The archive: exactly the files --skip-build installs, at the paths the build left them. On Linux owned by root
       # rather than the runner's user. On macOS without extended attributes, and without the ._ files macOS's tar

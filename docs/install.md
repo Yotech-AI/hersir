@@ -87,6 +87,22 @@ mkdir -p ~/Applications && ln -sfn "$(brew --prefix)/opt/hersir/Hersir.app" ~/Ap
 - `brew uninstall hersir` removes it, and `rm ~/Applications/Hersir.app` the link you made. Your data stays in `~/Library/Application Support/Hersir` ([Your data](#your-data)).
 - Use one way to install Hersir, not both: to move from the one line to Homebrew, first remove the one line's install with its `--uninstall`, which keeps your data.
 
+### Windows: Scoop
+
+Hersir has a [Scoop](https://scoop.sh) bucket of its own, [`Yotech-AI/scoop-bucket`](https://github.com/Yotech-AI/scoop-bucket). Add it once, then install Hersir from it, in PowerShell:
+
+```powershell
+scoop bucket add hersir https://github.com/Yotech-AI/scoop-bucket
+scoop install hersir/hersir
+```
+
+- It is the release's ready-made build for Windows (x86_64), the one the one line installs. The bucket gets a new release only once it is signed, usually the same day, and its build is checked against the release's signed `SHA256SUMS`.
+- Scoop installs it for you alone: the programs in `~\scoop\apps\hersir\current`, the commands `hersir` and `hersir-mcp`, and Hersir in the Start menu (Scoop Apps → Hersir), whose shortcut carries Hersir's app ID, so Windows shows Hersir's notifications. Neither program needs the Visual C++ Redistributable. Git for Windows, Claude Code, Codex and Gemini stay your own installs ([What every system needs](#what-every-system-needs)).
+- To update it, quit Hersir (Quit Hersir completely, in its tray menu), then run `scoop update; scoop update hersir`: Scoop doesn't update a program that runs, and `scoop update` fetches the bucket first. Hersir doesn't update itself then: Settings → Updates says `Hersir came from Scoop, so it doesn't update itself. Update it with scoop update; scoop update hersir, then restart Hersir.`
+- `scoop uninstall hersir` removes it, with its commands and its Start menu shortcut. Your data stays in `%APPDATA%\Hersir`, also with `--purge` ([Your data](#your-data)).
+- Scoop doesn't mark what it downloads as coming from the internet, so SmartScreen shouldn't stop Hersir. Smart App Control does stop it ([Signatures](#signatures)).
+- Use one way to install Hersir, not both: to move from the one line to Scoop, first remove the one line's install with its `-Uninstall`, which keeps your data.
+
 ## What every system needs
 
 - [Claude Code](https://docs.claude.com/en/docs/claude-code) or Codex, installed and logged in; for Claude Code, run `claude` once. The Chief's chat needs Claude Code. Agents can also run on Gemini or another coding CLI you have installed and logged in (Settings → Coding CLIs).
@@ -138,7 +154,7 @@ Hersir's tray icon is in the menu bar.
 
 ## Windows
 
-For Windows 11. You also need:
+For Windows 11, with the one line, with Scoop ([Windows: Scoop](#windows-scoop)) or from a clone. You also need:
 
 - Git for Windows: Claude Code runs its commands in Git for Windows' Git Bash, and it has an ssh-keygen too;
 - WebView2, which comes with Windows 11;
@@ -186,6 +202,8 @@ Hersir has no Apple or Microsoft signature yet: there is no Apple Developer acco
 - macOS: System Settings → Privacy & Security → Open Anyway, or `xattr -dr com.apple.quarantine ~/.local/lib/hersir/Hersir.app`;
 - Windows: More info → Run anyway.
 
+Smart App Control is another matter. On a Windows 11 PC that has it on, Windows blocks programs without a signature unless they have a good reputation, however they were installed: with the one line, with Scoop or built on that PC. It has no exception for one app, so Hersir doesn't run on such a PC until it has a Microsoft signature. Windows Security → App & browser control shows whether Smart App Control is on.
+
 After an update, macOS may ask once whether Hersir may use what it saved in your keychain: choose Always Allow.
 
 ## First start
@@ -218,6 +236,8 @@ If a step fails, the version you have keeps working, and Settings → Updates sa
 You can still update from a terminal: run the [one line](#in-one-line) again, or in a clone `git pull`, then `./install.sh` (on Windows `.\install.ps1`). How an update works, step by step: [docs/RELEASING.md](RELEASING.md#how-hersir-updates-itself).
 
 A Hersir from the AUR never updates itself: `yay -Syu` updates it ([With a package manager](#with-a-package-manager)). Neither does a Hersir from Homebrew: `brew update && brew upgrade hersir` updates it.
+
+A Hersir from Scoop doesn't either: quit it, then `scoop update; scoop update hersir` updates it ([Windows: Scoop](#windows-scoop)).
 
 ## Your data
 

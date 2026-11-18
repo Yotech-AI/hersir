@@ -17,10 +17,12 @@
 #   ssh://aur@aur.archlinux.org/hersir-bin.git with your AUR key (ssh takes it from ~/.ssh/config or ssh-agent).
 # - homebrew: the formula hersir in the tap yotech-ai/tap, from packaging/homebrew and packaging/LICENSE, pushed to the
 #   main branch of https://github.com/Yotech-AI/homebrew-tap.git with your own git login for GitHub.
+# - scoop: hersir in the Scoop bucket Yotech-AI/scoop-bucket, from packaging/scoop and packaging/LICENSE, pushed to
+#   https://github.com/Yotech-AI/scoop-bucket.git (main) with gh's GitHub login (git asks gh for it).
 # Only Jeffrey runs it, never CI or an agent: the AUR key never leaves Jeffrey's computer. For tests,
 # HERSIR_RELEASE_SIGNERS replaces release-signers (a throwaway key's allowed-signers file), HERSIR_AUR_REPO the AUR's
-# repository, HERSIR_TAP_REPO the tap's and HERSIR_SOURCE_REPO GitHub's, where the commit comes from (local
-# repositories).
+# repository, HERSIR_TAP_REPO the tap's, HERSIR_SCOOP_REPO the bucket's and HERSIR_SOURCE_REPO GitHub's, where the
+# commit comes from (local repositories).
 # A bash script for Linux and macOS, also for macOS's own bash 3.2. It needs gh, logged in to GitHub, git and ssh-keygen.
 
 set -euo pipefail
@@ -40,7 +42,7 @@ unset GH_HOST CDPATH GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY G
 
 REPO=Yotech-AI/hersir
 NAMESPACE=hersir-release
-PACKAGES="aur homebrew"
+PACKAGES="aur homebrew scoop"
 ROOT="$(cd -P "$(dirname "$0")/.." && pwd)"
 NL=$'\n'
 AUR_REPO="${HERSIR_AUR_REPO:-ssh://aur@aur.archlinux.org/hersir-bin.git}"
@@ -57,14 +59,16 @@ Publishes Hersir's packages for the signed release vX.Y.Z, right after scripts/s
   scripts/packages.sh vX.Y.Z         checks the release's signature, fills its version, sha256s and commit into each
                                      package, shows the change, and publishes after y
   scripts/packages.sh vX.Y.Z aur     the same for the packages named: aur (hersir-bin on the AUR), homebrew (the
-                                     formula hersir in Yotech-AI/homebrew-tap)
+                                     formula hersir in Yotech-AI/homebrew-tap), scoop (hersir in the Scoop bucket
+                                     Yotech-AI/scoop-bucket)
 Nothing is published without a signature that checks against release-signers, or without y.
 Environment, for tests with throwaway keys and local repositories: HERSIR_RELEASE_SIGNERS, an allowed-signers file
 instead of release-signers; HERSIR_AUR_REPO, a git repository instead of the AUR's hersir-bin; HERSIR_TAP_REPO, a git
-repository instead of Yotech-AI/homebrew-tap; HERSIR_SOURCE_REPO, a git repository instead of GitHub's, for the
-release's commit.
+repository instead of Yotech-AI/homebrew-tap; HERSIR_SCOOP_REPO, a git repository instead of the bucket
+Yotech-AI/scoop-bucket; HERSIR_SOURCE_REPO, a git repository instead of GitHub's, for the release's commit.
 It needs gh, logged in to GitHub (gh auth login), git and ssh-keygen, for the AUR your AUR key, and for the tap a git
-login for GitHub that may push to Yotech-AI/homebrew-tap. docs/RELEASING.md, step 6, says when to run it.
+login for GitHub that may push to Yotech-AI/homebrew-tap; the bucket's push uses gh's GitHub login. docs/RELEASING.md,
+step 6, says when to run it.
 USAGE
 }
 
@@ -505,6 +509,133 @@ homebrew_publish() {
   quiet_git -C "$TAP_DIR" push --quiet origin HEAD:refs/heads/main >/dev/null ||
     fail "Couldn't push hersir $becomes to $TAP_REPO, so it isn't published: $(why)"
   say "Published hersir $becomes to $TAP_REPO: brew update && brew upgrade hersir updates it (https://github.com/Yotech-AI/homebrew-tap)."
+}
+
+# ---------- scoop: hersir in the Scoop bucket Yotech-AI/scoop-bucket ----------
+# packaging/scoop holds the bucket's files for one release: hersir.json, which goes in as bucket/hersir.json, the
+# script its post_install runs for the Start menu shortcut (scripts/hersir-shortcut.ps1) and the bucket's README.md,
+# with packaging/LICENSE (0BSD) beside them. The bucket holds exactly these four. Of hersir.json only three values
+# change, each on its own line: the version, the zip's address and the zip's sha256, from the signed SHA256SUMS.
+SCOOP_REPO="${HERSIR_SCOOP_REPO:-https://github.com/Yotech-AI/scoop-bucket.git}"
+SCOOP_TEMPLATE="$ROOT/packaging/scoop"
+SCOOP_DIR="$tmp/scoop"
+scoop_changed=0 scoop_now="" scoop_archive="hersir-$version-windows-x86_64.zip" scoop_archive_sum=""
+scoop_url="https://github.com/$REPO/releases/download/$tag/$scoop_archive"
+
+# git for the bucket, with gh's GitHub login, which this script checked first: git may have another login for
+# github.com, or none, and would then ask for one on the terminal (also for a bucket that isn't there yet).
+scoop_git() { quiet_git -c credential.helper= -c 'credential.helper=!gh auth git-credential' "$@"; }
+
+# The value of the first line '"$1": "<value>"' (a comma after it or not) in the manifest on stdin; fails without one.
+scoop_value() {
+  local line re="^[[:space:]]*\"$1\": \"([^\"]*)\",?\$"
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [[ $line =~ $re ]]; then
+      printf '%s' "${BASH_REMATCH[1]}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# The template's hersir.json with this release's version, address and sha256. Fails unless it has exactly one line
+# of each.
+scoop_manifest() {
+  local line versions=0 urls=0 hashes=0
+  local version_line='^([[:space:]]*"version": ")[^"]*(",?)$'
+  local url_line='^([[:space:]]*"url": ")[^"]*(",?)$'
+  local hash_line='^([[:space:]]*"hash": ")[^"]*(",?)$'
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [[ $line =~ $version_line ]]; then
+      line="${BASH_REMATCH[1]}$version${BASH_REMATCH[2]}"
+      versions=$((versions + 1))
+    elif [[ $line =~ $url_line ]]; then
+      line="${BASH_REMATCH[1]}$scoop_url${BASH_REMATCH[2]}"
+      urls=$((urls + 1))
+    elif [[ $line =~ $hash_line ]]; then
+      line="${BASH_REMATCH[1]}$scoop_archive_sum${BASH_REMATCH[2]}"
+      hashes=$((hashes + 1))
+    fi
+    printf '%s\n' "$line"
+  done < "$SCOOP_TEMPLATE/hersir.json"
+  [ "$versions" = 1 ] && [ "$urls" = 1 ] && [ "$hashes" = 1 ]
+}
+
+scoop_prepare() {
+  local now heads
+  [ -f "$SCOOP_TEMPLATE/hersir.json" ] && [ -f "$SCOOP_TEMPLATE/scripts/hersir-shortcut.ps1" ] &&
+    [ -f "$SCOOP_TEMPLATE/README.md" ] ||
+    fail "There is no $SCOOP_TEMPLATE/hersir.json, scripts/hersir-shortcut.ps1 and README.md to publish."
+  listed "$scoop_archive" || fail "The release $tag has no $scoop_archive, so nothing is published."
+  scoop_archive_sum="$(signed_sum "$scoop_archive")" ||
+    fail "The signed SHA256SUMS of $tag has no one line for $scoop_archive, so nothing is published."
+
+  # The bucket's main as it is, in a repository of this run's own: its main, whatever its default branch is, as the
+  # push goes there. A bucket without one yet starts empty, and the first push makes it.
+  quiet_git -c init.defaultBranch=main init --quiet "$SCOOP_DIR" >/dev/null ||
+    fail "Couldn't make a git repository in $tmp: $(why)"
+  heads="$(scoop_git ls-remote --heads "$SCOOP_REPO" refs/heads/main)" ||
+    fail "Couldn't read $SCOOP_REPO, so nothing is published: $(why). Is the bucket there yet? To publish the other packages alone, name them (see --help)."
+  if [ -n "$heads" ]; then
+    scoop_git -C "$SCOOP_DIR" fetch --quiet --no-tags "$SCOOP_REPO" refs/heads/main >/dev/null &&
+      quiet_git -C "$SCOOP_DIR" checkout --quiet -B main FETCH_HEAD >/dev/null ||
+      fail "Couldn't fetch main of $SCOOP_REPO, so nothing is published: $(why)"
+  fi
+  if [ -f "$SCOOP_DIR/bucket/hersir.json" ]; then
+    # Without control characters, as it goes into the messages.
+    now="$(scoop_value version < "$SCOOP_DIR/bucket/hersir.json" | LC_ALL=C tr -d '\000-\037\177' || true)"
+    [[ v$now =~ $VERSION_RE ]] ||
+      fail "hersir in the bucket has the version '$now', which isn't X.Y.Z: look at it first, nothing is published."
+    if newer "$now" "$version"; then
+      fail "hersir in the bucket is at $now already, after $version, so nothing is published."
+    fi
+    scoop_now="$now"
+  fi
+
+  # The bucket's files for this release, and nothing else, staged in that copy of its main.
+  find "$SCOOP_DIR" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+  mkdir -p "$SCOOP_DIR/bucket" "$SCOOP_DIR/scripts" || fail "Couldn't make the bucket's folders in $tmp."
+  scoop_manifest > "$SCOOP_DIR/bucket/hersir.json" ||
+    fail "packaging/scoop/hersir.json needs one version, url and hash line each, so nothing is published."
+  cp "$SCOOP_TEMPLATE/scripts/hersir-shortcut.ps1" "$SCOOP_DIR/scripts/hersir-shortcut.ps1" &&
+    cp "$SCOOP_TEMPLATE/README.md" "$SCOOP_DIR/README.md" && cp "$ROOT/packaging/LICENSE" "$SCOOP_DIR/LICENSE" ||
+    fail "Couldn't copy the bucket's files from packaging/scoop and packaging/LICENSE, so nothing is published."
+  quiet_git -C "$SCOOP_DIR" add -A || fail "Couldn't stage the bucket's files: $(why)"
+  if ! git -C "$SCOOP_DIR" diff --cached --quiet 2>/dev/null; then
+    scoop_changed=1
+    changed="$changed${changed:+ }scoop"
+  fi
+}
+
+scoop_show() {
+  say ""
+  if [ -n "${HERSIR_SCOOP_REPO:-}" ]; then
+    say "hersir, in $SCOOP_REPO (HERSIR_SCOOP_REPO), not the bucket Yotech-AI/scoop-bucket"
+  else
+    say "hersir in the Scoop bucket Yotech-AI/scoop-bucket ($SCOOP_REPO)"
+  fi
+  say "  Now         ${scoop_now:-not in the bucket yet: this push puts it there}"
+  if [ "$scoop_changed" = 0 ]; then
+    say "  Stays       $scoop_now: it has this release as it would be published, so it isn't published again"
+    return 0
+  fi
+  if [ "$scoop_now" = "$version" ]; then
+    say "  Becomes     $version again, with the bucket's files as packaging/scoop has them now"
+  else
+    say "  Becomes     $version"
+  fi
+  say "  Archive     $scoop_archive_sum  $scoop_archive (the signed SHA256SUMS)"
+  say ""
+  staged_change "$SCOOP_DIR"
+}
+
+scoop_publish() {
+  quiet_git -C "$SCOOP_DIR" commit --quiet -m "hersir $version" \
+    -m "Hersir $tag at $commit: the release's Windows build, checked against its signed SHA256SUMS." >/dev/null ||
+    fail "Couldn't commit hersir $version to the bucket, so it isn't published: $(why)"
+  scoop_git -C "$SCOOP_DIR" push --quiet "$SCOOP_REPO" HEAD:refs/heads/main >/dev/null ||
+    fail "Couldn't push hersir $version to $SCOOP_REPO, so it isn't published: $(why)"
+  say "Published hersir $version to $SCOOP_REPO: scoop update; scoop update hersir updates it."
 }
 
 # ---------- what changes, the answer, and publishing ----------

@@ -1,7 +1,11 @@
 # Builds and tests Gizai on Linux, macOS (Apple silicon) and Windows, on every pull request and every push to main.
 # A pull request into main that only bumps Gizai's version passes without building or testing (the "Version only?"
 # step). When one changes the AUR package (packaging/), install.sh or this workflow, Arch Linux builds, checks and
-# installs the AUR package too (the arch job). It signs, releases, publishes and uploads nothing.
+# installs the AUR package too (the arch job). When one changes the Homebrew formula (packaging/homebrew), install.sh
+# or this workflow, macOS installs the formula from a local tap with a test build (the homebrew job). When one changes
+# the Scoop package (packaging/scoop), install.ps1, gizai-mcp's Cargo.toml or this workflow, Windows builds Hersir as
+# Release builds does and installs it with Scoop from a local bucket (the scoop job). It signs, releases, publishes and
+# uploads nothing.
 name: CI
 
 on:
@@ -574,3 +578,330 @@ jobs:
           brew uninstall --formula "$TAP/hersir"
           test ! -e "$keg" && test ! -e "$(brew --prefix)/bin/hersir" && test ! -e "$(brew --prefix)/bin/hersir-mcp"
           test "$(state)" = "$before"
+
+  # Whether this pull request (or push to main) changes what the scoop job checks: the Scoop package (packaging/scoop),
+  # install.ps1, which builds the programs the package installs, gizai-mcp's Cargo.toml, as hersir-mcp.exe's static C
+  # runtime holds only while its crates have no C code, and this workflow. A version bump changes none of them. HEAD is
+  # the pull request's merge commit, and HEAD^1 is main; for a push, the commit main was at before. When the fetch or
+  # the check fails, the scoop job runs.
+  scoop-changes:
+    name: Scoop package changed?
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      changed: ${{ steps.check.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scoop package changed?
+        id: check
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            git fetch --quiet --no-tags --depth=2 origin "$GITHUB_SHA" && base="HEAD^1" || base=""
+          else
+            git fetch --quiet --no-tags --depth=1 origin "$BEFORE" && base="$BEFORE" || base=""
+          fi
+          if [ -n "$base" ] && git diff --quiet "$base" HEAD -- packaging/scoop install.ps1 crates/gizai-mcp/Cargo.toml .github/workflows/ci.yml; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # hersir in the Scoop bucket (packaging/scoop), installed on Windows as its users install it, from a local bucket
+  # with a test build of this commit:
+  # - install.ps1 -BuildOnly builds Hersir as Release builds does, and dumpbin /dependents lists no VCRUNTIME140.dll
+  #   (nor another Visual C++ runtime DLL) for hersir.exe and hersir-mcp.exe: a fresh Windows has none;
+  # - the two programs, packed as Release builds packs hersir-X.Y.Z-windows-x86_64.zip, go into a local bucket laid out
+  #   as scripts/packages.sh lays out Yotech-AI/scoop-bucket, with the manifest's version, address (the zip, as a
+  #   file:// address) and sha256 filled in for that zip;
+  # - Scoop installs it in Windows PowerShell 5.1: hersir --version says the version, in PowerShell and in cmd, through
+  #   the hersir command the manifest's pre_install writes (hersir.ps1: Scoop's shim for a window app such as hersir.exe
+  #   would print nothing), and hersir without an option starts hersir.exe; hersir-package.txt beside the programs says
+  #   scoop, the Start menu shortcut carries dev.hersir.app and starts hersir.exe in Scoop's current folder, and neither
+  #   program has a Zone.Identifier stream;
+  # - an update to a newer version (the same zip), in PowerShell 7, keeps the shortcut, the mark and the hersir command;
+  # - scoop uninstall hersir, and scoop uninstall hersir --purge, remove the commands and leave the data folders as they
+  #   were.
+  # It publishes nothing: the bucket gets a release only from scripts/packages.sh, on Jeffrey's computer.
+  scoop:
+    name: Windows (Scoop)
+    needs: scoop-changes
+    if: needs.scoop-changes.outputs.changed == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      # The build keeps the repository's LF, as Release builds' does: Hersir embeds text files as they are.
+      - name: Keep LF line endings
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v4
+
+      # Before the build: the shortcut script and the manifest's hooks, as Scoop joins their lines, parse in Windows
+      # PowerShell 5.1, and so does the hersir command that pre_install writes.
+      - name: The shortcut script and the manifest's hooks parse
+        shell: powershell
+        run: |
+          $manifest = Get-Content -LiteralPath packaging\scoop\hersir.json -Raw | ConvertFrom-Json
+          $sources = [ordered]@{
+            'scripts\hersir-shortcut.ps1' = Get-Content -LiteralPath packaging\scoop\scripts\hersir-shortcut.ps1 -Raw
+            'pre_install' = $manifest.pre_install -join "`r`n"
+            'post_install' = $manifest.post_install -join "`r`n"
+            'pre_uninstall' = $manifest.pre_uninstall -join "`r`n"
+          }
+          foreach ($name in $sources.Keys) {
+            $tokens = $null; $errs = $null
+            [System.Management.Automation.Language.Parser]::ParseInput($sources[$name], [ref]$tokens, [ref]$errs) | Out-Null
+            if ($errs) { "::error::$name doesn't parse:"; $errs; exit 1 }
+          }
+          # pre_install as Scoop runs it, with $dir a folder of its own: the hersir.ps1 it writes there parses too.
+          $dir = Join-Path $env:RUNNER_TEMP 'pre-install'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          & ([scriptblock]::Create($sources['pre_install']))
+          $tokens = $null; $errs = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("$dir\hersir.ps1", [ref]$tokens, [ref]$errs) | Out-Null
+          if ($errs) { "::error::The hersir.ps1 that pre_install writes doesn't parse:"; $errs; exit 1 }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # The build Release builds makes for a release, with Windows PowerShell 5.1, without caches.
+      - name: Build (install.ps1 -BuildOnly)
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -BuildOnly
+          if ($LASTEXITCODE -ne 0) { '::error::install.ps1 -BuildOnly failed'; exit 1 }
+
+      # What each program needs to start, from dumpbin of the Visual Studio the build used.
+      - name: hersir.exe and hersir-mcp.exe need no VCRUNTIME140.dll
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          $dumpbin = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find 'VC\Tools\MSVC\**\bin\Hostx64\x64\dumpbin.exe' | Select-Object -First 1
+          if (-not $dumpbin) { "::error::vswhere found no dumpbin.exe"; exit 1 }
+          foreach ($exe in @('hersir.exe', 'hersir-mcp.exe')) {
+            $deps = @(& $dumpbin /nologo /dependents "target\release\$exe")
+            if ($LASTEXITCODE -ne 0) { "::error::dumpbin /dependents $exe failed"; exit 1 }
+            $deps | ForEach-Object { Write-Host $_ }
+            if (-not ($deps -match '^\s*KERNEL32\.dll\s*$')) { "::error::dumpbin /dependents $exe lists no KERNEL32.dll: it didn't list the dependencies"; exit 1 }
+            $runtime = @($deps -match '^\s*(vcruntime|msvcp)\d+\w*\.dll\s*$' | ForEach-Object { $_.Trim() })
+            if ($runtime) { "::error::$exe needs $($runtime -join ', '), which a fresh Windows doesn't have."; exit 1 }
+          }
+
+      # Scoop for the runner's account, with its own install line: -RunAsAdmin, as the runner's account is an
+      # administrator. Its commands go on the PATH of the steps after this one.
+      - name: Scoop
+        shell: pwsh
+        run: |
+          Invoke-Expression "& {$(Invoke-RestMethod -Uri https://get.scoop.sh)} -RunAsAdmin"
+          $shims = Join-Path $env:USERPROFILE 'scoop\shims'
+          if (-not (Test-Path -LiteralPath (Join-Path $shims 'scoop.ps1'))) { "::error::Scoop isn't in $shims"; exit 1 }
+          Add-Content -LiteralPath $env:GITHUB_PATH -Value $shims
+          exit 0
+
+      # The zip as Release builds packs it, in the runner's temp folder, and the bucket as scripts/packages.sh lays it
+      # out (bucket/hersir.json, scripts/hersir-shortcut.ps1, README.md, LICENSE) in a git repository of its own there.
+      - name: A local bucket with the test build
+        shell: pwsh
+        run: |
+          $version = (Get-Content -LiteralPath src-tauri\tauri.conf.json -Raw | ConvertFrom-Json).version
+          $archive = "hersir-$version-windows-x86_64.zip"
+          $builds = Join-Path $env:RUNNER_TEMP 'builds'
+          $bucket = Join-Path $env:RUNNER_TEMP 'scoop-bucket'
+          New-Item -ItemType Directory -Force -Path $builds | Out-Null
+          $zipPath = Join-Path $builds $archive
+          Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+          $zip = [System.IO.Compression.ZipFile]::Open($zipPath, 'Create')
+          try {
+            foreach ($p in @('hersir.exe', 'hersir-mcp.exe')) {
+              $file = Join-Path $env:GITHUB_WORKSPACE "target\release\$p"
+              [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $file, "target/release/$p", 'Optimal') | Out-Null
+            }
+          } finally {
+            $zip.Dispose()
+          }
+          $hash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $archive"
+          $manifest = Get-Content -LiteralPath packaging\scoop\hersir.json -Raw | ConvertFrom-Json
+          $manifest.version = $version
+          $manifest.architecture.'64bit'.url = ([Uri]$zipPath).AbsoluteUri
+          $manifest.architecture.'64bit'.hash = $hash
+          New-Item -ItemType Directory -Force -Path "$bucket\bucket", "$bucket\scripts" | Out-Null
+          $manifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath "$bucket\bucket\hersir.json"
+          Copy-Item -LiteralPath packaging\scoop\scripts\hersir-shortcut.ps1 -Destination "$bucket\scripts\"
+          Copy-Item -LiteralPath packaging\scoop\README.md, packaging\LICENSE -Destination "$bucket\"
+          Get-Content -LiteralPath "$bucket\bucket\hersir.json"
+          git -C $bucket init -q -b main
+          git -C $bucket add -A
+          git -C $bucket -c user.name=CI -c user.email=ci@hersir.invalid commit -q -m "hersir $version"
+          if ($LASTEXITCODE -ne 0) { '::error::Could not commit the local bucket'; exit 1 }
+          [IO.File]::AppendAllText($env:GITHUB_ENV, "VERSION=$version`nBUCKET=$bucket`n")
+
+      # As the bucket's README says, in Windows PowerShell 5.1, which runs Scoop and the manifest's post_install.
+      - name: scoop install hersir from the local bucket (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $url = ([Uri]$env:BUCKET).AbsoluteUri
+          scoop bucket add hersir $url
+          scoop install hersir/hersir
+          $prefix = Join-Path $env:USERPROFILE 'scoop\apps\hersir\current'
+          foreach ($exe in @('hersir.exe', 'hersir-mcp.exe')) {
+            if (-not (Test-Path -LiteralPath "$prefix\$exe")) { "::error::Scoop didn't install $exe in $prefix"; exit 1 }
+          }
+          exit 0
+
+      # The hersir command, through Scoop's shims: shims\hersir.ps1 in PowerShell and shims\hersir.cmd in cmd, which run
+      # the hersir.ps1 that pre_install wrote beside the programs, never a shim of the window app hersir.exe itself.
+      # Without --version, --help or --backup, hersir starts Hersir and returns: here a stand-in for Start-Process only
+      # notes what it would start. Then the mark beside the programs; the Start menu shortcut, read back as Install reads
+      # install.ps1's; no Zone.Identifier stream, which SmartScreen would stop the programs for.
+      - name: hersir --version, hersir-package.txt, the shortcut and no Zone.Identifier
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $prefix = Join-Path $env:USERPROFILE 'scoop\apps\hersir\current'
+          $shims = Join-Path $env:USERPROFILE 'scoop\shims'
+          "hersir is $((Get-Command hersir).Source)"
+          foreach ($shim in @('hersir.ps1', 'hersir.cmd')) {
+            if (-not (Test-Path -LiteralPath "$shims\$shim")) { "::error::Scoop made no $shim in $shims"; exit 1 }
+          }
+          if (Test-Path -LiteralPath "$shims\hersir.exe") { "::error::Scoop made $shims\hersir.exe, a window app's shim, which prints nothing"; exit 1 }
+          $got = hersir --version
+          $code = $LASTEXITCODE
+          "hersir --version: $got"
+          if ("$got" -ne "hersir $env:VERSION") { "::error::hersir --version says $got, not hersir $env:VERSION."; exit 1 }
+          if ($code -ne 0) { "::error::hersir --version exited with $code"; exit 1 }
+          $got = cmd /d /c 'hersir --version'
+          "hersir --version in cmd: $got"
+          if ("$got" -ne "hersir $env:VERSION") { "::error::hersir --version in cmd says $got, not hersir $env:VERSION."; exit 1 }
+          $help = (hersir --help) -join "`n"
+          if ($help -notmatch 'Usage: hersir \[--version') { "::error::hersir --help says: $help"; exit 1 }
+          $global:started = @()
+          function global:Start-Process { param([string]$FilePath, [string]$ArgumentList, [string]$WorkingDirectory) $global:started += "$FilePath|$ArgumentList" }
+          hersir
+          hersir --no-such-option 'two words'
+          Remove-Item -LiteralPath Function:\Start-Process
+          Get-Process -Name hersir -ErrorAction SilentlyContinue | Stop-Process -Force
+          "hersir started: $($global:started -join '; ')"
+          $ok = $global:started.Count -eq 2 -and $global:started[0] -like '*\apps\hersir\current\hersir.exe|'
+          $ok = $ok -and $global:started[1] -like '*\apps\hersir\current\hersir.exe|--no-such-option "two words"'
+          if (-not $ok) { '::error::hersir without --version, --help or --backup should start hersir.exe in current, with its arguments'; exit 1 }
+          $mark = Get-Content -LiteralPath "$prefix\hersir-package.txt"
+          "hersir-package.txt: $mark"
+          if ("$mark" -ne 'scoop') { "::error::hersir-package.txt beside the programs says $mark, not scoop."; exit 1 }
+          $menu = Join-Path ([Environment]::GetFolderPath('StartMenu')) 'Programs\Scoop Apps'
+          $id = (New-Object -ComObject Shell.Application).NameSpace($menu).ParseName('Hersir.lnk').ExtendedProperty('System.AppUserModel.ID')
+          $target = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $menu 'Hersir.lnk')).TargetPath
+          "shortcut: $target, app id $id"
+          if ($id -ne 'dev.hersir.app') { '::error::the Start menu shortcut Hersir.lnk should carry dev.hersir.app'; exit 1 }
+          if (-not ($target -like '*\apps\hersir\current\hersir.exe' -and (Test-Path -LiteralPath $target))) {
+            "::error::the Start menu shortcut Hersir.lnk should start hersir.exe in Scoop's current folder, $prefix"; exit 1
+          }
+          foreach ($exe in @('hersir.exe', 'hersir-mcp.exe')) {
+            if (Get-Item -LiteralPath "$prefix\$exe" -Stream 'Zone.Identifier' -ErrorAction SilentlyContinue) { "::error::$exe has a Zone.Identifier stream."; exit 1 }
+          }
+          exit 0
+
+      # A newer version in the bucket (the same zip), which scoop update fetches. Scoop runs the old version's
+      # pre_uninstall, which removes the shortcut, then the new version's post_install, here in PowerShell 7. Every check
+      # runs, and each failure is an annotation (::error::) with what it found.
+      - name: An update keeps the shortcut and the mark (PowerShell 7)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $v = $env:VERSION.Split('.')
+          $next = "$($v[0]).$($v[1]).$([int]$v[2] + 1)"
+          $file = "$env:BUCKET\bucket\hersir.json"
+          $manifest = Get-Content -LiteralPath $file -Raw | ConvertFrom-Json
+          $manifest.version = $next
+          $manifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $file
+          git -C $env:BUCKET -c user.name=CI -c user.email=ci@hersir.invalid commit -q -a -m "hersir $next"
+          if ($LASTEXITCODE -ne 0) { "::error::Could not commit hersir $next to the local bucket"; exit 1 }
+          scoop update
+          scoop update hersir *>&1 | Tee-Object -Variable updated
+          $said = (@($updated | ForEach-Object { "$_".Trim() } | Where-Object { $_ }) | Select-Object -Last 10) -join ' | '
+          $failed = @()
+          $prefix = Join-Path $env:USERPROFILE 'scoop\apps\hersir\current'
+          $now = (Get-Item -LiteralPath $prefix).Target
+          "current is $now"
+          if ("$now" -notlike "*\hersir\$next") {
+            $clone = Join-Path $env:USERPROFILE 'scoop\buckets\hersir'
+            $seen = (Get-Content -LiteralPath "$clone\bucket\hersir.json" -Raw | ConvertFrom-Json).version
+            $versions = @(Get-ChildItem -LiteralPath (Join-Path $env:USERPROFILE 'scoop\apps\hersir') -Name) -join ', '
+            $failed += "scoop update hersir didn't install $next. current is $now; Scoop's copy of the bucket has $seen ($(git -C $clone log -1 --format=%s)); apps\hersir has $versions. scoop update hersir said: $said"
+          }
+          $mark = Get-Content -LiteralPath "$prefix\hersir-package.txt"
+          if ("$mark" -ne 'scoop') { $failed += "after the update, hersir-package.txt says '$mark', not scoop." }
+          $menu = Join-Path ([Environment]::GetFolderPath('StartMenu')) 'Programs\Scoop Apps'
+          $id = (New-Object -ComObject Shell.Application).NameSpace($menu).ParseName('Hersir.lnk').ExtendedProperty('System.AppUserModel.ID')
+          $target = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $menu 'Hersir.lnk')).TargetPath
+          "shortcut: $target, app id $id"
+          if ($id -ne 'dev.hersir.app') {
+            $id51 = powershell -NoProfile -Command "(New-Object -ComObject Shell.Application).NameSpace('$menu').ParseName('Hersir.lnk').ExtendedProperty('System.AppUserModel.ID')"
+            $failed += "after the update, the Start menu shortcut Hersir.lnk should carry dev.hersir.app: PowerShell 7 reads '$id', Windows PowerShell 5.1 '$id51'. scoop update hersir said: $said"
+          }
+          if (-not ($target -like '*\apps\hersir\current\hersir.exe' -and (Test-Path -LiteralPath $target))) {
+            $failed += "after the update, the Start menu shortcut Hersir.lnk should start hersir.exe in Scoop's current folder, not '$target'"
+          }
+          # The new version's pre_install wrote the hersir command again, and PowerShell 7 runs it too.
+          $got = hersir --version
+          $code = $LASTEXITCODE
+          "hersir --version: $got"
+          if ("$got" -ne "hersir $env:VERSION") {
+            $failed += "after the update, hersir --version in PowerShell 7 says '$got' (exit code $code), not hersir $env:VERSION; hersir is $((Get-Command hersir -ErrorAction SilentlyContinue).Source)"
+          }
+          foreach ($f in $failed) { "::error::$f" }
+          if ($failed) { exit 1 }
+          exit 0
+
+      # Hersir's data folder and WebView2's, with a file in each first. scoop uninstall hersir removes the programs, the
+      # commands and the shortcut, and leaves both as they were; so does scoop uninstall hersir --purge, after an
+      # install again.
+      - name: scoop uninstall hersir leaves the data folder
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $data = @((Join-Path $env:APPDATA 'Hersir'), (Join-Path $env:LOCALAPPDATA 'dev.hersir.app'))
+          New-Item -ItemType Directory -Force -Path "$($data[0])\backups", $data[1] | Out-Null
+          Set-Content -LiteralPath "$($data[0])\gizai.db" -Value 'your data'
+          Set-Content -LiteralPath "$($data[0])\backups\gizai-manual.db" -Value 'a backup'
+          Set-Content -LiteralPath "$($data[1])\storage" -Value 'storage'
+          # Each folder and file in them, with each file's sha256. No times: the time a listing shows for a folder can
+          # change by itself, as NTFS updates it some moments after a file goes into the folder.
+          function Get-DataState {
+            foreach ($dir in $data) {
+              Get-ChildItem -LiteralPath $dir -Recurse -Force | Sort-Object FullName | ForEach-Object {
+                if ($_.PSIsContainer) { "$($_.FullName)\" } else { '{0} {1}' -f $_.FullName, (Get-FileHash -LiteralPath $_.FullName).Hash }
+              }
+            }
+          }
+          $before = (Get-DataState) -join "`n"
+          $before
+          $menu = Join-Path ([Environment]::GetFolderPath('StartMenu')) 'Programs\Scoop Apps'
+          foreach ($purge in @($false, $true)) {
+            if ($purge) {
+              scoop install hersir/hersir
+              scoop uninstall hersir --purge
+            } else {
+              scoop uninstall hersir
+            }
+            $shims = Join-Path $env:USERPROFILE 'scoop\shims'
+            foreach ($gone in @((Join-Path $env:USERPROFILE 'scoop\apps\hersir'), "$shims\hersir.ps1", "$shims\hersir.cmd", "$shims\hersir",
+                "$shims\hersir-mcp.exe", "$shims\hersir-mcp.shim", (Join-Path $menu 'Hersir.lnk'))) {
+              if (Test-Path -LiteralPath $gone) { "::error::After scoop uninstall (purge: $purge), $gone is still there."; exit 1 }
+            }
+            $after = (Get-DataState) -join "`n"
+            if ($after -ne $before) {
+              # What changed (< before, > after), and what of Hersir or WebView2 runs, as one annotation.
+              $diff = @(Compare-Object ($before -split "`n") ($after -split "`n") | ForEach-Object { "$($_.SideIndicator) $($_.InputObject)" })
+              $running = @(Get-Process | Where-Object { $_.ProcessName -like 'hersir*' -or $_.ProcessName -like 'msedgewebview2*' } | ForEach-Object { "$($_.ProcessName) $($_.Id) $($_.Path) since $($_.StartTime)" })
+              "::error::scoop uninstall (purge: $purge) changed the data folders: $(($diff | Select-Object -First 12) -join ' | '). Running: $($running -join ' | ')"
+              $after; exit 1
+            }
+          }
+          exit 0
