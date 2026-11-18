@@ -871,11 +871,12 @@ jobs:
           Set-Content -LiteralPath "$($data[0])\gizai.db" -Value 'your data'
           Set-Content -LiteralPath "$($data[0])\backups\gizai-manual.db" -Value 'a backup'
           Set-Content -LiteralPath "$($data[1])\storage" -Value 'storage'
+          # Each folder and file in them, with each file's sha256. No times: the time a listing shows for a folder can
+          # change by itself, as NTFS updates it some moments after a file goes into the folder.
           function Get-DataState {
             foreach ($dir in $data) {
               Get-ChildItem -LiteralPath $dir -Recurse -Force | Sort-Object FullName | ForEach-Object {
-                $hash = if ($_.PSIsContainer) { '' } else { (Get-FileHash -LiteralPath $_.FullName).Hash }
-                '{0} {1} {2}' -f $_.FullName, $_.LastWriteTimeUtc.Ticks, $hash
+                if ($_.PSIsContainer) { "$($_.FullName)\" } else { '{0} {1}' -f $_.FullName, (Get-FileHash -LiteralPath $_.FullName).Hash }
               }
             }
           }
