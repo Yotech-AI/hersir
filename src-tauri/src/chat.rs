@@ -732,7 +732,9 @@ pub fn lead_file_path(st: &AppState, f: &FileRow) -> PathBuf {
 }
 
 /// What became of a message's file in the Chief's folder (`lead_copies`): why its copy couldn't be made, or, for a
-/// Word, Excel, PowerPoint, OpenDocument or RTF file, its readable copy beside it (GA-310) or why there is none.
+/// file that gets a readable copy (`readable`), that copy beside it or why there is none: its text as Markdown for a Word,
+/// Excel, PowerPoint, OpenDocument or RTF file (GA-310), a PDF LibreOffice made for a Pages, Keynote, Numbers, .doc or
+/// .ppt file (GA-311).
 #[derive(Debug, Clone, Default)]
 struct LeadCopy {
     failed: Option<String>,
@@ -740,20 +742,20 @@ struct LeadCopy {
 }
 
 /// Makes the Chief's copies of `files` (kept when they are there already), and the readable copy of each that gets
-/// one (`gizai_core::readable`, made when it is missing, so also for a file copied before readable copies existed).
-/// Returns what became of each, by file id.
+/// one (`readable`, made when it is missing, so also for a file copied before readable copies existed; a PDF copy can take
+/// LibreOffice up to its limit, 120 s). Returns what became of each, by file id.
 async fn lead_copies(st: &AppState, files: Vec<FileRow>) -> HashMap<String, LeadCopy> {
     if files.is_empty() {
         return HashMap::new();
     }
-    let (data, dir) = (st.data_dir.clone(), lead_files_dir(st));
+    let (data, dir, lo) = (st.data_dir.clone(), lead_files_dir(st), st.libreoffice.clone());
     tokio::task::spawn_blocking(move || {
         files.iter().map(|f| {
             let copy = match gizai_core::files::copy_out(&data, f, &dir) {
                 Err(e) => LeadCopy { failed: Some(e.to_string()), readable: None },
                 Ok(p) => LeadCopy {
                     failed: None,
-                    readable: gizai_core::readable::has_readable(&f.name).then(|| gizai_core::readable::ensure(&p)),
+                    readable: crate::readable::has_readable(&f.name).then(|| crate::readable::ensure(&lo, &f.name, &p)),
                 },
             };
             (f.id.clone(), copy)
@@ -761,9 +763,10 @@ async fn lead_copies(st: &AppState, files: Vec<FileRow>) -> HashMap<String, Lead
     }).await.unwrap_or_default()
 }
 
-/// The lines after a message that name its files and where the Chief reads them. Empty without files. A Word, Excel,
-/// PowerPoint, OpenDocument or RTF file also names its readable copy, or why there is none; for a file `copies` doesn't
-/// have (an earlier message in a hand-over), its readable copy when it is there.
+/// The lines after a message that name its files and where the Chief reads them. Empty without files. A file that gets a
+/// readable copy (`readable`: a Word, Excel, PowerPoint, OpenDocument or RTF file, or a Pages, Keynote, Numbers, .doc or
+/// .ppt file) also names it, or why there is none; for a file `copies` doesn't have (an earlier message in a
+/// hand-over), its readable copy when it is there.
 fn files_text(st: &AppState, files: &[FileRow], copies: &HashMap<String, LeadCopy>) -> String {
     if files.is_empty() {
         return String::new();
@@ -777,14 +780,14 @@ fn files_text(st: &AppState, files: &[FileRow], copies: &HashMap<String, LeadCop
         }
         let copy = lead_file_path(st, f);
         out.push_str(&format!("\n- {}: {}", f.name, copy.display()));
-        if !gizai_core::readable::has_readable(&f.name) {
+        if !crate::readable::has_readable(&f.name) {
             continue;
         }
         match copied.and_then(|c| c.readable.as_ref()) {
             Some(Ok(text)) => out.push_str(&format!(" (to read: {})", text.display())),
             Some(Err(why)) => out.push_str(&format!(" (no readable copy: {why})")),
             None => {
-                let text = gizai_core::readable::readable_path(&copy);
+                let text = crate::readable::readable_path(&f.name, &copy);
                 if text.is_file() {
                     out.push_str(&format!(" (to read: {})", text.display()));
                 }
@@ -1184,7 +1187,7 @@ fn system_prompt(st: &AppState, agent: &Member, trusted: &Trusted) -> String {
          - A message may start with a line from Hersir in square brackets: the commit and date each copy shows, which copy couldn't be refreshed and why, and notes. It comes from Hersir, not from {you}.\n\
          - Once this chat has used a tool from outside Hersir, for the rest of the chat a call of yours that acts (runs, agents, columns, attach_file, update_checkout, memory's writes, merge_pull_request, archive_tasks, comments, a card's description, acceptance criteria, assignee or builds_on outside Auto columns, a project's repository, folder, branch or goal) isn't run: Hersir keeps it under your answer for {you} to approve with one click or discard. Say in a sentence what each such call does; don't make it again. A later message starts with what {you} decided, in square brackets. A card waiting on hold for {you}'s OK after such a tool comes off hold only by {you}, on the card or by approving your call.{allowed}\n\
          - {you} links Hersir items in a message as Markdown links with a gizai: target: [GA-12 - Fix the login](gizai:task/GA-12), [Hersir](gizai:project/GA), [Name](gizai:client/<id>), and the same for agent, person and doc. After the slash comes the task's identifier, the project's key or the item's id, which the gizai tools take: look the item up when you need it. You may link items the same way in your answers.\n\
-         - Files {you} adds to a message are named after it, each with the path of a copy in your folder: read them there. attach_file takes those paths, so you can attach such a file to a task, project or client when {you} asks. A Word, Excel, PowerPoint, OpenDocument or RTF file comes with \"to read:\" and the path of a readable copy beside it, its text as Markdown: read that one; attach_file still takes the file's own path.\n\
+         - Files {you} adds to a message are named after it, each with the path of a copy in your folder: read them there. attach_file takes those paths, so you can attach such a file to a task, project or client when {you} asks. A Word, Excel, PowerPoint, OpenDocument or RTF file comes with \"to read:\" and the path of a readable copy beside it, its text as Markdown: read that one; attach_file still takes the file's own path. Pages, Keynote, Numbers, .doc and .ppt files get a PDF copy instead, when LibreOffice is installed.\n\
          - Files on a project, task or client: get_project, get_task and get_client give each one's path in your folder: read them there.\n\
          - When that line says a project's linked folder ({you}'s own checkout, where new cards copy vendor/ and node_modules/ from) is outdated, ask {you} once in this chat, when that project comes up, whether to update it. Say exactly what will happen: any branch switch, how many commits it moves and which installs run. Call update_checkout only after a yes in this chat (switch only when they agreed to the switch, stash only when they agreed to the stash); never update a folder without that yes.\n\
          - Your instructions below also cover task runs; in chat, never write a GIZAI_RESULT line.\n\

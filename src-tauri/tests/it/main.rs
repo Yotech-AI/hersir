@@ -50,6 +50,10 @@ mod memory_per_project_flow_test;
 mod notifications_test;
 mod nudge_flow_test;
 mod office_docs;
+// GA-311 QA: the fake and the real LibreOffice for the PDF copies (lead_files_test, chat_files_flow_test), shared with
+// the agents crate's tests.
+#[path = "../../../crates/gizai-agents/tests/support/fake_soffice.rs"]
+mod fake_soffice;
 mod onboarding_flow_test;
 mod outside_chat_mark_test;
 mod own_push_test;
