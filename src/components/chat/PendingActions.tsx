@@ -113,7 +113,7 @@ export function PendingActions({ actions, cards = [], outsideTool, threadId, onE
         </div>
       ))}
       {cards.map((c) => (
-        <div key={c.id} className="pa-card pa-held" aria-label={`${c.identifier} waits on hold`}>
+        <div key={c.id} className="pa-card pa-held" role="group" aria-label={`${c.identifier} waits on hold`}>
           <div className="pa-line">
             <span className="pa-card-name"><ItemChip kind="task" itemKey={c.identifier}>{c.identifier} {c.title}</ItemChip></span>
             <span className="pa-column" title="Its column">{c.stateName}</span>
