@@ -488,7 +488,7 @@ fn archive_tasks(cx: &Cx, a: &Args) -> Result<Preview, String> {
     if !skips.is_empty() {
         fields.push(field("Skipped", listed(&skips, 10)));
     }
-    fields.push(field("Undo", "The bin on the Tasks page keeps them, and Restore puts one back"));
+    fields.push(field("Undo", "The bin on the Tasks page keeps archived cards, and Restore puts one back"));
     let warning = goes.is_empty().then(|| match t.all_done.as_ref().filter(|_| t.cards.is_empty()) {
         Some(d) => format!("{} has no cards now, so approving archives nothing.", d.column),
         None => "None of these cards can be archived now, so approving archives nothing.".to_string(),
