@@ -31,8 +31,10 @@ fn task_done(cx: &Cx, id: &str, what: &str, held_after: Option<&str>) -> Result<
         task["waits_for"] = json!(t.waits_for);
     }
     let mut v = json!({"ok": true, "done": what, "task": task, "link": link("task", &t.id, &format!("{} {}", t.identifier, short(&t.title, 60)))});
-    // GA-312: the Chat page lists the card under the answer with an OK, so the user needn't open it.
+    // GA-312: the Chat page lists the card under the answer with an OK, so the user needn't open it; `hold_at`, when this
+    // call put it on that hold, so it shows there only while the card is on this hold, not on one another chat put on later.
     if let Some(tool) = held_after {
+        v["task"]["hold_at"] = json!(t.hold_at);
         v["on_hold"] = json!(format!("{} waits on hold for the user's OK, so no agent starts it: you used {tool}, a tool from outside \
             Hersir, in this chat. Tell the user they can OK it under your answer, or take it off hold on the card; don't try to take \
             the hold off yourself.", t.identifier));

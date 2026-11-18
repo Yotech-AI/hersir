@@ -8,8 +8,9 @@ import type { Task } from "../../types";
 
 const NONE: ReadonlyMap<string, Task> = new Map();
 
-/** What the list shows of a card: an answer that shows the same keeps the last one, so the chat doesn't draw again. */
-const shows = (t: Task) => `${t.id}\u0000${t.identifier}\u0000${t.title}\u0000${t.stateName}`;
+/** What the list shows of a card, and its hold's time (which hold it is): an answer that shows the same keeps the last one,
+ *  so the chat doesn't draw again. */
+const shows = (t: Task) => `${t.id}\u0000${t.identifier}\u0000${t.title}\u0000${t.stateName}\u0000${t.holdAt ?? ""}`;
 const same = (a: ReadonlyMap<string, Task>, b: ReadonlyMap<string, Task>) =>
   a.size === b.size && [...a].every(([id, t]) => { const u = b.get(id); return !!u && shows(u) === shows(t); });
 

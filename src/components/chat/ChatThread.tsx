@@ -11,7 +11,7 @@ import { chatRunsOn, groupMessages, SUGGESTIONS, toolName, type Group } from "..
 import { adoptNewChat, chatSideKey, setChatCards } from "../../lib/chatSide";
 import { linkedCards } from "../../lib/chatOpen";
 import { addPaths } from "../../lib/files";
-import { heldCards, outsideLabel, placeHeld, placePending } from "../../lib/pending";
+import { heldCards, onItsHold, outsideLabel, placeHeld, placePending } from "../../lib/pending";
 import { usePending, type Pending } from "../../lib/usePending";
 import { useDropZone } from "../../lib/useDropZone";
 import type { ChatCli, ChatMessage, ChatThread as Thread, Member, QueuedMessage } from "../../types";
@@ -301,7 +301,9 @@ export function ChatThread({ threadId, thread, agent, youId }: { threadId: strin
   });
   const last = groups[groups.length - 1];
   const placed = useMemo(() => placePending(groups, waitingCalls), [groups, waitingCalls]);
-  const placedCards = useMemo(() => placeHeld(groups, held.filter((c) => heldNow.has(c.id))), [groups, held, heldNow]);
+  // a card shows while it is on the hold its answer put on, not on one another chat put on after that came off
+  const placedCards = useMemo(() => placeHeld(groups, held.filter((c) => { const t = heldNow.get(c.id); return !!t && onItsHold(c, t); })),
+    [groups, held, heldNow]);
   // under each answer, its calls and its cards that wait for your OK, in one section
   const under = useMemo(() => new Map([...new Set([...placed.keys(), ...placedCards.keys()])].map((key) => [key,
     <PendingActions actions={placed.get(key) ?? []} cards={(placedCards.get(key) ?? []).map((c) => heldNow.get(c.id)!)} outsideTool={outsideTool}

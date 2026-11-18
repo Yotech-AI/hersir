@@ -68,6 +68,8 @@ export type Task = {
   title: string; descriptionMd: string; acceptanceMd?: string | null; stateId: string; stateName: string; stateCategory: string;
   priority: number; assigneeId?: string | null; assigneeName?: string | null; assigneeKind?: string | null; labels: Label[];
   hold?: string | null; holdReason?: string | null;
+  /** When the current hold was set (ms); none without a hold. A new hold has a new time, also after a cleared one. */
+  holdAt?: number | null;
   /** GA-261: which hold it is, when that matters: `waiting_for_ok` (HOLD_WAITING_FOR_OK) for the one the Chief's change put on
    *  after a tool from outside Hersir in the chat, which only you take off. */
   holdKind?: string | null;
