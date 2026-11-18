@@ -479,8 +479,9 @@ jobs:
           sed -e "s#^  url \"[^\"]*\"\$#  url \"$url\"#" -e "s#^  sha256 \"[0-9a-f]\{64\}\"\$#  sha256 \"$SUM\"#" \
             packaging/homebrew/hersir.rb > "$RUNNER_TEMP/published.rb"
           sed -e "s#^  url \"[^\"]*\"\$#  url \"file://$ARCHIVE\"#" "$RUNNER_TEMP/published.rb" > "$RUNNER_TEMP/install.rb"
-          # Exactly the url and the sha256 differ from the template.
-          test "$(diff packaging/homebrew/hersir.rb "$RUNNER_TEMP/published.rb" | grep -c '^>')" = 2
+          # Only the url and the sha256 differ from the template.
+          diff <(grep -v -e '^  url "' -e '^  sha256 "' packaging/homebrew/hersir.rb) \
+            <(grep -v -e '^  url "' -e '^  sha256 "' "$RUNNER_TEMP/published.rb")
           grep -qxF "  url \"$url\"" "$RUNNER_TEMP/published.rb"
           grep -qxF "  sha256 \"$SUM\"" "$RUNNER_TEMP/published.rb"
           cp "$RUNNER_TEMP/install.rb" "$(brew --repository "$TAP")/Formula/hersir.rb"
