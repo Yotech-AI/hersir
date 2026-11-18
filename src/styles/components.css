@@ -531,6 +531,9 @@ button.label-pill[aria-pressed="true"] { border-color: var(--accent); color: var
 .tool-card .tc-more[aria-expanded="true"] .icon { transform: rotate(90deg); }
 .tool-card.error { border-color: var(--danger-soft); }
 .tool-card.error .tc-state { color: var(--danger); }
+/* GA-312: a call Hersir kept for your OK (it waits under the answer). */
+.tool-card.waiting { border-color: var(--needs); }
+.tool-card.waiting .tc-state { color: var(--needs); }
 .tool-card .tc-error { padding: 0 10px 8px 32px; color: var(--danger); overflow-wrap: anywhere; }
 .tool-card .tc-detail { padding: 8px 10px 4px; border-top: 1px solid var(--line); }
 .tool-card .tc-h { font-size: var(--fs-xs); color: var(--text-3); }
