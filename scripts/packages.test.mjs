@@ -748,7 +748,7 @@ describe.runIf(unix)("scripts/packages.sh, against a fake gh, throwaway keys and
     const m = JSON.parse(inBucket(scoop, "bucket/hersir.json"));
     expect(m.version).toBe(VERSION);
     expect(m.architecture["64bit"]).toEqual({ url: ZIP_URL, hash: archiveSum(ZIP) });
-    expect(m.bin).toEqual(["hersir.exe", "hersir-mcp.exe"]);
+    expect(m.bin).toEqual(["hersir.ps1", "hersir-mcp.exe"]);
     expect(m.checkver).toBeUndefined();
     expect(m.autoupdate).toBeUndefined();
 
@@ -1401,7 +1401,7 @@ describe("packaging/scoop (GA-276): the bucket's manifest, its shortcut script, 
     // The zip holds target/release/hersir.exe and hersir-mcp.exe, as Release builds packs it.
     expect(read(".github/workflows/release-builds.yml")).toContain('CreateEntryFromFile($zip, $file, "target/release/$p", \'Optimal\')');
     expect(manifest.extract_dir).toBe("target\\release");
-    expect(manifest.bin).toEqual(["hersir.exe", "hersir-mcp.exe"]);
+    expect(manifest.bin).toEqual(["hersir.ps1", "hersir-mcp.exe"]);
     // Only scripts/packages.sh changes the version: no checkver or autoupdate, anywhere in it.
     expect(SCOOP_MANIFEST).not.toMatch(/"(checkver|autoupdate)"\s*:/);
     // No persist and no Scoop shortcuts: the data stays in %APPDATA%\Hersir, and the shortcut comes from the bucket's script.
@@ -1422,6 +1422,111 @@ describe("packaging/scoop (GA-276): the bucket's manifest, its shortcut script, 
     expect(pre).toContain("Programs\\Scoop Apps\\Hersir.lnk");
     // Nothing in the hooks touches Hersir's data.
     expect(`${post}\n${pre}`).not.toMatch(/APPDATA|dev\.hersir\.app\\|Remove-Item[^\n]*\$dir/i);
+  });
+
+  // The hersir command (QA round 2): Scoop's shim of a window app prints nothing, so bin puts hersir.ps1 on the PATH,
+  // which pre_install writes beside the programs from a single-quoted here-string.
+  describe("hersir.json: the hersir command is hersir.ps1, which pre_install writes", () => {
+    const lines = manifest.pre_install;
+    // The script as PowerShell writes it: the here-string's lines, literally (a single-quoted here-string expands nothing).
+    const body = lines.slice(1, -1);
+    const script = body.join("\n");
+
+    it("bin puts hersir.ps1 and hersir-mcp.exe on the PATH, never a shim of the window app hersir.exe", () => {
+      expect(manifest.bin).toEqual(["hersir.ps1", "hersir-mcp.exe"]);
+      expect(JSON.stringify(manifest.bin)).not.toContain("hersir.exe");
+      // hersir.ps1 isn't in the release's zip: pre_install makes it before Scoop makes the shims.
+      expect(manifest.pre_install).toBeDefined();
+    });
+
+    it("pre_install is one Set-Content of $dir\\hersir.ps1 with a single-quoted here-string that only its last line closes", () => {
+      expect(lines[0]).toBe("Set-Content -LiteralPath \"$dir\\hersir.ps1\" -Encoding UTF8 -Value @'");
+      expect(lines.at(-1)).toBe("'@");
+      // A line inside that starts with '@ would end the here-string early, and the rest would run as pre_install.
+      for (const line of body) expect(line, line).not.toMatch(/^'@/);
+      // Pure ASCII, so Windows PowerShell 5.1 reads the script the same with or without a byte order mark.
+      expect(script).toMatch(/^[\x20-\x7e\n]*$/);
+    });
+
+    it("hersir.ps1 waits for hersir.exe only with main.rs's own options (case-sensitive), and starts it otherwise", () => {
+      // main.rs attaches a console for exactly these options; hersir.ps1 waits for exactly the same ones.
+      const main = read("src-tauri/src/main.rs");
+      const mainOptions = JSON.parse(main.match(/if args\.iter\(\)\.any\(\|a\| (\[[^\]]+\])\.contains/)[1]);
+      const cin = script.match(/-cin ((?:'[^']*'(?:, )?)+)/);
+      expect(cin, "hersir.ps1 compares its arguments with -cin").not.toBeNull();
+      const ps1Options = [...cin[1].matchAll(/'([^']*)'/g)].map((m) => m[1]);
+      expect(ps1Options).toEqual(mainOptions);
+      expect(ps1Options).toEqual(["--version", "-V", "--help", "-h", "--backup"]);
+      // The program beside the script: Scoop's current folder.
+      expect(script).toContain("$exe = Join-Path $PSScriptRoot 'hersir.exe'");
+      // With one of those options: wait, pass on stdout and stderr, and return hersir.exe's exit code.
+      expect(script).toMatch(/Start-Process -FilePath \$exe -ArgumentList \$line [^\n]*-NoNewWindow -Wait -PassThru -RedirectStandardOutput \$out -RedirectStandardError \$err/);
+      expect(script).toContain("[Console]::Error.WriteLine($_)");
+      expect(script).toContain("$code = $p.ExitCode");
+      expect(script.trim().split("\n").at(-1)).toBe("exit $code");
+      // The temp files go, whatever happens.
+      expect(script).toMatch(/finally \{\n\s*Remove-Item -LiteralPath \$out, \$err/);
+      // Without them: start Hersir and return at once, without -Wait.
+      const start = script.slice(script.indexOf("if (-not @($args"), script.indexOf("exit 0"));
+      expect(start).toContain("Start-Process -FilePath $exe -ArgumentList $line -WorkingDirectory $PSScriptRoot");
+      expect(start).toContain("Start-Process -FilePath $exe -WorkingDirectory $PSScriptRoot");
+      expect(start).not.toContain("-Wait");
+      // It touches no data: the only thing it removes is its own two temp files.
+      expect(script).not.toMatch(/APPDATA|dev\.hersir\.app\\/i);
+      expect(script.match(/Remove-Item[^\n]*/g)).toEqual(["Remove-Item -LiteralPath $out, $err -Force -ErrorAction SilentlyContinue"]);
+    });
+
+    it("hersir.ps1 quotes each argument so that hersir.exe (Rust's Windows argv rules) reads it back as it was", () => {
+      // The script's own test and replacements, taken from the manifest; .NET's -replace replaces every match.
+      const quoting = script.split("\n").find((l) => l.includes("-replace"));
+      const bare = new RegExp(quoting.match(/-notmatch '([^']*)'/)[1]);
+      const [, p1, r1, p2, r2] = quoting.match(/-replace '([^']*)', '([^']*)' -replace '([^']*)', '([^']*)'/);
+      const quote = (a) => (a && !bare.test(a) ? a : `"${a.replace(new RegExp(p1, "g"), r1).replace(new RegExp(p2, "g"), r2)}"`);
+      // How a Windows program's runtime splits its command line (MSVC 2008+ and Rust's std::env::args).
+      const parse = (line) => {
+        const out = [];
+        let i = 0;
+        while (i < line.length) {
+          while (line[i] === " " || line[i] === "\t") i++;
+          if (i >= line.length) break;
+          let cur = "";
+          let quoted = false;
+          while (i < line.length) {
+            const c = line[i];
+            if (c === "\\") {
+              let k = 0;
+              while (line[i] === "\\") (k++, i++);
+              if (line[i] === '"') {
+                cur += "\\".repeat(k >> 1);
+                if (k & 1) (cur += '"', i++);
+              } else cur += "\\".repeat(k);
+            } else if (c === '"') {
+              if (quoted && line[i + 1] === '"') (cur += '"', (i += 2));
+              else (quoted = !quoted, i++);
+            } else if (!quoted && (c === " " || c === "\t")) break;
+            else (cur += c, i++);
+          }
+          out.push(cur);
+        }
+        return out;
+      };
+      const cases = [
+        ["--no-such-option", "two words"],
+        ["--backup", "before the move"],
+        [""],
+        ['say "hi"'],
+        ['"'],
+        ["a\\\"b"],
+        ["C:\\Program Files\\Hersir\\"],
+        ["trailing\\\\"],
+        ["\\\\server\\share\\x"],
+        ["tab\there"],
+        ["plain", "C:\\no-spaces\\", "-V"],
+      ];
+      for (const args of cases) expect(parse(args.map(quote).join(" ")), JSON.stringify(args)).toEqual(args);
+      // The CI job's case, as its check expects it.
+      expect(["--no-such-option", "two words"].map(quote).join(" ")).toBe('--no-such-option "two words"');
+    });
   });
 
   it("hersir-shortcut.ps1: Start Menu\\Programs\\Scoop Apps\\Hersir.lnk starts hersir.exe in -Dir and carries dev.hersir.app through PKEY_AppUserModel_ID, as install.ps1's shortcut does", () => {
@@ -1455,7 +1560,7 @@ describe("packaging/scoop (GA-276): the bucket's manifest, its shortcut script, 
 
   it("scripts/packages.sh: scoop is a package, its bucket Yotech-AI/scoop-bucket's main, with HERSIR_SCOOP_REPO for tests", () => {
     const script = read("scripts/packages.sh");
-    expect(script).toContain('PACKAGES="aur scoop"');
+    expect(script).toContain('PACKAGES="aur homebrew scoop"');
     expect(script).toContain('SCOOP_REPO="${HERSIR_SCOOP_REPO:-https://github.com/Yotech-AI/scoop-bucket.git}"');
     expect(script).toContain('push --quiet "$SCOOP_REPO" HEAD:refs/heads/main');
     expect(script).not.toMatch(/push[^\n]*(--force|-f\b|\+HEAD)/);
@@ -1497,6 +1602,18 @@ describe("packaging/scoop (GA-276): the bucket's manifest, its shortcut script, 
     expect(job).toContain("scoop uninstall hersir");
     expect(job).toContain("scoop uninstall hersir --purge");
     expect(job).toContain("if ($after -ne $before)");
+    // The hersir command (QA round 2): pre_install's hersir.ps1 parses before the build; after the install the shims
+    // are hersir.ps1 and hersir.cmd, never hersir.exe; hersir --version works in Windows PowerShell 5.1, in cmd and,
+    // after the update, in PowerShell 7; and the uninstalls remove the command's shims.
+    expect(job).toContain("[System.Management.Automation.Language.Parser]::ParseFile(\"$dir\\hersir.ps1\"");
+    expect(job).toContain("foreach ($shim in @('hersir.ps1', 'hersir.cmd'))");
+    expect(job).toContain("if (Test-Path -LiteralPath \"$shims\\hersir.exe\")");
+    expect(job).toContain("$got = cmd /d /c 'hersir --version'");
+    expect(job).toContain("if ($code -ne 0) { \"::error::hersir --version exited with $code\"; exit 1 }");
+    const update = job.slice(job.indexOf("- name: An update keeps the shortcut and the mark (PowerShell 7)"), job.indexOf("- name: scoop uninstall hersir leaves the data folder"));
+    expect(update).toContain("shell: pwsh");
+    expect(update).toContain("$got = hersir --version");
+    expect(job).toContain('"$shims\\hersir.ps1", "$shims\\hersir.cmd", "$shims\\hersir"');
     // It uses no secrets and no token.
     expect(job).not.toMatch(/secrets\.|GITHUB_TOKEN|GH_TOKEN/);
   });
@@ -1511,7 +1628,7 @@ describe("packaging/scoop (GA-276): the bucket's manifest, its shortcut script, 
     expect(install).toContain("Smart App Control");
     expect(read("docs/PLATFORMS.md")).toContain("**The Scoop package.**");
     const releasing = read("docs/RELEASING.md");
-    expect(releasing).toContain("That's eighteen checks:");
+    expect(releasing).toContain("That's twenty checks:");
     expect(releasing).toContain("`Scoop package changed?` with `Windows (Scoop)`");
     expect(releasing).toContain("Tests put a local repository in `HERSIR_SCOOP_REPO`, never the bucket.");
     const readme = read("packaging/scoop/README.md");
@@ -1522,9 +1639,12 @@ describe("packaging/scoop (GA-276): the bucket's manifest, its shortcut script, 
       "scoop uninstall hersir",
       "Your data stays in `%APPDATA%\\Hersir`",
       "Smart App Control",
+      "`hersir --version`, `--help` and `--backup` print in PowerShell, cmd and Git Bash",
+      "`hersir.ps1`",
     ]) {
       expect(readme, text).toContain(text);
     }
+    expect(read("packaging/README.md")).toContain("`bin` puts `hersir-mcp.exe` on the PATH as `hersir-mcp`, and for `hersir` the script `hersir.ps1`, which `pre_install` writes beside the programs.");
   });
 });
 
@@ -1603,7 +1723,7 @@ describe("packaging/homebrew: the formula hersir and the tap's README (GA-275)",
 describe("The Homebrew formula in CI, scripts/packages.sh and the docs (GA-275)", () => {
   it("scripts/packages.sh publishes to Yotech-AI/homebrew-tap's main by default, HERSIR_TAP_REPO instead for tests", () => {
     const script = read("scripts/packages.sh");
-    expect(script).toContain('PACKAGES="aur homebrew"');
+    expect(script).toContain('PACKAGES="aur homebrew scoop"');
     expect(script).toContain('TAP_REPO="${HERSIR_TAP_REPO:-https://github.com/Yotech-AI/homebrew-tap.git}"');
     expect(script).toContain('push --quiet origin HEAD:refs/heads/main');
     expect(script).not.toMatch(/push[^\n]*--force|push[^\n]* -f\b/);
@@ -1668,7 +1788,7 @@ describe("The Homebrew formula in CI, scripts/packages.sh and the docs (GA-275)"
     expect(packaging).toContain("| [`homebrew`](homebrew) | the formula `hersir` in the Homebrew tap `yotech-ai/tap`, for Macs with Apple silicon | `brew install yotech-ai/tap/hersir` |");
     const releasing = read("docs/RELEASING.md");
     expect(releasing).toContain("`Homebrew formula changed?`, then `macOS (Homebrew formula)`");
-    expect(releasing).toContain("That's eighteen checks:");
+    expect(releasing).toContain("That's twenty checks:");
     expect(releasing).toContain("`HERSIR_TAP_REPO`");
   });
 });
