@@ -895,6 +895,12 @@ jobs:
               if (Test-Path -LiteralPath $gone) { "::error::After scoop uninstall (purge: $purge), $gone is still there."; exit 1 }
             }
             $after = (Get-DataState) -join "`n"
-            if ($after -ne $before) { "::error::scoop uninstall (purge: $purge) changed the data folders:"; $after; exit 1 }
+            if ($after -ne $before) {
+              # What changed (< before, > after), and what of Hersir or WebView2 runs, as one annotation.
+              $diff = @(Compare-Object ($before -split "`n") ($after -split "`n") | ForEach-Object { "$($_.SideIndicator) $($_.InputObject)" })
+              $running = @(Get-Process | Where-Object { $_.ProcessName -like 'hersir*' -or $_.ProcessName -like 'msedgewebview2*' } | ForEach-Object { "$($_.ProcessName) $($_.Id) $($_.Path) since $($_.StartTime)" })
+              "::error::scoop uninstall (purge: $purge) changed the data folders: $(($diff | Select-Object -First 12) -join ' | '). Running: $($running -join ' | ')"
+              $after; exit 1
+            }
           }
           exit 0
