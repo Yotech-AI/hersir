@@ -9,51 +9,88 @@ export function toolName(raw: string): string {
   return raw.startsWith(PREFIX) ? raw.slice(PREFIX.length) : raw;
 }
 
-const VERBS: Record<string, string> = {
-  get_overview: "Looked at the overview", read_inbox: "Read the inbox", list_clients: "Listed clients", get_client: "Opened client",
-  list_projects: "Listed projects", get_project: "Opened project", list_tasks: "Listed tasks", get_task: "Opened task",
-  list_agents: "Listed agents", get_agent: "Opened agent", list_docs: "Listed docs", read_doc: "Read doc", list_people: "Listed people",
-  get_workflow: "Read the workflow", create_client: "Added client", update_client: "Changed client", save_contact: "Saved contact for",
-  create_project: "Created project", update_project: "Changed project", create_task: "Created task", update_task: "Changed task",
-  move_task: "Moved task", archive_tasks: "Archived tasks", restore_tasks: "Restored tasks", comment_on_task: "Commented on",
-  create_agent: "Added agent", update_agent: "Changed agent", set_agent_status: "Changed agent status",
-  add_routing_rule: "Added a routing rule", add_column: "Added a column", start_agent_run: "Started an agent on",
-  stop_agent_run: "Stopped the agent on", create_doc: "Created doc", write_doc: "Wrote doc", attach_file: "Attached a file to",
-  add_person: "Added person",
+/** Each Hersir tool's line: what it did ("Changed task") and its base form ("change task"), for a call that was refused
+ *  ("Couldn't change task DU-37") or kept for your OK ("Waiting for your OK: change task DU-37"). */
+const VERBS: Record<string, [done: string, base: string]> = {
+  get_overview: ["Looked at the overview", "look at the overview"], read_inbox: ["Read the inbox", "read the inbox"],
+  check_board: ["Checked the board", "check the board"], start_chat: ["Started a chat", "start a chat"],
+  list_clients: ["Listed clients", "list clients"], get_client: ["Opened client", "open client"],
+  list_projects: ["Listed projects", "list projects"], get_project: ["Opened project", "open project"],
+  list_tasks: ["Listed tasks", "list tasks"], get_task: ["Opened task", "open task"],
+  list_agents: ["Listed agents", "list agents"], get_agent: ["Opened agent", "open agent"],
+  list_docs: ["Listed docs", "list docs"], read_doc: ["Read doc", "read doc"], list_people: ["Listed people", "list people"],
+  get_workflow: ["Read the workflow", "read the workflow"],
+  create_client: ["Added client", "add client"], update_client: ["Changed client", "change client"],
+  save_contact: ["Saved contact for", "save contact for"],
+  create_project: ["Created project", "create project"], update_project: ["Changed project", "change project"],
+  create_task: ["Created task", "create task"], update_task: ["Changed task", "change task"], move_task: ["Moved task", "move task"],
+  archive_tasks: ["Archived tasks", "archive tasks"], restore_tasks: ["Restored tasks", "restore tasks"],
+  comment_on_task: ["Commented on", "comment on"],
+  create_agent: ["Added agent", "add agent"], update_agent: ["Changed agent", "change agent"],
+  set_agent_status: ["Changed agent status", "change agent status"], add_routing_rule: ["Added a routing rule", "add a routing rule"],
+  add_column: ["Added a column", "add a column"], set_column: ["Changed column", "change column"],
+  save_label: ["Saved label", "save label"],
+  start_agent_run: ["Started an agent on", "start an agent on"], continue_agent_run: ["Continued the agent on", "continue the agent on"],
+  stop_agent_run: ["Stopped the agent on", "stop the agent on"],
+  create_doc: ["Created doc", "create doc"], write_doc: ["Wrote doc", "write doc"],
+  attach_file: ["Attached a file to", "attach a file to"], add_person: ["Added person", "add person"],
+  update_checkout: ["Updated the checkout", "update the checkout"], merge_pull_request: ["Merged the pull request of", "merge the pull request of"],
+  memory_list: ["Listed notes", "list notes"], memory_search: ["Searched notes for", "search notes for"], memory_read: ["Read note", "read note"],
+  memory_write: ["Saved note", "save note"], memory_append: ["Added to note", "add to note"], memory_move: ["Moved note", "move note"],
 };
 /** Claude Code's own (read-only) tools in chat. */
-const BUILTIN: Record<string, string> = { Read: "Read a file", Glob: "Looked for files", Grep: "Searched the code" };
+const BUILTIN: Record<string, [done: string, base: string]> = {
+  Read: ["Read a file", "read a file"], Glob: ["Looked for files", "look for files"], Grep: ["Searched the code", "search the code"],
+};
 
-export type ToolCard = { verb: string; label?: string; href?: string; state: "running" | "ok" | "error"; detail?: string };
+/** A call's state: running, done, refused (`error`), or kept under the answer for your OK (`waiting`, GA-102). */
+export type ToolCard = { verb: string; label?: string; href?: string; state: "running" | "ok" | "error" | "waiting"; detail?: string };
 
 function parse(text: unknown): Record<string, unknown> | null {
   if (typeof text !== "string") return null;
   try { const v = JSON.parse(text); return v && typeof v === "object" ? v : null; } catch { return null; }
 }
 
-/** What a call was about, from its input: a task id, a project, a file name. */
-function target(input: unknown): string | undefined {
+/** What a call was about, from its input: a task id, a project, a note, a file name. `whole`: a path names a memory note,
+ *  shown whole ("Chief/Notes"), not only its last part as a file's. */
+function target(input: unknown, whole = false): string | undefined {
   if (!input || typeof input !== "object") return undefined;
   const i = input as Record<string, unknown>;
-  for (const k of ["task", "project", "client", "agent", "doc", "name", "title"]) if (typeof i[k] === "string" && i[k]) return i[k] as string;
-  for (const k of ["file_path", "path"]) if (typeof i[k] === "string") return (i[k] as string).split("/").pop();
+  for (const k of ["task", "project", "client", "agent", "doc", "name", "title", "note"]) if (typeof i[k] === "string" && i[k]) return i[k] as string;
+  for (const k of ["file_path", "path"]) if (typeof i[k] === "string") return whole ? i[k] as string : (i[k] as string).split("/").pop();
+  for (const k of ["column", "folder"]) if (typeof i[k] === "string" && i[k]) return i[k] as string;
   if (typeof i.pattern === "string") return i.pattern;
+  if (typeof i.query === "string") return i.query;
   return undefined;
 }
+
+/** The answer to a call Hersir kept for your OK instead of running it (`not_run` in the app's tools): "… wasn't run: this chat
+ *  used …, a tool from outside Hersir. Hersir keeps the call for the user to approve …" (GA-261), or "this answer used …" as
+ *  GA-102 said until 9 Nov. One it couldn't keep is refused. */
+const KEPT = /wasn't run: this (?:chat|answer) used .*?Hersir keeps the call for the user to approve/s;
+
+/** "mcp__gizai__memory_append" → "memory append": a Hersir tool without a line of its own still reads as words. */
+const words = (name: string) => name.replace(/_/g, " ");
 
 export function toolCard(m: ChatMessage): ToolCard {
   const raw = m.toolName ?? "";
   const name = toolName(raw);
-  const verb = (raw.startsWith(PREFIX) ? VERBS[name] : BUILTIN[raw]) ?? raw;
+  const own = raw.startsWith(PREFIX);
+  // Another server's tool keeps its name: it has no base form to say what failed.
+  const [done, base] = (own ? VERBS[name] : BUILTIN[raw]) ?? (own ? [words(name).replace(/^./, (c) => c.toUpperCase()), words(name)] : [raw, null]);
   const t = (m.tool ?? {}) as Record<string, unknown>;
-  const fromInput = target(t.input);
-  if (t.result === undefined) return { verb, label: fromInput, state: "running" };
-  if (t.isError) return { verb, label: fromInput, state: "error", detail: String(t.result) };
+  const fromInput = target(t.input, own && name.startsWith("memory_"));
+  if (t.result === undefined) return { verb: done, label: fromInput, state: "running" };
+  if (t.isError) {
+    const why = String(t.result);
+    if (own && base && KEPT.test(why)) return { verb: `Waiting for your OK: ${base}`, label: fromInput, state: "waiting" };
+    return { verb: base ? `Couldn't ${base}` : done, label: fromInput, state: "error", detail: why };
+  }
   const r = parse(t.result);
   const link = r?.link as { page?: string; id?: string; label?: string } | undefined;
-  if (link?.page && link.id) return { verb, label: link.label ?? fromInput, href: href({ page: link.page as Page, id: link.id }), state: "ok" };
-  if (typeof r?.count === "number") return { verb, label: `${r.count} ${r.count === 1 ? "item" : "items"}`, state: "ok" };
-  return { verb, label: fromInput, state: "ok" };
+  if (link?.page && link.id) return { verb: done, label: link.label ?? fromInput, href: href({ page: link.page as Page, id: link.id }), state: "ok" };
+  if (typeof r?.count === "number") return { verb: done, label: `${r.count} ${r.count === 1 ? "item" : "items"}`, state: "ok" };
+  return { verb: done, label: fromInput, state: "ok" };
 }
 
 export type Group = { side: "user" | "agent" | "system"; key: string; at: number; author?: string | null; items: ChatMessage[] };

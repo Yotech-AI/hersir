@@ -11,7 +11,7 @@ The Chief manages clients, projects, cards and agents with Hersir's own tools. I
 - split bigger work into cards that build on each other, so they start in order by themselves ([below](#cards-that-build-on-others));
 - start and continue agents' runs, and add or change agents and columns;
 - attach a file you gave it to a card, project or client;
-- read the files on a client, project or card, in a copy of each in its own folder: text, PDFs and images, not Word or Excel files, and not a file over 100 MB;
+- read the files on a client, project or card, in a copy of each in its own folder: text, PDFs and images, and Word, Excel, PowerPoint, OpenDocument and RTF files through a readable copy of their text ([below](#files-it-reads-as-text)); not a file over 100 MB;
 - read and keep notes in [memory](memory.md);
 - update a project's linked folder, after your yes;
 - merge a pull request that QA passed, in a project where you allow it ([The Chief may merge](testing.md#the-chief-may-merge)).
@@ -27,7 +27,7 @@ On a new install, the first start ends in a welcome chat: the Chief welcomes you
 - **Recent and Archive:** Recent shows the 30 chats with the newest activity. Archive, under the list, shows every chat, newest first, and searches their titles and the messages you and the Chief wrote. No chat is hidden or deleted: a new message in an old chat moves it back to the top of Recent.
 - **Pinned:** Pin to the top keeps a chat under Pinned, above Recent, until you unpin it, also when it is older than the 30 in Recent: for a chat you want to come back to. The pin button is beside each chat on the left (when you point at it or tab to it), in a chat's top bar and on each row of Archive; on a pinned chat it says Unpin. The chat pinned last is at the top. A pinned chat isn't listed again under Recent; Unpin puts it back there when it is one of the 30 newest, else it is in Archive. Pins are kept with your data, so they stay after a restart and are in backups.
 - **A long chat** opens and scrolls like a short one: only the messages in sight, and a few around them, are on the page. So the window's Find (Ctrl+F) only finds words in those; to find a message further up or down, search in Archive.
-- **Files:** + next to the text box adds files to a message (Add files, or drop them on the Chat page) or links an item. An image on the clipboard, such as a screenshot, pasted into the text box (Ctrl+V, Cmd+V on macOS) is added as a file too, `pasted-image-<date>_<time>.png`; a paste with text pastes the text, as before. A message's files are kept with it; the Chief reads a copy of each in its own folder and can attach one to a task, project or client.
+- **Files:** + next to the text box adds files to a message (Add files, or drop them on the Chat page) or links an item. An image on the clipboard, such as a screenshot, pasted into the text box (Ctrl+V, Cmd+V on macOS) is added as a file too, `pasted-image-<date>_<time>.png`; a paste with text pastes the text, as before. A message's files are kept with it; the Chief reads a copy of each in its own folder ([Files it reads as text](#files-it-reads-as-text)) and can attach one to a task, project or client. Word, Excel, PowerPoint, OpenDocument and RTF files also get a text copy for the Chief, with headings, lists and tables as Markdown.
 - **A terminal beside the chat:** Open, next to New chat, starts a terminal in a folder you pick, in the side panel on the right of the conversation, so you can run the commands the Chief asks for without leaving the chat. Each chat keeps its own, and the tool strip on the window's right edge shows or hides them ([Terminals in the Chat](editor-and-terminal.md#in-the-chat)).
 - **Cards beside the chat:** a click on a card's chip in the chat (GA-259) opens the card in a Card tab in the side panel, or shows its tab when it is open already; Ctrl+click (Cmd+click on macOS) opens the card's page instead. On the Chat page the chip's hover card says **Click to open beside the chat**. A chat the Chief started about cards (a board check's question) opens them as Card tabs the first time you open it, the first one shown; once you close them or hide the side panel, the chat opens as you left it, also after a restart. See [Cards beside the chat](#cards-beside-the-chat).
 - **Open in terminal under an answer:** when the Chief asks you to run commands (in code after Run, or in a sh code block), **Open in terminal** shows under its answer, with the folder the answer names, such as `~/Herd/shop`: a project's folder or a folder in your Editor folders, also when it names a folder or a file inside one. A click opens a terminal in that folder beside the chat; a second click shows the same one while it waits for a command. An answer that names no such folder has Open in terminal…, which asks for the folder. It never types or runs anything for you: the terminal starts in the folder and waits for you.
@@ -42,7 +42,7 @@ On a new install, the first start ends in a welcome chat: the Chief welcomes you
 
 ## Approve with one click
 
-Once a chat used a tool from outside Hersir (an MCP server, the web, the browser), what that tool returned stays in the chat's session and could steer the Chief. So the chat keeps a mark: for the rest of the chat, also in later messages, in a new session and after a restart of Hersir, what the Chief does there waits for your Approve. The chat says so once, when it is marked: "This chat used `<tool>`, a tool from outside Hersir: from now on, what the Chief does here waits for your Approve.", with the tool in words, like search on the otus server or fetching a web page. A new chat starts unmarked.
+Once a chat used a tool from outside Hersir (an MCP server, the web, the browser), what that tool returned stays in the chat's session and could steer the Chief. So the chat keeps a mark: for the rest of the chat, also in later messages, in a new session and after a restart of Hersir, what the Chief does there waits for your Approve. The chat says so once, when it is marked: "This chat used `<tool>`, a tool from outside Hersir: from now on, what the Chief does here waits for your Approve.", with the tool in words, like search on the otus server or fetching a web page. Above the text box, a marked chat keeps saying it: "This chat used `<tool>`, a tool from outside Hersir: what the Chief does here waits for your OK.", with **New chat** beside it. A new chat starts unmarked, without that line.
 
 A tool the Chief doesn't have marks nothing. A chat answer has Read, Glob and Grep, web search and fetching pages while Web is on, and the tools of the MCP servers and the browser it gets (agent form → Tools). When the Chief calls any other tool, like Bash, Edit or a tool of a server it doesn't have, Claude Code refuses the call without running it ("No such tool available"), so nothing came in from outside: the chat isn't marked and says nothing about it.
 
@@ -50,6 +50,8 @@ The Chief's calls that wait start or continue runs, change agents or columns, at
 
 - with a line about what it does and a preview: a note's new text and what changes, the card and agent, the settings that change, the file and where it goes, the comment's text, each field of a card or project that changes, old and new, and the cards an archive takes, like "Archive 683 cards in Done" (one card: "Archive GA-12"), with the ones it would skip and why;
 - with **Approve** and **Discard**, and **Approve all** when there are several.
+
+The Chief's tool line says what happened to each call: one that worked reads as before, like "Changed task DU-37"; one that waits for you reads "Waiting for your OK: add to note Chief/Notes"; one that was refused reads "Couldn't change task DU-37", with the reason under it.
 
 Approve runs exactly that call once, with every other rule in force; it isn't kept again, and a card it changes doesn't go on hold. Discard runs nothing. The chat notes what happened and the Chief hears it in its next answer. Approving doesn't start a new answer: once nothing waits and the Chief isn't answering, a last note says its answer is done, so send a message to go on. Until you decide, the chat waits for you at the top of [the Inbox](inbox.md), also after a restart.
 
@@ -67,6 +69,8 @@ A source on Ask still marks the chat when the Chief uses it, also after one on A
 ### Cards that wait for your OK
 
 In a marked chat, a card the Chief puts in an Auto column (its agents pick it up by themselves), or whose description, acceptance criteria, assignee or cards it builds on it changes there, is saved on hold: "Waiting for your OK: the Chief put this card here after using `<tool>`, a tool from outside Hersir. Check it, then take it off hold." No agent starts it.
+
+Under the Chief's answer, **Waiting for your OK** lists the cards that answer put on that hold, while they are on it: the card (a click opens it beside the chat), its column and **OK**, which takes the hold off as Clear hold on the card does, so its column's agents can start it. **Approve all** shows when two or more things wait there: it runs the answer's waiting calls, then takes its cards' holds off. A card whose hold went (taken off on the card, moved by hand, another hold) leaves the list at once. It stays out when another chat puts it on that hold again later: then it shows under that chat's answer. The Chief tells you so too: the tool's result says you can OK the card under its answer or on the card, and that it shouldn't try to take the hold off itself.
 
 Only you take that hold off: **Clear hold** on the card (or Continue, or a move by hand into To do or In progress), or **Approve** on a call of the Chief's that waited for you and takes it off, like a Continue (its preview says so). The Chief can't, from a chat or a board check: taking the hold off (`update_task` with `clear_hold`), putting another hold in its place, Continue and Run on that card are refused with "Only the user takes this hold off, on the card: it waits for their OK after a tool from outside Hersir." A board check leaves such a card alone. Other holds come off as before, from a chat and from a board check.
 
@@ -126,6 +130,19 @@ More: [docs/memory.md](../memory.md#agents-ask-the-chief-first-ga-70).
 ## It reads your code
 
 The Chief reads its own read-only copy of each active project's code: `<data dir>/code/<KEY>`, a worktree without a branch. The copy is kept at the commit a new card starts from and refreshed before each answer. Your own checkouts are never passed to it.
+
+## Files it reads as text
+
+Claude Code's Read opens text, PDFs and images, but not Word, Excel or PowerPoint files. So beside its copy of such a file (`<data dir>/lead/files/<file id>/<name>`) Hersir writes a readable copy, `<name>.md`: the file's text as Markdown, which starts with "Text of `<name>`, made by Hersir for reading: layout and pictures are left out." (GA-310). A file added to a message is named with `(to read: <path>)`, and get_client, get_project and get_task give it `readable_path`. The Chief reads that one; attach_file still takes the file's own copy.
+
+- **Word** (.docx, .docm, .dotx) and **OpenDocument text** (.odt): the headings, paragraphs, lists and tables in order, with tracked insertions and without tracked deletions, `[picture]` for a picture; then Headers and footers, Footnotes, Endnotes and Comments (`author: text`), when there are any.
+- **Excel** (.xlsx, .xlsm, .xlsb, .xls) and **OpenDocument spreadsheets** (.ods): each sheet under its name as a table, dates as dates. At most 5,000 rows a sheet; a line says how many more there are. Rows and columns without a value are left out.
+- **PowerPoint** (.pptx) and **OpenDocument presentations** (.odp): each slide in order under Slide 1, Slide 2…, its title first, then its text and `Notes:` with its speaker notes.
+- **RTF**: its text, paragraphs kept.
+
+Tables come as Markdown tables; in every table cell `|` is written as `\|` and a line break becomes a space, so the table stays whole.
+
+A readable copy is made the first time the file is sent or listed (also for a file added before this came), and kept after that. A file Hersir can't read (a renamed file, a cut-off one, one with a password) still comes with its own copy, and says why it has no readable copy: `(no readable copy: <why>)` in the message, `readable_error` in the tools. Hersir reads at most 200 MB of any part of a document, unpacks nothing to disk and fetches nothing a document points at; a readable copy is at most 20 MB, and a longer text is cut with a last line that says so. Apple Pages, Keynote and Numbers files and the old .doc and .ppt aren't read yet.
 
 ## It updates your linked folders, after your yes
 

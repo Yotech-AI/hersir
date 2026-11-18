@@ -2,7 +2,7 @@
 // the Chief's text and tool calls on the left, with one row of buttons under the whole answer (GA-298, AnswerRow.tsx): Open
 // GA-12, Open board, Open in Editor and Open in terminal (GA-279's), each opening in the chat's side island.
 import { memo, useState } from "react";
-import { Check, ChevronRight, CircleAlert, Info } from "lucide-react";
+import { Check, ChevronRight, CircleAlert, Clock, Info } from "lucide-react";
 import { openFile } from "../../api";
 import { LinkedText, MarkdownView } from "../MarkdownView";
 import { Avatar } from "../Avatar";
@@ -57,7 +57,8 @@ export const ToolCard = memo(function ToolCard({ m }: { m: ChatMessage }) {
   return (
     <div className={`tool-card ${c.state}`}>
       <div className="tc-row">
-        <span className="tc-state" aria-hidden>{c.state === "running" ? <span className="pulse" /> : c.state === "error" ? <CircleAlert className="icon sm" /> : <Check className="icon sm" />}</span>
+        <span className="tc-state" aria-hidden>{c.state === "running" ? <span className="pulse" /> : c.state === "error" ? <CircleAlert className="icon sm" />
+          : c.state === "waiting" ? <Clock className="icon sm" /> : <Check className="icon sm" />}</span>
         <span className="tc-verb">{c.verb}</span>
         {c.label && (c.href ? <a className="tc-label" href={c.href}>{c.label}</a> : <span className="tc-label">{c.label}</span>)}
         <button className="tc-more" aria-expanded={open} aria-label={open ? "Hide details" : "Show details"} title="Details" onClick={() => setOpen((o) => !o)}>

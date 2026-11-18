@@ -25,8 +25,9 @@ describe("toolCard", () => {
     expect(c.href).toBeUndefined();
   });
   it("shows a failure with its reason", () => {
+    // GA-312: a refused call says it couldn't, in the tool's base form
     const c = toolCard(tool("mcp__gizai__move_task", { id: "t1", input: { task: "KADE-3", column: "Nope" }, result: "No column called \"Nope\".", isError: true }));
-    expect(c).toMatchObject({ verb: "Moved task", state: "error", detail: "No column called \"Nope\"." });
+    expect(c).toMatchObject({ verb: "Couldn't move task", label: "KADE-3", state: "error", detail: "No column called \"Nope\"." });
   });
   it("counts what a read found", () => {
     expect(toolCard(tool("mcp__gizai__read_inbox", { input: {}, result: JSON.stringify({ count: 3, items: [] }), isError: false })))

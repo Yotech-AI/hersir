@@ -67,6 +67,42 @@ yay -S hersir-bin
 - `sudo pacman -Rns hersir-bin` removes it. Your data stays in `~/.local/share/hersir` ([Your data](#your-data)).
 - Use one way to install Hersir, not both: to move from the one line to the AUR, first remove the one line's install with its `--uninstall`, which keeps your data.
 
+### macOS: Homebrew
+
+Hersir is in the Homebrew tap [`yotech-ai/tap`](https://github.com/Yotech-AI/homebrew-tap), as the formula `hersir`, for Macs with Apple silicon:
+
+```sh
+brew install yotech-ai/tap/hersir
+```
+
+The formula's full name, with its tap, is what lets Homebrew load it from a tap that isn't Homebrew's own, and Homebrew trusts it from then on. As for any formula without a bottle, Homebrew wants Apple's Command Line Tools, up to date, and says so when they aren't (`xcode-select --install`). Then link Hersir into Applications in your home folder, once, so you open it from Finder, Spotlight and the Dock (a formula may not put it there itself):
+
+```sh
+mkdir -p ~/Applications && ln -sfn "$(brew --prefix)/opt/hersir/Hersir.app" ~/Applications/Hersir.app
+```
+
+- It is the release's ready-made build for macOS, the one the one line installs: `Hersir.app` in Homebrew's own folder, with `hersir-mcp` inside it, signed ad hoc again as the one line does, and the `hersir` and `hersir-mcp` commands. The formula gets a new release only once it is signed, usually the same day, and pins the build's sha256 from the release's signed `SHA256SUMS`.
+- A formula, not a cask: Homebrew puts the quarantine mark on what a cask downloads, and macOS would then stop Hersir, which Apple hasn't notarized, until you choose Open Anyway in System Settings, most likely again at every new version. A formula's download gets no mark, so Hersir opens without asking, as after the one line ([Signatures](#signatures)).
+- `brew update && brew upgrade hersir` updates it; then restart Hersir. `brew upgrade` on its own looks at the tap only once a day. Hersir doesn't update itself then: Settings → Updates says `Hersir came from Homebrew, so it doesn't update itself. Update it with brew update && brew upgrade hersir, then restart Hersir.`
+- `brew uninstall hersir` removes it, and `rm ~/Applications/Hersir.app` the link you made. Your data stays in `~/Library/Application Support/Hersir` ([Your data](#your-data)).
+- Use one way to install Hersir, not both: to move from the one line to Homebrew, first remove the one line's install with its `--uninstall`, which keeps your data.
+
+### Windows: Scoop
+
+Hersir has a [Scoop](https://scoop.sh) bucket of its own, [`Yotech-AI/scoop-bucket`](https://github.com/Yotech-AI/scoop-bucket). Add it once, then install Hersir from it, in PowerShell:
+
+```powershell
+scoop bucket add hersir https://github.com/Yotech-AI/scoop-bucket
+scoop install hersir/hersir
+```
+
+- It is the release's ready-made build for Windows (x86_64), the one the one line installs. The bucket gets a new release only once it is signed, usually the same day, and its build is checked against the release's signed `SHA256SUMS`.
+- Scoop installs it for you alone: the programs in `~\scoop\apps\hersir\current`, the commands `hersir` and `hersir-mcp`, and Hersir in the Start menu (Scoop Apps → Hersir), whose shortcut carries Hersir's app ID, so Windows shows Hersir's notifications. Neither program needs the Visual C++ Redistributable. Git for Windows, Claude Code, Codex and Gemini stay your own installs ([What every system needs](#what-every-system-needs)).
+- To update it, quit Hersir (Quit Hersir completely, in its tray menu), then run `scoop update; scoop update hersir`: Scoop doesn't update a program that runs, and `scoop update` fetches the bucket first. Hersir doesn't update itself then: Settings → Updates says `Hersir came from Scoop, so it doesn't update itself. Update it with scoop update; scoop update hersir, then restart Hersir.`
+- `scoop uninstall hersir` removes it, with its commands and its Start menu shortcut. Your data stays in `%APPDATA%\Hersir`, also with `--purge` ([Your data](#your-data)).
+- Scoop doesn't mark what it downloads as coming from the internet, so SmartScreen shouldn't stop Hersir. Smart App Control does stop it ([Signatures](#signatures)).
+- Use one way to install Hersir, not both: to move from the one line to Scoop, first remove the one line's install with its `-Uninstall`, which keeps your data.
+
 ## What every system needs
 
 - [Claude Code](https://docs.claude.com/en/docs/claude-code) or Codex, installed and logged in; for Claude Code, run `claude` once. The Chief's chat needs Claude Code. Agents can also run on Gemini or another coding CLI you have installed and logged in (Settings → Coding CLIs).
@@ -100,7 +136,7 @@ The installer builds Hersir (the one line installs the ready-made build instead)
 
 For Macs with Apple silicon (M1 and later). git comes with Apple's Command Line Tools (run `xcode-select --install`) or Homebrew (`brew install git`); that's all the ready-made build needs. To build from source you also need the Command Line Tools themselves, which bring a C compiler, and Node.js, from Homebrew (`brew install node`), mise, nvm or the installer on nodejs.org.
 
-Install [in one line](#in-one-line), or build from a clone:
+Install [in one line](#in-one-line), with [Homebrew](#macos-homebrew), or build from a clone:
 
 ```sh
 git clone --branch production https://github.com/Yotech-AI/hersir.git
@@ -118,7 +154,7 @@ Hersir's tray icon is in the menu bar.
 
 ## Windows
 
-For Windows 11. You also need:
+For Windows 11, with the one line, with Scoop ([Windows: Scoop](#windows-scoop)) or from a clone. You also need:
 
 - Git for Windows: Claude Code runs its commands in Git for Windows' Git Bash, and it has an ssh-keygen too;
 - WebView2, which comes with Windows 11;
@@ -166,6 +202,8 @@ Hersir has no Apple or Microsoft signature yet: there is no Apple Developer acco
 - macOS: System Settings → Privacy & Security → Open Anyway, or `xattr -dr com.apple.quarantine ~/.local/lib/hersir/Hersir.app`;
 - Windows: More info → Run anyway.
 
+Smart App Control is another matter. On a Windows 11 PC that has it on, Windows blocks programs without a signature unless they have a good reputation, however they were installed: with the one line, with Scoop or built on that PC. It has no exception for one app, so Hersir doesn't run on such a PC until it has a Microsoft signature. Windows Security → App & browser control shows whether Smart App Control is on.
+
 After an update, macOS may ask once whether Hersir may use what it saved in your keychain: choose Always Allow.
 
 ## First start
@@ -197,7 +235,9 @@ If a step fails, the version you have keeps working, and Settings → Updates sa
 
 You can still update from a terminal: run the [one line](#in-one-line) again, or in a clone `git pull`, then `./install.sh` (on Windows `.\install.ps1`). How an update works, step by step: [docs/RELEASING.md](RELEASING.md#how-hersir-updates-itself).
 
-A Hersir from the AUR never updates itself: `yay -Syu` updates it ([With a package manager](#with-a-package-manager)).
+A Hersir from the AUR never updates itself: `yay -Syu` updates it ([With a package manager](#with-a-package-manager)). Neither does a Hersir from Homebrew: `brew update && brew upgrade hersir` updates it.
+
+A Hersir from Scoop doesn't either: quit it, then `scoop update; scoop update hersir` updates it ([Windows: Scoop](#windows-scoop)).
 
 ## Your data
 

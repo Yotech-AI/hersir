@@ -310,8 +310,10 @@ if (-not $SkipBuild) {
     # The Tauri CLI, never a plain cargo build --release: that can make a hersir.exe that loads the dev URL. Called
     # directly rather than through npm run with "--", which Windows PowerShell may drop before npm sees it.
     Invoke-Step (Join-Path $Src 'node_modules\.bin\tauri.cmd') @('build', '--no-bundle')
-    # the crate gizai-mcp builds the program hersir-mcp.exe
-    Invoke-Step 'cargo' @('build', '--release', '-p', 'gizai-mcp')
+    # the crate gizai-mcp builds the program hersir-mcp.exe, with the C runtime inside it (a static CRT), so it runs
+    # without VCRUNTIME140.dll, which a fresh Windows doesn't have (hersir.exe gets the runtime from tauri-build). The
+    # flag goes to the program alone: Rust picks the C runtime when it links, and none of its crates has C code.
+    Invoke-Step 'cargo' @('rustc', '--release', '-p', 'gizai-mcp', '--bin', 'hersir-mcp', '--', '-C', 'target-feature=+crt-static')
   } finally {
     Pop-Location
     foreach ($name in @($before.Keys)) { [Environment]::SetEnvironmentVariable($name, $before[$name]) }

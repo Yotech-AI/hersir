@@ -48,6 +48,7 @@ mod memory_groups_flow_test;
 mod memory_per_project_flow_test;
 mod notifications_test;
 mod nudge_flow_test;
+mod office_docs;
 mod onboarding_flow_test;
 mod outside_chat_mark_test;
 mod own_push_test;
