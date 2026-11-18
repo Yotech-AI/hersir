@@ -5,6 +5,7 @@ Hersir's packages for package managers, made from the ready-made builds of its r
 | Folder | Package | Install | Published to |
 |---|---|---|---|
 | [`aur/hersir-bin`](aur/hersir-bin) | `hersir-bin` on the AUR, for Arch Linux and Omarchy | `yay -S hersir-bin` | `ssh://aur@aur.archlinux.org/hersir-bin.git` |
+| [`homebrew`](homebrew) | the formula `hersir` in the Homebrew tap `yotech-ai/tap`, for Macs with Apple silicon | `brew install yotech-ai/tap/hersir` | `https://github.com/Yotech-AI/homebrew-tap.git`, its `main` |
 
 ## aur/hersir-bin
 
@@ -21,6 +22,21 @@ What the package takes, and from where:
 - Removing the package removes only its files: the data folder, `~/.local/share/hersir`, stays.
 
 To change the package, edit `PKGBUILD` here, then make its `.SRCINFO` again on Arch Linux with `makepkg --printsrcinfo > .SRCINFO`. CI's Arch Linux job (`.github/workflows/ci.yml`, the arch job) builds it with `makepkg` from the release it names, runs `namcap`, installs it and compares the launcher, the desktop entry and the icons with the ones `install.sh` makes. It publishes nothing.
+
+## homebrew
+
+`hersir.rb`, the formula, for one release: the one it names; and `README.md`, the tap's README. For each signed release, `scripts/packages.sh vX.Y.Z` writes the formula with that release's values (its `url` and `sha256`) into a clone of `Yotech-AI/homebrew-tap` as `Formula/hersir.rb`, with the README and [`LICENSE`](LICENSE) beside it, shows the change and pushes it to `main` after `y`. Nothing else in the tap changes, so it can hold other formulae. The files here stay as they are. The same release with another formula becomes the formula's next `revision`, so `brew upgrade` installs it again; a new README alone doesn't.
+
+What the formula installs, and from where:
+
+- **The build:** the release's `hersir-X.Y.Z-macos-arm64.tar.gz`, with its sha256 from the release's `SHA256SUMS`, which the release's signature covers. Homebrew reads the version from its address. A formula, never a cask: Homebrew puts the quarantine mark on what a cask downloads, never on a formula's, and the formula neither sets nor removes it.
+- **Hersir.app:** the build's own, in the formula's prefix (`$(brew --prefix)/Cellar/hersir/X.Y.Z/Hersir.app`, which `$(brew --prefix)/opt/hersir/Hersir.app` always leads to), with `hersir-mcp` copied into its `Contents/MacOS` and the app signed ad hoc again (`codesign --force --deep --sign -`), as `install.sh` does.
+- **The commands:** `hersir`, a script that starts the app's own program (not a link, as macOS tells a program the path of the link it started from), and `hersir-mcp`, a link to the one in the app, in Homebrew's `bin`.
+- **The mark:** none is written. A Hersir that runs from Homebrew's Cellar doesn't update itself, and Settings → Updates says to update it with `brew update && brew upgrade hersir`. A file inside Hersir.app would break its signature.
+- The caveats say how to link Hersir.app into `~/Applications`, once, which a formula may not do itself. `brew test` runs `hersir --version`.
+- Uninstalling removes only the formula's files: the data folder, `~/Library/Application Support/Hersir`, stays.
+
+To change the formula, edit `hersir.rb` here. CI's Homebrew job (`.github/workflows/ci.yml`, the homebrew job) makes a test build of the pull request's commit, packed as Release builds packs a release's, installs the formula for it from a local tap, and runs `brew test`, `brew audit`, `codesign --verify` on the installed app and a check that nothing the formula installed has the quarantine mark. It publishes nothing.
 
 ## Licence
 
