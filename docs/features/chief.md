@@ -50,7 +50,7 @@ The Chief's calls that wait start or continue runs, change agents or columns, at
 - with a line about what it does and a preview: a note's new text and what changes, the card and agent, the settings that change, the file and where it goes, the comment's text, and each field of a card or project that changes, old and new;
 - with **Approve** and **Discard**, and **Approve all** when there are several.
 
-The Chief's tool line says what happened to each call: one that worked as before ("Changed task DU-37"), one that waits for you "Waiting for your OK: add to note Chief/Notes", and one that was refused "Couldn't change task DU-37", with the reason under it.
+The Chief's tool line says what happened to each call: one that worked reads as before, like "Changed task DU-37"; one that waits for you reads "Waiting for your OK: add to note Chief/Notes"; one that was refused reads "Couldn't change task DU-37", with the reason under it.
 
 Approve runs exactly that call once, with every other rule in force; it isn't kept again, and a card it changes doesn't go on hold. Discard runs nothing. The chat notes what happened and the Chief hears it in its next answer. Approving doesn't start a new answer: once nothing waits and the Chief isn't answering, a last note says its answer is done, so send a message to go on. Until you decide, the chat waits for you at the top of [the Inbox](inbox.md), also after a restart.
 
