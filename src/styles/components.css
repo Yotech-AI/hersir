@@ -481,6 +481,9 @@ button.label-pill[aria-pressed="true"] { border-color: var(--accent); color: var
 
 /* ---------- toast ---------- */
 .toast { position: fixed; right: 20px; bottom: 20px; z-index: 60; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid var(--line-2); border-radius: var(--radius-l); background: var(--float); box-shadow: var(--shadow-pop); }
+/* GA-306: a long toast (the cards a move or an archive skipped) wraps instead of crossing the window; Undo stays whole */
+.toast { max-width: min(560px, calc(100vw - 40px)); line-height: 1.4; }
+.toast > .btn { flex: none; }
 
 /* ---------- chat (ChatMessage, ToolCard, ChatSetup) ---------- */
 .chat-col { max-width: calc(760px * var(--chat-scale, 1)); margin: 0 auto; padding: 24px; }
