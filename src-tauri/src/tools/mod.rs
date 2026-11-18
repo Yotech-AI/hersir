@@ -361,10 +361,11 @@ fn tool(name: &str, description: &str, props: &[(&str, &str, &str)], required: &
 }
 
 const TASK: (&str, &str, &str) = ("task", "string", "The task's identifier, like KADE-12 (or its id)");
-/// get_task's task: it finds an archived task too. Said here, not in get_task's description, which stays under 600
-/// characters (GA-310; GA-311 made room for its PDF copies by shortening the rest).
+/// get_task's task: it finds an archived task too, and what its builds_on and needed_by are. Said here, not in get_task's
+/// description, which stays under 600 characters (GA-310; GA-311 moved builds_on and needed_by here to make room for
+/// the PDF copies).
 const TASK_OR_ARCHIVED: (&str, &str, &str) = ("task", "string",
-    "The task's identifier, like KADE-12 (or its id). Finds an archived task too, and says so (archived: true): it is read-only until the user restores it");
+    "The task's identifier, like KADE-12 (or its id). Finds an archived task too, and says so (archived: true): it is read-only until the user restores it. Its builds_on lists the cards it builds on, each with its column and merged: true once in Deploy or Done; needed_by the cards that build on it");
 const PROJECT: (&str, &str, &str) = ("project", "string", "The project's key (KADE), name or id");
 const CLIENT: (&str, &str, &str) = ("client", "string", "The client's name or id");
 const AGENT: (&str, &str, &str) = ("agent", "string", "The agent's name or id");
@@ -421,7 +422,7 @@ pub fn catalog() -> Vec<ToolDef> {
                ("assignee", "string", "A person or agent name; \"none\" for unassigned; \"me\" for the user"), ("label", "string", "Label name"),
                ("text", "string", "Words in the title"), ("include_done", "boolean", "Include done and cancelled tasks"),
                ("archived", "boolean", "Only the archived tasks (archived from Done; read-only until the user restores them)"), ("limit", "integer", "At most this many (default 50)")], &[]),
-        tool("get_task", "One task with its description, acceptance criteria, labels, hold, builds_on (the cards it builds on; merged: true once in Deploy or Done), needed_by (the cards that build on it), latest comments, agent runs (with the tool calls each was refused) and files. Each file comes with the path of a copy in your folder, to read with Read (or null: its note or error says why). A Word, Excel, PowerPoint, OpenDocument or RTF file also has readable_path: a copy of its text as Markdown, to read with Read. Pages, Keynote, Numbers, .doc and .ppt files get a PDF copy instead, when LibreOffice is installed.", &[TASK_OR_ARCHIVED], &["task"]),
+        tool("get_task", "One task with its description, acceptance criteria, labels, hold, builds_on, needed_by, latest comments, agent runs (with the tool calls each was refused) and files. Each file comes with the path of a copy in your folder, to read with Read (null over 100 MB or if it couldn't be copied: its note or error says why). A Word, Excel, PowerPoint, OpenDocument or RTF file also has readable_path: a copy of its text as Markdown, to read with Read. Pages, Keynote, Numbers, .doc and .ppt files get a PDF copy instead, when LibreOffice is installed.", &[TASK_OR_ARCHIVED], &["task"]),
         tool("list_agents", "The agents: role, status, the columns they are on, model, whether they work right now, spend this month and budget; with more than one team, each agent's team. An agent works only the columns of its own team.",
              &[("team", "string", "Only this team's agents: its name or id")], &[]),
         tool("get_agent", "One agent's settings, instructions and recent runs, with the card and the tool calls each run was refused.", &[AGENT], &["agent"]),

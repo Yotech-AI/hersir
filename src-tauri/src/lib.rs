@@ -574,6 +574,11 @@ pub fn test_state(dir: &std::path::Path) -> AppState {
         st.keychain = Arc::new(gizai_agents::secrets::MemoryKeychain::default());
         st.tokens = Arc::new(gizai_agents::oauth::TokenStore::new(st.keychain.clone()));
     }
+    // No LibreOffice in tests, wherever it is installed (GA-311): a test that wants it sets `program` (Find for the real
+    // one, At for a fake), and may set a shorter `limit`.
+    st.libreoffice = Arc::new(gizai_agents::libreoffice::LibreOffice {
+        program: gizai_agents::libreoffice::Program::Missing, ..(*st.libreoffice).clone()
+    });
     st
 }
 
