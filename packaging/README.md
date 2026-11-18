@@ -25,7 +25,7 @@ To change the package, edit `PKGBUILD` here, then make its `.SRCINFO` again on A
 
 ## scoop
 
-The bucket `Yotech-AI/scoop-bucket` as it is for one release, the one `hersir.json` names: `hersir.json` goes into the bucket as `bucket/hersir.json`, with `scripts/hersir-shortcut.ps1`, `README.md` (the bucket's own README, for people who install Hersir with Scoop) and [`LICENSE`](LICENSE) beside it. For each signed release, `scripts/packages.sh vX.Y.Z` writes the release's version, the zip's address and its sha256 into `hersir.json`, puts the four files into a clone of the bucket (only them: what else is there goes), shows the change and pushes it to `main` after `y`, with your own GitHub login, as for Hersir itself. The files here stay as they are.
+The bucket `Yotech-AI/scoop-bucket` as it is for one release, the one `hersir.json` names: `hersir.json` goes into the bucket as `bucket/hersir.json`, with `scripts/hersir-shortcut.ps1`, `README.md` (the bucket's own README, for people who install Hersir with Scoop) and [`LICENSE`](LICENSE) beside it. For each signed release, `scripts/packages.sh vX.Y.Z` writes the release's version, the zip's address and its sha256 into `hersir.json`, puts the four files into a clone of the bucket (only them: what else is there goes), shows the change and pushes it to `main` after `y`, with gh's GitHub login (git asks gh for it, whatever login git has of its own). The files here stay as they are.
 
 What the manifest takes, and what it does:
 

@@ -16,8 +16,8 @@
 # - aur: hersir-bin on the AUR, from packaging/aur/hersir-bin and packaging/LICENSE, pushed to
 #   ssh://aur@aur.archlinux.org/hersir-bin.git with your AUR key (ssh takes it from ~/.ssh/config or ssh-agent).
 # - scoop: hersir in the Scoop bucket Yotech-AI/scoop-bucket, from packaging/scoop and packaging/LICENSE, pushed to
-#   https://github.com/Yotech-AI/scoop-bucket.git (main) with your own GitHub login, as git pushes Hersir itself. For
-#   tests, HERSIR_SCOOP_REPO replaces the bucket's repository (a local repository).
+#   https://github.com/Yotech-AI/scoop-bucket.git (main) with gh's GitHub login (git asks gh for it). For tests,
+#   HERSIR_SCOOP_REPO replaces the bucket's repository (a local repository).
 # Only Jeffrey runs it, never CI or an agent: the AUR key never leaves Jeffrey's computer. For tests,
 # HERSIR_RELEASE_SIGNERS replaces release-signers (a throwaway key's allowed-signers file), HERSIR_AUR_REPO the AUR's
 # repository and HERSIR_SOURCE_REPO GitHub's, where the commit comes from (local repositories).
@@ -63,7 +63,7 @@ instead of release-signers; HERSIR_AUR_REPO, a git repository instead of the AUR
 repository instead of GitHub's, for the release's commit.
 HERSIR_SCOOP_REPO, a git repository instead of the bucket Yotech-AI/scoop-bucket.
 It needs gh, logged in to GitHub (gh auth login), git and ssh-keygen, and for the AUR your AUR key. docs/RELEASING.md,
-step 6, says when to run it. The bucket takes your GitHub login, as git push does for Hersir itself.
+step 6, says when to run it. The bucket's push uses gh's GitHub login.
 USAGE
 }
 
@@ -485,7 +485,9 @@ scoop_publish() {
   quiet_git -C "$SCOOP_DIR" commit --quiet -m "hersir $version" \
     -m "Hersir $tag at $commit: the release's Windows build, checked against its signed SHA256SUMS." >/dev/null ||
     fail "Couldn't commit hersir $version to the bucket, so it isn't published: $(why)"
-  quiet_git -C "$SCOOP_DIR" push --quiet origin HEAD:refs/heads/main >/dev/null ||
+  # With gh's login, which this script checked first: git may have another login for github.com, or none.
+  quiet_git -C "$SCOOP_DIR" -c credential.helper= -c 'credential.helper=!gh auth git-credential' \
+    push --quiet origin HEAD:refs/heads/main >/dev/null ||
     fail "Couldn't push hersir $version to $SCOOP_REPO, so it isn't published: $(why)"
   say "Published hersir $version to $SCOOP_REPO: scoop update; scoop update hersir updates it."
 }
