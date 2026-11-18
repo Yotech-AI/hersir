@@ -47,4 +47,4 @@ Hersir has no Microsoft signature yet. Scoop doesn't mark what it downloads as c
 
 ## Licence
 
-The files in this bucket are under the BSD Zero Clause License (0BSD, [`LICENSE`](LICENSE)). Hersir itself is under the Apache License 2.0.
+The files in this bucket are under the BSD Zero Clause License (0BSD, [`LICENSE`](https://github.com/Yotech-AI/scoop-bucket/blob/main/LICENSE)). Hersir itself is under the Apache License 2.0.
