@@ -5,7 +5,7 @@
 //   it opens, the first one shown; Hersir keeps the chat's id in localStorage (gizai.chat.sideOpened, the newest 200), so
 //   once you close them or hide the island, opening the chat again leaves it as you left it, also after a restart.
 // localStorage is read inside try/catch: the tests run in Node, which has none.
-import type { Run } from "../types";
+import type { Comment, Run } from "../types";
 import { cardTabId, openSideTabs } from "./chatSide";
 
 export { cardTabId };
@@ -21,6 +21,13 @@ export const COMMENTS_SHOWN = 2;
 export const RUNS_SHOWN = 3;
 /** The hold's reason shows its end, this many characters, as Properties does, then Read in comments. */
 export const REASON_CHARS = 60;
+
+/** Read in comments: the latest comment whose text holds the hold's reason (an agent's summary is posted as one), as on
+ *  the card's page, or undefined (no reason, or no comment has it: the waiting-for-OK hold's reason is in none). */
+export function reasonComment<C extends Pick<Comment, "bodyMd">>(reason: string | null | undefined, comments: readonly C[] | null | undefined): C | undefined {
+  const r = reason?.trim();
+  return r ? [...(comments ?? [])].reverse().find((c) => c.bodyMd.includes(r)) : undefined;
+}
 
 export const showAll = (n: number) => `Show all ${n}`;
 
