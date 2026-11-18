@@ -5,10 +5,11 @@ Homebrew's way to [Hersir](https://hersir.dev) on a Mac with Apple silicon (M1 a
 ## Install
 
 ```sh
+brew trust yotech-ai/tap
 brew install yotech-ai/tap/hersir
 ```
 
-Then link Hersir into Applications in your home folder, once, so you open it from Finder, Spotlight and the Dock (Homebrew may not put it there itself):
+Homebrew loads formulae from a tap that isn't its own only once you trust it: the first line does that, once. Then link Hersir into Applications in your home folder, once, so you open it from Finder, Spotlight and the Dock (Homebrew may not put it there itself):
 
 ```sh
 mkdir -p ~/Applications && ln -sfn "$(brew --prefix)/opt/hersir/Hersir.app" ~/Applications/Hersir.app

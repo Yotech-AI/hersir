@@ -504,7 +504,7 @@ homebrew_publish() {
     fail "Couldn't commit hersir $becomes, so it isn't published: $(why)"
   quiet_git -C "$TAP_DIR" push --quiet origin HEAD:refs/heads/main >/dev/null ||
     fail "Couldn't push hersir $becomes to $TAP_REPO, so it isn't published: $(why)"
-  say "Published hersir $becomes to $TAP_REPO: brew install yotech-ai/tap/hersir installs it, and brew update && brew upgrade hersir updates it."
+  say "Published hersir $becomes to $TAP_REPO: brew update && brew upgrade hersir updates it (https://github.com/Yotech-AI/homebrew-tap)."
 }
 
 # ---------- what changes, the answer, and publishing ----------

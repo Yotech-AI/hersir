@@ -72,10 +72,11 @@ yay -S hersir-bin
 Hersir is in the Homebrew tap [`yotech-ai/tap`](https://github.com/Yotech-AI/homebrew-tap), as the formula `hersir`, for Macs with Apple silicon:
 
 ```sh
+brew trust yotech-ai/tap
 brew install yotech-ai/tap/hersir
 ```
 
-Then link Hersir into Applications in your home folder, once, so you open it from Finder, Spotlight and the Dock (a formula may not put it there itself):
+Homebrew loads formulae from a tap that isn't its own only once you trust it: the first line does that, once. Then link Hersir into Applications in your home folder, once, so you open it from Finder, Spotlight and the Dock (a formula may not put it there itself):
 
 ```sh
 mkdir -p ~/Applications && ln -sfn "$(brew --prefix)/opt/hersir/Hersir.app" ~/Applications/Hersir.app
