@@ -34,7 +34,10 @@
         "}"
     ],
     "pre_uninstall": [
-        "$hersirMenu = [Environment]::GetFolderPath($(if ($global) { 'CommonStartMenu' } else { 'StartMenu' }))",
-        "Remove-Item -LiteralPath \"$hersirMenu\\Programs\\Scoop Apps\\Hersir.lnk\" -Force -ErrorAction SilentlyContinue"
+        "$hersirApp = Split-Path -Parent $dir",
+        "if (-not (Get-Process | Where-Object { $_.Path -like \"$hersirApp\\*\" })) {",
+        "    $hersirMenu = [Environment]::GetFolderPath($(if ($global) { 'CommonStartMenu' } else { 'StartMenu' }))",
+        "    Remove-Item -LiteralPath \"$hersirMenu\\Programs\\Scoop Apps\\Hersir.lnk\" -Force -ErrorAction SilentlyContinue",
+        "}"
     ]
 }
