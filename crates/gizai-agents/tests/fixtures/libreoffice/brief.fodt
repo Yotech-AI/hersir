@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- GA-311 QA: a Writer document of two pages, as flat OpenDocument text. The tests have LibreOffice save it as .odt and
+     that as .doc (the old binary Word format), which Hersir then has LibreOffice turn into a PDF. -->
+<office:document xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+  xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0"
+  xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+  xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"
+  office:version="1.3" office:mimetype="application/vnd.oasis.opendocument.text">
+ <office:automatic-styles>
+  <style:style style:name="P1" style:family="paragraph"><style:paragraph-properties fo:break-before="page"/></style:style>
+ </office:automatic-styles>
+ <office:body>
+  <office:text>
+   <text:h text:outline-level="1">Brief for Kade portal</text:h>
+   <text:p>Page one: the old Word document made by LibreOffice for GA-311.</text:p>
+   <text:h text:style-name="P1" text:outline-level="1">Second page</text:h>
+   <text:p>Page two: the planning.</text:p>
+  </office:text>
+ </office:body>
+</office:document>
