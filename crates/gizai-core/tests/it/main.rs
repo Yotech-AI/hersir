@@ -17,6 +17,7 @@ mod card_flow_test;
 mod chat_archive_test;
 mod chat_files_test;
 mod chat_pins_test;
+mod chat_rename_test;
 mod chat_runs_on_test;
 mod chat_test;
 mod chief_test;

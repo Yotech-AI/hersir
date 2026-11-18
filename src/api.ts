@@ -439,6 +439,9 @@ export const pinnedChats = () => invoke<T.ChatThread[]>("pinned_chats");
 export const pinChat = (threadId: string) => invoke<void>("pin_chat", { threadId });
 /** Unpin: the chat leaves Pinned, and is in Recent again when it is one of the 30 newest. */
 export const unpinChat = (threadId: string) => invoke<void>("unpin_chat", { threadId });
+/** Rename on a chat on the left (GA-309): `title`, on one line and trimmed, is its name; at most 80 characters, not empty.
+ *  It keeps its place in Recent. */
+export const renameChat = (threadId: string, title: string) => invoke<T.ChatThread>("rename_chat", { threadId, title });
 /** Chat → Archive: the chats whose title or messages (yours and the Team Lead's) hold `query`, newest first; all for "". */
 export const searchChatThreads = (query: string) => invoke<T.ChatHit[]>("search_chat_threads", { query });
 export const chatMessages = (threadId: string) => invoke<T.ChatMessage[]>("chat_messages", { threadId });
