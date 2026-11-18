@@ -375,3 +375,202 @@ jobs:
           pacman -Rns --noconfirm hersir-bin
           test ! -e /usr/lib/hersir && test ! -e /usr/bin/hersir && test ! -e /usr/share/applications/hersir.desktop
           test "$(cd "$home/.local/share" && find hersir dev.hersir.app -exec ls -ld --time-style=+%s {} + | sort && find hersir dev.hersir.app -type f -exec sha256sum {} + | sort)" = "$before"
+
+  # Whether this pull request (or push to main) changes what the homebrew job checks: the formula and the tap's README
+  # (packaging/homebrew), install.sh, which makes the job's test build, and this workflow. The rest of Hersir never goes
+  # into the formula, which installs a release's ready-made build; so a version bump changes none of it. HEAD is the pull
+  # request's merge commit, and HEAD^1 is main; for a push, the commit main was at before. When the fetch or the check
+  # fails, the homebrew job runs.
+  homebrew-changes:
+    name: Homebrew formula changed?
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      changed: ${{ steps.check.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Homebrew formula changed?
+        id: check
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            git fetch --quiet --no-tags --depth=2 origin "$GITHUB_SHA" && base="HEAD^1" || base=""
+          else
+            git fetch --quiet --no-tags --depth=1 origin "$BEFORE" && base="$BEFORE" || base=""
+          fi
+          if [ -n "$base" ] && git diff --quiet "$base" HEAD -- packaging/homebrew install.sh .github/workflows/ci.yml; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # hersir, the Homebrew formula (packaging/homebrew/hersir.rb), installed as its users install it, on GitHub's macOS
+  # runner (Apple silicon), from a test build: this commit built with install.sh --build-only and packed as Release
+  # builds packs a release's macOS build, hersir-X.Y.Z-macos-arm64.tar.gz. The formula gets that archive's sha256 and
+  # version, as scripts/packages.sh fills in a signed release's, in a local tap of this job's own, never
+  # Yotech-AI/homebrew-tap. Then:
+  # - brew install, brew test (hersir --version) and brew audit --strict pass, and hersir --version says the version;
+  # - the installed Hersir.app passes codesign --verify --deep --strict and holds hersir and hersir-mcp, the hersir
+  #   command starts it from Homebrew's Cellar (so Hersir doesn't update itself), and the caveats show the link line;
+  # - nothing the formula installed has the quarantine mark: xattr -p com.apple.quarantine finds none on the app, its
+  #   programs or the commands, and xattr finds it on a copy marked here, so the check can see one;
+  # - brew uninstall removes it and leaves a data folder as it was.
+  # It publishes nothing: the tap gets a formula only from scripts/packages.sh, on Jeffrey's computer.
+  homebrew:
+    name: macOS (Homebrew formula)
+    needs: homebrew-changes
+    if: needs.homebrew-changes.outputs.changed == 'true'
+    runs-on: macos-15
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: 1
+      HOMEBREW_NO_ANALYTICS: 1
+      HOMEBREW_NO_ENV_HINTS: 1
+      # A tap of this job's own, made below; never yotech-ai/tap.
+      TAP: hersir-ci/local
+    steps:
+      # No token is left in the checkout for the build's own scripts.
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: A test build (install.sh --build-only)
+        run: /bin/bash ./install.sh --build-only
+
+      # As Release builds packs a release's macOS build: exactly the files --skip-build installs, at the paths the build
+      # left them, without extended attributes.
+      - name: Packed as Release builds packs it
+        id: build
+        run: |
+          set -euo pipefail
+          version="$(node -p 'require("./src-tauri/tauri.conf.json").version')"
+          archive="$RUNNER_TEMP/builds/hersir-$version-macos-arm64.tar.gz"
+          mkdir -p "$RUNNER_TEMP/builds"
+          COPYFILE_DISABLE=1 /usr/bin/tar --no-xattrs -czf "$archive" \
+            target/release/hersir target/release/hersir-mcp target/release/bundle/macos/Hersir.app
+          tar -tzvf "$archive"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(shasum -a 256 "$archive" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+
+      # The formula as scripts/packages.sh writes it for a release vX.Y.Z (its url, the release's archive on GitHub, and
+      # its sha256), into a local tap. published.rb is that formula; install.rb the same with the test build's own
+      # address, file://, as the release of this version isn't on GitHub, or holds another build. Homebrew reads the
+      # version from a release's address on GitHub, not from a file's name (hersir-X.Y.Z-macos-arm64 would be 64), so
+      # install.rb says its version. Nothing trusts the tap first: as for people, brew install with the formula's full
+      # name is what lets Homebrew load it from a tap that isn't its own, and trusts it for brew test and brew audit.
+      - name: The formula for the test build, in a local tap
+        env:
+          VERSION: ${{ steps.build.outputs.version }}
+          ARCHIVE: ${{ steps.build.outputs.archive }}
+          SUM: ${{ steps.build.outputs.sha256 }}
+        run: |
+          set -euxo pipefail
+          brew tap-new --no-git "$TAP"
+          url="https://github.com/Yotech-AI/hersir/releases/download/v$VERSION/hersir-$VERSION-macos-arm64.tar.gz"
+          sed -e "s#^  url \"[^\"]*\"\$#  url \"$url\"#" -e "s#^  sha256 \"[0-9a-f]\{64\}\"\$#  sha256 \"$SUM\"#" \
+            packaging/homebrew/hersir.rb > "$RUNNER_TEMP/published.rb"
+          awk -v url="file://$ARCHIVE" -v version="$VERSION" \
+            '/^  url "/ { print "  url \"" url "\""; print "  version \"" version "\""; next } { print }' \
+            "$RUNNER_TEMP/published.rb" > "$RUNNER_TEMP/install.rb"
+          diff "$RUNNER_TEMP/published.rb" "$RUNNER_TEMP/install.rb" || true
+          grep -qxF "  url \"file://$ARCHIVE\"" "$RUNNER_TEMP/install.rb"
+          grep -qxF "  version \"$VERSION\"" "$RUNNER_TEMP/install.rb"
+          # Only the url and the sha256 differ from the template.
+          diff <(grep -v -e '^  url "' -e '^  sha256 "' packaging/homebrew/hersir.rb) \
+            <(grep -v -e '^  url "' -e '^  sha256 "' "$RUNNER_TEMP/published.rb")
+          grep -qxF "  url \"$url\"" "$RUNNER_TEMP/published.rb"
+          grep -qxF "  sha256 \"$SUM\"" "$RUNNER_TEMP/published.rb"
+          cp "$RUNNER_TEMP/install.rb" "$(brew --repository "$TAP")/Formula/hersir.rb"
+
+      - name: brew install
+        run: |
+          set -euxo pipefail
+          brew install --formula "$TAP/hersir"
+          brew info --formula "$TAP/hersir"
+          # From here on, the formula as it is published: brew test and brew audit read it.
+          cp "$RUNNER_TEMP/published.rb" "$(brew --repository "$TAP")/Formula/hersir.rb"
+
+      - name: brew test
+        run: brew test --verbose "$TAP/hersir"
+
+      # --strict, as for a tap's formula. Not --online, as the test build's version may not be released yet, and not
+      # --new, which is for homebrew/core's own new formulae.
+      - name: brew audit
+        run: brew audit --strict --formula "$TAP/hersir"
+
+      - name: Hersir says its version, runs from Homebrew's Cellar, and the caveats show the link line
+        env:
+          VERSION: ${{ steps.build.outputs.version }}
+        run: |
+          set -euxo pipefail
+          brew_prefix="$(brew --prefix)"
+          keg="$(brew --cellar "$TAP/hersir")/$VERSION"
+          app="$keg/Hersir.app"
+          test "$(hersir --version)" = "hersir $VERSION"
+          test "$(command -v hersir)" = "$brew_prefix/bin/hersir"
+          test "$(command -v hersir-mcp)" = "$brew_prefix/bin/hersir-mcp"
+          # hersir starts the app's own program in the Cellar; hersir-mcp is the one inside the app.
+          grep -qF "exec \"$app/Contents/MacOS/hersir\"" "$(realpath "$brew_prefix/bin/hersir")"
+          test "$(realpath "$brew_prefix/bin/hersir-mcp")" = "$(realpath "$app/Contents/MacOS/hersir-mcp")"
+          test -x "$app/Contents/MacOS/hersir" && test -x "$app/Contents/MacOS/hersir-mcp"
+          test "$(realpath "$brew_prefix/opt/hersir/Hersir.app")" = "$(realpath "$app")"
+          brew info --formula "$TAP/hersir" > "$RUNNER_TEMP/info.txt"
+          grep -qF "mkdir -p ~/Applications && ln -sfn $brew_prefix/opt/hersir/Hersir.app ~/Applications/Hersir.app" "$RUNNER_TEMP/info.txt"
+          grep -qF "brew update && brew upgrade hersir" "$RUNNER_TEMP/info.txt"
+
+      - name: codesign --verify passes on the installed Hersir.app
+        env:
+          VERSION: ${{ steps.build.outputs.version }}
+        run: |
+          set -euxo pipefail
+          app="$(brew --cellar "$TAP/hersir")/$VERSION/Hersir.app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign --display --verbose=2 "$app"
+          codesign --verify --strict --verbose=2 "$app/Contents/MacOS/hersir-mcp"
+
+      - name: No quarantine mark on the app, its programs or the commands
+        env:
+          VERSION: ${{ steps.build.outputs.version }}
+        run: |
+          set -euxo pipefail
+          keg="$(brew --cellar "$TAP/hersir")/$VERSION"
+          app="$keg/Hersir.app"
+          for path in "$app" "$app/Contents/MacOS/hersir" "$app/Contents/MacOS/hersir-mcp" "$keg/bin/hersir" \
+            "$(brew --prefix)/bin/hersir" "$(brew --prefix)/bin/hersir-mcp"; do
+            if xattr -p com.apple.quarantine "$path"; then echo "$path has the quarantine mark."; exit 1; fi
+          done
+          if xattr -lr "$keg" | grep com.apple.quarantine; then echo "Something in $keg has the quarantine mark."; exit 1; fi
+          # The check sees a mark where there is one: on a copy of the app, marked here.
+          ditto "$app" "$RUNNER_TEMP/marked/Hersir.app"
+          xattr -w com.apple.quarantine "0081;00000000;CI;" "$RUNNER_TEMP/marked/Hersir.app"
+          xattr -p com.apple.quarantine "$RUNNER_TEMP/marked/Hersir.app"
+          xattr -lr "$RUNNER_TEMP/marked" | grep -q com.apple.quarantine
+
+      - name: brew uninstall removes it and leaves the data folder as it was
+        env:
+          VERSION: ${{ steps.build.outputs.version }}
+        run: |
+          set -euxo pipefail
+          data="$HOME/Library/Application Support/Hersir"
+          mkdir -p "$data/backups" "$HOME/Library/WebKit/dev.hersir.app"
+          printf 'your data\n' > "$data/gizai.db"
+          printf 'a backup\n' > "$data/backups/gizai-manual.db"
+          printf 'storage\n' > "$HOME/Library/WebKit/dev.hersir.app/storage"
+          state() { find "$data" "$HOME/Library/WebKit/dev.hersir.app" -exec stat -f '%N %m %z %p' {} + | sort; find "$data" "$HOME/Library/WebKit/dev.hersir.app" -type f -exec shasum -a 256 {} + | sort; }
+          before="$(state)"
+          keg="$(brew --cellar "$TAP/hersir")/$VERSION"
+          brew uninstall --formula "$TAP/hersir"
+          test ! -e "$keg" && test ! -e "$(brew --prefix)/bin/hersir" && test ! -e "$(brew --prefix)/bin/hersir-mcp"
+          test "$(state)" = "$before"

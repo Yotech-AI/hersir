@@ -942,9 +942,10 @@ describe("the runners: macos-15, as GitHub retired the image before it", () => {
       expect(versions(text).every((v) => v === "15"), workflow).toBe(true);
       expect(text, workflow).not.toContain("macos-latest");
     }
-    // ci.yml's matrix, one-line.yml's, and install.yml's three jobs (the ready-made build, GA-252; install; and the
-    // update from 0.16.0, GA-248), the last two each with its system and runner
-    expect(workflows.flatMap((w) => versions(read(w)))).toHaveLength(7);
+    // ci.yml's matrix and its Homebrew job (GA-275), one-line.yml's, and install.yml's three jobs (the ready-made build,
+    // GA-252; install; and the update from 0.16.0, GA-248), the last two each with its system and runner
+    expect(workflows.flatMap((w) => versions(read(w)))).toHaveLength(8);
+    expect(read(".github/workflows/ci.yml")).toContain("    name: macOS (Homebrew formula)\n    needs: homebrew-changes\n    if: needs.homebrew-changes.outputs.changed == 'true'\n    runs-on: macos-15\n");
   });
 
   it("RELEASING.md names the checks as the workflows make them", () => {
