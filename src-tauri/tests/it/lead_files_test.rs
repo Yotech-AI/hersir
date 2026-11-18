@@ -410,6 +410,17 @@ fn the_three_descriptions_say_a_word_excel_powerpoint_opendocument_or_rtf_file_h
 }
 
 #[test]
+fn get_task_still_tells_the_chief_it_finds_an_archived_task_and_stays_under_600_characters() {
+    // the fix round moved this note from get_task's description into its task field, to keep the description short
+    let cat = tools::catalog();
+    let t = cat.iter().find(|t| t.name == "get_task").unwrap();
+    assert!(t.description.len() < 600, "{} characters: {}", t.description.len(), t.description);
+    let task = t.input_schema["properties"]["task"]["description"].as_str().unwrap_or_default();
+    assert!(task.contains("Finds an archived task too, and says so (archived: true): it is read-only until the user restores it"), "{task}");
+    assert_eq!(t.input_schema["required"], json!(["task"]));
+}
+
+#[test]
 fn the_chiefs_docs_end_the_files_line_with_the_cards_sentence() {
     let doc = include_str!("../../../docs/features/chief.md");
     let line = doc.lines().find(|l| l.starts_with("- **Files:**")).expect("the Files line");

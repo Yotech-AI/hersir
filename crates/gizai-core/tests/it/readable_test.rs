@@ -551,6 +551,65 @@ fn a_readable_copy_is_at_most_20_mb_and_a_longer_text_is_cut_at_a_line_end_with_
     assert!(before.ends_with(&format!("\n\n{line}")), "cut at the end of a line: {:?}", &before[before.len() - 200..]);
 }
 
+// ---- table cells in every kind of document (the fix round: a line break is a space, `|` is `\|`) ----
+
+/// The lines of the first Markdown table in `md` that starts with `head`.
+fn table_lines<'a>(md: &'a str, head: &str) -> Vec<&'a str> {
+    md.lines().skip_while(|l| !l.starts_with(head)).take_while(|l| l.starts_with('|')).collect()
+}
+
+#[test]
+fn a_line_break_in_a_table_cell_is_a_space_in_odt_pptx_and_xlsx_tables_too() {
+    let dir = tempfile::tempdir().unwrap();
+    let cut = |md: &str| assert!(!md.contains("<br"), "no <br> anywhere:\n{md}");
+
+    // OpenDocument text: a text:line-break and two paragraphs in one cell
+    let cell = |inner: &str| format!("<table:table-cell>{inner}</table:table-cell>");
+    let odt_table = format!(
+        r#"<table:table table:name="T"><table:table-column table:number-columns-repeated="2"/><table:table-row>{}{}</table:table-row><table:table-row>{}{}</table:table-row><table:table-row>{}{}</table:table-row></table:table>"#,
+        cell("<text:p>Who</text:p>"), cell("<text:p>Note</text:p>"),
+        cell("<text:p>Ann</text:p>"), cell("<text:p>line one<text:line-break/>line two | three</text:p>"),
+        cell("<text:p>Bob</text:p>"), cell("<text:p>first para</text:p><text:p>second para</text:p>"),
+    );
+    let content = format!(r#"<?xml version="1.0" encoding="UTF-8"?><office:document-content {OD}><office:body><office:text><text:p>Before.</text:p>{odt_table}<text:p>After.</text:p></office:text></office:body></office:document-content>"#);
+    let md = readable_of(dir.path(), "cells.odt", &zip_of(&[("mimetype", "application/vnd.oasis.opendocument.text".into()), ("content.xml", content)]));
+    cut(&md);
+    assert_eq!(table_lines(&md, "| Who |"), ["| Who | Note |", "| --- | --- |", "| Ann | line one line two \\| three |", "| Bob | first para second para |"], "{md}");
+    in_order(&md, &["Before.", "| Who | Note |", "After."]);
+
+    // PowerPoint: a table on a slide, an a:br and two paragraphs in one cell
+    let tc = |paras: &[&str]| {
+        let ps: String = paras.iter().map(|p| format!("<a:p>{p}</a:p>")).collect();
+        format!("<a:tc><a:txBody><a:bodyPr/>{ps}</a:txBody><a:tcPr/></a:tc>")
+    };
+    let r = |t: &str| format!("<a:r><a:t>{t}</a:t></a:r>");
+    let table = format!(
+        r#"<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="5" name="Table"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr><p:xfrm/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table"><a:tbl><a:tblGrid><a:gridCol w="100"/><a:gridCol w="100"/></a:tblGrid><a:tr h="10">{}{}</a:tr><a:tr h="10">{}{}</a:tr><a:tr h="10">{}{}</a:tr></a:tbl></a:graphicData></a:graphic></p:graphicFrame>"#,
+        tc(&[&r("Who")]), tc(&[&r("Note")]),
+        tc(&[&r("Ann")]), tc(&[&format!("{}<a:br/>{}", r("line one"), r("line two | three"))]),
+        tc(&[&r("Bob")]), tc(&[&r("first para"), &r("second para")]),
+    );
+    let slide1 = format!(r#"<?xml version="1.0"?><p:sld {P}><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>{}{table}</p:spTree></p:cSld></p:sld>"#, shape("title", &["Team"]));
+    let bytes = zip_of(&[
+        ("_rels/.rels", rels(&[("rId1", "officeDocument", "ppt/presentation.xml")])),
+        ("ppt/presentation.xml", format!(r#"<?xml version="1.0"?><p:presentation {P}><p:sldIdLst><p:sldId id="256" r:id="rId10"/></p:sldIdLst></p:presentation>"#)),
+        ("ppt/_rels/presentation.xml.rels", rels(&[("rId10", "slide", "slides/slide1.xml")])),
+        ("ppt/slides/slide1.xml", slide1),
+    ]);
+    let md = readable_of(dir.path(), "cells.pptx", &bytes);
+    cut(&md);
+    assert_eq!(table_lines(&md, "| Who |"), ["| Who | Note |", "| --- | --- |", "| Ann | line one line two \\| three |", "| Bob | first para second para |"], "{md}");
+    in_order(&md, &["## Slide 1", "Team", "| Who | Note |"]);
+
+    // Excel: a cell with a line break (Alt+Enter), a CR LF and a `|`
+    let sheet = format!(r#"<row r="1">{}{}</row><row r="2">{}{}</row><row r="3">{}{}</row>"#,
+                        istr("A1", "Who"), istr("B1", "Note"), istr("A2", "Ann"), istr("B2", "line one\nline two | three"),
+                        istr("A3", "Bob"), istr("B3", "first&#13;\nsecond"));
+    let md = readable_of(dir.path(), "cells.xlsx", &xlsx(&[("Notes", sheet)]));
+    cut(&md);
+    assert_eq!(table_lines(&md, "| Who |"), ["| Who | Note |", "| --- | --- |", "| Ann | line one line two \\| three |", "| Bob | first second |"], "{md}");
+}
+
 // ---- files it can't read, and when a copy is made ----
 
 #[test]
