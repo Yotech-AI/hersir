@@ -64,8 +64,9 @@ function target(input: unknown, whole = false): string | undefined {
 }
 
 /** The answer to a call Hersir kept for your OK instead of running it (`not_run` in the app's tools): "… wasn't run: this chat
- *  used …, a tool from outside Hersir. Hersir keeps the call for the user to approve …". One it couldn't keep is refused. */
-const KEPT = /wasn't run: this chat used .*?(Hersir|Gizai) keeps the call for the user to approve/s;
+ *  used …, a tool from outside Hersir. Hersir keeps the call for the user to approve …" (GA-261), or "this answer used …" as
+ *  GA-102 said until 9 Nov. One it couldn't keep is refused. */
+const KEPT = /wasn't run: this (?:chat|answer) used .*?Hersir keeps the call for the user to approve/s;
 
 /** "mcp__gizai__memory_append" → "memory append": a Hersir tool without a line of its own still reads as words. */
 const words = (name: string) => name.replace(/_/g, " ");
