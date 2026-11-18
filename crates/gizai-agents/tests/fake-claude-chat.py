@@ -16,9 +16,10 @@ The prompt (stdin) decides what happens:
                                   and exit 1, unless FAKE_HAS_USAGE=1 is in the environment (another account)
   FAKE_ATTACH_TO <task>           calls attach_file with the first file the prompt names ("- name: /path", the files added
                                   to a message) and that task, instead of get_overview
-  FAKE_READ_FILES                 reads every file the prompt names that way; the last answer is "Read: <their text>"
+  FAKE_READ_FILES                 reads every file the prompt names that way (its readable copy when its line ends with
+                                  "(to read: /path)", GA-310); the last answer is "Read: <their text>"
   FAKE_GET_PROJECT <key>          calls get_project for that project instead of get_overview; with FAKE_READ_FILES it reads
-                                  the file at each of its files' paths instead (GA-207)
+                                  the file at each of its files' paths instead (GA-207), or at its readable_path (GA-310)
   FAKE_REMEMBER <text>            calls memory_append to add "- <text>" (the rest of that line) under Working agreements in
                                   Chief/Notes (GA-19), instead of get_overview
   FAKE_CHAT_STREAM                the last answer is about 20 KB of Markdown (headings, lists, tables, code blocks), streamed
@@ -197,7 +198,11 @@ def long_answer():
 
 say("Sure, on it.")
 m = re.search(r"create task (.+?) in ([A-Za-z0-9]+)", prompt)
-added = re.findall(r"^- .+?: (/.+)$", prompt, re.M)
+# a Word, Excel, PowerPoint, OpenDocument or RTF file's line ends with its readable copy or why it has none (GA-310):
+# attach_file takes the file's own path, and the Chief reads the readable copy
+named = re.findall(r"^- .+?: (/.+?)(?: \(to read: (/.+)\)| \(no readable copy: .+\))?$", prompt, re.M)
+added = [a for a, _ in named]
+to_read = [r or a for a, r in named]
 attach = re.search(r"FAKE_ATTACH_TO ([A-Za-z0-9-]+)", prompt)
 fact = re.search(r"FAKE_REMEMBER (.+)$", prompt, re.M)
 project = re.search(r"FAKE_GET_PROJECT ([A-Za-z0-9]+)", prompt)
@@ -220,8 +225,8 @@ except Exception:
 final = f"Done: {ident}." if ident else "Here is the overview."
 if "FAKE_READ_FILES" in prompt:
     if project:
-        added = [f["path"] for f in json.loads(text)["files"]]
-    final = "Read: " + " | ".join(open(p).read() for p in added)
+        to_read = [f.get("readable_path") or f["path"] for f in json.loads(text)["files"]]
+    final = "Read: " + " | ".join(open(p).read() for p in to_read)
 if "FAKE_CHAT_STREAM" in prompt:
     signal.signal(signal.SIGINT, lambda *_: sys.exit(130))   # a Stop while it streams, as FAKE_CHAT_HANG
     final = long_answer()
