@@ -785,6 +785,14 @@ pub async fn unpin_chat(app: AppHandle, st: State<'_, AppState>, thread_id: Stri
     changed(&app, "chat_pins");
     Ok(())
 }
+/// Rename on a chat on the left (GA-309): `title`, on one line and trimmed, is its name from now on; it keeps its place in
+/// Recent. One `chat_threads` notice updates Recent, Pinned, the top bar and the Archive.
+#[tauri::command]
+pub async fn rename_chat(app: AppHandle, st: State<'_, AppState>, thread_id: String, title: String) -> R<gizai_core::chat::ChatThread> {
+    let t = off(&st, move |st| gizai_core::chat::rename_thread(&st.db, &st.you_id, &thread_id, &title).map_err(e)).await?;
+    changed(&app, "chat_threads");
+    Ok(t)
+}
 /// Chat → Archive: the chats whose title or messages (yours and the Chief's) hold `query`; all of them for an empty one.
 #[tauri::command]
 pub async fn search_chat_threads(st: State<'_, AppState>, query: String) -> R<Vec<gizai_core::chat::ThreadHit>> {

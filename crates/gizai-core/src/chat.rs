@@ -221,6 +221,31 @@ pub fn set_cli(db: &Db, you: &str, thread_id: &str, cli: Option<&str>) -> Result
     get_thread(db, thread_id)
 }
 
+/// The longest name you can give a chat (GA-309): more than a first message's title (`TITLE_MAX` and `…`), so editing that
+/// one never hits it.
+pub const NAME_MAX: usize = 80;
+
+/// Rename on a chat on the left (GA-309): `title`, on one line (runs of whitespace become one space) and trimmed, is its name
+/// from now on. Its `updated_at` stays, so it keeps its place in Recent. An empty name, or one longer than `NAME_MAX`
+/// characters, is refused; so is a chat that doesn't exist or is deleted.
+pub fn rename_thread(db: &Db, you: &str, thread_id: &str, title: &str) -> Result<ChatThread> {
+    let title = title.split_whitespace().collect::<Vec<_>>().join(" ");
+    if title.is_empty() {
+        return Err(Error::Invalid("Give the chat a name".into()));
+    }
+    if title.chars().count() > NAME_MAX {
+        return Err(Error::Invalid(format!("A chat's name is at most {NAME_MAX} characters")));
+    }
+    db.write(Some(you), |w| {
+        let n = w.conn().execute("UPDATE chat_threads SET title=?2 WHERE id=?1 AND deleted_at IS NULL", rusqlite::params![thread_id, title])?;
+        if n == 0 {
+            return Err(Error::NotFound(format!("chat {thread_id}")));
+        }
+        w.update("chat_threads", thread_id, serde_json::json!({"title": title}))
+    })?;
+    get_thread(db, thread_id)
+}
+
 /// The coding CLI a chat's next answer runs on: its own pick, else the Chief's Runs on (`lead_adapter`), also when
 /// its pick has been removed from Settings.
 pub fn runs_on(db: &Db, thread: &ChatThread, lead_adapter: Option<&str>) -> Result<crate::clis::Cli> {
