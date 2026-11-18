@@ -819,6 +819,7 @@ pub fn run() {
             commands::set_task_labels, commands::get_builds_on, commands::add_builds_on, commands::remove_builds_on,
             commands::task_activity, commands::list_comments, commands::add_comment,
             commands::list_archived_tasks, commands::archive_task, commands::restore_task,
+            commands::move_tasks, commands::archive_tasks, commands::restore_tasks,
             commands::list_teams, commands::get_team, commands::check_repo,
             commands::list_docs, commands::get_doc, commands::create_doc, commands::save_doc, commands::rename_doc,
             commands::doc_versions, commands::doc_version_body, commands::agent_notes, commands::memory_enabled, commands::set_memory_enabled,

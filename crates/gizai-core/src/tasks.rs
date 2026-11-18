@@ -1,5 +1,5 @@
 use crate::db::{Db, Writer};
-use crate::model::{ChangeEntry, Label, Task, TaskFilter, TaskInput, TaskPatch};
+use crate::model::{BulkResult, ChangeEntry, Label, Skipped, Task, TaskFilter, TaskInput, TaskPatch};
 use crate::sortkey::key_after;
 use crate::util::org_id;
 use crate::{Error, Result, ids};
@@ -177,48 +177,120 @@ pub(crate) fn not_archived(c: &Connection, id: &str) -> Result<()> {
 /// column, comments, runs, files, branch and identifier stay. A card outside Done, or one an agent is working on, is
 /// refused. The activity says who archived it (a `delete` change, which `archived_by` reads).
 pub fn archive(db: &Db, actor: &str, id: &str) -> Result<()> {
-    db.write(Some(actor), |w| {
-        let c = w.conn();
-        let (identifier, column, category, deleted): (String, String, String, Option<i64>) = c
-            .query_row(
-                "SELECT t.identifier, s.name, s.category, t.deleted_at FROM tasks t JOIN workflow_states s ON s.id = t.state_id WHERE t.id=?1",
-                [id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
-            .optional()?
-            .ok_or_else(|| Error::NotFound(format!("task {id}")))?;
-        if deleted.is_some() {
-            return Err(Error::Invalid(format!("{identifier} is already archived")));
-        }
-        if category != "done" {
-            return Err(Error::Invalid(format!("Only a card in Done can be archived, and {identifier} is in {column}")));
-        }
-        let live: i64 = c.query_row(
-            "SELECT count(*) FROM runs WHERE task_id=?1 AND status IN ('queued','running','waiting_approval')", [id], |r| r.get(0))?;
-        if live > 0 {
-            return Err(Error::Invalid("An agent is working on this card".into()));
-        }
-        let now = ids::now_ms();
-        c.execute("UPDATE tasks SET deleted_at=?2, updated_at=?2, updated_by=?3, version=version+1 WHERE id=?1",
-                  rusqlite::params![id, now, actor])?;
-        w.delete("tasks", id)
-    })
+    db.write(Some(actor), |w| archive_in(w, actor, id))
+}
+
+/// `archive` inside an open write. Every refusal comes before anything is written.
+fn archive_in(w: &Writer, actor: &str, id: &str) -> Result<()> {
+    let c = w.conn();
+    let (identifier, column, category, deleted): (String, String, String, Option<i64>) = c
+        .query_row(
+            "SELECT t.identifier, s.name, s.category, t.deleted_at FROM tasks t JOIN workflow_states s ON s.id = t.state_id WHERE t.id=?1",
+            [id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+        .optional()?
+        .ok_or_else(|| Error::NotFound(format!("task {id}")))?;
+    if deleted.is_some() {
+        return Err(Error::Invalid(format!("{identifier} is already archived")));
+    }
+    if category != "done" {
+        return Err(Error::Invalid(format!("Only a card in Done can be archived, and {identifier} is in {column}")));
+    }
+    let live: i64 = c.query_row(
+        "SELECT count(*) FROM runs WHERE task_id=?1 AND status IN ('queued','running','waiting_approval')", [id], |r| r.get(0))?;
+    if live > 0 {
+        return Err(Error::Invalid(WORKING.into()));
+    }
+    let now = ids::now_ms();
+    c.execute("UPDATE tasks SET deleted_at=?2, updated_at=?2, updated_by=?3, version=version+1 WHERE id=?1",
+              rusqlite::params![id, now, actor])?;
+    w.delete("tasks", id)
 }
 
 /// Restores an archived card: back at the bottom of its Done column, as it was. The activity says who restored it.
 pub fn restore(db: &Db, actor: &str, id: &str) -> Result<()> {
-    db.write(Some(actor), |w| {
-        let c = w.conn();
-        let (identifier, state_id, deleted): (String, String, Option<i64>) = c
-            .query_row("SELECT identifier, state_id, deleted_at FROM tasks WHERE id=?1", [id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
-            .optional()?
-            .ok_or_else(|| Error::NotFound(format!("task {id}")))?;
-        if deleted.is_none() {
-            return Err(Error::Invalid(format!("{identifier} isn't archived")));
+    db.write(Some(actor), |w| restore_in(w, actor, id))
+}
+
+/// `restore` inside an open write. Every refusal comes before anything is written.
+fn restore_in(w: &Writer, actor: &str, id: &str) -> Result<()> {
+    let c = w.conn();
+    let (identifier, state_id, deleted): (String, String, Option<i64>) = c
+        .query_row("SELECT identifier, state_id, deleted_at FROM tasks WHERE id=?1", [id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+        .optional()?
+        .ok_or_else(|| Error::NotFound(format!("task {id}")))?;
+    if deleted.is_none() {
+        return Err(Error::Invalid(format!("{identifier} isn't archived")));
+    }
+    let key = key_after(last_key(c, &state_id)?.as_deref());
+    c.execute("UPDATE tasks SET deleted_at=NULL, sort_key=?2, updated_at=?3, updated_by=?4, version=version+1 WHERE id=?1",
+              rusqlite::params![id, key, ids::now_ms(), actor])?;
+    w.update("tasks", id, serde_json::json!({"archived": false}))
+}
+
+/// Why a card an agent is working on can't be archived or moved at once (`archive`, `move_many`, `archive_many`).
+pub const WORKING: &str = "An agent is working on this card";
+
+/// GA-306: moves the cards `ids` to the bottom of column `state_id`, one after the other in the order given, each as
+/// `move_to` moves one (its activity says the column change; in Done it gets `completed_at`). In one write. A card an
+/// agent is working on (`working`: the ids the app knows are running or starting) is skipped, and so is one that can't
+/// move (archived, gone, a column of another team), with the reason a single move gives; the others go ahead.
+pub fn move_many(db: &Db, actor: &str, ids: &[String], state_id: &str, working: &[String]) -> Result<BulkResult> {
+    db.write(Some(actor), |w| each(w, ids, working, |w, id| {
+        move_in(w, actor, id, state_id, None)?;
+        release_by_hand(w, actor, id)
+    }))
+}
+
+/// GA-306: archives the cards `ids`, each as `archive` does (the activity says who archived it), in one write. A card
+/// an agent is working on (`working`, or a live run in the database) is skipped, and so is one outside Done or already
+/// archived, with the reason a single archive gives; the others go ahead.
+pub fn archive_many(db: &Db, actor: &str, ids: &[String], working: &[String]) -> Result<BulkResult> {
+    db.write(Some(actor), |w| each(w, ids, working, |w, id| archive_in(w, actor, id)))
+}
+
+/// GA-306: restores the archived cards `ids`, each as `restore` does (back at the bottom of its Done column, in the
+/// order given), in one write: the Undo of `archive_many`. A card that isn't archived is skipped with why.
+pub fn restore_many(db: &Db, actor: &str, ids: &[String]) -> Result<BulkResult> {
+    db.write(Some(actor), |w| each(w, ids, &[], |w, id| restore_in(w, actor, id)))
+}
+
+/// Runs `one` on each card of `ids` (once each, in order) inside the open write `w`. A card in `working`, or one that
+/// `one` refuses (`Error::Invalid`, `Error::NotFound`), is skipped with why, and what `one` wrote for it is undone (a
+/// savepoint per card); any other error fails the whole write.
+fn each(w: &Writer, ids: &[String], working: &[String], mut one: impl FnMut(&Writer, &str) -> Result<()>) -> Result<BulkResult> {
+    let mut out = BulkResult::default();
+    let mut seen = std::collections::HashSet::new();
+    for id in ids {
+        if !seen.insert(id.as_str()) {
+            continue;
         }
-        let key = key_after(last_key(c, &state_id)?.as_deref());
-        c.execute("UPDATE tasks SET deleted_at=NULL, sort_key=?2, updated_at=?3, updated_by=?4, version=version+1 WHERE id=?1",
-                  rusqlite::params![id, key, ids::now_ms(), actor])?;
-        w.update("tasks", id, serde_json::json!({"archived": false}))
-    })
+        if working.iter().any(|x| x == id) {
+            out.skipped.push(Skipped { identifier: identifier_in(w.conn(), id)?, reason: WORKING.into() });
+            continue;
+        }
+        w.conn().execute_batch("SAVEPOINT bulk_card")?;
+        match one(w, id) {
+            Ok(()) => {
+                w.conn().execute_batch("RELEASE bulk_card")?;
+                out.done.push(id.clone());
+            }
+            Err(err @ (Error::Invalid(_) | Error::NotFound(_))) => {
+                w.conn().execute_batch("ROLLBACK TO bulk_card; RELEASE bulk_card")?;
+                let reason = match err {
+                    Error::Invalid(m) => m,
+                    other => other.to_string(),
+                };
+                out.skipped.push(Skipped { identifier: identifier_in(w.conn(), id)?, reason });
+            }
+            Err(err) => return Err(err),
+        }
+    }
+    Ok(out)
+}
+
+/// A card's identifier (GA-12), archived cards included; its id when there is no such card.
+fn identifier_in(c: &Connection, id: &str) -> Result<String> {
+    Ok(c.query_row("SELECT identifier FROM tasks WHERE id=?1", [id], |r| r.get(0)).optional()?.unwrap_or_else(|| id.to_string()))
 }
 
 fn team_of_project(c: &Connection, project_id: &str) -> Result<(String, Option<String>, String)> {
@@ -471,20 +543,26 @@ pub fn move_to(db: &Db, actor: &str, id: &str, state_id: &str, sort_key: &str) -
 pub fn move_to_held(db: &Db, actor: &str, id: &str, state_id: &str, sort_key: &str, hold: Option<NewHold>) -> Result<()> {
     db.write(Some(actor), |w| {
         move_in(w, actor, id, state_id, Some(sort_key))?;
-        let c = w.conn();
-        let person = actor_kind(c, actor)?.as_deref() == Some("person");
-        let (category, held): (String, bool) = c.query_row(
-            "SELECT state_category, hold IS NOT NULL FROM tasks WHERE id=?1", [id], |r| Ok((r.get(0)?, r.get(1)?)))?;
-        if person && held && matches!(category.as_str(), "ready" | "in_progress") {
-            c.execute("UPDATE tasks SET hold=NULL, hold_reason=NULL, hold_at=NULL, hold_kind=NULL, fail_count=0, updated_at=?2, version=version+1 WHERE id=?1",
-                      rusqlite::params![id, ids::now_ms()])?;
-            w.update("tasks", id, serde_json::json!({"hold": null, "released": "moved by hand"}))?;
-        }
+        release_by_hand(w, actor, id)?;
         if let Some(h) = hold {
             crate::workflow::set_hold_as(w, id, h.hold, h.reason, h.kind)?;
         }
         Ok(())
     })
+}
+
+/// After a move by hand: a person moving a card on hold into To do or In progress answers the hold (`move_to`).
+fn release_by_hand(w: &Writer, actor: &str, id: &str) -> Result<()> {
+    let c = w.conn();
+    let person = actor_kind(c, actor)?.as_deref() == Some("person");
+    let (category, held): (String, bool) = c.query_row(
+        "SELECT state_category, hold IS NOT NULL FROM tasks WHERE id=?1", [id], |r| Ok((r.get(0)?, r.get(1)?)))?;
+    if person && held && matches!(category.as_str(), "ready" | "in_progress") {
+        c.execute("UPDATE tasks SET hold=NULL, hold_reason=NULL, hold_at=NULL, hold_kind=NULL, fail_count=0, updated_at=?2, version=version+1 WHERE id=?1",
+                  rusqlite::params![id, ids::now_ms()])?;
+        w.update("tasks", id, serde_json::json!({"hold": null, "released": "moved by hand"}))?;
+    }
+    Ok(())
 }
 
 /// Move inside an open write (used by the workflow gates). `sort_key` None appends to the column.
