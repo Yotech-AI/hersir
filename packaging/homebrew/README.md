@@ -5,11 +5,10 @@ Homebrew's way to [Hersir](https://hersir.dev) on a Mac with Apple silicon (M1 a
 ## Install
 
 ```sh
-brew trust yotech-ai/tap
 brew install yotech-ai/tap/hersir
 ```
 
-Homebrew loads formulae from a tap that isn't its own only once you trust it: the first line does that, once. Then link Hersir into Applications in your home folder, once, so you open it from Finder, Spotlight and the Dock (Homebrew may not put it there itself):
+The formula's full name, with this tap's, is what lets Homebrew load it from a tap that isn't Homebrew's own, and Homebrew trusts it from then on. As for any formula without a bottle, Homebrew wants Apple's Command Line Tools, up to date, and says so when they aren't (`xcode-select --install`). Then link Hersir into Applications in your home folder, once, so you open it from Finder, Spotlight and the Dock (Homebrew may not put it there itself):
 
 ```sh
 mkdir -p ~/Applications && ln -sfn "$(brew --prefix)/opt/hersir/Hersir.app" ~/Applications/Hersir.app

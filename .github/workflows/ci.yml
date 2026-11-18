@@ -468,7 +468,8 @@ jobs:
       # its sha256), into a local tap. published.rb is that formula; install.rb the same with the test build's own
       # address, file://, as the release of this version isn't on GitHub, or holds another build. Homebrew reads the
       # version from a release's address on GitHub, not from a file's name (hersir-X.Y.Z-macos-arm64 would be 64), so
-      # install.rb says its version. Homebrew loads a formula from a tap that isn't its own only once you trust it.
+      # install.rb says its version. Nothing trusts the tap first: as for people, brew install with the formula's full
+      # name is what lets Homebrew load it from a tap that isn't its own, and trusts it for brew test and brew audit.
       - name: The formula for the test build, in a local tap
         env:
           VERSION: ${{ steps.build.outputs.version }}
@@ -477,7 +478,6 @@ jobs:
         run: |
           set -euxo pipefail
           brew tap-new --no-git "$TAP"
-          if brew help trust >/dev/null 2>&1; then brew trust "$TAP"; fi
           url="https://github.com/Yotech-AI/hersir/releases/download/v$VERSION/hersir-$VERSION-macos-arm64.tar.gz"
           sed -e "s#^  url \"[^\"]*\"\$#  url \"$url\"#" -e "s#^  sha256 \"[0-9a-f]\{64\}\"\$#  sha256 \"$SUM\"#" \
             packaging/homebrew/hersir.rb > "$RUNNER_TEMP/published.rb"

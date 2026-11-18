@@ -5,7 +5,7 @@ Hersir's packages for package managers, made from the ready-made builds of its r
 | Folder | Package | Install | Published to |
 |---|---|---|---|
 | [`aur/hersir-bin`](aur/hersir-bin) | `hersir-bin` on the AUR, for Arch Linux and Omarchy | `yay -S hersir-bin` | `ssh://aur@aur.archlinux.org/hersir-bin.git` |
-| [`homebrew`](homebrew) | the formula `hersir` in the Homebrew tap `yotech-ai/tap`, for Macs with Apple silicon | `brew trust yotech-ai/tap`, then `brew install yotech-ai/tap/hersir` | `https://github.com/Yotech-AI/homebrew-tap.git`, its `main` |
+| [`homebrew`](homebrew) | the formula `hersir` in the Homebrew tap `yotech-ai/tap`, for Macs with Apple silicon | `brew install yotech-ai/tap/hersir` | `https://github.com/Yotech-AI/homebrew-tap.git`, its `main` |
 
 ## aur/hersir-bin
 

@@ -22,6 +22,9 @@ class Hersir < Formula
   depends_on arch: :arm64
   depends_on :macos
 
+  # Homebrew's cleaner leaves Hersir.app as it was signed: it would remove empty folders and broken links inside it.
+  skip_clean "Hersir.app"
+
   def install
     # Homebrew unpacks the archive and goes into its one folder, target/: the build is in release/.
     app = buildpath/"release/bundle/macos/Hersir.app"
