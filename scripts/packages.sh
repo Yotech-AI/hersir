@@ -386,6 +386,10 @@ SCOOP_DIR="$tmp/scoop"
 scoop_changed=0 scoop_now="" scoop_archive="hersir-$version-windows-x86_64.zip" scoop_archive_sum=""
 scoop_url="https://github.com/$REPO/releases/download/$tag/$scoop_archive"
 
+# git for the bucket, with gh's GitHub login, which this script checked first: git may have another login for
+# github.com, or none, and would then ask for one on the terminal (also for a bucket that isn't there yet).
+scoop_git() { quiet_git -c credential.helper= -c 'credential.helper=!gh auth git-credential' "$@"; }
+
 # The value of the first line '"$1": "<value>"' (a comma after it or not) in the manifest on stdin; fails without one.
 scoop_value() {
   local line re="^[[:space:]]*\"$1\": \"([^\"]*)\",?\$"
@@ -422,7 +426,7 @@ scoop_manifest() {
 }
 
 scoop_prepare() {
-  local now
+  local now heads
   [ -f "$SCOOP_TEMPLATE/hersir.json" ] && [ -f "$SCOOP_TEMPLATE/scripts/hersir-shortcut.ps1" ] &&
     [ -f "$SCOOP_TEMPLATE/README.md" ] ||
     fail "There is no $SCOOP_TEMPLATE/hersir.json, scripts/hersir-shortcut.ps1 and README.md to publish."
@@ -430,9 +434,17 @@ scoop_prepare() {
   scoop_archive_sum="$(signed_sum "$scoop_archive")" ||
     fail "The signed SHA256SUMS of $tag has no one line for $scoop_archive, so nothing is published."
 
-  # The bucket as it is: one without a commit yet clones empty, and the first push makes its main.
-  quiet_git -c init.defaultBranch=main clone --quiet "$SCOOP_REPO" "$SCOOP_DIR" >/dev/null ||
-    fail "Couldn't clone $SCOOP_REPO, so nothing is published: $(why)"
+  # The bucket's main as it is, in a repository of this run's own: its main, whatever its default branch is, as the
+  # push goes there. A bucket without one yet starts empty, and the first push makes it.
+  quiet_git -c init.defaultBranch=main init --quiet "$SCOOP_DIR" >/dev/null ||
+    fail "Couldn't make a git repository in $tmp: $(why)"
+  heads="$(scoop_git ls-remote --heads "$SCOOP_REPO" refs/heads/main)" ||
+    fail "Couldn't read $SCOOP_REPO, so nothing is published: $(why). Is the bucket there yet? To publish the other packages alone, name them (see --help)."
+  if [ -n "$heads" ]; then
+    scoop_git -C "$SCOOP_DIR" fetch --quiet --no-tags "$SCOOP_REPO" refs/heads/main >/dev/null &&
+      quiet_git -C "$SCOOP_DIR" checkout --quiet -B main FETCH_HEAD >/dev/null ||
+      fail "Couldn't fetch main of $SCOOP_REPO, so nothing is published: $(why)"
+  fi
   if [ -f "$SCOOP_DIR/bucket/hersir.json" ]; then
     # Without control characters, as it goes into the messages.
     now="$(scoop_value version < "$SCOOP_DIR/bucket/hersir.json" | LC_ALL=C tr -d '\000-\037\177' || true)"
@@ -485,9 +497,7 @@ scoop_publish() {
   quiet_git -C "$SCOOP_DIR" commit --quiet -m "hersir $version" \
     -m "Hersir $tag at $commit: the release's Windows build, checked against its signed SHA256SUMS." >/dev/null ||
     fail "Couldn't commit hersir $version to the bucket, so it isn't published: $(why)"
-  # With gh's login, which this script checked first: git may have another login for github.com, or none.
-  quiet_git -C "$SCOOP_DIR" -c credential.helper= -c 'credential.helper=!gh auth git-credential' \
-    push --quiet origin HEAD:refs/heads/main >/dev/null ||
+  scoop_git -C "$SCOOP_DIR" push --quiet "$SCOOP_REPO" HEAD:refs/heads/main >/dev/null ||
     fail "Couldn't push hersir $version to $SCOOP_REPO, so it isn't published: $(why)"
   say "Published hersir $version to $SCOOP_REPO: scoop update; scoop update hersir updates it."
 }
