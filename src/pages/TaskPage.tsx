@@ -36,7 +36,7 @@ import { tabLabel } from "../lib/changes";
 import { ScreenshotsView } from "../components/screenshots/ScreenshotsView";
 import { roundCount } from "../lib/screenshots";
 import { reveal } from "../lib/reveal";
-import { takeRunsTab } from "../lib/cardPage";
+import { CARD_THREAD, takeRunsTab } from "../lib/cardPage";
 import type { CardChanges, ScreenshotSet } from "../types";
 
 function readPref(k: string): string | null { try { return localStorage.getItem(k); } catch { return null; } }
@@ -339,7 +339,7 @@ export function TaskPage({ id, view = "card", run, youId }: { id: string; view?:
                 {team && !archived && <RunPanel task={task} team={team} />}
                 {!archived && <PullPanel task={task} live={live} mergeTo={mergeTo} changes={changes.data} />}
 
-                <div className="tabs" role="tablist" ref={thread}>
+                <div className="tabs" role="tablist" ref={thread} id={comments ? CARD_THREAD : undefined}>
                   {([["comments", MessageSquare, "Comments", comments?.length], ["activity", Activity, "Activity", undefined], ["runs", Play, "Runs", runs?.length]] as const).map(([k, I, l, n]) => (
                     <button key={k} className="tab" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}><I className="icon" />{l}{n ? <span className="n">{n}</span> : null}</button>
                   ))}

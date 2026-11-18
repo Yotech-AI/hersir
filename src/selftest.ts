@@ -5,7 +5,7 @@ import { emit } from "@tauri-apps/api/event";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
 import type { Terminal } from "@xterm/xterm";
-import { appInfo, archiveTask, chatMessages, checkTeamExport, editorFolders, editorRead, getTask, getTeam as teamById, listChatThreads, listDocs, listLabels, listProjects, listTasks, listTeams, pinnedChats, previewTeamTemplate, readClipboardText, selftestPanic, selftestPaste, setAgentStatus, terminalClose, terminalInput, terminalList, terminalOpen } from "./api";
+import { appInfo, archiveTask, chatMessages, checkTeamExport, editorFolders, editorRead, getTask, getTeam as teamById, listChatThreads, listComments, listDocs, listLabels, listProjects, listTasks, listTeams, pinnedChats, previewTeamTemplate, readClipboardText, selftestPanic, selftestPaste, setAgentStatus, terminalClose, terminalInput, terminalList, terminalOpen, updateTask } from "./api";
 import { isMac } from "./lib/keys";
 import { periodDays } from "./lib/usage";
 import { getAppearance, resetAppearance, setAppearance } from "./lib/appearance";
@@ -5477,11 +5477,13 @@ const same2 =(a: unknown[], b: unknown[]) => a.length === b.length && a.every((x
 // the Chief started about KADE-1 and GFW-2). (a) Opening the chat opens the side island with KADE-1 and GFW-2 as Card tabs
 // (square-kanban, the id, its id and title as the tooltip), KADE-1 shown; the strip's Card icon with 2, selected, "Card, 2 open
 // (Alt+4)". KADE-1's tab: the head (id, project), the title; Column, Hold (Needs your decision, the reason's end, Read in
-// comments), Assignee, Labels; the description folded after 4 lines with Show more and Show less; the criteria "2 of 5", the
+// comments, then Clear hold with its title, not clicked), Assignee, Labels; the description folded after 4 lines with Show more and Show less; the criteria "2 of 5", the
 // first 3 and Show all 5; the latest 2 of 4 comments and Show all 4; the 2 runs, newest first; a foot with Comment and Move to
-// and no Run or Continue (held, no active agent). Read in comments unfolds the comments and brings the one with the reason
-// into sight. GFW-2's tab (Review): the pull request and QA's verdict before the fields, QA passed, Run 1, the hand-over; no
-// Run or Continue. Comment posts from the tab, and Move to moves KADE-1 to Testing; the tab follows both. In the chat a card
+// and no Run or Continue (held, no active agent). GA-314: Read in comments leaves the chat for KADE-1's page, on its Comments
+// tab with the comment that holds the reason (its third) in sight; back in the chat both Card tabs are still open. GFW-2's tab
+// (Review): the pull request and QA's verdict before the fields, QA passed, Run 1, the hand-over; no Run or Continue. GA-314
+// QA: GFW-2 put on a hold whose reason is in none of its comments: Read in comments opens its page at the top of its comments
+// (card-thread, the focus on the Comments tab), its tab still open after; Clear hold takes the hold off, the row goes. Comment posts from the tab, and Move to moves KADE-1 to Testing; the tab follows both. In the chat a card
 // chip's hover card says "Click to open beside the chat" (a project's "Click to open"); a click opens KADE-3 in a Card tab at
 // the end, without leaving the chat, a click on KADE-1's shows its tab; Ctrl+click opens KADE-3's page. Alt+4 hides and shows
 // the cards; Ctrl+W closes the shown Card tab; Own page opens GFW-2's page and closes its tab here. On KADE-1's page its
@@ -5521,6 +5523,20 @@ async function chatCardsProbe(phase: "a" | "b") {
       for (const x of r.getClientRects()) if (x.height > 0 && x.top >= box.top - 1 && x.bottom <= box.bottom + 1) tops.add(Math.round(x.top));
     }
     return tops.size;
+  };
+  const boxOf = (el: Element | null) => { const b = el?.getBoundingClientRect(); return b ? [Math.round(b.top), Math.round(b.bottom)] : null; };
+  /** GA-314: the element on a card's page is in sight: whole, inside the window and inside every box around it that scrolls
+   *  or clips. */
+  const inSightOnPage = (el: Element | null) => {
+    if (!el) return false;
+    const b = el.getBoundingClientRect();
+    if (b.height <= 0 || b.top < -0.5 || b.bottom > window.innerHeight + 0.5) return false;
+    for (let p = el.parentElement; p; p = p.parentElement) {
+      if (!/(auto|scroll|hidden|clip)/.test(getComputedStyle(p).overflowY)) continue;
+      const a = p.getBoundingClientRect();
+      if (b.top < a.top - 0.5 || b.bottom > a.bottom + 0.5) return false;
+    }
+    return true;
   };
   const goChat = async () => {
     window.location.hash = chatHash;
@@ -5566,6 +5582,14 @@ async function chatCardsProbe(phase: "a" | "b") {
   const reason = textOf(hold?.querySelector(".reason"));
   check(reason.startsWith("…") && reason.endsWith("the Exact Online import file?") && reason.length <= 61, `the reason's end, 60 characters (${JSON.stringify(out.fields)})`);
   check(linkIn(hold, "Read in comments"), "Read in comments");
+  // GA-314: Clear hold under the reason, after Read in comments, with its title; not clicked here, so KADE-1 stays held for
+  // the checks below (GFW-2's part clicks it on a hold of its own)
+  const holdParts = (dd: Element | null) => [...(dd?.children ?? [])].map((c) => (c.classList.contains("badge") ? "badge" : c.classList.contains("reason") ? "reason" : textOf(c)));
+  const clearIn = (dd: Element | null) => [...(dd?.querySelectorAll<HTMLButtonElement>("button") ?? [])].find((b) => textOf(b) === "Clear hold") ?? null;
+  const clearK1 = clearIn(hold);
+  out.clearHold = { cls: clearK1?.className, title: clearK1?.title, disabled: clearK1?.disabled, parts: holdParts(hold) };
+  check(clearK1 && clearK1.className === "btn sm" && clearK1.title === "Takes the hold off, so its column's agents can start it" && !clearK1.disabled
+    && same2(holdParts(hold), ["badge", "reason", "Read in comments", "Clear hold"]), `Clear hold in KADE-1's Hold row, after Read in comments, with its title (${JSON.stringify(out.clearHold)})`);
   check(textOf(prop("Assignee")).endsWith("Jeffrey") && !!prop("Assignee")?.querySelector(".avatar"), `Assignee Jeffrey (${JSON.stringify(out.fields)})`);
   check(out.fields && (out.fields as { labels: number }).labels === 2, `two labels (${JSON.stringify(out.fields)})`);
 
@@ -5604,13 +5628,24 @@ async function chatCardsProbe(phase: "a" | "b") {
   out.foot = footButtons();
   check(same2(footButtons(), ["Comment", "Move to"]), `the foot: Comment and Move to, no Run or Continue on a held card no agent can go on with (${JSON.stringify(out.foot)})`);
 
-  // Read in comments: every comment unfolds, and the one with the reason comes into sight
+  // GA-314: Read in comments leaves the chat for KADE-1's page, on its Comments tab with its third comment (the one with
+  // the reason) in sight; back in the chat both Card tabs are still open, KADE-1 shown
+  const k1Comments = await listComments(idOf("KADE-1"));
+  const thirdId = k1Comments.find((c) => c.bodyMd.startsWith("Third comment"))?.id ?? "";
   linkIn(prop("Hold"), "Read in comments")?.click();
-  await sleep(400);
-  const third = [...(com?.querySelectorAll<HTMLElement>(".chat-card-comment") ?? [])].find((c) => textOf(c).includes("Third comment"));
-  const bodyBox = body()?.getBoundingClientRect(), thirdBox = third?.getBoundingClientRect();
-  out.readIn = { shown: comments().length, top: Math.round(thirdBox?.top ?? -1), bodyTop: Math.round(bodyBox?.top ?? -1), bodyBottom: Math.round(bodyBox?.bottom ?? -1) };
-  check(comments().length === 4 && thirdBox && bodyBox && thirdBox.top >= bodyBox.top - 1 && thirdBox.top < bodyBox.bottom, `Read in comments shows all 4 and the reason's comment in sight (${JSON.stringify(out.readIn)})`);
+  const k1Page = await waitFor(() => (location.hash === `#/task/${idOf("KADE-1")}` && document.getElementById(`comment-${thirdId}`) ? true : null), 6000);
+  await sleep(800);
+  const third = document.getElementById(`comment-${thirdId}`);
+  const commentsTab = () => [...document.querySelectorAll<HTMLElement>(".tabs [role=tab]")].find((t) => textOf(t).startsWith("Comments")) ?? null;
+  out.readIn = { hash: location.hash, third: !!thirdId && !!third, text: textOf(third).slice(0, 22), box: boxOf(third), window: window.innerHeight,
+    commentsTab: commentsTab()?.getAttribute("aria-selected"), inSight: inSightOnPage(third) };
+  check(k1Page && textOf(third).includes("Third comment, from QA") && commentsTab()?.getAttribute("aria-selected") === "true",
+    `Read in comments opens KADE-1's page on its Comments tab (${JSON.stringify(out.readIn)})`);
+  check(inSightOnPage(third), `and its third comment, the one with the reason, is in sight (${JSON.stringify(out.readIn)})`);
+  if (!(await goChat())) { errors.push("the chat didn't open again after Read in comments"); return done(); }
+  await waitFor(() => (tabKeys().length === 2 && shown() && prop("Column") ? true : null), 6000);
+  out.readInBack = { tabs: tabKeys(), shown: shown() };
+  check(same2(tabKeys(), ["card:KADE-1", "card:GFW-2"]) && shown() === "card:KADE-1", `back in the chat KADE-1's Card tab is still open and shown (${JSON.stringify(out.readInBack)})`);
 
   // 3. GFW-2 in Review: the pull request and QA's verdict first; no Run or Continue
   q<HTMLElement>('.chat-side .card-tab[data-tab="card:GFW-2"]')?.click();
@@ -5625,6 +5660,40 @@ async function chatCardsProbe(phase: "a" | "b") {
   check(verdict?.querySelector("svg.lucide-circle-check") && textOf(verdict?.querySelector(".badge")) === "QA passed" && textOf(verdict?.querySelector(".right")).startsWith("Run 1 · ")
     && textOf(verdict?.querySelector(".handover")).startsWith("QA passed: the slider"), `QA's verdict: QA passed, Run 1, the hand-over (${JSON.stringify(out.review)})`);
   check(same2(footButtons(), ["Comment", "Move to"]), `no Run or Continue in Review (${JSON.stringify(out.review)})`);
+
+  // 3b. GA-314 QA: GFW-2 put on a hold whose reason is in none of its comments. Read in comments opens its page on the
+  // Comments tab at the top of its comments (the tabs row, card-thread, the focus on Comments); back in the chat its tab is
+  // still open. Then Clear hold, clicked: the Hold row goes without a reload and the database agrees.
+  const g2Reason = "GFW-2 waits for the client's answer on the price slider's design before its pull request can be merged.";
+  await updateTask(idOf("GFW-2"), { hold: "blocked", holdReason: g2Reason });
+  const g2Held = await waitFor(() => (textOf(prop("Hold")?.querySelector(".badge")) === "Blocked" && linkIn(prop("Hold"), "Read in comments") ? true : null), 6000);
+  out.g2Hold = { badge: textOf(prop("Hold")?.querySelector(".badge")), reason: textOf(prop("Hold")?.querySelector(".reason")), parts: holdParts(prop("Hold")),
+    title: clearIn(prop("Hold"))?.title };
+  check(g2Held && same2(holdParts(prop("Hold")), ["badge", "reason", "Read in comments", "Clear hold"]) && clearIn(prop("Hold"))?.title === "Takes the hold off, so its column's agents can start it",
+    `GFW-2 put on hold shows its Hold row with Read in comments and Clear hold, without a reload (${JSON.stringify(out.g2Hold)})`);
+  linkIn(prop("Hold"), "Read in comments")?.click();
+  const g2Page = await waitFor(() => (location.hash === `#/task/${idOf("GFW-2")}` && document.getElementById("card-thread") ? true : null), 6000);
+  await sleep(800);
+  const g2Thread = document.getElementById("card-thread");
+  const active = document.activeElement as HTMLElement | null;
+  out.g2ReadIn = { hash: location.hash, thread: !!g2Thread, box: boxOf(g2Thread), window: window.innerHeight, inSight: inSightOnPage(g2Thread),
+    commentsTab: commentsTab()?.getAttribute("aria-selected"), focus: active ? `${active.getAttribute("role")}:${textOf(active)}` : null };
+  check(g2Page && g2Thread?.getAttribute("role") === "tablist" && commentsTab()?.getAttribute("aria-selected") === "true",
+    `with the reason in no comment, Read in comments opens GFW-2's page on its Comments tab (${JSON.stringify(out.g2ReadIn)})`);
+  check(inSightOnPage(g2Thread), `at the top of its comments, in sight (${JSON.stringify(out.g2ReadIn)})`);
+  check(active === commentsTab(), `with the focus on the Comments tab (${JSON.stringify(out.g2ReadIn)})`);
+  if (!(await goChat())) { errors.push("the chat didn't open again after GFW-2's Read in comments"); return done(); }
+  await waitFor(() => (tabKeys().length === 2 && shown() === "card:GFW-2" && prop("Hold") ? true : null), 6000);
+  out.g2Back = { tabs: tabKeys(), shown: shown() };
+  check(same2(tabKeys(), ["card:KADE-1", "card:GFW-2"]) && shown() === "card:GFW-2", `back in the chat GFW-2's Card tab is still open and shown (${JSON.stringify(out.g2Back)})`);
+  const g2Clear = clearIn(prop("Hold"));
+  g2Clear?.click();
+  const cleared = await waitFor(() => (!prop("Hold") ? true : null), 6000);
+  const g2Db = await getTask(idOf("GFW-2"));
+  out.g2Clear = { found: !!g2Clear, rowGone: !!cleared, props: [...document.querySelectorAll(".chat-side .chat-card-props dt")].map((d) => textOf(d)), db: g2Db.hold ?? null,
+    alert: textOf(q('.chat-side [role="alert"]')), foot: footButtons() };
+  check(g2Clear && cleared && !g2Db.hold && !q('.chat-side [role="alert"]'), `Clear hold takes GFW-2's hold off: the Hold row goes without a reload, the database agrees (${JSON.stringify(out.g2Clear)})`);
+  check(same2(footButtons(), ["Comment", "Move to"]), `GFW-2's foot is as before, in Review (${JSON.stringify(out.g2Clear)})`);
 
   // 4. Comment from the tab (KADE-1): the box, no formatting bar; it posts, and the tab shows it
   q<HTMLElement>('.chat-side .card-tab[data-tab="card:KADE-1"]')?.click();

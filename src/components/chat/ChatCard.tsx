@@ -4,7 +4,8 @@
 // - the head (status glyph with the hold, the id, the project), the title;
 // - in Review only, first: the pull request (PullPanel, as on the card's page) and QA's verdict (its newest QA run's badge,
 //   number and time, and the QA Agent's hand-over; a click opens the run's comment on the card's page);
-// - Column, Hold with its reason (its end, then Read in comments), Assignee, Labels;
+// - Column, Hold with its reason (its end, then Read in comments, which opens the card's page at the comment that holds
+//   the reason, else at its comments; GA-314) and Clear hold (as on the card's page, for every hold), Assignee, Labels;
 // - the description folded after 4 lines, the acceptance criteria (the first 3, then Show all), the latest 2 comments (each
 //   folded after 3 lines, then Show all), the latest 3 runs (a click opens the run on the card's page);
 // - a foot: Comment (the foot becomes the comment box), Run or Continue where the card's page allows it (not in Review or
@@ -15,7 +16,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 import { Check, ChevronDown, CircleCheck, CircleX, MessageSquare, Play, SquareKanban, StepForward, X } from "lucide-react";
 import {
   addComment, cardChanges, continueRun, getProject, getTask, getTeam, itemId, listComments, listRuns, listTasks, moveTask, onRunsChanged, startRun,
-  suggestAgent,
+  suggestAgent, updateTask,
 } from "../../api";
 import type { CardChanges, Comment, Run, Task, Team } from "../../types";
 import { useData } from "../../lib/useData";
@@ -31,10 +32,10 @@ import { keptPreview, loadPreview } from "../../lib/itemPreview";
 import { showSideTab, tabKey } from "../../lib/chatSide";
 import { stepTab } from "../../lib/editor";
 import {
-  COMMENT_LINES, COMMENTS_SHOWN, CRITERIA_SHOWN, DESCRIPTION_LINES, REASON_CHARS, RUNS_SHOWN, criteriaCount, criteriaOf, footRun, qaVerdict, runLine,
-  runNumber, showAll,
+  COMMENT_LINES, COMMENTS_SHOWN, CRITERIA_SHOWN, DESCRIPTION_LINES, REASON_CHARS, RUNS_SHOWN, criteriaCount, criteriaOf, footRun, qaVerdict, reasonComment,
+  runLine, runNumber, showAll,
 } from "../../lib/chatCard";
-import { openCommentOnPage, openRunOnPage } from "../../lib/cardPage";
+import { openCommentOnPage, openCommentsOnPage, openRunOnPage } from "../../lib/cardPage";
 import { Avatar } from "../Avatar";
 import { BusyButton } from "../BusyButton";
 import { MarkdownEditor } from "../MarkdownEditor";
@@ -130,18 +131,6 @@ function CardView({ id }: { id: string }) {
   const changes = useChanges(id, !!review && !task?.archivedAt);
   const [allCriteria, setAllCriteria] = useState(false);
   const [allComments, setAllComments] = useState(false);
-  const [readReason, setReadReason] = useState(0);
-  const bodyRef = useRef<HTMLDivElement>(null);
-
-  // Read in comments: every comment unfolds, and the latest one that holds the reason (an agent's summary is posted as one)
-  // scrolls into sight, else the comments
-  useEffect(() => {
-    if (!readReason) return;
-    const reason = task?.holdReason?.trim();
-    const c = reason ? [...(comments ?? [])].reverse().find((x) => x.bodyMd.includes(reason)) : undefined;
-    const box = bodyRef.current;
-    (box?.querySelector(c ? `[data-comment="${CSS.escape(c.id)}"]` : ".chat-card-comments") as HTMLElement | null)?.scrollIntoView({ block: "start" });
-  }, [readReason]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (error) return <Gone text="This card is gone." />;
   if (!task) return <div className="chat-side-body" />;
@@ -153,13 +142,12 @@ function CardView({ id }: { id: string }) {
   const shownComments = allComments ? list : list.slice(-COMMENTS_SHOWN);
   const runList = runs ?? [];
   const verdict = review ? qaVerdict(runList) : null;
-  const reasonEnd = task.holdReason ? textEnd(task.holdReason, REASON_CHARS) : null;
   const columns = [...(team?.states ?? [])].sort((a, b) => (a.sortKey < b.sortKey ? -1 : 1));
   const mergeTo = (columns.find((s) => s.category === "deploy") ?? columns.find((s) => s.category === "done"))?.name;
 
   return (
     <div className="chat-card">
-      <div className="chat-card-body" ref={bodyRef}>
+      <div className="chat-card-body">
         <div className="chat-card-head t-small">
           <StatusIcon category={task.stateCategory} hold={task.hold} title={task.hold ? "On hold" : task.stateName} />
           <span className="t-id id">{task.identifier}</span>
@@ -173,14 +161,7 @@ function CardView({ id }: { id: string }) {
 
         <dl className="chat-card-props t-small">
           <div><dt>Column</dt><dd><StatusIcon category={task.stateCategory} />{task.stateName}</dd></div>
-          {task.hold && (
-            <div><dt>Hold</dt><dd className="hold">
-              {task.withLead ? <span className="badge live" title="The Chief answers it, or asks you in the Inbox">With the Chief</span>
-                : <span className="badge needs">{holdName(task.hold)}</span>}
-              {task.holdReason && <span className="reason" title={reasonEnd ? task.holdReason : undefined}>{reasonEnd ?? task.holdReason}</span>}
-              {reasonEnd && <button type="button" className="link" onClick={() => { setAllComments(true); setReadReason((n) => n + 1); }}>Read in comments</button>}
-            </dd></div>
-          )}
+          {task.hold && <HoldRow task={task} comments={list} />}
           <div><dt>Assignee</dt><dd>{task.assigneeName
             ? <><Avatar name={task.assigneeName} kind={task.assigneeKind} size="sm" />{task.assigneeName}</>
             : <span className="none">Not assigned</span>}</dd></div>
@@ -233,6 +214,38 @@ function CardView({ id }: { id: string }) {
       {team ? <CardFoot task={task} team={team} runs={runList} live={!!live} columns={columns} />
         : <div className="chat-card-foot" />}
     </div>
+  );
+}
+
+/** The Hold row (a held card only): the hold's badge (With the Chief while the question is with the Chief), the reason's
+ *  end, Read in comments when the reason was shortened, and Clear hold, for every hold.
+ *  - Read in comments (GA-314) opens the card's page on its Comments tab, at the latest comment that holds the reason (as
+ *    the page's own Read in comments), else at the top of its comments. This tab stays open beside the chat.
+ *  - Clear hold takes the hold off as Clear hold on the card's page does. It can't be clicked again until the hold is off
+ *    (the row goes, and the foot may show Run), or until it failed: then the error shows under the row and the hold stays. */
+function HoldRow({ task, comments }: { task: Task; comments: Comment[] }) {
+  const [err, setErr] = useState<string | null>(null);
+  const pending = usePending<"clear">(() => !task.hold, task.id);
+  const reasonEnd = task.holdReason ? textEnd(task.holdReason, REASON_CHARS) : null;
+  const read = () => {
+    const c = reasonComment(task.holdReason, comments);
+    if (c) openCommentOnPage(task.id, c.id);
+    else openCommentsOnPage(task.id);
+  };
+  const clear = () => {
+    setErr(null);
+    pending.act("clear", () => updateTask(task.id, { hold: "" }), (e) => setErr(String(e).replace(/^Error:\s*/, "")));
+  };
+  return (
+    <div><dt>Hold</dt><dd className="hold">
+      {task.withLead ? <span className="badge live" title="The Chief answers it, or asks you in the Inbox">With the Chief</span>
+        : <span className="badge needs">{holdName(task.hold ?? "")}</span>}
+      {task.holdReason && <span className="reason" title={reasonEnd ? task.holdReason : undefined}>{reasonEnd ?? task.holdReason}</span>}
+      {reasonEnd && <button type="button" className="link" onClick={read}>Read in comments</button>}
+      <BusyButton className="btn sm" pending={pending} name="clear" busyLabel="Clearing…" title="Takes the hold off, so its column's agents can start it"
+        onClick={clear}>Clear hold</BusyButton>
+      {err && <p className="err t-small" role="alert">{err}</p>}
+    </dd></div>
   );
 }
 
@@ -319,7 +332,8 @@ function CardFoot({ task, team, runs, live, columns }: { task: Task; team: Team;
   const [writing, setWriting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [suggested, setSuggested] = useState<string | null>(null);
-  useEffect(() => { suggestAgent(task.id).then(setSuggested, () => setSuggested(null)); }, [task.id, task.stateId, task.assigneeId]);
+  // asked again when the hold changes: a held card has no agent to run it, so Run shows once Clear hold took it off
+  useEffect(() => { suggestAgent(task.id).then(setSuggested, () => setSuggested(null)); }, [task.id, task.stateId, task.assigneeId, task.hold]);
   useEffect(() => { setErr(null); }, [task.id]);
   const agents = team.members.filter((m) => m.kind === "agent" && m.status === "active");
   const suggestedName = agents.find((a) => a.actorId === suggested)?.name;
