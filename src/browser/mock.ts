@@ -4,6 +4,7 @@
 import { emit } from "@tauri-apps/api/event";
 import apiSource from "../api.ts?raw";
 import { PICK_TITLE } from "../lib/restore";
+import { keyBetween } from "../lib/sortKey";
 import { screenshotPicture } from "./pictures";
 
 /** An answer for any arguments, or answers by one argument's value. */
@@ -101,6 +102,33 @@ const WRITES: Record<string, (args: Row) => unknown> = {
     changed("tasks");
     return null;
   },
+  // GA-306: several cards at once, each to the bottom of the column in their order; archived ones leave the list until
+  // restore_tasks puts them back at the bottom of their Done column.
+  move_tasks: ({ ids, stateId }) => {
+    const team = fixture("get_team", { id: null }).value as { states?: Row[] } | undefined;
+    const s = team?.states?.find((x) => x.id === stateId);
+    return bulk(ids as string[], (t) => {
+      if (archivedRows.has(String(t.id))) return `${t.identifier} is archived: restore it first`;
+      Object.assign(t, { stateId, sortKey: bottomKey(String(stateId)), ...(s ? { stateName: s.name, stateCategory: s.category } : {}) });
+      const page = stored("get_task", String(t.id));
+      if (page) Object.assign(page, { stateId: t.stateId, sortKey: t.sortKey, stateName: t.stateName, stateCategory: t.stateCategory });
+      return null;
+    });
+  },
+  archive_tasks: ({ ids }) => bulk(ids as string[], (t) => {
+    if (archivedRows.has(String(t.id))) return `${t.identifier} is already archived`;
+    if (t.stateCategory !== "done") return `Only a card in Done can be archived, and ${t.identifier} is in ${t.stateName}`;
+    const list = (commands.list_tasks as Row[] | undefined) ?? [];
+    list.splice(list.indexOf(t), 1);
+    archivedRows.set(String(t.id), t);
+    return null;
+  }),
+  restore_tasks: ({ ids }) => bulk(ids as string[], (t) => {
+    if (!archivedRows.delete(String(t.id))) return `${t.identifier} isn't archived`;
+    t.sortKey = bottomKey(String(t.stateId));
+    ((commands.list_tasks as Row[] | undefined) ??= []).push(t);
+    return null;
+  }),
   save_settings: ({ settings }) => { commands.get_settings = settings; changed("settings"); return null; },
   save_project: ({ id, input }) => {
     const i = { ...(input as Row) };
@@ -217,6 +245,28 @@ const WRITES: Record<string, (args: Row) => unknown> = {
     return restoreChanged();
   },
 };
+
+/** The cards archive_tasks took off the list (until restore_tasks), by id. */
+const archivedRows = new Map<string, Row>();
+
+/** A sort key after every card's in column `stateId`. */
+function bottomKey(stateId: string): string {
+  const keys = ((commands.list_tasks as Row[] | undefined) ?? []).filter((t) => t.stateId === stateId).map((t) => String(t.sortKey)).sort();
+  return keyBetween(keys.length ? keys[keys.length - 1] : null, null);
+}
+
+/** A bulk command's answer (GA-306): `one` on each card, which answers why it can't go, or null when it went. */
+function bulk(ids: string[], one: (t: Row) => string | null) {
+  const out: { done: string[]; skipped: { identifier: string; reason: string }[] } = { done: [], skipped: [] };
+  for (const id of ids) {
+    const t = ((commands.list_tasks as Row[] | undefined) ?? []).find((x) => x.id === id) ?? archivedRows.get(id);
+    const why = t ? one(t) : `not found: task ${id}`;
+    if (why) out.skipped.push({ identifier: String(t?.identifier ?? id), reason: why });
+    else out.done.push(id);
+  }
+  changed("tasks");
+  return out;
+}
 
 /** How long each step of a browser-mode backup takes. */
 const BACKUP_STEP_MS = 900;
