@@ -456,7 +456,7 @@ scoop_prepare() {
     scoop_now="$now"
   fi
 
-  # The bucket's files for this release, and nothing else, staged in its clone.
+  # The bucket's files for this release, and nothing else, staged in that copy of its main.
   find "$SCOOP_DIR" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
   mkdir -p "$SCOOP_DIR/bucket" "$SCOOP_DIR/scripts" || fail "Couldn't make the bucket's folders in $tmp."
   scoop_manifest > "$SCOOP_DIR/bucket/hersir.json" ||
