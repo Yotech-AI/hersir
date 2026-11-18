@@ -16,6 +16,10 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: (cmd: string, args?: unknown) =
 vi.mock("@tauri-apps/api/event", () => ({ listen: () => Promise.resolve(() => {}) }));
 
 const api = await import("./api");
+// Vitest hands CSS imports over empty: the style sheets are read as files (as in lib/windowFocus.test.ts).
+const nodeFs = await import(/* @vite-ignore */ ["node", "fs"].join(":"));
+const appCss: string = nodeFs.readFileSync(new URL("./styles/app.css", import.meta.url), "utf8");
+const componentsCss: string = nodeFs.readFileSync(new URL("./styles/components.css", import.meta.url), "utf8");
 const { NAME_MAX } = await import("./components/chat/useRenames");
 const migrations = import.meta.glob("../crates/gizai-core/migrations/*.sql", { query: "?raw", import: "default", eager: true });
 
@@ -77,6 +81,30 @@ describe("the longest name", () => {
     const titleMax = Number(/const TITLE_MAX: usize = (\d+);/.exec(chatRs)?.[1]);
     expect(titleMax).toBe(60);
     expect(NAME_MAX).toBeGreaterThan(titleMax + 1);
+  });
+});
+
+describe("the row's layout (app.css)", () => {
+  const px = (re: RegExp, css = appCss) => { const m = re.exec(css); if (!m) throw new Error(`no ${re}`); return Number(m[1]); };
+
+  it("keeps the title clear of both buttons, which don't run over each other", () => {
+    const button = px(/\.btn\.sm\.icon-only \{ width: (\d+)px; \}/, componentsCss);
+    const pinRight = px(/\.th-row > \.pin-btn \{ position: absolute; top: 50%; right: (\d+)px;/);
+    const renameRight = px(/\.th-row > \.rename-btn \{ position: absolute; top: 50%; right: (\d+)px;/);
+    const room = px(/\.chat-threads \.th-row > \.th \{ padding-right: (\d+)px; \}/);
+    const renamingRoom = px(/\.chat-threads \.th-row\.renaming > \.th \{ padding-right: (\d+)px; \}/);
+    expect(renameRight).toBeGreaterThanOrEqual(pinRight + button); // Rename left of the pin, not over it
+    expect(room).toBeGreaterThanOrEqual(renameRight + button); // the title ends before Rename
+    expect(renamingRoom).toBeGreaterThanOrEqual(pinRight + button); // the input ends before the pin
+    // the title still ends in an ellipsis
+    expect(appCss).toContain(".ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }");
+  });
+
+  it("shows Rename as the pin shows: on hover, on focus in the row, and always on touch screens", () => {
+    expect(appCss).toMatch(/\.th-row > \.rename-btn \{[^}]*opacity: 0;/);
+    expect(appCss).toContain(".th-row:hover > .rename-btn, .th-row:focus-within > .rename-btn { opacity: 1; }");
+    expect(appCss).toContain("@media (hover: none) { .th-row > .rename-btn { opacity: 1; } }");
+    expect(appCss).toContain(".rename-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }");
   });
 });
 
