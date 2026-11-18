@@ -1,0 +1,40 @@
+{
+    "##": [
+        "Hersir from the ready-made Windows build of one of its releases (https://github.com/Yotech-AI/hersir).",
+        "The zip is the release's own, as Release builds made it. Its sha256 is its line in the release's SHA256SUMS, which the release's signature (hersir-X.Y.Z.sig) covers.",
+        "scripts/packages.sh in Yotech-AI/hersir writes this file for each signed release, from packaging/scoop/hersir.json there: changes to it go there.",
+        "No checkver or autoupdate: only that script changes the version, and only after the release's signature checks."
+    ],
+    "version": "0.18.1",
+    "description": "Talk to one Chief that runs a team of AI coding agents through your board",
+    "homepage": "https://hersir.dev",
+    "license": "Apache-2.0",
+    "notes": [
+        "Hersir doesn't update itself when Scoop installed it: quit Hersir, then run scoop update; scoop update hersir",
+        "Your data stays in %APPDATA%\\Hersir, also after scoop uninstall hersir"
+    ],
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/Yotech-AI/hersir/releases/download/v0.18.1/hersir-0.18.1-windows-x86_64.zip",
+            "hash": "4f4d417e3ded3e2d8658f030fcab98168fb522e7950bf32a34c4cc20e2ae8ed2"
+        }
+    },
+    "extract_dir": "target\\release",
+    "bin": [
+        "hersir.exe",
+        "hersir-mcp.exe"
+    ],
+    "post_install": [
+        "Set-Content -LiteralPath \"$dir\\hersir-package.txt\" -Value 'scoop' -Encoding Ascii",
+        "$hersirShortcut = \"$bucketsdir\\$bucket\\scripts\\hersir-shortcut.ps1\"",
+        "if ($bucket -and (Test-Path -LiteralPath $hersirShortcut)) {",
+        "    & $hersirShortcut -Dir $dir -Global:([bool]$global)",
+        "} else {",
+        "    Write-Host 'No Start menu shortcut: only Hersir from its bucket gets one (scoop bucket add hersir https://github.com/Yotech-AI/scoop-bucket).'",
+        "}"
+    ],
+    "pre_uninstall": [
+        "$hersirMenu = [Environment]::GetFolderPath($(if ($global) { 'CommonStartMenu' } else { 'StartMenu' }))",
+        "Remove-Item -LiteralPath \"$hersirMenu\\Programs\\Scoop Apps\\Hersir.lnk\" -Force -ErrorAction SilentlyContinue"
+    ]
+}
