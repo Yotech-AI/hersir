@@ -15,7 +15,7 @@ In short: a release is a GitHub Release with a version tag, `vX.Y.Z`, on the `pr
 
 - When `main` has something worth giving to the people who use Hersir: a finished card or a fix.
 - Only when `main` passes everything in CLAUDE.md (`cargo test --workspace`, `npm test`, `npm run build`, `scripts/ui-test.sh`) and builds with `npm run tauri build -- --no-bundle`. A release that doesn't build fails for everyone who presses Update. Their installed Hersir keeps working, but they're stuck on it.
-- Only when CI passes on Linux, macOS and Windows. Hersir runs on all three, and each one builds the release from source. CI (`.github/workflows/ci.yml`) runs on every pull request and every push to `main`. Its checks show on the pull request: `ubuntu-24.04`, `macos-15` and `windows-latest`, which build and test Hersir, and `AUR package changed?`, then `Arch Linux (hersir-bin)`, which builds and installs the AUR package when the pull request changes `packaging/`, `install.sh` or `ci.yml`, and is skipped otherwise.
+- Only when CI passes on Linux, macOS and Windows. Hersir runs on all three, and each one builds the release from source. CI (`.github/workflows/ci.yml`) runs on every pull request and every push to `main`. Its checks show on the pull request: `ubuntu-24.04`, `macos-15` and `windows-latest`, which build and test Hersir, and `AUR package changed?`, then `Arch Linux (hersir-bin)`, which builds and installs the AUR package when the pull request changes `packaging/`, `install.sh` or `ci.yml`, and is skipped otherwise, and `Homebrew formula changed?`, then `macOS (Homebrew formula)`, which installs the Homebrew formula from a test build when the pull request changes `packaging/homebrew`, `install.sh` or `ci.yml`, and is skipped otherwise.
 - Jeffrey decides when to release. An agent releases only when a card asks for it and names the version.
 
 ## Choosing the version
@@ -54,7 +54,7 @@ Replace `X.Y.Z` with the new version.
 
    The label keeps the bump and the release's pull request (step 2) out of the release's list of changes (`.github/release.yml`). gh refuses to open a pull request with a label the repository doesn't have: until Jeffrey has made `release` (by hand, once), open both without `--label release` and say so on the card.
 
-   A pull request that changes nothing but the version skips the build and the tests, so its checks pass within a minute or two: `ubuntu-24.04`, `macos-15` and `windows-latest` from CI, with `AUR package changed?` (and `Arch Linux (hersir-bin)`, skipped), and from Install `Version only?`, the three ready-made builds, `signed test release` and the six installs (step 2 names them), which the bump starts as it changes `src-tauri/tauri.conf.json`. Merge it as soon as they report:
+   A pull request that changes nothing but the version skips the build and the tests, so its checks pass within a minute or two: `ubuntu-24.04`, `macos-15` and `windows-latest` from CI, with `AUR package changed?` and `Homebrew formula changed?` (and `Arch Linux (hersir-bin)` and `macOS (Homebrew formula)`, skipped), and from Install `Version only?`, the three ready-made builds, `signed test release` and the six installs (step 2 names them), which the bump starts as it changes `src-tauri/tauri.conf.json`. Merge it as soon as they report:
 
    ```sh
    gh pr view <number> --json statusCheckRollup --jq '.statusCheckRollup[] | "\(.name): \(.status) \(.conclusion)"'
@@ -74,15 +74,15 @@ Replace `X.Y.Z` with the new version.
    gh pr merge <number> --merge
    ```
 
-   That's sixteen checks:
-   - from CI, about 12 minutes: `ubuntu-24.04`, `macos-15` and `windows-latest`, and `AUR package changed?` with `Arch Linux (hersir-bin)`, which builds and installs the AUR package when the release changes `packaging/`, `install.sh` or `ci.yml`;
+   That's eighteen checks:
+   - from CI, about 12 minutes: `ubuntu-24.04`, `macos-15` and `windows-latest`, and `AUR package changed?` with `Arch Linux (hersir-bin)`, which builds and installs the AUR package when the release changes `packaging/`, `install.sh` or `ci.yml`, and `Homebrew formula changed?` with `macOS (Homebrew formula)`, which builds a test build and installs the Homebrew formula for it (about 25 minutes) when the release changes `packaging/homebrew`, `install.sh` or `ci.yml`;
    - from Install, which runs as the release changes `src-tauri/tauri.conf.json`: `Version only?`; the release's ready-made builds, made as Release builds makes them, `ready-made linux-x86_64`, `ready-made macos-arm64` and `ready-made windows-x86_64`, and `signed test release`, which signs them with a throwaway key; then six installs through the one line, `install on ubuntu-24.04`, `install on fedora`, `install on archlinux`, `install on opensuse/tumbleweed`, `install on macos-15` and `install on windows-latest`. Each install takes the ready-made build first, in about a minute, checks that releases whose signature doesn't check install nothing, then builds Hersir in full from source, and again as an update: 25 to 45 minutes in all (the Windows install is the slowest).
 
    A release that changes `install.sh`, `install.ps1` or `.github/workflows/release-builds.yml` has six more checks, from Release builds, which on a pull request builds the archives of step 4 and uploads nothing: `What to build`, `build linux-x86_64`, `build macos-arm64`, `build windows-x86_64`, `SHA256SUMS` and `upload to the release`.
 
    One-line install doesn't run on this pull request: it would install the published release with production's `get.sh`, nothing of the release; signing it (step 5) starts it.
 
-   Each must say `COMPLETED SUCCESS`, except `upload to the release`, which a pull request skips: `COMPLETED SKIPPED`. So does `Arch Linux (hersir-bin)` when the release doesn't change the AUR package. A check that is still `IN_PROGRESS` needs a few more minutes. On a failure, don't release: the card goes back to whoever can fix it.
+   Each must say `COMPLETED SUCCESS`, except `upload to the release`, which a pull request skips: `COMPLETED SKIPPED`. So does `Arch Linux (hersir-bin)` when the release doesn't change the AUR package, and `macOS (Homebrew formula)` when it doesn't change the formula. A check that is still `IN_PROGRESS` needs a few more minutes. On a failure, don't release: the card goes back to whoever can fix it.
 
 3. **Create the release** on `production`, with the release card's notes ([Release notes](#release-notes)) above GitHub's list of the merged pull requests:
 
@@ -140,18 +140,18 @@ Replace `X.Y.Z` with the new version.
 
    Once it is signed, every installed Hersir sees the release within six hours, or at once with Settings → Updates → Check now.
 
-6. **Publish the packages.** Right after signing, Jeffrey publishes the release's packages, on their own computer, in the same checkout of this repository. Today that is `hersir-bin` on the AUR, for Arch Linux and Omarchy ([`packaging/`](../packaging/README.md)).
+6. **Publish the packages.** Right after signing, Jeffrey publishes the release's packages, on their own computer, in the same checkout of this repository. Today that is `hersir-bin` on the AUR, for Arch Linux and Omarchy, and the formula `hersir` in the Homebrew tap `yotech-ai/tap`, for Macs with Apple silicon ([`packaging/`](../packaging/README.md)).
 
    ```sh
    scripts/packages.sh vX.Y.Z
    ```
 
    - It reads the release from GitHub and checks `hersir-X.Y.Z.sig` with `ssh-keygen -Y verify -f release-signers -I hersir-release -n hersir-release`, over the message of step 5 with the commit the tag points to now. No `hersir-X.Y.Z.sig`, a signature by another key, a changed `SHA256SUMS`, the tag on another commit, or a draft: nothing is published, and one line says why.
-   - It takes each archive's sha256 only from that signed `SHA256SUMS`, and fills the version, the sha256 and the commit into each package: for the AUR, `hersir-bin`'s `PKGBUILD` and `.SRCINFO`. The package's launcher, desktop entry and icons come from that commit, by its id, with their sha256s from git.
-   - It shows what changes against the package's repository, asks `Publish vX.Y.Z? [y/N]`, and after `y` pushes `hersir-bin` to `ssh://aur@aur.archlinux.org/hersir-bin.git` with Jeffrey's own AUR key. Any other answer publishes nothing. Run again for the same release, it publishes nothing; with other packaging files, it publishes the release as the package's next `pkgrel`.
-   - Then https://aur.archlinux.org/packages/hersir-bin shows the version, and `yay -Syu` updates it. If the push fails, the release still stands: run the script again.
+   - It takes each archive's sha256 only from that signed `SHA256SUMS`, and fills the version, the sha256 and the commit into each package: for the AUR, `hersir-bin`'s `PKGBUILD` and `.SRCINFO`; for Homebrew, the formula's `url` (the release's `hersir-X.Y.Z-macos-arm64.tar.gz`) and `sha256`. The AUR package's launcher, desktop entry and icons come from that commit, by its id, with their sha256s from git.
+   - It shows what changes against each package's repository, asks `Publish vX.Y.Z? [y/N]`, and after `y` pushes `hersir-bin` to `ssh://aur@aur.archlinux.org/hersir-bin.git` with Jeffrey's own AUR key, and the formula, as `Formula/hersir.rb` with the tap's `README.md` and `LICENSE`, to `main` of `https://github.com/Yotech-AI/homebrew-tap.git` with Jeffrey's own git login for GitHub, the one `git push` uses. Any other answer publishes nothing. Run again for the same release, it publishes nothing; with other packaging files, it publishes the release as the package's next `pkgrel`, or the formula's next `revision`.
+   - Then https://aur.archlinux.org/packages/hersir-bin shows the version, and `yay -Syu` updates it; https://github.com/Yotech-AI/homebrew-tap shows the formula, and `brew update && brew upgrade hersir` updates it. If a push fails, the release still stands: run the script again, which publishes only what isn't there yet. `scripts/packages.sh vX.Y.Z aur` or `homebrew` publishes that one alone.
 
-   The AUR account and its SSH key are Jeffrey's own, made by hand once: the key with a passphrase, only on their computer, and in `~/.ssh/config` as the key for `Host aur.archlinux.org`. Nothing reserves `hersir-bin` until the first push, which the script makes for any release from 0.17.0 on. Tests run the script with a throwaway key in `HERSIR_RELEASE_SIGNERS` and local repositories in `HERSIR_AUR_REPO` and `HERSIR_SOURCE_REPO`, never against the AUR or with Jeffrey's keys.
+   The AUR account and its SSH key are Jeffrey's own, made by hand once: the key with a passphrase, only on their computer, and in `~/.ssh/config` as the key for `Host aur.archlinux.org`. Nothing reserves `hersir-bin` until the first push, which the script makes for any release from 0.17.0 on. The tap is a public repository Jeffrey made by hand once, `Yotech-AI/homebrew-tap`, with `main` protected against force pushes and no Actions secrets; the script's first push puts the formula in it. Tests run the script with a throwaway key in `HERSIR_RELEASE_SIGNERS` and local repositories in `HERSIR_AUR_REPO`, `HERSIR_TAP_REPO` and `HERSIR_SOURCE_REPO`, never against the AUR or the tap, or with Jeffrey's keys.
 
 If `git push` asks for a username (the remote is an https address and git has no login for it), push over SSH with your keys:
 
@@ -200,7 +200,7 @@ Hersir 0.11.0 installs with one line on Linux, macOS and Windows, and is now ope
 - **Never push to `production` directly or force a push.** Only the pull request from `main` changes it.
 - **Never tag `main` or a card's branch.** Release tags point at `production`.
 - **Nothing signed beyond Hersir's own release key and the build's own signature, and never an account or a certificate.** Every release is signed with Hersir's release key, on Jeffrey's computer (step 5), and the one-line install and Update check that signature. Release builds (`.github/workflows/release-builds.yml`) attaches ready-made builds to every release: the release's own installers build them on GitHub's runners (step 4). Nothing in them is signed beyond what the build does itself: on macOS, the ad-hoc signature every Apple silicon build has. No Apple or Microsoft signature: there is no Apple Developer account and no Windows certificate, so never set up an account or buy a certificate for it. Never offer the builds as browser downloads either: a browser marks what it downloads, and Gatekeeper and SmartScreen stop an app with that mark that Apple or Microsoft hasn't signed. Installers and Apple's and Microsoft's signatures come later, when Hersir has paid features.
-- **Packages only from `scripts/packages.sh`, run by Jeffrey after signing.** Never CI and never an agent: the AUR key stays on Jeffrey's computer, and no publishing key goes to GitHub or CI. Nothing else writes a release into a package, and an unsigned release never reaches one.
+- **Packages only from `scripts/packages.sh`, run by Jeffrey after signing.** Never CI and never an agent: the AUR key stays on Jeffrey's computer, and no publishing key goes to GitHub or CI. Nothing else writes a release into a package, no `brew bump-formula-pr` and no workflow in the tap either, and an unsigned release never reaches one.
 - **The release keys stay on Jeffrey's computer.** The private keys of `release-signers` are on Jeffrey's computer and in their password manager, never on GitHub, in CI, in Hersir's data or with an agent, and they are never loaded into ssh-agent. Nothing in CI signs, and no agent signs a release. A lost or leaked key: the next release is signed with the spare, and its Hersir carries a new `release-signers`, without that key.
 
 ## How Hersir updates itself
