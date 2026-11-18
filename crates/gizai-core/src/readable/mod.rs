@@ -134,7 +134,8 @@ pub fn markdown(name: &str, path: &Path) -> Result<String, String> {
     }));
     match done {
         Ok(Ok(())) => Ok(md.finish()),
-        Ok(Err(why)) => Err(why),
+        // on one line: it goes after the file's name in a chat message
+        Ok(Err(why)) => Err(why.split_whitespace().collect::<Vec<_>>().join(" ")),
         Err(_) => Err(format!("it couldn't be read as {what}: Hersir's reader stopped on it")),
     }
 }

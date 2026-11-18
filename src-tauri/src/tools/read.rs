@@ -4,7 +4,7 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use gizai_core::model::{FileRow, Task, TaskFilter};
-use gizai_core::{clients, comments, docs, files, ids, projects, runs, tasks, team, users};
+use gizai_core::{clients, comments, docs, files, ids, projects, readable, runs, tasks, team, users};
 use serde_json::{Value, json};
 
 use super::{Args, Cx, err, resolve, ymd};
@@ -41,7 +41,8 @@ static LEAD_COPYING: Mutex<()> = Mutex::new(());
 /// The files of a client, project or task, each with `path`: a copy in the Chief's own folder to read with Read
 /// (`chat::lead_file_path`, GA-207), made off the async threads the first time and reused after that. A file larger
 /// than 100 MB isn't copied (`note`), and one that can't be copied says why (`error`): both have no path, and the
-/// other files still come.
+/// other files still come. A Word, Excel, PowerPoint, OpenDocument or RTF file that is copied also has
+/// `readable_path`, its text as Markdown beside the copy (`gizai_core::readable`, GA-310), or `readable_error`.
 async fn file_lines(cx: &Cx<'_>, list: Vec<FileRow>) -> Vec<Value> {
     if list.is_empty() {
         return vec![];
@@ -67,7 +68,16 @@ fn file_line(data: &Path, dir: &Path, f: &FileRow) -> Value {
         return v;
     }
     match files::copy_out(data, f, dir) {
-        Ok(p) => v["path"] = json!(p.display().to_string()),
+        Ok(p) => {
+            v["path"] = json!(p.display().to_string());
+            // made when it is missing, so also for a file copied before readable copies existed
+            if readable::has_readable(&f.name) {
+                match readable::ensure(&p) {
+                    Ok(text) => v["readable_path"] = json!(text.display().to_string()),
+                    Err(why) => v["readable_error"] = json!(why),
+                }
+            }
+        }
         Err(e) => v["error"] = json!(if files::blob_path(data, &f.sha256).is_file() {
             format!("couldn't be copied into your folder: {e}")
         } else {
