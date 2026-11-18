@@ -95,6 +95,14 @@ export const listArchivedTasks = (projectId: string | null = null) => invoke<T.T
 export const archiveTask = (id: string) => invoke<void>("archive_task", { id });
 /** Puts an archived card back at the bottom of its Done column. */
 export const restoreTask = (id: string) => invoke<void>("restore_task", { id });
+/** GA-306: moves the cards to the bottom of the column, in their order, in one write. A card an agent is working on, or one
+ *  that can't move, is skipped with why (`skipped`); the others go (`done`). */
+export const moveTasks = (ids: string[], stateId: string) => invoke<T.BulkResult>("move_tasks", { ids, stateId });
+/** GA-306: archives the cards (each in Done), in one write. A card an agent is working on, or one outside Done, is skipped
+ *  with why; the others go. */
+export const archiveTasks = (ids: string[]) => invoke<T.BulkResult>("archive_tasks", { ids });
+/** GA-306: puts archived cards back at the bottom of their Done column, in their order (the Undo of `archiveTasks`). */
+export const restoreTasks = (ids: string[]) => invoke<T.BulkResult>("restore_tasks", { ids });
 export const taskActivity = (taskId: string) => invoke<T.ChangeEntry[]>("task_activity", { taskId });
 export const listComments = (taskId: string) => invoke<T.Comment[]>("list_comments", { taskId });
 export const addComment = (taskId: string, bodyMd: string) => invoke<string>("add_comment", { taskId, bodyMd });

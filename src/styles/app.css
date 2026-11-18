@@ -556,6 +556,17 @@ a.member:hover { border-color: var(--line-2); }
 .card .card-archive:hover { color: var(--text); }
 .card .card-archive:focus-visible { opacity: 1; outline: 2px solid var(--focus); outline-offset: 1px; }
 @media (hover: none) { .card .card-archive { opacity: 1; } }
+/* GA-306: the checkbox first in a Deploy or Done card's top row (our own checkbox, as it is): shown on hover and focus, as
+   Archive; always on touch screens, and on every card of a column with a selection. Hidden, it keeps its place. */
+.card .card-check { opacity: 0; transition: opacity .12s; }
+.card:hover .card-check, .card:focus-within .card-check, .card .card-check:checked, .col.selecting .card .card-check { opacity: 1; }
+.card .card-check:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+@media (hover: none) { .card .card-check { opacity: 1; } }
+/* Move all's and Archive all's question, in a popover under its button */
+.pop .bulk-ask { width: 260px; padding: 6px 6px 4px; }
+.pop .bulk-ask p { margin: 0 0 10px; color: var(--text); font-size: var(--fs-sm); line-height: 1.45; }
+.pop .bulk-ask-acts { display: flex; gap: 8px; }
+.col-head .n { white-space: nowrap; }
 .bin-search { width: 100%; margin-bottom: 14px; }
 .bin-row { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 180px) 220px; align-items: center; gap: 12px; min-height: var(--size-row);
   padding: 0 10px; border-radius: var(--radius); color: var(--text); text-decoration: none; }

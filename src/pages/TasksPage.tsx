@@ -1,7 +1,9 @@
 // Tasks (and the Inbox): Paperclip-style list grouped by column, or the board. The Inbox is always the list. View options are remembered on this device.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUpDown, Check, Columns3, Layers, List, ListFilter, LoaderCircle, Plus, StepForward, Trash2, X } from "lucide-react";
-import { continueAfterRunForMe, dismissChat, getTeam, listChatThreads, listProjects, listTasks, listTeams, listUsers, moveTask, restoreTask, archiveTask } from "../api";
+import { continueAfterRunForMe, dismissChat, getTeam, listChatThreads, listProjects, listTasks, listTeams, listUsers, moveTask, restoreTask, archiveTask,
+  moveTasks, archiveTasks, restoreTasks } from "../api";
+import { archivedText, movedText, skippedIds, skippedNote, toBottom } from "../lib/bulk";
 import { go, href } from "../router";
 import { useData } from "../lib/useData";
 import { cardsOfTeam, shownTeam, teamOfProject, useCurrentTeam } from "../lib/team";
@@ -211,6 +213,65 @@ export function TasksPage({ initialView, onNewTask, inboxFor }: { initialView?: 
     } catch (e) { setTasks(before); setToast({ text: `Couldn't archive ${t.identifier}: ${e}` }); }
   }, []);
 
+  // GA-306: several cards of Deploy at once (Move all, a selection's Move to), to the bottom of `toId` in their order. They
+  // show there at once; a card the backend skips goes back, and the toast names it. Undo puts the moved ones back at the
+  // bottom of the column they came from, in their order.
+  const onMoveMany = useCallback(async (list: Task[], fromId: string, toId: string) => {
+    const from = states.find((s) => s.id === fromId), to = states.find((s) => s.id === toId);
+    if (!to || list.length === 0) return;
+    const before = tasksRef.current;
+    const ids = list.map((t) => t.id);
+    setTasks((ts) => toBottom(ts, ids, to));
+    try {
+      const r = await moveTasks(ids, toId);
+      const back = skippedIds(list, r.skipped);
+      if (back.size) setTasks((ts) => ts.map((t) => (back.has(t.id) ? before.find((b) => b.id === t.id) ?? t : t)));
+      const moved = list.filter((t) => r.done.includes(t.id));
+      const undo = from && moved.length > 0 ? () => {
+        setToast(null);
+        const prev = tasksRef.current;
+        const again = moved.map((t) => t.id);
+        setTasks((ts) => toBottom(ts, again, from));
+        moveTasks(again, fromId).then(
+          (u) => { if (u.skipped.length) setToast({ text: `Couldn't move every card back. ${skippedNote(u.skipped)}` }); },
+          (e) => { setTasks(prev); setToast({ text: `Couldn't move the cards back to ${from.name}: ${e}` }); });
+      } : undefined;
+      setToast({ text: movedText(moved.map((t) => t.identifier), to.name, r.skipped), undo });
+    } catch (e) {
+      setTasks(before);
+      setToast({ text: `Couldn't move ${list.length === 1 ? list[0].identifier : `${list.length} cards`} to ${to.name}: ${e}` });
+    }
+  }, [states]);
+
+  // GA-306: several cards of a Done column at once (Archive all, a selection's Archive): they leave the board at once; a
+  // card the backend skips comes back, and the toast names it. Undo restores the archived ones to the bottom of Done.
+  const onArchiveMany = useCallback(async (list: Task[]) => {
+    if (list.length === 0) return;
+    const before = tasksRef.current;
+    const ids = new Set(list.map((t) => t.id));
+    setTasks((ts) => ts.filter((t) => !ids.has(t.id)));
+    try {
+      const r = await archiveTasks(list.map((t) => t.id));
+      const back = skippedIds(list, r.skipped);
+      if (back.size) setTasks((ts) => [...ts, ...before.filter((t) => back.has(t.id) && !ts.some((x) => x.id === t.id))]);
+      const gone = list.filter((t) => r.done.includes(t.id));
+      const undo = gone.length > 0 ? () => {
+        setToast(null);
+        const prev = tasksRef.current;
+        const again = gone.map((t) => t.id);
+        const col = { id: gone[0].stateId, name: gone[0].stateName, category: gone[0].stateCategory };
+        setTasks((ts) => toBottom([...ts, ...gone.filter((t) => !ts.some((x) => x.id === t.id))], again, col));
+        restoreTasks(again).then(
+          (u) => { if (u.skipped.length) setToast({ text: `Couldn't restore every card. ${skippedNote(u.skipped)}` }); },
+          (e) => { setTasks(prev); setToast({ text: `Couldn't restore ${gone.length === 1 ? gone[0].identifier : "the cards"}: ${e}` }); });
+      } : undefined;
+      setToast({ text: archivedText(gone.map((t) => t.identifier), r.skipped), undo });
+    } catch (e) {
+      setTasks(before);
+      setToast({ text: `Couldn't archive ${list.length === 1 ? list[0].identifier : `${list.length} cards`}: ${e}` });
+    }
+  }, []);
+
   // the same function on each render, so the board's memoised cards that didn't change don't draw again (GA-190)
   const openCard = useCallback((id: string) => go({ page: "task", id }), []);
 
@@ -295,7 +356,7 @@ export function TasksPage({ initialView, onNewTask, inboxFor }: { initialView?: 
         <div className="board-wrap">
           {chats.length > 0 && <LeadChats chats={chats} onDismiss={dismiss} />}
           {states.length > 0 && <Board tasks={shown} states={states} onMove={onMove} onOpen={openCard} onAdd={(sid) => onNewTask(sid)}
-            onArchive={onArchive} working={working} members={members} shots={shots} />}
+            onArchive={onArchive} onMoveMany={onMoveMany} onArchiveMany={onArchiveMany} working={working} members={members} shots={shots} />}
         </div>
       )}
       {bin && <ArchivedCards projectId={filter.projectId} projectName={project?.name} onClose={() => setBin(false)} />}

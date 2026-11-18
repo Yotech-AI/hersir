@@ -4,6 +4,8 @@
 // Compact (GA-298, the Chat's Board tab; design/islands-chat → Board): columns 180 wide on side, compact cards (the id, the
 // assignee, the title in 3 lines at most, On hold), the chat's cards marked with an accent border and a chat icon; the
 // same drag and drop rules.
+// GA-306 (the Tasks page's board): Deploy and Done have Move all (to Deploy's next column) and Archive all in their head,
+// and a checkbox on each card to move or archive a selection at once, one column at a time.
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   DndContext, MeasuringStrategy, PointerSensor, closestCenter, getFirstCollision, pointerWithin, useDroppable, useSensor, useSensors,
@@ -19,7 +21,9 @@ import { pullBadge, pullLabel } from "../lib/pulls";
 import { PriorityIcon, StatusIcon } from "./StatusIcon";
 import { Avatar } from "./Avatar";
 import { byHandTip } from "../lib/hand";
-import { Archive, Hourglass, Keyboard, MessagesSquare, Plus } from "lucide-react";
+import { Archive, ChevronsRight, Hourglass, Keyboard, MessagesSquare, Plus, X } from "lucide-react";
+import { Popover } from "./Popover";
+import { askArchiveAll, askMoveAll } from "../lib/bulk";
 import { BoardShotSign } from "./screenshots/ShotSign";
 import { waitsBadge, waitsTip } from "../lib/buildsOn";
 
@@ -29,9 +33,17 @@ const RAIL_CATEGORIES = new Set(["backlog", "done", "cancelled"]);
 type Cols = Record<string, string[]>;
 /** A click or Enter on a card: Ctrl and Cmd say whether it was a Ctrl+click (Cmd+click on macOS). */
 type OpenEvent = { ctrlKey: boolean; metaKey: boolean };
+/** GA-306: the ticked cards, all in one column, and the last one ticked (where Shift+click's range starts). */
+type Selection = { col: string; ids: ReadonlySet<string>; last: string | null };
+/** A checkbox's change is done in its click (which has Shift); React wants an onChange too. */
+const noop = () => {};
 
-const Card = memo(function Card({ task, onOpen, onArchive, working, shots, waitsFor }: {
+const Card = memo(function Card({ task, onOpen, onArchive, working, shots, waitsFor, onPick, picked }: {
   task: Task; onOpen: (id: string, e?: OpenEvent) => void; working?: string;
+  /** GA-306, cards in Deploy and Done: the checkbox, which ticks the card (with Shift, the cards since the last one ticked). */
+  onPick?: (id: string, range: boolean) => void;
+  /** Ticked: the accent border and background. */
+  picked?: boolean;
   /** GA-228: the "Waits for" badge's tooltip, naming the cards it builds on that aren't merged yet (a string, so the card
    *  draws again only when it changes). */
   waitsFor?: string;
@@ -43,10 +55,21 @@ const Card = memo(function Card({ task, onOpen, onArchive, working, shots, waits
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
   const waits = waitsBadge(task);
   return (
-    <div ref={setNodeRef} className={"card" + (isDragging ? " dragging" : "")} data-card={task.identifier}
+    <div ref={setNodeRef} className={"card" + (picked ? " picked" : "") + (isDragging ? " dragging" : "")} data-card={task.identifier}
       style={{ transform: CSS.Transform.toString(transform), transition }} {...attributes} {...listeners}
-      onClick={(e) => onOpen(task.id, e)} onKeyDown={(e) => { if (e.key === "Enter") onOpen(task.id, e); }}>
-      <div className="top"><span className="id">{task.identifier}</span>
+      onClick={(e) => onOpen(task.id, e)} onKeyDown={(e) => {
+        if (e.key === "Enter") onOpen(task.id, e);
+        // Space on the card ticks it too, as on its checkbox
+        else if (e.key === " " && onPick && e.target === e.currentTarget) { e.preventDefault(); onPick(task.id, e.shiftKey); }
+      }}>
+      <div className="top">
+        {onPick && (
+          // As the Archive button's, its pointer and key events stay here: ticking it neither starts a drag nor opens the card.
+          <input type="checkbox" className="card-check" aria-label={`Select ${task.identifier}`} checked={!!picked} onChange={noop}
+            onPointerDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); onPick(task.id, e.shiftKey); }} />
+        )}
+        <span className="id">{task.identifier}</span>
         {task.prUrl && <span className={`badge ${pullBadge(task.prState).cls}`} title={`Pull request: ${pullBadge(task.prState).text.toLowerCase()} on ${hostName(task.prUrl)}`}>{pullLabel(task.prUrl)}</span>}
         {!!shots && task.stateCategory === "review" && <BoardShotSign taskId={task.id} count={shots} />}
         {task.hold && (task.withLead ? <span className="badge live" title="Its question is with the Chief">Chief</span>
@@ -95,15 +118,48 @@ const CompactCard = memo(function CompactCard({ task, onOpen, marked, working }:
   );
 });
 
-function Column({ state, ids, byId, rail, onToggleRail, onOpen, onAdd, onArchive, working, members, shots, titleOf, compact, marked }: {
+/** GA-306: Move all (Deploy, to `target`) or Archive all (Done) in a column's head: it asks first, with the number of cards. */
+function MoveAll({ state, target, cards, onGo }: { state: WorkflowState; target?: WorkflowState; cards: Task[]; onGo: () => void }) {
+  const ids = cards.map((t) => t.identifier);
+  const label = target ? `Move all to ${target.name}` : "Archive all";
+  const ask = target ? askMoveAll(ids, state.name, target.name) : askArchiveAll(ids, state.name);
+  return (
+    <Popover label={label} align="right" button={() => (
+      <button className="btn ghost sm icon-only" aria-label={label} title={label}>{target ? <ChevronsRight className="icon" /> : <Archive className="icon" />}</button>
+    )}>
+      {(close) => (
+        <div className="bulk-ask">
+          <p>{ask.question}</p>
+          <div className="bulk-ask-acts">
+            <button className="btn primary sm" onClick={() => { close(); onGo(); }}>{ask.go}</button>
+            <button className="btn sm" onClick={close}>Cancel</button>
+          </div>
+        </div>
+      )}
+    </Popover>
+  );
+}
+
+function Column({ state, ids, byId, rail, onToggleRail, onOpen, onAdd, onArchive, working, members, shots, titleOf, compact, marked,
+  target, onMoveMany, onArchiveMany, picked, onPick, onClear }: {
   state: WorkflowState; ids: string[]; byId: Map<string, Task>; rail: boolean; working: Map<string, string>; members?: Member[]; shots?: Map<string, number>;
   /** A card's title by its identifier, for the "Waits for" tooltips (GA-228). */
   titleOf: (identifier: string) => string | undefined;
   onToggleRail: (id: string) => void; onOpen: (id: string, e?: OpenEvent) => void; onAdd?: (stateId: string) => void; onArchive?: (task: Task) => void;
   compact?: boolean; marked?: ReadonlySet<string>;
+  /** GA-306: where Deploy's Move all and Move to go (its next column, or the team's first Done). */
+  target?: WorkflowState;
+  onMoveMany?: (tasks: Task[], fromStateId: string, toStateId: string) => void; onArchiveMany?: (tasks: Task[]) => void;
+  /** The column's ticked cards (null: none here), ticking one, and Clear selection. */
+  picked: ReadonlySet<string> | null; onPick: (id: string, range: boolean) => void; onClear: () => void;
 }) {
   // Only a card in Done can be archived (not Deploy, not Cancelled).
   const archive = state.category === "done" ? onArchive : undefined;
+  // GA-306: Deploy's cards move to its target at once, Done's are archived at once; no other column, nor the compact board.
+  const bulk = compact ? null
+    : state.category === "deploy" && target && onMoveMany ? (cards: Task[]) => onMoveMany(cards, state.id, target.id)
+    : state.category === "done" && onArchiveMany ? onArchiveMany : null;
+  const cardsOf = (list: string[]) => list.map((id) => byId.get(id)).filter((t): t is Task => !!t);
   const { setNodeRef } = useDroppable({ id: state.id });
   const [shown, setShown] = useState(CAP);
   if (rail) {
@@ -116,14 +172,25 @@ function Column({ state, ids, byId, rail, onToggleRail, onOpen, onAdd, onArchive
   const visible = ids.slice(0, shown);
   // The note follows the column: your review, or who starts its cards (its agents when Auto, Run when Manual).
   const note = compact ? null : boardNote(state, members);
+  const sel = bulk && picked ? picked : null;
   return (
-    <div className="col" data-col={state.name}>
+    <div className={"col" + (sel ? " selecting" : "")} data-col={state.name}>
       <div className="col-head">
         <StatusIcon category={state.category} title={state.name} /><span className="name">{state.name}</span>
-        <span className="n">{ids.length}{state.wipLimit ? ` / ${state.wipLimit}` : ""}</span>
+        <span className="n">{sel ? `${sel.size} selected` : <>{ids.length}{state.wipLimit ? ` / ${state.wipLimit}` : ""}</>}</span>
         <span className="add">
-          {RAIL_CATEGORIES.has(state.category) && <button className="btn ghost sm" onClick={() => onToggleRail(state.id)}>Collapse</button>}
-          {onAdd && <button className="btn ghost sm icon-only" aria-label={`New task in ${state.name}`} title={`New task in ${state.name}`} onClick={(e) => { e.stopPropagation(); onAdd(state.id); }}><Plus className="icon" /></button>}
+          {sel ? (<>
+            {/* a selection: its action, on exactly the ticked cards (the toast has Undo), and Clear selection */}
+            <button className="btn primary sm" onClick={() => { bulk!(cardsOf(ids.filter((id) => sel.has(id)))); onClear(); }}>
+              {state.category === "deploy" ? `Move to ${target!.name}` : "Archive"}</button>
+            <button className="btn ghost sm icon-only" aria-label="Clear selection" title="Clear selection" onClick={onClear}><X className="icon" /></button>
+          </>) : (<>
+            {bulk && ids.length > 0 && (
+              <MoveAll state={state} target={state.category === "deploy" ? target : undefined} cards={cardsOf(ids)} onGo={() => { bulk(cardsOf(ids)); onClear(); }} />
+            )}
+            {RAIL_CATEGORIES.has(state.category) && <button className="btn ghost sm" onClick={() => onToggleRail(state.id)}>Collapse</button>}
+            {onAdd && <button className="btn ghost sm icon-only" aria-label={`New task in ${state.name}`} title={`New task in ${state.name}`} onClick={(e) => { e.stopPropagation(); onAdd(state.id); }}><Plus className="icon" /></button>}
+          </>)}
         </span>
       </div>
       {note && <div className="col-note">{note}</div>}
@@ -133,7 +200,8 @@ function Column({ state, ids, byId, rail, onToggleRail, onOpen, onAdd, onArchive
             const t = byId.get(id);
             const waits = t?.waitsFor?.length ? waitsTip(t.waitsFor, titleOf) : undefined;
             if (t && compact) return <CompactCard key={id} task={t} onOpen={onOpen} marked={!!marked?.has(t.identifier)} working={working.get(id)} />;
-            return t ? <Card key={id} task={t} onOpen={onOpen} onArchive={archive} working={working.get(id)} shots={shots?.get(id)} waitsFor={waits} /> : null;
+            return t ? <Card key={id} task={t} onOpen={onOpen} onArchive={archive} working={working.get(id)} shots={shots?.get(id)} waitsFor={waits}
+              onPick={bulk ? onPick : undefined} picked={!!sel?.has(id)} /> : null;
           })}
           {ids.length > shown && (
             <button className="show-more" onClick={() => setShown((s) => s + CAP)}>Show {Math.min(CAP, ids.length - shown)} more of {ids.length - shown}</button>
@@ -145,7 +213,7 @@ function Column({ state, ids, byId, rail, onToggleRail, onOpen, onAdd, onArchive
   );
 }
 
-export function Board({ tasks, states, onMove, onOpen, onAdd, onArchive, working = new Map(), members, shots, compact, marked }: {
+export function Board({ tasks, states, onMove, onOpen, onAdd, onArchive, onMoveMany, onArchiveMany, working = new Map(), members, shots, compact, marked }: {
   tasks: Task[]; states: WorkflowState[];
   /** task id → the newest round's screenshots of a card in Review (GA-185); the other columns show none. */
   shots?: Map<string, number>;
@@ -163,6 +231,11 @@ export function Board({ tasks, states, onMove, onOpen, onAdd, onArchive, working
   marked?: ReadonlySet<string>;
   /** Archive a card in a Done column (its button shows on hover and focus). */
   onArchive?: (task: Task) => void;
+  /** GA-306 (the Tasks page's board): move these cards of Deploy, in board order, to Deploy's next column (Move all, a
+   *  selection's Move to). */
+  onMoveMany?: (tasks: Task[], fromStateId: string, toStateId: string) => void;
+  /** GA-306: archive these cards of a Done column (Archive all, a selection's Archive). */
+  onArchiveMany?: (tasks: Task[]) => void;
 }) {
   const stateIds = states.map((s) => s.id);
   const [cols, setCols] = useState<Cols>(() => groupByColumn(tasks, stateIds));
@@ -248,6 +321,48 @@ export function Board({ tasks, states, onMove, onOpen, onAdd, onArchive, working
 
   const toggleRail = useCallback((id: string) => setOpenRails((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; }), []);
 
+  // GA-306: the ticked cards. One column at a time: a card ticked in another column starts a new selection there.
+  const [sel, setSel] = useState<Selection | null>(null);
+  const pick = useCallback((id: string, range: boolean) => setSel((s) => {
+    const col = Object.keys(colsRef.current).find((k) => colsRef.current[k].includes(id));
+    if (!col) return s;
+    if (!s || s.col !== col) return { col, ids: new Set([id]), last: id };
+    const ids = new Set(s.ids);
+    const order = colsRef.current[col];
+    const from = s.last ? order.indexOf(s.last) : -1, to = order.indexOf(id);
+    if (range && from >= 0 && from !== to) {
+      // Shift+click: every card between the last one ticked and this one
+      for (const x of order.slice(Math.min(from, to), Math.max(from, to) + 1)) ids.add(x);
+      return { col, ids, last: id };
+    }
+    if (ids.delete(id)) return ids.size ? { col, ids, last: s.last === id ? null : s.last } : null;
+    ids.add(id);
+    return { col, ids, last: id };
+  }), []);
+  const clearSel = useCallback(() => setSel(null), []);
+  // A card that leaves the column (a filter, a search, an agent's move) leaves the selection.
+  useEffect(() => {
+    if (dragging.current) return;
+    setSel((s) => {
+      if (!s) return s;
+      const here = new Set(cols[s.col] ?? []);
+      if ([...s.ids].every((id) => here.has(id))) return s;
+      const ids = new Set([...s.ids].filter((id) => here.has(id)));
+      return ids.size ? { col: s.col, ids, last: s.last && here.has(s.last) ? s.last : null } : null;
+    });
+  }, [cols]);
+  // Escape clears it.
+  const selecting = !!sel;
+  useEffect(() => {
+    if (!selecting) return;
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") setSel(null); };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [selecting]);
+  // Deploy's Move all and Move to go to its next column; without one, to the team's first Done column.
+  const targetOf = (s: WorkflowState) => (s.category !== "deploy" ? undefined
+    : states.find((x) => x.id === s.nextStateId) ?? states.find((x) => x.category === "done"));
+
   return (
     <DndContext sensors={sensors} collisionDetection={collision} measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
       onDragStart={({ active }) => {
@@ -260,7 +375,8 @@ export function Board({ tasks, states, onMove, onOpen, onAdd, onArchive, working
       <div className={compact ? "board compact" : "board"}>
         {states.map((s) => (
           <Column key={s.id} state={s} ids={cols[s.id] ?? []} byId={byId} rail={isRail(s.id)} onToggleRail={toggleRail} onOpen={onOpen} onAdd={onAdd} onArchive={onArchive} working={working} members={members} shots={shots} titleOf={titleOf}
-            compact={compact} marked={marked} />
+            compact={compact} marked={marked} target={targetOf(s)} onMoveMany={onMoveMany} onArchiveMany={onArchiveMany}
+            picked={sel?.col === s.id ? sel.ids : null} onPick={pick} onClear={clearSel} />
         ))}
       </div>
     </DndContext>
