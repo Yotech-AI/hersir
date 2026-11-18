@@ -258,6 +258,7 @@
 .chat-card-props dd .avatar, .chat-card-props dd svg { flex: none; }
 .chat-card-props dd.hold { flex-direction: column; align-items: flex-start; gap: 4px; }
 .chat-card-props dd.hold .reason { color: var(--text-2); }
+.chat-card-props dd.hold .err { margin: 0; color: var(--danger); }
 .chat-card-props dd.labels { gap: 4px; }
 .chat-card-props .none, .chat-card .none { color: var(--text-2); margin: 0; }
 /* Blocks: the heading in t-group text-2 (the count after it in t-small text-3), 8 under it */
