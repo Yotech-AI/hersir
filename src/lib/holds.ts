@@ -7,3 +7,10 @@ export const HOLD_NAMES: Record<string, string> = {
 
 /** A hold's name: its key's name, else the key itself. */
 export const holdName = (hold: string): string => HOLD_NAMES[hold] ?? hold;
+
+/** GA-261: the kind of the hold the Chief's change put on a card after a tool from outside Hersir in the chat (GA-101): only
+ *  you take it off (`model::HOLD_WAITING_FOR_OK`). */
+export const HOLD_WAITING_FOR_OK = "waiting_for_ok";
+
+/** The card waits on that hold for your OK (`Task::waits_for_your_ok`). */
+export const waitsForYourOk = (t: { hold?: string | null; holdKind?: string | null }): boolean => !!t.hold && t.holdKind === HOLD_WAITING_FOR_OK;

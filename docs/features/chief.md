@@ -41,7 +41,7 @@ On a new install, the first start ends in a welcome chat: the Chief welcomes you
 
 ## Approve with one click
 
-Once a chat used a tool from outside Hersir (an MCP server, the web, the browser), what that tool returned stays in the chat's session and could steer the Chief. So the chat keeps a mark: for the rest of the chat, also in later messages, in a new session and after a restart of Hersir, what the Chief does there waits for your Approve. The chat says so once, when it is marked: "This chat used `<tool>`, a tool from outside Hersir: from now on, what the Chief does here waits for your Approve.", with the tool in words, like search on the otus server or fetching a web page. A new chat starts unmarked.
+Once a chat used a tool from outside Hersir (an MCP server, the web, the browser), what that tool returned stays in the chat's session and could steer the Chief. So the chat keeps a mark: for the rest of the chat, also in later messages, in a new session and after a restart of Hersir, what the Chief does there waits for your Approve. The chat says so once, when it is marked: "This chat used `<tool>`, a tool from outside Hersir: from now on, what the Chief does here waits for your Approve.", with the tool in words, like search on the otus server or fetching a web page. Above the text box, a marked chat keeps saying it: "This chat used `<tool>`, a tool from outside Hersir: what the Chief does here waits for your OK.", with **New chat** beside it. A new chat starts unmarked, without that line.
 
 A tool the Chief doesn't have marks nothing. A chat answer has Read, Glob and Grep, web search and fetching pages while Web is on, and the tools of the MCP servers and the browser it gets (agent form → Tools). When the Chief calls any other tool, like Bash, Edit or a tool of a server it doesn't have, Claude Code refuses the call without running it ("No such tool available"), so nothing came in from outside: the chat isn't marked and says nothing about it.
 
@@ -49,6 +49,8 @@ The Chief's calls that wait start or continue runs, change agents or columns, at
 
 - with a line about what it does and a preview: a note's new text and what changes, the card and agent, the settings that change, the file and where it goes, the comment's text, and each field of a card or project that changes, old and new;
 - with **Approve** and **Discard**, and **Approve all** when there are several.
+
+The Chief's tool line says what happened to each call: one that worked reads as before, like "Changed task DU-37"; one that waits for you reads "Waiting for your OK: add to note Chief/Notes"; one that was refused reads "Couldn't change task DU-37", with the reason under it.
 
 Approve runs exactly that call once, with every other rule in force; it isn't kept again, and a card it changes doesn't go on hold. Discard runs nothing. The chat notes what happened and the Chief hears it in its next answer. Approving doesn't start a new answer: once nothing waits and the Chief isn't answering, a last note says its answer is done, so send a message to go on. Until you decide, the chat waits for you at the top of [the Inbox](inbox.md), also after a restart.
 
@@ -66,6 +68,8 @@ A source on Ask still marks the chat when the Chief uses it, also after one on A
 ### Cards that wait for your OK
 
 In a marked chat, a card the Chief puts in an Auto column (its agents pick it up by themselves), or whose description, acceptance criteria, assignee or cards it builds on it changes there, is saved on hold: "Waiting for your OK: the Chief put this card here after using `<tool>`, a tool from outside Hersir. Check it, then take it off hold." No agent starts it.
+
+Under the Chief's answer, **Waiting for your OK** lists the cards that answer put on that hold, while they are on it: the card (a click opens it beside the chat), its column and **OK**, which takes the hold off as Clear hold on the card does, so its column's agents can start it. **Approve all** shows when two or more things wait there: it runs the answer's waiting calls, then takes its cards' holds off. A card whose hold went (taken off on the card, moved by hand, another hold) leaves the list at once. It stays out when another chat puts it on that hold again later: then it shows under that chat's answer. The Chief tells you so too: the tool's result says you can OK the card under its answer or on the card, and that it shouldn't try to take the hold off itself.
 
 Only you take that hold off: **Clear hold** on the card (or Continue, or a move by hand into To do or In progress), or **Approve** on a call of the Chief's that waited for you and takes it off, like a Continue (its preview says so). The Chief can't, from a chat or a board check: taking the hold off (`update_task` with `clear_hold`), putting another hold in its place, Continue and Run on that card are refused with "Only the user takes this hold off, on the card: it waits for their OK after a tool from outside Hersir." A board check leaves such a card alone. Other holds come off as before, from a chat and from a board check.
 
