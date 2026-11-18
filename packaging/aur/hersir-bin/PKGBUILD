@@ -1,0 +1,101 @@
+# Maintainer: Jeffrey Sevinga <info@yotech.ai>
+#
+# hersir-bin: Hersir from the ready-made Linux build of one of its releases (https://github.com/Yotech-AI/hersir).
+# - The programs are the release's own archive, as Release builds made it. Its sha256 is its line in the release's
+#   SHA256SUMS, which the release's signature (hersir-X.Y.Z.sig) covers, with the commit the release's tag points to.
+# - The launcher, the desktop entry and the icons are made as install.sh makes them, from that commit's own files,
+#   downloaded by the commit's id, never from a branch. Their sha256s are the files' in git at that commit.
+# - scripts/packages.sh in Yotech-AI/hersir fills in pkgver, _commit and the sums for each signed release, from
+#   packaging/aur/hersir-bin there, and publishes nothing else: changes to this file go there.
+# These packaging files are under 0BSD (LICENSE). Hersir itself is under the Apache License 2.0.
+
+pkgname=hersir-bin
+pkgver=0.18.0
+pkgrel=1
+# The commit the release's tag points to, as the release's signature names it.
+_commit=3f0b11ecb5310e21990624b7a4bee94402e4029f
+pkgdesc='Talk to one Chief that runs a team of AI coding agents through your board'
+arch=('x86_64')
+url='https://hersir.dev'
+license=('Apache-2.0')
+# What Hersir needs to run: the libraries its two programs link; libayatana-appindicator for the tray icon, which
+# Hersir loads when it starts; the icon theme's folders; and what Hersir and its launcher run: git for its worktrees,
+# curl for its release check, and bash for your login shell's PATH, so its agents find your coding CLIs. Claude Code,
+# Codex and Gemini stay your own installs.
+depends=('cairo' 'dbus' 'gdk-pixbuf2' 'glib2' 'glibc' 'gtk3' 'libgcc' 'libsoup3' 'webkit2gtk-4.1'
+         'libayatana-appindicator' 'hicolor-icon-theme' 'bash' 'curl' 'git')
+optdepends=('github-cli: review cards as pull requests on GitHub')
+provides=('hersir')
+conflicts=('hersir')
+# The programs stay exactly as the release built them.
+options=('!strip' '!debug')
+_files="https://raw.githubusercontent.com/Yotech-AI/hersir/$_commit"
+source=("hersir-$pkgver-install.sh::$_files/install.sh"
+        "hersir-$pkgver-32x32.png::$_files/src-tauri/icons/32x32.png"
+        "hersir-$pkgver-64x64.png::$_files/src-tauri/icons/64x64.png"
+        "hersir-$pkgver-128x128.png::$_files/src-tauri/icons/128x128.png"
+        "hersir-$pkgver-128x128@2x.png::$_files/src-tauri/icons/128x128@2x.png"
+        "hersir-$pkgver-icon.png::$_files/src-tauri/icons/icon.png"
+        "hersir-$pkgver-gizai.svg::$_files/src-tauri/icons/gizai.svg"
+        "hersir-$pkgver-NOTICE::$_files/NOTICE")
+source_x86_64=("hersir-$pkgver-linux-x86_64.tar.gz::https://github.com/Yotech-AI/hersir/releases/download/v$pkgver/hersir-$pkgver-linux-x86_64.tar.gz")
+sha256sums=('8a1ca3813e967d7ea7835e80b1d1df684b399411f608d68205874a4144d3de19'
+            'eb466eb13673d4964d08b5f462c5f5220dcb7ca520d70ba3f8b85227e52ce735'
+            '3b9596b4e4920de127ce39286beded0644d3b132b25890cac434d67bd2bc51c1'
+            '030f428dec869f96bd03d4a4e55d2228299a074681ebf0823ed02925dd3d722f'
+            '5b0f19c3160677327ffe1bdeee687babb6ffe40a8e542f0777ab238c5f983246'
+            '10c258eb0a3dcc3fa84ddd211edca3089a0bfab8830319705fa91561fc9c5a59'
+            '99bf5883dafabf965719196668f50528b90b6c5c48ef099bbc13b52a0a5f4023'
+            'cd6b5da918554976ceb4d0869b8b05a4b237ed7252aad38722c047b9862bb303')
+sha256sums_x86_64=('bd89992de1949ca840db23723bff5b40bc2d7cde435637d2b538e8b6952e9f69')
+
+# Prints the file install.sh writes on Linux with its here-document $1: LAUNCH, the launcher, or DESKTOP, the desktop
+# entry. The here-document is install.sh's own, at the release's commit, and bash expands it as when install.sh runs,
+# with Hersir's folder, $LIB, set to /usr/lib/hersir. It stops the build when install.sh has none or more than one of
+# them at the start of a line (the macOS launcher is indented), or when it names a variable other than $LIB.
+_install_sh() {
+  local start
+  case $1 in
+    LAUNCH) start='cat > "$new_launch" <<LAUNCH' ;;
+    DESKTOP) start='cat > "$APPS/hersir.desktop" <<DESKTOP' ;;
+    *) return 1 ;;
+  esac
+  if ! awk -v start="$start" -v end="$1" '
+      $0 == start { found++; inside = 1; next }
+      inside && $0 == end { inside = 0; closed++; next }
+      inside { print }
+      END { exit !(found == 1 && closed == 1) }' "$srcdir/hersir-$pkgver-install.sh" > "$srcdir/$1.lines"; then
+    printf 'install.sh at %s has no single %s here-document, so its file is not made.\n' "$_commit" "$1" >&2
+    return 1
+  fi
+  { printf 'set -eu\nLIB=/usr/lib/hersir\ncat <<%s\n' "$1"; cat "$srcdir/$1.lines"; printf '%s\n' "$1"; } > "$srcdir/$1.sh"
+  bash "$srcdir/$1.sh"
+}
+
+package() {
+  local lib=/usr/lib/hersir pair size file
+  # The release's two programs; Hersir looks for hersir-mcp beside itself.
+  install -Dm755 target/release/hersir "$pkgdir$lib/hersir"
+  install -Dm755 target/release/hersir-mcp "$pkgdir$lib/hersir-mcp"
+  # Hersir's mark for a package's install (GA-199): it doesn't update itself, and Settings > Updates names yay.
+  printf 'aur\n' > hersir-package.txt
+  install -Dm644 hersir-package.txt "$pkgdir$lib/hersir-package.txt"
+
+  # The launcher behind the hersir command and the desktop entry, as install.sh makes them for /usr/lib/hersir.
+  _install_sh LAUNCH > hersir-launch
+  _install_sh DESKTOP > hersir.desktop
+  install -Dm755 hersir-launch "$pkgdir$lib/hersir-launch"
+  install -dm755 "$pkgdir/usr/bin"
+  ln -s "$lib/hersir-launch" "$pkgdir/usr/bin/hersir"
+  install -Dm644 hersir.desktop "$pkgdir/usr/share/applications/hersir.desktop"
+
+  # The icon in the sizes install.sh installs, and the SVG it is drawn from.
+  for pair in 32:32x32.png 64:64x64.png 128:128x128.png 256:128x128@2x.png 512:icon.png; do
+    size="${pair%%:*}" file="${pair#*:}"
+    install -Dm644 "hersir-$pkgver-$file" "$pkgdir/usr/share/icons/hicolor/${size}x${size}/apps/hersir.png"
+  done
+  install -Dm644 "hersir-$pkgver-gizai.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/hersir.svg"
+
+  # Apache-2.0 is in Arch's licenses package; Hersir's NOTICE goes with it.
+  install -Dm644 "hersir-$pkgver-NOTICE" "$pkgdir/usr/share/licenses/$pkgname/NOTICE"
+}
