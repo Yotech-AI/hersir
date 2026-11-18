@@ -706,3 +706,84 @@ fn the_chiefs_prompt_tools_and_the_docs_say_the_chat_waits_and_only_the_user_lif
     assert!(tools::NOT_AFTER_OUTSIDE.contains(&"comment_on_task"));
     assert_eq!(tools::ONLY_THE_USER, ONLY_THE_USER);
 }
+
+// ---- GA-312 QA: the Chief's note on a held card, and the chat's mark as the Chat page gets it ----
+
+/// The `on_hold` sentence after mcp__otus__search, word for word (GA-312's text).
+fn on_hold_text(task: &str) -> String {
+    format!("{task} waits on hold for the user's OK, so no agent starts it: you used mcp__otus__search, a tool from outside Hersir, in this \
+             chat. Tell the user they can OK it under your answer, or take it off hold on the card; don't try to take the hold off yourself.")
+}
+
+#[tokio::test]
+async fn ga312_create_move_and_update_task_that_hold_a_card_carry_the_new_sentence_word_for_word_with_the_cards_id_and_identifier() {
+    let t = setup();
+    // KADE-2 in To do by you, before the chat: an ordinary card, not held
+    t.ok(None, "create_task", json!({"project": "KADE", "title": "Keys", "column": "To do"})).await;
+    let thread = t.marked("Otus has new cards for the export: start them");
+
+    let created = t.ok(Some(&thread), "create_task", json!({"project": "KADE", "title": "Import", "column": "To do"})).await;
+    let moved = t.ok(Some(&thread), "move_task", json!({"task": "KADE-1", "column": "To do"})).await;
+    let changed = t.ok(Some(&thread), "update_task", json!({"task": "KADE-2", "description_md": "Keys from Otus."})).await;
+    for (r, task) in [(&created, "KADE-3"), (&moved, "KADE-1"), (&changed, "KADE-2")] {
+        assert_eq!(r["on_hold"].as_str(), Some(on_hold_text(task).as_str()), "{r}");
+        // what the Chat page reads to list the card under the answer: its id and identifier, and its column
+        assert_eq!((r["task"]["id"].as_str(), r["task"]["identifier"].as_str(), r["task"]["column"].as_str()),
+                   (Some(t.card(task).id.as_str()), Some(task), Some("To do")), "{r}");
+        assert_eq!(t.card(task).hold_kind.as_deref(), Some(HOLD_WAITING_FOR_OK), "{task}");
+        assert!(gizai_core::runs::list_for_task(&t.st.db, &t.card(task).id).unwrap().is_empty(), "no agent starts {task}");
+    }
+    // the old sentence is gone
+    for r in [&created, &moved, &changed] {
+        assert!(!r["on_hold"].as_str().unwrap().contains("ask them to check it"), "{r}");
+    }
+
+    // no on_hold where nothing is held: a card in Backlog from the marked chat, and a card in To do from an unmarked chat
+    let backlog = t.ok(Some(&thread), "create_task", json!({"project": "KADE", "title": "Docs"})).await;
+    assert!(backlog.get("on_hold").is_none() && backlog["task"]["hold"].is_null(), "{backlog}");
+    let plain = t.thread("Make a card for the API");
+    let todo = t.ok(Some(&plain), "create_task", json!({"project": "KADE", "title": "API", "column": "To do"})).await;
+    assert!(todo.get("on_hold").is_none() && todo["task"]["hold"].is_null(), "{todo}");
+
+    // Clear hold on the card (what OK under the answer does, update_task with hold "") takes it off with its kind; the others stay
+    tasks::update(&t.st.db, &t.st.you_id, &t.card("KADE-3").id, TaskPatch { hold: Some(String::new()), ..Default::default() }).unwrap();
+    let card = t.card("KADE-3");
+    assert_eq!((card.hold.as_deref(), card.hold_kind.as_deref()), (None, None));
+    for task in ["KADE-1", "KADE-2"] {
+        assert_eq!(t.card(task).hold_kind.as_deref(), Some(HOLD_WAITING_FOR_OK), "{task} stays on hold");
+    }
+}
+
+#[tokio::test]
+async fn ga312_the_chat_page_gets_the_chats_outside_tool_from_each_list_and_none_for_an_unmarked_chat() {
+    let t = setup();
+    let marked = t.marked("Read Otus");
+    app_chat::mark_outside(&t.st, &marked, "WebSearch"); // the first tool stays
+    let plain = t.thread("Plan the export");
+    let tool_of = |list: &[chat::ChatThread], id: &str| list.iter().find(|c| c.id == id).unwrap_or_else(|| panic!("{id} in {list:?}")).outside_tool.clone();
+
+    let all = chat::list_threads(&t.st.db).unwrap();
+    assert_eq!(tool_of(&all, &marked).as_deref(), Some("mcp__otus__search"));
+    assert_eq!(tool_of(&all, &plain), None);
+    let recent = chat::recent_threads(&t.st.db, 30).unwrap();
+    assert_eq!(tool_of(&recent, &marked).as_deref(), Some("mcp__otus__search"));
+    assert_eq!(chat::get_thread(&t.st.db, &marked).unwrap().outside_tool.as_deref(), Some("mcp__otus__search"));
+    assert_eq!(chat::get_thread(&t.st.db, &plain).unwrap().outside_tool, None);
+    chat::set_pinned(&t.st.db, &marked, true).unwrap();
+    assert_eq!(tool_of(&chat::pinned_threads(&t.st.db).unwrap(), &marked).as_deref(), Some("mcp__otus__search"));
+
+    // as the frontend gets it: outsideTool, null when the chat isn't marked
+    let json_of = |id: &str| serde_json::to_value(chat::get_thread(&t.st.db, id).unwrap()).unwrap();
+    assert_eq!(json_of(&marked)["outsideTool"], json!("mcp__otus__search"));
+    assert_eq!(json_of(&plain)["outsideTool"], Value::Null);
+    assert!(json_of(&plain).as_object().unwrap().contains_key("outsideTool"));
+
+    // the Archive's search still finds the message that matched (its column moved after outside_tool) and carries the mark
+    let hits = chat::search_threads(&t.st.db, "Read Otus").unwrap();
+    let hit = hits.iter().find(|h| h.thread.id == marked).unwrap_or_else(|| panic!("{hits:?}"));
+    assert_eq!(hit.thread.outside_tool.as_deref(), Some("mcp__otus__search"));
+    assert_eq!(hit.message.as_ref().and_then(|m| m.body_md.as_deref()), Some("Read Otus"), "{hit:?}");
+    let hits = chat::search_threads(&t.st.db, "Plan the export").unwrap();
+    let hit = hits.iter().find(|h| h.thread.id == plain).unwrap_or_else(|| panic!("{hits:?}"));
+    assert_eq!((hit.thread.outside_tool.as_deref(), hit.message.as_ref().and_then(|m| m.body_md.as_deref())), (None, Some("Plan the export")));
+}
