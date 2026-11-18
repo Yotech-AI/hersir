@@ -1,8 +1,8 @@
 // Chat with the Team Lead (design system: ChatMessage, ToolCard, ChatSetup), in islands (GA-296, design/islands-chat): on the
-// left the pinned chats (Pinned, GA-257) and the 30 newest chats (Recent), each with Pin and Rename (GA-309), and Archive
-// under them, the conversation or the
-// Archive (#/chats) in the middle, and on the right what is open beside the chat: the side island while it shows and the
-// tool strip on the window's right edge (Open in the top bar, components/chat/ChatSide.tsx). A card chip opens the card in
+// left the pinned chats (Pinned, GA-257) and the 30 newest chats (Recent), each with Pin and Rename (GA-309), with Archive
+// under them, the conversation or the Archive (#/chats) in the middle, and on the right what is open beside the chat: the
+// side island while it shows and the tool strip on the window's right edge (Open in the top bar,
+// components/chat/ChatSide.tsx). A card chip opens the card in
 // a Card tab there (GA-297; Ctrl+click, Cmd+click on macOS, its page), and a chat the Chief started about cards opens them
 // there the first time it opens.
 // Without a Team Lead, a panel explains how to set one up.
