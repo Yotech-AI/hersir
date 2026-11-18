@@ -29,6 +29,8 @@ pub mod pasted;
 pub mod pending;
 pub mod pulls;
 mod quit;
+// The Chief's readable copy of a file: its text as Markdown (GA-310), or a PDF LibreOffice makes (GA-311).
+pub mod readable;
 pub mod restore;
 pub mod run_memory;
 pub mod runs;
@@ -101,6 +103,9 @@ pub struct AppState {
     pub backups: Arc<backups::Backups>,
     /// The restore that runs now, or the last one since Gizai started (see `restore`).
     pub restores: Arc<restore::Restores>,
+    /// LibreOffice, which makes the PDF copies of Pages, Keynote, Numbers, .doc and .ppt files for the Chief (GA-311, see
+    /// `readable`): its profile folder of Hersir's own, `<data>/libreoffice`, and its limit. Tests may set a fake program.
+    pub libreoffice: Arc<gizai_agents::libreoffice::LibreOffice>,
 }
 
 #[derive(Serialize)]
@@ -389,6 +394,7 @@ fn open_data(dir: PathBuf, notify: Arc<dyn Fn(runs::Note) + Send + Sync>, defaul
     let mcp_socket = mcp::socket_path(&dir);
     let keychain = gizai_agents::secrets::from_env();
     let tokens = Arc::new(gizai_agents::oauth::TokenStore::new(keychain.clone()));
+    let libreoffice = Arc::new(gizai_agents::libreoffice::LibreOffice::new(dir.join("libreoffice")));
     let st = AppState { keychain, tokens, db: Arc::new(db), you_id: seed.you_id, data_dir: dir, runs: Arc::new(runs::RunManager::default()),
                   run_memory: Arc::new(Default::default()), temp_base: gizai_agents::worktree::temp_base(), mcp_socket,
                   mcp_shim: mcp::shim_bin(), chat: Arc::new(chat::ChatManager::default()), code: Arc::new(code::Copies::default()), pulls: Arc::new(pulls::PullChecks::default()),
@@ -396,7 +402,7 @@ fn open_data(dir: PathBuf, notify: Arc<dyn Fn(runs::Note) + Send + Sync>, defaul
                   github: Arc::new(github::Logins::default()), updates: Arc::new(update::Updates::default()), _lock: Arc::new(lock), notify,
                   desktop: notifications::Desktop::silent(), inbox: Arc::new(notifications::Watch::default()),
                   terminals: Arc::new(gizai_agents::terminal::Terminals::default()), streams: Arc::new(stream::Streams::default()),
-                  backups: Arc::new(backups::Backups::default()), restores: Arc::new(restore::Restores::default()) };
+                  backups: Arc::new(backups::Backups::default()), restores: Arc::new(restore::Restores::default()), libreoffice };
     // GA-102: the Chief's calls that wait for your approval stay waiting; one approved while Gizai closed counts as
     // failed, so it never runs twice, and its chat says so.
     pending::at_start(&st);
