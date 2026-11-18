@@ -466,7 +466,17 @@ a.member:hover { border-color: var(--line-2); }
    on a pinned chat (a filled pin, crossed out on hover); the row stays lit while the pointer is on it. In the top bar it
    always shows. */
 .th-row, .archive-item { position: relative; }
-.chat-threads .th-row > .th { padding-right: 38px; }
+/* GA-309: Rename beside the pin, left of it, shown as the pin is (hover, focus, touch screens); the title keeps room for
+   both. While renaming, the title is an input as wide as the row up to the pin, its text where the title's was. */
+.chat-threads .th-row > .th { padding-right: 66px; }
+.chat-threads .th-row.renaming > .th { padding-right: 38px; }
+.th-row > .rename-btn { position: absolute; top: 50%; right: 34px; transform: translateY(-50%); opacity: 0; transition: opacity .12s; }
+.th-row:hover > .rename-btn, .th-row:focus-within > .rename-btn { opacity: 1; }
+.rename-btn .icon { width: 14px; height: 14px; }
+.rename-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+@media (hover: none) { .th-row > .rename-btn { opacity: 1; } }
+.chat-threads .th .t > .name-in.input { flex: 1; min-width: 0; height: 24px; margin: -3px 0; padding: 0 6px; font-size: inherit; font-weight: 500; }
+.chat-threads .th .t > .name-in.input:first-child { margin-left: -7px; }
 .chat-threads .th-row:hover > .th:not(.on) { background: var(--hover); color: var(--text); }
 .th-row > .pin-btn { position: absolute; top: 50%; right: 6px; transform: translateY(-50%); }
 .archive-item > .archive-row { padding-right: 46px; }
