@@ -291,3 +291,139 @@ fn the_three_descriptions_say_each_file_comes_with_the_path_of_a_copy_to_read_wi
         assert!(d.contains("over 100 MB"), "{name}: {d}");
     }
 }
+
+// ---- GA-310 QA: readable copies of Word, Excel, PowerPoint, OpenDocument and RTF files in get_client, get_project and
+// get_task ----
+
+use super::office_docs::{damaged_xlsx, docx, docx_md, locked_docx};
+
+/// Checks that `l` has a readable_path beside its copy (`<path>.md`) with `text`, and no readable_error.
+fn assert_readable(l: &Value, text: &str) -> PathBuf {
+    let path = PathBuf::from(l["path"].as_str().unwrap_or_else(|| panic!("no path: {l}")));
+    let readable = PathBuf::from(l["readable_path"].as_str().unwrap_or_else(|| panic!("no readable_path: {l}")));
+    assert_eq!(readable, path.with_file_name(format!("{}.md", path.file_name().unwrap().to_string_lossy())), "beside the copy: {l}");
+    assert!(l.get("readable_error").is_none(), "{l}");
+    assert_eq!(std::fs::read_to_string(&readable).unwrap(), text, "{l}");
+    readable
+}
+
+#[tokio::test]
+async fn get_task_get_project_and_get_client_give_a_docx_a_readable_path_and_a_second_call_reuses_it() {
+    let t = setup();
+    let client = clients::create(&t.st.db, &t.st.you_id, ClientInput { name: "Spoorwegmuseum".into(), ..Default::default() }).unwrap();
+    let p = t.project("Kade portal", "KADE");
+    let task = tasks::create(&t.st.db, &t.st.you_id, TaskInput { project_id: p.clone(), title: "Spec review".into(), ..Default::default() }).unwrap();
+    let ident = tasks::get(&t.st.db, &task).unwrap().identifier;
+    let (tb, pb, cb) = (docx("Spec", "On the task."), docx("Plan", "On the project."), docx("Contract", "On the client."));
+    let tf = t.add("task", &task, "Spec v2.docx", &tb);
+    let pf = t.add("project", &p, "Plan.DOCX", &pb);
+    let cf = t.add("client", &client, "Contract.docx", &cb);
+
+    let got = t.ok("get_task", json!({"task": ident})).await;
+    assert_copied(&t, line(&got, &tf), &tf, &tb);
+    let on_task = assert_readable(line(&got, &tf), &docx_md("Spec v2.docx", "Spec", "On the task."));
+    let got = t.ok("get_project", json!({"project": "KADE"})).await;
+    assert_copied(&t, line(&got, &pf), &pf, &pb);
+    assert_readable(line(&got, &pf), &docx_md("Plan.DOCX", "Plan", "On the project."));
+    let got = t.ok("get_client", json!({"client": "Spoorwegmuseum"})).await;
+    assert_copied(&t, line(&got, &cf), &cf, &cb);
+    assert_readable(line(&got, &cf), &docx_md("Contract.docx", "Contract", "On the client."));
+
+    // a second call gives the same path and keeps the readable copy as it is (a new one would overwrite the mark)
+    std::fs::write(&on_task, "marked").unwrap();
+    let again = t.ok("get_task", json!({"task": ident})).await;
+    assert_eq!(line(&again, &tf)["readable_path"].as_str(), Some(on_task.display().to_string().as_str()), "{again}");
+    assert_eq!(std::fs::read_to_string(&on_task).unwrap(), "marked");
+}
+
+#[tokio::test]
+async fn a_damaged_xlsx_a_locked_docx_and_a_renamed_txt_have_their_copy_and_a_readable_error_and_the_other_files_still_come() {
+    let t = setup();
+    let p = t.project("Stapsgewijs", "SDH");
+    let (bad, locked, renamed, good) = (damaged_xlsx(), locked_docx(), b"plain text, renamed".to_vec(), docx("Fine", "Still read."));
+    let fb = t.add("project", &p, "broken.xlsx", &bad);
+    let fl = t.add("project", &p, "locked.docx", &locked);
+    let fr = t.add("project", &p, "renamed.docx", &renamed);
+    let fg = t.add("project", &p, "good.docx", &good);
+    let fp = t.add("project", &p, "photo.png", b"\x89PNG\r\n\x1a\n not really");
+
+    let got = t.ok("get_project", json!({"project": "SDH"})).await;
+    assert_eq!(got["files"].as_array().unwrap().len(), 5, "{got}");
+    for (f, body, says) in [(&fb, &bad, "Excel workbook"), (&fl, &locked, "password"), (&fr, &renamed, "Word document")] {
+        let l = line(&got, f);
+        assert_copied(&t, l, f, body);
+        let why = l["readable_error"].as_str().unwrap_or_else(|| panic!("no readable_error: {l}"));
+        assert!(why.contains(says), "{l}");
+        assert!(l.get("readable_path").is_none(), "{l}");
+        assert!(!t.copy_of(f).with_file_name(format!("{}.md", f.name)).exists(), "{l}");
+    }
+    assert_readable(line(&got, &fg), &docx_md("good.docx", "Fine", "Still read."));
+    assert!(line(&got, &fp)["path"].is_string(), "{got}");
+}
+
+#[tokio::test]
+async fn png_pdf_txt_md_csv_and_other_files_have_exactly_the_fields_they_had() {
+    let t = setup();
+    let p = t.project("Stapsgewijs", "SDH");
+    let mut fs = vec![];
+    for name in ["shot.png", "contract.pdf", "notes.txt", "README.md", "export.csv", "data.json", "old.doc", "slides.ppt", "a.pages", "archive.zip"] {
+        fs.push(t.add("project", &p, name, format!("body of {name}").as_bytes()));
+    }
+    let got = t.ok("get_project", json!({"project": "SDH"})).await;
+    for f in &fs {
+        let l = line(&got, f);
+        let mut keys: Vec<&str> = l.as_object().unwrap().keys().map(String::as_str).collect();
+        keys.sort();
+        assert_eq!(keys, ["added", "id", "mime", "name", "path", "size_bytes"], "{l}");
+        assert_copied(&t, l, f, format!("body of {}", f.name).as_bytes());
+        let dir: Vec<_> = std::fs::read_dir(t.copy_of(f).parent().unwrap()).unwrap().collect();
+        assert_eq!(dir.len(), 1, "only the copy, no readable copy beside it: {}", f.name);
+    }
+}
+
+#[tokio::test]
+async fn a_file_copied_before_readable_copies_existed_gets_one_the_next_time_it_is_listed() {
+    let t = setup();
+    let p = t.project("Stapsgewijs", "SDH");
+    let body = docx("Earlier", "Copied before.");
+    let f = t.add("project", &p, "earlier.docx", &body);
+    // the Chief's copy as Hersir made it before GA-310: the file alone
+    let copy = files::copy_out(&t.st.data_dir, &f, &t.st.data_dir.join("lead").join("files")).unwrap();
+    assert_eq!(copy, t.copy_of(&f));
+    let md = copy.with_file_name("earlier.docx.md");
+    assert!(!md.exists());
+
+    let got = t.ok("get_project", json!({"project": "SDH"})).await;
+    assert_copied(&t, line(&got, &f), &f, &body);
+    assert_eq!(assert_readable(line(&got, &f), &docx_md("earlier.docx", "Earlier", "Copied before.")), md);
+}
+
+#[test]
+fn the_three_descriptions_say_a_word_excel_powerpoint_opendocument_or_rtf_file_has_a_readable_path() {
+    let cat = tools::catalog();
+    for name in ["get_client", "get_project", "get_task"] {
+        let d = &cat.iter().find(|t| t.name == name).unwrap().description;
+        assert!(d.contains("Each file comes with the path of a copy in your folder, to read with Read"), "{name}: {d}");
+        assert!(d.contains("A Word, Excel, PowerPoint, OpenDocument or RTF file also has readable_path: a copy of its text as Markdown, to read with Read."),
+                "{name}: {d}");
+    }
+}
+
+#[test]
+fn get_task_still_tells_the_chief_it_finds_an_archived_task_and_stays_under_600_characters() {
+    // the fix round moved this note from get_task's description into its task field, to keep the description short
+    let cat = tools::catalog();
+    let t = cat.iter().find(|t| t.name == "get_task").unwrap();
+    assert!(t.description.len() < 600, "{} characters: {}", t.description.len(), t.description);
+    let task = t.input_schema["properties"]["task"]["description"].as_str().unwrap_or_default();
+    assert!(task.contains("Finds an archived task too, and says so (archived: true): it is read-only until the user restores it"), "{task}");
+    assert_eq!(t.input_schema["required"], json!(["task"]));
+}
+
+#[test]
+fn the_chiefs_docs_end_the_files_line_with_the_cards_sentence() {
+    let doc = include_str!("../../../docs/features/chief.md");
+    let line = doc.lines().find(|l| l.starts_with("- **Files:**")).expect("the Files line");
+    assert!(line.trim_end().ends_with("Word, Excel, PowerPoint, OpenDocument and RTF files also get a text copy for the Chief, with headings, lists and tables as Markdown."),
+            "{line}");
+}

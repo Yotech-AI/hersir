@@ -49,6 +49,7 @@ mod project_key_test;
 mod project_team_test;
 mod pulls_test;
 mod questions_test;
+mod readable_test;
 mod release_030_upgrade_test;
 mod repo_url_test;
 mod restore_test;

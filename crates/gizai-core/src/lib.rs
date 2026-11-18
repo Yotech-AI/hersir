@@ -16,6 +16,7 @@ pub mod docs;
 pub mod memory;
 pub mod memory_import;
 pub mod files;
+pub mod readable;
 pub mod screenshots;
 pub mod runs;
 pub mod usage;
