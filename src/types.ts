@@ -115,6 +115,9 @@ export type TaskPatch = Partial<{
 export type TaskFilter = { projectId?: string | null; openOnly?: boolean };
 export type Comment = { id: string; authorId: string; authorName: string; authorKind: string; bodyMd: string; runId?: string | null; createdAt: number };
 export type ChangeEntry = { at: number; actorName?: string | null; table: string; op: string; diff: unknown };
+/** GA-306: what a move, archive or restore of several cards did: the ids of the cards that went, and the cards skipped with
+ *  the reason a single move or archive gives ("An agent is working on this card"). */
+export type BulkResult = { done: string[]; skipped: { identifier: string; reason: string }[] };
 export type TeamSummary = { id: string; name: string };
 export type Member = {
   actorId: string; name: string; kind: string; roleKey: string; title?: string | null; adapter?: string | null; instructionsMd?: string | null;
