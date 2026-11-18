@@ -316,13 +316,16 @@ fn table_rule(width: usize) -> String {
     s
 }
 
-/// A cell's text on one line: `|` escaped, line breaks as `<br>`, tabs as spaces.
+/// A cell's text on one line, so the table stays whole: `|` written as `\|`, and a line break (also between two
+/// paragraphs or lines of a cell, with the spaces around it) and a tab as one space.
 fn table_cell(text: &str) -> String {
-    text.trim().replace('|', "\\|").replace("\r\n", "<br>").replace(['\n', '\r'], "<br>").replace('\t', " ")
+    let breaks = ['\n', '\r', '\u{0B}', '\u{0C}', '\u{85}', '\u{2028}', '\u{2029}'];
+    let lines: Vec<&str> = text.split(breaks).map(str::trim).filter(|l| !l.is_empty()).collect();
+    lines.join(" ").replace('\t', " ").replace('|', "\\|")
 }
 
-/// Blocks inside a table cell, as lines: list items without their indent, a table inside it as its rows (cells apart
-/// by "; ").
+/// Blocks as lines, for a table cell (which puts them on one line, `table_cell`), a header, a note or a slide's notes:
+/// list items without their indent, a table inside it as its rows (cells apart by "; ").
 fn inline(blocks: &[Block]) -> String {
     let mut lines: Vec<String> = Vec::new();
     for b in blocks {
