@@ -12,8 +12,12 @@ use quick_xml::events::Event;
 
 use super::{MAX_SHEET_ROWS, MAX_TEXT_BYTES, Md, Zip, attr, table_row, table_rule, xml_reader};
 
-/// The most cells the grids of an .ods file's sheets may hold together (calamine builds them whole).
-const MAX_ODS_CELLS: u64 = 10_000_000;
+/// The most cells the grids of an .xls or .ods file's sheets may hold together (calamine builds them whole when it
+/// opens the file: about 32 bytes a cell).
+const MAX_GRID_CELLS: u64 = 10_000_000;
+
+/// Why a file whose grids would be larger isn't read.
+const TOO_LARGE: &str = "its sheets are too large for Hersir to read (more than 10 million cells)";
 
 pub(super) fn convert(path: &Path, ext: &str, what: &str, md: &mut Md) -> Result<(), String> {
     let open = |e: &dyn std::fmt::Display| format!("it can't be opened as {what} ({e})");
@@ -72,6 +76,9 @@ pub(super) fn convert(path: &Path, ext: &str, what: &str, md: &mut Md) -> Result
             }
         }
         "xls" => {
+            if xls_cells(path).map_err(|e| open(&e))? > MAX_GRID_CELLS {
+                return Err(TOO_LARGE.into());
+            }
             let mut wb: Xls<_> = open_workbook(path).map_err(|e| open(&e))?;
             for sheet in wb.sheets_metadata().to_vec() {
                 if md.full() {
@@ -89,9 +96,9 @@ pub(super) fn convert(path: &Path, ext: &str, what: &str, md: &mut Md) -> Result
             let mut zip = Zip::open(path, what)?;
             zip.check_sizes()?;
             if let Some(content) = zip.xml("content.xml")?
-                && ods_cells(&content) > MAX_ODS_CELLS
+                && ods_cells(&content) > MAX_GRID_CELLS
             {
-                return Err("its sheets are too large for Hersir to read (more than 10 million cells)".into());
+                return Err(TOO_LARGE.into());
             }
             let mut wb: Ods<_> = open_workbook(path).map_err(|e| open(&e))?;
             for sheet in wb.sheets_metadata().to_vec() {
@@ -303,6 +310,81 @@ fn iso_duration(s: &str) -> String {
     }
     let total = (h * 3600.0 + m * 60.0 + sec).round() as i64;
     format!("{:02}:{:02}:{:02}", total / 3600, total / 60 % 60, total % 60)
+}
+
+/// How many cells an .xls file's sheets take as calamine reads them: per sheet, the larger of what its dimensions record
+/// sets aside (worked out as calamine does, wrapping included) and its grid from the first used row and column to the
+/// last. From the records of the file's Workbook stream, at most 200 MB of it.
+fn xls_cells(path: &Path) -> Result<u64, String> {
+    let mut comp = cfb::open(path).map_err(|e| e.to_string())?;
+    let Some(name) = ["/Workbook", "/Book"].into_iter().find(|n| comp.is_stream(n)) else { return Ok(0) };
+    let stream = comp.open_stream(name).map_err(|e| e.to_string())?;
+    if stream.len() > super::MAX_PART_BYTES {
+        return Err("its workbook is larger than 200 MB".into());
+    }
+    let mut buf = Vec::new();
+    std::io::Read::read_to_end(&mut std::io::Read::take(stream, super::MAX_PART_BYTES), &mut buf).map_err(|e| e.to_string())?;
+    let u16at = |d: &[u8], i: usize| d.get(i..i + 2).map(|b| u32::from(u16::from_le_bytes([b[0], b[1]])));
+    let u32at = |d: &[u8], i: usize| d.get(i..i + 4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]));
+    let (mut total, mut depth, mut at) = (0u64, 0u32, 0usize);
+    let (mut dim, mut used) = (0u64, None::<(u32, u32, u32, u32)>);
+    let widen = |used: &mut Option<(u32, u32, u32, u32)>, r: u32, c0: u32, c1: u32| {
+        let (a, b, c, d) = used.unwrap_or((r, r, c0, c1));
+        *used = Some((a.min(r), b.max(r), c.min(c0), d.max(c1)));
+    };
+    while at + 4 <= buf.len() {
+        let (typ, len) = (u16at(&buf, at).unwrap_or(0), u16at(&buf, at + 2).unwrap_or(0) as usize);
+        let data = &buf[at + 4..(at + 4 + len).min(buf.len())];
+        at += 4 + len;
+        match typ {
+            // BOF: a sheet (or the workbook's globals) starts; one inside it (a chart) calamine skips
+            0x0809 => {
+                depth += 1;
+                if depth == 1 {
+                    (dim, used) = (0, None);
+                }
+            }
+            // EOF
+            0x000A => {
+                if depth == 1 {
+                    let grid = used.map_or(0, |(r0, r1, c0, c1)| u64::from(r1 - r0 + 1) * u64::from(c1 - c0 + 1));
+                    total = total.saturating_add(dim.max(grid));
+                }
+                depth = depth.saturating_sub(1);
+            }
+            _ if depth != 1 => {}
+            // Dimensions
+            0x0200 => {
+                let (rf, rl, cf, cl) = match data.len() {
+                    10 => (u16at(data, 0), u16at(data, 2), u16at(data, 4), u16at(data, 6)),
+                    14 | 16 => (u32at(data, 0), u32at(data, 4), u16at(data, 8), u16at(data, 10)),
+                    _ => continue,
+                };
+                let (Some(rf), Some(rl), Some(cf), Some(cl)) = (rf, rl, cf, cl) else { continue };
+                let cf = if cf > 0xFF || cl < cf { 0 } else { cf };
+                dim = if rl >= 1 && cl >= 1 {
+                    u64::from((rl - 1).wrapping_sub(rf).wrapping_add(1)) * u64::from(cl - cf)
+                } else {
+                    1
+                };
+            }
+            // a cell: Number, Label, RString, BoolErr, Rk, LabelSst, Formula
+            0x0203 | 0x0204 | 0x00D6 | 0x0205 | 0x027E | 0x00FD | 0x0006 => {
+                if let (Some(r), Some(c)) = (u16at(data, 0), u16at(data, 2)) {
+                    widen(&mut used, r, c, c);
+                }
+            }
+            // MulRk: a row's cells from one column to another
+            0x00BD => {
+                let last = data.len().checked_sub(2).and_then(|k| u16at(data, k));
+                if let (Some(r), Some(c0), Some(c1)) = (u16at(data, 0), u16at(data, 2), last) {
+                    widen(&mut used, r, c0.min(c1), c0.max(c1));
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(total)
 }
 
 /// How many cells the grids of an .ods file's sheets hold as calamine builds them: per sheet, its rows from the first

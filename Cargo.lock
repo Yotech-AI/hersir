@@ -1785,6 +1785,7 @@ name = "gizai-core"
 version = "0.18.1"
 dependencies = [
  "calamine",
+ "cfb",
  "codepage",
  "encoding_rs",
  "getrandom 0.4.3",

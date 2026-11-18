@@ -92,7 +92,7 @@ pub fn ensure(copy: &Path) -> Result<PathBuf, String> {
     }
     let name = copy.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let text = markdown(&name, copy)?;
-    let tmp = out.with_file_name(format!(".{}.{}.part", name, crate::ids::new_id()));
+    let tmp = out.with_file_name(format!(".readable-{}.part", crate::ids::new_id()));
     if let Err(e) = std::fs::write(&tmp, text) {
         let _ = std::fs::remove_file(&tmp);
         return Err(format!("it couldn't be written: {e}"));
@@ -172,10 +172,19 @@ impl Md {
     }
 
     /// Adds `sep` and `text`, or what fits of them (then the copy is full). One byte stays free for the last newline.
+    /// Control characters other than line breaks and tabs (a NUL from a broken file) are left out.
     fn push(&mut self, sep: &str, text: &str) {
         if self.full {
             return;
         }
+        let shown = |c: char| !c.is_control() || matches!(c, '\n' | '\t');
+        let clean: String;
+        let text = if text.chars().all(shown) {
+            text
+        } else {
+            clean = text.chars().filter(|&c| shown(c)).collect();
+            &clean
+        };
         let room = (MAX_TEXT_BYTES - 1).saturating_sub(self.s.len());
         if sep.len() + text.len() <= room {
             self.s.push_str(sep);
