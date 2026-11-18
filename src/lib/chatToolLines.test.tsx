@@ -143,3 +143,36 @@ describe("every Hersir tool shows a plain verb, never mcp__gizai__…", () => {
     expect(bad).toEqual([]);
   });
 });
+
+// GA-307 QA: the Chief's archive_tasks and restore_tasks read as Archived tasks and Restored tasks (the card's words),
+// and an archive_tasks kept after a tool from outside Hersir reads as waiting for your OK.
+describe("archive_tasks and restore_tasks (GA-307)", () => {
+  const answer = JSON.stringify({ ok: true, done: "archived", archived: 2, tasks: ["GA-12", "GA-13"], skipped: [] });
+  it("done, they read Archived tasks and Restored tasks", () => {
+    expect(toolCard(call("archive_tasks", { input: { tasks: ["GA-12", "GA-13"] }, result: answer, isError: false })))
+      .toEqual({ verb: "Archived tasks", label: undefined, state: "ok" });
+    expect(toolCard(call("archive_tasks", { input: { all_done: true, project: "GA" } })))
+      .toEqual({ verb: "Archived tasks", label: "GA", state: "running" });
+    const restored = JSON.stringify({ ok: true, done: "restored", restored: 1, tasks: ["GA-12"], skipped: [] });
+    expect(toolCard(call("restore_tasks", { input: { tasks: ["GA-12"] }, result: restored, isError: false })).verb).toBe("Restored tasks");
+  });
+
+  it("refused, they read Couldn't archive tasks and Couldn't restore tasks, with the reason under it", () => {
+    const why = "A board check never archives cards: ask the user in a chat (start_chat) instead.";
+    expect(toolCard(call("archive_tasks", { input: { all_done: true }, result: why, isError: true })))
+      .toEqual({ verb: "Couldn't archive tasks", label: undefined, state: "error", detail: why });
+    expect(toolCard(call("restore_tasks", { input: { tasks: ["GA-12"] }, result: "No.", isError: true })).verb).toBe("Couldn't restore tasks");
+  });
+
+  it("kept after a tool from outside Hersir, archive_tasks reads Waiting for your OK: archive tasks", () => {
+    const m = call("archive_tasks", { input: { all_done: true }, result: kept("archive_tasks", "mcp__otus__search"), isError: true });
+    expect(toolCard(m)).toEqual({ verb: "Waiting for your OK: archive tasks", label: undefined, state: "waiting" });
+    expect(renderToStaticMarkup(<ToolCard m={m} />)).toContain('<span class="tc-verb">Waiting for your OK: archive tasks</span>');
+  });
+
+  it("both are in the app's tool list, each with a line of its own", () => {
+    expect(TOOLS).toContain("archive_tasks");
+    expect(TOOLS).toContain("restore_tasks");
+    expect(OWN.has("archive_tasks") && OWN.has("restore_tasks")).toBe(true);
+  });
+});

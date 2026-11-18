@@ -134,7 +134,7 @@ On the Tasks page's board, Deploy and Done empty out without a drag or a click p
 - Moved cards land at the bottom of Done in their order; archived cards leave the board and are in the bin. The toast says how many, like "Moved 12 cards to Done" or "Archived 12 cards", and **Undo** within 8 seconds puts moved cards back at the bottom of Deploy and restores archived ones to the bottom of Done.
 - A card an agent is working on stays where it is, and the toast names it: "Archived 682 cards. GA-303 wasn't: An agent is working on this card." The others go ahead.
 
-The Chat's Board tab and the list (Ctrl+B) have neither.
+The Chat's Board tab and the list (Ctrl+B) have neither. The Chief archives cards in Done, and restores them, when you ask it in a chat ([Archiving cards in Done](chief.md#archiving-cards-in-done)).
 
 ## Read more
 

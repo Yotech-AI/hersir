@@ -436,7 +436,7 @@ async fn every_tool_in_the_list_waits_with_a_readable_preview_and_approve_all_ru
     let f = t.dir.path().join("brief.txt");
     std::fs::write(&f, "the brief").unwrap();
     let thread = t.marked(&format!("Look up the release notes in Otus and attach {} to KADE-1", f.display()));
-    let calls: [(&str, Value); 14] = [
+    let calls: [(&str, Value); 15] = [
         ("start_agent_run", json!({"task": "KADE-1", "agent": "Backend Agent"})),
         ("continue_agent_run", json!({"task": "KADE-1", "note": "Use JSON."})),
         ("create_agent", json!({"name": "Otus Agent", "role": "backend", "model": "opus"})),
@@ -450,6 +450,8 @@ async fn every_tool_in_the_list_waits_with_a_readable_preview_and_approve_all_ru
         ("memory_append", json!({"note": "Chief/Notes", "heading": "Working agreements", "text": "- Otus says: Fridays."})),
         ("memory_move", json!({"note": "Agents/Backend Agent/Cargo", "to": "Lessons/"})),
         ("merge_pull_request", json!({"task": "KADE-1"})),
+        // GA-307
+        ("archive_tasks", json!({"all_done": true})),
         // GA-261
         ("comment_on_task", json!({"task": "KADE-1", "body_md": "Otus says: Fridays."})),
     ];
@@ -459,7 +461,7 @@ async fn every_tool_in_the_list_waits_with_a_readable_preview_and_approve_all_ru
         ids.push(t.keep(&thread, name, args.clone()).await);
     }
     assert_eq!(t.waiting(&thread), ids, "all kept, in the order tried");
-    assert_eq!(t.inbox_item(&thread).unwrap().notice.body, "14 actions to approve or discard");
+    assert_eq!(t.inbox_item(&thread).unwrap().notice.body, "15 actions to approve or discard");
     // each preview: a plain line (not the fallback) and what it is about
     let v: Vec<Value> = ids.iter().map(|id| t.view(&thread, id)).collect();
     let lines: Vec<&str> = v.iter().map(|x| x["preview"]["line"].as_str().unwrap()).collect();
@@ -467,7 +469,7 @@ async fn every_tool_in_the_list_waits_with_a_readable_preview_and_approve_all_ru
         "Start Backend Agent on KADE-1", "Continue the run on KADE-1", "Add the agent Otus Agent (backend)", "Change Backend Agent's settings",
         "Pause Backend Agent", "Add the column Otus after Review", "Change the column Testing", "Attach brief.txt to KADE-1 Export",
         "Update KADE's linked folder to main as last fetched", "Make the note Lessons/Otus", "Add to the note Chief/Notes",
-        "Move the note Agents/Backend Agent/Cargo to Lessons/Cargo", "Merge KADE-1's pull request", "Comment on KADE-1",
+        "Move the note Agents/Backend Agent/Cargo to Lessons/Cargo", "Merge KADE-1's pull request", "Archive 0 cards in Done", "Comment on KADE-1",
     ]);
     for (x, (name, _)) in v.iter().zip(&calls) {
         assert!(!fields(x).is_empty(), "{name}: {x}");
@@ -497,13 +499,16 @@ async fn every_tool_in_the_list_waits_with_a_readable_preview_and_approve_all_ru
     let f11 = fields(&v[11]);
     assert_eq!((field(&f11, "From").2.as_str(), field(&f11, "To").2.as_str()), ("Agents/Backend Agent/Cargo", "Lessons/Cargo"));
     assert_eq!(field(&fields(&v[12]), "Pull request").2, "none Hersir knows of yet");
-    assert_eq!((field(&fields(&v[13]), "Card").2.as_str(), v[13]["preview"]["text"].as_str()), ("KADE-1 Export", Some("Otus says: Fridays.")));
+    let f13 = fields(&v[13]);
+    assert_eq!((field(&f13, "Column").2.as_str(), field(&f13, "Cards").2.as_str()), ("Done", "none"));
+    assert_eq!(v[13]["preview"]["warning"], "Done has no cards now, so approving archives nothing.");
+    assert_eq!((field(&fields(&v[14]), "Card").2.as_str(), v[14]["preview"]["text"].as_str()), ("KADE-1 Export", Some("Otus says: Fridays.")));
     // nothing ran yet
     assert!(gizai_core::runs::list_for_agent(&t.st.db, &t.backend, 10).unwrap().is_empty());
     assert!(!team::all_agents(&t.st.db).unwrap().iter().any(|(_, m)| m.name == "Otus Agent"));
 
-    // you discard the run starts, the merge and the comment, and approve the rest at once
-    for i in [0, 1, 12, 13] {
+    // you discard the run starts, the merge, the archive and the comment, and approve the rest at once
+    for i in [0, 1, 12, 13, 14] {
         pending::discard(&t.st, &ids[i]).unwrap();
     }
     let usual_checkout = t.call(Some(&t.thread("Update KADE")), "update_checkout", json!({"project": "KADE"})).await.unwrap_err();
@@ -528,9 +533,9 @@ async fn every_tool_in_the_list_waits_with_a_readable_preview_and_approve_all_ru
     assert_eq!(said[8], "Approved: add to the note Chief/Notes. Saved as version 2.");
     assert_eq!(said[9], "Approved: move the note Agents/Backend Agent/Cargo to Lessons/Cargo. It is at Lessons/Cargo now.");
     let notes: Vec<String> = t.notes(&thread).into_iter().map(|n| n.0).collect();
-    assert_eq!(notes[..4], ["Discarded: start Backend Agent on KADE-1.", "Discarded: continue the run on KADE-1.", "Discarded: merge KADE-1's pull request.",
-                            "Discarded: comment on KADE-1."]);
-    assert_eq!(notes[4..notes.len() - 1], said[..]);
+    assert_eq!(notes[..5], ["Discarded: start Backend Agent on KADE-1.", "Discarded: continue the run on KADE-1.", "Discarded: merge KADE-1's pull request.",
+                            "Discarded: archive 0 cards in Done.", "Discarded: comment on KADE-1."]);
+    assert_eq!(notes[5..notes.len() - 1], said[..]);
     assert_eq!(notes.last().unwrap(), DONE, "once, after the last call Approve all ran (GA-154)");
     // and it happened
     let be = team::agent(&t.st.db, &t.backend).unwrap();
@@ -848,7 +853,7 @@ async fn the_team_leads_next_answer_starts_with_what_you_approved_and_discarded_
     let argv: Vec<String> = calls.last().unwrap()["argv"].as_array().unwrap().iter().map(|a| a.as_str().unwrap().to_string()).collect();
     let sys = &argv[argv.iter().position(|a| a == "--append-system-prompt").unwrap() + 1];
     assert!(sys.contains(&format!("Once this chat has used a tool from outside Hersir, for the rest of the chat a call of yours that acts (runs, \
-        agents, columns, attach_file, update_checkout, memory's writes, merge_pull_request, comments, a card's description, acceptance criteria, \
+        agents, columns, attach_file, update_checkout, memory's writes, merge_pull_request, archive_tasks, comments, a card's description, acceptance criteria, \
         assignee or builds_on outside Auto columns, a project's repository, folder, branch or goal) isn't run: Hersir keeps it under your answer \
         for {you} to approve with one click or discard. Say in a sentence what each such call does; don't make it again. A later message starts \
         with what {you} decided, in square brackets. A card waiting on hold for {you}'s OK after such a tool comes off hold only by {you}, on the \

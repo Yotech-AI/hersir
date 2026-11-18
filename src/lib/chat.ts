@@ -24,6 +24,7 @@ const VERBS: Record<string, [done: string, base: string]> = {
   save_contact: ["Saved contact for", "save contact for"],
   create_project: ["Created project", "create project"], update_project: ["Changed project", "change project"],
   create_task: ["Created task", "create task"], update_task: ["Changed task", "change task"], move_task: ["Moved task", "move task"],
+  archive_tasks: ["Archived tasks", "archive tasks"], restore_tasks: ["Restored tasks", "restore tasks"],
   comment_on_task: ["Commented on", "comment on"],
   create_agent: ["Added agent", "add agent"], update_agent: ["Changed agent", "change agent"],
   set_agent_status: ["Changed agent status", "change agent status"], add_routing_rule: ["Added a routing rule", "add a routing rule"],
