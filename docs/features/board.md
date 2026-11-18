@@ -7,7 +7,7 @@ Each column on your board holds the agents that work its cards, so a card moves 
 - **Clients** with contacts, and **projects** with docs and files.
 - **Cards** with labels, priorities and acceptance criteria, on a board or in a list (Ctrl+B switches). What needs you collects in [the Inbox](inbox.md).
 - **Labels** are tags for people, such as Must have and Could have: create, rename, recolour and remove them on the Team page.
-- **Archive** a card in Done: it leaves the board and every list, and keeps its ID, comments, runs and branch. The bin on the Tasks page lists archived cards, and Restore puts one back in Done.
+- **Archive** a card in Done: it leaves the board and every list, and keeps its ID, comments, runs and branch. The bin on the Tasks page lists archived cards, and Restore puts one back in Done. To archive many at once, use Archive all in Done's head, or tick cards and press Archive ([Many cards at once](#many-cards-at-once)).
 
 ## The columns
 
@@ -122,6 +122,19 @@ Deploy is Manual by default, so no agent starts there by itself.
 
 - Press Run for the agent on the column: the DevOps Agent releases what you merged, and its `deployed` answer moves the card to Deploy's next column, Done.
 - Or deploy it yourself and drag the card to Done.
+
+### Many cards at once
+
+On the Tasks page's board, Deploy and Done empty out without a drag or a click per card.
+
+- **Move all** (the double arrow in Deploy's head) moves every card in Deploy to its next column, Done. **Archive all** (the archive box in an open Done's head) archives every card in Done. Each asks first, like "Move all 140 cards in Deploy to Done?" or "Archive all 544 cards in Done? The bin on the Tasks page keeps them, and Restore puts one back." Cancel changes nothing.
+- **All** means what the column shows now: with a filter or a search on, only the cards that match, the number in the column's head. The cards past the first 50 shown count too.
+- **Tick cards** to pick some: each card in Deploy and Done has a checkbox before its ID, shown when you hover over or focus the card. Space ticks a focused card, and Shift+click ticks every card between the last one ticked and this one. Enter and a click on the card still open it, and dragging works as before.
+- While a column has ticked cards, every card there shows its checkbox, and the head says "3 selected" with **Move to Done** (Deploy) or **Archive** (Done), and × to clear. They act at once, without a question. Ticking a card in the other column, Escape and × clear the selection, and so does a card leaving the board (a filter, a search, an agent's move).
+- Moved cards land at the bottom of Done in their order; archived cards leave the board and are in the bin. The toast says how many, like "Moved 12 cards to Done" or "Archived 12 cards", and **Undo** within 8 seconds puts moved cards back at the bottom of Deploy and restores archived ones to the bottom of Done.
+- A card an agent is working on stays where it is, and the toast names it: "Archived 682 cards. GA-303 wasn't: An agent is working on this card." The others go ahead.
+
+The Chat's Board tab and the list (Ctrl+B) have neither.
 
 ## Read more
 

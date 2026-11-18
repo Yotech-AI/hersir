@@ -1,9 +1,11 @@
-// Tests for the AUR package and its publishing (GA-274): packaging/aur/hersir-bin, scripts/packages.sh and their docs.
+// Tests for the AUR package and its publishing (GA-274), and the Homebrew formula and its publishing (GA-275):
+// packaging/aur/hersir-bin, packaging/homebrew, scripts/packages.sh and their docs.
 // The script runs as it is, with the system's own bash, git and ssh-keygen, against a stand-in for gh (as
 // sign-release.test.mjs fakes it) that holds a fake release v9.9.9 in a scratch folder, signed here with throwaway keys
 // over the message scripts/sign-release.sh signs. Never against a real release, GitHub's repository or the AUR, and never
 // with Hersir's own keys: HERSIR_RELEASE_SIGNERS names an allowed-signers file with a throwaway key, HERSIR_AUR_REPO a
-// local bare repository instead of the AUR's hersir-bin, HERSIR_SOURCE_REPO a local repository whose commit holds this
+// local bare repository instead of the AUR's hersir-bin, HERSIR_TAP_REPO a local bare repository instead of
+// Yotech-AI/homebrew-tap (each run gets an empty one of its own unless a test gives one), HERSIR_SOURCE_REPO a local repository whose commit holds this
 // checkout's install.sh, icons and NOTICE, and HOME is a scratch folder. Not on Windows, where the script doesn't run.
 //
 // The script runs gh, git and ssh-keygen from /usr/bin before the other folders on PATH, and GitHub's runners have the
@@ -11,7 +13,7 @@
 // function wins over every folder on PATH. ssh-keygen is wrapped the same way, only to write down how it ran.
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -56,6 +58,18 @@ const PATHS = SOURCE_URLS.map((u) => u.slice(RAW.length));
 const FILE_SUMS = PATHS.map((p) => sha256(readFileSync(join(ROOT, p))));
 // Scoop's manifest template (GA-276), as scripts/packages.sh fills it in.
 const SCOOP_MANIFEST = read("packaging/scoop/hersir.json");
+
+// The Homebrew formula's template and the tap's README (GA-275), and the release's macOS archive the formula installs.
+const FORMULA = read("packaging/homebrew/hersir.rb");
+const TAP_README = read("packaging/homebrew/README.md");
+const MAC = "hersir-9.9.9-macos-arm64.tar.gz";
+const MAC_URL = `https://github.com/Yotech-AI/hersir/releases/download/${TAG}/${MAC}`;
+// Lines of Ruby code, without comments, in the formula `text`.
+const rubyCode = (text) =>
+  text
+    .split("\n")
+    .filter((l) => !l.trim().startsWith("#"))
+    .join("\n");
 
 // The values of a PKGBUILD as bash (and so makepkg) reads them: each a list.
 function sourced(text) {
@@ -255,12 +269,43 @@ describe.runIf(unix)("scripts/packages.sh, against a fake gh, throwaway keys and
     if (r.status !== 0) throw new Error(`git show main:${file}: ${r.stderr}`);
     return r.stdout;
   };
+  // A bare repository instead of Yotech-AI/homebrew-tap: empty, as Jeffrey makes it, or with one commit of `files` (paths
+  // may have folders) on `branch`. `links` are symbolic links in that commit.
+  function tap(files, { branch = "main", links = {} } = {}) {
+    const bare = mkdtempSync(join(scratch, "tap-"));
+    git(["-c", `init.defaultBranch=${branch}`, "init", "-q", "--bare", bare]);
+    if (files) {
+      const work = mkdtempSync(join(scratch, "tap-work-"));
+      for (const [name, text] of Object.entries(files)) {
+        mkdirSync(dirname(join(work, name)), { recursive: true });
+        writeFileSync(join(work, name), text);
+      }
+      for (const [name, target] of Object.entries(links)) symlinkSync(target, join(work, name));
+      git(["--git-dir", bare, "--work-tree", work, "add", "-A"]);
+      git(["--git-dir", bare, "--work-tree", work, "commit", "-q", "-m", "what the tap has"]);
+    }
+    return bare;
+  }
+  const onTap = (bare, file) => git(["--git-dir", bare, "show", `main:${file}`]) + "\n";
+  // A change to the tap's main, as someone else pushed it: `change` gets the tap's Formula/hersir.rb and returns the new one.
+  function changeTap(bare, change, file = "Formula/hersir.rb") {
+    const work = mkdtempSync(join(scratch, "tap-work-"));
+    git(["clone", "-q", bare, work]);
+    writeFileSync(join(work, file), change(readFileSync(join(work, file), "utf8")));
+    git(["-C", work, "commit", "-q", "-a", "-m", "a change in the tap"]);
+    git(["-C", work, "push", "-q", "origin", "HEAD:main"]);
+  }
 
   // Runs scripts/packages.sh with `args`, in a session of its own (no terminal), `input` on stdin, and only these
   // variables: what gh ran, ssh-keygen's calls, stdout, stderr, and what it left in its TMPDIR. `scoop` is the bucket's
   // repository (HERSIR_SCOOP_REPO): without one, an empty local bucket of the run's own, so no run reaches the real one.
-  function publish(args, { rel, repo, scoop, input = "y\n", env = {}, bashEnv = standins, path = process.env.PATH } = {}) {
+  function publish(args, { rel, repo, scoop, tap, input = "y\n", env = {}, bashEnv = standins, path = process.env.PATH } = {}) {
     const run = mkdtempSync(join(scratch, "run-"));
+    // An empty tap of the run's own unless the test gives one: never Yotech-AI/homebrew-tap.
+    if (!tap) {
+      tap = join(run, "tap.git");
+      git(["-c", "init.defaultBranch=main", "init", "-q", "--bare", tap]);
+    }
     const tmp = join(run, "tmp");
     mkdirSync(tmp);
     mkdirSync(join(run, "home"));
@@ -288,6 +333,7 @@ describe.runIf(unix)("scripts/packages.sh, against a fake gh, throwaway keys and
         HERSIR_RELEASE_SIGNERS: signers,
         HERSIR_AUR_REPO: repo ?? join(run, "no-aur.git"),
         HERSIR_SCOOP_REPO: scoop ?? bucket(),
+        HERSIR_TAP_REPO: tap,
         HERSIR_SOURCE_REPO: source,
         ...IDENTITY,
         ...env,
@@ -532,10 +578,11 @@ describe.runIf(unix)("scripts/packages.sh, against a fake gh, throwaway keys and
   it("the same release again: nothing to publish, no question, the AUR's repository (and the bucket) as it was", async () => {
     const repo = aur();
     const scoop = bucket();
-    expect((await publish([TAG], { rel: release(), repo, scoop })).status).toBe(0);
+    const t = tap();
+    expect((await publish([TAG], { rel: release(), repo, scoop, tap: t })).status).toBe(0);
     const before = refs(repo);
     const bucketBefore = refs(scoop);
-    const r = await publish([TAG], { rel: release(), repo, scoop, input: "" });
+    const r = await publish([TAG], { rel: release(), repo, scoop, tap: t, input: "" });
     expect(r.status, r.stdout + r.stderr).toBe(0);
     expect(r.stdout).toContain("  Now         9.9.9-1");
     expect(r.stdout).toContain("  Stays       9.9.9-1");
@@ -643,7 +690,7 @@ describe.runIf(unix)("scripts/packages.sh, against a fake gh, throwaway keys and
 
   it.each([
     ["no version", [], /^Give the release's version/],
-    ["a package that isn't one", [TAG, "brew"], /^brew isn't one of the packages \(aur scoop\), so nothing is published/],
+    ["a package that isn't one", [TAG, "brew"], /^brew isn't one of the packages \(aur homebrew scoop\), so nothing is published/],
     ["an unknown option", [TAG, "--yes"], /^--yes isn't an option of packages\.sh/],
   ])("%s: nothing is published, gh isn't asked, one line says why", async (_, args, why) => {
     const repo = aur();
@@ -892,12 +939,293 @@ describe.runIf(unix)("scripts/packages.sh, against a fake gh, throwaway keys and
         chmodSync(join(bin, name), 0o755);
       }
       const repo = aur();
-      const r = await publish([TAG], { rel: release(), repo, bashEnv: ghOnly, path: `${bin}:${process.env.PATH}` });
+      const t = tap();
+      const r = await publish([TAG], { rel: release(), repo, tap: t, bashEnv: ghOnly, path: `${bin}:${process.env.PATH}` });
       expect(r.status, r.stdout + r.stderr).toBe(0);
       expect(r.evil).toEqual([]);
       expect(pushed(repo, "PKGBUILD")).toBe(expected().pkgbuild);
+      expect(onTap(t, "Formula/hersir.rb")).toBe(formula());
     },
   );
+
+  // ---------- homebrew: the formula hersir in the tap (GA-275) ----------
+
+  // The template's formula with this release's values: the url of the release's macOS archive and its sha256 from the
+  // signed SHA256SUMS, and `revision` after the licence line from 1 on. The rest as it is.
+  function formula(revision = 0, sum = archiveSum(MAC)) {
+    expect(FORMULA.match(/^ {2}url "[^"]*"$/gm)).toHaveLength(1);
+    expect(FORMULA.match(/^ {2}sha256 "[0-9a-f]{64}"$/gm)).toHaveLength(1);
+    let text = FORMULA.replace(/^ {2}url "[^"]*"$/m, () => `  url "${MAC_URL}"`).replace(/^ {2}sha256 "[0-9a-f]{64}"$/m, () => `  sha256 "${sum}"`);
+    if (revision > 0) text = text.replace(/^( {2}license "[^"]*"\n)/m, (l) => `${l}  revision ${revision}\n`);
+    return text;
+  }
+  // The template's formula for another release `v`, as an older (or newer) publish left it in the tap.
+  const formulaFor = (v, revision = 0) =>
+    formula(revision, "f".repeat(64)).replaceAll(`v${VERSION}/hersir-${VERSION}-`, `v${v}/hersir-${v}-`);
+  const tapFiles = (bare) => git(["--git-dir", bare, "ls-tree", "-r", "--name-only", "main"]).split("\n").sort();
+  const subject = (bare) => git(["--git-dir", bare, "log", "-1", "--format=%s", "main"]);
+  const inOrder = (stdout, lines) => {
+    let at = 0;
+    for (const line of lines) {
+      const next = stdout.indexOf(line, at);
+      expect(next, `${line} in\n${stdout}`).toBeGreaterThanOrEqual(at);
+      at = next + line.length;
+    }
+  };
+
+  it("homebrew: a good signature and y fills the url and the sha256 from the signed release into the formula, shows the change, asks once and pushes Formula/hersir.rb, README.md and LICENSE to the (test) tap's main", async () => {
+    const rel = release();
+    const repo = aur();
+    const t = tap();
+    const r = await publish([TAG], { rel, repo, tap: t });
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    expect(r.stderr).toBe("");
+
+    // One commit on main, with the formula, the tap's README and packaging/LICENSE (0BSD), and nothing else.
+    expect(git(["--git-dir", t, "for-each-ref", "--format=%(refname)"])).toBe("refs/heads/main");
+    expect(git(["--git-dir", t, "rev-list", "--count", "main"])).toBe("1");
+    expect(subject(t)).toBe("hersir 9.9.9");
+    expect(git(["--git-dir", t, "log", "-1", "--format=%b", "main"])).toBe(`Hersir ${TAG} at ${COMMIT}: the release's macOS build, checked against its signed SHA256SUMS.`);
+    expect(tapFiles(t)).toEqual(["Formula/hersir.rb", "LICENSE", "README.md"]);
+    expect(onTap(t, "README.md")).toBe(TAP_README);
+    expect(onTap(t, "LICENSE")).toBe(read("packaging/LICENSE"));
+
+    // Exactly the template with the release's url and the macOS archive's line in the signed SHA256SUMS; no revision.
+    const published = onTap(t, "Formula/hersir.rb");
+    expect(published).toBe(formula());
+    expect(published).toContain(`  url "${MAC_URL}"\n`);
+    expect(published).toContain(`  sha256 "${archiveSum(MAC)}"\n`);
+    expect(published).not.toContain(archiveSum(ARCHIVE));
+    expect(published).not.toMatch(/^ {2}(revision|version) /m);
+
+    // The AUR package is published in the same run, after the same one question.
+    expect(pushed(repo, "PKGBUILD")).toBe(expected().pkgbuild);
+    expect(r.stdout.split("Publish v9.9.9? [y/N] ").length - 1).toBe(1);
+    inOrder(r.stdout, [
+      `  Signed      by ED25519 key ${fingerprint}, which signers allows`,
+      `hersir-bin, in ${repo} (HERSIR_AUR_REPO), not the AUR`,
+      `hersir, in ${t} (HERSIR_TAP_REPO), not the tap yotech-ai/tap`,
+      "  Now         not in the tap yet: this push puts it there",
+      "  Becomes     9.9.9",
+      `  Archive     ${archiveSum(MAC)}  ${MAC} (the signed SHA256SUMS)`,
+      `+  url "${MAC_URL}"`,
+      `+  sha256 "${archiveSum(MAC)}"`,
+      "Publish v9.9.9? [y/N] ",
+      `Published hersir-bin 9.9.9-1 to ${repo}`,
+      `Published hersir 9.9.9 to ${t}: brew update && brew upgrade hersir updates it`,
+    ]);
+
+    // Only SHA256SUMS and the .sig are downloaded, never the macOS archive; gh only reads; nothing left.
+    const downloads = r.gh.filter((l) => l.startsWith("gh [release] [download]"));
+    expect(downloads.map((l) => l.match(/\[--pattern\] \[([^\]]+)\]/)[1]).sort()).toEqual(["SHA256SUMS", SIG].sort());
+    expect(r.gh.every((l) => /^gh \[(auth\] \[status|release\] \[view|release\] \[download|api\] \[repos\/Yotech-AI\/hersir\/git\/ref\/tags\/v9\.9\.9)\]/.test(l))).toBe(true);
+    expect(r.tmpLeft).toEqual([]);
+  });
+
+  it("homebrew: the formula's sha256 is the macOS archive's line in the signed SHA256SUMS, not the archive the release holds", async () => {
+    const rel = release();
+    writeFileSync(join(rel, MAC), "another build\n");
+    const t = tap();
+    const r = await publish([TAG, "homebrew"], { rel, tap: t });
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    expect(onTap(t, "Formula/hersir.rb")).toBe(formula());
+    expect(onTap(t, "Formula/hersir.rb")).not.toContain(sha256("another build\n"));
+  });
+
+  it.each([
+    ["no hersir-9.9.9.sig", { signer: null }, {}, /^The release v9\.9\.9 has no hersir-9\.9\.9\.sig: it isn't signed, so nothing is published\./],
+    ["a signature by another key", { signer: "other" }, {}, /^hersir-9\.9\.9\.sig is signed with a key that isn't in .*, so nothing is published\.\n$/],
+    ["a signature in another namespace", { namespace: "file" }, {}, /^hersir-9\.9\.9\.sig doesn't sign this SHA256SUMS with the commit v9\.9\.9 points to/],
+    ["a SHA256SUMS whose macOS line changed after signing", { changeMac: true }, {}, /^hersir-9\.9\.9\.sig doesn't sign this SHA256SUMS with the commit v9\.9\.9 points to .*: one of them changed since it was signed, so nothing is published\.\n$/],
+    ["the tag on another commit than the signed one", {}, { FAKE_COMMIT: "NO_NOTICE" }, /^hersir-9\.9\.9\.sig doesn't sign this SHA256SUMS with the commit v9\.9\.9 points to/],
+    ["Hersir's own release-signers (a throwaway key's signature)", {}, { HERSIR_RELEASE_SIGNERS: undefined }, /is signed with a key that isn't in .*release-signers, so nothing is published/],
+  ])("homebrew: %s: nothing is published to the tap or the AUR, one line says why", async (_, opts, env, why) => {
+    const { changeMac, signer, ...rest } = opts;
+    const rel = release({
+      ...rest,
+      ...(signer === null ? { signer: null } : signer === "other" ? { signer: otherKey } : {}),
+      ...(changeMac ? { changed: plainSums().replace(`${archiveSum(MAC)}  ${MAC}`, `${sha256("another build\n")}  ${MAC}`) } : {}),
+    });
+    const repo = aur();
+    const t = tap({ "Formula/hersir.rb": formulaFor("9.9.8"), "README.md": TAP_README, LICENSE: read("packaging/LICENSE") });
+    const beforeAur = refs(repo);
+    const beforeTap = refs(t);
+    for (const args of [[TAG], [TAG, "homebrew"]]) {
+      const r = await publish(args, { rel, repo, tap: t, env: { ...env, ...(env.FAKE_COMMIT ? { FAKE_COMMIT: NO_NOTICE } : {}) } });
+      refused(r, repo, beforeAur, why);
+      expect(refs(t)).toBe(beforeTap);
+      expect(r.stdout).toBe("");
+    }
+    expect(onTap(t, "Formula/hersir.rb")).toBe(formulaFor("9.9.8"));
+  });
+
+  it.each([
+    ["n", "n\n"],
+    ["an empty line", "\n"],
+    ["nothing (end of input)", ""],
+  ])("homebrew: the answer %s: the tap stays as it was, one line says why", async (_, input) => {
+    const t = tap({ "Formula/hersir.rb": formulaFor("9.9.8"), "README.md": TAP_README, LICENSE: read("packaging/LICENSE") });
+    const before = refs(t);
+    const r = await publish([TAG, "homebrew"], { rel: release(), tap: t, input });
+    refused(r, undefined, undefined, /^Nothing is published: the answer wasn't y\.\n$/);
+    expect(r.stdout).toContain(`+  sha256 "${archiveSum(MAC)}"`);
+    expect(r.stdout).toContain("  Now         9.9.8\n");
+    expect(refs(t)).toBe(before);
+  });
+
+  it("homebrew: the same release again: Stays, nothing to publish, no question, the tap as it was", async () => {
+    const t = tap();
+    expect((await publish([TAG, "homebrew"], { rel: release(), tap: t })).status).toBe(0);
+    const before = refs(t);
+    const r = await publish([TAG, "homebrew"], { rel: release(), tap: t, input: "" });
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    expect(r.stdout).toContain("  Now         9.9.9\n");
+    expect(r.stdout).toContain("  Stays       9.9.9: it has this release as it would be published, so it isn't published again");
+    expect(r.stdout).toContain("Nothing to publish: each package has v9.9.9 already.");
+    expect(r.stdout).not.toContain("Publish v9.9.9?");
+    expect(refs(t)).toBe(before);
+  });
+
+  it("homebrew: the same release with another formula in the tap is its next revision (9.9.9_1, then 9.9.9_2), and the same again stays", async () => {
+    const t = tap();
+    expect((await publish([TAG, "homebrew"], { rel: release(), tap: t })).status).toBe(0);
+    // The tap's 9.9.9 from another formula (one more comment line).
+    changeTap(t, (f) => `${f}# older packaging\n`);
+    let r = await publish([TAG, "homebrew"], { rel: release(), tap: t });
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    expect(r.stdout).toContain("  Now         9.9.9\n");
+    expect(r.stdout).toContain("  Becomes     9.9.9_1\n");
+    expect(r.stdout).toContain("+  revision 1");
+    expect(onTap(t, "Formula/hersir.rb")).toBe(formula(1));
+    expect(subject(t)).toBe("hersir 9.9.9_1");
+    expect(r.stdout).toContain(`Published hersir 9.9.9_1 to ${t}`);
+
+    // Run again: it has this release at revision 1, so nothing is published.
+    const before = refs(t);
+    r = await publish([TAG, "homebrew"], { rel: release(), tap: t, input: "" });
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    expect(r.stdout).toContain("  Stays       9.9.9_1: it has this release");
+    expect(refs(t)).toBe(before);
+
+    // Another formula at revision 1: revision 2.
+    changeTap(t, (f) => f.replace("  desc ", "  # older packaging\n  desc "));
+    r = await publish([TAG, "homebrew"], { rel: release(), tap: t });
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    expect(r.stdout).toContain("  Now         9.9.9_1\n");
+    expect(r.stdout).toContain("  Becomes     9.9.9_2\n");
+    expect(onTap(t, "Formula/hersir.rb")).toBe(formula(2));
+    expect(subject(t)).toBe("hersir 9.9.9_2");
+  });
+
+  it("homebrew: a new README alone is published without a new revision, as brew installs nothing new", async () => {
+    const t = tap({ "Formula/hersir.rb": formula(), "README.md": "# An older README\n", LICENSE: read("packaging/LICENSE") });
+    const r = await publish([TAG, "homebrew"], { rel: release(), tap: t });
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    expect(r.stdout).toContain("  Now         9.9.9\n");
+    expect(r.stdout).toContain("  Becomes     9.9.9\n");
+    expect(r.stdout).toContain("-# An older README");
+    expect(onTap(t, "Formula/hersir.rb")).toBe(formula());
+    expect(onTap(t, "README.md")).toBe(TAP_README);
+    expect(subject(t)).toBe("hersir 9.9.9");
+  });
+
+  it("homebrew: an older release in the tap (9.9.8, revision 2): publishes 9.9.9 without a revision on top of it", async () => {
+    const t = tap({ "Formula/hersir.rb": formulaFor("9.9.8", 2), "README.md": TAP_README, LICENSE: read("packaging/LICENSE") });
+    const r = await publish([TAG, "homebrew"], { rel: release(), tap: t });
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    expect(r.stdout).toContain("  Now         9.9.8_2\n");
+    expect(r.stdout).toContain("  Becomes     9.9.9\n");
+    expect(r.stdout).toContain("-  revision 2");
+    expect(r.stdout).toContain(`+  url "${MAC_URL}"`);
+    expect(onTap(t, "Formula/hersir.rb")).toBe(formula());
+    expect(git(["--git-dir", t, "rev-list", "--count", "main"])).toBe("2");
+  });
+
+  it("homebrew: a newer release in the tap (10.0.0): nothing is published, the AUR neither, one line says why", async () => {
+    const t = tap({ "Formula/hersir.rb": formulaFor("10.0.0") });
+    const repo = aur();
+    const before = refs(t);
+    const r = await publish([TAG], { rel: release(), repo, tap: t });
+    refused(r, repo, "", /^hersir in the tap is at 10\.0\.0 already, after 9\.9\.9, so nothing is published\.\n$/);
+    expect(refs(t)).toBe(before);
+  });
+
+  it("homebrew: the tap's other files and formulae stay as they are", async () => {
+    const other = 'class Other < Formula\n  url "https://example.invalid/other-1.0.tar.gz"\nend\n';
+    const t = tap({ "Formula/hersir.rb": formulaFor("9.9.8"), "Formula/other.rb": other, "README.md": "# Old\n", "LICENSE": "old\n", ".github/CODEOWNERS": "* @nobody\n" });
+    const r = await publish([TAG, "homebrew"], { rel: release(), tap: t });
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    expect(tapFiles(t)).toEqual([".github/CODEOWNERS", "Formula/hersir.rb", "Formula/other.rb", "LICENSE", "README.md"]);
+    expect(onTap(t, "Formula/other.rb")).toBe(other);
+    expect(onTap(t, ".github/CODEOWNERS")).toBe("* @nobody\n");
+    expect(onTap(t, "Formula/hersir.rb")).toBe(formula());
+    expect(git(["--git-dir", t, "diff", "--name-only", "main~1", "main"]).split("\n").sort()).toEqual(["Formula/hersir.rb", "LICENSE", "README.md"]);
+  });
+
+  it.each([
+    ["a tap on another branch than main", () => tap({ "Formula/hersir.rb": formulaFor("9.9.8") }, { branch: "master" }), /^The tap .* is on the branch 'master', not main: look at it first, nothing is published\.\n$/],
+    ["a tap whose Formula is a link", () => tap({ "README.md": "# Old\n" }, { links: { Formula: "/etc" } }), /^Formula in .* isn't a folder: look at the tap first, nothing is published\.\n$/],
+    ["a tap whose formula has no version in its url", () => tap({ "Formula/hersir.rb": 'class Hersir < Formula\n  url "https://example.invalid/hersir.tar.gz"\nend\n' }), /^hersir in the tap has the version '', which isn't X\.Y\.Z: look at it first, nothing is published\.\n$/],
+    ["a tap that can't be cloned", () => join(scratch, "no-such-tap.git"), /^Couldn't clone .*no-such-tap\.git, so nothing is published: /],
+  ])("homebrew: %s: nothing is published, the AUR neither, one line says why", async (_, makeTap, why) => {
+    const t = makeTap();
+    const repo = aur();
+    const before = existsSync(t) ? refs(t) : undefined;
+    const r = await publish([TAG], { rel: release(), repo, tap: t });
+    refused(r, repo, "", why);
+    if (before !== undefined) expect(refs(t)).toBe(before);
+  });
+
+  it.each([
+    ["no macOS archive", { without: [MAC] }, /^The release v9\.9\.9 has no hersir-9\.9\.9-macos-arm64\.tar\.gz, so nothing is published\.\n$/],
+    [
+      "a signed SHA256SUMS without the macOS archive's line",
+      { sums: ARCHIVES.filter((a) => a !== MAC).map((a) => `${archiveSum(a)}  ${a}\n`).join("") },
+      /^The signed SHA256SUMS of v9\.9\.9 has no one line for hersir-9\.9\.9-macos-arm64\.tar\.gz, so nothing is published\.\n$/,
+    ],
+    [
+      "a signed SHA256SUMS with two lines for the macOS archive",
+      { sums: `${plainSums()}${"0".repeat(64)}  ${MAC}\n` },
+      /^The signed SHA256SUMS of v9\.9\.9 has no one line for hersir-9\.9\.9-macos-arm64\.tar\.gz, so nothing is published\.\n$/,
+    ],
+  ])("homebrew: %s: nothing is published, the AUR neither, one line says why", async (_, opts, why) => {
+    const t = tap();
+    const repo = aur();
+    const r = await publish([TAG], { rel: release(opts), repo, tap: t });
+    refused(r, repo, "", why);
+    expect(refs(t)).toBe("");
+  });
+
+  it("names the package: homebrew publishes only the formula, aur only hersir-bin and never clones the tap", async () => {
+    const repo = aur();
+    const t = tap();
+    let r = await publish([TAG, "homebrew"], { rel: release(), repo, tap: t });
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    expect(onTap(t, "Formula/hersir.rb")).toBe(formula());
+    expect(refs(repo)).toBe("");
+    expect(r.stdout).not.toContain("hersir-bin");
+
+    r = await publish([TAG, "aur"], { rel: release(), repo, tap: join(scratch, "no-such-tap.git") });
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    expect(pushed(repo, "PKGBUILD")).toBe(expected().pkgbuild);
+    expect(r.stdout).not.toContain("HERSIR_TAP_REPO");
+    expect(r.stdout).not.toContain("hersir 9.9.9");
+  });
+
+  it.runIf(existsSync("/usr/bin/ruby"))("homebrew: the formula it publishes is valid Ruby (ruby -c)", async () => {
+    const t = tap();
+    expect((await publish([TAG, "homebrew"], { rel: release(), tap: t })).status).toBe(0);
+    changeTap(t, (f) => `${f}# older packaging\n`);
+    expect((await publish([TAG, "homebrew"], { rel: release(), tap: t })).status).toBe(0);
+    const dir = mkdtempSync(join(scratch, "ruby-"));
+    for (const [name, text] of [["template.rb", FORMULA], ["published.rb", onTap(t, "Formula/hersir.rb")]]) {
+      writeFileSync(join(dir, name), text);
+      const r = spawnSync("/usr/bin/ruby", ["-c", join(dir, name)], { encoding: "utf8" });
+      expect(r.status, `${name}: ${r.stderr}`).toBe(0);
+      expect(r.stdout).toContain("Syntax OK");
+    }
+    expect(onTap(t, "Formula/hersir.rb")).toContain('  license "Apache-2.0"\n  revision 1\n');
+  });
 });
 
 describe("packaging/aur/hersir-bin: the PKGBUILD and .SRCINFO", () => {
@@ -1197,5 +1525,150 @@ describe("packaging/scoop (GA-276): the bucket's manifest, its shortcut script, 
     ]) {
       expect(readme, text).toContain(text);
     }
+  });
+});
+
+describe("packaging/homebrew: the formula hersir and the tap's README (GA-275)", () => {
+  const code = rubyCode(FORMULA);
+
+  it("a formula, never a cask, for Macs with Apple silicon, from a release's macOS archive on GitHub with its sha256", () => {
+    expect(code).toMatch(/^class Hersir < Formula$/m);
+    expect(code).not.toMatch(/^\s*cask /m);
+    const url = code.match(/^ {2}url "([^"]*)"$/m)[1];
+    const [, v] = url.match(/^https:\/\/github\.com\/Yotech-AI\/hersir\/releases\/download\/v(\d+\.\d+\.\d+)\/hersir-(\d+\.\d+\.\d+)-macos-arm64\.tar\.gz$/) ?? [];
+    expect(v, url).toBeDefined();
+    expect(url).toContain(`/v${v}/hersir-${v}-macos-arm64.tar.gz`);
+    expect(code).toMatch(/^ {2}sha256 "[0-9a-f]{64}"$/m);
+    expect(code).toContain('  license "Apache-2.0"\n');
+    expect(code).toContain("  depends_on arch: :arm64\n");
+    expect(code).toContain("  depends_on :macos\n");
+    // Homebrew reads the version from the url; scripts/packages.sh writes the revision.
+    expect(code).not.toMatch(/^ {2}(version|revision) /m);
+    expect(readdirSync(join(ROOT, "packaging/homebrew")).sort()).toEqual(["README.md", "hersir.rb"]);
+  });
+
+  it("installs Hersir.app in its prefix with hersir-mcp inside it and signed ad hoc again, and hersir and hersir-mcp on the PATH", () => {
+    const install = code.slice(code.indexOf("  def install"), code.indexOf("  def caveats"));
+    // The paths of Release builds' macOS archive, under its one folder target/.
+    const builds = read(".github/workflows/release-builds.yml");
+    expect(builds).toContain("target/release/hersir target/release/hersir-mcp target/release/bundle/macos/Hersir.app");
+    expect(install).toContain('app = buildpath/"release/bundle/macos/Hersir.app"');
+    expect(install).toContain('(app/"Contents/MacOS").install "release/hersir-mcp"');
+    // as install.sh signs it
+    expect(install).toContain('system "/usr/bin/codesign", "--force", "--deep", "--sign", "-", app');
+    expect(read("install.sh")).toContain("codesign --force --deep --sign -");
+    expect(install.indexOf("codesign")).toBeGreaterThan(install.indexOf('.install "release/hersir-mcp"'));
+    expect(install.indexOf("prefix.install app")).toBeGreaterThan(install.indexOf("codesign"));
+    expect(install).toContain('bin.write_exec_script prefix/"Hersir.app/Contents/MacOS/hersir"');
+    expect(install).toContain('bin.install_symlink prefix/"Hersir.app/Contents/MacOS/hersir-mcp"');
+    // Homebrew's cleaner keeps out of the signed app.
+    expect(code).toContain('  skip_clean "Hersir.app"\n');
+  });
+
+  it("never strips or sets the quarantine mark, and writes nothing into the user's data", () => {
+    expect(code).not.toMatch(/quarantine|xattr|spctl|--no-quarantine/i);
+    // install writes only into the build and its prefix (the caveats only name the data folder)
+    const install = code.slice(code.indexOf("  def install"), code.indexOf("  def caveats"));
+    expect(install).not.toMatch(/Application Support|WebKit|\.local\/share|HOME|~\//);
+    expect(code).not.toMatch(/hersir-package\.txt|post_install/);
+  });
+
+  it("its caveats say how to link Hersir.app into ~/Applications, once, and how to update; its test runs hersir --version", () => {
+    const caveats = code.slice(code.indexOf("  def caveats"), code.indexOf("  test do"));
+    expect(caveats).toContain("mkdir -p ~/Applications && ln -sfn #{opt_prefix}/Hersir.app ~/Applications/Hersir.app");
+    expect(caveats).toContain("brew update && brew upgrade hersir");
+    const test = code.slice(code.indexOf("  test do"));
+    expect(test).toContain('assert_equal "hersir #{version}", shell_output("#{bin}/hersir --version").strip');
+  });
+
+  it.runIf(existsSync("/usr/bin/ruby"))("the template is valid Ruby (ruby -c)", () => {
+    const r = spawnSync("/usr/bin/ruby", ["-c", join(ROOT, "packaging/homebrew/hersir.rb")], { encoding: "utf8" });
+    expect(r.status, r.stderr).toBe(0);
+  });
+
+  it("the tap's README: install, update and uninstall (the data stays), with links that work in the tap", () => {
+    expect(TAP_README.split("\n")[0]).toBe("# Yotech-AI/homebrew-tap");
+    const section = (name) => TAP_README.slice(TAP_README.indexOf(`## ${name}\n`), TAP_README.indexOf("\n## ", TAP_README.indexOf(`## ${name}\n`) + 1));
+    expect(section("Install")).toContain("```sh\nbrew install yotech-ai/tap/hersir\n```");
+    expect(section("Install")).toContain('```sh\nmkdir -p ~/Applications && ln -sfn "$(brew --prefix)/opt/hersir/Hersir.app" ~/Applications/Hersir.app\n```');
+    expect(section("Update")).toContain("```sh\nbrew update && brew upgrade hersir\n```");
+    expect(section("Uninstall")).toContain("```sh\nbrew uninstall hersir\nrm ~/Applications/Hersir.app\n```");
+    expect(section("Uninstall")).toContain("Your data stays in `~/Library/Application Support/Hersir`");
+    // In the tap only LICENSE is beside it (scripts/packages.sh puts it there): every other link is a full address.
+    const links = [...TAP_README.matchAll(/\]\(([^)]+)\)/g)].map((m) => m[1]);
+    expect(links.filter((l) => !/^https:\/\//.test(l))).toEqual(["LICENSE"]);
+  });
+});
+
+describe("The Homebrew formula in CI, scripts/packages.sh and the docs (GA-275)", () => {
+  it("scripts/packages.sh publishes to Yotech-AI/homebrew-tap's main by default, HERSIR_TAP_REPO instead for tests", () => {
+    const script = read("scripts/packages.sh");
+    expect(script).toContain('PACKAGES="aur homebrew"');
+    expect(script).toContain('TAP_REPO="${HERSIR_TAP_REPO:-https://github.com/Yotech-AI/homebrew-tap.git}"');
+    expect(script).toContain('push --quiet origin HEAD:refs/heads/main');
+    expect(script).not.toMatch(/push[^\n]*--force|push[^\n]* -f\b/);
+    // Each package's three functions.
+    for (const fn of ["homebrew_prepare", "homebrew_show", "homebrew_publish"]) expect(script).toContain(`\n${fn}() {\n`);
+  });
+
+  it("no workflow pushes to the tap or bumps the formula: only Jeffrey publishes", () => {
+    const dir = join(ROOT, ".github/workflows");
+    for (const file of readdirSync(dir)) {
+      const code = readFileSync(join(dir, file), "utf8")
+        .split("\n")
+        .filter((l) => !l.trim().startsWith("#"))
+        .join("\n");
+      expect(code, file).not.toMatch(/homebrew-tap|yotech-ai\/tap|bump-formula-pr|brew tap yotech/i);
+    }
+  });
+
+  it("ci.yml's Homebrew job on macos-15: installs the formula from a local tap and a test build, brew test, brew audit, codesign --verify and no quarantine mark", () => {
+    const ci = read(".github/workflows/ci.yml");
+    const changes = ci.slice(ci.indexOf("\n  homebrew-changes:\n"), ci.indexOf("\n  homebrew:\n"));
+    expect(changes).toContain("name: Homebrew formula changed?");
+    expect(changes).toContain("git diff --quiet \"$base\" HEAD -- packaging/homebrew install.sh .github/workflows/ci.yml");
+    const job = ci.slice(ci.indexOf("\n  homebrew:\n"));
+    expect(job).toContain("    name: macOS (Homebrew formula)\n");
+    expect(job).toContain("    runs-on: macos-15\n");
+    expect(job).toContain("      TAP: hersir-ci/local\n");
+    expect(job).toContain("run: /bin/bash ./install.sh --build-only");
+    // packed as Release builds packs the macOS archive
+    expect(job).toContain("COPYFILE_DISABLE=1 /usr/bin/tar --no-xattrs -czf \"$archive\" \\\n            target/release/hersir target/release/hersir-mcp target/release/bundle/macos/Hersir.app");
+    expect(job).toContain('brew tap-new --no-git "$TAP"');
+    expect(job).toContain('brew install --formula "$TAP/hersir"');
+    expect(job).toContain('brew test --verbose "$TAP/hersir"');
+    expect(job).toContain('brew audit --strict --formula "$TAP/hersir"');
+    expect(job).toContain('codesign --verify --deep --strict --verbose=2 "$app"');
+    expect(job).toContain('if xattr -p com.apple.quarantine "$path"; then');
+    expect(job).toContain('brew uninstall --formula "$TAP/hersir"');
+    // brew test and brew audit read the formula as published, with its url on GitHub.
+    expect(job.indexOf('cp "$RUNNER_TEMP/published.rb"')).toBeLessThan(job.indexOf("brew test --verbose"));
+  });
+
+  it("install.md: macOS: Homebrew, with brew install yotech-ai/tap/hersir, the link line, update and uninstall (the data stays)", () => {
+    const install = read("docs/install.md");
+    const from = install.indexOf("### macOS: Homebrew\n");
+    expect(from).toBeGreaterThan(0);
+    const section = install.slice(from, install.indexOf("\n## ", from));
+    expect(section).toContain("```sh\nbrew install yotech-ai/tap/hersir\n```");
+    expect(section).toContain('```sh\nmkdir -p ~/Applications && ln -sfn "$(brew --prefix)/opt/hersir/Hersir.app" ~/Applications/Hersir.app\n```');
+    expect(section).toContain("`brew update && brew upgrade hersir` updates it");
+    expect(section).toContain("`brew uninstall hersir` removes it");
+    expect(section).toContain("Your data stays in `~/Library/Application Support/Hersir`");
+    expect(section).toContain("A formula, not a cask");
+    // the macOS section links to it
+    expect(install).toContain("[Homebrew](#macos-homebrew)");
+  });
+
+  it("PLATFORMS.md, packaging/README.md and RELEASING.md name the formula and its tap", () => {
+    const platforms = read("docs/PLATFORMS.md");
+    expect(platforms).toContain("- **The Homebrew formula.** `hersir` in the tap `yotech-ai/tap`");
+    expect(platforms).toContain("A formula, never a cask");
+    const packaging = read("packaging/README.md");
+    expect(packaging).toContain("| [`homebrew`](homebrew) | the formula `hersir` in the Homebrew tap `yotech-ai/tap`, for Macs with Apple silicon | `brew install yotech-ai/tap/hersir` |");
+    const releasing = read("docs/RELEASING.md");
+    expect(releasing).toContain("`Homebrew formula changed?`, then `macOS (Homebrew formula)`");
+    expect(releasing).toContain("That's eighteen checks:");
+    expect(releasing).toContain("`HERSIR_TAP_REPO`");
   });
 });

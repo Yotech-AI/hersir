@@ -67,6 +67,26 @@ yay -S hersir-bin
 - `sudo pacman -Rns hersir-bin` removes it. Your data stays in `~/.local/share/hersir` ([Your data](#your-data)).
 - Use one way to install Hersir, not both: to move from the one line to the AUR, first remove the one line's install with its `--uninstall`, which keeps your data.
 
+### macOS: Homebrew
+
+Hersir is in the Homebrew tap [`yotech-ai/tap`](https://github.com/Yotech-AI/homebrew-tap), as the formula `hersir`, for Macs with Apple silicon:
+
+```sh
+brew install yotech-ai/tap/hersir
+```
+
+The formula's full name, with its tap, is what lets Homebrew load it from a tap that isn't Homebrew's own, and Homebrew trusts it from then on. As for any formula without a bottle, Homebrew wants Apple's Command Line Tools, up to date, and says so when they aren't (`xcode-select --install`). Then link Hersir into Applications in your home folder, once, so you open it from Finder, Spotlight and the Dock (a formula may not put it there itself):
+
+```sh
+mkdir -p ~/Applications && ln -sfn "$(brew --prefix)/opt/hersir/Hersir.app" ~/Applications/Hersir.app
+```
+
+- It is the release's ready-made build for macOS, the one the one line installs: `Hersir.app` in Homebrew's own folder, with `hersir-mcp` inside it, signed ad hoc again as the one line does, and the `hersir` and `hersir-mcp` commands. The formula gets a new release only once it is signed, usually the same day, and pins the build's sha256 from the release's signed `SHA256SUMS`.
+- A formula, not a cask: Homebrew puts the quarantine mark on what a cask downloads, and macOS would then stop Hersir, which Apple hasn't notarized, until you choose Open Anyway in System Settings, most likely again at every new version. A formula's download gets no mark, so Hersir opens without asking, as after the one line ([Signatures](#signatures)).
+- `brew update && brew upgrade hersir` updates it; then restart Hersir. `brew upgrade` on its own looks at the tap only once a day. Hersir doesn't update itself then: Settings → Updates says `Hersir came from Homebrew, so it doesn't update itself. Update it with brew update && brew upgrade hersir, then restart Hersir.`
+- `brew uninstall hersir` removes it, and `rm ~/Applications/Hersir.app` the link you made. Your data stays in `~/Library/Application Support/Hersir` ([Your data](#your-data)).
+- Use one way to install Hersir, not both: to move from the one line to Homebrew, first remove the one line's install with its `--uninstall`, which keeps your data.
+
 ### Windows: Scoop
 
 Hersir has a [Scoop](https://scoop.sh) bucket of its own, [`Yotech-AI/scoop-bucket`](https://github.com/Yotech-AI/scoop-bucket). Add it once, then install Hersir from it, in PowerShell:
@@ -116,7 +136,7 @@ The installer builds Hersir (the one line installs the ready-made build instead)
 
 For Macs with Apple silicon (M1 and later). git comes with Apple's Command Line Tools (run `xcode-select --install`) or Homebrew (`brew install git`); that's all the ready-made build needs. To build from source you also need the Command Line Tools themselves, which bring a C compiler, and Node.js, from Homebrew (`brew install node`), mise, nvm or the installer on nodejs.org.
 
-Install [in one line](#in-one-line), or build from a clone:
+Install [in one line](#in-one-line), with [Homebrew](#macos-homebrew), or build from a clone:
 
 ```sh
 git clone --branch production https://github.com/Yotech-AI/hersir.git
@@ -215,7 +235,7 @@ If a step fails, the version you have keeps working, and Settings → Updates sa
 
 You can still update from a terminal: run the [one line](#in-one-line) again, or in a clone `git pull`, then `./install.sh` (on Windows `.\install.ps1`). How an update works, step by step: [docs/RELEASING.md](RELEASING.md#how-hersir-updates-itself).
 
-A Hersir from the AUR never updates itself: `yay -Syu` updates it ([With a package manager](#with-a-package-manager)).
+A Hersir from the AUR never updates itself: `yay -Syu` updates it ([With a package manager](#with-a-package-manager)). Neither does a Hersir from Homebrew: `brew update && brew upgrade hersir` updates it.
 
 A Hersir from Scoop doesn't either: quit it, then `scoop update; scoop update hersir` updates it ([Windows: Scoop](#windows-scoop)).
 

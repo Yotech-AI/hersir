@@ -284,6 +284,8 @@ button.label-pill[aria-pressed="true"] { border-color: var(--accent); color: var
 .card .meta .avatar { margin-left: auto; }
 .card .working { display: flex; align-items: center; gap: 7px; padding: 5px 8px; border-radius: var(--radius); background: var(--live-soft); color: var(--live); font-size: var(--fs-sm); font-weight: 500; }
 .card.dragging { opacity: .6; border-color: var(--accent); box-shadow: var(--shadow-drag); }
+/* GA-306: a ticked card (Deploy, Done): the accent border, and accent-soft over the card's own background */
+.card.picked, .card.picked:hover { border-color: var(--accent); background: linear-gradient(var(--accent-soft), var(--accent-soft)), var(--raised); }
 /* The compact board (GA-298: the Chat's Board tab; design/islands-chat → Board): columns 180 wide, 8 apart, on side (radius 8,
    padding 6) with the glyph, name and count; compact cards (radius 8, padding 8 10 9): the id in mono text-3, the assignee
    on the right, the title in 3 lines at most, On hold. The chat's cards: a 1.5px accent border and the chat icon. */
@@ -479,6 +481,9 @@ button.label-pill[aria-pressed="true"] { border-color: var(--accent); color: var
 
 /* ---------- toast ---------- */
 .toast { position: fixed; right: 20px; bottom: 20px; z-index: 60; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid var(--line-2); border-radius: var(--radius-l); background: var(--float); box-shadow: var(--shadow-pop); }
+/* GA-306: a long toast (the cards a move or an archive skipped) wraps instead of crossing the window; Undo stays whole */
+.toast { max-width: min(560px, calc(100vw - 40px)); line-height: 1.4; }
+.toast > .btn { flex: none; }
 
 /* ---------- chat (ChatMessage, ToolCard, ChatSetup) ---------- */
 .chat-col { max-width: calc(760px * var(--chat-scale, 1)); margin: 0 auto; padding: 24px; }
