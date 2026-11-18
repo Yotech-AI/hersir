@@ -11,7 +11,7 @@ scoop install hersir/hersir
 
 What it installs, for you alone:
 
-- `hersir.exe` and `hersir-mcp.exe` (the helper the Chief's chat uses), exactly as the release built them, in `~\scoop\apps\hersir\current`, and the commands `hersir` and `hersir-mcp`.
+- `hersir.exe` and `hersir-mcp.exe` (the helper the Chief's chat uses), exactly as the release built them, in `~\scoop\apps\hersir\current`, and the commands `hersir` and `hersir-mcp`. `hersir` starts Hersir, and `hersir --version`, `--help` and `--backup` print in PowerShell, cmd and Git Bash: the command is a small PowerShell script beside the programs, `hersir.ps1`, as Scoop's own shim would show nothing of what Hersir, a window app, prints.
 - `hersir-package.txt` beside them, which says `scoop`. With it, Hersir doesn't update itself: Scoop does.
 - Hersir in the Start menu (Scoop Apps → Hersir), which starts Hersir from Scoop's `current` folder and carries Hersir's app ID, `dev.hersir.app`, so Windows shows Hersir's notifications.
 
