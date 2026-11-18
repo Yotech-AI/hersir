@@ -108,11 +108,11 @@ pub fn file_url(dir: &Path) -> String {
     let path: Vec<u8> = {
         let p = dir.to_string_lossy().replace('\\', "/");
         // a path Windows was given whole (\\?\C:\…, \\?\UNC\server\share\…) as the usual kind
-        let p = match p.strip_prefix("//?/UNC/") {
+        let usual = match p.strip_prefix("//?/UNC/") {
             Some(unc) => format!("//{unc}"),
-            None => p.strip_prefix("//?/").map(str::to_string).unwrap_or(p),
+            None => p.strip_prefix("//?/").unwrap_or(&p).to_string(),
         };
-        p.into_bytes()
+        usual.into_bytes()
     };
     url_of(&path)
 }
