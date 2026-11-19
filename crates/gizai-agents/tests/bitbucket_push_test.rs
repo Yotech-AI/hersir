@@ -651,14 +651,16 @@ fn t_mode(mode: &str) {
 #[test]
 fn the_bitbucket_ssh_check_goes_by_bitbucket_words_not_the_exit_code() {
     let _one = T_MODE.lock().unwrap_or_else(|e| e.into_inner());
+    // (only the tests that hold T_MODE run ssh -T: the calls from here on are this test's)
+    let before = ssh_calls().len();
     t_mode("ok");
     assert_eq!(connection::bitbucket_ssh_check(LIMIT), Ok(None));
     t_mode("ok-exit1");
     assert_eq!(connection::bitbucket_ssh_check(LIMIT), Ok(None), "accepted although ssh ended with 1");
     t_mode("loggedin");
     assert_eq!(connection::bitbucket_ssh_check(LIMIT), Ok(Some("jefsev".into())));
-    assert!(ssh_calls().iter().any(|c| c == "-T git@ssh.bitbucket.org"), "{:?}", ssh_calls());
-    assert!(!ssh_calls().iter().any(|c| c == "-T git@bitbucket.org"), "{:?}", ssh_calls());
+    let mine: Vec<String> = ssh_calls()[before..].iter().filter(|c| c.starts_with("-T ")).cloned().collect();
+    assert_eq!(mine, ["-T git@ssh.bitbucket.org"; 3], "each check asks Bitbucket's SSH host, never git@bitbucket.org");
 }
 
 #[test]
