@@ -221,10 +221,12 @@ pub(crate) fn push_over_for(st: &AppState, provider: &str) -> Result<PushOver, S
 }
 
 /// The git settings of a task run of `project` (GA-92), whose worktree is `wt`: the agent's own `git push` to the
-/// project's repository goes the way Gizai's push after the run goes (`push_over_for`), and nothing else changes
-/// (`PushOver::run_config`). The repository goes by the project's link and by each of its remotes that is the same
-/// repository. None without a GitHub or Bitbucket link: a push to another git URL goes as its address says. Err: Push
-/// over HTTPS without gh. Finding gh can start a login shell: blocking.
+/// project's repository goes the way Gizai's push after the run goes (`push_over_for`), and on Bitbucket its fetches
+/// and pushes of a remote that still names the old SSH host (git@bitbucket.org) go to ssh.bitbucket.org (GA-315);
+/// nothing else changes (`PushOver::run_config`), and your own rewrites decide for the addresses they touch. The
+/// repository goes by the project's link and by each of its remotes that is the same repository. None without a GitHub
+/// or Bitbucket link: a push to another git URL goes as its address says. Err: Push over HTTPS without gh. Finding gh
+/// can start a login shell: blocking.
 pub(crate) fn run_git_config(st: &AppState, project: &gizai_core::model::Project, wt: &Path) -> Result<Vec<(String, String)>, String> {
     let Some(link) = project.repo_url.as_deref().and_then(|u| gizai_core::repo_url::normalize(u).ok().flatten()) else { return Ok(vec![]) };
     let Some(full_name) = link.full_name() else { return Ok(vec![]) };
