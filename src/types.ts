@@ -519,15 +519,16 @@ export type GithubStatus = {
   /** The command that logs gh in from a terminal. */
   loginCommand?: string | null;
 };
-/** One line of Check connection. Skipped: not needed now, or it needs something that failed. */
+/** One line of Check connection. Skipped: not needed now, or it needs something that failed. Note: worth knowing, and
+ *  nothing fails (a Bitbucket remote that still names the old SSH host, git@bitbucket.org); `fix` says what you can do. */
 export type ConnectionCheckItem = {
-  name: string; result: "ok" | "failed" | "skipped"; text: string; fix?: string | null; projectId?: string | null; repo?: string | null;
+  name: string; result: "ok" | "failed" | "skipped" | "note"; text: string; fix?: string | null; projectId?: string | null; repo?: string | null;
 };
 export type ConnectionCheck = { ok: boolean; pushOver: PushOver; checks: ConnectionCheckItem[] };
 
 // ---- Settings → Bitbucket ----
 /** Whether Gizai can use Bitbucket: your Atlassian email, whether an API token is saved (the token itself never comes back),
- * and the account it belongs to. Pushes go over SSH with your own keys. */
+ * and the account it belongs to. Pushes go over SSH (ssh.bitbucket.org) with your own keys. */
 export type BitbucketStatus = {
   email?: string | null;
   hasToken: boolean;

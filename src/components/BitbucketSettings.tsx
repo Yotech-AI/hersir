@@ -107,7 +107,7 @@ export function BitbucketSettings({ say }: { say: (ok: boolean, text: string) =>
           <a href={TOKEN_PAGE} onClick={(e) => { e.preventDefault(); openUrl(TOKEN_PAGE).catch(() => {}); }}>Open API tokens<ExternalLink className="icon" style={{ width: 12, height: 12, marginLeft: 3 }} /></a></span>
         <span className="hint">{SSH_LINE}</span>
       </div>
-      <Field label="Connection" wide hint="Checks your email and token, ssh to Bitbucket, and each project with a Bitbucket link. Nothing is pushed.">
+      <Field label="Connection" wide hint="Checks your email and token, ssh to each SSH host your Bitbucket projects push to, and each project with a Bitbucket link. Nothing is pushed.">
         <div><button className="btn" onClick={runCheck} disabled={checking}><PlugZap className="icon" />{checking ? "Checking…" : "Check connection"}</button></div>
         {checkErr && <div className="gh-line failed" role="alert"><CircleX className="icon" /><span>{checkErr}</span></div>}
         {check && <ConnectionChecks check={check} host="Bitbucket" label="Bitbucket connection checks" />}
