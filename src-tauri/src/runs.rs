@@ -1274,8 +1274,9 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
     }
     let run_temp_used = run_temp.is_ok();
     // GA-92: the agent's own `git push` to the project's repository goes the way Gizai's push after the run goes, through
-    // git settings in the run's environment only (every CLI, new and continued runs). Over HTTPS without gh the run
-    // starts without them, and its log says why.
+    // git settings in the run's environment only (every CLI, new and continued runs); on Bitbucket its fetch from the
+    // old SSH host goes to ssh.bitbucket.org too (GA-315). Over HTTPS without gh the run starts without them, and its log
+    // says why.
     let (st2, p2, dir) = (st.clone(), project.clone(), wt.path.clone());
     let git_config = match tokio::task::spawn_blocking(move || crate::pulls::run_git_config(&st2, &p2, &dir)).await {
         Ok(Ok(c)) => c,

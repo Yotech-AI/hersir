@@ -32,9 +32,10 @@ fn write_script(path: &Path, script: &str) {
 }
 
 /// The fake ssh, set up once for this test binary (every test calls this first, before it starts any process):
-/// base/ssh-args (one line per call); "Bitbucket" at base/bitbucket/<workspace>/<repo>.git and "GitHub" at
-/// base/github/<owner>/<name>.git (found with or without .git), also behind your own SSH host aliases git@bb-work and
-/// git@gh-work. Bitbucket's API points at a closed local port, so nothing here could ever ask api.bitbucket.org.
+/// base/ssh-args (one line per call); "Bitbucket" at base/bitbucket/<workspace>/<repo>.git, behind Bitbucket's SSH host
+/// git@ssh.bitbucket.org, and "GitHub" at base/github/<owner>/<name>.git (found with or without .git), also behind your
+/// own SSH host aliases git@bb-work and git@gh-work. Bitbucket's old SSH host, git@bitbucket.org, is refused (GA-315: it
+/// stops taking SSH). Bitbucket's API points at a closed local port, so nothing here could ever ask api.bitbucket.org.
 fn fake_ssh() -> &'static Path {
     static BASE: OnceLock<PathBuf> = OnceLock::new();
     BASE.get_or_init(|| {
@@ -50,12 +51,14 @@ host=""
 for a in "$@"; do
   case "$a" in
     git-receive-pack*|git-upload-pack*) cmd="$a" ;;
-    *@bitbucket.org) host=bitbucket ;;
+    *@ssh.bitbucket.org) host=bitbucket ;;
+    *@bitbucket.org) host=old ;;
     *@github.com) host=github ;;
     *@bb-work) host=bitbucket ;;
     *@gh-work) host=github ;;
   esac
 done
+[ "$host" = old ] && {{ echo "fake ssh: bitbucket.org takes no SSH any more" >&2; exit 255; }}
 if [ -z "$cmd" ]; then
   echo "authenticated via ssh key." >&2; exit 0
 fi
@@ -140,8 +143,11 @@ async fn a_bitbucket_project_starts_from_main_fetched_through_an_origin_written_
     let start = start_point(&p, &h.local, Some(START_FETCH_LIMIT)).unwrap();
     assert_eq!(start, "refs/remotes/origin/main", "through the checkout's own remote");
     assert_eq!(git(&h.local, &["rev-parse", &start]), new, "Bitbucket's latest main");
-    assert!(ssh_calls().iter().any(|l| l.contains("git@bitbucket.org") && l.contains("git-upload-pack 'acme/site.git'")), "{:?}", ssh_calls());
+    // GA-315: over Bitbucket's SSH host, though the remote still names the old one
+    assert!(ssh_calls().iter().any(|l| l.contains("git@ssh.bitbucket.org") && l.contains("git-upload-pack 'acme/site.git'")), "{:?}", ssh_calls());
+    assert!(!ssh_calls().iter().any(|l| l.split_whitespace().any(|w| w == "git@bitbucket.org")), "nothing to the old host: {:?}", ssh_calls());
     assert_eq!(git(&h.local, &["remote", "get-url", "origin"]), "git@bitbucket.org:acme/site.git", "the remote is left as it was");
+    assert!(!config_of(&h.local).to_lowercase().contains("insteadof"), "no rule was written: {}", config_of(&h.local));
 
     // without a fetch: the same ref, as last fetched
     let newer = h.push("not fetched yet");
@@ -166,8 +172,35 @@ async fn a_bitbucket_project_with_a_fork_as_origin_starts_from_master_fetched_th
     let start = start_point(&p, &h.local, Some(START_FETCH_LIMIT)).unwrap();
     assert_eq!(start, "refs/remotes/upstream/master");
     assert_eq!(git(&h.local, &["rev-parse", &start]), new);
-    assert!(ssh_calls().iter().any(|l| l.contains("git@bitbucket.org") && l.contains("git-upload-pack '/acme/shop-start.git'")
-            || l.contains("git@bitbucket.org") && l.contains("git-upload-pack 'acme/shop-start.git'")), "{:?}", ssh_calls());
+    assert!(ssh_calls().iter().any(|l| l.contains("git@ssh.bitbucket.org") && l.contains("git-upload-pack '/acme/shop-start.git'")
+            || l.contains("git@ssh.bitbucket.org") && l.contains("git-upload-pack 'acme/shop-start.git'")), "{:?}", ssh_calls());
+    assert_eq!(git(&h.local, &["remote", "get-url", "upstream"]), "ssh://git@bitbucket.org/acme/shop-start.git", "the remote is left as it was");
+}
+
+/// GA-315: a checkout already switched to Bitbucket's SSH host (git@ssh.bitbucket.org:…, ssh://git@ssh.bitbucket.org/…)
+/// is found as the project's repository, and a card starts from main fetched through that remote, not from the https
+/// link (which has no login).
+#[tokio::test]
+async fn a_bitbucket_project_whose_origin_is_on_ssh_bitbucket_org_starts_from_main_fetched_through_origin() {
+    fake_ssh();
+    for (i, origin) in ["git@ssh.bitbucket.org:acme/site-new.git", "ssh://git@ssh.bitbucket.org/acme/site-new.git"].into_iter().enumerate() {
+        let tmp = tempfile::tempdir().unwrap();
+        let st = gizai_lib::test_state(tmp.path());
+        let h = Hosted::new(tmp.path(), "bitbucket", &format!("acme/site-new{i}"), "main");
+        let origin = origin.replace("site-new", &format!("site-new{i}"));
+        git(&h.local, &["remote", "set-url", "origin", &origin]);
+        let link = format!("https://bitbucket.org/acme/site-new{i}");
+        let (_, p) = project(&st, &h.local, &link, "main");
+        assert_eq!(remote_for(&h.local, &link).as_deref(), Some("origin"), "{origin}");
+        let new = h.push("on bitbucket");
+        let start = start_point(&p, &h.local, Some(START_FETCH_LIMIT)).unwrap();
+        assert_eq!(start, "refs/remotes/origin/main", "{origin}: through the checkout's own remote");
+        assert_eq!(git(&h.local, &["rev-parse", &start]), new);
+        assert!(!has_ref(&h.local, "refs/gizai/base/main"), "{origin}: not from the link");
+        let calls: Vec<String> = ssh_calls().into_iter().filter(|l| l.contains(&format!("acme/site-new{i}"))).collect();
+        assert!(!calls.is_empty() && calls.iter().all(|l| l.contains("git@ssh.bitbucket.org")), "{calls:?}");
+        assert_eq!(git(&h.local, &["remote", "get-url", "origin"]), origin);
+    }
 }
 
 #[test]
@@ -181,11 +214,16 @@ fn remote_for_finds_the_remote_for_a_bitbucket_link_in_any_of_its_forms() {
     let link = "https://bitbucket.org/acme/site";
     for form in ["https://jefsev@bitbucket.org/acme/site.git", "ssh://git@bitbucket.org/acme/site.git", "git@bitbucket.org:acme/site.git",
                  "https://bitbucket.org/acme/site", "https://bitbucket.org/acme/site.git", "https://www.bitbucket.org/acme/site/",
-                 "https://bitbucket.org/ACME/Site.git"] {
+                 "https://bitbucket.org/ACME/Site.git",
+                 // GA-315: Bitbucket's SSH host
+                 "git@ssh.bitbucket.org:acme/site.git", "ssh://git@ssh.bitbucket.org/acme/site.git", "git@ssh.bitbucket.org:ACME/Site"] {
         git(&repo, &["remote", "set-url", "origin", form]);
         assert_eq!(remote_for(&repo, link).as_deref(), Some("origin"), "origin = {form}");
+        // and the other way round: that address as the project's link
+        assert_eq!(remote_for(&repo, form).as_deref(), Some("origin"), "link {form}");
     }
-    for other in ["https://bitbucket.org/acme/site-other", "git@bitbucket.org:other/site.git", "https://github.com/acme/site"] {
+    for other in ["https://bitbucket.org/acme/site-other", "git@bitbucket.org:other/site.git", "https://github.com/acme/site",
+                  "git@ssh.bitbucket.org:other/site.git", "git@ssh.bitbucket.org:acme/site-other.git"] {
         git(&repo, &["remote", "set-url", "origin", other]);
         assert_eq!(remote_for(&repo, link), None, "origin = {other}");
     }

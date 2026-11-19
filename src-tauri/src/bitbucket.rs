@@ -2,16 +2,19 @@
 //! - The status: the login saved in your keychain (your Atlassian account's email and an API token) and the account it
 //!   belongs to, as Bitbucket says.
 //! - Save login: asks Bitbucket first and keeps only a login it accepts; Remove login.
-//! - Check connection: the token's account, ssh to git@bitbucket.org, and for each project with a Bitbucket link
-//!   whether you can push to it (a dry run). Each check says what to do when it fails.
+//! - Check connection: the token's account, ssh to each SSH host the projects' pushes go to (git@ssh.bitbucket.org, or
+//!   an SSH host alias of yours), and for each project with a Bitbucket link whether you can push to it (a dry run),
+//!   with a note when its remote still names Bitbucket's old SSH host. Each check says what to do when it fails.
 //!
-//! Pushes go over SSH with your keys. The login lives only in the keychain: never in Gizai's database, a log, an error
-//! or a command line.
+//! Pushes go over SSH with your keys, to ssh.bitbucket.org (GA-315). The login lives only in the keychain: never in
+//! Gizai's database, a log, an error or a command line.
 use std::time::Duration;
 
 use gizai_agents::bitbucket::{self, Login, SCOPES};
-use gizai_agents::connection::{self, Problem, PushOver};
+use gizai_agents::connection::{self, BITBUCKET_SSH_HOST, Problem, PushOver};
 use gizai_agents::secrets::NOT_RUNNING;
+use gizai_agents::worktree;
+use gizai_core::model::Project;
 use serde::Serialize;
 
 use crate::AppState;
@@ -115,9 +118,12 @@ pub async fn remove_login(st: &AppState) -> Result<BitbucketStatus, String> {
     Ok(status(st).await)
 }
 
-/// Check connection: the account the API token belongs to, ssh to git@bitbucket.org in batch mode, and for each project
+/// Check connection: the account the API token belongs to; `ssh -T` in batch mode to each SSH host the Bitbucket
+/// projects' pushes really go to, once per host and named in its line (git@ssh.bitbucket.org, or an SSH host alias of
+/// yours that your own git rule sends a project's address to), so it uses the key a push uses; and for each project
 /// with a Bitbucket link whether you can push to it, the way Open pull request would (a dry run over SSH: nothing is
-/// sent). Never asks for anything, and changes nothing.
+/// sent), with a note (which fails nothing) when its remote still names Bitbucket's old SSH host. Never asks for
+/// anything, and changes nothing.
 pub async fn check(st: &AppState) -> ConnectionCheck {
     let st2 = st.clone();
     tokio::task::spawn_blocking(move || check_blocking(&st2)).await.unwrap_or_else(|e| ConnectionCheck {
@@ -134,11 +140,111 @@ fn check_blocking(st: &AppState) -> ConnectionCheck {
         Ok(None) => Check::failed("Account", no_login()),
         Err(e) => Check::failed("Account", keychain_problem(e)),
     }];
-    checks.push(match connection::bitbucket_ssh_check(CHECK_LIMIT) {
-        Ok(Some(who)) => Check::ok("SSH", format!("git@bitbucket.org accepts your SSH key, as {who}")),
-        Ok(None) => Check::ok("SSH", "git@bitbucket.org accepts your SSH key"),
-        Err(p) => Check::failed("SSH", p),
-    });
-    checks.extend(crate::github::project_checks(st, "bitbucket", Some(&PushOver::Bitbucket)));
+    let routes: Vec<Route> = crate::github::linked_projects(st, "bitbucket").iter().map(|(p, link, repo)| route(p, link, repo)).collect();
+    // each host at the same time: one that gives no answer holds up the others no longer than itself
+    let hosts: Vec<_> = ssh_hosts(&routes).into_iter().map(|host| std::thread::spawn(move || ssh_lines(&host))).collect();
+    checks.extend(hosts.into_iter().filter_map(|t| t.join().ok()).flatten());
+    // each project's note right after its own line
+    for line in crate::github::project_checks(st, "bitbucket", Some(&PushOver::Bitbucket)) {
+        let notes: Vec<Check> = routes.iter().filter(|r| line.project_id.as_deref() == Some(r.project_id.as_str()))
+            .flat_map(|r| r.notes.clone()).collect();
+        checks.push(line);
+        checks.extend(notes);
+    }
     ConnectionCheck { ok: !checks.iter().any(|c| c.result == "failed"), push_over: "ssh".into(), checks }
+}
+
+/// Where a Bitbucket project's pushes go, for Check connection.
+struct Route {
+    project_id: String,
+    /// The SSH host they go to (`connection::ssh_destination`), when they go over SSH: git@ssh.bitbucket.org, or an SSH
+    /// host alias of yours.
+    host: Option<String>,
+    /// What Check connection notes about its remote.
+    notes: Vec<Check>,
+}
+
+/// Where pushes of project `p` (linked to `link`, the repository `repo`) go, the way Open pull request pushes: through
+/// its checkout's remote for the link, else to the link (`pulls::push_to`), as git works it out with Gizai's settings and
+/// your own rewrites (`worktree::push_url`). Notes, which fail nothing:
+/// - a remote that still names Bitbucket's old SSH host (git@bitbucket.org:…) without a rewrite of yours: Hersir already
+///   uses ssh.bitbucket.org for it, and `git remote set-url` switches the checkout itself;
+/// - pushes that go to the old SSH host all the same, which only a rewrite of yours can do: that rule is yours to change.
+fn route(p: &Project, link: &str, repo: &str) -> Route {
+    let mut out = Route { project_id: p.id.clone(), host: None, notes: vec![] };
+    let Some(folder) = crate::github::project_folder(p) else { return out };
+    let remote = crate::git::remote_for(folder, link);
+    let to = remote.clone().unwrap_or_else(|| link.to_string());
+    let goes_to = worktree::push_url(folder, &to, &PushOver::Bitbucket);
+    out.host = goes_to.as_deref().and_then(connection::ssh_destination);
+    let note = |text: String, fix: String| Check { project_id: Some(p.id.clone()), repo: Some(repo.to_string()), ..Check::note(&p.name, text, fix) };
+    if let Some(name) = &remote {
+        let own = worktree::own_rewrites(folder);
+        let (urls, push_urls) = worktree::remote_addresses(folder, name);
+        // the address it fetches from (its first) and the one it pushes to, as written
+        let switch: Vec<String> = [(urls.first(), ""), (push_urls.first(), "--push ")].into_iter()
+            .filter_map(|(url, flag)| {
+                let url = url?;
+                let new = connection::bitbucket_ssh_address(url)?;
+                (!own.iter().any(|o| !o.is_empty() && url.starts_with(o.as_str()))).then(|| format!("git remote set-url {flag}{name} {new}"))
+            })
+            .collect();
+        if !switch.is_empty() {
+            out.notes.push(note(format!("Its remote {name} still names git@bitbucket.org, which stops taking SSH: Hersir already uses \
+                                         {BITBUCKET_SSH_HOST} for it"),
+                                format!("To switch the checkout itself, run {} in {}.", switch.join(" and "), folder.display())));
+        }
+    }
+    if let Some(old) = goes_to.as_deref().filter(|u| connection::bitbucket_ssh_address(u).is_some()).and_then(connection::ssh_destination) {
+        out.notes.push(note(format!("A git rule of your own sends its pushes to {old}, Bitbucket's old SSH host, which stops taking SSH"),
+                            format!("Change that rule to send them to git@{BITBUCKET_SSH_HOST}: instead. \
+                                     git config --show-origin --get-regexp '^url\\.' shows your rules and where each one is.")));
+    }
+    out
+}
+
+/// The SSH hosts the projects' pushes go to, each once, in the projects' order; Bitbucket's own
+/// (git@ssh.bitbucket.org) when none goes over SSH, as with no project yet.
+fn ssh_hosts(routes: &[Route]) -> Vec<String> {
+    let mut hosts: Vec<String> = vec![];
+    for host in routes.iter().filter_map(|r| r.host.clone()) {
+        if !hosts.contains(&host) {
+            hosts.push(host);
+        }
+    }
+    if hosts.is_empty() {
+        hosts.push(connection::bitbucket_ssh_destination());
+    }
+    hosts
+}
+
+/// The SSH lines for `host`: whether it accepts your SSH key (`ssh -T`), with the host in its words; and for an SSH host
+/// alias of yours that still goes to bitbucket.org (its HostName, `connection::ssh_hostname`), a note: it works until
+/// Bitbucket stops taking SSH there.
+fn ssh_lines(host: &str) -> Vec<Check> {
+    let mut out = vec![match connection::bitbucket_ssh_check_at(host, CHECK_LIMIT) {
+        Ok(Some(who)) => Check::ok("SSH", format!("{host} accepts your SSH key, as {who}")),
+        Ok(None) => Check::ok("SSH", format!("{host} accepts your SSH key")),
+        Err(p) => {
+            let text = format!("{host}: {}", p.what);
+            Check { text, ..Check::failed("SSH", p) }
+        }
+    }];
+    let alias = host_name(host);
+    let bitbucket = |h: &str| ["bitbucket.org", "www.bitbucket.org", BITBUCKET_SSH_HOST].contains(&h);
+    if !bitbucket(&alias.to_ascii_lowercase())
+        && connection::ssh_hostname(host, CHECK_LIMIT).is_some_and(|real| bitbucket(&real) && real != BITBUCKET_SSH_HOST)
+    {
+        out.push(Check::note("SSH", format!("{alias}, your SSH host alias, still goes to bitbucket.org, which stops taking SSH"),
+                             format!("Set its HostName to {BITBUCKET_SSH_HOST} in your SSH config (~/.ssh/config), then run ssh -T {host} \
+                                      once in a terminal and answer yes.")));
+    }
+    out
+}
+
+/// The host in an SSH destination: "bitbucket-snx" for git@bitbucket-snx, "host" for ssh://git@host:2222.
+fn host_name(destination: &str) -> String {
+    let d = destination.strip_prefix("ssh://").unwrap_or(destination);
+    let d = d.rsplit_once('@').map_or(d, |(_, host)| host);
+    d.split(':').next().unwrap_or(d).to_string()
 }

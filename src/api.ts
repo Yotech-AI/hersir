@@ -289,7 +289,8 @@ export const bitbucketStatus = () => invoke<T.BitbucketStatus>("bitbucket_status
 export const bitbucketSaveLogin = (email: string, token: string) => invoke<void>("bitbucket_save_login", { email, token });
 /** Removes the email and the token. */
 export const bitbucketRemoveLogin = () => invoke<void>("bitbucket_remove_login");
-/** Check connection: the token, ssh to Bitbucket, and whether you can push to each project with a Bitbucket link. */
+/** Check connection: the token, ssh to each SSH host the Bitbucket projects push to (ssh.bitbucket.org, or your own alias for it),
+ *  whether you can push to each project with a Bitbucket link, and a note for a remote that still names the old SSH host. */
 export const bitbucketCheck = () => invoke<T.ConnectionCheck>("bitbucket_check");
 
 /** A local folder: whether it's a git repository, its branch, and its GitHub or Bitbucket remote as a link. */

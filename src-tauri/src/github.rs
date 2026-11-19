@@ -125,11 +125,12 @@ fn status_blocking(st: &AppState) -> Status {
 pub struct Check {
     /// What was checked: "GitHub CLI", "Account", "SSH", or a project's name.
     pub name: String,
-    /// "ok", "failed", or "skipped" (not needed, or it needs something that failed).
+    /// "ok", "failed", "skipped" (not needed, or it needs something that failed), or "note" (worth knowing, and nothing
+    /// fails: a Bitbucket remote that still names Bitbucket's old SSH host, say).
     pub result: String,
     /// The result in plain words.
     pub text: String,
-    /// For a failure: what to do.
+    /// For a failure: what to do. For a note: what you can do.
     pub fix: Option<String>,
     /// For a project: its id and repository ("owner/name" on GitHub, "workspace/repository" on Bitbucket).
     pub project_id: Option<String>,
@@ -147,6 +148,11 @@ impl Check {
 
     pub(crate) fn skipped(name: &str, text: impl Into<String>) -> Check {
         Check { name: name.into(), result: "skipped".into(), text: text.into(), fix: None, project_id: None, repo: None }
+    }
+
+    /// Something worth knowing that fails nothing, with what you can do about it.
+    pub(crate) fn note(name: &str, text: impl Into<String>, fix: impl Into<String>) -> Check {
+        Check { name: name.into(), result: "note".into(), text: text.into(), fix: Some(fix.into()), project_id: None, repo: None }
     }
 }
 
@@ -218,17 +224,28 @@ fn check_blocking(st: &AppState) -> ConnectionCheck {
 /// How many projects are checked at the same time (GitHub and Bitbucket may drop a burst of SSH connections).
 const PROJECTS_AT_ONCE: usize = 4;
 
-/// For each project linked to `provider` ("github" or "bitbucket"; archived ones aside): whether you can push to it, a
-/// few at a time.
-pub(crate) fn project_checks(st: &AppState, provider: &str, over: Option<&PushOver>) -> Vec<Check> {
-    let mut linked: Vec<(Project, String, String)> = projects::list(&st.db).unwrap_or_default().into_iter()
+/// The projects linked to `provider` ("github" or "bitbucket"), archived ones aside, as Check connection checks them:
+/// (project, its link, its repository "owner/name").
+pub(crate) fn linked_projects(st: &AppState, provider: &str) -> Vec<(Project, String, String)> {
+    projects::list(&st.db).unwrap_or_default().into_iter()
         .filter(|p| p.status != "archived")
         .filter_map(|p| {
             let link = repo_url::normalize(p.repo_url.as_deref()?).ok().flatten().filter(|l| l.provider == provider)?;
             let repo = link.full_name()?;
             Some((p, link.url, repo))
         })
-        .collect();
+        .collect()
+}
+
+/// The project's local git repository, when it has one.
+pub(crate) fn project_folder(p: &Project) -> Option<&Path> {
+    p.repo_path.as_deref().map(str::trim).filter(|r| !r.is_empty()).map(Path::new).filter(|f| crate::git::is_repo(f))
+}
+
+/// For each project linked to `provider` ("github" or "bitbucket"; archived ones aside): whether you can push to it, a
+/// few at a time.
+pub(crate) fn project_checks(st: &AppState, provider: &str, over: Option<&PushOver>) -> Vec<Check> {
+    let mut linked = linked_projects(st, provider);
     let mut out = vec![];
     while !linked.is_empty() {
         let batch: Vec<_> = linked.drain(..linked.len().min(PROJECTS_AT_ONCE)).map(|(p, link, repo)| {
@@ -251,8 +268,7 @@ fn project_check(p: &Project, link: &str, over: Option<&PushOver>) -> Result<(),
     let Some(over) = over else {
         return Err(Problem::new("Needs the GitHub CLI to push over HTTPS", "Install the GitHub CLI, or push over SSH."));
     };
-    let folder = p.repo_path.as_deref().map(str::trim).filter(|r| !r.is_empty());
-    let Some(folder) = folder.map(Path::new).filter(|f| crate::git::is_repo(f)) else {
+    let Some(folder) = project_folder(p) else {
         return Err(Problem::new("No local git repository", "Set the project's git repository on its page (Edit)."));
     };
     // the same place Push branch pushes to

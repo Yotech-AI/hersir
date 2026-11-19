@@ -479,10 +479,46 @@ fn to_bitbucket_a_run_pushes_the_projects_https_remote_over_ssh() {
     git(&r, &["remote", "add", "other", "https://bitbucket.org/acme/other"]);
     let c = PushOver::Bitbucket.run_config("acme/site", &strings(&["https://bitbucket.org/acme/site",
         "https://jefsev@bitbucket.org/acme/site.git", "https://bitbucket.org/acme/site"]), &[]);
-    assert_eq!(urls(&r, &c, "origin"), ("git@bitbucket.org:acme/site.git".into(), "https://jefsev@bitbucket.org/acme/site.git".into()));
-    assert_eq!(urls(&r, &c, "plain"), ("git@bitbucket.org:acme/site.git".into(), "https://bitbucket.org/acme/site".into()));
+    assert_eq!(urls(&r, &c, "origin"), ("git@ssh.bitbucket.org:acme/site.git".into(), "https://jefsev@bitbucket.org/acme/site.git".into()));
+    assert_eq!(urls(&r, &c, "plain"), ("git@ssh.bitbucket.org:acme/site.git".into(), "https://bitbucket.org/acme/site".into()));
     assert_eq!(urls(&r, &c, "other"), ("https://bitbucket.org/acme/other".into(), "https://bitbucket.org/acme/other".into()));
     assert!(!c.iter().any(|(k, _)| k.starts_with("credential.")), "no credential helper for Bitbucket: {c:?}");
+}
+
+/// GA-315: in a run, the project's remotes on Bitbucket's old SSH host fetch and push to git@ssh.bitbucket.org; another
+/// repository on the old host, and a remote already on the new host, stay as written; a rule of your own decides.
+#[test]
+fn to_bitbucket_a_runs_old_ssh_host_remotes_fetch_and_push_to_ssh_bitbucket_org() {
+    let tmp = tempfile::tempdir().unwrap();
+    let r = repo(tmp.path(), "card");
+    let remotes = [("origin", "git@bitbucket.org:acme/site.git"), ("url", "ssh://git@bitbucket.org/acme/site.git"),
+                   ("nogit", "git@bitbucket.org:acme/site"), ("new", "git@ssh.bitbucket.org:acme/site.git"),
+                   ("other", "git@bitbucket.org:acme/other.git"), ("gh", "git@github.com:acme/site.git")];
+    for (name, url) in remotes {
+        git(&r, &["remote", "add", name, url]);
+    }
+    let config = std::fs::read_to_string(r.join(".git/config")).unwrap();
+    let c = PushOver::Bitbucket.run_config("acme/site", &strings(&["https://bitbucket.org/acme/site", "git@bitbucket.org:acme/site.git",
+        "ssh://git@bitbucket.org/acme/site.git", "git@bitbucket.org:acme/site", "git@ssh.bitbucket.org:acme/site.git"]), &[]);
+    let to = "git@ssh.bitbucket.org:acme/site.git".to_string();
+    for name in ["origin", "url", "new"] {
+        assert_eq!(urls(&r, &c, name), (to.clone(), to.clone()), "{name}: fetch and push");
+    }
+    assert_eq!(urls(&r, &c, "nogit"), ("git@ssh.bitbucket.org:acme/site".into(), "git@ssh.bitbucket.org:acme/site".into()));
+    assert_eq!(urls(&r, &c, "other"), ("git@bitbucket.org:acme/other.git".into(), "git@bitbucket.org:acme/other.git".into()), "another repository");
+    assert_eq!(urls(&r, &c, "gh"), ("git@github.com:acme/site.git".into(), "git@github.com:acme/site.git".into()));
+    assert!(!c.iter().any(|(k, _)| k.starts_with("url.git@bitbucket.org:")), "nothing sends anything to the old host: {c:?}");
+    assert_eq!(std::fs::read_to_string(r.join(".git/config")).unwrap(), config, "no git config changed");
+
+    // your own rule to an SSH host alias (git@bitbucket.org: → git@bitbucket-snx:): no rule for the old host, yours decides
+    git(&r, &["config", "url.git@bitbucket-snx:.insteadOf", "git@bitbucket.org:"]);
+    let own = worktree::own_rewrites(&r);
+    let c = PushOver::Bitbucket.run_config("acme/site", &strings(&["https://bitbucket.org/acme/site", "git@bitbucket.org:acme/site.git"]), &own);
+    assert!(!c.iter().any(|(k, v)| k.ends_with(".insteadOf") && v.starts_with("git@bitbucket.org:")), "{c:?}");
+    assert_eq!(urls(&r, &c, "origin"), ("git@bitbucket-snx:acme/site.git".into(), "git@bitbucket-snx:acme/site.git".into()));
+    // the https link still pushes to the new host
+    assert_eq!(git_run(&r, &c, &["ls-remote", "--get-url", "https://bitbucket.org/acme/site"], ""), "https://bitbucket.org/acme/site");
+    assert!(c.contains(&("url.git@ssh.bitbucket.org:acme/site.git.pushInsteadOf".to_string(), "https://bitbucket.org/acme/site".to_string())), "{c:?}");
 }
 
 #[test]

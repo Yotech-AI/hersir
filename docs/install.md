@@ -110,7 +110,7 @@ scoop install hersir/hersir
 - With the ready-made build, that's all Hersir needs to run, with WebKitGTK 4.1 on Linux and WebView2 on Windows: no Rust, Node.js or compiler. The check (`--check`) names only these.
 - To build from source (the one line with `--from-source`, a system without a ready-made build, or a clone), also Rust ([rustup](https://rustup.rs)), Node.js 20 or newer, and what each system lists below for a build. The check names those when it builds.
 - Optional, to review cards as pull requests on GitHub: the [GitHub CLI](https://cli.github.com) and an SSH key on your GitHub account. Settings → GitHub shows what's missing and can log gh in.
-- Optional, for a project on Bitbucket Cloud: an SSH key on your Bitbucket account and an API token with the scopes `read:user:bitbucket`, `read:pullrequest:bitbucket` and `write:pullrequest:bitbucket` (Atlassian account → Security → API tokens). Save the token with your Atlassian email in Settings → Bitbucket. Hersir keeps them in your keychain.
+- Optional, for a project on Bitbucket Cloud: an SSH key on your Bitbucket account (Hersir pushes over SSH to `ssh.bitbucket.org`, Bitbucket's SSH host; run `ssh -T git@ssh.bitbucket.org` once in a terminal and answer yes to trust its host key) and an API token with the scopes `read:user:bitbucket`, `read:pullrequest:bitbucket` and `write:pullrequest:bitbucket` (Atlassian account → Security → API tokens). Save the token with your Atlassian email in Settings → Bitbucket. Hersir keeps them in your keychain.
 
 ## Linux
 

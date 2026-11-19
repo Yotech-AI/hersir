@@ -1,7 +1,7 @@
 //! GA-59 QA: review on Bitbucket Cloud, end to end without bitbucket.org. "Bitbucket" is a fake REST API on 127.0.0.1
 //! (GIZAI_BITBUCKET_API) that keeps each repository's pull requests and records every request, and a fake ssh as your
-//! own GIT_SSH_COMMAND that logs its arguments and serves git@bitbucket.org:<workspace>/<repo> from local bare
-//! repositories. The project's local clone has its origin at an https://bitbucket.org/ address and allows no https at
+//! own GIT_SSH_COMMAND that logs its arguments and serves Bitbucket's SSH host git@ssh.bitbucket.org:<workspace>/<repo>
+//! from local bare repositories (GA-315: it refuses the old SSH host, git@bitbucket.org, which stops taking SSH). The project's local clone has its origin at an https://bitbucket.org/ address and allows no https at
 //! all, so a push that doesn't go over ssh fails. Covers Open pull request on a Bitbucket card in Review (push over SSH,
 //! one pull request into the project's main branch, or the open one kept), the PR check (merge → Deploy or Done and
 //! clean-up, declined and superseded → closed, draft) and the missing login.
@@ -188,10 +188,12 @@ host=""
 for a in "$@"; do
   case "$a" in
     git-receive-pack*|git-upload-pack*) cmd="$a" ;;
-    *@bitbucket.org) host=bitbucket ;;
+    *@ssh.bitbucket.org) host=bitbucket ;;
+    *@bitbucket.org) host=old ;;
     *@github.com) host=github ;;
   esac
 done
+[ "$host" = old ] && {{ echo "fake ssh: bitbucket.org takes no SSH any more" >&2; exit 255; }}
 if [ -z "$cmd" ]; then
   echo "authenticated via ssh key." >&2
   echo "You can use git to connect to Bitbucket. Shell access is disabled" >&2; exit 0
@@ -259,9 +261,10 @@ fn url(repo: &str, id: u64) -> String {
 // The card
 // ---------------------------------------------------------------------------------------------------------------
 
-/// "Bitbucket" at git@bitbucket.org:<repo> behind the fake ssh (its main branch is master), and the project's local
-/// clone with its origin at git@bitbucket.org:<repo>.git (so a card's run fetches master over the fake ssh). The clone
-/// allows no https at all, so nothing can reach bitbucket.org.
+/// "Bitbucket" at git@ssh.bitbucket.org:<repo> behind the fake ssh (its main branch is master), and the project's local
+/// clone with its origin at git@bitbucket.org:<repo>.git, the old SSH host (so a card's run fetches master over the fake
+/// ssh only when Gizai sends that fetch to ssh.bitbucket.org, GA-315). The clone allows no https at all, so nothing can
+/// reach bitbucket.org.
 fn bitbucket(tmp: &Path, repo: &str) -> (PathBuf, PathBuf) {
     let base = fakes();
     let src = tmp.join("src");
@@ -375,9 +378,10 @@ async fn open_pull_request_pushes_over_ssh_to_bitbucket_and_opens_one_pull_reque
     let pr = pulls::open(&c.st, &c.task).await.unwrap();
     assert_eq!(pr, PullInfo { url: url(repo, 1), number: Some(1), state: "open".into(), note: None });
 
-    // pushed over SSH to git@bitbucket.org with your keys; the branch is in "Bitbucket" with its latest commit
-    assert!(ssh_calls().iter().any(|l| l.contains("git@bitbucket.org") && l.contains(&format!("git-receive-pack '{repo}'"))), "{:?}", ssh_calls());
-    assert_eq!(git(&c.bare, &["rev-parse", &c.branch]), tip(&c), "the branch arrived in the bare repository behind git@bitbucket.org:{repo}");
+    // pushed over SSH to git@ssh.bitbucket.org with your keys; the branch is in "Bitbucket" with its latest commit
+    assert!(ssh_calls().iter().any(|l| l.contains("git@ssh.bitbucket.org") && l.contains(&format!("git-receive-pack '{repo}'"))), "{:?}", ssh_calls());
+    assert!(!ssh_calls().iter().any(|l| l.contains(repo) && l.split_whitespace().any(|w| w == "git@bitbucket.org")), "nothing to the old host: {:?}", ssh_calls());
+    assert_eq!(git(&c.bare, &["rev-parse", &c.branch]), tip(&c), "the branch arrived in the bare repository behind git@ssh.bitbucket.org:{repo}");
     // the remote keeps its https address and the repository's config is as it was
     assert_eq!(git(&c.local, &["remote", "get-url", "origin"]), format!("https://bitbucket.org/{repo}"));
     assert_eq!(std::fs::read_to_string(c.local.join(".git/config")).unwrap(), config);
@@ -415,6 +419,39 @@ async fn open_pull_request_pushes_over_ssh_to_bitbucket_and_opens_one_pull_reque
     assert_eq!(files_with(&c.st.data_dir, TOKEN.as_bytes()), Vec::<PathBuf>::new());
 }
 
+/// GA-315: a checkout whose origin still names Bitbucket's old SSH host (git@bitbucket.org:…) keeps working without any
+/// change: the card's start fetched master from git@ssh.bitbucket.org, Open pull request pushes there, the PR check's
+/// ls-remote asks there, and nothing goes to git@bitbucket.org.
+#[tokio::test]
+async fn an_origin_on_the_old_ssh_host_starts_pushes_and_is_checked_over_ssh_bitbucket_org() {
+    fakes();
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = "acme/shop-oldhost";
+    let origin = format!("git@bitbucket.org:{repo}.git");
+    let c = worked_card(tmp.path(), repo, &origin, true).await;
+    let config = std::fs::read_to_string(c.local.join(".git/config")).unwrap();
+    let ours = || -> Vec<String> { ssh_calls().into_iter().filter(|l| l.contains(repo)).collect() };
+    // the card's start (worked_card checks it started from Bitbucket's master)
+    assert!(ours().iter().any(|l| l.contains("git@ssh.bitbucket.org") && l.contains(&format!("git-upload-pack '{repo}.git'"))), "{:?}", ours());
+
+    to_review(&c);
+    let pr = pulls::open(&c.st, &c.task).await.unwrap();
+    assert_eq!(pr, PullInfo { url: url(repo, 1), number: Some(1), state: "open".into(), note: None });
+    assert_eq!(git(&c.bare, &["rev-parse", &c.branch]), tip(&c), "the branch arrived behind git@ssh.bitbucket.org");
+    assert!(ours().iter().any(|l| l.contains("git@ssh.bitbucket.org") && l.contains(&format!("git-receive-pack '{repo}.git'"))), "{:?}", ours());
+
+    // the PR check: git first, over ssh.bitbucket.org
+    let before = ours().len();
+    let checked = pulls::check_all(&c.st).await;
+    assert_eq!((checked.len(), checked[0].moved_to.clone()), (1, None), "{checked:?}");
+    let round = ours()[before..].to_vec();
+    assert!(round.iter().any(|l| l.contains("git@ssh.bitbucket.org") && l.contains(&format!("git-upload-pack '{repo}.git'"))), "the PR check's ls-remote: {round:?}");
+
+    assert!(!ours().iter().any(|l| l.split_whitespace().any(|w| w == "git@bitbucket.org")), "nothing to the old host: {:?}", ours());
+    assert_eq!(git(&c.local, &["remote", "get-url", "origin"]), origin, "the remote is left as it was");
+    assert_eq!(std::fs::read_to_string(c.local.join(".git/config")).unwrap(), config);
+}
+
 #[tokio::test]
 async fn a_branch_with_an_open_pull_request_on_bitbucket_keeps_it_and_the_push_goes_over_ssh_from_a_clone_url_with_a_user_name() {
     fakes();
@@ -430,7 +467,7 @@ async fn a_branch_with_an_open_pull_request_on_bitbucket_keeps_it_and_the_push_g
     assert_eq!(pr, PullInfo { url: url(repo, 4), number: Some(4), state: "open".into(), note: None });
     let reqs = requests(repo);
     assert!(!reqs.iter().any(|r| r.method == "POST"), "no new pull request: {reqs:?}");
-    assert!(ssh_calls().iter().any(|l| l.contains("git@bitbucket.org") && l.contains(&format!("git-receive-pack '{repo}.git'"))), "{:?}", ssh_calls());
+    assert!(ssh_calls().iter().any(|l| l.contains("git@ssh.bitbucket.org") && l.contains(&format!("git-receive-pack '{repo}.git'"))), "{:?}", ssh_calls());
     assert_eq!(git(&c.bare, &["rev-parse", &c.branch]), head);
     assert_eq!(git(&c.local, &["remote", "get-url", "origin"]), format!("https://jefsev@bitbucket.org/{repo}.git"));
     let t = task(&c);

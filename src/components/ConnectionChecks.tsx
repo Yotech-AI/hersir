@@ -1,10 +1,11 @@
 // What Settings → GitHub and Settings → Bitbucket share: a status line with its mark, and the result list of Check connection.
 import type { ReactNode } from "react";
-import { CircleCheck, CircleMinus, CircleX } from "lucide-react";
+import { CircleCheck, CircleMinus, CircleX, Info } from "lucide-react";
 import type { Mark } from "../lib/github";
 import type { ConnectionCheck } from "../types";
 
-const MARKS = { ok: CircleCheck, failed: CircleX, skipped: CircleMinus };
+// a note fails nothing: worth knowing, with what you can do (Bitbucket's old SSH host in a remote, GA-315)
+const MARKS = { ok: CircleCheck, failed: CircleX, skipped: CircleMinus, note: Info };
 
 export function Line({ mark, children }: { mark: Mark; children: ReactNode }) {
   const Icon = MARKS[mark];
