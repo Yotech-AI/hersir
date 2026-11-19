@@ -142,8 +142,8 @@ fn check_blocking(st: &AppState) -> ConnectionCheck {
     }];
     let routes: Vec<Route> = crate::github::linked_projects(st, "bitbucket").iter().map(|(p, link, repo)| route(p, link, repo)).collect();
     // each host at the same time: one that gives no answer holds up the others no longer than itself
-    let hosts: Vec<_> = ssh_hosts(&routes).into_iter().map(|host| std::thread::spawn(move || ssh_line(&host))).collect();
-    checks.extend(hosts.into_iter().filter_map(|t| t.join().ok()));
+    let hosts: Vec<_> = ssh_hosts(&routes).into_iter().map(|host| std::thread::spawn(move || ssh_lines(&host))).collect();
+    checks.extend(hosts.into_iter().filter_map(|t| t.join().ok()).flatten());
     // each project's note right after its own line
     for line in crate::github::project_checks(st, "bitbucket", Some(&PushOver::Bitbucket)) {
         let notes: Vec<Check> = routes.iter().filter(|r| line.project_id.as_deref() == Some(r.project_id.as_str()))
@@ -190,13 +190,13 @@ fn route(p: &Project, link: &str, repo: &str) -> Route {
             })
             .collect();
         if !switch.is_empty() {
-            out.notes.push(note(format!("Its remote {name} still uses git@bitbucket.org, Bitbucket's old SSH host, which stops taking SSH. \
-                                         Hersir already uses {BITBUCKET_SSH_HOST} for it."),
+            out.notes.push(note(format!("Its remote {name} still names git@bitbucket.org, which stops taking SSH: Hersir already uses \
+                                         {BITBUCKET_SSH_HOST} for it"),
                                 format!("To switch the checkout itself, run {} in {}.", switch.join(" and "), folder.display())));
         }
     }
     if let Some(old) = goes_to.as_deref().filter(|u| connection::bitbucket_ssh_address(u).is_some()).and_then(connection::ssh_destination) {
-        out.notes.push(note(format!("A git rule of your own sends its pushes to {old}, Bitbucket's old SSH host, which stops taking SSH."),
+        out.notes.push(note(format!("A git rule of your own sends its pushes to {old}, Bitbucket's old SSH host, which stops taking SSH"),
                             format!("Change that rule to send them to git@{BITBUCKET_SSH_HOST}: instead. \
                                      git config --show-origin --get-regexp '^url\\.' shows your rules and where each one is.")));
     }
@@ -218,14 +218,33 @@ fn ssh_hosts(routes: &[Route]) -> Vec<String> {
     hosts
 }
 
-/// The SSH line for `host`: whether it accepts your SSH key (`ssh -T`), with the host in its words.
-fn ssh_line(host: &str) -> Check {
-    match connection::bitbucket_ssh_check_at(host, CHECK_LIMIT) {
+/// The SSH lines for `host`: whether it accepts your SSH key (`ssh -T`), with the host in its words; and for an SSH host
+/// alias of yours that still goes to bitbucket.org (its HostName, `connection::ssh_hostname`), a note: it works until
+/// Bitbucket stops taking SSH there.
+fn ssh_lines(host: &str) -> Vec<Check> {
+    let mut out = vec![match connection::bitbucket_ssh_check_at(host, CHECK_LIMIT) {
         Ok(Some(who)) => Check::ok("SSH", format!("{host} accepts your SSH key, as {who}")),
         Ok(None) => Check::ok("SSH", format!("{host} accepts your SSH key")),
         Err(p) => {
             let text = format!("{host}: {}", p.what);
             Check { text, ..Check::failed("SSH", p) }
         }
+    }];
+    let alias = host_name(host);
+    let bitbucket = |h: &str| ["bitbucket.org", "www.bitbucket.org", BITBUCKET_SSH_HOST].contains(&h);
+    if !bitbucket(&alias.to_ascii_lowercase())
+        && connection::ssh_hostname(host, CHECK_LIMIT).is_some_and(|real| bitbucket(&real) && real != BITBUCKET_SSH_HOST)
+    {
+        out.push(Check::note("SSH", format!("{alias}, your SSH host alias, still goes to bitbucket.org, which stops taking SSH"),
+                             format!("Set its HostName to {BITBUCKET_SSH_HOST} in your SSH config (~/.ssh/config), then run ssh -T {host} \
+                                      once in a terminal and answer yes.")));
     }
+    out
+}
+
+/// The host in an SSH destination: "bitbucket-snx" for git@bitbucket-snx, "host" for ssh://git@host:2222.
+fn host_name(destination: &str) -> String {
+    let d = destination.strip_prefix("ssh://").unwrap_or(destination);
+    let d = d.rsplit_once('@').map_or(d, |(_, host)| host);
+    d.split(':').next().unwrap_or(d).to_string()
 }

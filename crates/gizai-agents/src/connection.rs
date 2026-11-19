@@ -496,10 +496,9 @@ fn sh_quote(s: &str) -> String {
     }
 }
 
-/// What `ssh -T <to>` says, in batch mode so it never asks. It runs your own GIT_SSH_COMMAND when you set one, the way
-/// git does for a push.
-fn ssh_t(to: &str, host: Host, limit: Duration) -> Result<String, Problem> {
-    let mut cmd = match std::env::var("GIT_SSH_COMMAND") {
+/// ssh as git runs it for a push: your own GIT_SSH_COMMAND when you set one, else ssh in batch mode, so it never asks.
+fn ssh_command() -> Result<std::process::Command, Problem> {
+    Ok(match std::env::var("GIT_SSH_COMMAND") {
         Ok(own) if !own.trim().is_empty() => {
             let mut c = crate::os::command(own_ssh_shell()?);
             c.arg("-c").arg(format!("{own} \"$@\"")).arg(&own);
@@ -510,7 +509,13 @@ fn ssh_t(to: &str, host: Host, limit: Duration) -> Result<String, Problem> {
             c.args(["-o", "BatchMode=yes"]);
             c
         }
-    };
+    })
+}
+
+/// What `ssh -T <to>` says, in batch mode so it never asks. It runs your own GIT_SSH_COMMAND when you set one, the way
+/// git does for a push.
+fn ssh_t(to: &str, host: Host, limit: Duration) -> Result<String, Problem> {
+    let mut cmd = ssh_command()?;
     cmd.args(["-T", to]).env("SSH_ASKPASS_REQUIRE", "never");
     let (_, out, err) = github::run(cmd, None, limit).map_err(|e| match e.kind() {
         ErrorKind::NotFound => ssh_missing(host),
@@ -563,6 +568,20 @@ pub fn bitbucket_ssh_check_at(to: &str, limit: Duration) -> Result<Option<String
         return Ok(None);
     }
     Err(bitbucket_ssh_problem(&said).unwrap_or_else(|| Problem::plain(last_words(&said))))
+}
+
+/// The host name ssh really connects to for `to` ("git@bitbucket-snx"): the HostName of an SSH host alias of yours, as
+/// `ssh -G` works it out from your ~/.ssh/config, in lower case. ssh -G connects nowhere and asks nothing (git runs it
+/// too, to tell which ssh it has). It runs your own GIT_SSH_COMMAND when you set one, the way git does. None when ssh
+/// can't say.
+pub fn ssh_hostname(to: &str, limit: Duration) -> Option<String> {
+    let mut cmd = ssh_command().ok()?;
+    cmd.args(["-G", to]).env("SSH_ASKPASS_REQUIRE", "never");
+    let (ok, out, _) = github::run(cmd, None, limit).ok()?;
+    if !ok {
+        return None;
+    }
+    out.lines().find_map(|l| l.trim().strip_prefix("hostname ")).map(|h| h.trim().to_ascii_lowercase()).filter(|h| !h.is_empty())
 }
 
 /// Where `ssh -T` reaches the host of the git address `address`, when it goes over SSH: "git@ssh.bitbucket.org" for
