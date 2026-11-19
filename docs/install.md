@@ -2,13 +2,13 @@
 
 Hersir was called GizAi until version 0.14.
 
-From 0.17.0 the programs, the command and the app id are Hersir's too: `hersir`, `hersir-mcp` and `dev.hersir.app`. An install from before 0.17.0 keeps its folders when it updates, from Hersir itself or with the one line, and gets the hersir names beside its gizai ones: `gizai` still starts Hersir.
-
 Hersir installs for you alone, without sudo or administrator rights; on Arch Linux and Omarchy, the AUR's package installs it for the whole computer instead ([With a package manager](#with-a-package-manager)). It runs on Linux, on Macs with Apple silicon and on Windows 11.
 
 The one line installs the latest release's ready-made build for your system, in about a minute, once it has checked the release's signature. Where there is no ready-made build, it builds Hersir from the release's source on your own computer, as a clone does. Updates from inside Hersir install the release's ready-made build too, once its signature checks ([Updates](#updates)). There are no installers and no browser downloads, on any system. The `production` branch holds the released version; `main` is development.
 
 Hersir is early: its version is still 0.x. Every release is on [GitHub Releases](https://github.com/Yotech-AI/hersir/releases).
+
+From 0.17.0 the programs, the command and the app id are Hersir's too: `hersir`, `hersir-mcp` and `dev.hersir.app`. An install from before 0.17.0 keeps its folders when it updates, from Hersir itself or with the one line, and gets the hersir names beside its `gizai` ones: `gizai` still starts Hersir.
 
 ## In one line
 
@@ -37,7 +37,7 @@ Run it again to update. When the release has no ready-made build for your system
 - Without git or ssh-keygen (on Linux and macOS also bash and curl), it says what to install first and does nothing else.
 - A release that isn't signed yet stops with `vX.Y.Z isn't signed yet: try again in a few minutes.` One whose signature doesn't check isn't installed either, and one line says why: an installed Hersir stays as it is.
 - The source folder is the install's own: changes in it are replaced. Your data stays in [its own folder](#your-data).
-- `--uninstall --purge` (`-Uninstall -Purge` on Windows) deletes the source folder with your data: the data folder Hersir uses, which is the hersir folder, or, when there is none, the gizai folder of an install from before 0.17.0 that holds `gizai.db` ([Your data](#your-data)). On macOS and Windows, `HERSIR_DATA_DIR` (else `GIZAI_DATA_DIR`) names another one.
+- `--uninstall --purge` (`-Uninstall -Purge` on Windows) deletes the source folder with your data: the data folder Hersir uses, which is the hersir folder, or, when there is none, the `gizai` folder of an install from before 0.17.0 that holds `gizai.db` ([Your data](#your-data)). On macOS and Windows, `HERSIR_DATA_DIR` (else `GIZAI_DATA_DIR`) names another one.
 - CI proves the line: it installs, updates and uninstalls Hersir with it on Ubuntu 24.04, Fedora, Arch Linux, openSUSE Tumbleweed, macOS 15 on Apple silicon and Windows whenever an install script changes, from a ready-made build signed with a test key and from source, and checks that a release whose signature doesn't check installs nothing. It runs hersir.dev's own lines on Ubuntu, macOS and Windows once each release is signed, and every week.
 
 The install script's options go after the line:
@@ -243,7 +243,7 @@ A Hersir from Scoop doesn't either: quit it, then `scoop update; scoop update he
 
 Hersir keeps your data in one folder on your computer: the database, logs, worktrees and backups. It is `~/.local/share/hersir` on Linux (`$XDG_DATA_HOME/hersir` when that is set), `~/Library/Application Support/Hersir` on macOS and `%APPDATA%\Hersir` on Windows. `HERSIR_DATA_DIR` points it elsewhere. One Hersir runs per data folder.
 
-An install from before 0.17.0 keeps its data where it is, in `~/.local/share/gizai`, `~/Library/Application Support/Gizai` or `%APPDATA%\Gizai`: Hersir uses the hersir folder when there is one, else the gizai folder when it holds Hersir's data (its `gizai.db`), else it makes the hersir folder. It never moves or copies your data.
+An install from before 0.17.0 keeps its data where it is, in `~/.local/share/gizai`, `~/Library/Application Support/Gizai` or `%APPDATA%\Gizai`: Hersir uses the hersir folder when there is one, else the `gizai` folder when it holds Hersir's data (its `gizai.db`), else it makes the hersir folder. It never moves or copies your data.
 
 Each variable Hersir reads has a `HERSIR_` name and, from before 0.17.0, a `GIZAI_` one: `GIZAI_DATA_DIR` still works, and `HERSIR_DATA_DIR` wins when both are set.
 
