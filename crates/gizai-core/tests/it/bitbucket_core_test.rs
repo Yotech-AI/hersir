@@ -10,8 +10,9 @@ use std::path::{Path, PathBuf};
 
 const TIDY: &str = "https://bitbucket.org/snxo2021/sts_dias";
 
-/// The forms people paste or git shows for one Bitbucket Cloud repository.
-const FORMS: [&str; 10] = [
+/// The forms people paste or git shows for one Bitbucket Cloud repository; GA-315: also on its SSH host
+/// ssh.bitbucket.org, where a remote that was already switched points.
+const FORMS: [&str; 14] = [
     "https://bitbucket.org/snxo2021/sts_dias",
     "https://bitbucket.org/snxo2021/sts_dias/",
     "https://bitbucket.org/snxo2021/sts_dias/src/master/",
@@ -22,6 +23,10 @@ const FORMS: [&str; 10] = [
     "ssh://git@bitbucket.org/snxo2021/sts_dias.git",
     "  https://bitbucket.org/snxo2021/sts_dias/src/master/  ",
     "https://bitbucket.org/snxo2021/sts_dias/src/master/?at=master",
+    "git@ssh.bitbucket.org:snxo2021/sts_dias.git",
+    "git@ssh.bitbucket.org:snxo2021/sts_dias",
+    "ssh://git@ssh.bitbucket.org/snxo2021/sts_dias.git",
+    "  git@ssh.bitbucket.org:snxo2021/sts_dias.git  ",
 ];
 
 // --- repo_url ---
@@ -39,7 +44,7 @@ fn every_usual_bitbucket_form_becomes_one_link() {
 
 #[test]
 fn a_bitbucket_address_without_a_repository_is_refused() {
-    for bad in ["https://bitbucket.org/snxo2021", "https://bitbucket.org/snxo2021/", "git@bitbucket.org:snxo2021"] {
+    for bad in ["https://bitbucket.org/snxo2021", "https://bitbucket.org/snxo2021/", "git@bitbucket.org:snxo2021", "git@ssh.bitbucket.org:snxo2021"] {
         let e = repo_url::normalize(bad).expect_err(bad).to_string();
         assert!(e.contains("Bitbucket"), "{bad}: {e}");
     }
@@ -48,7 +53,7 @@ fn a_bitbucket_address_without_a_repository_is_refused() {
 #[test]
 fn every_form_of_a_bitbucket_link_is_the_same_repository_whatever_its_case() {
     let mut forms = FORMS.to_vec();
-    forms.extend(["https://bitbucket.org/SNXO2021/STS_DIAS", "git@bitbucket.org:Snxo2021/Sts_Dias.git"]);
+    forms.extend(["https://bitbucket.org/SNXO2021/STS_DIAS", "git@bitbucket.org:Snxo2021/Sts_Dias.git", "git@ssh.bitbucket.org:SNXO2021/Sts_Dias.git"]);
     for a in &forms {
         for b in &forms {
             assert!(repo_url::same_repo(a, b), "{a} vs {b}");
@@ -61,6 +66,9 @@ fn another_repository_or_workspace_or_the_github_twin_is_not_the_same() {
     for form in FORMS {
         for other in ["https://bitbucket.org/snxo2021/sts_web", "git@bitbucket.org:snxo2021/sts_dias2.git",
                       "https://bitbucket.org/other/sts_dias", "ssh://git@bitbucket.org/other/sts_dias.git",
+                      "git@ssh.bitbucket.org:snxo2021/sts_web.git", "ssh://git@ssh.bitbucket.org/other/sts_dias.git",
+                      // an SSH host alias of yours: only git's rewrite says where it goes
+                      "git@bitbucket-snx:snxo2021/sts_dias.git",
                       // the same owner/name on GitHub is another repository
                       "https://github.com/snxo2021/sts_dias", "git@github.com:snxo2021/sts_dias.git", "snxo2021/sts_dias"] {
             assert!(!repo_url::same_repo(form, other), "{form} vs {other}");

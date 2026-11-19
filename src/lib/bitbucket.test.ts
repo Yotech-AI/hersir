@@ -70,7 +70,8 @@ describe("how to make the token and how pushes go", () => {
     expect(TOKEN_HOW_TO.split("\n")).toHaveLength(1);
     expect(TOKEN_PAGE).toBe("https://id.atlassian.com/manage-profile/security/api-tokens");
   });
-  it("says pushes go over SSH with your keys, and where to add the public key", () => {
-    expect(SSH_LINE).toBe("Pushes go over SSH with your own keys: add your public key in Bitbucket → Personal settings → SSH keys.");
+  it("says pushes go over SSH to ssh.bitbucket.org with your keys, and where to add the public key", () => {
+    // GA-315: Bitbucket's SSH host is ssh.bitbucket.org (bitbucket.org stops taking SSH)
+    expect(SSH_LINE).toBe("Pushes go over SSH (ssh.bitbucket.org) with your own keys: add your public key in Bitbucket → Personal settings → SSH keys.");
   });
 });
