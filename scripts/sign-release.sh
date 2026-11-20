@@ -7,17 +7,24 @@
 # hersir-X.Y.Z.sig, which the one-line install and Update check against the keys of release-signers, built into them,
 # before anything of the release runs. Then it starts One-line install (.github/workflows/one-line.yml) again.
 #
-# - It shows what it signs (the version, the commit with its subject, whether that is production's latest commit, and
-#   SHA256SUMS) and signs only after y. Before that it stops, with one line that says why, for a version that isn't
-#   vX.Y.Z, and for a release without SHA256SUMS or one of its archives, or with hersir-X.Y.Z.sig already (--again signs
-#   it again and replaces it).
+# - It signs only the builds Release builds made for production's latest commit: whoever can write the release (a
+#   collaborator, an agent's gh login, a run of a changed workflow on another branch) could swap its archives and
+#   SHA256SUMS before they are signed. So, before it shows anything to sign: the commit must be production's latest
+#   commit; a run of release-builds.yml whose headSha is that commit, for the release or by hand, must have succeeded,
+#   with no such run still going; the SHA256SUMS that run made, its artifact, must be the release's, byte for byte; and
+#   each of the release's three archives, downloaded, must match its line of it (sha256sum -c). --again checks the same.
+# - It shows what it signs (the version, the commit with its subject, production, the run and SHA256SUMS) and signs only
+#   after y. Before that it stops, with one line that says why, for a version that isn't vX.Y.Z, for a release without
+#   SHA256SUMS or one of its archives, or with hersir-X.Y.Z.sig already (--again signs it again and replaces it), and
+#   when one of the checks above fails.
 # - The key is HERSIR_RELEASE_KEY, by default ~/.ssh/hersir-release. ssh-keygen asks for its passphrase on the
 #   terminal: a key without one is refused, and ssh-agent is never used. The private keys never go to GitHub, CI or an
 #   agent, and nothing in CI signs.
 # - The new signature must check against release-signers before it is uploaded. HERSIR_RELEASE_SIGNERS, a file in the
 #   allowed-signers format, replaces release-signers, as it does for the one-line install and Update: for tests, which
 #   sign fake releases with a throwaway key, never with Hersir's.
-# A bash script for Linux and macOS, also for macOS's own bash 3.2. It needs gh, logged in to GitHub, and ssh-keygen.
+# A bash script for Linux and macOS, also for macOS's own bash 3.2. It needs gh, logged in to GitHub, ssh-keygen, cmp and
+# sha256sum (on macOS shasum).
 
 set -euo pipefail
 
@@ -46,13 +53,15 @@ fail() { printf '%s\n' "$*" >&2; exit 1; }
 
 usage() {
   cat <<'USAGE'
-Signs Hersir's release vX.Y.Z with Hersir's release key, once Release builds has uploaded its archives and SHA256SUMS:
+Signs Hersir's release vX.Y.Z with Hersir's release key, once Release builds has uploaded its archives and SHA256SUMS.
+It signs only production's latest commit, and only the builds a successful Release builds run of that commit made:
   scripts/sign-release.sh vX.Y.Z           shows what it signs, signs after y, uploads hersir-X.Y.Z.sig to the release
                                            and starts One-line install
   scripts/sign-release.sh vX.Y.Z --again   signs it again and replaces the release's hersir-X.Y.Z.sig
 Environment: HERSIR_RELEASE_KEY, the private key's file (default ~/.ssh/hersir-release), which must have a passphrase;
 HERSIR_RELEASE_SIGNERS, an allowed-signers file instead of release-signers, for tests with a throwaway key.
-It needs gh, logged in to GitHub (gh auth login), and ssh-keygen. docs/RELEASING.md, step 5, says when to run it.
+It needs gh, logged in to GitHub (gh auth login), ssh-keygen, cmp and sha256sum (on macOS shasum).
+docs/RELEASING.md, step 5, says when to run it and what it checks.
 USAGE
 }
 
@@ -76,6 +85,15 @@ sig="hersir-$version.sig"
 archives=("hersir-$version-linux-x86_64.tar.gz" "hersir-$version-macos-arm64.tar.gz" "hersir-$version-windows-x86_64.zip")
 
 command -v ssh-keygen >/dev/null || fail "ssh-keygen isn't installed: it comes with OpenSSH."
+command -v cmp >/dev/null || fail "cmp isn't installed: it comes with diffutils."
+# sha256sum -c checks the files a sums file names, in the folder it runs in; on macOS shasum -a 256 -c, which reads the
+# same lines.
+case "$OSTYPE" in
+  darwin*) checksum=shasum; check_sums() { shasum -a 256 -c "$1"; } ;;
+  *) checksum=sha256sum; check_sums() { sha256sum -c "$1"; } ;;
+esac
+command -v "$checksum" >/dev/null ||
+  fail "$checksum isn't installed, so the release's archives can't be checked against SHA256SUMS."
 command -v gh >/dev/null || fail "gh isn't installed: get it from https://cli.github.com, then run gh auth login."
 gh auth status --hostname github.com >/dev/null 2>&1 </dev/null ||
   fail "gh isn't logged in to GitHub: run gh auth login, then this again."
@@ -141,6 +159,9 @@ subject="$(printf '%s' "$subject" | LC_ALL=C tr -d '\000-\037\177')"
 production="$(github api "repos/$REPO/git/ref/heads/production" --jq '.object.sha')" ||
   fail "Couldn't read production's latest commit: $(why)"
 [[ $production =~ $SHA_RE ]] || fail "Couldn't read production's latest commit: GitHub gave no commit id."
+# Only production's latest commit is signed: a release is a tag on it (docs/RELEASING.md).
+[ "$commit" = "$production" ] ||
+  fail "The tag $tag is on $commit, not on production's latest commit ($production), so it isn't signed."
 
 github release download "$tag" --repo "$REPO" --pattern SHA256SUMS --dir "$tmp" ||
   fail "Couldn't download the SHA256SUMS of $tag: $(why)"
@@ -161,6 +182,53 @@ while IFS= read -r line || [ -n "$line" ]; do
 done < "$sums"
 [ "$n" = 3 ] || fail "$bad_sums"
 
+# The Release builds run that made these builds: the newest successful run of release-builds.yml whose headSha is the
+# commit, started by the release (release) or by hand (workflow_dispatch). Such a run is the commit's own workflow, so a
+# run of a changed workflow on another branch doesn't count, nor does a pull request's (its workflow is the merge's with
+# its base, whatever its headSha). A run of the commit that is still going replaces the release's builds when it is
+# done, so it is signed after that.
+runs="$(github run list --workflow release-builds.yml --repo "$REPO" --commit "$commit" --limit 100 \
+  --json databaseId,headSha,event,status,conclusion \
+  --jq '.[] | select(.headSha == "'"$commit"'" and (.event == "release" or .event == "workflow_dispatch")) | "\(.databaseId) \(.status) \(.conclusion)"')" ||
+  fail "Couldn't read the Release builds runs of $commit: $(why)"
+run=""
+RUN_RE='^([0-9]+) ([a-z_]+) ([a-z_]*)$'
+while IFS= read -r line; do
+  [ -n "$line" ] || continue
+  [[ $line =~ $RUN_RE ]] || fail "Couldn't read the Release builds runs of $commit: GitHub gave something else."
+  if [ "${BASH_REMATCH[2]}" != completed ]; then
+    fail "Release builds run ${BASH_REMATCH[1]} of $commit, the commit of $tag, is still going: sign $tag once it is done (gh run watch ${BASH_REMATCH[1]} --repo $REPO)."
+  fi
+  if [ -z "$run" ] && [ "${BASH_REMATCH[3]}" = success ]; then run="${BASH_REMATCH[1]}"; fi
+done <<< "$runs"
+# Builds on the release without such a run come from somewhere else: a run by hand from main, say. A run on the tag
+# replaces them with its own.
+[ -n "$run" ] ||
+  fail "No Release builds run of $commit, the commit of $tag, succeeded, so $tag isn't signed: gh workflow run release-builds.yml -f tag=$tag --ref $tag builds it on that commit."
+
+# The SHA256SUMS that run made, its artifact, which only the run itself writes, must be the release's, byte for byte:
+# the release's could have been replaced since.
+mkdir "$tmp/run" "$tmp/release" || fail "Couldn't make a temp folder."
+github run download "$run" --repo "$REPO" --name SHA256SUMS --dir "$tmp/run" ||
+  fail "Couldn't download the SHA256SUMS of Release builds run $run: $(why)"
+[ -f "$tmp/run/SHA256SUMS" ] || fail "gh downloaded no SHA256SUMS of Release builds run $run."
+cmp -s "$tmp/run/SHA256SUMS" "$sums" ||
+  fail "The SHA256SUMS of $tag isn't the one Release builds run $run made for $commit, so $tag isn't signed."
+
+# And each of the release's archives must be the one its line names: downloaded, and checked with sha256sum -c one line
+# at a time, so that a failure names its archive.
+say "Downloading the archives of $tag, to check them against SHA256SUMS."
+for file in "${archives[@]}"; do
+  github release download "$tag" --repo "$REPO" --pattern "$file" --dir "$tmp/release" ||
+    fail "Couldn't download $file of $tag: $(why)"
+  [ -f "$tmp/release/$file" ] || fail "gh downloaded no $file of $tag."
+done
+for i in 0 1 2; do
+  printf '%s\n' "${sum_lines[$i]}" > "$tmp/sum"
+  (cd "$tmp/release" && check_sums "$tmp/sum") >/dev/null 2>&1 ||
+    fail "The release's ${archives[$i]} doesn't match its sum in SHA256SUMS, so $tag isn't signed."
+done
+
 # The message, byte for byte as the one-line install and Update rebuild it. ssh-keygen writes its signature next to it,
 # as hersir-X.Y.Z.sig, the asset's name.
 message="$tmp/hersir-$version"
@@ -170,11 +238,8 @@ say ""
 say "Hersir's release $tag ($REPO)"
 say "  Version     $tag"
 say "  Commit      $commit ${subject:-(no subject)}"
-if [ "$commit" = "$production" ]; then
-  say "  Production  its latest commit is this one"
-else
-  say "  Production  its latest commit is $production, not this one"
-fi
+say "  Production  its latest commit is this one"
+say "  Builds      Release builds run $run made SHA256SUMS for this commit, and the archives match it"
 say "  SHA256SUMS  ${sum_lines[0]}"
 say "              ${sum_lines[1]}"
 say "              ${sum_lines[2]}"
