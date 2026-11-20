@@ -1442,35 +1442,43 @@ Projects in the cloud (A4); any copy of a host's data on a device (A3); queued w
 
 ## 6. Proposed cards
 
-Eleven cards in three features, each one pull request in one repository: **the app** (this repository, open source) or **`Yotech-AI/hersir-cloud`** (new, private). Sizes in agent-days [I].
+Twelve cards in four features, each one pull request in one repository: **the app** (this repository, open source) or **`Yotech-AI/hersir-cloud`** (private, project HC). Sizes in agent-days [I]. Card numbers are Round 3's; how they map to Round 2's is at the end of this section.
 
-**At the same time**: cards 1, 2, 3 and 6 can start together (2 and 3 meet at 5.4's contract; 3 builds against a fake server). Then 4 (after 1 and 3), 5 and 7 (after 2; both in the server repository, in different files, so they can run together), 8 (after 3, 6 and 7), 9 (after 1 and 8), 10 (after 7 and 8), 11 (after 1 and 10).
+**At the same time**: cards 1, 2, 4 and 8 can start together (4 builds against a fake server, 8 against a local fake relay; both against 5.4's and 5.8's contracts). Then 3 and 7 (after 2; both in the server repository, in different files, so they can run together), 5 (after 1 and 4), 6 (after 2), 9 (after 1 and 8), 10 (after 1), 11 (after 8, and 7 for its end-to-end test), 12 (after 10 and 11). **The MacBook's path**: 2, 7, 8, 9. **The phone's**: 10, 11, 12.
 
-### Cloud Backup (cards 1 to 5)
+### The account and Cloud Backup (cards 1 to 6)
 
-**1. Design: Hersir Cloud on the desktop and the web, with Multiple devices and the Chief's chat on another computer**
-- Repository: the app (`design/hersir-cloud.md` and its screens). Column: Design. Role: design. Builds on: none. Size: 2 to 3.
-- Builds: every state of 5.1. The Hersir Cloud tab: signed out, signing in, the recovery code and its warning, signed in, a backup running, a failure, the quota full, a lapsed plan, *Make a new recovery code*, Your computers with *Remove…* and its question, the Chief's computer. *Restore from Hersir Cloud* (first screen and Settings) with its steps. Multiple devices: "Running on Laptop", "not synced yet", *Runs on*, the offline and update bands. The Chief's chat on another computer: sent, waiting for an offline Chief's computer, the live answer, Approve from here, "Approving on Desktop…", an expired approval, not delivered with *Send again*. The web pages: create an account, check your email, set up two-factor authentication, the account page, the desktop sign-in's done page.
+**1. Design: Hersir Cloud on the desktop and the web, and Hersir on your other computers**
+- Repository: the app (`design/hersir-cloud.md` and its screens in Figma, as `design/islands/` does). Column: Design. Role: design. Builds on: none. Size: 3 to 4.
+- Builds: every state of 5.1 that still holds and of 5.8's desktop screens. The Hersir Cloud tab: signed out, signing in, the recovery code and its warning, signed in, a backup running, a failure, the quota full, a lapsed plan, *Make a new recovery code*. *Restore from Hersir Cloud* (first screen and Settings). *Use from other devices*: off, on with no devices, devices connected and not, *Add a device* with the QR code and code, a device joining and the question of 3.13 step 3, *Last actions*, *Remove…*. On a device: the hosts' rail (one host, two hosts, a host connecting, offline, remote off, an old version, removed), the offline page (3.11), the band of a host that went offline, *Add a computer*, the repository note in the project form (A1), "The Editor works on PC itself" and "Change this on PC". The web pages: create an account, check your email, set up two-factor authentication, the account page (with *Your computers and devices*), the desktop sign-in's done page.
 - Acceptance:
-  - [ ] every state drawn, in dark and light, with the final texts, decision 2's warning word for word
-  - [ ] only existing components and tokens (5.1); gold only where you are needed
-  - [ ] each screen names its component and the commands of 5.4 it shows
+  - [ ] every state drawn, in dark and light, with the final texts; decision 2's warning and 3.11's offline and repository texts word for word
+  - [ ] only existing components and tokens (5.1, 5.8); the rail on the background, as the islands' rules say; gold only where you are needed
+  - [ ] each screen names its component and the commands of 5.4 and 5.8 it shows
   - [ ] the web pages say which starter-kit views they change and which of Hersir's tokens they take
 
-**2. Hersir Cloud server: accounts with required 2FA, computers, keys and encrypted backup storage**
-- Repository: `Yotech-AI/hersir-cloud`. Column: To do. Role: backend. Builds on: none (your set-up, 3.10 rows 1 to 6 and 8). Size: 5 to 7.
-- Builds: a Laravel 13 app from the Livewire starter kit; Fortify with `RequireTwoFactor` on every web route, Passport's included; Passport 13 with the public client *Hersir desktop*, S256 only, the two well-known documents of 3.4, the exchange (`POST /devices`), a token per computer and Remove; the calls marked card 2 in 5.4 (devices, entitlements from `comps`, keys and roster, objects with presigned R2 URLs and size checks, snapshots); retention (decision 8) and garbage collection; the quota; `hersir:comp`; Litestream's config, the nightly copy, the Forge deploy script, `RUNBOOK.md` with the restore drill, `PROTOCOL.md`; healthchecks pings; a minimal account page with the computers and Remove.
+**2. Hersir Cloud server, first card: the app, accounts with required 2FA, computers and their tokens**
+- Repository: `Yotech-AI/hersir-cloud`. Column: To do. Role: backend. Builds on: **your first commit** (3.10, row 0: `laravel new hersir-cloud --livewire --pest --database=sqlite --npm --git --branch=main`, pushed to `git@github.com:Yotech-AI/hersir-cloud.git` as the installer made it) and your set-up (3.10 rows 1 to 6 and 8). Size: 3 to 4.
+- Builds: on the starter kit's commit, Fortify with `RequireTwoFactor` on every web route, Passport's included; Passport 13 with the public client *Hersir desktop*, S256 only, the two well-known documents of 3.4, the exchange (`POST /devices`), a token per computer, Remove; the calls marked card 2 in 5.4 (`/devices` with `kind` and `remote_on`, `PUT /devices/me`, entitlements from `comps`); `hersir:comp`; SQLite in WAL mode with Litestream's config, the Forge deploy script and `RUNBOOK.md` with the restore drill; healthchecks pings; a minimal account page with *Your computers and devices* and Remove; `PROTOCOL.md` started.
 - Acceptance:
-  - [ ] every call marked card 2 in 5.4, with its errors, covered by Pest tests against an S3 fake
+  - [ ] the pull request starts from the installer's commit and changes only Hersir Cloud's own code
+  - [ ] every call marked card 2 in 5.4, with its errors, covered by Pest tests
   - [ ] the sign-in `oauth.rs` makes works: a redirect to 127.0.0.1 on a random port with S256 is accepted; `plain` is refused; `resource` is ignored
-  - [ ] no web route, `/oauth/authorize` included, opens without confirmed 2FA (a test lists the routes)
-  - [ ] a computer can't reach another account's objects or snapshots; a removed computer gets 401 at once
-  - [ ] retention keeps every snapshot 7 days and the newest of each day to 90; garbage collection never deletes an object a kept snapshot uses (fake-clock tests)
+  - [ ] no web route, `/oauth/authorize` included, opens without confirmed 2FA (a test lists the routes); a removed computer gets 401 at once
   - [ ] deployed by Forge at `cloud.hersir.dev`; one restore drill from Litestream done and written down
 
-**3. Cloud Backup in the app: sign in, encrypt, upload and restore**
-- Repository: the app. Column: To do. Role: backend. Builds on: card 2's contract (can be built at the same time, against a fake server). Size: 5 to 7.
-- Builds: the crate `gizai-cloud-client` (`api`, `keys` with the computer's keys and the roster, `chunks`, `backup`, `restore`, `entitlement`) and `src-tauri/src/cloud.rs`; sign-in through `oauth.rs` with the built-in client id, then the exchange; the account key, the recovery code (never stored) and the key id; the page-for-page copy, chunks, sealing and upload; daily, On quit and Back up now; *Restore from Hersir Cloud* into a format-1 folder and on through GA-218's restore; the Hersir Cloud tab's commands and event of 5.4; the entitlement's public key.
+**3. Hersir Cloud server: keys and encrypted backup storage**
+- Repository: `Yotech-AI/hersir-cloud`. Column: To do. Role: backend. Builds on: card 2. Size: 3 to 4.
+- Builds: the calls marked card 3 in 5.4 (keys, objects with presigned R2 URLs and size checks, snapshots); retention (decision 8) and garbage collection; the quota; the nightly copy to the locked bucket.
+- Acceptance:
+  - [ ] every call marked card 3 in 5.4, with its errors, covered by Pest tests against an S3 fake
+  - [ ] a computer can't reach another account's objects or snapshots
+  - [ ] retention keeps every snapshot 7 days and the newest of each day to 90; garbage collection never deletes an object a kept snapshot uses (fake-clock tests)
+  - [ ] objects over 4 MiB plus overhead are refused when a snapshot is registered
+
+**4. Cloud Backup in the app: sign in, encrypt, upload and restore**
+- Repository: the app. Column: To do. Role: backend. Builds on: cards 2 and 3's contract (can be built at the same time, against a fake server). Size: 5 to 7.
+- Builds: the crate `gizai-cloud-client` (`api`, `keys` with the computer's keys, `chunks`, `backup`, `restore`, `entitlement`) and `src-tauri/src/cloud.rs`; sign-in through `oauth.rs` with the built-in client id, then the exchange; the account key, the recovery code (never stored) and the key id; the page-for-page copy, chunks, sealing and upload; daily, On quit and Back up now; *Restore from Hersir Cloud* into a format-1 folder and on through GA-218's restore; the Hersir Cloud tab's commands and event of 5.4; the entitlement's public key.
 - Acceptance:
   - [ ] a backup made on one computer restores on a clean one (scratch data folders), with the device rule and this computer's settings kept
   - [ ] the second daily backup of an unchanged database uploads nothing but the manifest
@@ -1478,78 +1486,100 @@ Eleven cards in three features, each one pull request in one repository: **the a
   - [ ] a lapsed plan stops uploads and still restores
   - [ ] `cargo test --workspace`, `npm test`, `npm run build` pass on Linux, macOS and Windows CI
 
-**4. Settings → Hersir Cloud**
-- Repository: the app. Column: To do. Role: frontend. Builds on: cards 1 and 3. Size: 3 to 4.
-- Builds: `CloudSettings.tsx`, the tab, *Restore from Hersir Cloud* on the first screen, Your computers with *Remove…*, every Cloud Backup state of card 1's design, on the commands of 5.4.
+**5. Settings → Hersir Cloud**
+- Repository: the app. Column: To do. Role: frontend. Builds on: cards 1 and 4. Size: 3 to 4.
+- Builds: `CloudSettings.tsx`, the tab, *Restore from Hersir Cloud* on the first screen, every Cloud Backup state of card 1's design, on the commands of 5.4. (*Use from other devices* in the same tab is card 9's.)
 - Acceptance:
   - [ ] each state of card 1 shows from the matching `CloudStatus` and `CloudComputer` (component tests)
   - [ ] the recovery code and its warning can't be skipped before the first backup
   - [ ] restore shows GA-218's steps and Restart now; `scripts/ui-test.sh` covers sign-in to restore against the local server
 
-**5. Stripe with Cashier, and the account page**
-- Repository: `Yotech-AI/hersir-cloud`. Column: To do. Role: backend. Builds on: card 2 (and card 1's web pages). Size: 3 to 4. Needed before the first customer, not for your own use.
-- Builds: Cashier 16 with Checkout (monthly and yearly, `Cashier::calculateTaxes()`, VAT numbers, the billing country), the customer portal, the webhook with `stripe_events`, the plan worked out from Cashier into the signed entitlement with `entitlement.changed`; the account page of 5.1 (plan, Subscribe, Manage billing, storage, backups, computers, 2FA, password, Withdraw, Delete account); the lapse emails and the deletion after 60 days; the countries question 13 decides, refused before Checkout opens.
+**6. Stripe with Cashier, and the account page**
+- Repository: `Yotech-AI/hersir-cloud`. Column: To do. Role: backend. Builds on: cards 2 and 3 (and card 1's web pages). Size: 3 to 4. Needed before the first customer, not for your own use.
+- Builds: Cashier 16 with Checkout (monthly and yearly, `Cashier::calculateTaxes()`, VAT numbers, the billing country), the customer portal, the webhook with `stripe_events`, the plan worked out from Cashier into the signed entitlement (`features: ["backup","remote"]`) with `entitlement.changed`; the account page of 5.1 (plan, Subscribe, Manage billing, storage, backups, computers and devices, 2FA, password, Withdraw, Delete account); the lapse emails and the deletion after 60 days; the countries question 13 decides, refused before Checkout opens.
 - Acceptance:
   - [ ] a sandbox subscription turns the plan on in the app within a minute; a cancelled one stays active to the period's end, then lapses
   - [ ] webhooks are checked by signature and handled once each, in any order (Stripe's fixtures)
   - [ ] in the sandbox, Stripe Tax charges Spanish VAT to a Spanish consumer and reverse-charges an EU business with a valid VAT number
   - [ ] Withdraw and Delete account work, with their emails
 
-### Multiple devices (cards 6 to 9)
+### Hersir on your other computers: Remote (cards 7 to 9)
 
-**6. Sync engine in the core**
-- Repository: the app. Column: To do. Role: backend. Builds on: none (no network; can start with cards 2 and 3). Size: 8 to 12.
-- Builds: `crates/gizai-core/src/sync/` and `0023_sync.sql`: the table lists (synced, local, derived, with their one-computer columns) and a test that every table is on one; the triggers and `sync_log`; the HLC; apply with last writer wins per field, row deletes, counters, the numbering rule and document conflicts; the Chief's chat tables with one writer; `agent_configs.home_device_id`; the property tests with faults of 3.7.
+**7. Hersir Cloud server: the relay, pairing and Web Push**
+- Repository: `Yotech-AI/hersir-cloud`. Column: To do. Role: backend. Builds on: card 2. Size: 3 to 4.
+- Builds: Reverb on Forge (the *Laravel Reverb* switch, `ext-uv`, `nofile` raised) with 3.15's settings; 5.8's channels and events with their rules in `routes/channels.php`; presence; the relay API of 5.8 (pairings, pairs, relay blobs with size checks and the R2 lifecycle rule, push subscriptions, `POST /push` with `laravel-notification-channels/webpush` and VAPID keys); `device.online`, `device.offline`, `device.removed`; `relay:prune`; the relay's section of `PROTOCOL.md` (5.8's session, word for word).
 - Acceptance:
-  - [ ] three replicas converge after random edits with drops, duplicates, reorders, a partition, a crash before an answer, a clock an hour behind and a server that goes back
-  - [ ] no two live cards share a number; a provisional number settles the same way everywhere
-  - [ ] a transaction from a newer schema stops the apply; nothing in "never syncs" is captured
-  - [ ] the activity feed shows another computer's changes as its own lines
+  - [ ] every relay call of 5.8, with its errors, covered by Pest tests
+  - [ ] a client can join `private-remote.<host>.<device>` only as that host or device, when they are paired, the account's, not removed, and the host's `remote_on` is true; client events pass between the two, and Reverb never stores them
+  - [ ] removing a device revokes its token and pairs at once, and both sides hear `device.removed`
+  - [ ] a blob over 100 MB is refused before the receiver gets a URL; blobs go after 24 hours
+  - [ ] a test push reaches a browser's subscription (Playwright with Chromium); the server never sees a push's plaintext (it is sealed by the sender)
 
-**7. Hersir Cloud server: sync, claims, commands and Reverb**
-- Repository: `Yotech-AI/hersir-cloud`. Column: To do. Role: backend. Builds on: card 2. Size: 3 to 5.
-- Builds: the calls marked card 7 in 5.4 (workspaces, transactions, file sets, claims, the Chief's computer, commands with their lifetimes and statuses, live answers); Reverb on Forge with 5.4's channels and events, authorised by a computer's token; garbage collection that keeps file sets' objects; sequences never reused after a restore.
+**8. The remote host and the desktop's forwarding**
+- Repository: the app. Column: To do. Role: backend. Builds on: card 2's contract and card 7's (5.8; can start at once against a local fake relay). Size: 6 to 8.
+- Builds: `src-tauri/src/remote/` of 5.8: the switch and keep-awake; the Pusher-protocol client on `tungstenite`; pairing with its MACs (host and device, both ways for two desktops); `Noise_KK_25519_AESGCM_SHA256` with `snow`; the allowlist `remote_commands!` with 3.12's groups, the two forms' field checks and the device's scope; uploads, `remote:` paths, blobs out and `remote_file`; `remote_directory`; event forwarding (eight events, `run-events` and `chat-events` at 250 ms); pushes through the `Desktop` sink; the desktop as a device (`forward.rs`: the app-level invoke handler routes the selected host's commands, uploads local paths, answers from blobs, emits the host's events); `remote_log`; migration `0023_remote.sql`; the commands and events of 5.8 for the screens; `PROTOCOL.md`'s test vectors.
 - Acceptance:
-  - [ ] every call marked card 7 in 5.4, with its errors (Pest)
-  - [ ] the first claim wins, a second gets 409 with who holds it, a lease runs out
-  - [ ] a command is stored only for one of the account's computers, delivered oldest first, deleted on ack, and expires after its lifetime; the sender hears each status
-  - [ ] a computer can't subscribe to another account's channels; `chat.live` is never stored
-  - [ ] Reverb runs on Forge with its event loop; a test client gets `sync.tx` after a push
+  - [ ] two Hersirs with their own data folders and fake keychains, against the server run locally: pair both ways; on the device, list a host's cards, Run, Stop, Continue, comment, approve and discard a waiting call, add a file and open a screenshot; each happens on the host as if clicked there
+  - [ ] a command not on the allowlist, a host-only command, a widening field of `save_project` or `save_settings`, a path that isn't `remote:`, and Run from a *Board and chat only* device are refused with their sentences (a test per case)
+  - [ ] a test lists every `#[tauri::command]` and fails on one in neither list
+  - [ ] a changed byte, a replayed frame, a removed device, remote switched off and an expired pairing end the session and run nothing (tests with a relay that tampers)
+  - [ ] the Tauri version is pinned to its minor version, and a test covers the forwarding handler (Tauri's `Invoke` is unstable, S-R10)
+  - [ ] `cargo test --workspace`, `npm test` and `npm run build` pass on Linux, macOS and Windows CI
 
-**8. Sync through Hersir Cloud, with card claims, in the app**
-- Repository: the app. Column: To do. Role: backend. Builds on: cards 3, 6 and 7. Size: 5 to 7.
-- Builds: `src-tauri/src/sync.rs`: push, pull, file blobs by keyed hash and file sets, a new computer from the latest cloud backup and the log after it, the schema gate, the server-went-back rule; the doorbell (`doorbell.rs`: a Pusher-protocol client on `tungstenite`, with 30-second polling without it); the home computer in the dispatcher and a claim before each start (10-minute lease, renewed); no automatic start offline (decision 6); the Chief's computer setting and the board check's `chief:board` claim; the Multiple devices commands and fields of 5.4.
+**9. Hersir on your other computers, on screen: the hosts' rail, pairing and the host's controls**
+- Repository: the app. Column: To do. Role: frontend. Builds on: cards 1 and 8. Size: 3 to 4.
+- Builds: 5.8's desktop screens on its commands: `HostRail.tsx` and the window switching by host (`hersir.host` beside the route); `HostOffline.tsx` with every host state and the band of a host that went offline (A2); *Add a computer* and pairing by code; *Use from other devices* in Settings → Hersir Cloud with *Add a device* (QR and code), the join question with *What it may do*, *Last actions* and *Remove…*; the connected line on the host's sidebar; the repository note in `ProjectForm.tsx` from `repoElsewhere` (A1); the host-only notes on the Editor, Terminal, Settings and the agent form.
 - Acceptance:
-  - [ ] two Hersirs (scratch data folders) against the local server converge after offline edits on both; a change shows on the other within 2 seconds while the doorbell is up
-  - [ ] a card runs on one computer only: the second claim gets 409 and its board says where it runs; a computer that dies mid-run frees the card when its lease runs out
-  - [ ] offline, a synced workspace starts no card by itself, and no board check runs
-  - [ ] with the websocket blocked, sync still works by polling
+  - [ ] each state of card 1's design shows from `RemoteStatus`, `Host` and `RepoElsewhere` (component tests)
+  - [ ] a host that is off keeps its tile and projects, grayed with the offline icon, and a click shows the offline page, never its data
+  - [ ] adding a folder whose repository is a project on another host shows the note with that host and project, and still creates the project
+  - [ ] `scripts/ui-test.sh` covers pairing two Hersirs, a Run from the device, and the host quitting while the device shows its board
 
-**9. Multiple devices on screen**
-- Repository: the app. Column: To do. Role: frontend. Builds on: cards 1 and 8. Size: 2 to 3.
-- Builds: the sync switch, the Chief's computer choice and sync's status in Settings → Hersir Cloud; "Running on Laptop" on cards; "not synced yet" numbers; *Runs on* in the agent form; the offline and update bands; per card 1's design.
+### The PWA (cards 10 to 12)
+
+**10. Design: Hersir on the phone**
+- Repository: the app (`design/hersir-phone.md` and its frames in Figma). Column: Design. Role: design. Builds on: card 1. Size: 2 to 3.
+- Builds: 3.14's phone layouts (the host switcher and menu, the bottom bar, the board one column at a time, a card with its tabs and a run's output with Stop and Continue, the chat with Approve and Discard, the Inbox) and the PWA's own screens (sign in, pair with a computer, *Add to Home Screen* on iOS, allow notifications, no connection, a host that is off), at 375 and 430 px, in dark and light; the notifications' texts for each kind.
 - Acceptance:
-  - [ ] each state shows from `SyncStatus` and the card and agent fields (component tests)
-  - [ ] `scripts/ui-test.sh` covers turning sync on, choosing the Chief's computer and a claimed card
+  - [ ] every layout and state drawn with the final texts, from `design/tokens.json`, with touch targets of 44 px
+  - [ ] each frame names the desktop component it adapts and what changes, so card 12 can build it in CSS and a few phone components
 
-### The Chief's chat on every computer (cards 10 and 11)
-
-**10. The Chief's chat from another computer: commands, approvals and live answers**
-- Repository: the app. Column: To do. Role: backend. Builds on: cards 7 and 8. Size: 3 to 5.
-- Builds: `commands.rs` in the client crate (5.4's command format: seal, sign, open, check); the roster's join and removal records; `0024_cloud_chat.sql`; `src-tauri/src/chief_remote.rs`. On another computer, the chat and approval commands of 5.4 become commands, with an outbox. On the Chief's computer, commands are fetched on the doorbell, checked (seal, signature, roster, id, counter, epoch, addressed here) and run through the existing paths (`send_with_files`, the queue, stop, Runs on, `approve`, `approve_all`, `discard`), the message stored under the command's id with its computer noted; `moved` when this isn't the Chief's computer; live answers out (sealed `chat-events` batches, at most 4 a second) and in (emitted as `chat-events`); approvals expire after 24 hours, the rest after 7 days.
+**11. The PWA: its web build, client, pairing, install and Web Push**
+- Repository: the app. Column: To do. Role: frontend. Builds on: card 8's contract (5.8), and card 7 deployed for its end-to-end test. Size: 4 to 6.
+- Builds: `npm run build:web` (`web.html`, `src/web/`) on the screens as they are; the client of 5.8 (Noise over WebCrypto with the published test vectors, Reverb, uploads and blobs) behind `mockIPC`; the plugin shims; HTML5 drops in `useDropZone.ts`; sign-in to Hersir Cloud (Passport with PKCE and an `https://app.hersir.dev` redirect) and the device's registration; pairing from the QR link; the manifest, icons and service worker (app shell; push: open the sealed body, always show a notification); persistent storage; the strict CSP; the release workflow's `hersir-web-X.Y.Z.zip` in `SHA256SUMS` and its deploy in the `pwa` environment; the host's daily check of `app.hersir.dev` against the signed release.
 - Acceptance:
-  - [ ] a message from Laptop is answered on Desktop, and the answer streams on Laptop while it is written
-  - [ ] an approval from Laptop runs once on Desktop, also when Desktop's own Approve is clicked too
-  - [ ] a command changed by one byte, replayed, from a removed computer or under an old epoch is refused and nothing runs (tests with a fake server that tampers)
-  - [ ] a message to an offline Desktop waits and is answered when it comes back; an approval older than 24 hours doesn't run
-  - [ ] on a computer that isn't the Chief's, no code path writes the Chief's messages, queue or pending actions
+  - [ ] in Chromium and WebKit (Playwright) against the local set-up: sign in, pair, open a host's board, Run, approve a call, upload a photo to a card, open a screenshot
+  - [ ] the device's keys are non-extractable `CryptoKey`s; nothing readable goes to the server (a test reads what the fake relay got)
+  - [ ] a push sent while the PWA is closed shows the host's text, and a tap opens the card
+  - [ ] the deploy runs only from a signed release with your approval; a changed file on `app.hersir.dev` makes the host warn
+  - [ ] installed on your iPhone from the Home Screen, with notifications (by hand)
 
-**11. The Chief's chat on every computer, on screen**
-- Repository: the app. Column: To do. Role: frontend. Builds on: cards 1 and 10. Size: 2 to 3.
-- Builds: the Chat page on a computer that isn't the Chief's: the lines under a message (sent, waiting for an offline Chief's computer, delivered, not delivered with *Send again*, moved), the note above the text box, "Approving on Desktop…" and "Approved on Laptop" under waiting calls, "from Laptop" on messages, the Inbox's Approval on every computer; per card 1's design.
+**12. The PWA's phone layouts: the board, a card, the chat and the Inbox**
+- Repository: the app. Column: To do. Role: frontend. Builds on: cards 10 and 11. Size: 3 to 4.
+- Builds: card 10's layouts under 600 px in `app.css` and `src/components/phone/*`: the host switcher and menu, the bottom bar, the board's column tabs, the card's tabs and its run's output, the chat with its waiting calls, the Inbox; "Open this on a computer" elsewhere.
 - Acceptance:
-  - [ ] each `Outgoing` status shows as card 1 draws it (component tests)
-  - [ ] `scripts/ui-test.sh` covers a message and an approval from a second Hersir against the local server, and a Chief's computer that is off
+  - [ ] each place of card 10 matches its frames at 375 and 430 px (screenshots in the pull request)
+  - [ ] the desktop layouts don't change (the existing UI tests pass)
+  - [ ] Run, Stop, Continue, Approve and Discard can be done with a thumb, without drag and drop
+
+### Replaced: Round 2's Multiple devices and chat cards
+
+| Round 2's card | Round 3 |
+|---|---|
+| 1 Design (with Multiple devices and the chat) | **1**, with remote screens in place of sync and chat states |
+| 2 Server: accounts, computers, keys, backup storage | **2** (accounts, computers) and **3** (keys, storage) |
+| 3 Cloud Backup in the app | **4** |
+| 4 Settings → Hersir Cloud | **5** |
+| 5 Stripe and the account page | **6** |
+| 6 Sync engine in the core | **replaced** (C4) |
+| 7 Server: sync, claims, commands, Reverb | **replaced**; Reverb goes to **7**, the relay |
+| 8 Sync in the app, with claims | **replaced**; its Pusher-protocol client goes to **8** |
+| 9 Multiple devices on screen | **replaced** by **9** |
+| 10 The Chief's chat from another computer (commands) | **replaced** by **8**: the host's own chat commands, forwarded |
+| 11 The Chief's chat on screen | **replaced** by **9** and **12** |
+| new | **7**, **10**, **11**, **12** |
+
+Their full text is in this document at commit `a65f211`.
 
 ## 7. Open questions for Jefsev
 
