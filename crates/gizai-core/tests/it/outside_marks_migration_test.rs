@@ -26,7 +26,7 @@ fn v21_db(path: &Path) -> Connection {
         include_str!("../../migrations/0018_indexes.sql"), include_str!("../../migrations/0019_screenshots.sql"),
         include_str!("../../migrations/0020_test_runs_at_once.sql"), include_str!("../../migrations/0021_builds_on.sql"),
     ];
-    assert_eq!(all.len() as i64, db::SCHEMA_VERSION - 1, "one schema step back");
+    assert_eq!(all.len() as i64, db::SCHEMA_VERSION - 2, "two schema steps back (0022, and 0023 after it)");
     let mut c = Connection::open(path).unwrap();
     c.pragma_update(None, "foreign_keys", "OFF").unwrap();
     Migrations::new(all.iter().map(|sql| M::up(sql)).collect()).to_latest(&mut c).unwrap();
@@ -71,7 +71,7 @@ const HOLDS: [(Option<&str>, &str, bool); 6] = [
 
 #[test]
 fn a_schema_21_database_marks_the_chats_that_used_an_outside_tool_and_ga101s_holds_after_a_backup_and_nothing_else() {
-    assert_eq!(db::SCHEMA_VERSION, 22, "0022 is the latest migration");
+    assert_eq!(db::SCHEMA_VERSION, 23, "0022, and 0023 after it");
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("gizai.db");
     let (threads, cards, messages, you) = {
@@ -102,9 +102,9 @@ fn a_schema_21_database_marks_the_chats_that_used_an_outside_tool_and_ga101s_hol
         let messages: Vec<usize> = threads.iter().map(|t| chat::messages(&db, t).unwrap().len()).collect();
         (threads, cards, messages, s.you_id)
     };
-    // one step back to the database the version before GA-261 leaves (schema 21): 0022 only adds the two columns
+    // two steps back to the database the version before GA-261 leaves (schema 21): 0022 only adds the two columns, 0023 one
     let c = Connection::open(&path).unwrap();
-    c.execute_batch("ALTER TABLE tasks DROP COLUMN hold_kind; ALTER TABLE chat_threads DROP COLUMN outside_tool; PRAGMA user_version = 21;").unwrap();
+    c.execute_batch("ALTER TABLE projects DROP COLUMN dev_docs; ALTER TABLE tasks DROP COLUMN hold_kind; ALTER TABLE chat_threads DROP COLUMN outside_tool; PRAGMA user_version = 21;").unwrap();
     let other = tempfile::tempdir().unwrap();
     let genuine = v21_db(&other.path().join("gizai.db"));
     assert_eq!(schema(&c), schema(&genuine), "the step back is exactly schema 21 (migrations 0001..0021)");
@@ -112,7 +112,7 @@ fn a_schema_21_database_marks_the_chats_that_used_an_outside_tool_and_ga101s_hol
 
     let db = Db::open(&path).unwrap();
     db.read(|c| {
-        assert_eq!(version(c), 22, "0022 ran");
+        assert_eq!(version(c), 23, "0022 ran (and 0023 after it)");
         for (table, column) in [("chat_threads", "outside_tool"), ("tasks", "hold_kind")] {
             let col: (String, i64, Option<String>) = c.query_row(
                 &format!("SELECT type, \"notnull\", dflt_value FROM pragma_table_info('{table}') WHERE name = '{column}'"), [],
@@ -121,7 +121,10 @@ fn a_schema_21_database_marks_the_chats_that_used_an_outside_tool_and_ga101s_hol
         }
         let mut rest = schema(c);
         rest.retain(|(kind, name, _)| !(kind == "table" && (name == "chat_threads" || name == "tasks")));
-        let mut old = schema(&genuine);
+        // 0023 after it only adds its column to projects
+        let with_0023 = v21_db(&other.path().join("with-0023.db"));
+        with_0023.execute_batch(include_str!("../../migrations/0023_dev_docs.sql")).unwrap();
+        let mut old = schema(&with_0023);
         old.retain(|(kind, name, _)| !(kind == "table" && (name == "chat_threads" || name == "tasks")));
         assert_eq!(rest, old, "nothing else changed");
         Ok(())
@@ -140,7 +143,7 @@ fn a_schema_21_database_marks_the_chats_that_used_an_outside_tool_and_ga101s_hol
     }
     // the backup is the schema 21 database
     let snaps: Vec<_> = std::fs::read_dir(dir.path().join("backups")).unwrap().map(|e| e.unwrap().path()).collect();
-    assert!(snaps.len() == 1 && snaps[0].file_name().unwrap().to_string_lossy().starts_with("gizai-before-v22-"), "{snaps:?}");
+    assert!(snaps.len() == 1 && snaps[0].file_name().unwrap().to_string_lossy().starts_with("gizai-before-v23-"), "{snaps:?}");
     let old = Connection::open(&snaps[0]).unwrap();
     assert_eq!((version(&old), schema(&old)), (21, schema(&genuine)), "the backup is the schema 21 database");
     drop(old);
@@ -152,7 +155,7 @@ fn a_schema_21_database_marks_the_chats_that_used_an_outside_tool_and_ga101s_hol
     assert_eq!((t.hold, t.hold_kind), (None, None));
     drop(db);
     let db = Db::open(&path).unwrap();
-    assert_eq!(db.read(|c| Ok(version(c))).unwrap(), 22);
+    assert_eq!(db.read(|c| Ok(version(c))).unwrap(), 23);
     assert_eq!(chat::outside_tool(&db, &threads[0]).unwrap().as_deref(), Some("mcp__otus__search"));
     assert_eq!(chat::outside_tool(&db, &threads[1]).unwrap().as_deref(), Some("WebSearch"));
     assert_eq!(std::fs::read_dir(dir.path().join("backups")).unwrap().count(), 1, "no new backup");

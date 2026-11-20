@@ -605,9 +605,9 @@ fn a_snapshot_with_an_older_schema_is_upgraded_at_the_start_with_the_upgrades_co
     let usb = chosen(&d, "usb");
     let dir = b::backups_dir(&usb);
     let m = d.snapshot(&usb, Reason::Manual);
-    // the database as the Gizai before migration 22 made it
+    // the database as the Gizai before migration 23 made it
     repack(&dir, &m.name, |c| {
-        c.execute_batch(&format!("ALTER TABLE tasks DROP COLUMN hold_kind; ALTER TABLE chat_threads DROP COLUMN outside_tool; PRAGMA user_version = {};",
+        c.execute_batch(&format!("ALTER TABLE projects DROP COLUMN dev_docs; PRAGMA user_version = {};",
                                  db::SCHEMA_VERSION - 1)).unwrap();
     });
     let older = b::read_manifest(&dir, &m.name).unwrap();
@@ -618,7 +618,7 @@ fn a_snapshot_with_an_older_schema_is_upgraded_at_the_start_with_the_upgrades_co
     assert_eq!(d.files_rows(), vec![a]);
     let (version, table): (i64, i64) = d.db.read(|c| {
         Ok((c.query_row("PRAGMA user_version", [], |r| r.get(0))?,
-            c.query_row("SELECT count(*) FROM pragma_table_info('chat_threads') WHERE name = 'outside_tool'", [], |r| r.get(0))?))
+            c.query_row("SELECT count(*) FROM pragma_table_info('projects') WHERE name = 'dev_docs'", [], |r| r.get(0))?))
     }).unwrap();
     assert_eq!((version, table), (db::SCHEMA_VERSION, 1), "upgraded");
     let copies = backups_named(&d, &format!("gizai-before-v{}-", db::SCHEMA_VERSION));
