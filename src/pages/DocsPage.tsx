@@ -74,7 +74,7 @@ function Reference({ projectId }: { projectId: string }) {
   if (error) return <div className="empty"><b>Hersir can't read the code</b><span>{error}</span></div>;
   if (!data) return <p className="faint">Reading the code…</p>;
   if (data.entries.length === 0) {
-    return <div className="empty"><b>No declarations found</b><span>Reference reads the TypeScript, JavaScript, PHP, Vue and Svelte files git tracks.</span></div>;
+    return <div className="empty"><b>No declarations found</b><span>Reference reads the TypeScript, JavaScript, PHP, Dart, Kotlin, Vue and Svelte files git tracks.</span></div>;
   }
   const many = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
   return (

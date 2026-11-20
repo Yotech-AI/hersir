@@ -18,9 +18,9 @@ Each project can have a Docs page of its own, in the sidebar's Docs section belo
 
 The page opens on Reference: the declarations in the project's code, by kind (components, hooks, functions, classes, interfaces, types, enums, constants, then Laravel's models, controllers, migrations, middleware and the rest), with a filter by name, kind or file. Each opens to the comment above it and its code, at most 200 lines.
 
-- It reads the files git tracks in the project's linked folder, as they are on disk: TypeScript, TSX, JavaScript, PHP, and the script blocks of Vue and Svelte files. Dart and Kotlin aren't read yet.
+- It reads the files git tracks in the project's linked folder, as they are on disk: TypeScript, TSX, JavaScript, PHP, Dart, Kotlin, and the script blocks of Vue and Svelte files.
 - Left out: folders of installed, built or generated code (vendor, node_modules, dist, build, .next, out, coverage, storage, public, .nuxt), minified and declaration files (.min.js, .d.ts), files over 512 KB, files that aren't UTF-8, and any file past the first 5,000.
-- A function named like a type that renders JSX is a component, and `useSomething` is a hook. A PHP class gets its Laravel kind from what it extends or implements, by the last part of the name (`Model`, `Controller`, `Migration`…), middleware from its handle method, an exception from its name.
+- A function named like a type that renders JSX is a component, and `useSomething` is a hook. A PHP class gets its Laravel kind from what it extends or implements, by the last part of the name (`Model`, `Controller`, `Migration`…), middleware from its handle method, an exception from its name. In Dart, a class extending a Flutter widget or a widget's `State` is a widget; in Kotlin, an interface and an enum class get their own kinds. Kotlin's grammar is the weakest: some files are only partly read.
 - A class's methods and properties, and imports, aren't listed on their own: they are in their class's or file's code.
 - A file with syntax the parser can't read in full is named above the list: its declarations may be incomplete.
 - It reads the code each time the tab opens: a project of 170 files takes under a tenth of a second.

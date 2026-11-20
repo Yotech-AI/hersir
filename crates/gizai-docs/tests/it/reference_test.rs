@@ -148,3 +148,81 @@ fn a_file_the_grammar_cant_read_in_full_still_gives_its_declarations_and_is_name
     assert!(of(&r.entries, &file).iter().any(|(n, ..)| *n == "Fine"), "{:?}", r.entries);
     assert_eq!(r.partial, [file]);
 }
+
+const DART: &str = r#"import 'package:flutter/material.dart';
+
+/// The app's first screen.
+class HomePage extends StatelessWidget {
+  const HomePage({super.key});
+  @override
+  Widget build(BuildContext context) => const Text('Home');
+}
+
+class _CounterState extends State<Counter> {
+  int count = 0;
+}
+
+mixin Logging {}
+
+extension Pretty on String {}
+
+enum Status { draft, sent }
+
+typedef Json = Map<String, dynamic>;
+
+const appName = 'Ekpoma Watch';
+
+void main() {
+  runApp(const HomePage());
+}
+"#;
+
+#[test]
+fn dart_gives_widgets_classes_mixins_extensions_enums_types_constants_and_functions() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = write(dir.path(), "lib/main.dart", DART);
+    let r = reference(dir.path(), &[file.clone()]);
+    assert!(r.partial.is_empty(), "{:?}", r.partial);
+    assert_eq!(of(&r.entries, &file), [
+        ("HomePage", "widget", 4), ("_CounterState", "widget", 10), ("Logging", "mixin", 14), ("Pretty", "extension", 16),
+        ("Status", "enum", 18), ("Json", "type", 20), ("appName", "constant", 22), ("main", "function", 24),
+    ]);
+    assert_eq!(r.entries[0].doc, "The app's first screen.");
+}
+
+const KOTLIN: &str = r#"package app.lawschool
+
+/** A case the student is reading. */
+data class Case(val name: String)
+
+interface Repository {
+    fun all(): List<Case>
+}
+
+enum class Court { HIGH, APPEAL }
+
+object Cache {
+    val size = 10
+}
+
+typealias Cases = List<Case>
+
+val VERSION = "1.0"
+
+fun main() {
+    println(VERSION)
+}
+"#;
+
+#[test]
+fn kotlin_gives_classes_interfaces_enums_objects_types_constants_and_functions() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = write(dir.path(), "app/src/main/java/App.kt", KOTLIN);
+    let r = reference(dir.path(), &[file.clone()]);
+    assert!(r.partial.is_empty(), "{:?}", r.partial);
+    assert_eq!(of(&r.entries, &file), [
+        ("Case", "class", 4), ("Repository", "interface", 6), ("Court", "enum", 10), ("Cache", "object", 12),
+        ("Cases", "type", 16), ("VERSION", "constant", 18), ("main", "function", 20),
+    ]);
+    assert_eq!(r.entries[0].doc, "A case the student is reading.");
+}

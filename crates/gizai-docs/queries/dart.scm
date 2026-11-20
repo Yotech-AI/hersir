@@ -1,40 +1,32 @@
-; Dart symbols. YD-024.
-;
-; Node names taken from the grammar rather than guessed: a query that names
-; a node type the grammar does not have matches nothing, silently, and the
-; language looks unsupported rather than mis-queried.
-;
-; This grammar predates Dart 3's bare `library;` directive, which the
-; language registry blanks before parsing. See YD-002.
+; Dart symbols, for tree-sitter-dart 0.3 (whose nodes differ from the grammar yodocs read). A class extending a Flutter
+; widget is a widget by kind detection. Methods are inside their class's text.
 
-(class_definition
-  name: (identifier) @name) @sym.class
+(class_declaration
+  name: (_) @name) @sym.class
 
 (mixin_declaration
-  (identifier) @name) @sym.mixin
+  name: (_) @name) @sym.mixin
 
 (extension_declaration
-  name: (identifier) @name) @sym.extension
+  name: (_) @name) @sym.extension
 
 (enum_declaration
-  name: (identifier) @name) @sym.enum
+  name: (_) @name) @sym.enum
+
+(function_declaration
+  signature: (function_signature
+    name: (_) @name)) @sym.function
 
 (type_alias
   (type_identifier) @name) @sym.type
 
-; A top-level function, and a method on a class. Dart spells both as a
-; signature followed by a body.
-(function_signature
-  name: (identifier) @name) @sym.function
+; const and final: a static_final_declaration_list; var: an initialized_identifier_list
+(top_level_variable_declaration
+  (static_final_declaration_list
+    (static_final_declaration
+      name: (_) @name))) @sym.constant
 
-(method_signature
-  (function_signature name: (identifier) @name)) @sym.method
-
-(getter_signature
-  name: (identifier) @name) @sym.getter
-
-(setter_signature
-  name: (identifier) @name) @sym.setter
-
-(constructor_signature
-  name: (identifier) @name) @sym.constructor
+(top_level_variable_declaration
+  (initialized_identifier_list
+    (initialized_identifier
+      name: (_) @name))) @sym.constant

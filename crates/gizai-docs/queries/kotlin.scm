@@ -1,32 +1,20 @@
-; Kotlin symbols. YD-024.
-;
-; Measured in YD-002: 29 of 40 real files parse clean, the failures being
-; Jetpack Compose builder chains. A file with an error still yields the
-; symbols from the parts that parsed, so this degrades rather than breaks.
+; Kotlin symbols, for tree-sitter-kotlin-ng (whose nodes differ from the grammar yodocs read: `identifier` where it had
+; `type_identifier` and `simple_identifier`). An interface or an enum is a class_declaration: kind detection tells them
+; apart by their header. Members (methods, properties, enum entries) are inside their class's text.
 
 (class_declaration
-  (type_identifier) @name) @sym.class
+  name: (_) @name) @sym.class
 
 (object_declaration
-  (type_identifier) @name) @sym.object
+  name: (_) @name) @sym.object
 
-(function_declaration
-  (simple_identifier) @name) @sym.function
-
-; Only class members and top-level properties. A bare property_declaration
-; also matches every local `val` inside a function body: measured on a real
-; Android app, 2,554 of 3,323 matches were locals, which nobody browses
-; documentation for.
-(class_body
-  (property_declaration
-    (variable_declaration (simple_identifier) @name)) @sym.property)
+(source_file
+  (function_declaration
+    name: (_) @name) @sym.function)
 
 (source_file
   (property_declaration
-    (variable_declaration (simple_identifier) @name)) @sym.property)
+    (variable_declaration (identifier) @name)) @sym.constant)
 
 (type_alias
-  (type_identifier) @name) @sym.type
-
-(enum_entry
-  (simple_identifier) @name) @sym.enum
+  (identifier) @name) @sym.type

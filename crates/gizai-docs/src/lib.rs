@@ -1,7 +1,8 @@
 //! Docs → Reference: the declarations in a project's code, ported from yodocs. Each file is read with tree-sitter and its
 //! language's query (`queries/`, yodocs' own), then each declaration gets its kind (a React component or hook, a Laravel
-//! model, controller or migration…), the comment right above it and its text. TypeScript, TSX, JavaScript, PHP, and the
-//! script blocks of Vue and Svelte files (read as TSX); Dart and Kotlin wait for queries that fit their current grammars.
+//! model, controller or migration…), the comment right above it and its text. TypeScript, TSX, JavaScript, PHP, Dart,
+//! Kotlin, and the script blocks of Vue and Svelte files (read as TSX). Dart's and Kotlin's queries are new: the grammars
+//! yodocs read named their nodes differently.
 //! The caller lists the files (git's tracked files) and this reads them from disk: it starts no program.
 pub mod api;
 pub mod guides;
@@ -59,6 +60,8 @@ enum Lang {
     Tsx,
     JavaScript,
     Php,
+    Dart,
+    Kotlin,
     /// A .vue or .svelte file: its script blocks, read as TSX.
     Component,
 }
@@ -74,6 +77,8 @@ fn lang_of(path: &str) -> Option<Lang> {
         "tsx" => Lang::Tsx,
         "js" | "mjs" | "cjs" | "jsx" => Lang::JavaScript,
         "php" => Lang::Php,
+        "dart" => Lang::Dart,
+        "kt" | "kts" => Lang::Kotlin,
         "vue" | "svelte" => Lang::Component,
         _ => return None,
     })
@@ -95,6 +100,8 @@ fn grammar(lang: Lang) -> Grammar {
         Lang::Tsx | Lang::Component => (tree_sitter_typescript::LANGUAGE_TSX.into(), include_str!("../queries/tsx.scm")),
         Lang::JavaScript => (tree_sitter_javascript::LANGUAGE.into(), include_str!("../queries/javascript.scm")),
         Lang::Php => (tree_sitter_php::LANGUAGE_PHP.into(), include_str!("../queries/php.scm")),
+        Lang::Dart => (tree_sitter_dart::LANGUAGE.into(), include_str!("../queries/dart.scm")),
+        Lang::Kotlin => (tree_sitter_kotlin_ng::LANGUAGE.into(), include_str!("../queries/kotlin.scm")),
     };
     // The queries ship with Hersir and a test compiles each: a failure here is a bug, not the project's.
     let query = Query::new(&language, query).expect("a query in queries/ doesn't compile");
@@ -254,6 +261,24 @@ fn kind_for(lang: Lang, kind: &str, name: &str, text: &str, file: &str, node: &N
     }
     if lang == Lang::Php && matches!(kind, "class" | "interface" | "trait" | "enum") {
         return php_kind(kind, name, text, file).to_string();
+    }
+    let header = text.split(['{', '(']).next().unwrap_or(text);
+    let words: Vec<&str> = header.split_whitespace().collect();
+    // Kotlin: an interface and an enum class are class declarations with their keyword
+    if lang == Lang::Kotlin && kind == "class" {
+        if words.contains(&"interface") {
+            return "interface".into();
+        }
+        if words.windows(2).any(|w| w == ["enum", "class"]) {
+            return "enum".into();
+        }
+    }
+    // Flutter: a class extending a widget, or a widget's State, is a widget
+    if lang == Lang::Dart && kind == "class" {
+        let base = words.iter().skip_while(|w| **w != "extends").nth(1).map(|b| b.split('<').next().unwrap_or(b));
+        if base.is_some_and(|b| b.ends_with("Widget") || b == "State") {
+            return "widget".into();
+        }
     }
     kind.to_string()
 }
