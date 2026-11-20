@@ -669,7 +669,7 @@ YoTech's two roles: **controller** for account, billing, support and website dat
 **What you can use first** [I] (Round 3; card numbers of section 6):
 
 1. **The base**: card 2, the `hersir-cloud` app's first card (accounts with required 2FA, computers and their tokens, deployed on Forge), with a plan given by hand (`php artisan hersir:comp`). Card 1 (the design) and card 8 (the host and the MacBook's forwarding, against a local fake relay) start at the same time.
-2. **Hersir on the MacBook** (requirement R2): cards 7 (the relay on the server), 8 and 9 (the screens on the desktop: the hosts' rail, pairing, the host's band and switch). About 9 to 12 agent-days on the critical path, and the first thing you can use. The PC must be on, awake and running Hersir (question 22).
+2. **Hersir on the MacBook** (requirement R2): cards 7 (the relay on the server), 8 and 9 (the screens on the desktop: the hosts' rail, pairing, the host's band and switch). About 9 to 12 agent-days on the critical path, and the first thing you can use. The PC must be on, awake and running Hersir (question 21).
 3. **The phone** (requirement R1): cards 10 (the phone layouts' design), 11 (the PWA: its web build, client, pairing, install and Web Push) and 12 (the phone layouts). Card 11 can start once card 8's contract is merged; about 7 to 10 more agent-days on the critical path.
 4. **Cloud Backup** (decision 7: still what is sold first): cards 3 (encrypted storage on the server), 4 (the app) and 5 (Settings → Hersir Cloud), at the same time as 2 to 3 above: they share no files with Remote but `src-tauri/src/lib.rs`'s command list and the Hersir Cloud tab, which cards 5 and 9 split by section.
 5. **Before the first sale**: card 6 (Stripe and the account page), the legal pack (3.9, with the relay, Web Push and Cloudflare's static hosting added), the VERI*FACTU route and the OSS choice with the gestor (3.5), the website's pricing and legal pages. Then sell Personal with Cloud Backup, Hersir on your other devices and the phone (3.16).
@@ -693,8 +693,8 @@ YoTech's two roles: **controller** for account, billing, support and website dat
 | 11 | Your gestor | small seller or OSS from the start; the ROI (Modelo 036) and Modelo 349; the VERI*FACTU route for Stripe's invoices (Invopop, or the SII); the invoices' wording; the location-evidence policy; the UK registration if you sell there; the Swiss check |
 | 12 | A lawyer | the terms of service and of sale (business and consumer), the checkout's consent and withdrawal texts, the DPA review, other EU countries' consumer rules |
 | 13 | The website (`gizai-website`) | the pricing page (consumers see the price with VAT), the legal pages (notice, privacy, terms, DPA, sub-processors), links to `cloud.hersir.dev` and `app.hersir.dev` |
-| 14 | **Cloudflare for the PWA** (new) | a Workers project `hersir-web` with static assets only (no Worker code), its custom domain `app.hersir.dev` (proxied, orange cloud: this one is served by Cloudflare), and an API token limited to deploying that project, saved in the `pwa` environment of row 1 (question 23) |
-| 15 | **Your PC** (new) | in the OS's power settings, no sleep while plugged in (or Hersir's *Keep this computer awake while remote use is on*, question 22); Hersir set to start at login; remote use switched on in Settings → Hersir Cloud |
+| 14 | **Cloudflare for the PWA** (new) | a Workers project `hersir-web` with static assets only (no Worker code), its custom domain `app.hersir.dev` (proxied, orange cloud: this one is served by Cloudflare), and an API token limited to deploying that project, saved in the `pwa` environment of row 1 (question 22) |
+| 15 | **Your PC** (new) | in the OS's power settings, no sleep while plugged in (or Hersir's *Keep this computer awake while remote use is on*, question 21); Hersir set to start at login; remote use switched on in Settings → Hersir Cloud |
 | 16 | **Each phone and the MacBook** (new) | pair them once with each host (a QR code on the PC, or the long code on the MacBook); on iPhone, *Add to Home Screen* before allowing notifications (3.14) |
 | 17 | **Releases** (new) | each release also gets `hersir-web-X.Y.Z.zip`, listed in `SHA256SUMS` and so covered by the signature you already make with `scripts/sign-release.sh`; you approve the `pwa` environment's deploy after signing |
 
@@ -929,7 +929,27 @@ They use the same tokens and components as the desktop (`design/tokens.json`), a
 
 ## 4. Options
 
-The decisions fix the stack; what is left to choose is how the computers hear about news, and the decisions themselves are compared with Round 1's choice [I; sizes in agent-days, like `PAID-FEATURES.md`].
+### 4.1 How to build Remote (Round 3)
+
+Jefsev chose Remote (0.1), so the options are ways to build it, not Remote against Sync [I; sizes in agent-days, like `PAID-FEATURES.md`, for cards 7 to 12 on top of cards 1 and 2].
+
+| | **A. The host's own commands, forwarded** (recommended) | B. A remote API of its own | C. Round 2's Sync with a PWA that holds a copy (replaced by Jefsev's choice) |
+|---|---|---|---|
+| What it is | the MacBook's Hersir forwards every command of the workspace on screen to its host, from Tauri's app-level invoke handler; the PWA swaps the IPC as `npm run browser` does; the host runs an allowlist of its own Tauri commands (3.12) | a smaller set of remote calls made for the phone (board, card, chat, Inbox), with new screens for them in the PWA and on the MacBook | every device keeps a copy and merges changes; runs and the Chief's chat go to the computer that holds the project |
+| Screens | **the same screens everywhere**; phone layouts by CSS and a few phone components | a second set of screens to build and keep in step with the app | the same screens, on a local copy |
+| What changes in the app | a forwarding handler on the desktop (`src-tauri/src/remote/`), the host's dispatcher and its allowlist, file uploads and downloads, a PWA entry beside `browser.html`, a rail | the same host side plus new remote endpoints and their screens | Round 2's cards 6 to 11, plus the sync engine in the browser (WebAssembly or TypeScript) |
+| A new command in the app | works remotely when added to the allowlist (one line) | needs a remote endpoint and a screen | needs sync to cover its tables |
+| While a host is off | its projects grayed out (A2) | the same | everything readable and writable on the copy |
+| Risks | Tauri's `Invoke` is "explicitly NOT stable" [V S-R10], so the forwarding handler pins Tauri's minor version and has a test; a remote device gets the host's full board (bounded by 3.12) | two UIs drift apart; slower to reach "the whole Hersir" (R1) | merging and its bugs; a database in a phone's browser; the copies Jefsev doesn't want (A3) |
+| Size | **about 20 to 28** | about 35 to 45 | about 45 to 65 |
+
+**Recommended: A.** It gives "the whole Hersir" (R1) on the phone and the MacBook from the screens that already exist, and the host's allowlist is one list to review.
+
+**Libraries for A** [V where marked]: on the host and the MacBook, `snow` (Noise; Apache-2.0 or MIT [I, check its version when card 8 starts]), `tungstenite` (MIT or Apache-2.0) with Round 2's ~300-line Pusher-protocol client, and the RustCrypto crates already in the lock (`hkdf`, `hmac`, `sha2`, `ed25519-dalek`; `x25519-dalek` new, BSD-3); in the PWA, WebCrypto only (X25519, Ed25519, HKDF, AES-GCM [V S-R11]) and `pusher-js` (MIT [I]) or a small client of our own for Reverb; on the server, Reverb and `laravel-notification-channels/webpush` 13 with `minishlink/web-push` 11 (both MIT [V S-R12]).
+
+### 4.2 The stack (Round 2)
+
+The decisions fix the stack; what is left to choose is how the computers hear about news, and the decisions themselves are compared with Round 1's choice [I; sizes in agent-days, like `PAID-FEATURES.md`]. **Round 3**: A's Reverb is now the relay too (3.15); B's polling can't carry a remote session.
 
 | | **A. One Forge server: Laravel, SQLite with Litestream, Reverb as the doorbell** (recommended) | B. The same Laravel app, polling only | C. Round 1's option A: a Rust server on Hetzner, Zitadel, Paddle (replaced) |
 |---|---|---|---|
@@ -945,6 +965,8 @@ The decisions fix the stack; what is left to choose is how the computers hear ab
 **Recommended: A.** It is the decisions as Jefsev made them, it keeps the chat as quick as a local one, and polling remains its fallback, so B costs nothing to keep in reserve.
 
 ## 5. The design (option A)
+
+Sections 5.1 to 5.7 are Round 2's design of Cloud Backup, the server and sign-in, which still holds; their parts for Multiple devices and the Chief's chat by commands are **replaced** by Remote (marked where they are). **Section 5.8 designs Remote and the PWA.**
 
 ### 5.1 The screens
 
@@ -986,14 +1008,14 @@ Cloud Backup
   Backups        Today 09:02       Daily · this computer      1.2 GB  [Restore]
                  Yesterday 18:40   On quit · Laptop           1.2 GB  [Restore]
 
-Your computers                                                          (Multiple devices)
-  Desktop · this computer · the Chief's computer     synced 1 minute ago
-  Laptop                                             synced 2 hours ago        [Remove…]
-  [x] Keep my clients, projects and cards in sync on my computers
-  The Chief's computer  [Desktop ▾]   The Chief answers and checks the board there.
+Use from other devices                                                  (Round 3: 5.8)
+  [x] Use PC's projects from my other computers and my phone
+  Your devices   MacBook · connected now · Everything      [Remove…]
+                 iPhone (Safari) · 2 hours ago · Everything [Remove…]
+  [Add a device]
 ```
 
-*Remove…* asks: "Remove Laptop from Hersir Cloud? It is signed out at once and can no longer write to the Chief. Is it lost or stolen?" with **Remove** and, once the key change exists (question 18), **Remove and change the key**.
+*Remove…* asks: "Remove MacBook? It is disconnected and signed out of Hersir Cloud at once, and can no longer use PC. Is it lost or stolen?" with **Remove** and, once the key change exists (question 18), **Remove and change the key**. (**Replaced**: Round 2's *Your computers* with the sync switch and *The Chief's computer*.)
 
 A new computer (the first screen, or Settings → Hersir Cloud while signed out):
 
@@ -1005,7 +1027,9 @@ Restore from Hersir Cloud
      Hersir restarts to finish, as a restore from a folder does.
 ```
 
-**The Chief's chat on a computer that isn't the Chief's** (the Chat page as it is; only the lines under your message and above the text box are new):
+**Replaced in Round 3** (the two sketches below): with Remote, the Chat page in a host's workspace is that host's own Chat page, so nothing in it changes; a host that is off shows 3.11's offline page instead.
+
+**The Chief's chat on a computer that isn't the Chief's** (Round 2; the Chat page as it is; only the lines under your message and above the text box are new):
 
 ```
   You · from this computer                                            09:14
@@ -1021,7 +1045,7 @@ Restore from Hersir Cloud
   The Chief works on Desktop. Your messages go there.
 ```
 
-Elsewhere for Multiple devices: "Running on Laptop" on a card claimed by another computer; "not synced yet" beside a number made offline; *Runs on* in the agent form; a band when Hersir Cloud can't be reached ("Agents start again when it can") or another computer runs a newer Hersir ("Update Hersir to go on syncing").
+**Replaced in Round 3**: elsewhere for Multiple devices: "Running on Laptop" on a card claimed by another computer; "not synced yet" beside a number made offline; *Runs on* in the agent form; a band when Hersir Cloud can't be reached ("Agents start again when it can") or another computer runs a newer Hersir ("Update Hersir to go on syncing").
 
 **On the web** (`cloud.hersir.dev`, the Livewire starter kit with Hersir's colours and type): *Create an account* (name, email, password) → *Check your email* → *Set up two-factor authentication* (QR code, a code to confirm, the 8 recovery codes to save; required) → *Your account*: plan and renewal with **Subscribe** (Stripe Checkout: monthly or yearly) or **Manage billing** (Stripe's portal), storage used, the backups list, your computers with **Remove**, two-factor and recovery codes, password, **Withdraw from the contract** (consumers, in their first 14 days) and **Delete account** (password and code; the cloud copies go after 7 days). A sign-in from the desktop shows *Signed in. You can close this tab and go back to Hersir.*
 
@@ -1032,10 +1056,8 @@ Elsewhere for Multiple devices: "Running on Laptop" on a card claimed by another
 **On the computer** [I]:
 
 - **This computer's settings** (added to `scope::THIS_COMPUTER`, so a restore keeps them): `cloud_account` (`{ id, email }`), `cloud_backup` (`{ on, every: "daily"|"manual", onQuit }`), `cloud_last_backup`, `cloud_last_error`.
-- **A shared setting** (syncs): `chief_device` (the Chief's computer's device id).
 - **Keychain** (service `hersir`): `cloud/<account>/token` (this computer's Passport token), `cloud/<account>/key` (the account key, with its epoch), `cloud/<account>/device` (this computer's Ed25519 and X25519 secret keys). Never the recovery code.
-- **Migration `0023_sync.sql`** (card 6): `sync_log`, `sync_clock`, `cloud_link` (3.7) and the synced column `agent_configs.home_device_id`.
-- **Migration `0024_cloud_chat.sql`** (card 10), local tables never synced: `cloud_roster(device_id PK, name, sign_pub, box_pub, joined_at, removed_at)`; `cloud_outbox(id PK, thread_id, kind, args_json, to_device, status, created_at, expires_at, note)`; `cloud_commands_seen(from_device PK, last_seq)`.
+- **Replaced in Round 3**: the shared setting `chief_device`, migration `0023_sync.sql` (`sync_log`, `sync_clock`, `cloud_link`, `agent_configs.home_device_id`) and migration `0024_cloud_chat.sql` (`cloud_roster`, `cloud_outbox`, `cloud_commands_seen`). Remote's local tables are in 5.8.
 
 **On the server**: 3.3's tables.
 
@@ -1045,35 +1067,35 @@ Elsewhere for Multiple devices: "Running on Laptop" on a card claimed by another
 
 | Where | What | Card |
 |---|---|---|
-| new `crates/gizai-cloud-client` (no Tauri) | `api.rs` (HTTP with `ureq`, as `oauth.rs`); `keys.rs` (AK, HKDF, the recovery code with its check character, sealing, the computer's keys, the roster); `chunks.rs` (page chunks, FastCDC, zstd, seal and open); `backup.rs`; `restore.rs` (download into a format-1 folder); `entitlement.rs` (Ed25519 check); `doorbell.rs` (the Pusher-protocol client, card 8); `commands.rs` (seal, sign, open, check, card 10) | 3, 8, 10 |
+| new `crates/gizai-cloud-client` (no Tauri) | `api.rs` (HTTP with `ureq`, as `oauth.rs`); `keys.rs` (AK, HKDF, the recovery code with its check character, sealing, the computer's keys); `chunks.rs` (page chunks, FastCDC, zstd, seal and open); `backup.rs`; `restore.rs` (download into a format-1 folder); `entitlement.rs` (Ed25519 check). Round 3: `doorbell.rs` (the Pusher-protocol client), `pairing.rs` and `noise.rs` (the session) move to card 8 (5.8) | 4, 8 |
 | `crates/gizai-agents/src/oauth.rs` | nothing: `discover` and `begin` with a fixed client id already fit (3.4) | none |
-| `crates/gizai-core/src/backups.rs` | a page-for-page copy (rusqlite's `backup` feature) beside `VACUUM INTO`; the manifest stays format 1 | 3 |
-| `crates/gizai-core/src/scope.rs` | the cloud settings as this computer's | 3 |
-| `crates/gizai-core/src/sync/` (new), `migrations/0023_sync.sql` | the sync engine | 6 |
-| `src-tauri/src/cloud.rs` (new), `lib.rs` | the commands, the schedule (on the ticks of `backups.rs`), On quit, the event `cloud-changed` | 3 |
-| `src-tauri/src/sync.rs` (new), `workflow.rs`, `runs.rs` | the sync loop, the doorbell, the home computer and claims | 8 |
-| `src-tauri/src/chief_remote.rs` (new), `chat.rs`, `pending.rs`, `migrations/0024_cloud_chat.sql` | commands in and out, the Chief's computer, live answers out and in | 10 |
-| `src/api.ts`, `src/types.ts`, `src/router.ts` | the commands and types; `cloud` in `SETTINGS_TABS` | 4, 9, 11 |
-| `src/components/CloudSettings.tsx` (new), `src/pages/SettingsPage.tsx`, `src/pages/OnboardingPage.tsx` | the tab and *Restore from Hersir Cloud* | 4 |
-| the board, the card, the agent form, the Chat page, the Inbox | "Running on Laptop", "not synced yet", *Runs on*, the bands; the chat's lines and states | 9, 11 |
+| `crates/gizai-core/src/backups.rs` | a page-for-page copy (rusqlite's `backup` feature) beside `VACUUM INTO`; the manifest stays format 1 | 4 |
+| `crates/gizai-core/src/scope.rs` | the cloud settings as this computer's | 4 |
+| `src-tauri/src/cloud.rs` (new), `lib.rs` | the commands, the schedule (on the ticks of `backups.rs`), On quit, the event `cloud-changed` | 4 |
+| `src/api.ts`, `src/types.ts`, `src/router.ts` | the commands and types; `cloud` in `SETTINGS_TABS` | 5 |
+| `src/components/CloudSettings.tsx` (new), `src/pages/SettingsPage.tsx`, `src/pages/OnboardingPage.tsx` | the tab and *Restore from Hersir Cloud* | 5 |
+| **Replaced in Round 3** | `crates/gizai-core/src/sync/` and `0023_sync.sql`; `src-tauri/src/sync.rs`; `src-tauri/src/chief_remote.rs` and `0024_cloud_chat.sql`; "Running on Laptop", "not synced yet", *Runs on* and the chat's outbox lines. Remote's files are in 5.8 | none |
 
 **The server** (`Yotech-AI/hersir-cloud`, private; a Laravel 13 app from the Livewire starter kit):
 
 | Where | What | Card |
 |---|---|---|
 | `app/Http/Middleware/RequireTwoFactor.php`, `RequirePkceS256.php` | 2FA before anything; S256 only | 2 |
-| `routes/web.php` (the well-known documents, the account pages), `routes/api.php` (`/api/v1`), `routes/channels.php` | 5.4's routes | 2, 5, 7 |
-| `app/Http/Controllers/Api/{Device,Key,Object,Snapshot,Entitlement}Controller.php` | Cloud Backup's API | 2 |
-| `app/Http/Controllers/Api/{Workspace,Tx,Claim,Command,Live}Controller.php`, `app/Events/*` | sync, claims, commands, Reverb events | 7 |
-| `app/Models/*`, `database/migrations/*` | 3.3's tables | 2, 5, 7 |
-| `app/Console/Commands/{PruneSnapshots,CollectObjects,NightlyCopy,Comp}.php`, `routes/console.php` | retention, garbage collection, the nightly copy, plans by hand | 2 |
-| `app/Listeners/StripeWebhook.php`, `app/Support/Entitlements.php`, `resources/views/livewire/account/*` | the plan from Cashier, the signed entitlement, the account page, emails | 5 |
-| `deploy/litestream.yml`, `deploy/forge-deploy.sh`, `RUNBOOK.md`, `PROTOCOL.md` | Litestream's config, the deploy script, the restore drill, the published protocol (P4) | 2 |
+| `routes/web.php` (the well-known documents, the account pages), `routes/api.php` (`/api/v1`), `routes/channels.php` | 5.4's and 5.8's routes | 2, 3, 6, 7 |
+| `app/Http/Controllers/Api/{Device,Entitlement}Controller.php` | computers and devices, the plan | 2 |
+| `app/Http/Controllers/Api/{Key,Object,Snapshot}Controller.php` | Cloud Backup's API | 3 |
+| `app/Http/Controllers/Api/{Pairing,RelayBlob,Push}Controller.php`, `app/Events/*`, `config/reverb.php` | the relay (5.8) | 7 |
+| `app/Models/*`, `database/migrations/*` | 3.3's tables and 5.8's | 2, 3, 6, 7 |
+| `app/Console/Commands/Comp.php` | plans by hand | 2 |
+| `app/Console/Commands/{PruneSnapshots,CollectObjects,NightlyCopy}.php`, `routes/console.php` | retention, garbage collection, the nightly copy | 3 |
+| `app/Listeners/StripeWebhook.php`, `app/Support/Entitlements.php`, `resources/views/livewire/account/*` | the plan from Cashier, the signed entitlement, the account page, emails | 6 |
+| `deploy/litestream.yml`, `deploy/forge-deploy.sh`, `RUNBOOK.md`, `PROTOCOL.md` | Litestream's config, the deploy script, the restore drill, the published protocol (P4) | 2 (7 adds the relay to `PROTOCOL.md`) |
+| **Replaced in Round 3** | `{Workspace,Tx,Claim,Command,Live}Controller.php` (sync, claims, commands) | none |
 | `tests/` (Pest) | per card | all |
 
 ### 5.4 Contracts
 
-#### The server's API (cards 2, 5 and 7; used by cards 3, 8 and 10)
+#### The server's API (cards 2, 3 and 6; used by cards 4, 5 and 8; card numbers of Round 3)
 
 JSON over HTTPS at `https://cloud.hersir.dev/api/v1`. `Authorization: Bearer <this computer's Passport token>` (scope `cloud`), except `POST /devices`, which takes the browser's token (scope `device:register`). Errors: `{ "error": "<code>", "message": "<a sentence for people>" }` with 401 (`signed_out`, `removed`), 402 (`plan_required`, `read_only`), 403 (`not_yours`), 404 (`not_found`), 409 (`claimed`, `exists`, `epoch`), 413 (`quota`), 422 (`invalid`, `missing_objects`), 426 (`update_hersir`), 429 (`slow_down`). Times are Unix milliseconds; ids are the app's UUIDv7 strings; object ids are 64 hex characters; `body` and sealed blobs are base64.
 
@@ -1081,36 +1103,25 @@ JSON over HTTPS at `https://cloud.hersir.dev/api/v1`. `Authorization: Bearer <th
 |---|---|---|
 | `POST /devices` | `{ device_id, name, platform, app_version, sign_pub, box_pub }` → 201 `{ account: { id, email }, device_token, expires_at }` (the browser's token is revoked) | 2 |
 | `POST /devices/me/token` | `{}` → `{ device_token, expires_at }` (the old one is revoked) | 2 |
-| `GET /devices` | → `[{ id, name, platform, app_version, created_at, last_seen_at, online, this, sign_pub, box_pub, revoked_at }]` | 2 |
+| `GET /devices` | → `[{ id, name, platform, app_version, kind: "desktop"\|"web", remote_on, created_at, last_seen_at, online, this, sign_pub, box_pub, revoked_at }]` (`kind` and `remote_on` new in Round 3) | 2 |
+| `PUT /devices/me` | `{ name?, app_version?, remote_on? }` → 200 (new in Round 3: a host says its switch is on or off) | 2 |
 | `DELETE /devices/{id}` (`me` to sign out) | `{ lost: boolean }` → 204 | 2 |
-| `GET /me/entitlements` | → `{ payload, sig }`; payload `{ v: 1, account, plan: "personal"\|"none", status: "active"\|"past_due"\|"lapsed"\|"none", features: ["backup","sync"], quota_bytes, used_bytes, valid_until, read_only_until, issued_at }` | 2 (comps), 5 (Stripe) |
-| `GET /keys` | → `{ key_id, epoch, sealed_by_code, roster, roster_version }` or 404 | 2 |
-| `PUT /keys` | `{ key_id, epoch, sealed_by_code, if_epoch }` → 201 (first) or 200; 409 `epoch` when `if_epoch` isn't the current one | 2 |
-| `PUT /keys/roster` | `{ roster, roster_version, if_version }` → 200; 409 `exists` when another computer changed it first | 2 |
-| `POST /objects/missing` | `{ ids: [hex64] }` (at most 1,000) → `{ missing: [hex64] }` | 2 |
-| `POST /objects/upload` | `{ objects: [{ id, bytes }] }` (at most 4,194,368 bytes each) → `{ urls: [{ id, url, headers, expires_at }] }`; 402, 413 | 2 |
-| `POST /objects/download` | `{ ids }` → `{ urls: [{ id, url, expires_at }] }` (also while read-only) | 2 |
-| `POST /snapshots` | `{ name, made_at, device_id, reason: "daily"\|"manual"\|"quit"\|"before-restore", schema_version, app_version, manifest_id, object_ids, bytes }` → 201; 422 `missing_objects` with `{ ids }`; 413 | 2 |
-| `GET /snapshots` | → `[{ name, made_at, device_id, device_name, reason, schema_version, app_version, bytes, manifest_id, deleted_at }]`, newest first | 2 |
-| `DELETE /snapshots/{name}`, `POST /snapshots/{name}/undelete` | → 204 (kept 7 more days); → 200 | 2 |
-| `PUT /workspaces/{ws}` | `{ min_schema }` → 201 or 200 | 7 |
-| `POST /workspaces/{ws}/txs` | `{ txs: [{ id, device_id, body }] }` (at most 500, 64 KiB each) → `{ acked: [{ id, seq }] }`; 426 under `min_schema` | 7 |
-| `GET /workspaces/{ws}/txs?after=<seq>&limit=500` | → `{ txs: [{ seq, id, device_id, body }], last_seq }` | 7 |
-| `PUT /workspaces/{ws}/files` | `{ add: [hex64], remove: [hex64] }` → 204 | 7 |
-| `POST /workspaces/{ws}/claims` | `{ task_id, run_id, lease_ms }` → 201 `{ expires_at }`, or 409 `{ device_id, device_name, expires_at }` | 7 |
-| `PUT /workspaces/{ws}/claims/{task_id}`, `DELETE …?run_id=`, `GET /workspaces/{ws}/claims` | renew `{ run_id, lease_ms }` → `{ expires_at }`; release → 204; → `[{ task_id, device_id, device_name, run_id, expires_at }]` | 7 |
-| `PUT /workspaces/{ws}/chief` | `{ device_id }` → 200 `{ device_id }` | 7 |
-| `POST /workspaces/{ws}/commands` | `{ id, to, body }` (at most 64 KiB) → 201 `{ to_online, to_last_seen_at, expires_at }`; 404 when `to` isn't one of the account's computers | 7 |
-| `GET /workspaces/{ws}/commands` | → `{ commands: [{ id, from, body, created_at }] }`: those for this computer, oldest first | 7 |
-| `POST /workspaces/{ws}/commands/ack` | `{ results: [{ id, status: "done"\|"moved"\|"refused" }] }` → 204 (each sender hears `command.status`) | 7 |
-| `GET /workspaces/{ws}/commands/sent` | → `[{ id, to, status: "waiting"\|"done"\|"moved"\|"refused"\|"expired", created_at, expires_at }]` | 7 |
-| `POST /workspaces/{ws}/live` | `{ body }` (at most 16 KiB, 4 a second) → 202; broadcast as `chat.live`, never stored | 7 |
+| `GET /me/entitlements` | → `{ payload, sig }`; payload `{ v: 1, account, plan: "personal"\|"none", status: "active"\|"past_due"\|"lapsed"\|"none", features: ["backup","remote"], quota_bytes, used_bytes, valid_until, read_only_until, issued_at }` (Round 3: `remote` in place of `sync`) | 2 (comps), 6 (Stripe) |
+| `GET /keys` | → `{ key_id, epoch, sealed_by_code }` or 404 | 3 |
+| `PUT /keys` | `{ key_id, epoch, sealed_by_code, if_epoch }` → 201 (first) or 200; 409 `epoch` when `if_epoch` isn't the current one | 3 |
+| `POST /objects/missing` | `{ ids: [hex64] }` (at most 1,000) → `{ missing: [hex64] }` | 3 |
+| `POST /objects/upload` | `{ objects: [{ id, bytes }] }` (at most 4,194,368 bytes each) → `{ urls: [{ id, url, headers, expires_at }] }`; 402, 413 | 3 |
+| `POST /objects/download` | `{ ids }` → `{ urls: [{ id, url, expires_at }] }` (also while read-only) | 3 |
+| `POST /snapshots` | `{ name, made_at, device_id, reason: "daily"\|"manual"\|"quit"\|"before-restore", schema_version, app_version, manifest_id, object_ids, bytes }` → 201; 422 `missing_objects` with `{ ids }`; 413 | 3 |
+| `GET /snapshots` | → `[{ name, made_at, device_id, device_name, reason, schema_version, app_version, bytes, manifest_id, deleted_at }]`, newest first | 3 |
+| `DELETE /snapshots/{name}`, `POST /snapshots/{name}/undelete` | → 204 (kept 7 more days); → 200 | 3 |
+| **Replaced in Round 3** | Round 2's card 7 calls: `/workspaces/{ws}` with its `txs`, `files`, `claims`, `chief`, `commands`, `commands/ack`, `commands/sent` and `live`; and `PUT /keys/roster` (the roster served the chat's commands). The relay's calls are in 5.8 | none |
 
-**Reverb** (Pusher protocol, `wss://cloud.hersir.dev/app/<key>`, authorised at `POST /broadcasting/auth` with the computer's token): `private-account.<user id>`: `entitlement.changed {}`, `device.removed { id }`; `presence-workspace.<ws>` (members: the online computers, `{ device_id, name }`): `sync.tx { seq }`, `command { id, to }`, `command.status { id, status }`, `claim.changed { task_id }`, `chief.changed { device_id }`, `chat.live { from, body }`.
+**Reverb**: Round 3's channels and events are in 5.8 (`private-account.<user id>`, `presence-account.<user id>`, `private-remote.<host>.<device>`); Round 2's `presence-workspace.<ws>` with `sync.tx`, `command`, `command.status`, `claim.changed`, `chief.changed` and `chat.live` is **replaced**.
 
-**The webhook** (card 5): `POST /stripe/webhook`, Cashier's, with `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, `invoice.payment_failed`, `checkout.session.completed`.
+**The webhook** (card 6): `POST /stripe/webhook`, Cashier's, with `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, `invoice.payment_failed`, `checkout.session.completed`.
 
-#### A command (card 10 makes and opens them; card 7 only stores `body`)
+#### A command (Round 2; **replaced in Round 3** by the Noise session of 5.8)
 
 ```
 body = "HCC1" ‖ epoch (1 byte) ‖ nonce (24) ‖ XChaCha20-Poly1305(command key, nonce, plaintext,
@@ -1131,7 +1142,7 @@ lifetime: 24 hours for pending.*, 7 days for the rest
 a live answer (POST …/live): "HCL1" ‖ epoch ‖ nonce ‖ sealed { thread_id, events: ChatEvent[] } ‖ signature
 ```
 
-#### Hersir's commands for the Hersir Cloud tab (cards 3 and 4), in `src/api.ts` with the Tauri command in the comment
+#### Hersir's commands for the Hersir Cloud tab (cards 4 and 5), in `src/api.ts` with the Tauri command in the comment
 
 ```ts
 type CloudPlan = { name: "personal" | "none"; status: "active" | "past_due" | "lapsed" | "none";
@@ -1172,7 +1183,7 @@ onCloudChanged(f: (s: CloudStatus) => void): Promise<() => void>      // event "
 
 Refusals are sentences: "Sign in to Hersir Cloud first.", "That recovery code doesn't open this account's backups.", "Hersir Cloud is full: 10.0 of 10 GB.", "Your plan ended on 9 Dec 2026: backups can be restored until 7 Feb 2027.".
 
-#### Hersir's commands for Multiple devices (cards 8 and 9)
+#### Hersir's commands for Multiple devices (Round 2; **replaced in Round 3** by 5.8's)
 
 ```ts
 type SyncStatus = { on: boolean; lastSyncAt: number | null; toSend: number; live: boolean;   // live: the doorbell is connected
@@ -1186,7 +1197,7 @@ onSyncChanged(f: (s: SyncStatus) => void)               // event "sync-changed"
 // on an agent (AgentConfig): homeDeviceId: string | null   (saved with the agent's form)
 ```
 
-#### The Chief's chat on another computer (cards 10 and 11)
+#### The Chief's chat on another computer (Round 2; **replaced in Round 3**: the chat's commands go to the host as they are)
 
 The chat's commands keep their names and arguments (`src/api.ts:440-467` on main): `sendChat`, `sendChatQueue`, `editQueuedChat`, `removeQueuedChat`, `setChatCli`, `stopChat`, `approvePendingAction`, `approvePendingActions`, `discardPendingAction`. On the Chief's computer they work as today; on another one they send a command and resolve once it is stored on the server (or refuse with a sentence: "Sign in to Hersir Cloud to write to the Chief from this computer."). The live answer from the Chief's computer arrives as the same `chat-events` event the Chat page already listens to (`onChatEvent`, `src/api.ts:472`). New:
 
@@ -1224,6 +1235,210 @@ onOutgoing(f: (o: Outgoing) => void)                        // event "chat-outgo
 ### 5.7 What is left out
 
 The phone chat and its PWA (designed in 3.8, built later); changing the account key (question 18); approval of a new computer from another one (the recovery code does it in v1); agents across devices and agents' questions to a Chief on another computer (question 19); teams and SSO; passkeys; server-side search or a web view of the data; a self-hosted server; sharing with clients.
+
+### 5.8 Remote and the PWA (Round 3)
+
+#### The screens
+
+**On a desktop** (cards 1 and 9), in Hersir's islands (`design/README.md`, `design/islands/README.md`), with existing components (`FormSection`, `Field`, `btn`, `ask` dialogs, `ok-banner`, `error-banner`, lucide icons):
+
+- **The hosts' rail** (3.11's sketch): tiles on the background left of the sidebar island; selected tile on `canvas-hover`; Inbox badge on `island`; `live` dot while connected; a host that is off grayed with `MonitorOff`; `+` opens *Add a computer*.
+- **The offline page** and the other host states (3.11, *A host that is off*), in the page island; the band "PC went offline at 14:02…" in `needs` gold at the top of a page left open.
+- **The repository note** in `ProjectForm.tsx` under *Folder* (3.11, A1), in the field's hint style with `MonitorSmartphone`, and **Open EUQR on PC**.
+- **Host-only places**: "The Editor works on PC itself." on the Editor and Terminal pages; "Change this on PC" on read-only Settings tabs and the agent form.
+- **Settings → Hersir Cloud → Use from other devices** (on a host), after Cloud Backup:
+
+```
+Use from other devices
+  [x] Use PC's projects from my other computers and my phone
+      They send PC's own commands through Hersir Cloud, end to end encrypted. PC must stay on.
+  [x] Keep PC awake while this is on                        (question 21)
+  Your devices
+    MacBook · desktop · connected now · Everything                   [Last actions]  [Remove…]
+    iPhone (Safari) · phone · 2 hours ago · Board and chat only      [Last actions]  [Remove…]
+  [Add a device]
+```
+
+- **Add a device** (an `ask` dialog on the host): the QR code (200 px, on white in both themes), the code to type in mono (`HP-7K2Q-…`), "Open Hersir on your other computer and choose *Add a computer*, or scan this with your phone's camera. It works for 5 minutes."; then, when a device joins, the question of 3.13 step 3 with *What it may do* and **Add** / **Cancel**.
+- **Add a computer** (on a device; the rail's `+`): the account's computers that aren't paired yet ("PC · online · not paired"), each with **Pair**, which asks for the code shown on that computer; and the line "To add your phone, open app.hersir.dev on it."
+- **While devices are connected** (on the host): a line at the bottom of the sidebar island in `live` teal, "MacBook and iPhone are connected · Disconnect".
+
+**In the PWA** (cards 10 to 12): *Sign in* (email, password, authenticator code, as the account pages); *Pair with a computer* (open from the QR link, or "Scan the code in Hersir on your computer: Settings → Hersir Cloud → Use from other devices → Add a device"); *Add to Home Screen* (iOS, with the Share icon) and *Allow notifications* in its Settings; then the phone layouts of 3.14.
+
+#### The data
+
+**On a host** (card 8, migration `0023_remote.sql`, this computer's tables, never sent anywhere; main is at schema 22 [V `db.rs:12` on `723097f`, check again when built]):
+
+```sql
+CREATE TABLE remote_devices (        -- devices paired with this host
+  device_id TEXT PRIMARY KEY,        -- the device's Hersir Cloud id
+  name TEXT NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('desktop','web')),
+  box_pub BLOB NOT NULL, sign_pub BLOB NOT NULL,      -- pinned at pairing
+  scope TEXT NOT NULL CHECK (scope IN ('full','board')),
+  push_on INTEGER NOT NULL DEFAULT 0,
+  paired_at INTEGER NOT NULL, last_seen_at INTEGER, removed_at INTEGER
+) STRICT;
+CREATE TABLE remote_log (            -- the writes devices made here, 30 days
+  id INTEGER PRIMARY KEY, device_id TEXT NOT NULL, at INTEGER NOT NULL,
+  cmd TEXT NOT NULL, target TEXT                       -- a card's identifier or a chat's title
+) STRICT;
+CREATE TABLE remote_hosts (          -- on a device that is a desktop: the hosts it is paired with
+  host_id TEXT PRIMARY KEY, name TEXT NOT NULL,
+  box_pub BLOB NOT NULL, sign_pub BLOB NOT NULL, paired_at INTEGER NOT NULL,
+  directory_json TEXT, directory_at INTEGER           -- 3.11's directory: projects only, no data
+) STRICT;
+```
+
+Settings (this computer's, added to `scope::THIS_COMPUTER`): `remote_on` (false), `remote_keep_awake` (true on a desktop without a battery), `remote_last_host`. Keychain: nothing new (the computer keys of 3.2). **In the PWA**: IndexedDB `hersir` with `keys` (the two non-extractable `CryptoKey` pairs), `token`, `hosts` (as `remote_hosts`), `push` (the subscription and each host's push key).
+
+**On the server** (card 7, migrations; `devices` gets `kind` and `remote_on`):
+
+```
+pairings(id PK, user_id, host_id, device_id NULL, join_body JSON NULL, confirm_body JSON NULL,
+         created_at, expires_at, confirmed_at NULL)                -- deleted 1 day after expiry
+device_pairs(host_id, device_id, user_id, created_at, PRIMARY KEY(host_id, device_id))   -- for channel rules
+push_subscriptions(device_id PK, endpoint, p256dh, auth, created_at, last_push_at, pushes_today)
+relay_blobs(id PK, user_id, from_device_id, to_device_id, bytes, created_at, received_at NULL)  -- R2 key b/<user>/<id>
+```
+
+#### What changes in which files
+
+**The app** (this repository):
+
+| Where | What | Card |
+|---|---|---|
+| `src-tauri/src/remote/mod.rs` (new), `lib.rs` | the switch, the relay connection (Round 2's Pusher-protocol client on `tungstenite`, `remote/doorbell.rs`), sessions per host and per device, keep-awake, the tray item | 8 |
+| `src-tauri/src/remote/pairing.rs`, `noise.rs` | pairing with its MACs; `Noise_KK_25519_AESGCM_SHA256` with `snow`; push keys | 8 |
+| `src-tauri/src/remote/dispatch.rs` | **the allowlist**: one `remote_commands!` list that names each command of 3.12's "as they are" and "need a change" groups with its arguments, calls the same function as `generate_handler!` (`lib.rs:818`) with `app.state()` and `app.clone()`, and checks the two forms' fields; anything not on it is refused | 8 |
+| `src-tauri/src/remote/files.rs` | uploads into `<data dir>/remote-uploads/<id>/` (deleted after 24 h), `remote:` tokens, blobs out (`open_file`, `screenshot_bytes`, answers over 1 MiB) | 8 |
+| `src-tauri/src/remote/events.rs` | `listen_any` on the eight forwarded events [V S-R10], `run-events` and `chat-events` batched at 250 ms per device | 8 |
+| `src-tauri/src/remote/forward.rs`, `lib.rs` | **the desktop as a device**: the app's `invoke_handler` becomes a closure that runs `generate_handler!`'s handler for this computer's workspace and the window's own commands, and for another host's workspace sends `invoke.message.command()` and its payload to that host and answers with `invoke.resolver` [V the API, S-R10; I the use]; local paths in `add_files`, `send_chat`, `check_files` uploaded first; `open_file` and `screenshot_bytes` answered from blobs; the host's events emitted to the window under their own names | 8 |
+| `src-tauri/src/notifications.rs` | the `Desktop` sink also sends sealed pushes to paired PWA devices not connected | 8 |
+| `src-tauri/src/remote/check_web.rs` | the daily check of `app.hersir.dev` against the signed release (3.13) | 11 |
+| `crates/gizai-core/migrations/0023_remote.sql`, `scope.rs` | the tables and settings above | 8 |
+| `src/api.ts`, `src/types.ts` | the commands and events below | 9 |
+| `src/components/HostRail.tsx`, `HostOffline.tsx`, `RemoteSettings.tsx`, `PairDialog.tsx`, `AddComputer.tsx` (new); `App.tsx`, `Sidebar.tsx`, `SettingsPage.tsx`, `ProjectForm.tsx`, `EditorPage.tsx`, `TerminalPage.tsx`, `AgentForm.tsx` | the rail, the offline page and band, the repository note, pairing on both sides, host-only notes | 9 |
+| `web.html`, `src/web/main.ts`, `src/web/client.ts`, `src/web/noise.ts`, `src/web/shims.ts`, `src/web/sw.ts`, `public/manifest.webmanifest`, `vite.config.ts` (`--mode web`), `package.json` (`build:web`) | the PWA: `mockIPC` (as `src/browser/main.ts`) answered by the client; plugin shims; pairing; push; app shell | 11 |
+| `src/lib/useDropZone.ts` | HTML5 drops when not in Tauri | 11 |
+| `.github/workflows/release-builds.yml` | `hersir-web-X.Y.Z.zip` in `SHA256SUMS`; a `deploy-web` job in the `pwa` environment | 11 |
+| `src/styles/app.css`, `src/components/phone/*` | the phone layouts of 3.14 | 12 |
+
+**The server** (`Yotech-AI/hersir-cloud`): `app/Http/Controllers/Api/{Pairing,RelayBlob,Push}Controller.php`, `routes/channels.php`, `app/Events/{DeviceOnline,DeviceRemoved,PairingJoined,PairingConfirmed}.php`, `config/reverb.php`, the four migrations, `app/Console/Commands/PruneRelay.php`, the R2 lifecycle rule for `b/`, `PROTOCOL.md`'s relay section (card 7).
+
+#### Contracts
+
+**The server's relay API** (card 7; same rules as 5.4: `/api/v1`, a device's Passport token, errors as there, times in ms, ids UUIDv7, blobs base64):
+
+| Call | Body → answer |
+|---|---|
+| `POST /pairings` | (host) `{}` → 201 `{ pairing_id, expires_at }` (5 minutes; 402 `plan_required` without an active plan) |
+| `POST /pairings/{id}/join` | (device) `{ device_id, name, kind: "desktop"\|"web", box_pub, sign_pub, mac }` → 202; the host hears `pairing.joined { pairing_id }`; 404 when expired or used |
+| `GET /pairings/{id}` | (host) → `{ device_id, name, kind, box_pub, sign_pub, mac }` |
+| `POST /pairings/{id}/confirm` | (host) `{ host_box_pub, host_sign_pub, mac, both_ways: boolean }` → 200; makes `device_pairs` (both ways when asked); the device hears `pairing.confirmed { pairing_id }` |
+| `GET /pairings/{id}/confirmation` | (device) → `{ host_id, host_box_pub, host_sign_pub, mac }` |
+| `DELETE /pairings/{id}` | → 204 (cancel) |
+| `GET /pairs` | → `[{ host_id, device_id, created_at }]` (this device's) |
+| `DELETE /pairs/{host_id}/{device_id}` | → 204; both hear `device.removed { id }` for the device, and Reverb refuses their channel from then on |
+| `POST /relay/blobs` | `{ to, bytes }` (at most 104,857,600 plus 1% sealing) → 201 `{ blob_id, url, headers, expires_at }`; 413 `file_too_large`, 429 `slow_down` past 2 GB a day |
+| `POST /relay/blobs/{id}/sent` | `{}` → 200 after a `HEAD` checks the size; the receiver may now download |
+| `POST /relay/blobs/{id}/download` | (receiver) → `{ url, bytes, expires_at }` |
+| `DELETE /relay/blobs/{id}` | (receiver) → 204 |
+| `PUT /devices/me/push` | (PWA) `{ endpoint, keys: { p256dh, auth } }` → 204; `DELETE` → 204 |
+| `POST /push` | (host) `{ to, body }` (`body` at most 2,048 bytes, sealed) → 202, or 409 `no_subscription`; at most one per 30 s per kind is the host's job, 100 a day the server's |
+
+**Reverb** (Pusher protocol at `wss://cloud.hersir.dev/app/<key>`, authorised at `POST /broadcasting/auth` with the device's token):
+
+- `private-account.<user id>`: `device.online { id }`, `device.offline { id }`, `device.removed { id }`, `pairing.joined { pairing_id }`, `pairing.confirmed { pairing_id }`, `entitlement.changed {}`.
+- `presence-account.<user id>`: members `{ device_id, name, kind, remote_on }`.
+- `private-remote.<host id>.<device id>`: client events only, `client-m` with `data` = `{ "s": "<session id>", "n": <counter>, "p": <part, from 0>, "of": <parts>, "d": "<base64>" }`, `d` at most 49,152 bytes before base64; the channel is allowed when the caller is that host or that device, both are the account's, `device_pairs` has them, neither is removed, and the host's `remote_on` is true.
+
+**The session** (`PROTOCOL.md`; cards 8 and 11 implement it, each with the other's test vectors):
+
+```
+handshake   Noise_KK_25519_AESGCM_SHA256, prologue "hersir-remote/1" ‖ host_id ‖ device_id;
+            the device starts. Payloads: device → { "v": 1, "app": "hersir-desktop 1.2.0" | "hersir-web 1.2.0",
+            "scope_seen": "full" | "board" }; host → { "v": 1, "app": "hersir-desktop 1.2.0", "name": "PC",
+            "scope": "full" | "board", "min_device": "1.2.0" }
+messages    after the handshake, each a Noise transport message whose plaintext is JSON, deflated when over 1 KiB
+            ({"z":1} first byte flag), at most 1 MiB; larger answers go as a blob
+device → host
+  { "t": "call", "id": 17, "cmd": "list_tasks", "args": { "filter": {} } }        args as the app's invoke sends them
+  { "t": "watch", "events": ["rows-changed","runs-changed","run-events","chat-changed","chat-events",
+                             "backups-changed","restore-changed","update-changed"] }
+  { "t": "bye" }
+host → device
+  { "t": "ok", "id": 17, "v": <the command's answer> }
+  { "t": "err", "id": 17, "message": "<the command's own sentence>", "kind": "refused" | "host_only" | "unknown" | "failed" }
+  { "t": "blob", "id": 17, "blob_id": "<uuid>", "bytes": 123456, "sha256": "<hex>", "mime": "image/png" }
+  { "t": "event", "name": "rows-changed", "payload": { "table": "tasks" } }
+  { "t": "bye", "why": "removed" | "remote_off" | "quit" }
+host-side commands a device may call besides 3.12's
+  remote_directory {} → { "host": { "id", "name", "app_version" },
+                          "projects": [{ "id", "key", "name", "color", "teamId", "repoUrl" }] }
+  remote_take_upload { "blobId", "name", "bytes", "sha256" } → { "path": "remote:<upload id>/<name>" }
+  remote_file { "fileId" } → a "blob" answer (what open_file opens on a host)
+blobs       sealed with the session's export key (HKDF(handshake hash, "hersir-blob" ‖ blob_id)) in 4 MiB chunks
+push body   "HP1" ‖ nonce (12) ‖ AES-256-GCM(push key, { "kind": "hold"|"waiting"|"leadAsks"|"leadAnswered"|"approval",
+            "title", "body", "url": "#/task/<id>" | "#/chat/<id>", "host": "<host id>" })
+            push key = HKDF-SHA256(X25519(host box, device box), "hersir-push-1" ‖ host_id ‖ device_id)
+```
+
+**Hersir's commands for the remote screens** (card 8 builds them, card 9 uses them), in `src/api.ts` with the Tauri command in the comment:
+
+```ts
+type RemoteScope = "full" | "board";
+type RemoteDevice = { id: string; name: string; kind: "desktop" | "web"; scope: RemoteScope;
+  connected: boolean; lastSeenAt: number | null; pairedAt: number; push: boolean };
+type RemoteStatus = { on: boolean; keepAwake: boolean; signedIn: boolean; plan: boolean;
+  devices: RemoteDevice[];                       // paired with this host
+  problem: null | { kind: "signed_out" | "plan" | "offline" | "web_mismatch"; message: string } };
+type Pairing = { pairingId: string; qr: string; code: string; expiresAt: number;   // qr: the https://app.hersir.dev/pair#… link
+  joined: null | { deviceId: string; name: string; kind: "desktop" | "web" } };
+type RemoteAction = { at: number; cmd: string; target: string | null };
+type HostState = "this" | "connected" | "connecting" | "offline" | "remote_off" | "old_version" | "removed";
+type Host = { id: string; name: string; state: HostState; offlineSince: number | null; inbox: number;
+  projects: { id: string; key: string; name: string; color: string | null; repoUrl: string | null }[];   // the directory
+  message: string | null };                      // the offline page's sentence
+type RepoElsewhere = { hostId: string; hostName: string; hostState: HostState; offlineSince: number | null;
+  projectId: string; key: string; name: string };
+
+remoteStatus(): Promise<RemoteStatus>                                    // remote_status
+remoteSet(s: { on?: boolean; keepAwake?: boolean }): Promise<RemoteStatus>   // remote_set
+remotePairStart(): Promise<Pairing>                                      // remote_pair_start (host)
+remotePairAnswer(pairingId: string, add: boolean, scope: RemoteScope): Promise<RemoteStatus>  // remote_pair_answer
+remotePairCancel(pairingId: string): Promise<void>                       // remote_pair_cancel
+remoteRemoveDevice(id: string): Promise<RemoteStatus>                    // remote_remove_device
+remoteDisconnectAll(): Promise<void>                                     // remote_disconnect_all
+remoteDeviceLog(id: string): Promise<RemoteAction[]>                     // remote_device_log
+hosts(): Promise<Host[]>                                                 // hosts: this computer first
+hostPair(code: string): Promise<Host[]>                                  // host_pair (device; the HP- code)
+hostSelect(hostId: string): Promise<void>                                // host_select: the window's workspace
+hostCheckAgain(hostId: string): Promise<Host>                            // host_check_again
+hostNotifyWhenBack(hostId: string, on: boolean): Promise<void>          // host_notify_when_back
+repoElsewhere(repoUrl: string): Promise<RepoElsewhere[]>                 // repo_elsewhere (A1), from the directories
+onRemoteChanged(f: (s: RemoteStatus) => void)                            // event "remote-changed"
+onHostsChanged(f: (h: Host[]) => void)                                   // event "hosts-changed"
+```
+
+Refusals are sentences: "Turn on *Use from other devices* first.", "That code has expired: show a new one on PC.", "This device was removed from PC.", "PC is offline.", "The project's folder and setup commands can only be changed on PC.", "Files from another device can be up to 100 MB.".
+
+**The PWA's client** (card 11, `src/web/client.ts`), so card 12 and later screens can rely on it: `connect(hostId)`, `call(hostId, cmd, args)`, `on(hostId, event, f)`, `upload(hostId, file: File): Promise<string>` (the `remote:` path), `blob(hostId, answer): Promise<Blob>`; `mockIPC` routes every `invoke` of the page to `call` for the selected host and answers the plugin commands itself (`plugin:opener|open_url` → `window.open`; `plugin:dialog|open` → a file input whose files become `upload:` tokens the client uploads before the call; `plugin:clipboard-manager|read_text` → `navigator.clipboard.readText`; `plugin:window|*` → nothing).
+
+#### Security and privacy
+
+3.13, plus: the host checks every incoming call's command against the allowlist and the device's scope before parsing its arguments; a session ends after 12 hours or when the device's token is revoked; keys are wiped from memory after use (`zeroize`) on the host and the MacBook; the PWA's keys are non-extractable; nothing a device sends is logged on the host except `remote_log`'s command names and targets; the server's logs hold ids and sizes only.
+
+#### How it is tested
+
+- **The session**: Noise test vectors on both sides; a device and a host in one test with an in-memory relay: a changed byte, a replayed or reordered frame, a removed device, an expired pairing and a wrong MAC all fail; the PWA's client against the Rust host through a local Reverb.
+- **The allowlist**: a test lists every `#[tauri::command]` and fails on one that is in neither the allowlist nor the host-only list (as Round 2's sync list test would have); each of 3.12's refusals has a test, `save_project` and `save_settings` field by field.
+- **Two Hersirs** with their own data folders (`HERSIR_DATA_DIR`) and fake keychains (`HERSIR_FAKE_KEYCHAIN`) against the server run locally (`php artisan serve`, `reverb:start`, an S3 fake): pair, open a card, Run, Stop, Continue, approve a call, add a file from the device, open a screenshot, remove the device mid-run, switch remote off, quit the host (the device's offline page shows), and A1's note.
+- **The PWA**: `scripts/ui-test.sh`-style runs in Chromium and WebKit (Playwright) against the same local set-up; iOS by hand on your iPhone (install, push, pairing by camera).
+- **The server** (Pest): every relay call and its errors; channel authorisation (another account's channel, an unpaired pair, a removed device, remote off); blob size checks; push limits; pairing expiry.
+
+#### What is left out
+
+Projects in the cloud (A4); any copy of a host's data on a device (A3); queued writes for a host that is off; a host vouching for a device to your other hosts (question 25); changing an agent's non-widening fields remotely; the terminal and the editor remotely; native iOS and Android apps; sharing a host with another person (teams).
 
 ## 6. Proposed cards
 
