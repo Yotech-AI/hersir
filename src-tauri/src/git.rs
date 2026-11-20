@@ -88,8 +88,7 @@ pub const START_FETCH_LIMIT: Duration = Duration::from_secs(60);
 pub fn start_point(project: &Project, repo: &Path, fetch: Option<Duration>) -> Result<String, AgentError> {
     let Some(url) = project.repo_url.as_deref() else { return Ok(project.default_branch.clone()) };
     if let Err(e) = gizai_core::repo_url::refuse_option(url) {
-        return Err(AgentError::Git(format!("{e}, so Hersir doesn't fetch from it or push to it: change {}'s repository link on its page (Edit)",
-                                           project.name)));
+        return Err(AgentError::Git(format!("{e}: change {}'s link on its page (Edit)", project.name)));
     }
     let remote = remote_for(repo, url);
     match fetch {
