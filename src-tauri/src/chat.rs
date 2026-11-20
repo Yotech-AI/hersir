@@ -386,8 +386,16 @@ pub fn mark_outside(st: &AppState, thread_id: &str, tool: &str) {
     st.chat.outside.lock().unwrap().entry(thread_id.to_string()).or_insert(first);
 }
 
-/// What a chat's note says it is about (`meta.kind`) when it says the chat used a tool from outside Gizai (GA-261): once,
-/// when that marked it.
+/// GA-319: the Chief's message from a chat that used `tool`, a tool from outside Gizai, marked the chat `thread_id` (a chat
+/// it started with start_chat, or the waiting one the message went to, `chat::start_lead_chat_from`): the note there says
+/// so, once, as `mark_outside`'s does when a chat uses such a tool itself.
+pub(crate) fn marked_from_chat(st: &AppState, thread_id: &str, tool: &str) {
+    note(st, thread_id, &format!("The Chief wrote here from a chat that used {}, a tool from outside Hersir: from now on, what the Chief \
+                                 does here waits for your Approve.", outside_label(tool)), json!({"kind": OUTSIDE_NOTE, "tool": tool}));
+}
+
+/// What a chat's note says it is about (`meta.kind`) when it says the chat used a tool from outside Gizai (GA-261), or that
+/// the Chief wrote there from a chat that did (GA-319): once, when that marked it.
 pub const OUTSIDE_NOTE: &str = "outside";
 
 /// A tool from outside Gizai in words, as the Chat page says it (`outsideLabel`): "search on the otus server", "web
