@@ -22,7 +22,7 @@ fn select() -> String {
     p.updated_at, NULLIF(r.remote_url, ''), p.worktree_copy_json, p.worktree_install, p.worktree_setup,
     (SELECT COALESCE(SUM(u.cost_usd_micros), 0) FROM runs u JOIN tasks ut ON ut.id = u.task_id WHERE ut.project_id = p.id AND u.created_at >= ?1),
     (SELECT count(*) FROM runs u JOIN tasks ut ON ut.id = u.task_id WHERE ut.project_id = p.id AND u.created_at >= ?1 AND {unknown}),
-    p.lead_may_merge, p.screenshots_json, p.preview_command, p.preview_start_secs, p.test_runs_at_once
+    p.lead_may_merge, p.screenshots_json, p.preview_command, p.preview_start_secs, p.test_runs_at_once, p.dev_docs
   FROM projects p
   LEFT JOIN clients c ON c.id = p.client_id
   LEFT JOIN repos r ON r.project_id = p.id AND r.deleted_at IS NULL")
@@ -57,6 +57,7 @@ fn row(r: &Row) -> rusqlite::Result<Project> {
         preview_start_secs: r.get::<_, Option<i64>>(26)?.and_then(|s| u32::try_from(s).ok())
             .filter(|s| crate::screenshots::START_SECS.contains(s)).unwrap_or(crate::screenshots::DEFAULT_START_SECS),
         test_runs_at_once: r.get::<_, Option<i64>>(27)?.and_then(|n| u32::try_from(n).ok()).filter(|n| *n >= 1),
+        dev_docs: r.get::<_, i64>(28)? != 0,
         team_name: None,
     })
 }
@@ -280,12 +281,13 @@ pub fn create(db: &Db, actor: &str, input: ProjectInput) -> Result<String> {
         c.execute(
             "INSERT INTO projects(id, created_at, updated_at, created_by, updated_by, org_id, client_id, number, key, name, status,
                color, goal_md, team_id, budget_amount_minor, budget_hours, worktree_copy_json, worktree_install, worktree_setup, lead_may_merge,
-               screenshots_json, preview_command, preview_start_secs, test_runs_at_once)
+               screenshots_json, preview_command, preview_start_secs, test_runs_at_once, dev_docs)
              VALUES (?1, ?2, ?2, ?3, ?3, ?4, ?5, ?6, ?7, ?8, coalesce(?9, 'active'), ?10, ?11, ?12, ?13, ?14,
-               coalesce(?15, '[]'), coalesce(?16, 1), NULLIF(?17, ''), coalesce(?18, 0), ?19, NULLIF(?20, ''), ?21, NULLIF(?22, 0))",
+               coalesce(?15, '[]'), coalesce(?16, 1), NULLIF(?17, ''), coalesce(?18, 0), ?19, NULLIF(?20, ''), ?21, NULLIF(?22, 0),
+               coalesce(?23, 0))",
             rusqlite::params![id, now, actor, org, clean(&input.client_id), number, key, name, clean(&input.status),
                               clean(&input.color), clean(&input.goal_md), team, input.budget_amount_minor, input.budget_hours,
-                              copy, install, setup, input.lead_may_merge, shots, preview, start_secs, test_runs],
+                              copy, install, setup, input.lead_may_merge, shots, preview, start_secs, test_runs, input.dev_docs],
         )?;
         w.insert("projects", &id, serde_json::to_value(&input)?)?;
         upsert_repo(w, actor, &id, &input, now)?;
@@ -340,12 +342,12 @@ pub fn update_with(db: &Db, actor: &str, id: &str, input: ProjectInput, under_wa
                preview_command=CASE WHEN ?16 IS NULL THEN preview_command ELSE NULLIF(?16, '') END,
                preview_start_secs=coalesce(?17, preview_start_secs),
                test_runs_at_once=CASE WHEN ?18 IS NULL THEN test_runs_at_once ELSE NULLIF(?18, 0) END,
-               team_id=coalesce(?19, team_id)
+               team_id=coalesce(?19, team_id), dev_docs=coalesce(?20, dev_docs)
              WHERE id=?1 AND deleted_at IS NULL",
             rusqlite::params![id, clean(&input.client_id), name, clean(&input.status), clean(&input.color),
                               clean(&input.goal_md), input.budget_amount_minor, input.budget_hours, now, actor,
                               copy, install, setup, input.lead_may_merge, shots, preview, start_secs, test_runs,
-                              moving.as_ref().map(|(_, to)| to.0.clone())],
+                              moving.as_ref().map(|(_, to)| to.0.clone()), input.dev_docs],
         )?;
         if n == 0 {
             return Err(Error::NotFound(format!("project {id}")));

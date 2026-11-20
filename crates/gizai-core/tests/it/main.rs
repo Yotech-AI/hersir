@@ -25,6 +25,7 @@ mod cli_tools_test;
 mod clients_test;
 mod clis_test;
 mod db_test;
+mod dev_docs_test;
 mod docs_files_test;
 mod editor_test;
 mod folders_test;
