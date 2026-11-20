@@ -14,6 +14,15 @@ Each project can have a Docs page of its own, in the sidebar's Docs section belo
 - With none on, it says No project has Docs on, with a link to Projects.
 - It folds with the caret at the end of its heading, like Agents and Memory, and stays folded after a restart.
 
+## Commits
+
+With Docs on, the page lists main's 50 newest commits, newest first: each with its short id, its first line, who made it and when.
+
+- Main is main as last fetched, as a card's changes measure from it: origin/main for a project linked to GitHub or Bitbucket, else the local main branch. Hersir doesn't fetch for it.
+- A merge into main is one commit, with its pull request's changes.
+- A commit opens to the files it changed against the commit before it (a first commit: all its files, as added), each in the same box as a card's Changes tab. A file's diff loads once its box comes near the screen.
+- A project without a git repository says how to link one.
+
 ## Not to be confused with
 
 A project's documents (project page → Docs, and the Doc page) are separate: notes and specs you and the Chief write. The Docs section is the project's developer docs.

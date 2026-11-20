@@ -17,6 +17,7 @@ mod board_flow_test;
 mod builds_on_flow_test;
 mod card_flow_test;
 mod changes_flow_test;
+mod docs_commits_test;
 mod chat_files_flow_test;
 mod chat_flow_test;
 mod chat_limits_test;

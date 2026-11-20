@@ -5,7 +5,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { ArrowRight, Binary, ChevronDown, CircleAlert, FileMinus, FileX, FoldVertical, LoaderCircle, Lock, RefreshCw } from "lucide-react";
 import { EditorView } from "@codemirror/view";
-import { cardFileDiff } from "../../api";
+import { cardFileDiff, docsFileDiff } from "../../api";
 import { estimatedRows, foldedNote, foldedWhy, patchRows, sameContent, splitPath, STATUS } from "../../lib/changes";
 import { formatBytes } from "../../lib/format";
 import { languageFor } from "../../lib/codeLanguages";
@@ -13,9 +13,9 @@ import { diffState } from "../../lib/diffView";
 import type { FileChange, FileDiff } from "../../types";
 import { Diffstat } from "./Diffstat";
 
-/** Where a file's texts come from: `from` and `to` of the changes (to null: the worktree on disk; from "": the pull
- *  request's diff). */
-export type DiffSource = { taskId: string; from: string; to: string | null };
+/** Where a file's texts come from: `from` and `to` of a card's changes (to null: the worktree on disk; from "": the pull
+ *  request's diff), or of one commit of a project's main (Docs → Commits). */
+export type DiffSource = { taskId: string; from: string; to: string | null } | { projectId: string; from: string; to: string };
 
 /** A file's path in a header: its folder dimmer, its name in bold, and old → new for a rename. */
 export function PathName({ f }: { f: FileChange }) {
@@ -55,7 +55,8 @@ export const FileBox = memo(function FileBox({ f, source, near, onView }: {
     if (!wanted || load.state !== "idle") return;
     let alive = true;
     setLoad({ state: "loading" });
-    cardFileDiff(source.taskId, f.path, f.oldPath, source.from, source.to)
+    ("taskId" in source ? cardFileDiff(source.taskId, f.path, f.oldPath, source.from, source.to)
+      : docsFileDiff(source.projectId, f.path, f.oldPath, source.from, source.to))
       .then((diff) => alive && setLoad({ state: "done", diff }))
       .catch((e) => alive && setLoad({ state: "failed", error: String(e) }));
     return () => { alive = false; };

@@ -386,6 +386,13 @@ export type FileDiff = {
   newSize: number;
   crlf: boolean;
 };
+/** A commit on main, as Docs → Commits lists it. `parent`: its first parent, null for a repository's first commit; `at`:
+ *  when it was committed, in Unix milliseconds. */
+export type LoggedCommit = { sha: string; parent: string | null; author: string; at: number; subject: string };
+/** Main's newest commits, newest first, and where main is: "origin/main", or "main" for a project without a link. */
+export type DocsCommits = { label: string; commits: LoggedCommit[] };
+/** One commit's changed files, measured from its first parent (git's empty tree for a first commit) to itself. */
+export type CommitFiles = { from: string; to: string; files: FileChange[] };
 export type LiveRun = { runId: string; taskId: string; agentId: string };
 export type Settings = { claudeBin?: string | null; dataDir: string; maxConcurrentRuns: number; agentsPaused: boolean; maxRunUsd?: number | null; maxRunMinutes: number; maxRunToolCalls: number;
   /** Settings → Runs → Memory for agent runs (GA-202), in GB: all agent runs together, half of the computer's memory

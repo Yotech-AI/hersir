@@ -260,6 +260,13 @@ export const cardFileDiff = (taskId: string, path: string, oldPath: string | nul
   invoke<T.FileDiff>("card_file_diff", { taskId, path, oldPath, from, to });
 /** The changes one run committed: from the commit it started at to the one it ended at. */
 export const runChanges = (runId: string) => invoke<T.CardChanges>("run_changes", { runId });
+/** Docs → Commits: main's newest commits, newest first, as last fetched. */
+export const docsCommits = (projectId: string) => invoke<T.DocsCommits>("docs_commits", { projectId });
+/** The files commit `sha` changed, against its first parent. */
+export const docsCommitFiles = (projectId: string, sha: string) => invoke<T.CommitFiles>("docs_commit_files", { projectId, sha });
+/** One file of a commit: its texts at `from` and `to`, and git's hunks between them. */
+export const docsFileDiff = (projectId: string, path: string, oldPath: string | null, from: string, to: string) =>
+  invoke<T.FileDiff>("docs_file_diff", { projectId, path, oldPath, from, to });
 
 // ---- Screenshots (GA-182, contract CS) ----
 /** The card's screenshot sets, newest run first: every run of the card that got the Screenshots section, also one that

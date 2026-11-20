@@ -1,20 +1,30 @@
-// The Docs page of one project (the Docs section): its crumbs, and what it says with Docs on and off. Rendered to HTML on
-// the server: the data hooks are replaced so the page gets its project at once, and a button's click is tried on the
-// element tree (the page called as a function, its hooks being the replaced ones).
+// The Docs page of one project (the Docs section): its crumbs; with Docs on, main's newest commits (Docs → Commits), an
+// opened commit showing each changed file in its own box; with Docs off, the way to turn it on. Rendered to HTML on the
+// server: the data hooks are replaced so the page gets its data at once (a thrown error is the hook's error), and a
+// button's click is tried on the element tree (the page called as a function, its hooks being the replaced ones).
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactElement, ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { Project } from "../types";
+import type { CommitFiles, DocsCommits, Project } from "../types";
 
-const state = vi.hoisted(() => ({ project: null as unknown, open: vi.fn() }));
-vi.mock("../api", async (orig) => ({ ...(await orig<object>()), getProject: () => state.project }));
+const state = vi.hoisted(() => ({ project: null as unknown, commits: null as unknown, files: null as unknown, open: vi.fn() }));
+vi.mock("../api", async (orig) => ({
+  ...(await orig<object>()),
+  getProject: () => state.project,
+  docsCommits: () => { if (state.commits instanceof Error) throw state.commits; return state.commits; },
+  docsCommitFiles: () => state.files,
+}));
 vi.mock("../lib/useData", () => ({
-  useData: (fetch: () => unknown) => ({ data: fetch(), error: null, reload: () => {}, setData: () => {} }),
+  useData: (fetch: () => unknown) => {
+    try { return { data: fetch() ?? null, error: null, reload: () => {}, setData: () => {} }; }
+    catch (e) { return { data: null, error: e instanceof Error ? e.message : String(e), reload: () => {}, setData: () => {} }; }
+  },
 }));
 vi.mock("../lib/drawers", async (orig) => ({ ...(await orig<object>()), useDrawer: () => state.open }));
 
-const { DocsPage } = await import("./DocsPage");
+const { DocsPage, CommitFileList } = await import("./DocsPage");
 
+const HOUR = 3_600_000;
 const kade = (devDocs: boolean) => ({
   id: "kade", name: "Kade portal", key: "KADE", number: "2026-001", status: "active", defaultBranch: "main", openTasks: 0,
   doneTasks: 0, updatedAt: 1, devDocs,
@@ -35,21 +45,40 @@ function buttons(): ReactElement<{ onClick?: () => void; children?: ReactNode }>
   return found;
 }
 
-beforeEach(() => { state.open.mockReset(); });
+beforeEach(() => { state.open.mockReset(); state.commits = { label: "origin/main", commits: [] }; state.files = null; });
 
 describe("the Docs page", () => {
   it("names the section and the project in its crumbs", () => {
     state.project = kade(true);
     expect(page()).toContain('<div class="crumbs"><span>Docs</span><span class="sep">/</span><b>Kade portal</b></div>');
   });
-  it("says there are no docs yet while Docs is on", () => {
+  it("lists main's newest commits while Docs is on, newest first, each with its short id, subject, author and when", () => {
     state.project = kade(true);
-    expect(page()).toContain("<b>No docs yet</b>");
-    expect(page()).not.toContain("Docs is off");
+    state.commits = { label: "origin/main", commits: [
+      { sha: "abc1234def0", parent: "0123456aaa1", author: "Remi", at: Date.now() - 2 * HOUR, subject: "Add the contact form" },
+      { sha: "0123456aaa1", parent: null, author: "Jeffrey", at: Date.now() - 50 * HOUR, subject: "First commit" },
+    ] } satisfies DocsCommits;
+    const html = page();
+    expect(html).toContain("<h3>Commits</h3><span class=\"faint\">origin/main</span>");
+    expect(html).toContain('<span class="mono">abc1234</span><span class="subj">Add the contact form</span><span class="faint">Remi, 2 h ago</span>');
+    expect(html.indexOf("Add the contact form")).toBeLessThan(html.indexOf("First commit"));
+    expect(html.match(/aria-expanded="false"/g)).toHaveLength(2);
+    expect(html).not.toContain("Docs is off");
+  });
+  it("says so while main has no commits yet", () => {
+    state.project = kade(true);
+    state.commits = { label: "main", commits: [] } satisfies DocsCommits;
+    expect(page()).toContain("<b>No commits on main yet</b>");
+  });
+  it("says why when it can't read the commits", () => {
+    state.project = kade(true);
+    state.commits = new Error("Kade portal has no git repository: link one on its project page → Edit");
+    expect(page()).toContain("<b>Hersir can&#x27;t show the commits</b><span>Kade portal has no git repository: link one on its project page → Edit</span>");
   });
   it("says Docs is off, with Edit project, which opens the project's form", () => {
     state.project = kade(false);
     expect(page()).toContain("<b>Docs is off for this project</b>");
+    expect(page()).not.toContain("<h3>Commits</h3>");
     const edit = buttons().filter((b) => b.props.children === "Edit project");
     expect(edit).toHaveLength(1);
     edit[0]!.props.onClick!();
@@ -58,5 +87,22 @@ describe("the Docs page", () => {
   it("shows nothing while the project loads", () => {
     state.project = null;
     expect(page()).toBe("");
+  });
+});
+
+describe("an opened commit", () => {
+  it("shows each file it changed in its own box", () => {
+    state.files = { from: "0123456aaa1", to: "abc1234def0", files: [
+      { path: "src/form.tsx", oldPath: null, status: "added", additions: 40, deletions: 0, binary: false, uncommitted: false },
+      { path: "README.md", oldPath: null, status: "modified", additions: 2, deletions: 1, binary: false, uncommitted: false },
+    ] } satisfies CommitFiles;
+    const html = renderToStaticMarkup(<CommitFileList projectId="kade" sha="abc1234def0" />);
+    expect(html).toContain('aria-label="src/form.tsx"');
+    expect(html).toContain('aria-label="README.md"');
+    expect(html).toContain("+40");
+  });
+  it("says so when it changed no files", () => {
+    state.files = { from: "0123456aaa1", to: "abc1234def0", files: [] } satisfies CommitFiles;
+    expect(renderToStaticMarkup(<CommitFileList projectId="kade" sha="abc1234def0" />)).toContain("This commit changed no files");
   });
 });

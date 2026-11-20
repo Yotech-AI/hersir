@@ -15,6 +15,7 @@ mod checkout_test;
 mod cli_test;
 mod connection_test;
 mod copies_test;
+mod docs_log_test;
 mod editor_test;
 mod fake_stream_test;
 mod folders_cli_test;

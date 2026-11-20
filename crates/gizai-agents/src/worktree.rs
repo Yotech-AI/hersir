@@ -684,6 +684,39 @@ pub fn commits(dir: &Path, base: &str, head: &str) -> Result<Vec<Commit>, AgentE
         .map(|(sha, subject)| Commit { sha: sha.to_string(), subject: subject.to_string() }).collect())
 }
 
+/// A commit on main, as Docs → Commits lists it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoggedCommit {
+    pub sha: String,
+    /// Its first parent: None for a repository's first commit.
+    pub parent: Option<String>,
+    pub author: String,
+    /// When it was committed, in Unix milliseconds.
+    pub at: i64,
+    pub subject: String,
+}
+
+/// The newest `limit` commits of `rev` (a ref or a commit id), newest first, along first parents: a merge into main is
+/// one commit, whose changes are its pull request's.
+pub fn log(dir: &Path, rev: &str, limit: usize) -> Result<Vec<LoggedCommit>, AgentError> {
+    if rev.is_empty() || rev.starts_with('-') {
+        return Err(AgentError::Git(format!("{rev:?} is not a branch or a commit")));
+    }
+    let out = git(dir, &["log", "--first-parent", &format!("--max-count={limit}"), "--format=%H%x1f%P%x1f%an%x1f%ct%x1f%s", rev, "--"])?;
+    Ok(out.lines().filter_map(|line| {
+        let mut part = line.split('\x1f');
+        let (sha, parents, author, at, subject) = (part.next()?, part.next()?, part.next()?, part.next()?, part.next()?);
+        Some(LoggedCommit {
+            sha: sha.to_string(),
+            parent: parents.split(' ').next().filter(|p| !p.is_empty()).map(str::to_string),
+            author: author.to_string(),
+            at: at.parse::<i64>().ok()? * 1000,
+            subject: subject.to_string(),
+        })
+    }).collect())
+}
+
 /// How long a push may take.
 const PUSH_LIMIT: Duration = Duration::from_secs(120);
 
