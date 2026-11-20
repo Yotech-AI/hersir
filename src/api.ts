@@ -267,6 +267,10 @@ export const docsCommitFiles = (projectId: string, sha: string) => invoke<T.Comm
 /** One file of a commit: its texts at `from` and `to`, and git's hunks between them. */
 export const docsFileDiff = (projectId: string, path: string, oldPath: string | null, from: string, to: string) =>
   invoke<T.FileDiff>("docs_file_diff", { projectId, path, oldPath, from, to });
+/** Docs → Changelog: the project's merged cards, newest first. */
+export const docsChangelog = (projectId: string) => invoke<T.ChangelogEntry[]>("docs_changelog", { projectId });
+/** Docs → Decisions: the shared memory notes about the project's decisions, newest first. */
+export const docsDecisions = (projectId: string) => invoke<T.DecisionNote[]>("docs_decisions", { projectId });
 
 // ---- Screenshots (GA-182, contract CS) ----
 /** The card's screenshot sets, newest run first: every run of the card that got the Screenshots section, also one that

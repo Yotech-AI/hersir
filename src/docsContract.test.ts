@@ -1,9 +1,11 @@
 // Docs → Commits: the UI's calls and types match the Rust side, read as text (Vite's ?raw) as contract C1's are
 // (changesContract.test.ts), so a change on one side without the other fails here.
 import { describe, expect, it, vi } from "vitest";
-import type { CommitFiles, DocsCommits, LoggedCommit } from "./types";
+import type { ChangelogEntry, CommitFiles, DecisionNote, DocsCommits, LoggedCommit } from "./types";
 import libRs from "../src-tauri/src/lib.rs?raw";
 import changesRs from "../src-tauri/src/changes.rs?raw";
+import devdocsAppRs from "../src-tauri/src/devdocs.rs?raw";
+import devdocsRs from "../crates/gizai-core/src/devdocs.rs?raw";
 import worktreeRs from "../crates/gizai-agents/src/worktree.rs?raw";
 
 const invoked: [string, unknown][] = [];
@@ -43,5 +45,25 @@ describe("Docs → Commits' commands", () => {
     expect(serdeFields(changesRs, "DocsCommits")).toEqual(Object.keys(list).sort());
     const files: Record<keyof CommitFiles, true> = { from: true, to: true, files: true };
     expect(serdeFields(changesRs, "CommitFiles")).toEqual(Object.keys(files).sort());
+  });
+});
+
+describe("Docs → Changelog's and Decisions' commands", () => {
+  it("are invoked with camelCase arguments and registered with Tauri", async () => {
+    invoked.length = 0;
+    await api.docsChangelog("p1");
+    await api.docsDecisions("p1");
+    expect(invoked).toEqual([["docs_changelog", { projectId: "p1" }], ["docs_decisions", { projectId: "p1" }]]);
+    for (const cmd of ["docs_changelog", "docs_decisions"]) {
+      expect(libRs).toContain(`devdocs::${cmd}`);
+      expect(devdocsAppRs).toMatch(new RegExp(`pub async fn ${cmd}\\(`));
+    }
+  });
+
+  it("send the fields the UI's types name", () => {
+    const entry: Record<keyof ChangelogEntry, true> = { taskId: true, identifier: true, title: true, at: true };
+    expect(serdeFields(devdocsRs, "ChangelogEntry")).toEqual(Object.keys(entry).sort());
+    const note: Record<keyof DecisionNote, true> = { id: true, path: true, title: true, bodyMd: true, updatedAt: true };
+    expect(serdeFields(devdocsRs, "DecisionNote")).toEqual(Object.keys(note).sort());
   });
 });

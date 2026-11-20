@@ -393,6 +393,10 @@ export type LoggedCommit = { sha: string; parent: string | null; author: string;
 export type DocsCommits = { label: string; commits: LoggedCommit[] };
 /** One commit's changed files, measured from its first parent (git's empty tree for a first commit) to itself. */
 export type CommitFiles = { from: string; to: string; files: FileChange[] };
+/** A merged card, as Docs → Changelog lists it. `at`: when it reached Done, else when it last changed (Unix milliseconds). */
+export type ChangelogEntry = { taskId: string; identifier: string; title: string; at: number };
+/** A shared memory note about a project's decisions, as Docs → Decisions shows it; `bodyMd` without its properties. */
+export type DecisionNote = { id: string; path: string; title: string; bodyMd: string; updatedAt: number };
 export type LiveRun = { runId: string; taskId: string; agentId: string };
 export type Settings = { claudeBin?: string | null; dataDir: string; maxConcurrentRuns: number; agentsPaused: boolean; maxRunUsd?: number | null; maxRunMinutes: number; maxRunToolCalls: number;
   /** Settings → Runs → Memory for agent runs (GA-202), in GB: all agent runs together, half of the computer's memory
