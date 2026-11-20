@@ -601,11 +601,22 @@ pub fn start_ref(remote: Option<&str>, branch: &str) -> String {
     }
 }
 
+/// GA-318 (CWE-88): an address (a remote's name, or a project's link) git would read as an option: one that starts with
+/// "-". Gizai never starts git with one (this says why, in words for after "Couldn't …: "), and puts `--end-of-options`
+/// before every address it gives git, so that git reads it as an address whatever it is.
+fn option_refusal(to: &str) -> Option<String> {
+    to.starts_with('-').then(|| format!("{to} starts with \"-\", which git reads as an option"))
+}
+
 /// Fetches `branch` of the project's repository and returns the ref to start from (`start_ref`): through `remote` when
 /// the repository has one for it, else from `url`. Never asks for a password, and gives up after `limit`. An address on
-/// Bitbucket's old SSH host goes to its new one (`fetch_config`).
+/// Bitbucket's old SSH host goes to its new one (`fetch_config`). An address that starts with "-" is refused before git
+/// starts (`option_refusal`).
 pub fn fetch_start(repo: &Path, remote: Option<&str>, url: &str, branch: &str, limit: Duration) -> Result<String, AgentError> {
     let from = remote.unwrap_or(url);
+    if let Some(why) = option_refusal(from) {
+        return Err(AgentError::Git(format!("Couldn't fetch {branch}: {why}")));
+    }
     let start = start_ref(remote, branch);
     let spec = format!("+refs/heads/{branch}:{start}");
     let config = fetch_config(repo, from);
@@ -613,7 +624,7 @@ pub fn fetch_start(repo: &Path, remote: Option<&str>, url: &str, branch: &str, l
     // a run starting at the same moment may hold the ref's lock: one retry. Not after no answer at all: a second try
     // would only wait as long again
     for attempt in 0..2 {
-        match quiet(repo, &config, &["fetch", "--quiet", "--no-tags", from, &spec], limit) {
+        match quiet(repo, &config, &["fetch", "--quiet", "--no-tags", "--end-of-options", from, &spec], limit) {
             Ok(_) => return Ok(start),
             Err(e @ Failure::NoAnswer(_)) => {
                 last = e.last_line();
@@ -630,7 +641,11 @@ pub fn fetch_start(repo: &Path, remote: Option<&str>, url: &str, branch: &str, l
 /// password, and gives up after `limit`. None when it has none (an empty repository). An error is git's last line.
 /// Bitbucket's old SSH host is asked at its new one (`fetch_config`).
 pub fn remote_head(repo: &Path, remote: &str, limit: Duration) -> Result<Option<String>, String> {
-    let out = quiet(repo, &fetch_config(repo, remote), &["ls-remote", "--symref", remote, "HEAD"], limit).map_err(Failure::last_line)?;
+    if let Some(why) = option_refusal(remote) {
+        return Err(why);
+    }
+    let args = ["ls-remote", "--symref", "--end-of-options", remote, "HEAD"];
+    let out = quiet(repo, &fetch_config(repo, remote), &args, limit).map_err(Failure::last_line)?;
     // ref: refs/heads/main<TAB>HEAD
     Ok(out.lines().find_map(|l| l.strip_prefix("ref: refs/heads/")?.strip_suffix("\tHEAD")).map(str::to_string))
 }
@@ -698,8 +713,11 @@ pub fn push_branch(repo: &Path, to: &str, branch: &str) -> Result<(), AgentError
 /// remote changes). Never forces and never asks for anything; gives up after two minutes. A failure says what to
 /// check, in plain words.
 pub fn push_branch_over(repo: &Path, to: &str, branch: &str, over: &PushOver) -> Result<(), AgentError> {
+    if let Some(why) = option_refusal(to) {
+        return Err(AgentError::Git(format!("Couldn't push {branch}: {why}")));
+    }
     let spec = format!("refs/heads/{branch}:refs/heads/{branch}");
-    quiet(repo, &push_config(repo, to, over), &["push", "--quiet", to, &spec], PUSH_LIMIT)
+    quiet(repo, &push_config(repo, to, over), &["push", "--quiet", "--end-of-options", to, &spec], PUSH_LIMIT)
         .map(|_| ())
         .map_err(|e| AgentError::Git(format!("Couldn't push {branch} to {to}: {}", e.problem(over))))
 }
@@ -720,6 +738,9 @@ pub enum Pushed {
 /// same way the push goes); when that copy has commits this repository hasn't seen, the push itself says whether it can
 /// go, and it can't: it never forces.
 pub fn push_new_commits(repo: &Path, to: &str, branch: &str, base: &str, over: &PushOver) -> Result<Pushed, AgentError> {
+    if let Some(why) = option_refusal(to) {
+        return Err(AgentError::Git(format!("Couldn't push {branch}: {why}")));
+    }
     let ours = rev_parse(repo, &format!("refs/heads/{branch}"))
         .map_err(|_| AgentError::Git(format!("Couldn't push {branch}: it isn't in {} any more", repo.display())))?;
     // what `to` has for sure; without the base (gone since it was fetched) every commit counts
@@ -728,7 +749,7 @@ pub fn push_new_commits(repo: &Path, to: &str, branch: &str, base: &str, over: &
         return Ok(Pushed::Nothing);
     }
     let head = format!("refs/heads/{branch}");
-    let listed = quiet(repo, &push_config(repo, to, over), &["ls-remote", "--quiet", to, &head], PUSH_LIMIT)
+    let listed = quiet(repo, &push_config(repo, to, over), &["ls-remote", "--quiet", "--end-of-options", to, &head], PUSH_LIMIT)
         .map_err(|e| AgentError::Git(format!("Couldn't push {branch} to {to}: {}", e.problem(over))))?;
     let copy = listed.lines().filter_map(|l| l.split_once('\t')).find(|(_, r)| r.trim() == head).map(|(sha, _)| sha.trim().to_string());
     match copy {
@@ -751,7 +772,10 @@ pub fn push_new_commits(repo: &Path, to: &str, branch: &str, base: &str, over: &
 /// does), so a private repository answers too; it never asks for anything, and gives up after `limit`. git's own traffic
 /// doesn't count against GitHub's API limit.
 pub fn ls_remote(repo: &Path, to: &str, refs: &[String], over: &PushOver, limit: Duration) -> Result<Vec<(String, String)>, AgentError> {
-    let mut args = vec!["ls-remote", "--quiet", to];
+    if let Some(why) = option_refusal(to) {
+        return Err(AgentError::Git(format!("Couldn't ask the repository for its branches: {why}")));
+    }
+    let mut args = vec!["ls-remote", "--quiet", "--end-of-options", to];
     args.extend(refs.iter().map(String::as_str));
     let listed = quiet(repo, &push_config(repo, to, over), &args, limit)
         .map_err(|e| AgentError::Git(format!("Couldn't ask {to} for its branches: {}", e.problem(over))))?;
@@ -840,7 +864,10 @@ fn new_commits(repo: &Path, ours: &str, theirs: &[String]) -> Result<u32, AgentE
 /// repository's latest commit to a new branch. It reaches GitHub (or Bitbucket) and needs write access, but sends
 /// nothing and runs no hooks.
 pub fn can_push(repo: &Path, to: &str, over: &PushOver, limit: Duration) -> Result<(), Problem> {
-    let args = ["push", "--dry-run", "--quiet", "--no-verify", to, "HEAD:refs/heads/gizai-connection-check"];
+    if let Some(why) = option_refusal(to) {
+        return Err(Problem::new(format!("Hersir doesn't push to it: {why}"), "Change the project's repository link on its page (Edit)."));
+    }
+    let args = ["push", "--dry-run", "--quiet", "--no-verify", "--end-of-options", to, "HEAD:refs/heads/gizai-connection-check"];
     quiet(repo, &push_config(repo, to, over), &args, limit).map(|_| ()).map_err(|e| e.problem(over))
 }
 
@@ -873,14 +900,14 @@ fn push_addresses(repo: &Path, to: &str) -> Vec<String> {
 /// `pushInsteadOf` too), or the address after the `insteadOf` rules (`git ls-remote --get-url`). Nothing is sent. None
 /// when git can't say.
 pub fn push_url(repo: &Path, to: &str, over: &PushOver) -> Option<String> {
-    // (a remote's name and a project's link never start with "-")
-    if to.starts_with('-') {
+    // (a remote's name and a project's link never start with "-": `option_refusal`)
+    if option_refusal(to).is_some() {
         return None;
     }
     let args: Vec<&str> = if remote_urls(repo).iter().any(|(name, _)| name == to) {
-        vec!["remote", "get-url", "--push", to]
+        vec!["remote", "get-url", "--push", "--end-of-options", to]
     } else {
-        vec!["ls-remote", "--get-url", to]
+        vec!["ls-remote", "--get-url", "--end-of-options", to]
     };
     let out = quiet(repo, &push_config(repo, to, over), &args, Duration::from_secs(10)).ok()?;
     out.lines().map(str::trim).find(|l| !l.is_empty()).map(String::from)
