@@ -331,3 +331,219 @@ async fn a_pasted_image_goes_with_a_message_queued_while_the_chief_answers_also_
     assert_eq!(png_at(&app_chat::lead_file_path(&t.st, &with_b.files[0])), (7, 300, b_rgba));
     assert!(chat::queue(&t.st.db, &thread).unwrap().is_empty());
 }
+
+// ---- GA-310 QA: a Word, Excel, PowerPoint, OpenDocument or RTF file added to a message comes with its readable copy ----
+
+use super::office_docs::{damaged_xlsx, docx, docx_md, locked_docx};
+
+impl T {
+    /// A file with `body` on this computer, outside Hersir's folder.
+    fn file_bytes(&self, name: &str, body: &[u8]) -> String {
+        let d = self.dir.path().join("downloads");
+        std::fs::create_dir_all(&d).unwrap();
+        let p = d.join(name);
+        std::fs::write(&p, body).unwrap();
+        p.display().to_string()
+    }
+    /// The lines of the `n`th call's prompt that name a file.
+    fn file_lines(&self, n: usize) -> Vec<String> {
+        self.calls()[n]["prompt"].as_str().unwrap().lines().filter(|l| l.starts_with("- ")).map(str::to_string).collect()
+    }
+}
+
+#[tokio::test]
+async fn a_docx_added_to_a_message_names_its_readable_copy_and_the_chief_reads_that_one() {
+    let t = setup().await;
+    let body = docx("Offer", "Two weeks of work.");
+    let (thread, s) = t.send(None, "FAKE_READ_FILES What does the offer say?", vec![t.file_bytes("Offer 2026.docx", &body), t.file("notes.txt", "some notes")]).await;
+    assert_eq!(s.status, "succeeded", "{s:?}");
+    let msgs = chat::messages(&t.st.db, &thread).unwrap();
+    assert_eq!(names(&msgs[0].files), ["Offer 2026.docx", "notes.txt"]);
+    let (copy, notes) = (app_chat::lead_file_path(&t.st, &msgs[0].files[0]), app_chat::lead_file_path(&t.st, &msgs[0].files[1]));
+    let md = copy.with_file_name("Offer 2026.docx.md");
+    assert_eq!(t.file_lines(0), [
+        format!("- Offer 2026.docx: {} (to read: {})", copy.display(), md.display()),
+        format!("- notes.txt: {}", notes.display()),
+    ]);
+    let text = std::fs::read_to_string(&md).unwrap();
+    assert!(text.starts_with("Text of Offer 2026.docx, made by Hersir for reading: layout and pictures are left out.\n"), "{text}");
+    assert_eq!(text, docx_md("Offer 2026.docx", "Offer", "Two weeks of work."));
+    assert_eq!(std::fs::read(&copy).unwrap(), body, "the file's own copy is the file");
+    // the Chief reads the readable copy, and the text file as before
+    assert_eq!(t.last_answer(&thread), format!("Read: {text} | some notes"));
+
+    // its instructions say so, word for word, on the line about a message's files
+    let argv: Vec<String> = serde_json::from_value(t.calls()[0]["argv"].clone()).unwrap();
+    let sys = &argv[argv.iter().position(|a| a == "--append-system-prompt").unwrap() + 1];
+    let line = sys.lines().find(|l| l.starts_with("- Files ") && l.contains(" adds to a message are named after it")).expect("the chat files line");
+    assert!(line.contains(" A Word, Excel, PowerPoint, OpenDocument or RTF file comes with \"to read:\" and the path of a readable copy beside it, its text as Markdown: read that one; attach_file still takes the file's own path."),
+            "{line}");
+}
+
+#[tokio::test]
+async fn files_hersir_cant_read_say_why_after_their_copy_and_the_other_files_of_the_message_still_come() {
+    let t = setup().await;
+    let (bad, locked, renamed, good) = (damaged_xlsx(), locked_docx(), b"just text".to_vec(), docx("Fine", "Read this."));
+    let sent = vec![
+        t.file_bytes("broken.xlsx", &bad), t.file_bytes("locked.docx", &locked), t.file_bytes("renamed.docx", &renamed),
+        t.file_bytes("shot.png", b"\x89PNG\r\n\x1a\n"), t.file_bytes("good.docx", &good), t.file("data.csv", "a,b"),
+    ];
+    let (thread, s) = t.send(None, "Have a look", sent).await;
+    assert_eq!(s.status, "succeeded", "{s:?}");
+    let files = chat::messages(&t.st.db, &thread).unwrap()[0].files.clone();
+    let copies: Vec<PathBuf> = files.iter().map(|f| app_chat::lead_file_path(&t.st, f)).collect();
+    let lines = t.file_lines(0);
+    assert_eq!(lines.len(), 6, "{lines:?}");
+    for (i, says) in [(0, "it can't be opened as an Excel workbook"), (1, "protected with a password"), (2, "it can't be opened as a Word document")] {
+        let start = format!("- {}: {} (no readable copy: ", files[i].name, copies[i].display());
+        assert!(lines[i].starts_with(&start) && lines[i].ends_with(')') && lines[i].contains(says), "{}", lines[i]);
+        assert!(!copies[i].with_file_name(format!("{}.md", files[i].name)).exists());
+    }
+    assert_eq!(lines[3], format!("- shot.png: {}", copies[3].display()));
+    assert_eq!(lines[4], format!("- good.docx: {} (to read: {}.md)", copies[4].display(), copies[4].display()));
+    assert_eq!(lines[5], format!("- data.csv: {}", copies[5].display()));
+    for (c, body) in copies.iter().zip([&bad, &locked, &renamed]) {
+        assert_eq!(&std::fs::read(c).unwrap(), body, "its copy still comes: {}", c.display());
+    }
+    assert_eq!(std::fs::read_to_string(copies[4].with_file_name("good.docx.md")).unwrap(), docx_md("good.docx", "Fine", "Read this."));
+}
+
+#[tokio::test]
+async fn attach_file_still_attaches_a_docx_by_its_own_copys_path() {
+    let t = setup().await;
+    let ident = tasks::get(&t.st.db, &t.task).unwrap().identifier;
+    let body = docx("Contract", "Signed.");
+    let (thread, s) = t.send(None, &format!("FAKE_ATTACH_TO {ident} Attach this to {ident}"), vec![t.file_bytes("contract.docx", &body)]).await;
+    assert_eq!(s.status, "succeeded", "{s:?}");
+    let tool = chat::messages(&t.st.db, &thread).unwrap().into_iter().find(|m| m.role == "tool").expect("a tool call");
+    assert_eq!(tool.tool_name.as_deref(), Some("mcp__gizai__attach_file"));
+    let call = tool.tool.unwrap();
+    assert_eq!(call["isError"], false, "{call}");
+    let on_task = files::list(&t.st.db, "task", &t.task).unwrap();
+    assert_eq!(names(&on_task), ["contract.docx"]);
+    assert_eq!(std::fs::read(files::blob_path(&t.st.data_dir, &on_task[0].sha256)).unwrap(), body, "the document itself, not its text");
+}
+
+#[tokio::test]
+async fn the_chief_reads_a_docx_on_a_project_at_the_readable_path_get_project_gives() {
+    let t = setup().await;
+    let p = projects::list(&t.st.db).unwrap().into_iter().find(|p| p.key == "KADE").unwrap().id;
+    let plan = t.file_bytes("Adviesplan.docx", &docx("Adviesplan", "het datamodel"));
+    files::add_from_path(&t.st.db, &t.st.you_id, &t.st.data_dir, "project", &p, Path::new(&plan)).unwrap();
+    let (thread, s) = t.send(None, "FAKE_GET_PROJECT KADE FAKE_READ_FILES What does the Adviesplan say?", vec![]).await;
+    assert_eq!(s.status, "succeeded", "{s:?}");
+    // (an answer is kept without its last line end)
+    assert_eq!(t.last_answer(&thread), format!("Read: {}", docx_md("Adviesplan.docx", "Adviesplan", "het datamodel").trim_end()));
+}
+
+// ---- GA-311 QA: a Pages, Keynote, Numbers, .doc or .ppt file added to a message comes with its PDF copy, made by
+// LibreOffice ----
+
+use super::fake_soffice;
+use gizai_agents::libreoffice::{LibreOffice, Program};
+
+impl T {
+    /// Hersir's LibreOffice runs `program` from now on (its profile as Hersir keeps it, its usual limit).
+    fn libreoffice(&mut self, program: Program) {
+        self.st.libreoffice = Arc::new(LibreOffice { program, ..(*self.st.libreoffice).clone() });
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_doc_and_a_ppt_in_one_message_each_name_their_pdf_copy_and_the_chiefs_instructions_say_so() {
+    let mut t = setup().await;
+    let fake = fake_soffice::install_fake(&t.dir.path().join("bin").join("soffice"));
+    t.libreoffice(Program::At(fake));
+    let sent = vec![t.file_bytes("Brief 2026.doc", b"the brief"), t.file_bytes("Deck.PPT", b"the deck"), t.file("notes.txt", "some notes")];
+    let (thread, s) = t.send(None, "What do these say?", sent).await;
+    assert_eq!(s.status, "succeeded", "{s:?}");
+    let files = chat::messages(&t.st.db, &thread).unwrap()[0].files.clone();
+    assert_eq!(names(&files), ["Brief 2026.doc", "Deck.PPT", "notes.txt"]);
+    let copies: Vec<PathBuf> = files.iter().map(|f| app_chat::lead_file_path(&t.st, f)).collect();
+    let pdfs = [copies[0].with_file_name("Brief 2026.doc.pdf"), copies[1].with_file_name("Deck.PPT.pdf")];
+    assert_eq!(t.file_lines(0), [
+        format!("- Brief 2026.doc: {} (to read: {})", copies[0].display(), pdfs[0].display()),
+        format!("- Deck.PPT: {} (to read: {})", copies[1].display(), pdfs[1].display()),
+        format!("- notes.txt: {}", copies[2].display()),
+    ]);
+    for (pdf, body) in pdfs.iter().zip(["the brief", "the deck"]) {
+        let b = std::fs::read(pdf).unwrap();
+        assert!(fake_soffice::whole_pdf(&b) && String::from_utf8_lossy(&b).contains(&format!("% {body}")), "{}", pdf.display());
+    }
+    assert_eq!(std::fs::read(&copies[0]).unwrap(), b"the brief", "the file's own copy is the file");
+    assert_eq!(fake_soffice::calls(&t.st.libreoffice.profile).len(), 2);
+
+    // its instructions say so, word for word, after GA-310's sentence on the line about a message's files
+    let argv: Vec<String> = serde_json::from_value(t.calls()[0]["argv"].clone()).unwrap();
+    let sys = &argv[argv.iter().position(|a| a == "--append-system-prompt").unwrap() + 1];
+    let line = sys.lines().find(|l| l.starts_with("- Files ") && l.contains(" adds to a message are named after it")).expect("the chat files line");
+    assert!(line.ends_with("attach_file still takes the file's own path. Pages, Keynote, Numbers, .doc and .ppt files get a PDF copy instead, when LibreOffice is installed."),
+            "{line}");
+}
+
+#[tokio::test]
+async fn without_libreoffice_a_pages_file_says_hersir_needs_it_and_its_own_copy_and_path_still_come() {
+    let mut t = setup().await;
+    t.libreoffice(Program::Missing);
+    let sent = vec![t.file_bytes("Offerte.pages", b"pages bytes"), t.file_bytes("Old.ppt", b"ppt bytes"), t.file("data.csv", "a,b")];
+    let (thread, s) = t.send(None, "Have a look", sent).await;
+    assert_eq!(s.status, "succeeded", "{s:?}");
+    let files = chat::messages(&t.st.db, &thread).unwrap()[0].files.clone();
+    let copies: Vec<PathBuf> = files.iter().map(|f| app_chat::lead_file_path(&t.st, f)).collect();
+    assert_eq!(t.file_lines(0), [
+        format!("- Offerte.pages: {} (no readable copy: Hersir needs LibreOffice to read .pages files: install it from https://www.libreoffice.org, or save the file as PDF or .docx)", copies[0].display()),
+        format!("- Old.ppt: {} (no readable copy: Hersir needs LibreOffice to read .ppt files: install it from https://www.libreoffice.org, or save the file as PDF or .docx)", copies[1].display()),
+        format!("- data.csv: {}", copies[2].display()),
+    ]);
+    assert_eq!(std::fs::read(&copies[0]).unwrap(), b"pages bytes");
+    assert!(!copies[0].with_file_name("Offerte.pages.pdf").exists());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_conversion_that_fails_says_why_on_its_line_and_the_other_files_of_the_message_still_come() {
+    let mut t = setup().await;
+    let fake = fake_soffice::install_fake(&t.dir.path().join("bin").join("soffice"));
+    t.libreoffice(Program::At(fake));
+    let good = docx("Fine", "Read this.");
+    let sent = vec![t.file_bytes("broken.key", b"FAKE_FAIL"), t.file_bytes("good.docx", &good), t.file_bytes("ok.numbers", b"fine")];
+    let (thread, s) = t.send(None, "Have a look", sent).await;
+    assert_eq!(s.status, "succeeded", "{s:?}");
+    let files = chat::messages(&t.st.db, &thread).unwrap()[0].files.clone();
+    let copies: Vec<PathBuf> = files.iter().map(|f| app_chat::lead_file_path(&t.st, f)).collect();
+    assert_eq!(t.file_lines(0), [
+        format!("- broken.key: {} (no readable copy: LibreOffice couldn't make a PDF of it (Error: source file could not be loaded))", copies[0].display()),
+        format!("- good.docx: {} (to read: {}.md)", copies[1].display(), copies[1].display()),
+        format!("- ok.numbers: {} (to read: {}.pdf)", copies[2].display(), copies[2].display()),
+    ]);
+}
+
+#[tokio::test]
+async fn with_libreoffice_a_doc_and_a_ppt_made_with_it_in_one_message_each_get_a_pdf_of_their_pages() {
+    let Some(soffice) = fake_soffice::real() else { return fake_soffice::skipped("real chat doc and ppt") };
+    let (doc, ppt) = fake_soffice::old_doc_and_ppt(&soffice);
+    // open_state's LibreOffice, as Hersir runs it: found on the PATH the coding CLIs get
+    let t = setup().await;
+    assert_eq!(t.st.libreoffice.program, Program::Find);
+    let (thread, s) = t.send(None, "What do these say?", vec![t.file_bytes("Brief.doc", doc), t.file_bytes("Deck.ppt", ppt)]).await;
+    assert_eq!(s.status, "succeeded", "{s:?}");
+    let files = chat::messages(&t.st.db, &thread).unwrap()[0].files.clone();
+    let copies: Vec<PathBuf> = files.iter().map(|f| app_chat::lead_file_path(&t.st, f)).collect();
+    let pdfs = [copies[0].with_file_name("Brief.doc.pdf"), copies[1].with_file_name("Deck.ppt.pdf")];
+    assert_eq!(t.file_lines(0), [
+        format!("- Brief.doc: {} (to read: {})", copies[0].display(), pdfs[0].display()),
+        format!("- Deck.ppt: {} (to read: {})", copies[1].display(), pdfs[1].display()),
+    ]);
+    for pdf in &pdfs {
+        let b = std::fs::read(pdf).unwrap();
+        assert!(fake_soffice::whole_pdf(&b), "{}", pdf.display());
+        assert_eq!(fake_soffice::pages(&b), 2, "every page of {}", pdf.display());
+    }
+    assert_eq!(t.st.libreoffice.profile, t.st.data_dir.join("libreoffice"));
+    #[cfg(target_os = "linux")]
+    {
+        let profile = t.st.libreoffice.profile.to_string_lossy().into_owned();
+        assert!(fake_soffice::wait_for(std::time::Duration::from_secs(5), || fake_soffice::running_with(&profile).is_empty()), "no soffice left running");
+    }
+}

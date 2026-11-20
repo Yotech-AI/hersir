@@ -101,8 +101,8 @@ fn github(s: &str) -> Option<(String, String)> {
 
 /// (workspace, repository) of a Bitbucket Cloud link: https://bitbucket.org/<workspace>/<repository> with or without a
 /// user name before the host (https://jefsev@bitbucket.org/…, the address Bitbucket's Clone button gives), ".git", or a
-/// page inside the repository (/src/master/, /pull-requests/12); git@bitbucket.org:<workspace>/<repository>.git; and
-/// ssh://git@bitbucket.org/….
+/// page inside the repository (/src/master/, /pull-requests/12); over SSH git@ssh.bitbucket.org:<workspace>/<repository>.git
+/// and ssh://git@ssh.bitbucket.org/… (Bitbucket's SSH host since GA-315), and the same on its old SSH host bitbucket.org.
 fn bitbucket(s: &str) -> Option<(String, String)> {
     let rest = on_bitbucket(s)?;
     let rest = rest.split(['?', '#']).next().unwrap_or(rest);
@@ -114,9 +114,15 @@ fn bitbucket(s: &str) -> Option<(String, String)> {
     (ok(workspace) && ok(name)).then(|| (workspace.to_string(), name.to_string()))
 }
 
-/// The path of an address on bitbucket.org (what follows "bitbucket.org/" or "git@bitbucket.org:"), if it is one.
+/// How an address on Bitbucket Cloud starts over SSH: on its SSH host ssh.bitbucket.org (the host
+/// `gizai_agents::connection::BITBUCKET_SSH_HOST` pushes and fetches go to), and on its old one, bitbucket.org, which
+/// stops taking SSH but is still written in many remotes.
+const BITBUCKET_SSH: [&str; 4] = ["git@ssh.bitbucket.org:", "ssh://git@ssh.bitbucket.org/", "git@bitbucket.org:", "ssh://git@bitbucket.org/"];
+
+/// The path of an address on Bitbucket Cloud (what follows "bitbucket.org/", "git@ssh.bitbucket.org:" or
+/// "git@bitbucket.org:"), if it is one.
 fn on_bitbucket(s: &str) -> Option<&str> {
-    if let Some(r) = s.strip_prefix("git@bitbucket.org:").or_else(|| s.strip_prefix("ssh://git@bitbucket.org/")) {
+    if let Some(r) = BITBUCKET_SSH.iter().find_map(|start| s.strip_prefix(start)) {
         return Some(r);
     }
     let r = s.strip_prefix("https://").or_else(|| s.strip_prefix("http://")).unwrap_or(s);

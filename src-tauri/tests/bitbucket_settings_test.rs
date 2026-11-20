@@ -5,8 +5,11 @@
 //! - a local "Bitbucket API" over plain HTTP on 127.0.0.1 (GIZAI_BITBUCKET_API): `GET /2.0/user` answers 200 for
 //!   jeffrey@yotech.ai with the token good-token-123 (HTTP Basic), 401 for anything else; every request is recorded;
 //! - a fake ssh as GIT_SSH_COMMAND that serves "Bitbucket" from local bare repositories at base/bitbucket/<workspace>/
-//!   <repository>(.git) and answers `ssh -T git@bitbucket.org` the way Bitbucket does (exit code 1). A file
-//!   fake-ssh-mode with "publickey" in a bare repository makes ssh refuse the key for it.
+//!   <repository>(.git) behind Bitbucket's SSH host git@ssh.bitbucket.org and your own SSH host aliases git@bb-work
+//!   (HostName ssh.bitbucket.org) and git@bb-old (HostName still bitbucket.org), and answers `ssh -T` there the way
+//!   Bitbucket does (exit code 1). GA-315: it refuses the old SSH host git@bitbucket.org, which stops taking SSH. A file
+//!   fake-ssh-mode with "publickey" in a bare repository makes ssh refuse the key for it; a host in base/refuse-T makes
+//!   `ssh -T` refuse the key there.
 //!
 //! Nothing here reaches bitbucket.org, api.bitbucket.org or github.com.
 // Linux and macOS only: these tests run shell or Python scripts as fake programs, which Windows can't start.
@@ -110,7 +113,13 @@ fn write_script(path: &Path, script: &str) {
 /// The fake ssh. Every call's arguments go to base/ssh-args.
 const FAKE_SSH: &str = r#"#!/bin/sh
 base='@BASE@'
-[ "$1" = "-G" ] && exit 1
+if [ "$1" = "-G" ]; then
+  case "$*" in
+    *git@bb-old*) echo "user git"; echo "hostname bitbucket.org"; exit 0 ;;
+    *git@bb-work*) echo "user git"; echo "hostname ssh.bitbucket.org"; exit 0 ;;
+  esac
+  exit 1
+fi
 echo "$*" >> "$base/ssh-args"
 host=""
 cmd=""
@@ -120,10 +129,15 @@ for a in "$@"; do
     *@*) host="$a" ;;
   esac
 done
-if [ "$host" != "git@bitbucket.org" ]; then
-  echo "fake ssh: this test only knows git@bitbucket.org, not $host" >&2; exit 255
-fi
+case "$host" in
+  git@ssh.bitbucket.org|git@bb-work|git@bb-old) ;;
+  git@bitbucket.org) echo "fake ssh: bitbucket.org takes no SSH any more" >&2; exit 255 ;;
+  *) echo "fake ssh: this test only knows git@ssh.bitbucket.org and its aliases, not $host" >&2; exit 255 ;;
+esac
 if [ -z "$cmd" ]; then
+  if grep -qx "$host" "$base/refuse-T" 2>/dev/null; then
+    echo "$host: Permission denied (publickey)." >&2; exit 255
+  fi
   echo "authenticated via ssh key."
   echo ""
   echo "You can use git to connect to Bitbucket. Shell access is disabled."
@@ -135,7 +149,7 @@ path="${path#/}"
 repo="$base/bitbucket/$path"
 [ -d "$repo" ] || repo="$repo.git"
 case "$(cat "$repo/fake-ssh-mode" 2>/dev/null)" in
-  publickey) echo "git@bitbucket.org: Permission denied (publickey)." >&2; exit 255 ;;
+  publickey) echo "$host: Permission denied (publickey)." >&2; exit 255 ;;
 esac
 verb="${cmd%% *}"
 exec git "${verb#git-}" "$repo"
@@ -193,7 +207,7 @@ fn repo_with_a_commit(dir: &Path) -> PathBuf {
     dir.to_path_buf()
 }
 
-/// "Bitbucket" at git@bitbucket.org:<repo> behind the fake ssh (a bare repository), and a local clone of it whose
+/// "Bitbucket" at git@ssh.bitbucket.org:<repo> behind the fake ssh (a bare repository), and a local clone of it whose
 /// origin is `origin`. The clone allows no https at all, so nothing can reach bitbucket.org.
 fn bitbucket_repo(tmp: &Path, repo: &str, origin: &str) -> (PathBuf, PathBuf) {
     let name = repo.replace('/', "-");
@@ -417,21 +431,30 @@ async fn check_connection_has_the_account_ssh_and_a_dry_run_push_per_bitbucket_p
     assert_eq!(&names[..2], ["Account", "SSH"], "{c:#?}");
     assert_eq!((c.checks[0].result.as_str(), c.checks[1].result.as_str()), ("ok", "ok"), "{c:#?}");
     assert!(c.checks[0].text.contains(ACCOUNT), "{}", c.checks[0].text);
-    assert!(c.checks[1].text.contains("git@bitbucket.org"), "{}", c.checks[1].text);
+    assert_eq!(c.checks[1].text, "git@ssh.bitbucket.org accepts your SSH key", "both projects push to Bitbucket's SSH host: one line");
+    assert_eq!(c.checks.iter().filter(|l| l.name == "SSH").count(), 1, "{c:#?}");
     let mut projects: Vec<(&str, &str, &str, Option<&str>, Option<&str>)> = c.checks[2..].iter()
         .map(|l| (l.name.as_str(), l.result.as_str(), l.text.as_str(), l.project_id.as_deref(), l.repo.as_deref())).collect();
     projects.sort();
+    let web_note = "Its remote origin still names git@bitbucket.org, which stops taking SSH: Hersir already uses ssh.bitbucket.org for it";
     assert_eq!(projects, [
         ("Shop", "ok", "You can push to acme/shop", Some(shop_id.as_str()), Some("acme/shop")),
+        ("Web", "note", web_note, Some(web_id.as_str()), Some("acme/web")),
         ("Web", "ok", "You can push to acme/web", Some(web_id.as_str()), Some("acme/web")),
-    ], "one line per Bitbucket project, none for GitHub or an archived one: {c:#?}");
-    assert!(c.checks.iter().all(|l| l.fix.is_none()), "{c:#?}");
-    assert!(c.ok, "{c:#?}");
-    // the projects' checks went over ssh to git@bitbucket.org, as a dry run: nothing arrived, nothing changed
+    ], "one line per Bitbucket project, none for GitHub or an archived one, and a note for Web's old SSH host: {c:#?}");
+    // GA-315: the note comes right after Web's own line, says how to switch the checkout, and fails nothing
+    let at = c.checks.iter().position(|l| l.name == "Web" && l.result == "ok").unwrap();
+    assert_eq!(c.checks[at + 1].result, "note", "{c:#?}");
+    assert_eq!(c.checks[at + 1].fix.as_deref(),
+               Some(format!("To switch the checkout itself, run git remote set-url origin git@ssh.bitbucket.org:acme/web.git in {}.", web.display()).as_str()));
+    assert!(c.checks.iter().filter(|l| l.result != "note").all(|l| l.fix.is_none()), "{c:#?}");
+    assert!(c.ok, "a note fails nothing: {c:#?}");
+    // the projects' checks went over ssh to git@ssh.bitbucket.org, as a dry run: nothing arrived, nothing changed
     let calls = ssh_calls();
-    assert!(calls.iter().any(|l| l.contains("-T git@bitbucket.org")), "{calls:?}");
-    assert!(calls.iter().any(|l| l.contains("git@bitbucket.org") && l.contains("git-receive-pack 'acme/shop'")), "{calls:?}");
-    assert!(calls.iter().any(|l| l.contains("git@bitbucket.org") && l.contains("git-receive-pack 'acme/web.git'")), "{calls:?}");
+    assert!(calls.iter().any(|l| l.contains("-T git@ssh.bitbucket.org")), "{calls:?}");
+    assert!(calls.iter().any(|l| l.contains("git@ssh.bitbucket.org") && l.contains("git-receive-pack 'acme/shop'")), "{calls:?}");
+    assert!(calls.iter().any(|l| l.contains("git@ssh.bitbucket.org") && l.contains("git-receive-pack 'acme/web.git'")), "{calls:?}");
+    assert!(!calls.iter().any(|l| l.split_whitespace().any(|w| w == "git@bitbucket.org")), "nothing to the old host: {calls:?}");
     assert!(!calls.iter().any(|l| l.contains("acme/site") || l.contains("acme/old")), "{calls:?}");
     assert!(!has_branch(&shop_bare, "gizai-connection-check") && !has_branch(&web_bare, "gizai-connection-check"), "a dry run sends nothing");
     assert_eq!([std::fs::read_to_string(shop.join(".git/config")).unwrap(), std::fs::read_to_string(web.join(".git/config")).unwrap()], configs);
@@ -466,6 +489,82 @@ async fn check_connection_without_a_login_says_what_to_do() {
     for scope in SCOPES {
         assert!(fix.contains(scope), "{fix}");
     }
+}
+
+/// GA-315: Check connection runs `ssh -T` against each SSH host the Bitbucket projects' pushes really go to, once per
+/// host and named in its line: git@ssh.bitbucket.org, or your own SSH host alias when your own rule sends the project's
+/// address there (Jefsev's bitbucket-snx), so it tests the key the push uses. A project whose remote still names the old
+/// SSH host with no rule of yours gets a note with the `git remote set-url` command; one your rule sends to an alias gets
+/// none. An alias whose HostName is still bitbucket.org gets a note too. Notes fail nothing; a key an alias refuses does.
+#[tokio::test]
+async fn check_connection_checks_each_ssh_host_the_projects_push_to_once_and_notes_old_host_remotes() {
+    fakes();
+    let tmp = tempfile::tempdir().unwrap();
+    let st = gizai_lib::test_state(tmp.path());
+    bitbucket::save_login(&st, EMAIL.into(), GOOD.into()).await.unwrap();
+    // two projects behind your alias git@bb-work (your own rule, as Jefsev's global one), one already on the new host,
+    // one whose remote still names the old host as ssh://, one behind an alias that still goes to bitbucket.org
+    let (_, alias1) = bitbucket_repo(tmp.path(), "snx/alias-one", "git@bitbucket.org:snx/alias-one.git");
+    let (_, alias2) = bitbucket_repo(tmp.path(), "snx/alias-two", "git@bitbucket.org:snx/alias-two.git");
+    for r in [&alias1, &alias2] {
+        git(r, &["config", "url.git@bb-work:.insteadOf", "git@bitbucket.org:"]);
+    }
+    let (_, new) = bitbucket_repo(tmp.path(), "acme/on-new", "git@ssh.bitbucket.org:acme/on-new.git");
+    let (_, old) = bitbucket_repo(tmp.path(), "acme/on-old", "ssh://git@bitbucket.org/acme/on-old.git");
+    let (_, stale) = bitbucket_repo(tmp.path(), "acme/stale-alias", "git@bitbucket.org:acme/stale-alias.git");
+    git(&stale, &["config", "url.git@bb-old:.insteadOf", "git@bitbucket.org:"]);
+    let ids = [("Alias one", "AONE", &alias1, "https://bitbucket.org/snx/alias-one"), ("Alias two", "ATWO", &alias2, "https://bitbucket.org/snx/alias-two"),
+               ("On new", "ONEW", &new, "https://bitbucket.org/acme/on-new"), ("On old", "OOLD", &old, "https://bitbucket.org/acme/on-old"),
+               ("Stale", "STAL", &stale, "https://bitbucket.org/acme/stale-alias")]
+        .map(|(name, key, dir, link)| (name, project(&st, name, key, dir, link, None)));
+    let configs: Vec<String> = [&alias1, &alias2, &new, &old, &stale].iter().map(|d| std::fs::read_to_string(d.join(".git/config")).unwrap()).collect();
+    let t_before = |host: &str| ssh_calls().iter().filter(|l| l.as_str() == format!("-T {host}")).count();
+    let (work_before, stale_before) = (t_before("git@bb-work"), t_before("git@bb-old"));
+
+    let c = bitbucket::check(&st).await;
+    // the SSH lines: one per host, each named
+    let ssh: Vec<(&str, &str)> = c.checks.iter().filter(|l| l.name == "SSH").map(|l| (l.result.as_str(), l.text.as_str())).collect();
+    let mut oks: Vec<&str> = ssh.iter().filter(|(r, _)| *r == "ok").map(|(_, t)| *t).collect();
+    oks.sort();
+    assert_eq!(oks, ["git@bb-old accepts your SSH key", "git@bb-work accepts your SSH key", "git@ssh.bitbucket.org accepts your SSH key"], "{c:#?}");
+    assert_eq!(t_before("git@bb-work") - work_before, 1, "the alias is checked once, for both its projects");
+    assert_eq!(t_before("git@bb-old") - stale_before, 1);
+    // the alias that still goes to bitbucket.org (its HostName, as ssh -G says): a note
+    let notes: Vec<&gizai_lib::github::Check> = c.checks.iter().filter(|l| l.name == "SSH" && l.result == "note").collect();
+    assert_eq!(notes.len(), 1, "{c:#?}");
+    assert_eq!(notes[0].text, "bb-old, your SSH host alias, still goes to bitbucket.org, which stops taking SSH");
+    assert!(notes[0].fix.as_deref().unwrap().contains("Set its HostName to ssh.bitbucket.org"), "{:?}", notes[0]);
+    // each project can push; a note only for the one whose remote still names the old host without a rule of yours
+    for (name, id) in &ids {
+        let line = c.checks.iter().find(|l| l.name == *name && l.result != "note").unwrap_or_else(|| panic!("no line for {name}: {c:#?}"));
+        assert_eq!((line.result.as_str(), line.project_id.as_deref()), ("ok", Some(id.as_str())), "{line:?}");
+    }
+    let project_notes: Vec<(&str, &str)> = c.checks.iter().filter(|l| l.name != "SSH" && l.result == "note")
+        .map(|l| (l.name.as_str(), l.fix.as_deref().unwrap_or_default())).collect();
+    assert_eq!(project_notes, [("On old", format!("To switch the checkout itself, run git remote set-url origin git@ssh.bitbucket.org:acme/on-old.git in {}.",
+                                                   old.display()).as_str())], "{c:#?}");
+    assert!(c.ok, "notes fail nothing: {c:#?}");
+    // where the dry runs went
+    let calls = ssh_calls();
+    for (host, repo) in [("git@bb-work", "snx/alias-one"), ("git@bb-work", "snx/alias-two"), ("git@ssh.bitbucket.org", "acme/on-new"),
+                         ("git@ssh.bitbucket.org", "acme/on-old"), ("git@bb-old", "acme/stale-alias")] {
+        let mine: Vec<&String> = calls.iter().filter(|l| l.contains(&format!("{repo}.git'")) || l.contains(&format!("{repo}'"))).collect();
+        assert!(!mine.is_empty() && mine.iter().all(|l| l.split_whitespace().any(|w| w == host)), "{repo} to {host}: {mine:?}");
+    }
+    assert!(!calls.iter().any(|l| l.split_whitespace().any(|w| w == "git@bitbucket.org")), "nothing to the old host: {calls:?}");
+    let after: Vec<String> = [&alias1, &alias2, &new, &old, &stale].iter().map(|d| std::fs::read_to_string(d.join(".git/config")).unwrap()).collect();
+    assert_eq!(after, configs, "Check connection changes no git config or remote");
+
+    // your alias refuses the key: its SSH line fails, and names the host
+    std::fs::write(fakes().join("refuse-T"), "git@bb-work\n").unwrap();
+    let c = bitbucket::check(&st).await;
+    std::fs::remove_file(fakes().join("refuse-T")).unwrap();
+    assert!(!c.ok, "{c:#?}");
+    let failed: Vec<&gizai_lib::github::Check> = c.checks.iter().filter(|l| l.name == "SSH" && l.result == "failed").collect();
+    assert_eq!(failed.len(), 1, "{c:#?}");
+    assert_eq!(failed[0].text, "git@bb-work: Bitbucket didn't accept your SSH key");
+    assert!(failed[0].fix.as_deref().unwrap_or_default().contains("Bitbucket → Personal settings → SSH keys"), "{:?}", failed[0]);
+    assert!(c.checks.iter().any(|l| l.name == "SSH" && l.result == "ok" && l.text == "git@ssh.bitbucket.org accepts your SSH key"), "{c:#?}");
 }
 
 // ---- g. the repository check offers the Bitbucket remote ----

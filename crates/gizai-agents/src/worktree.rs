@@ -602,16 +602,18 @@ pub fn start_ref(remote: Option<&str>, branch: &str) -> String {
 }
 
 /// Fetches `branch` of the project's repository and returns the ref to start from (`start_ref`): through `remote` when
-/// the repository has one for it, else from `url`. Never asks for a password, and gives up after `limit`.
+/// the repository has one for it, else from `url`. Never asks for a password, and gives up after `limit`. An address on
+/// Bitbucket's old SSH host goes to its new one (`fetch_config`).
 pub fn fetch_start(repo: &Path, remote: Option<&str>, url: &str, branch: &str, limit: Duration) -> Result<String, AgentError> {
     let from = remote.unwrap_or(url);
     let start = start_ref(remote, branch);
     let spec = format!("+refs/heads/{branch}:{start}");
+    let config = fetch_config(repo, from);
     let mut last = String::new();
     // a run starting at the same moment may hold the ref's lock: one retry. Not after no answer at all: a second try
     // would only wait as long again
     for attempt in 0..2 {
-        match quiet(repo, &[], &["fetch", "--quiet", "--no-tags", from, &spec], limit) {
+        match quiet(repo, &config, &["fetch", "--quiet", "--no-tags", from, &spec], limit) {
             Ok(_) => return Ok(start),
             Err(e @ Failure::NoAnswer(_)) => {
                 last = e.last_line();
@@ -626,10 +628,30 @@ pub fn fetch_start(repo: &Path, remote: Option<&str>, url: &str, branch: &str, l
 
 /// The branch the remote `remote`'s HEAD points to (its default branch), asked over the network: never asks for a
 /// password, and gives up after `limit`. None when it has none (an empty repository). An error is git's last line.
+/// Bitbucket's old SSH host is asked at its new one (`fetch_config`).
 pub fn remote_head(repo: &Path, remote: &str, limit: Duration) -> Result<Option<String>, String> {
-    let out = git_quiet(repo, &["ls-remote", "--symref", remote, "HEAD"], limit)?;
+    let out = quiet(repo, &fetch_config(repo, remote), &["ls-remote", "--symref", remote, "HEAD"], limit).map_err(Failure::last_line)?;
     // ref: refs/heads/main<TAB>HEAD
     Ok(out.lines().find_map(|l| l.strip_prefix("ref: refs/heads/")?.strip_suffix("\tHEAD")).map(str::to_string))
+}
+
+/// The `-c` settings for one fetch (or `ls-remote`) of Gizai's from `from` (a remote's name, or an address) in `repo`:
+/// an address on Bitbucket's old SSH host (git@bitbucket.org:, ssh://git@bitbucket.org/), as the remote is written or as
+/// `from` is, goes to its new one (git@ssh.bitbucket.org:), unless a rewrite of your own decides where it goes
+/// (`connection::fetch_config`). Nothing for any other address: your own rewrites alone decide, as for your own fetch.
+pub fn fetch_config(repo: &Path, from: &str) -> Vec<String> {
+    let mut addresses = vec![from.to_string()];
+    addresses.extend(config_values(repo, &format!("remote.{from}.url")));
+    // your own rewrites are read only when there is something to rewrite
+    if !addresses.iter().any(|a| connection::bitbucket_ssh_address(a).is_some()) {
+        return vec![];
+    }
+    connection::fetch_config(&addresses, &own_rewrites(repo))
+}
+
+/// Every value of the git setting `key` in `repo` (`git config --get-all`), as written; none when it isn't set.
+fn config_values(repo: &Path, key: &str) -> Vec<String> {
+    git(repo, &["config", "--get-all", key]).unwrap_or_default().lines().map(str::trim).filter(|l| !l.is_empty()).map(String::from).collect()
 }
 
 /// How many commits `start` has that the checkout in `dir` doesn't.
@@ -822,11 +844,12 @@ pub fn can_push(repo: &Path, to: &str, over: &PushOver, limit: Duration) -> Resu
     quiet(repo, &push_config(repo, to, over), &args, limit).map(|_| ()).map_err(|e| e.problem(over))
 }
 
-/// `over`'s settings for one push to `to`: for Bitbucket with the addresses `to` pushes to (`PushOver::git_config_for`),
-/// so an address with a user name in it goes over SSH too.
+/// `over`'s settings for one push to `to`: for Bitbucket with the addresses `to` pushes to and the starts your own git
+/// config rewrites (`PushOver::git_config_in`), so an address with a user name in it goes over SSH too, and one on
+/// Bitbucket's old SSH host goes to its new one unless a rewrite of yours decides.
 fn push_config(repo: &Path, to: &str, over: &PushOver) -> Vec<String> {
     match over {
-        PushOver::Bitbucket => over.git_config_for(&push_addresses(repo, to)),
+        PushOver::Bitbucket => over.git_config_in(&push_addresses(repo, to), &own_rewrites(repo)),
         _ => over.git_config(),
     }
 }
@@ -836,14 +859,37 @@ fn push_config(repo: &Path, to: &str, over: &PushOver) -> Vec<String> {
 fn push_addresses(repo: &Path, to: &str) -> Vec<String> {
     let mut out = vec![to.to_string()];
     for key in ["pushurl", "url"] {
-        let found: Vec<String> = git(repo, &["config", "--get-all", &format!("remote.{to}.{key}")]).unwrap_or_default()
-            .lines().map(str::trim).filter(|l| !l.is_empty()).map(String::from).collect();
+        let found = config_values(repo, &format!("remote.{to}.{key}"));
         if !found.is_empty() {
             out.extend(found);
             break;
         }
     }
     out
+}
+
+/// Where a push to `to` (a remote's name, or an address) goes with `over`'s settings, as git itself works it out after
+/// every rewrite, yours and Gizai's: the remote's first push address (`git remote get-url --push`, which follows
+/// `pushInsteadOf` too), or the address after the `insteadOf` rules (`git ls-remote --get-url`). Nothing is sent. None
+/// when git can't say.
+pub fn push_url(repo: &Path, to: &str, over: &PushOver) -> Option<String> {
+    // (a remote's name and a project's link never start with "-")
+    if to.starts_with('-') {
+        return None;
+    }
+    let args: Vec<&str> = if remote_urls(repo).iter().any(|(name, _)| name == to) {
+        vec!["remote", "get-url", "--push", to]
+    } else {
+        vec!["ls-remote", "--get-url", to]
+    };
+    let out = quiet(repo, &push_config(repo, to, over), &args, Duration::from_secs(10)).ok()?;
+    out.lines().map(str::trim).find(|l| !l.is_empty()).map(String::from)
+}
+
+/// The remote `name`'s addresses as written in the repository's git config: its URLs (`remote.<name>.url`; it fetches
+/// from the first) and its push URLs (`remote.<name>.pushurl`; none: it pushes to its URLs).
+pub fn remote_addresses(repo: &Path, name: &str) -> (Vec<String>, Vec<String>) {
+    (config_values(repo, &format!("remote.{name}.url")), config_values(repo, &format!("remote.{name}.pushurl")))
 }
 
 /// Every branch that is checked out in a worktree of the repository, with that worktree.
@@ -1119,9 +1165,4 @@ fn quiet(repo: &Path, config: &[String], args: &[&str], limit: Duration) -> Resu
         Err(e) if e.kind() == std::io::ErrorKind::TimedOut => Err(Failure::NoAnswer(limit)),
         Err(e) => Err(Failure::CantRun(format!("can't run git: {e}"))),
     }
-}
-
-/// git without prompts (see `quiet`); an error is git's last line.
-fn git_quiet(repo: &Path, args: &[&str], limit: Duration) -> Result<String, String> {
-    quiet(repo, &[], args, limit).map_err(Failure::last_line)
 }

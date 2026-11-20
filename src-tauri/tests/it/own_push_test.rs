@@ -53,8 +53,10 @@ fn write_script(path: &Path, script: &str) {
     assert!(sh.wait().unwrap().success(), "can't write {}", path.display());
 }
 
-/// The fake ssh at tmp/bin/ssh: each call goes to tmp/ssh-args, and git@github.com:<path> and git@bitbucket.org:<path>
-/// are served from tmp/hosted/github/<path> and tmp/hosted/bitbucket/<path> (with or without .git).
+/// The fake ssh at tmp/bin/ssh: each call goes to tmp/ssh-args, and git@github.com:<path> and Bitbucket's SSH host
+/// git@ssh.bitbucket.org:<path> (or your own SSH host alias for it, git@bb-work) are served from tmp/hosted/github/<path>
+/// and tmp/hosted/bitbucket/<path> (with or without .git). Bitbucket's old SSH host, git@bitbucket.org, is refused
+/// (GA-315: it stops taking SSH).
 fn fake_ssh(tmp: &Path) -> PathBuf {
     let ssh = tmp.join("bin/ssh");
     write_script(&ssh, &r#"#!/bin/sh
@@ -66,10 +68,12 @@ host=""
 for a in "$@"; do
   case "$a" in
     git-receive-pack*|git-upload-pack*) cmd="$a" ;;
-    *@bitbucket.org) host=bitbucket ;;
+    *@ssh.bitbucket.org|*@bb-work) host=bitbucket ;;
+    *@bitbucket.org) host=old ;;
     *@github.com) host=github ;;
   esac
 done
+[ "$host" = old ] && { echo "fake ssh: bitbucket.org takes no SSH any more" >&2; exit 255; }
 [ -n "$cmd" ] || { echo "authenticated via ssh key." >&2; exit 0; }
 [ -n "$host" ] || { echo "ssh: Could not resolve hostname" >&2; exit 255; }
 path="${cmd#* }"
@@ -311,7 +315,7 @@ printf 'protocol=https\nhost=gitlab.com\n\n' | git credential fill 2>&1 | sed 's
 }
 
 #[tokio::test]
-async fn to_bitbucket_the_agents_own_push_goes_over_ssh_to_git_at_bitbucket_org() {
+async fn to_bitbucket_the_agents_own_push_goes_over_ssh_to_git_at_ssh_bitbucket_org() {
     let tmp = tempfile::tempdir().unwrap();
     let tmp = tmp.path();
     let st = gizai_lib::test_state(tmp);
@@ -326,12 +330,76 @@ async fn to_bitbucket_the_agents_own_push_goes_over_ssh_to_git_at_bitbucket_org(
     let s = gizai_lib::runs::run_once(&st, &task, None, Some(agent(tmp, "claude", &body, FAKE))).await.unwrap();
     assert_eq!((s.status.as_str(), s.outcome.as_deref()), ("succeeded", Some("ready_for_testing")), "{:?}: {}", s.error, seen(tmp));
     let (_, wt, branch) = run_of(&st, &s.run_id);
-    assert_eq!(values(tmp, "push"), ["git@bitbucket.org:acme/site.git"], "{}", seen(tmp));
+    assert_eq!(values(tmp, "push"), ["git@ssh.bitbucket.org:acme/site.git"], "{}", seen(tmp));
     assert_eq!(values(tmp, "fetch"), [origin]);
     assert_pushed_itself(tmp, &bare, &wt, &branch);
-    assert!(ssh_calls(tmp).iter().any(|l| l.contains("git@bitbucket.org") && l.contains("git-receive-pack 'acme/site.git'")), "{:?}", ssh_calls(tmp));
+    assert!(ssh_calls(tmp).iter().any(|l| l.contains("git@ssh.bitbucket.org") && l.contains("git-receive-pack 'acme/site.git'")), "{:?}", ssh_calls(tmp));
+    assert!(!ssh_calls(tmp).iter().any(|l| l.split_whitespace().any(|w| w == "git@bitbucket.org")), "nothing to the old host: {:?}", ssh_calls(tmp));
     assert!(git_env(tmp).iter().all(|l| !l.contains("credential.")), "no credential helper for Bitbucket: {:?}", git_env(tmp));
     assert!(notes(&st, &s.run_id).is_empty(), "{:?}", notes(&st, &s.run_id));
+    assert_eq!(config_files(&local), config);
+}
+
+/// GA-315: a project whose origin still names Bitbucket's old SSH host (git@bitbucket.org:…). In the run, the agent's own
+/// `git fetch` and `git push` of the project's repository reach git@ssh.bitbucket.org through settings in the run's
+/// environment only, and nothing goes to git@bitbucket.org.
+#[tokio::test]
+async fn to_bitbucket_an_origin_on_the_old_ssh_host_fetches_and_pushes_to_ssh_bitbucket_org_in_the_run() {
+    let tmp = tempfile::tempdir().unwrap();
+    let tmp = tmp.path();
+    let st = gizai_lib::test_state(tmp);
+    let origin = "git@bitbucket.org:acme/site.git";
+    let (bare, local) = hosted(tmp, "bitbucket", "acme/site", origin, "https://bitbucket.org/acme/site");
+    let task = card(&st, &local, Some("https://bitbucket.org/acme/site"));
+    gizai_core::settings::set(&st.db, "gh_bin", &"/nonexistent/gh".to_string()).unwrap();
+    let config = config_files(&local);
+
+    let body = format!("{LOOK}\nif git fetch -q origin 2>> \"$seen\"; then echo fetched=yes >> \"$seen\"; fi\n{PUSH}");
+    let s = gizai_lib::runs::run_once(&st, &task, None, Some(agent(tmp, "claude", &body, FAKE))).await.unwrap();
+    assert_eq!((s.status.as_str(), s.outcome.as_deref()), ("succeeded", Some("ready_for_testing")), "{:?}: {}", s.error, seen(tmp));
+    let (_, wt, branch) = run_of(&st, &s.run_id);
+    assert_eq!(values(tmp, "push"), ["git@ssh.bitbucket.org:acme/site.git"], "{}", seen(tmp));
+    assert_eq!(values(tmp, "fetch"), ["git@ssh.bitbucket.org:acme/site.git"], "the agent's fetch goes there too: {}", seen(tmp));
+    assert_eq!(values(tmp, "fetched"), ["yes"], "{}", seen(tmp));
+    assert_pushed_itself(tmp, &bare, &wt, &branch);
+    let calls = ssh_calls(tmp);
+    assert!(calls.iter().any(|l| l.contains("git@ssh.bitbucket.org") && l.contains("git-upload-pack 'acme/site.git'")), "{calls:?}");
+    assert!(calls.iter().any(|l| l.contains("git@ssh.bitbucket.org") && l.contains("git-receive-pack 'acme/site.git'")), "{calls:?}");
+    assert!(!calls.iter().any(|l| l.split_whitespace().any(|w| w == "git@bitbucket.org")), "nothing to the old host: {calls:?}");
+    assert!(git_env(tmp).iter().any(|l| l.starts_with("GIT_CONFIG_VALUE_") && l.ends_with("=git@bitbucket.org:acme/site")),
+            "the old host's address of the project's repository is rewritten: {:?}", git_env(tmp));
+    assert!(notes(&st, &s.run_id).is_empty(), "{:?}", notes(&st, &s.run_id));
+    assert_eq!(config_files(&local), config, "no git config or remote changed");
+    assert_eq!(git(&wt, &["remote", "get-url", "origin"]), origin, "outside the run, origin is as it is written");
+}
+
+/// GA-315: with your own rule that sends git@bitbucket.org: to an SSH host alias of yours (git@bb-work, a key of its own),
+/// the run gets no setting for the old host, and the agent's fetch and push go to your alias, not to ssh.bitbucket.org.
+#[tokio::test]
+async fn to_bitbucket_your_own_rule_to_an_alias_decides_where_the_agents_git_goes() {
+    let tmp = tempfile::tempdir().unwrap();
+    let tmp = tmp.path();
+    let st = gizai_lib::test_state(tmp);
+    let origin = "git@bitbucket.org:acme/site.git";
+    let (bare, local) = hosted(tmp, "bitbucket", "acme/site", origin, "https://bitbucket.org/acme/site");
+    git(&local, &["config", "url.git@bb-work:.insteadOf", "git@bitbucket.org:"]);
+    let task = card(&st, &local, Some("https://bitbucket.org/acme/site"));
+    gizai_core::settings::set(&st.db, "gh_bin", &"/nonexistent/gh".to_string()).unwrap();
+    let config = config_files(&local);
+
+    let body = format!("{LOOK}\nif git fetch -q origin 2>> \"$seen\"; then echo fetched=yes >> \"$seen\"; fi\n{PUSH}");
+    let s = gizai_lib::runs::run_once(&st, &task, None, Some(agent(tmp, "claude", &body, FAKE))).await.unwrap();
+    assert_eq!((s.status.as_str(), s.outcome.as_deref()), ("succeeded", Some("ready_for_testing")), "{:?}: {}", s.error, seen(tmp));
+    let (_, wt, branch) = run_of(&st, &s.run_id);
+    assert_eq!(values(tmp, "push"), ["git@bb-work:acme/site.git"], "{}", seen(tmp));
+    assert_eq!(values(tmp, "fetch"), ["git@bb-work:acme/site.git"], "{}", seen(tmp));
+    assert_eq!(values(tmp, "fetched"), ["yes"], "{}", seen(tmp));
+    assert_pushed_itself(tmp, &bare, &wt, &branch);
+    assert!(git_env(tmp).iter().all(|l| !l.ends_with("=git@bitbucket.org:acme/site")), "no rule for the old host: {:?}", git_env(tmp));
+    let calls = ssh_calls(tmp);
+    assert!(calls.iter().any(|l| l.contains("git@bb-work") && l.contains("git-receive-pack 'acme/site.git'")), "{calls:?}");
+    assert!(calls.iter().any(|l| l.contains("git@bb-work") && l.contains("git-upload-pack 'acme/site.git'")), "{calls:?}");
+    assert!(!calls.iter().any(|l| l.contains("bitbucket.org")), "neither ssh.bitbucket.org nor the old host: {calls:?}");
     assert_eq!(config_files(&local), config);
 }
 

@@ -1,11 +1,14 @@
 //! How Gizai reaches GitHub and Bitbucket, and the checks behind Settings → GitHub and Settings → Bitbucket.
 //! - A push to GitHub goes over SSH with your keys (the default) or over HTTPS with the GitHub CLI's login; a push to
-//!   Bitbucket over SSH with your keys. Either is set for that one git command only (`PushOver`). A failure says what
-//!   to check, in plain words and in the terms of the place it went to (`push_problem`).
+//!   Bitbucket over SSH with your keys, to Bitbucket's SSH host (`BITBUCKET_SSH_HOST`, GA-315). Either is set for that
+//!   one git command only (`PushOver`). A failure says what to check, in plain words and in the terms of the place it
+//!   went to (`push_problem`).
+//! - Bitbucket's old SSH host (git@bitbucket.org, which stops taking SSH) goes to its new one in every push, fetch and
+//!   ls-remote of Gizai's (`PushOver::git_config_in`, `fetch_config`), unless a rewrite of your own decides.
 //! - An agent's own push in a task run goes the same way, to the project's own repository only: git settings in the
 //!   run's environment (`PushOver::run_config`, `git_env`).
-//! - The checks: gh's version and the account it is logged in as, ssh to git@github.com and git@bitbucket.org in batch
-//!   mode, and gh's own login in the browser (`GhLogin`).
+//! - The checks: gh's version and the account it is logged in as, ssh to git@github.com and to Bitbucket's SSH host (or
+//!   your own host alias for it) in batch mode, and gh's own login in the browser (`GhLogin`).
 //!
 //! For GitHub, Gizai never stores a token or password and never asks for one: it uses gh's login and your SSH keys.
 //! Bitbucket's login (your email and an API token, for its REST API) is in `bitbucket`.
@@ -28,10 +31,20 @@ pub enum PushOver {
     /// HTTPS with the GitHub CLI's login (`gh auth git-credential`) as git's only credential helper: a git@github.com:
     /// address goes to https://github.com/ instead.
     Https { gh: PathBuf },
-    /// To Bitbucket Cloud, over SSH with your own keys: an https://bitbucket.org/ address, also one with a user name in
-    /// it (https://jefsev@bitbucket.org/…, see `git_config_for`), goes to git@bitbucket.org: instead.
+    /// To Bitbucket Cloud, over SSH with your own keys, to Bitbucket's SSH host: an https://bitbucket.org/ address, also
+    /// one with a user name in it (https://jefsev@bitbucket.org/…, see `git_config_for`), and one on its old SSH host
+    /// (`OLD_BITBUCKET_SSH`) go to git@ssh.bitbucket.org: instead.
     Bitbucket,
 }
+
+/// Bitbucket Cloud's host for git over SSH (GA-315): Atlassian moved it from bitbucket.org, which keeps only HTTPS (the
+/// website and the REST API) and stops taking SSH after 10 December 2026. Every push, fetch, check and text of Gizai's
+/// that speaks SSH to Bitbucket names this host; your SSH keys stay the same.
+pub const BITBUCKET_SSH_HOST: &str = "ssh.bitbucket.org";
+
+/// How an address on Bitbucket's old SSH host starts (bitbucket.org, which stops taking SSH): Gizai sends it to
+/// `BITBUCKET_SSH_HOST` instead (`bitbucket_ssh_address`).
+pub const OLD_BITBUCKET_SSH: [&str; 2] = ["git@bitbucket.org:", "ssh://git@bitbucket.org/"];
 
 /// How a GitHub address starts, over HTTPS and over SSH.
 const HTTPS: [&str; 4] = ["https://github.com/", "http://github.com/", "https://www.github.com/", "http://www.github.com/"];
@@ -39,9 +52,64 @@ const SSH: [&str; 2] = ["git@github.com:", "ssh://git@github.com/"];
 /// How a Bitbucket address starts over HTTPS (without a user name in it).
 const BITBUCKET_HTTPS: [&str; 4] = ["https://bitbucket.org/", "http://bitbucket.org/", "https://www.bitbucket.org/", "http://www.bitbucket.org/"];
 
+/// Where `ssh -T` reaches Bitbucket: git@ssh.bitbucket.org.
+pub fn bitbucket_ssh_destination() -> String {
+    format!("git@{BITBUCKET_SSH_HOST}")
+}
+
+/// How an address on Bitbucket's SSH host starts: git@ssh.bitbucket.org:.
+fn bitbucket_ssh_start() -> String {
+    format!("{}:", bitbucket_ssh_destination())
+}
+
+/// The old SSH start (`OLD_BITBUCKET_SSH`) of `address` and the path after it ("acme/shop.git"), when it is on
+/// Bitbucket's old SSH host.
+fn on_old_bitbucket_ssh(address: &str) -> Option<(&'static str, &str)> {
+    let address = address.trim();
+    OLD_BITBUCKET_SSH.iter().find_map(|start| address.strip_prefix(start).map(|path| (*start, path))).filter(|(_, path)| !path.is_empty())
+}
+
+/// `address` on Bitbucket's SSH host, when it is on the old one: git@ssh.bitbucket.org:acme/shop.git for
+/// git@bitbucket.org:acme/shop.git and for ssh://git@bitbucket.org/acme/shop.git. What the rewrite of the old host gives,
+/// and what `git remote set-url` switches a checkout to.
+pub fn bitbucket_ssh_address(address: &str) -> Option<String> {
+    on_old_bitbucket_ssh(address).map(|(_, path)| format!("{}{path}", bitbucket_ssh_start()))
+}
+
+/// Whether your own rewrite starting with `own` decides where every address starting with `start` goes: git takes the
+/// longest start that matches an address, so a shorter (or the same) start of yours always matches first.
+fn decided_by_own(start: &str, own: &[String]) -> bool {
+    own.iter().any(|o| !o.is_empty() && start.starts_with(o.as_str()))
+}
+
+/// The `-c` rules that send Bitbucket's old SSH host to its new one (`OLD_BITBUCKET_SSH` → git@ssh.bitbucket.org:), one
+/// per old start, but none for a start your own git config already rewrites (`own`, the starts
+/// `worktree::own_rewrites` gives): yours decides, like a rule that sends git@bitbucket.org: to an SSH host alias of
+/// yours. A longer rule of yours (git@bitbucket.org:acme/) still wins for the addresses it matches, as git takes the
+/// longest.
+fn old_bitbucket_ssh_rules(own: &[String]) -> Vec<String> {
+    OLD_BITBUCKET_SSH.iter().filter(|start| !decided_by_own(start, own))
+        .map(|start| format!("url.{}.insteadOf={start}", bitbucket_ssh_start())).collect()
+}
+
+/// The `-c` settings for one fetch or `ls-remote` of Gizai's from `addresses` (as written: the URLs of the remote it goes
+/// through, or the address itself) in a repository whose own git config rewrites the starts `own`
+/// (`worktree::own_rewrites`): an address on Bitbucket's old SSH host goes to its new one, the way Gizai's push does,
+/// unless a rewrite of yours decides (`old_bitbucket_ssh_rules`). Nothing for any other address: a fetch goes as the
+/// remote is written.
+pub fn fetch_config(addresses: &[String], own: &[String]) -> Vec<String> {
+    if addresses.iter().any(|a| on_old_bitbucket_ssh(a).is_some()) {
+        old_bitbucket_ssh_rules(own)
+    } else {
+        vec![]
+    }
+}
+
 impl PushOver {
     /// The `-c` settings for one git command; they change no git config and no remote. git takes the longest rewrite
     /// that matches an address, so a more specific one in your own config (a mirror, a test's local repository) wins.
+    /// To Bitbucket: its https addresses and those on its old SSH host go to git@ssh.bitbucket.org: (`git_config_in`
+    /// leaves out a rule for the old host that a rewrite of your own decides).
     pub fn git_config(&self) -> Vec<String> {
         match self {
             PushOver::Ssh => HTTPS.iter().map(|from| format!("url.git@github.com:.insteadOf={from}")).collect(),
@@ -52,21 +120,33 @@ impl PushOver {
                 c.push(format!("credential.helper=!{} auth git-credential", sh_quote(&gh.to_string_lossy())));
                 c
             }
-            PushOver::Bitbucket => BITBUCKET_HTTPS.iter().map(|from| format!("url.git@bitbucket.org:.insteadOf={from}")).collect(),
+            PushOver::Bitbucket => self.git_config_in(&[], &[]),
         }
     }
 
-    /// `git_config` for a push to `addresses` (where it goes, as the remote has them written). To Bitbucket, an https
-    /// address with a user name in it (what Bitbucket's Clone button gives) goes to git@bitbucket.org: too: git rewrites
-    /// only the start of an address, so each user name needs a rule of its own. One with a password in it is left as it
-    /// is (its password never goes in a command line).
+    /// `git_config` for a push to `addresses` (where it goes, as the remote has them written): `git_config_in` a
+    /// repository without rewrites of its own.
     pub fn git_config_for(&self, addresses: &[String]) -> Vec<String> {
-        let mut c = self.git_config();
-        if *self == PushOver::Bitbucket {
-            for rule in addresses.iter().filter_map(|a| bitbucket_user_start(a)).map(|from| format!("url.git@bitbucket.org:.insteadOf={from}")) {
-                if !c.contains(&rule) {
-                    c.push(rule);
-                }
+        self.git_config_in(addresses, &[])
+    }
+
+    /// `git_config` for a push (or its `ls-remote`) to `addresses` (where it goes, as the remote has them written), in a
+    /// repository whose own git config rewrites the address starts `own` (`worktree::own_rewrites`). To Bitbucket:
+    /// - an https address with a user name in it (what Bitbucket's Clone button gives) goes to git@ssh.bitbucket.org:
+    ///   too: git rewrites only the start of an address, so each user name needs a rule of its own. One with a password
+    ///   in it is left as it is (its password never goes in a command line);
+    /// - a rule for Bitbucket's old SSH host is left out when a rewrite of yours already decides its start
+    ///   (`old_bitbucket_ssh_rules`): git@bitbucket.org: then goes where your rule sends it, an SSH host alias of yours
+    ///   for instance.
+    pub fn git_config_in(&self, addresses: &[String], own: &[String]) -> Vec<String> {
+        if *self != PushOver::Bitbucket {
+            return self.git_config();
+        }
+        let mut c: Vec<String> = BITBUCKET_HTTPS.iter().map(|from| format!("url.{}.insteadOf={from}", bitbucket_ssh_start())).collect();
+        c.extend(old_bitbucket_ssh_rules(own));
+        for rule in addresses.iter().filter_map(|a| bitbucket_user_start(a)).map(|from| format!("url.{}.insteadOf={from}", bitbucket_ssh_start())) {
+            if !c.contains(&rule) {
+                c.push(rule);
             }
         }
         c
@@ -74,7 +154,8 @@ impl PushOver {
 
     /// The git settings of a task run of a project on GitHub or Bitbucket, so that the agent's own `git push` to the
     /// project's repository goes the way Gizai's own push does (`git_config_for`). Nothing else changes: other
-    /// addresses, fetches, and `git remote get-url` without --push. As (key, value) pairs for `git_env`.
+    /// addresses, fetches (but those from Bitbucket's old SSH host), and `git remote get-url` without --push. As (key,
+    /// value) pairs for `git_env`.
     /// - `full_name`: the repository, "acme/shop".
     /// - `addresses`: the addresses it goes by, as written: the project's link, and the URL of each remote of its
     ///   repository that is the same repository.
@@ -86,20 +167,33 @@ impl PushOver {
     /// rewrite of your own touches (one that starts it, or one for an address that starts with it: a mirror, a test's
     /// local repository) gets none, and yours decides, as it does for Gizai's own push. Over HTTPS, gh's login is the
     /// only credential helper for github.com (an empty one first, as `git_config` does).
+    ///
+    /// To Bitbucket, an address of the repository on Bitbucket's old SSH host (git@bitbucket.org:acme/shop.git,
+    /// ssh://git@bitbucket.org/acme/shop.git) gets an `insteadOf` rule to the same path on its SSH host instead
+    /// (git@ssh.bitbucket.org:acme/shop), for the agent's fetches and pushes alike, with the same exception for your own
+    /// rewrites. It names the repository without .git, so every form of its address goes to the same repository there.
     pub fn run_config(&self, full_name: &str, addresses: &[String], own: &[String]) -> Vec<(String, String)> {
         let key = format!("url.{}.pushInsteadOf", self.push_address(full_name));
         let mut c: Vec<(String, String)> = vec![];
+        let mut add = |rule: (String, String)| {
+            if !c.contains(&rule) {
+                c.push(rule);
+            }
+        };
         for address in addresses.iter().map(|a| a.trim()).filter(|a| self.rewrites(a)) {
             let stem = address.trim_end_matches('/');
             let stem = stem.strip_suffix(".git").unwrap_or(stem);
             if own.iter().any(|start| stem.starts_with(start.as_str()) || start.starts_with(stem)) {
                 continue;
             }
+            if *self == PushOver::Bitbucket
+                && let Some((old, path)) = on_old_bitbucket_ssh(stem)
+            {
+                add((format!("url.{}{path}.insteadOf", bitbucket_ssh_start()), format!("{old}{path}")));
+                continue;
+            }
             for from in [address.to_string(), stem.to_string(), format!("{stem}.git")] {
-                let rule = (key.clone(), from);
-                if !c.contains(&rule) {
-                    c.push(rule);
-                }
+                add((key.clone(), from));
             }
         }
         if let PushOver::Https { gh } = self {
@@ -111,12 +205,12 @@ impl PushOver {
     }
 
     /// Where a push of the repository `full_name` ("acme/shop") goes: git@github.com:acme/shop.git over SSH,
-    /// https://github.com/acme/shop.git over HTTPS, git@bitbucket.org:acme/shop.git to Bitbucket.
+    /// https://github.com/acme/shop.git over HTTPS, git@ssh.bitbucket.org:acme/shop.git to Bitbucket.
     fn push_address(&self, full_name: &str) -> String {
         match self {
             PushOver::Ssh => format!("git@github.com:{full_name}.git"),
             PushOver::Https { .. } => format!("https://github.com/{full_name}.git"),
-            PushOver::Bitbucket => format!("git@bitbucket.org:{full_name}.git"),
+            PushOver::Bitbucket => format!("{}{full_name}.git", bitbucket_ssh_start()),
         }
     }
 
@@ -264,14 +358,18 @@ fn bitbucket_push_problem(said: &str) -> Problem {
     }
     if ["could not read Username", "could not read Password", "terminal prompts disabled", "Authentication failed"].iter().any(|s| has(s)) {
         return Problem::new("git tried HTTPS, and has no login for it",
-                            "Check where this repository pushes to (git remote -v): Hersir pushes to Bitbucket over SSH, with your SSH keys.");
+                            format!("Check where this repository pushes to (git remote -v): Hersir pushes to Bitbucket over SSH \
+                                     ({BITBUCKET_SSH_HOST}), with your SSH keys."));
     }
     if has("[rejected]") || has("non-fast-forward") || has("(fetch first)") {
         return Problem::new("The branch on Bitbucket has commits this one doesn't",
                             "Hersir never forces a push: merge Bitbucket's copy into the branch first.");
     }
+    // (ssh's own words are told apart above: these are git's over HTTPS, which stays on bitbucket.org)
     if ["Could not resolve host", "Failed to connect to", "Couldn't connect to server", "Connection timed out", "Network is unreachable"].iter().any(|s| has(s)) {
-        return Problem::new("Can't reach bitbucket.org", "Check your internet connection, then try again.");
+        return Problem::new("Can't reach bitbucket.org over HTTPS",
+                            format!("Check your internet connection, then try again. Hersir pushes to Bitbucket over SSH \
+                                     ({BITBUCKET_SSH_HOST}): git remote -v shows where this repository goes."));
     }
     if has("src refspec") && has("does not match any") {
         return Problem::new("The repository has no commits yet", "Hersir tries a push with its latest commit: commit something first.");
@@ -304,7 +402,7 @@ fn ssh_problem(said: &str, host: Host) -> Option<Problem> {
     }
 }
 
-/// What ssh said went wrong talking to Bitbucket, in Bitbucket's terms.
+/// What ssh said went wrong talking to Bitbucket, in Bitbucket's terms: its SSH host is `BITBUCKET_SSH_HOST`.
 fn bitbucket_ssh_problem(said: &str) -> Option<Problem> {
     let has = |s: &str| said.contains(s);
     if has("Permission denied (publickey") {
@@ -312,11 +410,11 @@ fn bitbucket_ssh_problem(said: &str) -> Option<Problem> {
                           format!("Add your public key in {BITBUCKET_KEYS}, or load it into ssh-agent with ssh-add.")))
     } else if has("Host key verification failed") {
         Some(Problem::new("This computer doesn't trust Bitbucket's SSH host key yet",
-                          "Run ssh -T git@bitbucket.org once in a terminal and answer yes."))
+                          format!("Run ssh -T {} once in a terminal and answer yes.", bitbucket_ssh_destination())))
     } else if has("ssh: not found") || has("ssh: command not found") || has("cannot run ssh") {
         Some(ssh_missing(Host::Bitbucket))
     } else if ["ssh: connect to host", "Could not resolve hostname", "Connection closed by", "kex_exchange_identification", "Connection reset by"].iter().any(|s| has(s)) {
-        Some(Problem::new("Can't reach bitbucket.org over SSH",
+        Some(Problem::new(format!("Can't reach {BITBUCKET_SSH_HOST} over SSH"),
                           "Check your internet connection, and that no firewall blocks SSH (port 22)."))
     } else {
         None
@@ -326,7 +424,7 @@ fn bitbucket_ssh_problem(said: &str) -> Option<Problem> {
 fn ssh_missing(host: Host) -> Problem {
     match host {
         Host::GitHub => Problem::new("ssh isn't installed", format!("Install OpenSSH. {OR_HTTPS}")),
-        Host::Bitbucket => Problem::new("ssh isn't installed", "Install OpenSSH: Hersir pushes to Bitbucket over SSH."),
+        Host::Bitbucket => Problem::new("ssh isn't installed", format!("Install OpenSSH: Hersir pushes to Bitbucket over SSH ({BITBUCKET_SSH_HOST}).")),
     }
 }
 
@@ -398,10 +496,9 @@ fn sh_quote(s: &str) -> String {
     }
 }
 
-/// What `ssh -T <to>` says, in batch mode so it never asks. It runs your own GIT_SSH_COMMAND when you set one, the way
-/// git does for a push.
-fn ssh_t(to: &str, host: Host, limit: Duration) -> Result<String, Problem> {
-    let mut cmd = match std::env::var("GIT_SSH_COMMAND") {
+/// ssh as git runs it for a push: your own GIT_SSH_COMMAND when you set one, else ssh in batch mode, so it never asks.
+fn ssh_command() -> Result<std::process::Command, Problem> {
+    Ok(match std::env::var("GIT_SSH_COMMAND") {
         Ok(own) if !own.trim().is_empty() => {
             let mut c = crate::os::command(own_ssh_shell()?);
             c.arg("-c").arg(format!("{own} \"$@\"")).arg(&own);
@@ -412,7 +509,13 @@ fn ssh_t(to: &str, host: Host, limit: Duration) -> Result<String, Problem> {
             c.args(["-o", "BatchMode=yes"]);
             c
         }
-    };
+    })
+}
+
+/// What `ssh -T <to>` says, in batch mode so it never asks. It runs your own GIT_SSH_COMMAND when you set one, the way
+/// git does for a push.
+fn ssh_t(to: &str, host: Host, limit: Duration) -> Result<String, Problem> {
+    let mut cmd = ssh_command()?;
     cmd.args(["-T", to]).env("SSH_ASKPASS_REQUIRE", "never");
     let (_, out, err) = github::run(cmd, None, limit).map_err(|e| match e.kind() {
         ErrorKind::NotFound => ssh_missing(host),
@@ -445,12 +548,19 @@ pub fn ssh_check(limit: Duration) -> Result<String, Problem> {
     Err(ssh_problem(&said, Host::GitHub).unwrap_or_else(|| Problem::plain(last_words(&said))))
 }
 
-/// Whether ssh reaches Bitbucket with your keys, in batch mode so it never asks: `ssh -T git@bitbucket.org`. Bitbucket
-/// answers a key it accepts with "authenticated via ssh key." (or "logged in as <username>." for an older one) and "You
-/// can use git to connect to Bitbucket. Shell access is disabled", not the way GitHub does; its words decide, not its
-/// exit code. Ok: the account your key belongs to, when Bitbucket names it.
+/// Whether ssh reaches Bitbucket's SSH host with your keys: `bitbucket_ssh_check_at` git@ssh.bitbucket.org.
 pub fn bitbucket_ssh_check(limit: Duration) -> Result<Option<String>, Problem> {
-    let said = ssh_t("git@bitbucket.org", Host::Bitbucket, limit)?;
+    bitbucket_ssh_check_at(&bitbucket_ssh_destination(), limit)
+}
+
+/// Whether ssh reaches Bitbucket at `to` with your keys, in batch mode so it never asks: `ssh -T <to>`, where `to` is
+/// git@ssh.bitbucket.org, or the SSH host alias of yours a project's pushes go to (git@bitbucket-snx), so the check
+/// uses the key such a push uses (`ssh_destination`). Bitbucket answers a key it accepts with "authenticated via ssh
+/// key." (or "logged in as <username>." for an older one) and "You can use git to connect to Bitbucket. Shell access is
+/// disabled", not the way GitHub does; its words decide, not its exit code. Ok: the account your key belongs to, when
+/// Bitbucket names it.
+pub fn bitbucket_ssh_check_at(to: &str, limit: Duration) -> Result<Option<String>, Problem> {
+    let said = ssh_t(to, Host::Bitbucket, limit)?;
     if let Some(who) = said.lines().find_map(|l| word_after(l, "logged in as ")) {
         return Ok(Some(who));
     }
@@ -458,6 +568,44 @@ pub fn bitbucket_ssh_check(limit: Duration) -> Result<Option<String>, Problem> {
         return Ok(None);
     }
     Err(bitbucket_ssh_problem(&said).unwrap_or_else(|| Problem::plain(last_words(&said))))
+}
+
+/// The host name ssh really connects to for `to` ("git@bitbucket-snx"): the HostName of an SSH host alias of yours, as
+/// `ssh -G` works it out from your ~/.ssh/config, in lower case. ssh -G connects nowhere and asks nothing (git runs it
+/// too, to tell which ssh it has). It runs your own GIT_SSH_COMMAND when you set one, the way git does. None when ssh
+/// can't say.
+pub fn ssh_hostname(to: &str, limit: Duration) -> Option<String> {
+    let mut cmd = ssh_command().ok()?;
+    cmd.args(["-G", to]).env("SSH_ASKPASS_REQUIRE", "never");
+    let (ok, out, _) = github::run(cmd, None, limit).ok()?;
+    if !ok {
+        return None;
+    }
+    out.lines().find_map(|l| l.trim().strip_prefix("hostname ")).map(|h| h.trim().to_ascii_lowercase()).filter(|h| !h.is_empty())
+}
+
+/// Where `ssh -T` reaches the host of the git address `address`, when it goes over SSH: "git@ssh.bitbucket.org" for
+/// git@ssh.bitbucket.org:acme/shop.git and ssh://git@ssh.bitbucket.org/acme/shop.git, "git@bitbucket-snx" for
+/// git@bitbucket-snx:acme/shop.git (an SSH host alias of yours), "ssh://git@host:2222" with a port. None for an address
+/// that doesn't go over SSH: https, a path, a file:// URL.
+pub fn ssh_destination(address: &str) -> Option<String> {
+    let a = address.trim();
+    if let Some(rest) = ["ssh://", "git+ssh://", "ssh+git://"].iter().find_map(|p| a.strip_prefix(p)) {
+        let host = rest.split('/').next().filter(|h| !h.is_empty())?;
+        // ssh takes a port only in its own URL form
+        return Some(if host.rsplit_once(':').is_some_and(|(_, port)| !port.is_empty() && port.chars().all(|c| c.is_ascii_digit())) {
+            format!("ssh://{host}")
+        } else {
+            host.trim_end_matches(':').to_string()
+        });
+    }
+    if a.contains("://") {
+        return None;
+    }
+    // git's scp-like form, [user@]host:path, with no slash before the colon (a path like ./a:b is a file)
+    let (host, path) = a.split_once(':')?;
+    let drive = host.len() == 1 && host.chars().all(|c| c.is_ascii_alphabetic());
+    (!host.is_empty() && !path.is_empty() && !host.contains(['/', '\\']) && !drive).then(|| host.to_string())
 }
 
 /// Why gh couldn't be run, with what to do.

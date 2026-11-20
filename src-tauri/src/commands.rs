@@ -204,6 +204,48 @@ pub async fn restore_task(app: AppHandle, st: State<'_, AppState>, id: String) -
     changed(&app, "tasks");
     Ok(())
 }
+
+/// The cards of `ids` an agent is working on now, their run's worktree being made included (`runs::working_on`).
+fn working_of(st: &AppState, ids: &[String]) -> Vec<String> {
+    ids.iter().filter(|id| crate::runs::working_on(st, id)).cloned().collect()
+}
+
+/// GA-306: moves the cards `ids` to the bottom of column `state_id` in their order (the board's Move all and Move to
+/// Done, and their Undo), in one write and one `rows-changed`. A card an agent is working on, or one that can't move,
+/// is skipped with why; the others go.
+#[tauri::command]
+pub async fn move_tasks(app: AppHandle, st: State<'_, AppState>, ids: Vec<String>, state_id: String) -> R<BulkResult> {
+    let out = off(&st, move |st| {
+        let working = working_of(st, &ids);
+        tasks::move_many(&st.db, &st.you_id, &ids, &state_id, &working).map_err(e)
+    }).await?;
+    changed(&app, "tasks");
+    pull_soon(&st);
+    Ok(out)
+}
+
+/// GA-306: archives the cards `ids` (the board's Archive all and Archive), in one write and one `rows-changed`. A card
+/// an agent is working on, or one outside Done, is skipped with why; the others go.
+#[tauri::command]
+pub async fn archive_tasks(app: AppHandle, st: State<'_, AppState>, ids: Vec<String>) -> R<BulkResult> {
+    let out = off(&st, move |st| {
+        let working = working_of(st, &ids);
+        tasks::archive_many(&st.db, &st.you_id, &ids, &working).map_err(e)
+    }).await?;
+    changed(&app, "tasks");
+    pull_soon(&st);
+    Ok(out)
+}
+
+/// GA-306: restores the archived cards `ids` to the bottom of their Done column in their order (the Undo of
+/// `archive_tasks`), in one write and one `rows-changed`.
+#[tauri::command]
+pub async fn restore_tasks(app: AppHandle, st: State<'_, AppState>, ids: Vec<String>) -> R<BulkResult> {
+    let out = off(&st, move |st| tasks::restore_many(&st.db, &st.you_id, &ids).map_err(e)).await?;
+    changed(&app, "tasks");
+    pull_soon(&st);
+    Ok(out)
+}
 #[tauri::command]
 pub async fn task_activity(st: State<'_, AppState>, task_id: String) -> R<Vec<ChangeEntry>> {
     off(&st, move |st| tasks::activity(&st.db, &task_id).map_err(e)).await
@@ -742,6 +784,14 @@ pub async fn unpin_chat(app: AppHandle, st: State<'_, AppState>, thread_id: Stri
     off(&st, move |st| gizai_core::chat::set_pinned(&st.db, &thread_id, false).map_err(e)).await?;
     changed(&app, "chat_pins");
     Ok(())
+}
+/// Rename on a chat on the left (GA-309): `title`, on one line and trimmed, is its name from now on; it keeps its place in
+/// Recent. One `chat_threads` notice updates Recent, Pinned, the top bar and the Archive.
+#[tauri::command]
+pub async fn rename_chat(app: AppHandle, st: State<'_, AppState>, thread_id: String, title: String) -> R<gizai_core::chat::ChatThread> {
+    let t = off(&st, move |st| gizai_core::chat::rename_thread(&st.db, &st.you_id, &thread_id, &title).map_err(e)).await?;
+    changed(&app, "chat_threads");
+    Ok(t)
 }
 /// Chat → Archive: the chats whose title or messages (yours and the Chief's) hold `query`; all of them for an empty one.
 #[tauri::command]

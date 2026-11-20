@@ -31,9 +31,13 @@ fn task_done(cx: &Cx, id: &str, what: &str, held_after: Option<&str>) -> Result<
         task["waits_for"] = json!(t.waits_for);
     }
     let mut v = json!({"ok": true, "done": what, "task": task, "link": link("task", &t.id, &format!("{} {}", t.identifier, short(&t.title, 60)))});
+    // GA-312: the Chat page lists the card under the answer with an OK, so the user needn't open it; `hold_at`, when this
+    // call put it on that hold, so it shows there only while the card is on this hold, not on one another chat put on later.
     if let Some(tool) = held_after {
+        v["task"]["hold_at"] = json!(t.hold_at);
         v["on_hold"] = json!(format!("{} waits on hold for the user's OK, so no agent starts it: you used {tool}, a tool from outside \
-            Hersir, in this chat. Tell the user, and ask them to check it and take it off hold.", t.identifier));
+            Hersir, in this chat. Tell the user they can OK it under your answer, or take it off hold on the card; don't try to take \
+            the hold off yourself.", t.identifier));
     }
     Ok(v)
 }
@@ -570,6 +574,158 @@ pub(crate) fn comment(cx: &Cx, a: &Args) -> Result<Value, String> {
     comments::add(cx.db(), cx.actor, &t.id, &body, None).map_err(err)?;
     cx.changed("comments");
     Ok(json!({"ok": true, "done": "commented", "link": link("task", &t.id, &format!("{} {}", t.identifier, short(&t.title, 60)))}))
+}
+
+// ---- archiving cards in Done (GA-307) ----
+
+/// GA-307: how many cards an answer of archive_tasks or restore_tasks names; `more` counts the rest.
+const NAMED: usize = 50;
+
+/// What a call of archive_tasks asks for: the cards `tasks` names, or every card in the team's Done column (`all_done`).
+pub(crate) enum Scope {
+    Tasks(Vec<String>),
+    AllDone,
+}
+
+/// The scope of a call of archive_tasks: exactly one of `tasks` (an empty list names no card) and `all_done: true`.
+/// Neither or both is refused with why. Needs nothing but the arguments, so a call that can never work is refused before
+/// it waits for the user's Approve after a tool from outside Hersir.
+pub(crate) fn archive_scope(a: &Args) -> Result<Scope, String> {
+    let refs = a.list("tasks").unwrap_or_default();
+    match (refs.is_empty(), a.flag("all_done").unwrap_or(false)) {
+        (false, false) => Ok(Scope::Tasks(refs)),
+        (true, true) => Ok(Scope::AllDone),
+        (true, false) => Err("Say which cards: give tasks, their identifiers like [\"GA-12\"], or all_done: true for every card in Done. \
+            Nothing was archived.".into()),
+        (false, true) => Err("Give tasks or all_done, not both: tasks archives the cards it names, all_done every card in Done. \
+            Nothing was archived.".into()),
+    }
+}
+
+/// The cards a call of archive_tasks is about, as things are now.
+pub(crate) struct Targets {
+    /// The cards, in order and once each: those `tasks` names (archived ones included), or with `all_done` the cards in the
+    /// team's Done column, top to bottom.
+    pub cards: Vec<Task>,
+    /// What `tasks` names that is no card, with why: it is skipped.
+    pub unknown: Vec<Skipped>,
+    /// With `all_done`: whose Done column.
+    pub all_done: Option<AllDone>,
+}
+
+/// The Done column `all_done` empties: its team, its name, and the project when only that project's cards go.
+pub(crate) struct AllDone {
+    pub team: team::Team,
+    pub column: String,
+    pub project: Option<Project>,
+}
+
+/// GA-307: the cards of a call of archive_tasks (`archive_scope`). With `all_done`: the cards in the Done column of the
+/// `team` given (needed with more than one team, as add_column's), or of the `project`'s team with only that project's
+/// cards. Reads only, so the preview of a call that waits for the user's Approve uses it too.
+pub(crate) fn archive_targets(cx: &Cx, a: &Args) -> Result<Targets, String> {
+    if let Scope::Tasks(refs) = archive_scope(a)? {
+        let (cards, unknown) = named_cards(cx, &refs)?;
+        return Ok(Targets { cards, unknown, all_done: None });
+    }
+    let project = match a.opt("project") { Some(p) => Some(resolve::project(cx, &p)?), None => None };
+    let team = match &project {
+        Some(p) => {
+            let t = resolve::team_of(cx, Some(p))?;
+            if let Some(named) = a.opt("team").map(|r| resolve::team(cx, &r)).transpose()?.filter(|n| n.id != t.id) {
+                return Err(format!("{} ({}) is on {}'s board, not {}'s: leave team out, or name {}. Nothing was archived.",
+                                   p.name, p.key, t.name, named.name, t.name));
+            }
+            t
+        }
+        None => resolve::team_arg(cx, a)?,
+    };
+    let done: Vec<&team::WorkflowState> = team.states.iter().filter(|s| s.category == "done").collect();
+    if done.is_empty() {
+        return Err(format!("{}'s board has no Done column, so nothing was archived.", team.name));
+    }
+    let column = match done.as_slice() {
+        [only] => only.name.clone(),
+        _ => "Done".to_string(),
+    };
+    let filter = TaskFilter { project_id: project.as_ref().map(|p| p.id.clone()), open_only: false };
+    let cards = tasks::list_lean(cx.db(), &filter).map_err(err)?.into_iter()
+        .filter(|t| done.iter().any(|s| s.id == t.state_id)).collect();
+    Ok(Targets { cards, unknown: vec![], all_done: Some(AllDone { team, column, project }) })
+}
+
+/// The cards `refs` names by identifier (GA-12, case ignored) or id, archived cards included: in the order given, once
+/// each. Titles aren't matched: a reference to no card is skipped, with why.
+fn named_cards(cx: &Cx, refs: &[String]) -> Result<(Vec<Task>, Vec<Skipped>), String> {
+    let mut all = tasks::list_lean(cx.db(), &TaskFilter::default()).map_err(err)?;
+    all.extend(tasks::archived(cx.db(), None).map_err(err)?);
+    let mut by_ref: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for (i, t) in all.iter().enumerate() {
+        by_ref.insert(t.identifier.to_uppercase(), i);
+        by_ref.insert(t.id.clone(), i);
+    }
+    let (mut cards, mut unknown): (Vec<Task>, Vec<Skipped>) = (vec![], vec![]);
+    for r in refs {
+        let r = r.trim();
+        match by_ref.get(r).or_else(|| by_ref.get(&r.to_uppercase())) {
+            Some(&i) if !cards.iter().any(|t| t.id == all[i].id) => cards.push(all[i].clone()),
+            Some(_) => {}
+            None => {
+                let name = r.to_uppercase();
+                if !unknown.iter().any(|s| s.identifier == name) {
+                    unknown.push(Skipped { reason: format!("No task {name}: check the identifier with list_tasks"), identifier: name });
+                }
+            }
+        }
+    }
+    Ok((cards, unknown))
+}
+
+/// The answer of archive_tasks and restore_tasks: how many cards went (`done`: "archived" or "restored"), the first
+/// `NAMED` of them by identifier with `more` for the rest, and every card that was skipped, with why.
+fn bulk_answer(done: &str, out: BulkResult, cards: &[Task], unknown: Vec<Skipped>) -> Value {
+    let names: std::collections::HashMap<&str, &str> = cards.iter().map(|t| (t.id.as_str(), t.identifier.as_str())).collect();
+    let gone: Vec<&str> = out.done.iter().map(|id| names.get(id.as_str()).copied().unwrap_or(id.as_str())).collect();
+    let skipped: Vec<Value> = out.skipped.iter().chain(&unknown).map(|s| json!({"task": s.identifier, "reason": s.reason})).collect();
+    let mut v = json!({"ok": true, "done": done, "tasks": gone.iter().take(NAMED).collect::<Vec<_>>(), "skipped": skipped});
+    v[done] = json!(gone.len());
+    if gone.len() > NAMED {
+        v["more"] = json!(gone.len() - NAMED);
+    }
+    v
+}
+
+/// GA-307: archives cards in Done, as the board's Archive all does: the cards an agent is working on (`runs::working_on`,
+/// a run's worktree being made included) are skipped, then `tasks::archive_many` archives the rest in one write, skipping a
+/// card outside Done or already archived with why. One `rows-changed`. The cards: `archive_targets`.
+pub(crate) fn archive_tasks(cx: &Cx, a: &Args) -> Result<Value, String> {
+    let t = archive_targets(cx, a)?;
+    let ids: Vec<String> = t.cards.iter().map(|c| c.id.clone()).collect();
+    let mut out = BulkResult::default();
+    if !ids.is_empty() {
+        let working: Vec<String> = ids.iter().filter(|id| crate::runs::working_on(cx.st, id)).cloned().collect();
+        out = tasks::archive_many(cx.db(), cx.actor, &ids, &working).map_err(err)?;
+        cx.changed("tasks");
+    }
+    Ok(bulk_answer("archived", out, &t.cards, t.unknown))
+}
+
+/// GA-307: puts archived cards back at the bottom of their Done column, in the order given, as they were
+/// (`tasks::restore_many`, one write; a card that isn't archived is skipped with why), with one `rows-changed`. It only
+/// undoes an archive, so it runs at once after a tool from outside Hersir too.
+pub(crate) fn restore_tasks(cx: &Cx, a: &Args) -> Result<Value, String> {
+    let refs = a.list("tasks").unwrap_or_default();
+    if refs.is_empty() {
+        return Err("Say which cards: give tasks, the archived cards' identifiers like [\"GA-12\"]. Nothing was restored.".into());
+    }
+    let (cards, unknown) = named_cards(cx, &refs)?;
+    let ids: Vec<String> = cards.iter().map(|c| c.id.clone()).collect();
+    let mut out = BulkResult::default();
+    if !ids.is_empty() {
+        out = tasks::restore_many(cx.db(), cx.actor, &ids).map_err(err)?;
+        cx.changed("tasks");
+    }
+    Ok(bulk_answer("restored", out, &cards, unknown))
 }
 
 // ---- agents ----

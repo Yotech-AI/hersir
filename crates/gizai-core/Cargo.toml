@@ -16,6 +16,16 @@ sha2 = { workspace = true }
 libc = { workspace = true }
 getrandom = { workspace = true }
 zstd = { workspace = true }
+# Readable copies of Word, Excel, PowerPoint, OpenDocument and RTF files (src/readable, GA-310): a document's parts read
+# from its zip into memory, their XML parsed by quick-xml (which fetches nothing: no external entities), spreadsheets
+# read by calamine (an .xls file's cells counted first through cfb, so a grid too large is refused before calamine
+# builds it), and an RTF file's code page decoded by encoding_rs (codepage maps its number to one).
+zip = { version = "9", default-features = false, features = ["deflate-flate2"] }
+quick-xml = "0.42"
+calamine = "0.38"
+cfb = "0.14"
+encoding_rs = "0.8"
+codepage = "0.1"
 
 # Local time on Windows (db.rs: local_offset_secs).
 [target.'cfg(windows)'.dependencies]

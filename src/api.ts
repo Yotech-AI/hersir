@@ -95,6 +95,14 @@ export const listArchivedTasks = (projectId: string | null = null) => invoke<T.T
 export const archiveTask = (id: string) => invoke<void>("archive_task", { id });
 /** Puts an archived card back at the bottom of its Done column. */
 export const restoreTask = (id: string) => invoke<void>("restore_task", { id });
+/** GA-306: moves the cards to the bottom of the column, in their order, in one write. A card an agent is working on, or one
+ *  that can't move, is skipped with why (`skipped`); the others go (`done`). */
+export const moveTasks = (ids: string[], stateId: string) => invoke<T.BulkResult>("move_tasks", { ids, stateId });
+/** GA-306: archives the cards (each in Done), in one write. A card an agent is working on, or one outside Done, is skipped
+ *  with why; the others go. */
+export const archiveTasks = (ids: string[]) => invoke<T.BulkResult>("archive_tasks", { ids });
+/** GA-306: puts archived cards back at the bottom of their Done column, in their order (the Undo of `archiveTasks`). */
+export const restoreTasks = (ids: string[]) => invoke<T.BulkResult>("restore_tasks", { ids });
 export const taskActivity = (taskId: string) => invoke<T.ChangeEntry[]>("task_activity", { taskId });
 export const listComments = (taskId: string) => invoke<T.Comment[]>("list_comments", { taskId });
 export const addComment = (taskId: string, bodyMd: string) => invoke<string>("add_comment", { taskId, bodyMd });
@@ -281,7 +289,8 @@ export const bitbucketStatus = () => invoke<T.BitbucketStatus>("bitbucket_status
 export const bitbucketSaveLogin = (email: string, token: string) => invoke<void>("bitbucket_save_login", { email, token });
 /** Removes the email and the token. */
 export const bitbucketRemoveLogin = () => invoke<void>("bitbucket_remove_login");
-/** Check connection: the token, ssh to Bitbucket, and whether you can push to each project with a Bitbucket link. */
+/** Check connection: the token, ssh to each SSH host the Bitbucket projects push to (ssh.bitbucket.org, or your own alias for it),
+ *  whether you can push to each project with a Bitbucket link, and a note for a remote that still names the old SSH host. */
 export const bitbucketCheck = () => invoke<T.ConnectionCheck>("bitbucket_check");
 
 /** A local folder: whether it's a git repository, its branch, and its GitHub or Bitbucket remote as a link. */
@@ -431,6 +440,9 @@ export const pinnedChats = () => invoke<T.ChatThread[]>("pinned_chats");
 export const pinChat = (threadId: string) => invoke<void>("pin_chat", { threadId });
 /** Unpin: the chat leaves Pinned, and is in Recent again when it is one of the 30 newest. */
 export const unpinChat = (threadId: string) => invoke<void>("unpin_chat", { threadId });
+/** Rename on a chat on the left (GA-309): `title`, on one line and trimmed, is its name; at most 80 characters, not empty.
+ *  It keeps its place in Recent. */
+export const renameChat = (threadId: string, title: string) => invoke<T.ChatThread>("rename_chat", { threadId, title });
 /** Chat → Archive: the chats whose title or messages (yours and the Team Lead's) hold `query`, newest first; all for "". */
 export const searchChatThreads = (query: string) => invoke<T.ChatHit[]>("search_chat_threads", { query });
 export const chatMessages = (threadId: string) => invoke<T.ChatMessage[]>("chat_messages", { threadId });

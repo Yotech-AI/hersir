@@ -1,6 +1,11 @@
 # Builds and tests Gizai on Linux, macOS (Apple silicon) and Windows, on every pull request and every push to main.
 # A pull request into main that only bumps Gizai's version passes without building or testing (the "Version only?"
-# step). It signs, releases and uploads nothing.
+# step). When one changes the AUR package (packaging/), install.sh or this workflow, Arch Linux builds, checks and
+# installs the AUR package too (the arch job). When one changes the Homebrew formula (packaging/homebrew), install.sh
+# or this workflow, macOS installs the formula from a local tap with a test build (the homebrew job). When one changes
+# the Scoop package (packaging/scoop), install.ps1, gizai-mcp's Cargo.toml or this workflow, Windows builds Hersir as
+# Release builds does and installs it with Scoop from a local bucket (the scoop job). It signs, releases, publishes and
+# uploads nothing.
 name: CI
 
 on:
@@ -206,3 +211,697 @@ jobs:
       # Every test binary, also after one fails, so one run shows all the failures on a system.
       - run: cargo test --workspace --no-fail-fast
         if: steps.version.outputs.only != 'true'
+
+  # Whether this pull request (or push to main) changes what the arch job checks: the AUR package and its licence
+  # (packaging/), install.sh, whose launcher and desktop entry the package makes, and this workflow. The rest of Hersir
+  # never goes into the package, which installs a release's ready-made build; so a version bump changes none of it.
+  # HEAD is the pull request's merge commit, and HEAD^1 is main; for a push, the commit main was at before. When the
+  # fetch or the check fails, the arch job runs.
+  aur-changes:
+    name: AUR package changed?
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      changed: ${{ steps.check.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: AUR package changed?
+        id: check
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            git fetch --quiet --no-tags --depth=2 origin "$GITHUB_SHA" && base="HEAD^1" || base=""
+          else
+            git fetch --quiet --no-tags --depth=1 origin "$BEFORE" && base="$BEFORE" || base=""
+          fi
+          if [ -n "$base" ] && git diff --quiet "$base" HEAD -- packaging install.sh .github/workflows/ci.yml; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # hersir-bin, the AUR package (packaging/aur/hersir-bin), built on Arch Linux as its users build it: makepkg as a user
+  # of its own, with the package's dependencies, from the release its PKGBUILD names. makepkg checks the release's
+  # archive against its line in that release's signed SHA256SUMS, and install.sh, the icons and NOTICE against their
+  # sha256s in git at the release's commit. namcap must report no error on the PKGBUILD or the package. Then pacman
+  # installs it, and:
+  # - hersir --version says the PKGBUILD's version, and /usr/lib/hersir/hersir-package.txt says aur (GA-199);
+  # - the package holds exactly its files, its programs as the release built them;
+  # - the launcher, the desktop entry and the icons are the ones install.sh --skip-build makes at the release's commit,
+  #   and the PKGBUILD makes this commit's install.sh's launcher and desktop entry too, for the next release;
+  # - pacman -Rns removes it and leaves a data folder as it was.
+  # It publishes nothing: the AUR gets a package only from scripts/packages.sh, on Jeffrey's computer.
+  arch:
+    name: Arch Linux (hersir-bin)
+    needs: aur-changes
+    if: needs.aur-changes.outputs.changed == 'true'
+    runs-on: ubuntu-24.04
+    container: archlinux:latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      BUILD: /home/builder/hersir-bin
+    steps:
+      # Arch rolls, so a full upgrade first: installing from fresh lists onto an older system is a partial upgrade. git
+      # before the checkout, which makes no git repository without it; base-devel for makepkg, and namcap.
+      - name: Package lists, git, base-devel and namcap
+        run: |
+          set -eux
+          pacman -Syu --noconfirm
+          pacman -S --needed --noconfirm base-devel git namcap
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - uses: actions/checkout@v4
+
+      # makepkg never runs as root. Like yay, it installs the package's dependencies with sudo pacman.
+      - name: A user that builds the package
+        run: |
+          set -eux
+          useradd --create-home builder
+          echo 'builder ALL=(root) NOPASSWD: /usr/bin/pacman' > /etc/sudoers.d/builder
+          cp -r packaging/aur/hersir-bin "$BUILD"
+          chown -R builder:builder "$BUILD"
+
+      - name: .SRCINFO is what makepkg --printsrcinfo makes of the PKGBUILD
+        working-directory: ${{ env.BUILD }}
+        run: sudo -u builder makepkg --printsrcinfo | diff -u .SRCINFO -
+
+      - name: makepkg
+        working-directory: ${{ env.BUILD }}
+        run: sudo -u builder makepkg --syncdeps --noconfirm
+
+      - name: namcap reports no error on the PKGBUILD or the package
+        working-directory: ${{ env.BUILD }}
+        run: |
+          set -o pipefail
+          namcap PKGBUILD | tee namcap.txt
+          namcap hersir-bin-*.pkg.tar.zst | tee -a namcap.txt
+          if grep ' E: ' namcap.txt; then echo "namcap reports an error (above)."; exit 1; fi
+
+      - name: Install it with pacman
+        run: pacman -U --noconfirm "$BUILD"/hersir-bin-*.pkg.tar.zst
+
+      - name: Hersir says its version, hersir-package.txt says aur, and the package holds exactly its files
+        working-directory: ${{ env.BUILD }}
+        run: |
+          set -euxo pipefail
+          . ./PKGBUILD
+          # As you run it: the hersir command, through the launcher, as a user.
+          test "$(sudo -u builder hersir --version)" = "hersir $pkgver"
+          test "$(cat /usr/lib/hersir/hersir-package.txt)" = aur
+          test "$(readlink /usr/bin/hersir)" = /usr/lib/hersir/hersir-launch
+          cmp /usr/lib/hersir/hersir src/target/release/hersir
+          cmp /usr/lib/hersir/hersir-mcp src/target/release/hersir-mcp
+          pacman -Qlq hersir-bin | grep -v '/$' | sort > files.txt
+          printf '%s\n' /usr/bin/hersir /usr/lib/hersir/hersir /usr/lib/hersir/hersir-launch /usr/lib/hersir/hersir-mcp \
+            /usr/lib/hersir/hersir-package.txt /usr/share/applications/hersir.desktop \
+            /usr/share/icons/hicolor/32x32/apps/hersir.png /usr/share/icons/hicolor/64x64/apps/hersir.png \
+            /usr/share/icons/hicolor/128x128/apps/hersir.png /usr/share/icons/hicolor/256x256/apps/hersir.png \
+            /usr/share/icons/hicolor/512x512/apps/hersir.png /usr/share/icons/hicolor/scalable/apps/hersir.svg \
+            /usr/share/licenses/hersir-bin/NOTICE | sort | diff -u - files.txt
+
+      # install.sh itself, at the release's commit, with the release's programs where --skip-build takes them, into a
+      # scratch folder: its launcher, desktop entry and icons, with that folder as /usr/lib/hersir, are the package's.
+      - name: The launcher, the desktop entry and the icons are the ones install.sh makes at the release's commit
+        run: |
+          set -euxo pipefail
+          . "$BUILD/PKGBUILD"
+          src="$RUNNER_TEMP/release-source" scratch="$RUNNER_TEMP/install-sh"
+          git init -q "$src"
+          git -C "$src" fetch -q --depth=1 --no-tags "https://github.com/Yotech-AI/hersir.git" "$_commit"
+          git -C "$src" checkout -q FETCH_HEAD
+          mkdir -p "$src/target/release"
+          cp "$BUILD/src/target/release/hersir" "$BUILD/src/target/release/hersir-mcp" "$src/target/release/"
+          HOME="$scratch/home" XDG_DATA_HOME="$scratch/share" HERSIR_PREFIX="$scratch/prefix" bash "$src/install.sh" --skip-build
+          lib="$scratch/prefix/lib/hersir"
+          diff -u <(sed "s#$lib#/usr/lib/hersir#g" "$lib/hersir-launch") /usr/lib/hersir/hersir-launch
+          diff -u <(sed "s#$lib#/usr/lib/hersir#g" "$scratch/share/applications/hersir.desktop") /usr/share/applications/hersir.desktop
+          test "$(readlink "$scratch/prefix/bin/hersir")" = "$lib/hersir-launch"
+          icons="$scratch/share/icons/hicolor"
+          cmp "$icons/32x32/apps/hersir.png" /usr/share/icons/hicolor/32x32/apps/hersir.png
+          cmp "$icons/64x64/apps/hersir.png" /usr/share/icons/hicolor/64x64/apps/hersir.png
+          cmp "$icons/128x128/apps/hersir.png" /usr/share/icons/hicolor/128x128/apps/hersir.png
+          cmp "$icons/256x256/apps/hersir.png" /usr/share/icons/hicolor/256x256/apps/hersir.png
+          cmp "$icons/512x512/apps/hersir.png" /usr/share/icons/hicolor/512x512/apps/hersir.png
+          cmp "$icons/scalable/apps/hersir.svg" /usr/share/icons/hicolor/scalable/apps/hersir.svg
+
+      # The next release's package makes its launcher and desktop entry from this commit's install.sh: the PKGBUILD's
+      # way must still give what install.sh itself writes.
+      - name: The PKGBUILD makes this commit's install.sh's launcher and desktop entry too
+        run: |
+          set -euxo pipefail
+          work="$RUNNER_TEMP/this-commit" scratch="$RUNNER_TEMP/install-sh-this-commit"
+          mkdir -p "$work" target/release
+          (
+            . "$BUILD/PKGBUILD"
+            srcdir="$work"
+            cp install.sh "$srcdir/hersir-$pkgver-install.sh"
+            _install_sh LAUNCH > "$work/hersir-launch"
+            _install_sh DESKTOP > "$work/hersir.desktop"
+          )
+          cp "$BUILD/src/target/release/hersir" "$BUILD/src/target/release/hersir-mcp" target/release/
+          HOME="$scratch/home" XDG_DATA_HOME="$scratch/share" HERSIR_PREFIX="$scratch/prefix" bash ./install.sh --skip-build
+          lib="$scratch/prefix/lib/hersir"
+          diff -u <(sed "s#$lib#/usr/lib/hersir#g" "$lib/hersir-launch") "$work/hersir-launch"
+          diff -u <(sed "s#$lib#/usr/lib/hersir#g" "$scratch/share/applications/hersir.desktop") "$work/hersir.desktop"
+
+      - name: Removing the package leaves the data folder as it was
+        run: |
+          set -euxo pipefail
+          home=/home/builder
+          sudo -u builder mkdir -p "$home/.local/share/hersir/backups" "$home/.local/share/dev.hersir.app"
+          sudo -u builder sh -c 'printf "your data\n" > "$1/hersir/gizai.db"; printf "a backup\n" > "$1/hersir/backups/gizai-manual.db"; printf "storage\n" > "$1/dev.hersir.app/storage"' sh "$home/.local/share"
+          before="$(cd "$home/.local/share" && find hersir dev.hersir.app -exec ls -ld --time-style=+%s {} + | sort && find hersir dev.hersir.app -type f -exec sha256sum {} + | sort)"
+          pacman -Rns --noconfirm hersir-bin
+          test ! -e /usr/lib/hersir && test ! -e /usr/bin/hersir && test ! -e /usr/share/applications/hersir.desktop
+          test "$(cd "$home/.local/share" && find hersir dev.hersir.app -exec ls -ld --time-style=+%s {} + | sort && find hersir dev.hersir.app -type f -exec sha256sum {} + | sort)" = "$before"
+
+  # Whether this pull request (or push to main) changes what the homebrew job checks: the formula and the tap's README
+  # (packaging/homebrew), install.sh, which makes the job's test build, and this workflow. The rest of Hersir never goes
+  # into the formula, which installs a release's ready-made build; so a version bump changes none of it. HEAD is the pull
+  # request's merge commit, and HEAD^1 is main; for a push, the commit main was at before. When the fetch or the check
+  # fails, the homebrew job runs.
+  homebrew-changes:
+    name: Homebrew formula changed?
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      changed: ${{ steps.check.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Homebrew formula changed?
+        id: check
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            git fetch --quiet --no-tags --depth=2 origin "$GITHUB_SHA" && base="HEAD^1" || base=""
+          else
+            git fetch --quiet --no-tags --depth=1 origin "$BEFORE" && base="$BEFORE" || base=""
+          fi
+          if [ -n "$base" ] && git diff --quiet "$base" HEAD -- packaging/homebrew install.sh .github/workflows/ci.yml; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # hersir, the Homebrew formula (packaging/homebrew/hersir.rb), installed as its users install it, on GitHub's macOS
+  # runner (Apple silicon), from a test build: this commit built with install.sh --build-only and packed as Release
+  # builds packs a release's macOS build, hersir-X.Y.Z-macos-arm64.tar.gz. The formula gets that archive's sha256 and
+  # version, as scripts/packages.sh fills in a signed release's, in a local tap of this job's own, never
+  # Yotech-AI/homebrew-tap. Then:
+  # - brew install, brew test (hersir --version) and brew audit --strict pass, and hersir --version says the version;
+  # - the installed Hersir.app passes codesign --verify --deep --strict and holds hersir and hersir-mcp, the hersir
+  #   command starts it from Homebrew's Cellar (so Hersir doesn't update itself), and the caveats show the link line;
+  # - nothing the formula installed has the quarantine mark: xattr -p com.apple.quarantine finds none on the app, its
+  #   programs or the commands, and xattr finds it on a copy marked here, so the check can see one;
+  # - brew uninstall removes it and leaves a data folder as it was.
+  # It publishes nothing: the tap gets a formula only from scripts/packages.sh, on Jeffrey's computer.
+  homebrew:
+    name: macOS (Homebrew formula)
+    needs: homebrew-changes
+    if: needs.homebrew-changes.outputs.changed == 'true'
+    runs-on: macos-15
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: 1
+      HOMEBREW_NO_ANALYTICS: 1
+      HOMEBREW_NO_ENV_HINTS: 1
+      # A tap of this job's own, made below; never yotech-ai/tap.
+      TAP: hersir-ci/local
+    steps:
+      # No token is left in the checkout for the build's own scripts.
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: A test build (install.sh --build-only)
+        run: /bin/bash ./install.sh --build-only
+
+      # As Release builds packs a release's macOS build: exactly the files --skip-build installs, at the paths the build
+      # left them, without extended attributes.
+      - name: Packed as Release builds packs it
+        id: build
+        run: |
+          set -euo pipefail
+          version="$(node -p 'require("./src-tauri/tauri.conf.json").version')"
+          archive="$RUNNER_TEMP/builds/hersir-$version-macos-arm64.tar.gz"
+          mkdir -p "$RUNNER_TEMP/builds"
+          COPYFILE_DISABLE=1 /usr/bin/tar --no-xattrs -czf "$archive" \
+            target/release/hersir target/release/hersir-mcp target/release/bundle/macos/Hersir.app
+          tar -tzvf "$archive"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(shasum -a 256 "$archive" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+
+      # The formula as scripts/packages.sh writes it for a release vX.Y.Z (its url, the release's archive on GitHub, and
+      # its sha256), into a local tap. published.rb is that formula; install.rb the same with the test build's own
+      # address, file://, as the release of this version isn't on GitHub, or holds another build. Homebrew reads the
+      # version from a release's address on GitHub, not from a file's name (hersir-X.Y.Z-macos-arm64 would be 64), so
+      # install.rb says its version. Nothing trusts the tap first: as for people, brew install with the formula's full
+      # name is what lets Homebrew load it from a tap that isn't its own, and trusts it for brew test and brew audit.
+      - name: The formula for the test build, in a local tap
+        env:
+          VERSION: ${{ steps.build.outputs.version }}
+          ARCHIVE: ${{ steps.build.outputs.archive }}
+          SUM: ${{ steps.build.outputs.sha256 }}
+        run: |
+          set -euxo pipefail
+          brew tap-new --no-git "$TAP"
+          url="https://github.com/Yotech-AI/hersir/releases/download/v$VERSION/hersir-$VERSION-macos-arm64.tar.gz"
+          sed -e "s#^  url \"[^\"]*\"\$#  url \"$url\"#" -e "s#^  sha256 \"[0-9a-f]\{64\}\"\$#  sha256 \"$SUM\"#" \
+            packaging/homebrew/hersir.rb > "$RUNNER_TEMP/published.rb"
+          awk -v url="file://$ARCHIVE" -v version="$VERSION" \
+            '/^  url "/ { print "  url \"" url "\""; print "  version \"" version "\""; next } { print }' \
+            "$RUNNER_TEMP/published.rb" > "$RUNNER_TEMP/install.rb"
+          diff "$RUNNER_TEMP/published.rb" "$RUNNER_TEMP/install.rb" || true
+          grep -qxF "  url \"file://$ARCHIVE\"" "$RUNNER_TEMP/install.rb"
+          grep -qxF "  version \"$VERSION\"" "$RUNNER_TEMP/install.rb"
+          # Only the url and the sha256 differ from the template.
+          diff <(grep -v -e '^  url "' -e '^  sha256 "' packaging/homebrew/hersir.rb) \
+            <(grep -v -e '^  url "' -e '^  sha256 "' "$RUNNER_TEMP/published.rb")
+          grep -qxF "  url \"$url\"" "$RUNNER_TEMP/published.rb"
+          grep -qxF "  sha256 \"$SUM\"" "$RUNNER_TEMP/published.rb"
+          cp "$RUNNER_TEMP/install.rb" "$(brew --repository "$TAP")/Formula/hersir.rb"
+
+      - name: brew install
+        run: |
+          set -euxo pipefail
+          brew install --formula "$TAP/hersir"
+          brew info --formula "$TAP/hersir"
+          # From here on, the formula as it is published: brew test and brew audit read it.
+          cp "$RUNNER_TEMP/published.rb" "$(brew --repository "$TAP")/Formula/hersir.rb"
+
+      - name: brew test
+        run: brew test --verbose "$TAP/hersir"
+
+      # --strict, as for a tap's formula. Not --online, as the test build's version may not be released yet, and not
+      # --new, which is for homebrew/core's own new formulae.
+      - name: brew audit
+        run: brew audit --strict --formula "$TAP/hersir"
+
+      - name: Hersir says its version, runs from Homebrew's Cellar, and the caveats show the link line
+        env:
+          VERSION: ${{ steps.build.outputs.version }}
+        run: |
+          set -euxo pipefail
+          brew_prefix="$(brew --prefix)"
+          keg="$(brew --cellar "$TAP/hersir")/$VERSION"
+          app="$keg/Hersir.app"
+          test "$(hersir --version)" = "hersir $VERSION"
+          test "$(command -v hersir)" = "$brew_prefix/bin/hersir"
+          test "$(command -v hersir-mcp)" = "$brew_prefix/bin/hersir-mcp"
+          # hersir starts the app's own program in the Cellar; hersir-mcp is the one inside the app.
+          grep -qF "exec \"$app/Contents/MacOS/hersir\"" "$(realpath "$brew_prefix/bin/hersir")"
+          test "$(realpath "$brew_prefix/bin/hersir-mcp")" = "$(realpath "$app/Contents/MacOS/hersir-mcp")"
+          test -x "$app/Contents/MacOS/hersir" && test -x "$app/Contents/MacOS/hersir-mcp"
+          test "$(realpath "$brew_prefix/opt/hersir/Hersir.app")" = "$(realpath "$app")"
+          brew info --formula "$TAP/hersir" > "$RUNNER_TEMP/info.txt"
+          grep -qF "mkdir -p ~/Applications && ln -sfn $brew_prefix/opt/hersir/Hersir.app ~/Applications/Hersir.app" "$RUNNER_TEMP/info.txt"
+          grep -qF "brew update && brew upgrade hersir" "$RUNNER_TEMP/info.txt"
+
+      - name: codesign --verify passes on the installed Hersir.app
+        env:
+          VERSION: ${{ steps.build.outputs.version }}
+        run: |
+          set -euxo pipefail
+          app="$(brew --cellar "$TAP/hersir")/$VERSION/Hersir.app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign --display --verbose=2 "$app"
+          codesign --verify --strict --verbose=2 "$app/Contents/MacOS/hersir-mcp"
+
+      - name: No quarantine mark on the app, its programs or the commands
+        env:
+          VERSION: ${{ steps.build.outputs.version }}
+        run: |
+          set -euxo pipefail
+          keg="$(brew --cellar "$TAP/hersir")/$VERSION"
+          app="$keg/Hersir.app"
+          for path in "$app" "$app/Contents/MacOS/hersir" "$app/Contents/MacOS/hersir-mcp" "$keg/bin/hersir" \
+            "$(brew --prefix)/bin/hersir" "$(brew --prefix)/bin/hersir-mcp"; do
+            if xattr -p com.apple.quarantine "$path"; then echo "$path has the quarantine mark."; exit 1; fi
+          done
+          if xattr -lr "$keg" | grep com.apple.quarantine; then echo "Something in $keg has the quarantine mark."; exit 1; fi
+          # The check sees a mark where there is one: on a copy of the app, marked here.
+          ditto "$app" "$RUNNER_TEMP/marked/Hersir.app"
+          xattr -w com.apple.quarantine "0081;00000000;CI;" "$RUNNER_TEMP/marked/Hersir.app"
+          xattr -p com.apple.quarantine "$RUNNER_TEMP/marked/Hersir.app"
+          xattr -lr "$RUNNER_TEMP/marked" | grep -q com.apple.quarantine
+
+      - name: brew uninstall removes it and leaves the data folder as it was
+        env:
+          VERSION: ${{ steps.build.outputs.version }}
+        run: |
+          set -euxo pipefail
+          data="$HOME/Library/Application Support/Hersir"
+          mkdir -p "$data/backups" "$HOME/Library/WebKit/dev.hersir.app"
+          printf 'your data\n' > "$data/gizai.db"
+          printf 'a backup\n' > "$data/backups/gizai-manual.db"
+          printf 'storage\n' > "$HOME/Library/WebKit/dev.hersir.app/storage"
+          state() { find "$data" "$HOME/Library/WebKit/dev.hersir.app" -exec stat -f '%N %m %z %p' {} + | sort; find "$data" "$HOME/Library/WebKit/dev.hersir.app" -type f -exec shasum -a 256 {} + | sort; }
+          before="$(state)"
+          keg="$(brew --cellar "$TAP/hersir")/$VERSION"
+          brew uninstall --formula "$TAP/hersir"
+          test ! -e "$keg" && test ! -e "$(brew --prefix)/bin/hersir" && test ! -e "$(brew --prefix)/bin/hersir-mcp"
+          test "$(state)" = "$before"
+
+  # Whether this pull request (or push to main) changes what the scoop job checks: the Scoop package (packaging/scoop),
+  # install.ps1, which builds the programs the package installs, gizai-mcp's Cargo.toml, as hersir-mcp.exe's static C
+  # runtime holds only while its crates have no C code, and this workflow. A version bump changes none of them. HEAD is
+  # the pull request's merge commit, and HEAD^1 is main; for a push, the commit main was at before. When the fetch or
+  # the check fails, the scoop job runs.
+  scoop-changes:
+    name: Scoop package changed?
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      changed: ${{ steps.check.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scoop package changed?
+        id: check
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            git fetch --quiet --no-tags --depth=2 origin "$GITHUB_SHA" && base="HEAD^1" || base=""
+          else
+            git fetch --quiet --no-tags --depth=1 origin "$BEFORE" && base="$BEFORE" || base=""
+          fi
+          if [ -n "$base" ] && git diff --quiet "$base" HEAD -- packaging/scoop install.ps1 crates/gizai-mcp/Cargo.toml .github/workflows/ci.yml; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # hersir in the Scoop bucket (packaging/scoop), installed on Windows as its users install it, from a local bucket
+  # with a test build of this commit:
+  # - install.ps1 -BuildOnly builds Hersir as Release builds does, and dumpbin /dependents lists no VCRUNTIME140.dll
+  #   (nor another Visual C++ runtime DLL) for hersir.exe and hersir-mcp.exe: a fresh Windows has none;
+  # - the two programs, packed as Release builds packs hersir-X.Y.Z-windows-x86_64.zip, go into a local bucket laid out
+  #   as scripts/packages.sh lays out Yotech-AI/scoop-bucket, with the manifest's version, address (the zip, as a
+  #   file:// address) and sha256 filled in for that zip;
+  # - Scoop installs it in Windows PowerShell 5.1: hersir --version says the version, in PowerShell and in cmd, through
+  #   the hersir command the manifest's pre_install writes (hersir.ps1: Scoop's shim for a window app such as hersir.exe
+  #   would print nothing), and hersir without an option starts hersir.exe; hersir-package.txt beside the programs says
+  #   scoop, the Start menu shortcut carries dev.hersir.app and starts hersir.exe in Scoop's current folder, and neither
+  #   program has a Zone.Identifier stream;
+  # - an update to a newer version (the same zip), in PowerShell 7, keeps the shortcut, the mark and the hersir command;
+  # - scoop uninstall hersir, and scoop uninstall hersir --purge, remove the commands and leave the data folders as they
+  #   were.
+  # It publishes nothing: the bucket gets a release only from scripts/packages.sh, on Jeffrey's computer.
+  scoop:
+    name: Windows (Scoop)
+    needs: scoop-changes
+    if: needs.scoop-changes.outputs.changed == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      # The build keeps the repository's LF, as Release builds' does: Hersir embeds text files as they are.
+      - name: Keep LF line endings
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v4
+
+      # Before the build: the shortcut script and the manifest's hooks, as Scoop joins their lines, parse in Windows
+      # PowerShell 5.1, and so does the hersir command that pre_install writes.
+      - name: The shortcut script and the manifest's hooks parse
+        shell: powershell
+        run: |
+          $manifest = Get-Content -LiteralPath packaging\scoop\hersir.json -Raw | ConvertFrom-Json
+          $sources = [ordered]@{
+            'scripts\hersir-shortcut.ps1' = Get-Content -LiteralPath packaging\scoop\scripts\hersir-shortcut.ps1 -Raw
+            'pre_install' = $manifest.pre_install -join "`r`n"
+            'post_install' = $manifest.post_install -join "`r`n"
+            'pre_uninstall' = $manifest.pre_uninstall -join "`r`n"
+          }
+          foreach ($name in $sources.Keys) {
+            $tokens = $null; $errs = $null
+            [System.Management.Automation.Language.Parser]::ParseInput($sources[$name], [ref]$tokens, [ref]$errs) | Out-Null
+            if ($errs) { "::error::$name doesn't parse:"; $errs; exit 1 }
+          }
+          # pre_install as Scoop runs it, with $dir a folder of its own: the hersir.ps1 it writes there parses too.
+          $dir = Join-Path $env:RUNNER_TEMP 'pre-install'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          & ([scriptblock]::Create($sources['pre_install']))
+          $tokens = $null; $errs = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("$dir\hersir.ps1", [ref]$tokens, [ref]$errs) | Out-Null
+          if ($errs) { "::error::The hersir.ps1 that pre_install writes doesn't parse:"; $errs; exit 1 }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # The build Release builds makes for a release, with Windows PowerShell 5.1, without caches.
+      - name: Build (install.ps1 -BuildOnly)
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -BuildOnly
+          if ($LASTEXITCODE -ne 0) { '::error::install.ps1 -BuildOnly failed'; exit 1 }
+
+      # What each program needs to start, from dumpbin of the Visual Studio the build used.
+      - name: hersir.exe and hersir-mcp.exe need no VCRUNTIME140.dll
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          $dumpbin = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find 'VC\Tools\MSVC\**\bin\Hostx64\x64\dumpbin.exe' | Select-Object -First 1
+          if (-not $dumpbin) { "::error::vswhere found no dumpbin.exe"; exit 1 }
+          foreach ($exe in @('hersir.exe', 'hersir-mcp.exe')) {
+            $deps = @(& $dumpbin /nologo /dependents "target\release\$exe")
+            if ($LASTEXITCODE -ne 0) { "::error::dumpbin /dependents $exe failed"; exit 1 }
+            $deps | ForEach-Object { Write-Host $_ }
+            if (-not ($deps -match '^\s*KERNEL32\.dll\s*$')) { "::error::dumpbin /dependents $exe lists no KERNEL32.dll: it didn't list the dependencies"; exit 1 }
+            $runtime = @($deps -match '^\s*(vcruntime|msvcp)\d+\w*\.dll\s*$' | ForEach-Object { $_.Trim() })
+            if ($runtime) { "::error::$exe needs $($runtime -join ', '), which a fresh Windows doesn't have."; exit 1 }
+          }
+
+      # Scoop for the runner's account, with its own install line: -RunAsAdmin, as the runner's account is an
+      # administrator. Its commands go on the PATH of the steps after this one.
+      - name: Scoop
+        shell: pwsh
+        run: |
+          Invoke-Expression "& {$(Invoke-RestMethod -Uri https://get.scoop.sh)} -RunAsAdmin"
+          $shims = Join-Path $env:USERPROFILE 'scoop\shims'
+          if (-not (Test-Path -LiteralPath (Join-Path $shims 'scoop.ps1'))) { "::error::Scoop isn't in $shims"; exit 1 }
+          Add-Content -LiteralPath $env:GITHUB_PATH -Value $shims
+          exit 0
+
+      # The zip as Release builds packs it, in the runner's temp folder, and the bucket as scripts/packages.sh lays it
+      # out (bucket/hersir.json, scripts/hersir-shortcut.ps1, README.md, LICENSE) in a git repository of its own there.
+      - name: A local bucket with the test build
+        shell: pwsh
+        run: |
+          $version = (Get-Content -LiteralPath src-tauri\tauri.conf.json -Raw | ConvertFrom-Json).version
+          $archive = "hersir-$version-windows-x86_64.zip"
+          $builds = Join-Path $env:RUNNER_TEMP 'builds'
+          $bucket = Join-Path $env:RUNNER_TEMP 'scoop-bucket'
+          New-Item -ItemType Directory -Force -Path $builds | Out-Null
+          $zipPath = Join-Path $builds $archive
+          Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+          $zip = [System.IO.Compression.ZipFile]::Open($zipPath, 'Create')
+          try {
+            foreach ($p in @('hersir.exe', 'hersir-mcp.exe')) {
+              $file = Join-Path $env:GITHUB_WORKSPACE "target\release\$p"
+              [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $file, "target/release/$p", 'Optimal') | Out-Null
+            }
+          } finally {
+            $zip.Dispose()
+          }
+          $hash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $archive"
+          $manifest = Get-Content -LiteralPath packaging\scoop\hersir.json -Raw | ConvertFrom-Json
+          $manifest.version = $version
+          $manifest.architecture.'64bit'.url = ([Uri]$zipPath).AbsoluteUri
+          $manifest.architecture.'64bit'.hash = $hash
+          New-Item -ItemType Directory -Force -Path "$bucket\bucket", "$bucket\scripts" | Out-Null
+          $manifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath "$bucket\bucket\hersir.json"
+          Copy-Item -LiteralPath packaging\scoop\scripts\hersir-shortcut.ps1 -Destination "$bucket\scripts\"
+          Copy-Item -LiteralPath packaging\scoop\README.md, packaging\LICENSE -Destination "$bucket\"
+          Get-Content -LiteralPath "$bucket\bucket\hersir.json"
+          git -C $bucket init -q -b main
+          git -C $bucket add -A
+          git -C $bucket -c user.name=CI -c user.email=ci@hersir.invalid commit -q -m "hersir $version"
+          if ($LASTEXITCODE -ne 0) { '::error::Could not commit the local bucket'; exit 1 }
+          [IO.File]::AppendAllText($env:GITHUB_ENV, "VERSION=$version`nBUCKET=$bucket`n")
+
+      # As the bucket's README says, in Windows PowerShell 5.1, which runs Scoop and the manifest's post_install.
+      - name: scoop install hersir from the local bucket (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $url = ([Uri]$env:BUCKET).AbsoluteUri
+          scoop bucket add hersir $url
+          scoop install hersir/hersir
+          $prefix = Join-Path $env:USERPROFILE 'scoop\apps\hersir\current'
+          foreach ($exe in @('hersir.exe', 'hersir-mcp.exe')) {
+            if (-not (Test-Path -LiteralPath "$prefix\$exe")) { "::error::Scoop didn't install $exe in $prefix"; exit 1 }
+          }
+          exit 0
+
+      # The hersir command, through Scoop's shims: shims\hersir.ps1 in PowerShell and shims\hersir.cmd in cmd, which run
+      # the hersir.ps1 that pre_install wrote beside the programs, never a shim of the window app hersir.exe itself.
+      # Without --version, --help or --backup, hersir starts Hersir and returns: here a stand-in for Start-Process only
+      # notes what it would start. Then the mark beside the programs; the Start menu shortcut, read back as Install reads
+      # install.ps1's; no Zone.Identifier stream, which SmartScreen would stop the programs for.
+      - name: hersir --version, hersir-package.txt, the shortcut and no Zone.Identifier
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $prefix = Join-Path $env:USERPROFILE 'scoop\apps\hersir\current'
+          $shims = Join-Path $env:USERPROFILE 'scoop\shims'
+          "hersir is $((Get-Command hersir).Source)"
+          foreach ($shim in @('hersir.ps1', 'hersir.cmd')) {
+            if (-not (Test-Path -LiteralPath "$shims\$shim")) { "::error::Scoop made no $shim in $shims"; exit 1 }
+          }
+          if (Test-Path -LiteralPath "$shims\hersir.exe") { "::error::Scoop made $shims\hersir.exe, a window app's shim, which prints nothing"; exit 1 }
+          $got = hersir --version
+          $code = $LASTEXITCODE
+          "hersir --version: $got"
+          if ("$got" -ne "hersir $env:VERSION") { "::error::hersir --version says $got, not hersir $env:VERSION."; exit 1 }
+          if ($code -ne 0) { "::error::hersir --version exited with $code"; exit 1 }
+          $got = cmd /d /c 'hersir --version'
+          "hersir --version in cmd: $got"
+          if ("$got" -ne "hersir $env:VERSION") { "::error::hersir --version in cmd says $got, not hersir $env:VERSION."; exit 1 }
+          $help = (hersir --help) -join "`n"
+          if ($help -notmatch 'Usage: hersir \[--version') { "::error::hersir --help says: $help"; exit 1 }
+          $global:started = @()
+          function global:Start-Process { param([string]$FilePath, [string]$ArgumentList, [string]$WorkingDirectory) $global:started += "$FilePath|$ArgumentList" }
+          hersir
+          hersir --no-such-option 'two words'
+          Remove-Item -LiteralPath Function:\Start-Process
+          Get-Process -Name hersir -ErrorAction SilentlyContinue | Stop-Process -Force
+          "hersir started: $($global:started -join '; ')"
+          $ok = $global:started.Count -eq 2 -and $global:started[0] -like '*\apps\hersir\current\hersir.exe|'
+          $ok = $ok -and $global:started[1] -like '*\apps\hersir\current\hersir.exe|--no-such-option "two words"'
+          if (-not $ok) { '::error::hersir without --version, --help or --backup should start hersir.exe in current, with its arguments'; exit 1 }
+          $mark = Get-Content -LiteralPath "$prefix\hersir-package.txt"
+          "hersir-package.txt: $mark"
+          if ("$mark" -ne 'scoop') { "::error::hersir-package.txt beside the programs says $mark, not scoop."; exit 1 }
+          $menu = Join-Path ([Environment]::GetFolderPath('StartMenu')) 'Programs\Scoop Apps'
+          $id = (New-Object -ComObject Shell.Application).NameSpace($menu).ParseName('Hersir.lnk').ExtendedProperty('System.AppUserModel.ID')
+          $target = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $menu 'Hersir.lnk')).TargetPath
+          "shortcut: $target, app id $id"
+          if ($id -ne 'dev.hersir.app') { '::error::the Start menu shortcut Hersir.lnk should carry dev.hersir.app'; exit 1 }
+          if (-not ($target -like '*\apps\hersir\current\hersir.exe' -and (Test-Path -LiteralPath $target))) {
+            "::error::the Start menu shortcut Hersir.lnk should start hersir.exe in Scoop's current folder, $prefix"; exit 1
+          }
+          foreach ($exe in @('hersir.exe', 'hersir-mcp.exe')) {
+            if (Get-Item -LiteralPath "$prefix\$exe" -Stream 'Zone.Identifier' -ErrorAction SilentlyContinue) { "::error::$exe has a Zone.Identifier stream."; exit 1 }
+          }
+          exit 0
+
+      # A newer version in the bucket (the same zip), which scoop update fetches. Scoop runs the old version's
+      # pre_uninstall, which removes the shortcut, then the new version's post_install, here in PowerShell 7. Every check
+      # runs, and each failure is an annotation (::error::) with what it found.
+      - name: An update keeps the shortcut and the mark (PowerShell 7)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $v = $env:VERSION.Split('.')
+          $next = "$($v[0]).$($v[1]).$([int]$v[2] + 1)"
+          $file = "$env:BUCKET\bucket\hersir.json"
+          $manifest = Get-Content -LiteralPath $file -Raw | ConvertFrom-Json
+          $manifest.version = $next
+          $manifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $file
+          git -C $env:BUCKET -c user.name=CI -c user.email=ci@hersir.invalid commit -q -a -m "hersir $next"
+          if ($LASTEXITCODE -ne 0) { "::error::Could not commit hersir $next to the local bucket"; exit 1 }
+          scoop update
+          scoop update hersir *>&1 | Tee-Object -Variable updated
+          $said = (@($updated | ForEach-Object { "$_".Trim() } | Where-Object { $_ }) | Select-Object -Last 10) -join ' | '
+          $failed = @()
+          $prefix = Join-Path $env:USERPROFILE 'scoop\apps\hersir\current'
+          $now = (Get-Item -LiteralPath $prefix).Target
+          "current is $now"
+          if ("$now" -notlike "*\hersir\$next") {
+            $clone = Join-Path $env:USERPROFILE 'scoop\buckets\hersir'
+            $seen = (Get-Content -LiteralPath "$clone\bucket\hersir.json" -Raw | ConvertFrom-Json).version
+            $versions = @(Get-ChildItem -LiteralPath (Join-Path $env:USERPROFILE 'scoop\apps\hersir') -Name) -join ', '
+            $failed += "scoop update hersir didn't install $next. current is $now; Scoop's copy of the bucket has $seen ($(git -C $clone log -1 --format=%s)); apps\hersir has $versions. scoop update hersir said: $said"
+          }
+          $mark = Get-Content -LiteralPath "$prefix\hersir-package.txt"
+          if ("$mark" -ne 'scoop') { $failed += "after the update, hersir-package.txt says '$mark', not scoop." }
+          $menu = Join-Path ([Environment]::GetFolderPath('StartMenu')) 'Programs\Scoop Apps'
+          $id = (New-Object -ComObject Shell.Application).NameSpace($menu).ParseName('Hersir.lnk').ExtendedProperty('System.AppUserModel.ID')
+          $target = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $menu 'Hersir.lnk')).TargetPath
+          "shortcut: $target, app id $id"
+          if ($id -ne 'dev.hersir.app') {
+            $id51 = powershell -NoProfile -Command "(New-Object -ComObject Shell.Application).NameSpace('$menu').ParseName('Hersir.lnk').ExtendedProperty('System.AppUserModel.ID')"
+            $failed += "after the update, the Start menu shortcut Hersir.lnk should carry dev.hersir.app: PowerShell 7 reads '$id', Windows PowerShell 5.1 '$id51'. scoop update hersir said: $said"
+          }
+          if (-not ($target -like '*\apps\hersir\current\hersir.exe' -and (Test-Path -LiteralPath $target))) {
+            $failed += "after the update, the Start menu shortcut Hersir.lnk should start hersir.exe in Scoop's current folder, not '$target'"
+          }
+          # The new version's pre_install wrote the hersir command again, and PowerShell 7 runs it too.
+          $got = hersir --version
+          $code = $LASTEXITCODE
+          "hersir --version: $got"
+          if ("$got" -ne "hersir $env:VERSION") {
+            $failed += "after the update, hersir --version in PowerShell 7 says '$got' (exit code $code), not hersir $env:VERSION; hersir is $((Get-Command hersir -ErrorAction SilentlyContinue).Source)"
+          }
+          foreach ($f in $failed) { "::error::$f" }
+          if ($failed) { exit 1 }
+          exit 0
+
+      # Hersir's data folder and WebView2's, with a file in each first. scoop uninstall hersir removes the programs, the
+      # commands and the shortcut, and leaves both as they were; so does scoop uninstall hersir --purge, after an
+      # install again.
+      - name: scoop uninstall hersir leaves the data folder
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $data = @((Join-Path $env:APPDATA 'Hersir'), (Join-Path $env:LOCALAPPDATA 'dev.hersir.app'))
+          New-Item -ItemType Directory -Force -Path "$($data[0])\backups", $data[1] | Out-Null
+          Set-Content -LiteralPath "$($data[0])\gizai.db" -Value 'your data'
+          Set-Content -LiteralPath "$($data[0])\backups\gizai-manual.db" -Value 'a backup'
+          Set-Content -LiteralPath "$($data[1])\storage" -Value 'storage'
+          # Each folder and file in them, with each file's sha256. No times: the time a listing shows for a folder can
+          # change by itself, as NTFS updates it some moments after a file goes into the folder.
+          function Get-DataState {
+            foreach ($dir in $data) {
+              Get-ChildItem -LiteralPath $dir -Recurse -Force | Sort-Object FullName | ForEach-Object {
+                if ($_.PSIsContainer) { "$($_.FullName)\" } else { '{0} {1}' -f $_.FullName, (Get-FileHash -LiteralPath $_.FullName).Hash }
+              }
+            }
+          }
+          $before = (Get-DataState) -join "`n"
+          $before
+          $menu = Join-Path ([Environment]::GetFolderPath('StartMenu')) 'Programs\Scoop Apps'
+          foreach ($purge in @($false, $true)) {
+            if ($purge) {
+              scoop install hersir/hersir
+              scoop uninstall hersir --purge
+            } else {
+              scoop uninstall hersir
+            }
+            $shims = Join-Path $env:USERPROFILE 'scoop\shims'
+            foreach ($gone in @((Join-Path $env:USERPROFILE 'scoop\apps\hersir'), "$shims\hersir.ps1", "$shims\hersir.cmd", "$shims\hersir",
+                "$shims\hersir-mcp.exe", "$shims\hersir-mcp.shim", (Join-Path $menu 'Hersir.lnk'))) {
+              if (Test-Path -LiteralPath $gone) { "::error::After scoop uninstall (purge: $purge), $gone is still there."; exit 1 }
+            }
+            $after = (Get-DataState) -join "`n"
+            if ($after -ne $before) {
+              # What changed (< before, > after), and what of Hersir or WebView2 runs, as one annotation.
+              $diff = @(Compare-Object ($before -split "`n") ($after -split "`n") | ForEach-Object { "$($_.SideIndicator) $($_.InputObject)" })
+              $running = @(Get-Process | Where-Object { $_.ProcessName -like 'hersir*' -or $_.ProcessName -like 'msedgewebview2*' } | ForEach-Object { "$($_.ProcessName) $($_.Id) $($_.Path) since $($_.StartTime)" })
+              "::error::scoop uninstall (purge: $purge) changed the data folders: $(($diff | Select-Object -First 12) -join ' | '). Running: $($running -join ' | ')"
+              $after; exit 1
+            }
+          }
+          exit 0

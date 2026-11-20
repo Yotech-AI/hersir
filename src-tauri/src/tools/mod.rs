@@ -87,20 +87,23 @@ pub(crate) async fn call_approved(st: &AppState, actor: &str, thread: &str, name
     call_scoped(st, actor, Some(thread), None, None, name, args, true).await
 }
 
-/// What a board check may not do, whatever it is asked: attach a file nobody named, change an agent's settings or set up
-/// the board's columns (the check asks you instead).
-const NOT_IN_A_CHECK: [&str; 6] = ["attach_file", "create_agent", "update_agent", "set_agent_status", "add_column", "set_column"];
+/// What a board check may not do, whatever it is asked: attach a file nobody named, change an agent's settings, set up
+/// the board's columns, or archive or restore cards (GA-307) (the check asks you instead).
+const NOT_IN_A_CHECK: [&str; 8] = ["attach_file", "create_agent", "update_agent", "set_agent_status", "add_column", "set_column",
+    "archive_tasks", "restore_tasks"];
 
 /// What a chat may no longer do once it used a tool from outside Gizai (an MCP server of its own, the web, the browser)
 /// (`chat::used_outside`; GA-261: for the rest of the chat, as its session holds what that tool returned): such a call isn't
 /// run but kept under the answer for the user to approve with one click or discard (GA-102, `pending`). Memory's writes
 /// too: a note goes into every answer, board check and run after it. A board check uses no tool from outside Gizai
 /// (`chat::check_once`), so it never makes a pending action. Merging a pull request too (GA-86); a board check may merge.
+/// Archiving cards too (GA-307): restore_tasks, which only undoes an archive, runs at once.
 /// Comments too (GA-261): an agent hears them, also in a Continue you approve. A card such a chat puts where an agent would
 /// start it, or changes there, waits on hold for the user's OK instead (GA-101, `Cx::outside`); some calls of
 /// `KEPT_SOMETIMES` are kept too.
-pub const NOT_AFTER_OUTSIDE: [&str; 14] = ["start_agent_run", "continue_agent_run", "create_agent", "update_agent", "set_agent_status", "add_column",
-    "set_column", "attach_file", "update_checkout", "memory_write", "memory_append", "memory_move", "merge_pull_request", "comment_on_task"];
+pub const NOT_AFTER_OUTSIDE: [&str; 15] = ["start_agent_run", "continue_agent_run", "create_agent", "update_agent", "set_agent_status", "add_column",
+    "set_column", "attach_file", "update_checkout", "memory_write", "memory_append", "memory_move", "merge_pull_request", "archive_tasks",
+    "comment_on_task"];
 
 /// GA-261: the tools that keep some of their calls for the user's Approve after a tool from outside Gizai in the chat, as
 /// `NOT_AFTER_OUTSIDE` keeps all of theirs (`Cx::keep`): `update_project` one that changes a project's repository, folder,
@@ -159,8 +162,15 @@ async fn call_scoped(st: &AppState, actor: &str, thread: Option<&str>, check: Op
     if check.is_some() && NOT_IN_A_CHECK.contains(&name) {
         return Err(match name {
             "attach_file" => "In a board check nobody named a file, so nothing can be attached. Ask the user in a chat (start_chat) instead.".into(),
+            "archive_tasks" => "A board check never archives cards: ask the user in a chat (start_chat) instead.".into(),
+            "restore_tasks" => "A board check never restores cards: ask the user in a chat (start_chat) instead.".into(),
             _ => format!("{name} can't be used in a board check: never change an agent's settings or the columns there. Ask the user in a chat (start_chat) instead."),
         });
+    }
+    // GA-307: archive_tasks without exactly one of tasks and all_done can never work: refused at once, so it doesn't wait
+    // for the user's Approve after a tool from outside Hersir.
+    if name == "archive_tasks" {
+        write::archive_scope(&a)?;
     }
     let cx = Cx { st, actor, thread, check, from, approved };
     // A call you approved (GA-102) was kept because of that rule, so it doesn't apply to it; every other rule does.
@@ -194,6 +204,8 @@ async fn call_scoped(st: &AppState, actor: &str, thread: Option<&str>, check: Op
         "create_task" => write::create_task(&cx, &a).await,
         "update_task" => write::update_task(&cx, &a).await,
         "move_task" => write::move_task(&cx, &a).await,
+        "archive_tasks" => write::archive_tasks(&cx, &a),
+        "restore_tasks" => write::restore_tasks(&cx, &a),
         "comment_on_task" => write::comment(&cx, &a),
         "create_agent" => write::create_agent(&cx, &a).await,
         "update_agent" => write::update_agent(&cx, &a).await,
@@ -361,6 +373,11 @@ fn tool(name: &str, description: &str, props: &[(&str, &str, &str)], required: &
 }
 
 const TASK: (&str, &str, &str) = ("task", "string", "The task's identifier, like KADE-12 (or its id)");
+/// get_task's task: it finds an archived task too, and what its builds_on and needed_by are. Said here, not in get_task's
+/// description, which stays under 600 characters (GA-310; GA-311 moved builds_on and needed_by here to make room for
+/// the PDF copies).
+const TASK_OR_ARCHIVED: (&str, &str, &str) = ("task", "string",
+    "The task's identifier, like KADE-12 (or its id). Finds an archived task too, and says so (archived: true): it is read-only until the user restores it. Its builds_on lists the cards it builds on, each with its column and merged: true once in Deploy or Done; needed_by the cards that build on it");
 const PROJECT: (&str, &str, &str) = ("project", "string", "The project's key (KADE), name or id");
 const CLIENT: (&str, &str, &str) = ("client", "string", "The client's name or id");
 const AGENT: (&str, &str, &str) = ("agent", "string", "The agent's name or id");
@@ -409,15 +426,15 @@ pub fn catalog() -> Vec<ToolDef> {
         tool("continue_agent_run", "Continues the agent's latest run on a task, like the Continue button: it resumes the run's session in its worktree, for a run that stopped part-way (a limit, a failure, stopped) or one that asked for a decision that has been answered on the card since (the agent hears the comments written since). A note goes to the agent with it and is saved on the card as your comment; on a run that asked for a decision it counts as an answer. A hold on the card is cleared, but for one that waits for the user's OK after a tool from outside Hersir (waiting_for_ok in get_task): only the user takes that off.",
              &[TASK, ("note", "string", "Optional: what the agent should know as it continues, like \"use the existing CSV writer\"")], &["task"]),
         tool("list_clients", "All clients with city, main contact and counts of projects and open tasks.", &[("status", "enum:lead|active|inactive", "Only clients with this status")], &[]),
-        tool("get_client", "One client with every field, its contacts, projects and files. Each file comes with the path of a copy in your folder, to read with Read (null for a file over 100 MB or one that couldn't be copied: its note or error says why).", &[CLIENT], &["client"]),
+        tool("get_client", "One client with every field, its contacts, projects and files. Each file comes with the path of a copy in your folder, to read with Read (null for a file over 100 MB or one that couldn't be copied: its note or error says why). A Word, Excel, PowerPoint, OpenDocument or RTF file also has readable_path: a copy of its text as Markdown, to read with Read. Pages, Keynote, Numbers, .doc and .ppt files get a PDF copy instead, when LibreOffice is installed.", &[CLIENT], &["client"]),
         tool("list_projects", "Projects with key, client, status, team (whose board its cards are on), linked repository, task counts and Test runs at once (null: no limit of its own).", &[("client", "string", "Only this client's projects"), ("status", "enum:planned|active|paused|done|archived", "Only projects with this status")], &[]),
-        tool("get_project", "One project with its goal, team (whose board its cards are on), repository, Test runs at once, tasks per column, docs and files. Each file comes with the path of a copy in your folder, to read with Read (null for a file over 100 MB or one that couldn't be copied: its note or error says why).", &[PROJECT], &["project"]),
+        tool("get_project", "One project with its goal, team (whose board its cards are on), repository, Test runs at once, tasks per column, docs and files. Each file comes with the path of a copy in your folder, to read with Read (null for a file over 100 MB or one that couldn't be copied: its note or error says why). A Word, Excel, PowerPoint, OpenDocument or RTF file also has readable_path: a copy of its text as Markdown, to read with Read. Pages, Keynote, Numbers, .doc and .ppt files get a PDF copy instead, when LibreOffice is installed.", &[PROJECT], &["project"]),
         tool("list_tasks", "Tasks, newest columns first. Done and cancelled tasks are left out unless include_done is true. Archived tasks are always left out; archived: true lists only them, the most recently archived first. A task that waits for cards it builds on shows them in waits_for (not merged yet).",
              &[("project", "string", "Project key, name or id"), ("column", "string", "Column name, like To do or In progress"),
                ("assignee", "string", "A person or agent name; \"none\" for unassigned; \"me\" for the user"), ("label", "string", "Label name"),
                ("text", "string", "Words in the title"), ("include_done", "boolean", "Include done and cancelled tasks"),
                ("archived", "boolean", "Only the archived tasks (archived from Done; read-only until the user restores them)"), ("limit", "integer", "At most this many (default 50)")], &[]),
-        tool("get_task", "One task with its description, acceptance criteria, labels, hold, builds_on (the cards it builds on, each with its column and merged: true once it is in Deploy or Done) and needed_by (the cards that build on it), latest comments, agent runs (with the tool calls each was refused) and files. Each file comes with the path of a copy in your folder, to read with Read (null for a file over 100 MB or one that couldn't be copied: its note or error says why). Finds an archived task by its identifier too, and says so (archived: true): it is read-only until the user restores it.", &[TASK], &["task"]),
+        tool("get_task", "One task with its description, acceptance criteria, labels, hold, builds_on, needed_by, latest comments, agent runs (with the tool calls each was refused) and files. Each file comes with the path of a copy in your folder, to read with Read (null over 100 MB or if it couldn't be copied: its note or error says why). A Word, Excel, PowerPoint, OpenDocument or RTF file also has readable_path: a copy of its text as Markdown, to read with Read. Pages, Keynote, Numbers, .doc and .ppt files get a PDF copy instead, when LibreOffice is installed.", &[TASK_OR_ARCHIVED], &["task"]),
         tool("list_agents", "The agents: role, status, the columns they are on, model, whether they work right now, spend this month and budget; with more than one team, each agent's team. An agent works only the columns of its own team.",
              &[("team", "string", "Only this team's agents: its name or id")], &[]),
         tool("get_agent", "One agent's settings, instructions and recent runs, with the card and the tool calls each run was refused.", &[AGENT], &["agent"]),
@@ -465,6 +482,11 @@ pub fn catalog() -> Vec<ToolDef> {
                ("testing", "boolean", "On: the QA Agent tests it before Review. Off: straight to Review"),
                ("builds_on", "string[]", "The full new list of cards it builds on, by identifier, like [\"GA-226\"]; an empty list clears it. It waits until each is merged (in Deploy or Done), then starts by itself. At most 20, never the card itself or a card that builds on it")], &["task"]),
         tool("move_task", "Moves a task to another column (to the bottom of that column).", &[TASK, ("column", "string", "Column name, like In progress")], &["task", "column"]),
+        tool("archive_tasks", "Archives cards in Done: they leave the board and every list, and keep their ID, comments, runs and branch. list_tasks with archived: true lists them, and restore_tasks puts them back. Give tasks, or all_done for every card in Done. A card outside Done, or one an agent is working on, is skipped with why; the others are archived.",
+             &[("tasks", "string[]", "The cards' identifiers, like [\"GA-12\"]"), ("all_done", "boolean", "Every card in the team's Done column instead"),
+               ("project", "string", "With all_done: only this project's cards, by key, name or id"), TEAM], &[]),
+        tool("restore_tasks", "Puts archived cards back at the bottom of their Done column, as they were.",
+             &[("tasks", "string[]", "The archived cards' identifiers, like [\"GA-12\"]")], &["tasks"]),
         tool("comment_on_task", "Adds a comment to a task, as you.", &[TASK, ("body_md", "string", "The comment (Markdown)")], &["task", "body_md"]),
         tool("create_agent", "Adds an agent to a team, on Claude Code unless runs_on names another coding CLI. It starts from the role's instructions and allowed commands unless instructions_md or allowed_tools is given.",
              &with(&[("name", "string", "Agent name, like Frontend Agent"), ("role", "string", "Role key: lead, frontend, backend, design, qa, devops or your own"), TEAM], AGENT_FIELDS),

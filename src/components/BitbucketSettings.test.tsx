@@ -227,6 +227,12 @@ describe("the lines on the API token and on SSH", () => {
     expect(t).toContain("Bitbucket → Personal settings → SSH keys");
     expect(render()).toContain(`href="${TOKEN_PAGE}"`);
   });
+  it("names Bitbucket's SSH host, ssh.bitbucket.org (GA-315)", () => {
+    expect(SSH_LINE).toBe("Pushes go over SSH (ssh.bitbucket.org) with your own keys: add your public key in Bitbucket → Personal settings → SSH keys.");
+    const t = text(render());
+    expect(t).toContain("Pushes go over SSH (ssh.bitbucket.org) with your own keys");
+    expect(t).not.toMatch(/git@bitbucket\.org/);
+  });
   it("Open API tokens opens the Atlassian page in the browser", () => {
     reset();
     const { t } = tree({});
@@ -270,6 +276,28 @@ describe("Check connection", () => {
     expect(got[S.checking]).toEqual([true, false]);
     const errs = got[1 + S.checking]; // checkErr is the useState after checking
     expect(errs).toEqual([null, "Command bitbucket_check not found"]);
+  });
+  it("names each SSH host it checked and shows a note on an old-host remote, which fails nothing (GA-315)", () => {
+    const fix = "To switch the checkout itself, run git remote set-url origin git@ssh.bitbucket.org:snxo2021/sdh.git in /home/me/sdh.";
+    const noted: ConnectionCheck = { ok: true, pushOver: "ssh", checks: [
+      { name: "Account", result: "ok", text: "Logged in as Jeffrey Sevinga (jefsev)" },
+      { name: "SSH", result: "ok", text: "git@ssh.bitbucket.org accepts your SSH key, as jefsev" },
+      { name: "SSH", result: "ok", text: "git@bitbucket-snx accepts your SSH key, as jefsev" },
+      { name: "SDH", result: "ok", text: "You can push to snxo2021/sdh", repo: "snxo2021/sdh", projectId: "p1" },
+      { name: "SDH", result: "note", text: "Its remote origin still names git@bitbucket.org, which stops taking SSH: Hersir already uses ssh.bitbucket.org for it",
+        fix, repo: "snxo2021/sdh", projectId: "p1" },
+    ] };
+    const html = render({ check: noted });
+    const t = text(html);
+    expect(t).toContain("Hersir can use Bitbucket.");
+    expect(t).not.toContain("Something needs fixing");
+    expect(t).toContain("SSH git@ssh.bitbucket.org accepts your SSH key, as jefsev");
+    expect(t).toContain("SSH git@bitbucket-snx accepts your SSH key, as jefsev");
+    expect(t).toContain(`SDH snxo2021/sdh Its remote origin still names git@bitbucket.org, which stops taking SSH: Hersir already uses ssh.bitbucket.org for it ${fix}`);
+    // its own mark and class: not a failure, not skipped
+    expect(html).toMatch(/<div class="gh-check note"><svg[^>]*lucide-info/);
+    expect(html.match(/class="gh-check failed"/g)).toBeNull();
+    expect(html).not.toContain("No project has a Bitbucket link yet.");
   });
   it("is the same list as Settings → GitHub's, with the host's name", () => {
     const gh = renderToStaticMarkup(<ConnectionChecks check={CHECK} host="GitHub" />);

@@ -67,7 +67,13 @@ export type Task = {
   id: string; identifier: string; projectId?: string | null; projectName?: string | null; projectColor?: string | null;
   title: string; descriptionMd: string; acceptanceMd?: string | null; stateId: string; stateName: string; stateCategory: string;
   priority: number; assigneeId?: string | null; assigneeName?: string | null; assigneeKind?: string | null; labels: Label[];
-  hold?: string | null; holdReason?: string | null; bounceCount: number; failCount: number; sortKey: string;
+  hold?: string | null; holdReason?: string | null;
+  /** When the current hold was set (ms); none without a hold. A new hold has a new time, also after a cleared one. */
+  holdAt?: number | null;
+  /** GA-261: which hold it is, when that matters: `waiting_for_ok` (HOLD_WAITING_FOR_OK) for the one the Chief's change put on
+   *  after a tool from outside Hersir in the chat, which only you take off. */
+  holdKind?: string | null;
+  bounceCount: number; failCount: number; sortKey: string;
   branch?: string | null;
   /** The card's pull request on GitHub or Bitbucket, and its state as Gizai last saw it. */
   prUrl?: string | null; prState?: PullState | null;
@@ -115,6 +121,9 @@ export type TaskPatch = Partial<{
 export type TaskFilter = { projectId?: string | null; openOnly?: boolean };
 export type Comment = { id: string; authorId: string; authorName: string; authorKind: string; bodyMd: string; runId?: string | null; createdAt: number };
 export type ChangeEntry = { at: number; actorName?: string | null; table: string; op: string; diff: unknown };
+/** GA-306: what a move, archive or restore of several cards did: the ids of the cards that went, and the cards skipped with
+ *  the reason a single move or archive gives ("An agent is working on this card"). */
+export type BulkResult = { done: string[]; skipped: { identifier: string; reason: string }[] };
 export type TeamSummary = { id: string; name: string };
 export type Member = {
   actorId: string; name: string; kind: string; roleKey: string; title?: string | null; adapter?: string | null; instructionsMd?: string | null;
@@ -510,15 +519,16 @@ export type GithubStatus = {
   /** The command that logs gh in from a terminal. */
   loginCommand?: string | null;
 };
-/** One line of Check connection. Skipped: not needed now, or it needs something that failed. */
+/** One line of Check connection. Skipped: not needed now, or it needs something that failed. Note: worth knowing, and
+ *  nothing fails (a Bitbucket remote that still names the old SSH host, git@bitbucket.org); `fix` says what you can do. */
 export type ConnectionCheckItem = {
-  name: string; result: "ok" | "failed" | "skipped"; text: string; fix?: string | null; projectId?: string | null; repo?: string | null;
+  name: string; result: "ok" | "failed" | "skipped" | "note"; text: string; fix?: string | null; projectId?: string | null; repo?: string | null;
 };
 export type ConnectionCheck = { ok: boolean; pushOver: PushOver; checks: ConnectionCheckItem[] };
 
 // ---- Settings → Bitbucket ----
 /** Whether Gizai can use Bitbucket: your Atlassian email, whether an API token is saved (the token itself never comes back),
- * and the account it belongs to. Pushes go over SSH with your own keys. */
+ * and the account it belongs to. Pushes go over SSH (ssh.bitbucket.org) with your own keys. */
 export type BitbucketStatus = {
   email?: string | null;
   hasToken: boolean;
@@ -658,7 +668,10 @@ export type ChatThread = { id: string; agentId: string; title: string; sessionId
   /** The coding CLI whose account holds the chat's session. */
   sessionCli?: string | null;
   /** GA-102: the Team Lead's calls that wait for your approval in it; while there are any, the chat waits for you in the Inbox. */
-  pendingActions?: number };
+  pendingActions?: number;
+  /** GA-261: the first tool from outside Hersir the chat used, like `mcp__otus__search`: from then on what the Chief does in it
+   *  waits for your OK (the Chat page says so above the text box, GA-312). Null: the chat isn't marked. */
+  outsideTool?: string | null };
 /** One line of a preview's diff: in both texts (`same`), only in the new one (`add`) or only in the old one (`del`). */
 export type DiffLine = { kind: "same" | "add" | "del"; text: string };
 /** A label and the value a pending call gives; `from`: the value now, for a value that changes. */

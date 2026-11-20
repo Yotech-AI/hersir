@@ -70,6 +70,7 @@ pub(crate) fn preview(st: &crate::AppState, actor: &str, thread: &str, tool: &st
         "attach_file" => attach_file(&cx, &a),
         "update_checkout" => update_checkout(&cx, &a),
         "merge_pull_request" => merge_pull_request(&cx, &a),
+        "archive_tasks" => archive_tasks(&cx, &a),
         "comment_on_task" => comment(&cx, &a),
         "update_task" => update_task(&cx, &a),
         "update_project" => update_project(&cx, &a),
@@ -435,6 +436,79 @@ fn merge_pull_request(cx: &Cx, a: &Args) -> Result<Preview, String> {
                  fields: vec![field("Card", card(&t)), field("Column", t.state_name.clone()), field("Pull request", pr)], ..Default::default() })
 }
 
+/// Names, the first `n` of them: "GA-1, GA-2 and GA-3", or "GA-1, GA-2, GA-3 and 680 more"; "none" for none.
+fn listed(items: &[String], n: usize) -> String {
+    match items.split_last() {
+        None => "none".into(),
+        Some(_) if items.len() > n => format!("{} and {} more", items[..n].join(", "), items.len() - n),
+        Some((last, rest)) if !rest.is_empty() => format!("{} and {last}", rest.join(", ")),
+        Some((only, _)) => only.clone(),
+    }
+}
+
+/// GA-307: archiving cards in Done, as things are now: how many it archives in the line ("Archive 683 cards in Done"; one
+/// card: "Archive GA-12"), which ones, whose Done column with all_done, and the cards it would skip, with why.
+fn archive_tasks(cx: &Cx, a: &Args) -> Result<Preview, String> {
+    let t = super::write::archive_targets(cx, a)?;
+    let mut goes: Vec<&gizai_core::model::Task> = vec![];
+    let mut skips: Vec<String> = vec![];
+    for c in &t.cards {
+        let why = if crate::runs::working_on(cx.st, &c.id) {
+            Some("an agent is working on it".to_string())
+        } else if c.archived_at.is_some() {
+            Some("already archived".to_string())
+        } else if c.state_category != "done" {
+            Some(format!("in {}", c.state_name))
+        } else {
+            None
+        };
+        match why {
+            Some(why) => skips.push(format!("{} ({why})", c.identifier)),
+            None => goes.push(c),
+        }
+    }
+    skips.extend(t.unknown.iter().map(|s| format!("{} (no such card)", s.identifier)));
+    let column = t.all_done.as_ref().map_or("Done", |d| d.column.as_str());
+    let line = match goes.as_slice() {
+        [one] => format!("Archive {}", one.identifier),
+        _ => format!("Archive {} cards in {column}", goes.len()),
+    };
+    let mut fields = vec![];
+    if let Some(d) = &t.all_done {
+        fields.extend(team_field(cx, &d.team));
+        if let Some(p) = &d.project {
+            fields.push(field("Project", format!("{} ({})", p.name, p.key)));
+        }
+        fields.push(field("Column", d.column.clone()));
+    }
+    fields.push(field("Cards", match goes.as_slice() {
+        [one] => card(one),
+        _ => listed(&goes.iter().map(|c| c.identifier.clone()).collect::<Vec<_>>(), 20),
+    }));
+    if !skips.is_empty() {
+        fields.push(field("Skipped", listed(&skips, 10)));
+    }
+    fields.push(field("Undo", "The bin on the Tasks page keeps archived cards, and Restore puts one back"));
+    let warning = goes.is_empty().then(|| match t.all_done.as_ref().filter(|_| t.cards.is_empty()) {
+        Some(d) => format!("{} has no cards now, so approving archives nothing.", d.column),
+        None => "None of these cards can be archived now, so approving archives nothing.".to_string(),
+    });
+    Ok(Preview { line, fields, warning, ..Default::default() })
+}
+
+/// What archive_tasks did, from its answer: "Archived 681 cards. Skipped: GA-303 (An agent is working on this card)."
+fn archived(result: &Value) -> String {
+    let head = match (result.get("archived").and_then(Value::as_u64).unwrap_or(0), result.pointer("/tasks/0").and_then(Value::as_str)) {
+        (0, _) => "Nothing was archived.".to_string(),
+        (1, Some(id)) => format!("{id} is archived."),
+        (n, _) => format!("Archived {n} cards."),
+    };
+    let skipped: Vec<String> = result.get("skipped").and_then(Value::as_array).into_iter().flatten()
+        .map(|s| format!("{} ({})", s["task"].as_str().unwrap_or_default(), s["reason"].as_str().unwrap_or_default().trim_end_matches('.')))
+        .collect();
+    if skipped.is_empty() { head } else { format!("{head} Skipped: {}.", listed(&skipped, 5)) }
+}
+
 /// GA-261: a comment, with its card and its text.
 fn comment(cx: &Cx, a: &Args) -> Result<Preview, String> {
     let t = resolve::task(cx, &a.req("task")?)?;
@@ -578,6 +652,7 @@ pub(crate) fn done(tool: &str, result: &Value) -> String {
         "attach_file" => format!("Attached {}.", s("/file/name").unwrap_or_else(|| "the file".into())),
         "update_checkout" => "The update started: its result comes as a message in this chat.".into(),
         "comment_on_task" => "The comment is on the card.".into(),
+        "archive_tasks" => archived(result),
         "update_task" => "The card is saved.".into(),
         "update_project" => match s("/done") {
             Some(moved) => format!("The project is saved, and {moved}."),

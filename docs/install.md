@@ -2,13 +2,13 @@
 
 Hersir was called GizAi until version 0.14.
 
-From 0.17.0 the programs, the command and the app id are Hersir's too: `hersir`, `hersir-mcp` and `dev.hersir.app`. An install from before 0.17.0 keeps its folders when it updates, from Hersir itself or with the one line, and gets the hersir names beside its gizai ones: `gizai` still starts Hersir.
-
-Hersir installs for you alone, without sudo or administrator rights. It runs on Linux, on Macs with Apple silicon and on Windows 11.
+Hersir installs for you alone, without sudo or administrator rights; on Arch Linux and Omarchy, the AUR's package installs it for the whole computer instead ([With a package manager](#with-a-package-manager)). It runs on Linux, on Macs with Apple silicon and on Windows 11.
 
 The one line installs the latest release's ready-made build for your system, in about a minute, once it has checked the release's signature. Where there is no ready-made build, it builds Hersir from the release's source on your own computer, as a clone does. Updates from inside Hersir install the release's ready-made build too, once its signature checks ([Updates](#updates)). There are no installers and no browser downloads, on any system. The `production` branch holds the released version; `main` is development.
 
 Hersir is early: its version is still 0.x. Every release is on [GitHub Releases](https://github.com/Yotech-AI/hersir/releases).
+
+From 0.17.0 the programs, the command and the app id are Hersir's too: `hersir`, `hersir-mcp` and `dev.hersir.app`. An install from before 0.17.0 keeps its folders when it updates, from Hersir itself or with the one line, and gets the hersir names beside its `gizai` ones: `gizai` still starts Hersir.
 
 ## In one line
 
@@ -37,7 +37,7 @@ Run it again to update. When the release has no ready-made build for your system
 - Without git or ssh-keygen (on Linux and macOS also bash and curl), it says what to install first and does nothing else.
 - A release that isn't signed yet stops with `vX.Y.Z isn't signed yet: try again in a few minutes.` One whose signature doesn't check isn't installed either, and one line says why: an installed Hersir stays as it is.
 - The source folder is the install's own: changes in it are replaced. Your data stays in [its own folder](#your-data).
-- `--uninstall --purge` (`-Uninstall -Purge` on Windows) deletes the source folder with your data: the data folder Hersir uses, which is the hersir folder, or, when there is none, the gizai folder of an install from before 0.17.0 that holds `gizai.db` ([Your data](#your-data)). On macOS and Windows, `HERSIR_DATA_DIR` (else `GIZAI_DATA_DIR`) names another one.
+- `--uninstall --purge` (`-Uninstall -Purge` on Windows) deletes the source folder with your data: the data folder Hersir uses, which is the hersir folder, or, when there is none, the `gizai` folder of an install from before 0.17.0 that holds `gizai.db` ([Your data](#your-data)). On macOS and Windows, `HERSIR_DATA_DIR` (else `GIZAI_DATA_DIR`) names another one.
 - CI proves the line: it installs, updates and uninstalls Hersir with it on Ubuntu 24.04, Fedora, Arch Linux, openSUSE Tumbleweed, macOS 15 on Apple silicon and Windows whenever an install script changes, from a ready-made build signed with a test key and from source, and checks that a release whose signature doesn't check installs nothing. It runs hersir.dev's own lines on Ubuntu, macOS and Windows once each release is signed, and every week.
 
 The install script's options go after the line:
@@ -51,6 +51,58 @@ The install script's options go after the line:
 
 The scripts' variables from before 0.17.0, `GIZAI_PREFIX`, `GIZAI_REPO` and the others, still work; when both names are set, the `HERSIR_` one wins.
 
+## With a package manager
+
+### Arch Linux and Omarchy: the AUR
+
+Hersir is in the AUR as [`hersir-bin`](https://aur.archlinux.org/packages/hersir-bin). Install it with an AUR helper, such as yay, which Omarchy has:
+
+```sh
+yay -S hersir-bin
+```
+
+- It is the release's ready-made build for Linux (x86_64), the one the one line installs. The package gets a new release only once it is signed, usually the same day, and its build is checked against the release's signed `SHA256SUMS`.
+- pacman installs it for the whole computer: the programs in `/usr/lib/hersir`, the `hersir` command in `/usr/bin`, and Hersir in your app launcher, with the same launcher, desktop entry and icon as the one line. It brings WebKitGTK 4.1, libayatana-appindicator for the tray icon, git and curl. Claude Code, Codex and Gemini stay your own installs ([What every system needs](#what-every-system-needs)).
+- `yay -Syu` updates it, with the rest of your system. Hersir doesn't update itself then: Settings → Updates says `Hersir came from the AUR, so it doesn't update itself. Update it with yay -Syu, then restart Hersir.`
+- `sudo pacman -Rns hersir-bin` removes it. Your data stays in `~/.local/share/hersir` ([Your data](#your-data)).
+- Use one way to install Hersir, not both: to move from the one line to the AUR, first remove the one line's install with its `--uninstall`, which keeps your data.
+
+### macOS: Homebrew
+
+Hersir is in the Homebrew tap [`yotech-ai/tap`](https://github.com/Yotech-AI/homebrew-tap), as the formula `hersir`, for Macs with Apple silicon:
+
+```sh
+brew install yotech-ai/tap/hersir
+```
+
+The formula's full name, with its tap, is what lets Homebrew load it from a tap that isn't Homebrew's own, and Homebrew trusts it from then on. As for any formula without a bottle, Homebrew wants Apple's Command Line Tools, up to date, and says so when they aren't (`xcode-select --install`). Then link Hersir into Applications in your home folder, once, so you open it from Finder, Spotlight and the Dock (a formula may not put it there itself):
+
+```sh
+mkdir -p ~/Applications && ln -sfn "$(brew --prefix)/opt/hersir/Hersir.app" ~/Applications/Hersir.app
+```
+
+- It is the release's ready-made build for macOS, the one the one line installs: `Hersir.app` in Homebrew's own folder, with `hersir-mcp` inside it, signed ad hoc again as the one line does, and the `hersir` and `hersir-mcp` commands. The formula gets a new release only once it is signed, usually the same day, and pins the build's sha256 from the release's signed `SHA256SUMS`.
+- A formula, not a cask: Homebrew puts the quarantine mark on what a cask downloads, and macOS would then stop Hersir, which Apple hasn't notarized, until you choose Open Anyway in System Settings, most likely again at every new version. A formula's download gets no mark, so Hersir opens without asking, as after the one line ([Signatures](#signatures)).
+- `brew update && brew upgrade hersir` updates it; then restart Hersir. `brew upgrade` on its own looks at the tap only once a day. Hersir doesn't update itself then: Settings → Updates says `Hersir came from Homebrew, so it doesn't update itself. Update it with brew update && brew upgrade hersir, then restart Hersir.`
+- `brew uninstall hersir` removes it, and `rm ~/Applications/Hersir.app` the link you made. Your data stays in `~/Library/Application Support/Hersir` ([Your data](#your-data)).
+- Use one way to install Hersir, not both: to move from the one line to Homebrew, first remove the one line's install with its `--uninstall`, which keeps your data.
+
+### Windows: Scoop
+
+Hersir has a [Scoop](https://scoop.sh) bucket of its own, [`Yotech-AI/scoop-bucket`](https://github.com/Yotech-AI/scoop-bucket). Add it once, then install Hersir from it, in PowerShell:
+
+```powershell
+scoop bucket add hersir https://github.com/Yotech-AI/scoop-bucket
+scoop install hersir/hersir
+```
+
+- It is the release's ready-made build for Windows (x86_64), the one the one line installs. The bucket gets a new release only once it is signed, usually the same day, and its build is checked against the release's signed `SHA256SUMS`.
+- Scoop installs it for you alone: the programs in `~\scoop\apps\hersir\current`, the commands `hersir` and `hersir-mcp`, and Hersir in the Start menu (Scoop Apps → Hersir), whose shortcut carries Hersir's app ID, so Windows shows Hersir's notifications. Neither program needs the Visual C++ Redistributable. Git for Windows, Claude Code, Codex and Gemini stay your own installs ([What every system needs](#what-every-system-needs)).
+- To update it, quit Hersir (Quit Hersir completely, in its tray menu), then run `scoop update; scoop update hersir`: Scoop doesn't update a program that runs, and `scoop update` fetches the bucket first. Hersir doesn't update itself then: Settings → Updates says `Hersir came from Scoop, so it doesn't update itself. Update it with scoop update; scoop update hersir, then restart Hersir.`
+- `scoop uninstall hersir` removes it, with its commands and its Start menu shortcut. Your data stays in `%APPDATA%\Hersir`, also with `--purge` ([Your data](#your-data)).
+- Scoop doesn't mark what it downloads as coming from the internet, so SmartScreen shouldn't stop Hersir. Smart App Control does stop it ([Signatures](#signatures)).
+- Use one way to install Hersir, not both: to move from the one line to Scoop, first remove the one line's install with its `-Uninstall`, which keeps your data.
+
 ## What every system needs
 
 - [Claude Code](https://docs.claude.com/en/docs/claude-code) or Codex, installed and logged in; for Claude Code, run `claude` once. The Chief's chat needs Claude Code. Agents can also run on Gemini or another coding CLI you have installed and logged in (Settings → Coding CLIs).
@@ -58,7 +110,7 @@ The scripts' variables from before 0.17.0, `GIZAI_PREFIX`, `GIZAI_REPO` and the 
 - With the ready-made build, that's all Hersir needs to run, with WebKitGTK 4.1 on Linux and WebView2 on Windows: no Rust, Node.js or compiler. The check (`--check`) names only these.
 - To build from source (the one line with `--from-source`, a system without a ready-made build, or a clone), also Rust ([rustup](https://rustup.rs)), Node.js 20 or newer, and what each system lists below for a build. The check names those when it builds.
 - Optional, to review cards as pull requests on GitHub: the [GitHub CLI](https://cli.github.com) and an SSH key on your GitHub account. Settings → GitHub shows what's missing and can log gh in.
-- Optional, for a project on Bitbucket Cloud: an SSH key on your Bitbucket account and an API token with the scopes `read:user:bitbucket`, `read:pullrequest:bitbucket` and `write:pullrequest:bitbucket` (Atlassian account → Security → API tokens). Save the token with your Atlassian email in Settings → Bitbucket. Hersir keeps them in your keychain.
+- Optional, for a project on Bitbucket Cloud: an SSH key on your Bitbucket account (Hersir pushes over SSH to `ssh.bitbucket.org`, Bitbucket's SSH host; run `ssh -T git@ssh.bitbucket.org` once in a terminal and answer yes to trust its host key) and an API token with the scopes `read:user:bitbucket`, `read:pullrequest:bitbucket` and `write:pullrequest:bitbucket` (Atlassian account → Security → API tokens). Save the token with your Atlassian email in Settings → Bitbucket. Hersir keeps them in your keychain.
 
 ## Linux
 
@@ -84,7 +136,7 @@ The installer builds Hersir (the one line installs the ready-made build instead)
 
 For Macs with Apple silicon (M1 and later). git comes with Apple's Command Line Tools (run `xcode-select --install`) or Homebrew (`brew install git`); that's all the ready-made build needs. To build from source you also need the Command Line Tools themselves, which bring a C compiler, and Node.js, from Homebrew (`brew install node`), mise, nvm or the installer on nodejs.org.
 
-Install [in one line](#in-one-line), or build from a clone:
+Install [in one line](#in-one-line), with [Homebrew](#macos-homebrew), or build from a clone:
 
 ```sh
 git clone --branch production https://github.com/Yotech-AI/hersir.git
@@ -102,7 +154,7 @@ Hersir's tray icon is in the menu bar.
 
 ## Windows
 
-For Windows 11. You also need:
+For Windows 11, with the one line, with Scoop ([Windows: Scoop](#windows-scoop)) or from a clone. You also need:
 
 - Git for Windows: Claude Code runs its commands in Git for Windows' Git Bash, and it has an ssh-keygen too;
 - WebView2, which comes with Windows 11;
@@ -150,6 +202,8 @@ Hersir has no Apple or Microsoft signature yet: there is no Apple Developer acco
 - macOS: System Settings → Privacy & Security → Open Anyway, or `xattr -dr com.apple.quarantine ~/.local/lib/hersir/Hersir.app`;
 - Windows: More info → Run anyway.
 
+Smart App Control is another matter. On a Windows 11 PC that has it on, Windows blocks programs without a signature unless they have a good reputation, however they were installed: with the one line, with Scoop or built on that PC. It has no exception for one app, so Hersir doesn't run on such a PC until it has a Microsoft signature. Windows Security → App & browser control shows whether Smart App Control is on.
+
 After an update, macOS may ask once whether Hersir may use what it saved in your keychain: choose Always Allow.
 
 ## First start
@@ -181,11 +235,15 @@ If a step fails, the version you have keeps working, and Settings → Updates sa
 
 You can still update from a terminal: run the [one line](#in-one-line) again, or in a clone `git pull`, then `./install.sh` (on Windows `.\install.ps1`). How an update works, step by step: [docs/RELEASING.md](RELEASING.md#how-hersir-updates-itself).
 
+A Hersir from the AUR never updates itself: `yay -Syu` updates it ([With a package manager](#with-a-package-manager)). Neither does a Hersir from Homebrew: `brew update && brew upgrade hersir` updates it.
+
+A Hersir from Scoop doesn't either: quit it, then `scoop update; scoop update hersir` updates it ([Windows: Scoop](#windows-scoop)).
+
 ## Your data
 
 Hersir keeps your data in one folder on your computer: the database, logs, worktrees and backups. It is `~/.local/share/hersir` on Linux (`$XDG_DATA_HOME/hersir` when that is set), `~/Library/Application Support/Hersir` on macOS and `%APPDATA%\Hersir` on Windows. `HERSIR_DATA_DIR` points it elsewhere. One Hersir runs per data folder.
 
-An install from before 0.17.0 keeps its data where it is, in `~/.local/share/gizai`, `~/Library/Application Support/Gizai` or `%APPDATA%\Gizai`: Hersir uses the hersir folder when there is one, else the gizai folder when it holds Hersir's data (its `gizai.db`), else it makes the hersir folder. It never moves or copies your data.
+An install from before 0.17.0 keeps its data where it is, in `~/.local/share/gizai`, `~/Library/Application Support/Gizai` or `%APPDATA%\Gizai`: Hersir uses the hersir folder when there is one, else the `gizai` folder when it holds Hersir's data (its `gizai.db`), else it makes the hersir folder. It never moves or copies your data.
 
 Each variable Hersir reads has a `HERSIR_` name and, from before 0.17.0, a `GIZAI_` one: `GIZAI_DATA_DIR` still works, and `HERSIR_DATA_DIR` wins when both are set.
 

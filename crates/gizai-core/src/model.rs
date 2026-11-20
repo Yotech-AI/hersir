@@ -335,6 +335,24 @@ pub struct ChangeEntry {
     pub diff: serde_json::Value,
 }
 
+/// GA-306: what a move, archive or restore of several cards at once did (`tasks::move_many`, `archive_many`,
+/// `restore_many`): the ids of the cards that went, in the order given, and the cards that were skipped with why.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BulkResult {
+    pub done: Vec<String>,
+    pub skipped: Vec<Skipped>,
+}
+
+/// A card a bulk command skipped: its identifier (GA-12; its id when there is no such card) and the reason its single
+/// command gives.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Skipped {
+    pub identifier: String,
+    pub reason: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Doc {

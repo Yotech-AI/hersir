@@ -13,8 +13,8 @@ export const TOKEN_SCOPES = ["read:user:bitbucket", "read:pullrequest:bitbucket"
 export const TOKEN_HOW_TO = "Make the token in your Atlassian account: Security → Create and manage API tokens → Create API token with scopes, "
   + `pick Bitbucket, and give it the scopes ${TOKEN_SCOPES.slice(0, -1).join(", ")} and ${TOKEN_SCOPES[TOKEN_SCOPES.length - 1]}.`;
 
-/** How pushes go, in one line. */
-export const SSH_LINE = "Pushes go over SSH with your own keys: add your public key in Bitbucket → Personal settings → SSH keys.";
+/** How pushes go, in one line: over SSH to Bitbucket's SSH host, ssh.bitbucket.org (GA-315; bitbucket.org keeps only HTTPS). */
+export const SSH_LINE = "Pushes go over SSH (ssh.bitbucket.org) with your own keys: add your public key in Bitbucket → Personal settings → SSH keys.";
 
 /** The account the saved API token belongs to, or why there is none and what to do. */
 export function accountLine(s: BitbucketStatus): StatusLine {

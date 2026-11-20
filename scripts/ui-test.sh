@@ -199,9 +199,13 @@
 #     the terminal there; beside the panel the row of three buttons wraps.
 # 25. cards beside the chat (GA-297), against prep_chats' Chief and prep_chat_cards' chat about KADE-1 and GFW-2, in two starts
 #     on the same WebKit storage: (a) the chat opens both as Card tabs, KADE-1 shown, the strip's Card 2 selected with Alt+4 in
-#     its title; KADE-1's tab: id, project, title, Column, Hold with the reason's end and Read in comments, Assignee, Labels,
+#     its title; KADE-1's tab: id, project, title, Column, Hold with the reason's end, Read in comments and Clear hold (GA-314,
+#     not clicked), Assignee, Labels,
 #     the description folded after 4 lines, the criteria 2 of 5 with Show all 5, the latest 2 of 4 comments, the runs newest
-#     first, a foot with Comment and Move to; GFW-2 in Review: the pull request and QA's verdict first, no Run or Continue;
+#     first, a foot with Comment and Move to; Read in comments opens KADE-1's page at its comment with the reason, and back
+#     in the chat its tab is still open; GFW-2 in Review: the pull request and QA's verdict first, no Run or Continue; GFW-2
+#     put on a hold whose reason is in no comment: Read in comments opens its page at the top of its comments, and Clear
+#     hold takes the hold off, the row going without a reload;
 #     Comment posts from the tab and Move to moves the card, the tab following both; a card chip's hover card says Click to
 #     open beside the chat (a project's Click to open), a click opens the card in a tab or shows its tab, Ctrl+click opens its
 #     page; Alt+4 hides and shows the cards, Ctrl+W closes the shown one, Own page opens the card's page and closes its tab;

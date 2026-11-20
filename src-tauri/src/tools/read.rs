@@ -4,6 +4,7 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use gizai_core::model::{FileRow, Task, TaskFilter};
+use gizai_agents::libreoffice::LibreOffice;
 use gizai_core::{clients, comments, docs, files, ids, projects, runs, tasks, team, users};
 use serde_json::{Value, json};
 
@@ -41,16 +42,18 @@ static LEAD_COPYING: Mutex<()> = Mutex::new(());
 /// The files of a client, project or task, each with `path`: a copy in the Chief's own folder to read with Read
 /// (`chat::lead_file_path`, GA-207), made off the async threads the first time and reused after that. A file larger
 /// than 100 MB isn't copied (`note`), and one that can't be copied says why (`error`): both have no path, and the
-/// other files still come.
+/// other files still come. A file that gets a readable copy and is copied also has `readable_path` (`crate::readable`):
+/// its text as Markdown beside the copy for a Word, Excel, PowerPoint, OpenDocument or RTF file (GA-310), a PDF
+/// LibreOffice made for a Pages, Keynote, Numbers, .doc or .ppt file (GA-311); or `readable_error`, why there is none.
 async fn file_lines(cx: &Cx<'_>, list: Vec<FileRow>) -> Vec<Value> {
     if list.is_empty() {
         return vec![];
     }
-    let (data, dir) = (cx.st.data_dir.clone(), crate::chat::lead_files_dir(cx.st));
+    let (data, dir, lo) = (cx.st.data_dir.clone(), crate::chat::lead_files_dir(cx.st), cx.st.libreoffice.clone());
     let rows = list.clone();
     let copied = tokio::task::spawn_blocking(move || {
         let _one = LEAD_COPYING.lock().unwrap_or_else(|e| e.into_inner());
-        rows.iter().map(|f| file_line(&data, &dir, f)).collect::<Vec<_>>()
+        rows.iter().map(|f| file_line(&data, &dir, &lo, f)).collect::<Vec<_>>()
     }).await;
     copied.unwrap_or_else(|e| list.iter().map(|f| {
         let mut v = file_json(f);
@@ -59,15 +62,25 @@ async fn file_lines(cx: &Cx<'_>, list: Vec<FileRow>) -> Vec<Value> {
     }).collect())
 }
 
-/// One file's line for `file_lines`, with its copy in `dir` (made when it isn't there yet).
-fn file_line(data: &Path, dir: &Path, f: &FileRow) -> Value {
+/// One file's line for `file_lines`, with its copy in `dir` (made when it isn't there yet), and its readable copy
+/// (a PDF one made by LibreOffice, `lo`).
+fn file_line(data: &Path, dir: &Path, lo: &LibreOffice, f: &FileRow) -> Value {
     let mut v = file_json(f);
     if f.size_bytes > LEAD_COPY_MAX_BYTES {
         v["note"] = json!("larger than 100 MB: not copied");
         return v;
     }
     match files::copy_out(data, f, dir) {
-        Ok(p) => v["path"] = json!(p.display().to_string()),
+        Ok(p) => {
+            v["path"] = json!(p.display().to_string());
+            // made when it is missing, so also for a file copied before readable copies existed
+            if crate::readable::has_readable(&f.name) {
+                match crate::readable::ensure(lo, &f.name, &p) {
+                    Ok(text) => v["readable_path"] = json!(text.display().to_string()),
+                    Err(why) => v["readable_error"] = json!(why),
+                }
+            }
+        }
         Err(e) => v["error"] = json!(if files::blob_path(data, &f.sha256).is_file() {
             format!("couldn't be copied into your folder: {e}")
         } else {

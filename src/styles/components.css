@@ -284,6 +284,8 @@ button.label-pill[aria-pressed="true"] { border-color: var(--accent); color: var
 .card .meta .avatar { margin-left: auto; }
 .card .working { display: flex; align-items: center; gap: 7px; padding: 5px 8px; border-radius: var(--radius); background: var(--live-soft); color: var(--live); font-size: var(--fs-sm); font-weight: 500; }
 .card.dragging { opacity: .6; border-color: var(--accent); box-shadow: var(--shadow-drag); }
+/* GA-306: a ticked card (Deploy, Done): the accent border, and accent-soft over the card's own background */
+.card.picked, .card.picked:hover { border-color: var(--accent); background: linear-gradient(var(--accent-soft), var(--accent-soft)), var(--raised); }
 /* The compact board (GA-298: the Chat's Board tab; design/islands-chat → Board): columns 180 wide, 8 apart, on side (radius 8,
    padding 6) with the glyph, name and count; compact cards (radius 8, padding 8 10 9): the id in mono text-3, the assignee
    on the right, the title in 3 lines at most, On hold. The chat's cards: a 1.5px accent border and the chat icon. */
@@ -479,6 +481,9 @@ button.label-pill[aria-pressed="true"] { border-color: var(--accent); color: var
 
 /* ---------- toast ---------- */
 .toast { position: fixed; right: 20px; bottom: 20px; z-index: 60; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid var(--line-2); border-radius: var(--radius-l); background: var(--float); box-shadow: var(--shadow-pop); }
+/* GA-306: a long toast (the cards a move or an archive skipped) wraps instead of crossing the window; Undo stays whole */
+.toast { max-width: min(560px, calc(100vw - 40px)); line-height: 1.4; }
+.toast > .btn { flex: none; }
 
 /* ---------- chat (ChatMessage, ToolCard, ChatSetup) ---------- */
 .chat-col { max-width: calc(760px * var(--chat-scale, 1)); margin: 0 auto; padding: 24px; }
@@ -526,6 +531,9 @@ button.label-pill[aria-pressed="true"] { border-color: var(--accent); color: var
 .tool-card .tc-more[aria-expanded="true"] .icon { transform: rotate(90deg); }
 .tool-card.error { border-color: var(--danger-soft); }
 .tool-card.error .tc-state { color: var(--danger); }
+/* GA-312: a call Hersir kept for your OK (it waits under the answer). */
+.tool-card.waiting { border-color: var(--needs); }
+.tool-card.waiting .tc-state { color: var(--needs); }
 .tool-card .tc-error { padding: 0 10px 8px 32px; color: var(--danger); overflow-wrap: anywhere; }
 .tool-card .tc-detail { padding: 8px 10px 4px; border-top: 1px solid var(--line); }
 .tool-card .tc-h { font-size: var(--fs-xs); color: var(--text-3); }
@@ -654,6 +662,12 @@ button.label-pill[aria-pressed="true"] { border-color: var(--accent); color: var
 .pending-actions .pa-fold { display: block; width: 100%; padding: 1px 8px 1px 18px; border: 0; background: var(--diff-fold); color: var(--text-3); font: inherit; text-align: left; cursor: pointer; }
 .pending-actions .pa-fold:hover { color: var(--text); }
 .pending-actions .pa-actions { display: flex; align-items: center; gap: 8px; }
+/* GA-312: a card the answer put on the waiting-for-OK hold: its chip, its column and OK on one line. */
+.pending-actions .pa-held { padding: 6px 8px 6px 12px; }
+.pending-actions .pa-held .pa-line { align-items: center; }
+.pending-actions .pa-card-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.pending-actions .pa-column { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); font-size: var(--fs-xs); }
+.pending-actions .pa-held .btn { flex: none; }
 .chat-banner { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; padding: 8px 12px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--raised); font-size: var(--fs-sm); color: var(--text-2); }
 .chat-banner .btn { margin-left: auto; }
 .chat-banner.bad { border-color: var(--danger-soft); color: var(--danger); }

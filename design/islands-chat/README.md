@@ -105,7 +105,12 @@ For reading and checking a card quickly. Top to bottom, padding `8 16 16`, 16 be
 4. **Properties** (labels 76 wide, `t-small` `text-3`; values `t-small` `text`):
    - **Column**: the column's glyph and name.
    - **Hold** (only when held): the hold's badge in `needs` (`HOLD_NAMES`: **Needs your decision**, …), under it the
-     reason in `t-small` `text-2` (60 characters, then **Read in comments**, as Properties does).
+     reason in `t-small` `text-2` (60 characters, then **Read in comments**, as Properties does). GA-314: **Read in
+     comments** opens the card's page on its Comments tab, at the latest comment that holds the reason, else at the top
+     of its comments; the Card tab stays open beside the chat. Under it (or under the reason) **Clear hold**, a `btn sm`
+     with the tooltip **Takes the hold off, so its column's agents can start it**, on every hold (also **With the Chief**
+     and the waiting-for-OK hold): it takes the hold off as Clear hold on the card's page does, shows a spinner and
+     **Clearing…** until the row goes, and an error in `t-small` `danger` under it (the hold stays).
    - **Assignee**: avatar and name; **Not assigned** in `text-2`.
    - **Labels**: the label pills; the row goes when there are none.
 5. **Description**: heading `t-group` `text-2`; the text in `t-body`, **folded after 4 lines** with **Show more** (and
@@ -251,7 +256,8 @@ New in this design:
 - The header's actions: **+** tooltip **Open beside the chat**; **Own page** tooltip **Open GA-259 on its own page**
   (the shown tab's name); **Hide** tooltip **Hide (Ctrl+\`): terminals keep running**.
 - The tab list's label for screen readers: **Beside the chat**; the overflow **2 more**.
-- Card tab: the labels **Column**, **Hold**, **Assignee**, **Labels**; **Not assigned**; **Read in comments**; the
+- Card tab: the labels **Column**, **Hold**, **Assignee**, **Labels**; **Not assigned**; **Read in comments**; **Clear
+  hold**, its tooltip **Takes the hold off, so its column's agents can start it**, and **Clearing…**; the
   headings **Description**, **Acceptance criteria**, **Comments**, **Runs**; **2 of 6**; **Show more**, **Show less**,
   **Show all 6**, **Show all 4**; **Pull request**, **Show changes**, **QA's verdict**, **Run 2 · 1 h ago**; the
   buttons **Comment**, **Run**, **Continue**, **Move to**, **Cancel**; **This card was archived.**, **This card is
