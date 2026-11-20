@@ -9,8 +9,9 @@
 // - Commits: main's newest commits as last fetched (no fetch); a commit opens to the files it changed, each in the
 //   Changes view's own box, whose diff loads once the box comes near the screen.
 import { Fragment, useState } from "react";
-import { BookOpen, Braces, ChevronDown, ChevronRight, GitCommitHorizontal, Route as RouteIcon, Scale, ScrollText, type LucideIcon } from "lucide-react";
-import { docsApi, docsChangelog, docsGuides, docsCommitFiles, docsCommits, docsDecisions, docsReference, getProject } from "../api";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { BookOpen, Braces, ChevronDown, ChevronRight, ExternalLink, GitCommitHorizontal, Route as RouteIcon, Scale, ScrollText, type LucideIcon } from "lucide-react";
+import { docsApi, docsChangelog, docsGuides, docsServe, docsCommitFiles, docsCommits, docsDecisions, docsReference, getProject } from "../api";
 import { href, type DocsTab } from "../router";
 import { useData } from "../lib/useData";
 import { useDrawer } from "../lib/drawers";
@@ -29,7 +30,8 @@ const TABS: { tab: DocsTab; label: string; icon: LucideIcon }[] = [
   { tab: "commits", label: "Commits", icon: GitCommitHorizontal },
 ];
 
-export function DocsPage({ id, tab = "reference" }: { id: string; tab?: DocsTab }) {
+/** `web`: the page as Hersir serves it to a browser (src/docsweb/), without Open in browser. */
+export function DocsPage({ id, tab = "reference", web = false }: { id: string; tab?: DocsTab; web?: boolean }) {
   const { data: p, error } = useData(() => getProject(id), [id]);
   const open = useDrawer();
   if (error) return <div className="error-banner">{error}</div>;
@@ -41,10 +43,13 @@ export function DocsPage({ id, tab = "reference" }: { id: string; tab?: DocsTab 
         <div className="page">
           {p.devDocs ? (
             <>
-              <div className="tabs docs-tabs" role="tablist" aria-label="The project's docs">
-                {TABS.map(({ tab: t, label, icon: I }) => (
-                  <a key={t} className="tab" role="tab" aria-selected={tab === t} href={href({ page: "devdocs", id: p.id, view: t })}><I className="icon" />{label}</a>
-                ))}
+              <div className="docs-bar">
+                <div className="tabs docs-tabs" role="tablist" aria-label="The project's docs">
+                  {TABS.map(({ tab: t, label, icon: I }) => (
+                    <a key={t} className="tab" role="tab" aria-selected={tab === t} href={href({ page: "devdocs", id: p.id, view: t })}><I className="icon" />{label}</a>
+                  ))}
+                </div>
+                {!web && <OpenInBrowser id={p.id} tab={tab} />}
               </div>
               {tab === "reference" ? <Reference projectId={p.id} /> : tab === "guides" ? <Guides projectId={p.id} /> : tab === "api" ? <Api projectId={p.id} /> : tab === "changelog" ? <Changelog projectId={p.id} />
                 : tab === "decisions" ? <Decisions projectId={p.id} /> : <Commits projectId={p.id} />}
@@ -173,6 +178,21 @@ function RouteList({ routes }: { routes: ApiRoute[] }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+/** Opens this Docs page in the browser, served by Hersir on this computer only (src-tauri/src/docs_server.rs). */
+function OpenInBrowser({ id, tab }: { id: string; tab: DocsTab }) {
+  const [msg, setMsg] = useState<string | null>(null);
+  const open = () => {
+    setMsg(null);
+    docsServe().then((url) => openUrl(`${url}/${href({ page: "devdocs", id, view: tab })}`)).catch((e) => setMsg(String(e)));
+  };
+  return (
+    <>
+      <button className="btn sm" onClick={open} title="Hersir serves this page to your browser, on this computer only"><ExternalLink className="icon" />Open in browser</button>
+      {msg && <span className="faint" role="status">{msg}</span>}
+    </>
   );
 }
 

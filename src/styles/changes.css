@@ -215,3 +215,6 @@ button.chg-file { width: 100%; border: 0; background: none; font: inherit; text-
 /* Docs → API: each route's method */
 .docs-method { flex: none; min-width: 58px; color: var(--text-2); font-family: var(--font-mono); font-size: var(--fs-sm); font-weight: 600; }
 .docs-routes .mono { color: var(--text); }
+/* Docs: the tabs with Open in browser at their end */
+.docs-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); }
+.docs-bar .docs-tabs { flex: 1; margin-bottom: 0; }

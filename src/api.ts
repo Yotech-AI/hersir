@@ -277,6 +277,8 @@ export const docsReference = (projectId: string) => invoke<T.CodeReference>("doc
 export const docsApi = (projectId: string) => invoke<T.ApiRoute[]>("docs_api", { projectId });
 /** Docs → Guides: the project's own Markdown docs, the README first. */
 export const docsGuides = (projectId: string) => invoke<T.Guide[]>("docs_guides", { projectId });
+/** Starts Hersir's docs server the first time (127.0.0.1 only) and gives its address, like http://127.0.0.1:4380. */
+export const docsServe = () => invoke<string>("docs_serve");
 
 // ---- Screenshots (GA-182, contract CS) ----
 /** The card's screenshot sets, newest run first: every run of the card that got the Screenshots section, also one that

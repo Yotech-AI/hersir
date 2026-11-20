@@ -61,6 +61,15 @@ The newest 50 commits on main, newest first: each with its short id, its first l
 - A commit opens to the files it changed against the commit before it (a first commit: all its files, as added), each in the same box as a card's Changes tab. A file's diff loads once its box comes near the screen.
 - A project without a git repository says how to link one.
 
+## In a browser
+
+**Open in browser**, at the end of a project's tabs, opens the same page in your browser.
+
+- Hersir serves the page itself, at http://127.0.0.1:4380, or the next free port up to 4399. Nothing is uploaded and nothing is hosted elsewhere. It keeps serving until Hersir quits.
+- Only this computer gets it. A request from another computer, or from a page that reaches it under another name, is refused.
+- The page has the same tabs as the app, read only, for the projects with Docs on. Its home page lists those projects.
+- A card, a Memory note or anything else a Docs page links to opens in Hersir only, and the browser says so. A web or mail link in a guide or a note opens in a new tab.
+
 ## Not to be confused with
 
 A project's documents (project page → Docs, and the Doc page) are separate: notes and specs you and the Chief write. The Docs section is the project's developer docs.

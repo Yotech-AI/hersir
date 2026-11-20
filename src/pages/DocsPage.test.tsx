@@ -1,6 +1,6 @@
 // The Docs page of one project (the Docs section): its crumbs and tabs; with Docs on, Changelog (the merged cards),
 // Decisions (the shared decision notes about the project) and Commits (main's newest commits, an opened one showing each
-// changed file in its own box); with Docs off, the way to turn it on. Rendered to HTML on the server: the data hooks are
+// changed file in its own box); with Docs off, the way to turn it on; Open in browser, in the app only. Rendered to HTML on the server: the data hooks are
 // replaced so the page gets its data at once (a thrown error is the hook's error), and a button's click is tried on the
 // element tree (the page called as a function, its hooks being the replaced ones).
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -12,7 +12,15 @@ import type { ApiRoute, ChangelogEntry, Guide, CodeReference, CommitFiles, Decis
 const state = vi.hoisted(() => ({
   project: null as unknown, commits: null as unknown, files: null as unknown, changelog: null as unknown, decisions: null as unknown,
   reference: null as unknown, api: null as unknown, guides: null as unknown, open: vi.fn(),
+  serve: null as unknown, opened: [] as string[], direct: false, sets: [] as unknown[],
 }));
+// Open in browser called as a function (state.direct): useState gives the first value, and its setter records into sets.
+vi.mock("react", async (orig) => {
+  const R = await orig<typeof import("react")>();
+  const useState = ((init: unknown) => (state.direct ? [init, (v: unknown) => state.sets.push(v)] : R.useState(init))) as typeof R.useState;
+  return { ...R, default: { ...R, useState }, useState };
+});
+vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: (url: string) => { state.opened.push(url); return Promise.resolve(); } }));
 vi.mock("../api", async (orig) => ({
   ...(await orig<object>()),
   getProject: () => state.project,
@@ -23,6 +31,7 @@ vi.mock("../api", async (orig) => ({
   docsReference: () => state.reference,
   docsApi: () => state.api,
   docsGuides: () => state.guides,
+  docsServe: () => (state.serve instanceof Error ? Promise.reject(state.serve.message) : Promise.resolve(state.serve)),
 }));
 vi.mock("../lib/useData", () => ({
   useData: (fetch: () => unknown) => {
@@ -41,19 +50,17 @@ const kade = (devDocs: boolean) => ({
 }) as unknown as Project;
 const page = (tab?: DocsTab) => renderToStaticMarkup(<DocsPage id="kade" tab={tab} />);
 
-/** The buttons in the page's element tree. */
-function buttons(): ReactElement<{ onClick?: () => void; children?: ReactNode }>[] {
-  const found: ReactElement<{ onClick?: () => void; children?: ReactNode }>[] = [];
-  const walk = (n: ReactNode): void => {
-    if (!n || typeof n !== "object") return;
-    if (Array.isArray(n)) { n.forEach(walk); return; }
-    const el = n as ReactElement<{ children?: ReactNode }>;
-    if (el.type === "button") found.push(el as ReactElement<{ onClick?: () => void; children?: ReactNode }>);
-    walk(el.props?.children);
-  };
-  walk(DocsPage({ id: "kade" }));
-  return found;
+type El = ReactElement<{ onClick?: () => void; children?: ReactNode }>;
+/** The elements of an element tree whose type is `type`: a tag, or a component's name. */
+function find(n: ReactNode, type: string): El[] {
+  if (!n || typeof n !== "object") return [];
+  if (Array.isArray(n)) return n.flatMap((c: ReactNode) => find(c, type));
+  const el = n as El;
+  return [...((typeof el.type === "function" ? el.type.name : el.type) === type ? [el] : []), ...find(el.props?.children, type)];
 }
+/** The buttons in the page's element tree. */
+const buttons = () => find(DocsPage({ id: "kade" }), "button");
+const settle = () => new Promise((r) => setTimeout(r, 0));
 
 beforeEach(() => {
   state.open.mockReset();
@@ -65,6 +72,9 @@ beforeEach(() => {
   state.reference = { entries: [], files: 0, partial: [] };
   state.api = [];
   state.guides = [];
+  state.serve = "http://127.0.0.1:4380";
+  state.opened = [];
+  state.sets = [];
 });
 
 describe("the Docs page", () => {
@@ -91,6 +101,31 @@ describe("the Docs page", () => {
   it("shows nothing while the project loads", () => {
     state.project = null;
     expect(page()).toBe("");
+  });
+});
+
+describe("Open in browser", () => {
+  /** Clicks Open in browser on the API tab, its component called as a function. */
+  const click = () => {
+    const [el] = find(DocsPage({ id: "kade", tab: "api" }), "OpenInBrowser");
+    state.direct = true;
+    try { find((el!.type as (p: object) => ReactNode)(el!.props), "button")[0]!.props.onClick!(); } finally { state.direct = false; }
+  };
+  it("shows in the app, not on the page Hersir serves to a browser", () => {
+    expect(page()).toContain("Open in browser</button>");
+    expect(renderToStaticMarkup(<DocsPage id="kade" web />)).not.toContain("Open in browser");
+  });
+  it("opens the tab at the address Hersir serves it on", async () => {
+    click();
+    await settle();
+    expect(state.opened).toEqual(["http://127.0.0.1:4380/#/devdocs/kade/api"]);
+  });
+  it("says why when Hersir can't serve it", async () => {
+    state.serve = new Error("Hersir couldn't find a free port for the docs from 4380 to 4399");
+    click();
+    await settle();
+    expect(state.sets).toEqual([null, "Hersir couldn't find a free port for the docs from 4380 to 4399"]);
+    expect(state.opened).toEqual([]);
   });
 });
 

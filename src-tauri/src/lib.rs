@@ -7,6 +7,7 @@ pub mod chat;
 pub mod clis;
 pub mod code;
 pub mod devdocs;
+pub mod docs_server;
 mod commands;
 pub mod editor;
 pub mod folders;
@@ -859,6 +860,7 @@ pub fn run() {
             changes::card_changes, changes::card_file_diff, changes::run_changes,
             changes::docs_commits, changes::docs_commit_files, changes::docs_file_diff, devdocs::docs_changelog, devdocs::docs_decisions,
             devdocs::docs_reference, devdocs::docs_api, devdocs::docs_guides,
+            docs_server::docs_serve,
             screenshots::list_screenshots, screenshots::screenshot_bytes,
             commands::github_status, commands::github_check, commands::github_login, commands::github_login_wait, commands::github_login_cancel,
             commands::bitbucket_status, commands::bitbucket_save_login, commands::bitbucket_remove_login, commands::bitbucket_check,

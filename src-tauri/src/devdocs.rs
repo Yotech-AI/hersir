@@ -53,10 +53,13 @@ pub fn api_of(st: &AppState, project_id: &str) -> Result<Vec<gizai_docs::api::Ro
 #[tauri::command]
 pub async fn docs_guides(st: State<'_, AppState>, project_id: String) -> Result<Vec<gizai_docs::guides::Guide>, String> {
     let st = st.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        let (repo, files) = tracked(&st, &project_id)?;
-        Ok(gizai_docs::guides::guides(&repo, &files))
-    }).await.map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || guides_of(&st, &project_id)).await.map_err(|e| e.to_string())?
+}
+
+/// `docs_guides`. Blocking.
+pub fn guides_of(st: &AppState, project_id: &str) -> Result<Vec<gizai_docs::guides::Guide>, String> {
+    let (repo, files) = tracked(st, project_id)?;
+    Ok(gizai_docs::guides::guides(&repo, &files))
 }
 
 /// The project's repository and the files git tracks in it.

@@ -10,6 +10,7 @@ import worktreeRs from "../crates/gizai-agents/src/worktree.rs?raw";
 import docsRs from "../crates/gizai-docs/src/lib.rs?raw";
 import apiRs from "../crates/gizai-docs/src/api.rs?raw";
 import guidesRs from "../crates/gizai-docs/src/guides.rs?raw";
+import serverRs from "../src-tauri/src/docs_server.rs?raw";
 
 const invoked: [string, unknown][] = [];
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (cmd: string, args?: unknown) => { invoked.push([cmd, args]); return Promise.resolve(null); } }));
@@ -80,5 +81,34 @@ describe("Docs → Reference's, Changelog's and Decisions' commands", () => {
     expect(serdeFields(apiRs, "Route")).toEqual(Object.keys(route).sort());
     const guide: Record<keyof Guide, true> = { path: true, title: true, bodyMd: true };
     expect(serdeFields(guidesRs, "Guide")).toEqual(Object.keys(guide).sort());
+  });
+});
+
+describe("Docs in a browser", () => {
+  it("is served by docs_serve, registered with Tauri", async () => {
+    invoked.length = 0;
+    await api.docsServe();
+    expect(invoked).toEqual([["docs_serve", undefined]]);
+    expect(libRs).toContain("docs_server::docs_serve");
+    expect(serverRs).toMatch(/pub async fn docs_serve\(/);
+  });
+
+  it("gets every call its page makes answered by Hersir's docs server, with the arguments it sends", async () => {
+    invoked.length = 0;
+    await api.listProjects();
+    await api.getProject("p1");
+    await api.docsReference("p1");
+    await api.docsGuides("p1");
+    await api.docsApi("p1");
+    await api.docsChangelog("p1");
+    await api.docsDecisions("p1");
+    await api.docsCommits("p1");
+    await api.docsCommitFiles("p1", "abc1234");
+    await api.docsFileDiff("p1", "src/a.ts", null, "a1b2c3d", "e4f5a6b");
+    expect(invoked).toHaveLength(10);
+    for (const [cmd, args] of invoked) {
+      expect(serverRs).toContain(`"${cmd}" =>`);
+      for (const key of Object.keys(args ?? {})) expect(serverRs).toContain(`("${key}")`);
+    }
   });
 });
