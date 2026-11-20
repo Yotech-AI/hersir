@@ -49,6 +49,16 @@ pub fn api_of(st: &AppState, project_id: &str) -> Result<Vec<gizai_docs::api::Ro
     Ok(gizai_docs::api::api(&repo, &files))
 }
 
+/// Docs → Guides: the project's own Markdown docs, the README first.
+#[tauri::command]
+pub async fn docs_guides(st: State<'_, AppState>, project_id: String) -> Result<Vec<gizai_docs::guides::Guide>, String> {
+    let st = st.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let (repo, files) = tracked(&st, &project_id)?;
+        Ok(gizai_docs::guides::guides(&repo, &files))
+    }).await.map_err(|e| e.to_string())?
+}
+
 /// The project's repository and the files git tracks in it.
 fn tracked(st: &AppState, project_id: &str) -> Result<(std::path::PathBuf, Vec<String>), String> {
     let (project, repo) = crate::changes::docs_repo(st, project_id)?;

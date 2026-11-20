@@ -1,15 +1,16 @@
 // A project's page in the sidebar's Docs section (#/devdocs/<project id>/<tab>). Docs is switched on per project, in the
-// project form; while it is off the page says so, with the way to turn it on. With it on, five tabs:
+// project form; while it is off the page says so, with the way to turn it on. With it on, six tabs:
 // - Reference (the first): the declarations in the project's code, by kind, with a filter; each opens to its comment and
 //   its code;
+// - Guides: the project's own Markdown docs, the README first and open;
 // - API: the routes the project answers on (Next.js's route and page files, Laravel's routes/ files), endpoints first;
 // - Changelog: the project's merged cards, newest first, by month, each linking to its card;
 // - Decisions: the shared memory notes about the project's decisions, each linking to it in Memory;
 // - Commits: main's newest commits as last fetched (no fetch); a commit opens to the files it changed, each in the
 //   Changes view's own box, whose diff loads once the box comes near the screen.
 import { Fragment, useState } from "react";
-import { Braces, ChevronDown, ChevronRight, GitCommitHorizontal, Route as RouteIcon, Scale, ScrollText, type LucideIcon } from "lucide-react";
-import { docsApi, docsChangelog, docsCommitFiles, docsCommits, docsDecisions, docsReference, getProject } from "../api";
+import { BookOpen, Braces, ChevronDown, ChevronRight, GitCommitHorizontal, Route as RouteIcon, Scale, ScrollText, type LucideIcon } from "lucide-react";
+import { docsApi, docsChangelog, docsGuides, docsCommitFiles, docsCommits, docsDecisions, docsReference, getProject } from "../api";
 import { href, type DocsTab } from "../router";
 import { useData } from "../lib/useData";
 import { useDrawer } from "../lib/drawers";
@@ -17,10 +18,11 @@ import { when } from "../lib/screenshots";
 import { useNearScreen } from "../lib/shotUrls";
 import { FileBox, type DiffSource } from "../components/changes/FileBox";
 import { MarkdownView } from "../components/MarkdownView";
-import type { ApiRoute, ChangelogEntry, CodeReference, FileChange, LoggedCommit, ReferenceEntry } from "../types";
+import type { ApiRoute, ChangelogEntry, Guide, CodeReference, FileChange, LoggedCommit, ReferenceEntry } from "../types";
 
 const TABS: { tab: DocsTab; label: string; icon: LucideIcon }[] = [
   { tab: "reference", label: "Reference", icon: Braces },
+  { tab: "guides", label: "Guides", icon: BookOpen },
   { tab: "api", label: "API", icon: RouteIcon },
   { tab: "changelog", label: "Changelog", icon: ScrollText },
   { tab: "decisions", label: "Decisions", icon: Scale },
@@ -44,7 +46,7 @@ export function DocsPage({ id, tab = "reference" }: { id: string; tab?: DocsTab 
                   <a key={t} className="tab" role="tab" aria-selected={tab === t} href={href({ page: "devdocs", id: p.id, view: t })}><I className="icon" />{label}</a>
                 ))}
               </div>
-              {tab === "reference" ? <Reference projectId={p.id} /> : tab === "api" ? <Api projectId={p.id} /> : tab === "changelog" ? <Changelog projectId={p.id} />
+              {tab === "reference" ? <Reference projectId={p.id} /> : tab === "guides" ? <Guides projectId={p.id} /> : tab === "api" ? <Api projectId={p.id} /> : tab === "changelog" ? <Changelog projectId={p.id} />
                 : tab === "decisions" ? <Decisions projectId={p.id} /> : <Commits projectId={p.id} />}
             </>
           ) : (
@@ -117,6 +119,28 @@ function EntryRow({ e }: { e: ReferenceEntry }) {
         {e.doc && <span className="doc">{e.doc.split("\n")[0]}</span>}
       </button>
       {open && <div className="docs-entry">{e.doc && <p>{e.doc}</p>}<pre className="docs-code">{e.text}</pre></div>}
+    </li>
+  );
+}
+
+/** Docs → Guides: the project's own Markdown docs, the README first and open. */
+function Guides({ projectId }: { projectId: string }) {
+  const { data, error } = useData(() => docsGuides(projectId), [projectId]);
+  if (error) return <div className="empty"><b>Hersir can't read the guides</b><span>{error}</span></div>;
+  if (!data) return null;
+  if (data.length === 0) return <div className="empty"><b>No guides found</b><span>Guides shows the README at the project's root and the Markdown under docs/.</span></div>;
+  return <section aria-label="Guides"><ul className="run-commits docs-commits">{data.map((g, i) => <GuideRow key={g.path} g={g} first={i === 0} />)}</ul></section>;
+}
+
+function GuideRow({ g, first }: { g: Guide; first: boolean }) {
+  const [open, setOpen] = useState(first);
+  const Caret = open ? ChevronDown : ChevronRight;
+  return (
+    <li>
+      <button className="docs-commit" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <Caret className="icon sm" /><span className="subj">{g.title}</span><span className="faint">{g.path}</span>
+      </button>
+      {open && <div className="docs-entry"><MarkdownView md={withoutTitle(g.bodyMd, g.title)} /></div>}
     </li>
   );
 }

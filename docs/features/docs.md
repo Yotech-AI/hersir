@@ -1,6 +1,6 @@
 # Docs
 
-Each project can have a Docs page of its own, in the sidebar's Docs section below Agents: its Reference, API, Changelog, Decisions and Commits. Docs is off for every project until you turn it on.
+Each project can have a Docs page of its own, in the sidebar's Docs section below Agents: its Reference, Guides, API, Changelog, Decisions and Commits. Docs is off for every project until you turn it on.
 
 ## Turning it on
 
@@ -24,6 +24,10 @@ The page opens on Reference: the declarations in the project's code, by kind (co
 - A class's methods and properties, and imports, aren't listed on their own: they are in their class's or file's code.
 - A file with syntax the parser can't read in full is named above the list: its declarations may be incomplete.
 - It reads the code each time the tab opens: a project of 170 files takes under a tenth of a second.
+
+## Guides
+
+The project's own Markdown docs, from the files git tracks: the README at its root first, open, then the Markdown under `docs/` and `doc/`, by path. Each is titled by its first heading, else its file name, and opens to its text. A changelog, a licence, other Markdown and Markdown in installed folders aren't guides; a guide shows its first 256 KB.
 
 ## API
 

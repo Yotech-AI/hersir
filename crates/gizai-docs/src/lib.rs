@@ -4,6 +4,7 @@
 //! script blocks of Vue and Svelte files (read as TSX); Dart and Kotlin wait for queries that fit their current grammars.
 //! The caller lists the files (git's tracked files) and this reads them from disk: it starts no program.
 pub mod api;
+pub mod guides;
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -79,7 +80,7 @@ fn lang_of(path: &str) -> Option<Lang> {
 }
 
 /// Whether `path` is in a folder of installed, built or generated code.
-fn skipped(path: &str) -> bool {
+pub(crate) fn skipped(path: &str) -> bool {
     path.split('/').rev().skip(1).any(|dir| SKIPPED_DIRS.contains(&dir))
 }
 

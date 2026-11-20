@@ -405,6 +405,8 @@ export type CodeReference = { entries: ReferenceEntry[]; files: number; partial:
 /** A route the project answers on, as Docs → API lists it: GET, POST… (ANY: every method; PAGE: a page), its URL as the
  *  project writes it, what answers it in Laravel (empty in Next.js), and where it is. */
 export type ApiRoute = { method: string; path: string; handler: string; file: string; line: number };
+/** One of the project's own Markdown docs, as Docs → Guides shows it: its title is its first heading, else its file name. */
+export type Guide = { path: string; title: string; bodyMd: string };
 export type LiveRun = { runId: string; taskId: string; agentId: string };
 export type Settings = { claudeBin?: string | null; dataDir: string; maxConcurrentRuns: number; agentsPaused: boolean; maxRunUsd?: number | null; maxRunMinutes: number; maxRunToolCalls: number;
   /** Settings → Runs → Memory for agent runs (GA-202), in GB: all agent runs together, half of the computer's memory

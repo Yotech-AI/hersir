@@ -10,7 +10,7 @@ export type Page = (typeof PAGES)[number];
 // path, encoded as one part).
 // The Terminal page (GA-135): #/terminal starts a new terminal, #/terminal/<id> is one open terminal.
 /** The tabs of a project's Docs page: #/devdocs/<project id>/<tab>; without one, Reference. */
-export const DOCS_TABS = ["reference", "api", "changelog", "decisions", "commits"] as const;
+export const DOCS_TABS = ["reference", "guides", "api", "changelog", "decisions", "commits"] as const;
 export type DocsTab = (typeof DOCS_TABS)[number];
 /** `scope`: on the Memory page only, which notes it shows (`memoryScope`); `view` "graph": its graph (GA-69).
  *  On a task, `view` "changes" is its Changes tab, and `run` one run's changes there (GA-112); "screenshots" its

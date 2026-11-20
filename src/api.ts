@@ -275,6 +275,8 @@ export const docsDecisions = (projectId: string) => invoke<T.DecisionNote[]>("do
 export const docsReference = (projectId: string) => invoke<T.CodeReference>("docs_reference", { projectId });
 /** Docs → API: the routes the project answers on, read from its files without running it. */
 export const docsApi = (projectId: string) => invoke<T.ApiRoute[]>("docs_api", { projectId });
+/** Docs → Guides: the project's own Markdown docs, the README first. */
+export const docsGuides = (projectId: string) => invoke<T.Guide[]>("docs_guides", { projectId });
 
 // ---- Screenshots (GA-182, contract CS) ----
 /** The card's screenshot sets, newest run first: every run of the card that got the Screenshots section, also one that
