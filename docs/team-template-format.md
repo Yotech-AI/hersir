@@ -87,12 +87,12 @@ Names link the file together: a column's `next` and `agents`, and an agent's `sh
 | `shares_memory_with` | the name of the agent whose memory folder it shares, or `null` for its own folder |
 | `web_search`, `web_fetch` | it may search the web, and fetch web pages |
 | `fetch_domains` | it fetches pages only from these domains, like `docs.rs`; none: any page |
-| `builtin_tools` | the CLI's other tools switched on for it, by name |
+| `builtin_tools` | the CLI's other tools switched on for it, by name. A name starts with a letter: a template with one that doesn't, like `--dangerously-skip-permissions`, is refused (GA-318). Export leaves out one saved before Hersir checked that. |
 | `slash_commands` | slash commands and skills (Claude Code only) |
 | `browser` | the built-in browser (Chrome DevTools MCP) is on |
 | `insecure_certs` | the browser accepts self-signed and expired certificates |
 | `screenshots` | it takes screenshots of what it built (with the browser on). Left out: its role's default (on for frontend, design and qa). |
-| `mcp_servers` | the MCP servers switched on for it, by their `name` in Settings → MCP, with the tools switched off of each (`tools_off`). Never their settings. The built-in browser isn't here: it is `browser`. |
+| `mcp_servers` | the MCP servers switched on for it, by their `name` in Settings → MCP, with the tools switched off of each (`tools_off`). Never their settings. The built-in browser isn't here: it is `browser`. A server's name starts with a letter: a template with one that doesn't is refused (GA-318). |
 
 The browser's switched-off tools aren't in format 1: an agent made from a template has all of the browser's tools.
 
