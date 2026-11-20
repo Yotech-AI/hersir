@@ -72,7 +72,7 @@ In a run, the agent's servers go into the run's own MCP config, next to `gizai` 
 - some off: the ones on by full name in `--allowedTools`, the ones off in `--disallowedTools`;
 - the server off: it isn't in the config.
 
-A run gives Claude Code these rules, and every other allowed or refused one, as one argument each: `--allowedTools=<rule>,<rule>,…` and `--disallowedTools=<rule>,<rule>,…` (GA-318), the form Claude Code passes its own child processes. As separate arguments after the flag, a rule that starts with `-` would be read as one of Claude Code's own options. A rule that doesn't start with a letter is left out of the argument.
+A run gives Claude Code these rules, and every other allowed or refused one, as one argument each: `--allowedTools=<rule>,<rule>,…` and `--disallowedTools=<rule>,<rule>,…` (GA-318; Claude Code splits the value at commas and spaces outside parentheses, as it splits separate values). As separate arguments after the flag, a rule that starts with `-` would be read as one of Claude Code's own options. A rule that doesn't start with a letter is left out of the argument.
 
 A tool whose name isn't a plain tool name (letters, digits, `_` and `-`, at most 64 characters, not starting with `mcp__`) is never allowed and never in either list: Claude Code would read `mcp__<name>__x Bash` as two rules, the second any command. The server's other tools then go in by full name, never the whole server. Settings → MCP servers and the agent form show such a tool as "left out: its name isn't a plain tool name", with its switch off.
 
