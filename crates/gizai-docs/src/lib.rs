@@ -3,6 +3,8 @@
 //! model, controller or migration…), the comment right above it and its text. TypeScript, TSX, JavaScript, PHP, and the
 //! script blocks of Vue and Svelte files (read as TSX); Dart and Kotlin wait for queries that fit their current grammars.
 //! The caller lists the files (git's tracked files) and this reads them from disk: it starts no program.
+pub mod api;
+
 use std::collections::HashMap;
 use std::path::Path;
 

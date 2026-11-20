@@ -7,11 +7,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactElement, ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { DocsTab } from "../router";
-import type { ChangelogEntry, CodeReference, CommitFiles, DecisionNote, DocsCommits, Project } from "../types";
+import type { ApiRoute, ChangelogEntry, CodeReference, CommitFiles, DecisionNote, DocsCommits, Project } from "../types";
 
 const state = vi.hoisted(() => ({
   project: null as unknown, commits: null as unknown, files: null as unknown, changelog: null as unknown, decisions: null as unknown,
-  reference: null as unknown, open: vi.fn(),
+  reference: null as unknown, api: null as unknown, open: vi.fn(),
 }));
 vi.mock("../api", async (orig) => ({
   ...(await orig<object>()),
@@ -21,6 +21,7 @@ vi.mock("../api", async (orig) => ({
   docsChangelog: () => state.changelog,
   docsDecisions: () => state.decisions,
   docsReference: () => state.reference,
+  docsApi: () => state.api,
 }));
 vi.mock("../lib/useData", () => ({
   useData: (fetch: () => unknown) => {
@@ -61,16 +62,17 @@ beforeEach(() => {
   state.changelog = [];
   state.decisions = [];
   state.reference = { entries: [], files: 0, partial: [] };
+  state.api = [];
 });
 
 describe("the Docs page", () => {
   it("names the section and the project in its crumbs", () => {
     expect(page()).toContain('<div class="crumbs"><span>Docs</span><span class="sep">/</span><b>Kade portal</b></div>');
   });
-  it("opens on Reference, with tabs for Changelog, Decisions and Commits", () => {
+  it("opens on Reference, with tabs for API, Changelog, Decisions and Commits", () => {
     const html = page();
     expect(html).toMatch(/<a class="tab" role="tab" aria-selected="true" href="#\/devdocs\/kade\/reference"><svg[^>]*>.*?<\/svg>Reference<\/a>/);
-    for (const [tab, label] of [["changelog", "Changelog"], ["decisions", "Decisions"], ["commits", "Commits"]]) {
+    for (const [tab, label] of [["api", "API"], ["changelog", "Changelog"], ["decisions", "Decisions"], ["commits", "Commits"]]) {
       expect(html).toMatch(new RegExp(`<a class="tab" role="tab" aria-selected="false" href="#/devdocs/kade/${tab}"><svg[^>]*>.*?</svg>${label}</a>`));
     }
     expect(page("decisions")).toMatch(/aria-selected="true" href="#\/devdocs\/kade\/decisions"/);
@@ -118,6 +120,22 @@ describe("Reference", () => {
   });
   it("says so while it finds no declarations", () => {
     expect(page()).toContain("<b>No declarations found</b>");
+  });
+});
+
+describe("API", () => {
+  it("lists the endpoints, then the pages, each with its method, path, handler and where it is", () => {
+    state.api = [
+      { method: "PAGE", path: "/about", handler: "", file: "src/app/about/page.tsx", line: 1 },
+      { method: "GET", path: "/api/invoices/{invoice}", handler: "InvoiceController@show", file: "routes/api.php", line: 12 },
+    ] satisfies ApiRoute[];
+    const html = page("api");
+    expect(html.indexOf("Endpoints")).toBeLessThan(html.indexOf("Pages"));
+    expect(html).toContain('<span class="docs-method get">GET</span><span class="mono">/api/invoices/{invoice}</span><span>InvoiceController@show</span><span class="faint">routes/api.php:12</span>');
+    expect(html).toContain('<span class="mono">/about</span><span class="faint">src/app/about/page.tsx:1</span>');
+  });
+  it("says what it reads while it finds no routes", () => {
+    expect(page("api")).toContain("<b>No routes found</b><span>API reads a Next.js app&#x27;s route and page files, and a Laravel app&#x27;s routes/ files.</span>");
   });
 });
 

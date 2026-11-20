@@ -402,6 +402,9 @@ export type DecisionNote = { id: string; path: string; title: string; bodyMd: st
 export type ReferenceEntry = { name: string; kind: string; path: string; line: number; endLine: number; doc: string; text: string };
 /** Docs → Reference: the declarations, how many files were read, and the files the parser couldn't read in full. */
 export type CodeReference = { entries: ReferenceEntry[]; files: number; partial: string[] };
+/** A route the project answers on, as Docs → API lists it: GET, POST… (ANY: every method; PAGE: a page), its URL as the
+ *  project writes it, what answers it in Laravel (empty in Next.js), and where it is. */
+export type ApiRoute = { method: string; path: string; handler: string; file: string; line: number };
 export type LiveRun = { runId: string; taskId: string; agentId: string };
 export type Settings = { claudeBin?: string | null; dataDir: string; maxConcurrentRuns: number; agentsPaused: boolean; maxRunUsd?: number | null; maxRunMinutes: number; maxRunToolCalls: number;
   /** Settings → Runs → Memory for agent runs (GA-202), in GB: all agent runs together, half of the computer's memory

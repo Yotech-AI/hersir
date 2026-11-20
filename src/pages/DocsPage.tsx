@@ -1,14 +1,15 @@
 // A project's page in the sidebar's Docs section (#/devdocs/<project id>/<tab>). Docs is switched on per project, in the
-// project form; while it is off the page says so, with the way to turn it on. With it on, four tabs:
+// project form; while it is off the page says so, with the way to turn it on. With it on, five tabs:
 // - Reference (the first): the declarations in the project's code, by kind, with a filter; each opens to its comment and
 //   its code;
+// - API: the routes the project answers on (Next.js's route and page files, Laravel's routes/ files), endpoints first;
 // - Changelog: the project's merged cards, newest first, by month, each linking to its card;
 // - Decisions: the shared memory notes about the project's decisions, each linking to it in Memory;
 // - Commits: main's newest commits as last fetched (no fetch); a commit opens to the files it changed, each in the
 //   Changes view's own box, whose diff loads once the box comes near the screen.
 import { Fragment, useState } from "react";
-import { Braces, ChevronDown, ChevronRight, GitCommitHorizontal, Scale, ScrollText, type LucideIcon } from "lucide-react";
-import { docsChangelog, docsCommitFiles, docsCommits, docsDecisions, docsReference, getProject } from "../api";
+import { Braces, ChevronDown, ChevronRight, GitCommitHorizontal, Route as RouteIcon, Scale, ScrollText, type LucideIcon } from "lucide-react";
+import { docsApi, docsChangelog, docsCommitFiles, docsCommits, docsDecisions, docsReference, getProject } from "../api";
 import { href, type DocsTab } from "../router";
 import { useData } from "../lib/useData";
 import { useDrawer } from "../lib/drawers";
@@ -16,10 +17,11 @@ import { when } from "../lib/screenshots";
 import { useNearScreen } from "../lib/shotUrls";
 import { FileBox, type DiffSource } from "../components/changes/FileBox";
 import { MarkdownView } from "../components/MarkdownView";
-import type { ChangelogEntry, CodeReference, FileChange, LoggedCommit, ReferenceEntry } from "../types";
+import type { ApiRoute, ChangelogEntry, CodeReference, FileChange, LoggedCommit, ReferenceEntry } from "../types";
 
 const TABS: { tab: DocsTab; label: string; icon: LucideIcon }[] = [
   { tab: "reference", label: "Reference", icon: Braces },
+  { tab: "api", label: "API", icon: RouteIcon },
   { tab: "changelog", label: "Changelog", icon: ScrollText },
   { tab: "decisions", label: "Decisions", icon: Scale },
   { tab: "commits", label: "Commits", icon: GitCommitHorizontal },
@@ -42,7 +44,7 @@ export function DocsPage({ id, tab = "reference" }: { id: string; tab?: DocsTab 
                   <a key={t} className="tab" role="tab" aria-selected={tab === t} href={href({ page: "devdocs", id: p.id, view: t })}><I className="icon" />{label}</a>
                 ))}
               </div>
-              {tab === "reference" ? <Reference projectId={p.id} /> : tab === "changelog" ? <Changelog projectId={p.id} />
+              {tab === "reference" ? <Reference projectId={p.id} /> : tab === "api" ? <Api projectId={p.id} /> : tab === "changelog" ? <Changelog projectId={p.id} />
                 : tab === "decisions" ? <Decisions projectId={p.id} /> : <Commits projectId={p.id} />}
             </>
           ) : (
@@ -116,6 +118,37 @@ function EntryRow({ e }: { e: ReferenceEntry }) {
       </button>
       {open && <div className="docs-entry">{e.doc && <p>{e.doc}</p>}<pre className="docs-code">{e.text}</pre></div>}
     </li>
+  );
+}
+
+/** Docs → API: the routes the project answers on, endpoints first, then pages. */
+function Api({ projectId }: { projectId: string }) {
+  const { data, error } = useData(() => docsApi(projectId), [projectId]);
+  if (error) return <div className="empty"><b>Hersir can't read the routes</b><span>{error}</span></div>;
+  if (!data) return <p className="faint">Reading the routes…</p>;
+  if (data.length === 0) {
+    return <div className="empty"><b>No routes found</b><span>API reads a Next.js app's route and page files, and a Laravel app's routes/ files.</span></div>;
+  }
+  const endpoints = data.filter((r) => r.method !== "PAGE");
+  const pages = data.filter((r) => r.method === "PAGE");
+  return (
+    <section aria-label="API">
+      {endpoints.length > 0 && <><h3 className="docs-month">Endpoints <span className="faint">{endpoints.length}</span></h3><RouteList routes={endpoints} /></>}
+      {pages.length > 0 && <><h3 className="docs-month">Pages <span className="faint">{pages.length}</span></h3><RouteList routes={pages} /></>}
+    </section>
+  );
+}
+
+function RouteList({ routes }: { routes: ApiRoute[] }) {
+  return (
+    <ul className="run-commits docs-routes">
+      {routes.map((r) => (
+        <li key={`${r.method} ${r.path} ${r.file}:${r.line}`}>
+          {r.method !== "PAGE" && <span className={`docs-method ${r.method.toLowerCase()}`}>{r.method}</span>}<span className="mono">{r.path}</span>
+          {r.handler && <span>{r.handler}</span>}<span className="faint">{`${r.file}:${r.line}`}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 

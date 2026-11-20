@@ -273,6 +273,8 @@ export const docsChangelog = (projectId: string) => invoke<T.ChangelogEntry[]>("
 export const docsDecisions = (projectId: string) => invoke<T.DecisionNote[]>("docs_decisions", { projectId });
 /** Docs → Reference: the declarations in the files git tracks in the project's repository, as they are on disk. */
 export const docsReference = (projectId: string) => invoke<T.CodeReference>("docs_reference", { projectId });
+/** Docs → API: the routes the project answers on, read from its files without running it. */
+export const docsApi = (projectId: string) => invoke<T.ApiRoute[]>("docs_api", { projectId });
 
 // ---- Screenshots (GA-182, contract CS) ----
 /** The card's screenshot sets, newest run first: every run of the card that got the Screenshots section, also one that

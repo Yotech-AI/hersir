@@ -29,7 +29,7 @@ describe("Docs pages", () => {
     expect(parseHash("#/devdocs")).toEqual({ page: "projects" });
   });
   it("opens a tab of a project's Docs, and ignores a tab it doesn't know", () => {
-    for (const view of ["reference", "changelog", "decisions", "commits"] as const) {
+    for (const view of ["reference", "api", "changelog", "decisions", "commits"] as const) {
       expect(parseHash(`#/devdocs/p1/${view}`)).toEqual({ page: "devdocs", id: "p1", view });
       expect(href({ page: "devdocs", id: "p1", view })).toBe(`#/devdocs/p1/${view}`);
     }

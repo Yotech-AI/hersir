@@ -1,11 +1,12 @@
 [package]
 name = "gizai-docs"
-description = "Docs → Reference: the declarations in a project's code, read with tree-sitter"
+description = "Hersir docs: a project's declarations read with tree-sitter (Reference) and its routes (API), from its files (no Tauri)"
 edition.workspace = true
 license.workspace = true
 version.workspace = true
 
 [dependencies]
+regex = "1"
 serde = { workspace = true }
 streaming-iterator = "0.1"
 tree-sitter = "0.27"

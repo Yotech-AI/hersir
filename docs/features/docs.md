@@ -1,6 +1,6 @@
 # Docs
 
-Each project can have a Docs page of its own, in the sidebar's Docs section below Agents: its Reference, Changelog, Decisions and Commits. Docs is off for every project until you turn it on.
+Each project can have a Docs page of its own, in the sidebar's Docs section below Agents: its Reference, API, Changelog, Decisions and Commits. Docs is off for every project until you turn it on.
 
 ## Turning it on
 
@@ -24,6 +24,13 @@ The page opens on Reference: the declarations in the project's code, by kind (co
 - A class's methods and properties, and imports, aren't listed on their own: they are in their class's or file's code.
 - A file with syntax the parser can't read in full is named above the list: its declarations may be incomplete.
 - It reads the code each time the tab opens: a project of 170 files takes under a tenth of a second.
+
+## API
+
+The routes the project answers on, read from its files without running it: the endpoints (each with its method, URL and, in Laravel, what answers it), then the pages.
+
+- Next.js: each `route.*` file of the app router with the methods it exports (`export async function GET`, `export const POST = …`, `export const { GET, POST } = …`), each `page.*` file, and the pages router's files (`pages/api/` as endpoints any method reaches). A route group `(name)` and a parallel slot `@name` aren't in the URL; a private folder `_name` isn't routed.
+- Laravel: the `Route::` calls in `routes/*.php` (not console.php or channels.php), with their prefix groups, controller groups, `match`, `view`, `resource` and `apiResource` (with `only` and `except`); `routes/api.php` under `/api`. Routes a package or a service provider adds aren't in these files, so they don't show.
 
 ## Changelog
 

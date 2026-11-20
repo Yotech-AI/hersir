@@ -1809,6 +1809,7 @@ dependencies = [
 name = "gizai-docs"
 version = "0.19.0"
 dependencies = [
+ "regex",
  "serde",
  "streaming-iterator",
  "tempfile",

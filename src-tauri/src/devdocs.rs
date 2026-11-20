@@ -32,8 +32,27 @@ pub async fn docs_reference(st: State<'_, AppState>, project_id: String) -> Resu
 
 /// `docs_reference`. Blocking.
 pub fn reference_of(st: &AppState, project_id: &str) -> Result<gizai_docs::Reference, String> {
+    let (repo, files) = tracked(st, project_id)?;
+    Ok(gizai_docs::reference(&repo, &files))
+}
+
+/// Docs → API: the routes the project answers on, read from the files git tracks, without running anything.
+#[tauri::command]
+pub async fn docs_api(st: State<'_, AppState>, project_id: String) -> Result<Vec<gizai_docs::api::Route>, String> {
+    let st = st.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || api_of(&st, &project_id)).await.map_err(|e| e.to_string())?
+}
+
+/// `docs_api`. Blocking.
+pub fn api_of(st: &AppState, project_id: &str) -> Result<Vec<gizai_docs::api::Route>, String> {
+    let (repo, files) = tracked(st, project_id)?;
+    Ok(gizai_docs::api::api(&repo, &files))
+}
+
+/// The project's repository and the files git tracks in it.
+fn tracked(st: &AppState, project_id: &str) -> Result<(std::path::PathBuf, Vec<String>), String> {
     let (project, repo) = crate::changes::docs_repo(st, project_id)?;
     let files = gizai_agents::worktree::tracked_files(&repo)
         .map_err(|e| format!("Hersir can't list {}'s files: {}", project.name, crate::pulls::plain(e)))?;
-    Ok(gizai_docs::reference(&repo, &files))
+    Ok((repo, files))
 }

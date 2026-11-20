@@ -90,3 +90,16 @@ fn a_projects_reference_reads_the_files_git_tracks() {
                [("Header", "component", "src/Header.tsx"), ("useMenu", "hook", "src/menu.ts")], "tracked files only, an untracked one left out");
     assert_eq!(r.entries[0].doc, "The site's header.");
 }
+
+#[test]
+fn a_projects_api_reads_its_route_files() {
+    let tmp = tempfile::tempdir().unwrap();
+    let st = gizai_lib::test_state(tmp.path());
+    let repo = tmp.path().join("pearl");
+    std::fs::create_dir_all(repo.join("app/api/ping")).unwrap();
+    git(&repo, &["init", "-q", "-b", "main"]);
+    commit(&repo, "app/api/ping/route.ts", "export async function GET() { return Response.json({}); }\n", "Ping");
+    let id = project(&st, "Pearl", "PEARL", Some(&repo));
+    let routes = gizai_lib::devdocs::api_of(&st, &id).unwrap();
+    assert_eq!(routes.iter().map(|r| (r.method.as_str(), r.path.as_str(), r.line)).collect::<Vec<_>>(), [("GET", "/api/ping", 1)]);
+}

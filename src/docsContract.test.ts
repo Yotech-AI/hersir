@@ -1,13 +1,14 @@
 // Docs → Commits: the UI's calls and types match the Rust side, read as text (Vite's ?raw) as contract C1's are
 // (changesContract.test.ts), so a change on one side without the other fails here.
 import { describe, expect, it, vi } from "vitest";
-import type { ChangelogEntry, CodeReference, CommitFiles, DecisionNote, DocsCommits, LoggedCommit, ReferenceEntry } from "./types";
+import type { ApiRoute, ChangelogEntry, CodeReference, CommitFiles, DecisionNote, DocsCommits, LoggedCommit, ReferenceEntry } from "./types";
 import libRs from "../src-tauri/src/lib.rs?raw";
 import changesRs from "../src-tauri/src/changes.rs?raw";
 import devdocsAppRs from "../src-tauri/src/devdocs.rs?raw";
 import devdocsRs from "../crates/gizai-core/src/devdocs.rs?raw";
 import worktreeRs from "../crates/gizai-agents/src/worktree.rs?raw";
 import docsRs from "../crates/gizai-docs/src/lib.rs?raw";
+import apiRs from "../crates/gizai-docs/src/api.rs?raw";
 
 const invoked: [string, unknown][] = [];
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (cmd: string, args?: unknown) => { invoked.push([cmd, args]); return Promise.resolve(null); } }));
@@ -55,8 +56,10 @@ describe("Docs → Reference's, Changelog's and Decisions' commands", () => {
     await api.docsChangelog("p1");
     await api.docsDecisions("p1");
     await api.docsReference("p1");
-    expect(invoked).toEqual([["docs_changelog", { projectId: "p1" }], ["docs_decisions", { projectId: "p1" }], ["docs_reference", { projectId: "p1" }]]);
-    for (const cmd of ["docs_changelog", "docs_decisions", "docs_reference"]) {
+    await api.docsApi("p1");
+    expect(invoked).toEqual([["docs_changelog", { projectId: "p1" }], ["docs_decisions", { projectId: "p1" }], ["docs_reference", { projectId: "p1" }],
+      ["docs_api", { projectId: "p1" }]]);
+    for (const cmd of ["docs_changelog", "docs_decisions", "docs_reference", "docs_api"]) {
       expect(libRs).toContain(`devdocs::${cmd}`);
       expect(devdocsAppRs).toMatch(new RegExp(`pub async fn ${cmd}\\(`));
     }
@@ -71,5 +74,7 @@ describe("Docs → Reference's, Changelog's and Decisions' commands", () => {
     expect(serdeFields(docsRs, "Entry")).toEqual(Object.keys(entry2).sort());
     const reference: Record<keyof CodeReference, true> = { entries: true, files: true, partial: true };
     expect(serdeFields(docsRs, "Reference")).toEqual(Object.keys(reference).sort());
+    const route: Record<keyof ApiRoute, true> = { method: true, path: true, handler: true, file: true, line: true };
+    expect(serdeFields(apiRs, "Route")).toEqual(Object.keys(route).sort());
   });
 });
