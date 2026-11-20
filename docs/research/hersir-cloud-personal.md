@@ -45,21 +45,30 @@ Added in chat on 20 November, on top of the decisions above, which still count. 
 |---|---|---|
 | C1 | **A project lives on the device it was created on**: its folder, cards, agents, runs and data stay there. The same repository added on another device is a different project. | 3.11 |
 | C2 | **The MacBook's app and the PWA work with it through Remote**: they send its host's own commands through Hersir Cloud, end-to-end encrypted, and the host answers. The host must stay on; while it is off, its projects say so on the other devices. | 3.11, 3.12 |
-| C3 | **"Sync between devices" now means that every device shows the projects of all your devices**, each answered by its own host. Nothing is copied. A small read-only copy for while a host is off only if it is cheap, as a question. | 3.11, question 21 |
+| C3 | **"Sync between devices" now means that every device shows the projects of all your devices**, each answered by its own host. Nothing is copied. | 3.11 |
 | C4 | **Round 2's sync engine** (`sync_log`, the clock, last writer wins per field, card numbers in the server's order, card claims) **isn't needed**: say what of it still is, and mark the rest replaced. Cloud Backup stays as designed. | 3.7 |
 | C5 | **Projects in the cloud**, so a device can work with a project while its host is off, come later, after the paid features: out of scope, but not made harder. | 3.11 |
+
+**Jefsev's answers on top of it** (chat, 20 November, through the Master Chief):
+
+| # | Answer | Where |
+|---|---|---|
+| A1 | **A repository that is already a project on another of your devices becomes a separate project**, and Hersir says so when it is added, so you know. | 3.11, *The same repository on two devices* |
+| A2 | **While a host is off, the other devices still show its projects, grayed out, with an icon that says the device is offline.** A click on one is designed here. | 3.11, *A host that is off*; 5.8 |
+| A3 | **No copies at all**, not even a read-only one for while a host is off: the host stays on. (Round 3's first draft offered one as a question; it is dropped.) | 3.11 |
+| A4 | **Running projects in the cloud stays out of scope for a while.** | 3.11 |
 
 **What this replaces in Round 2** [I]: the sync engine and its server side (3.7: `sync_log`, `sync_clock`, `cloud_link`, the HLC, last writer wins, numbering in the server's order, home computers and cloud claims, the server's `workspaces`, `txs`, `file_sets` and `claims`); the Chief's chat by sealed commands (3.8: commands, outbox, roster, the Chief's computer), because with Remote the screens call the host's own chat and approval commands; and Round 2's cards 6 to 11. The PWA gets its own device key by pairing and never the account key (3.13, replacing question 17).
 
 ## 1. Summary
 
-1. **Remote, as Jefsev chose** (0.1): each project lives on its **host**, the computer it was made on. Every other device (the MacBook's Hersir, the PWA) shows **the projects of all your hosts**, one host per workspace in a rail at the window's left edge, and sends each host its own commands through Hersir Cloud, end-to-end encrypted; the host answers from its own database and runs. Nothing is copied. A host that is off shows as off, with its pages saying since when (3.11). Each host keeps its own Chief, agents, clients, people and memory.
+1. **Remote, as Jefsev chose** (0.1): each project lives on its **host**, the computer it was made on. Every other device (the MacBook's Hersir, the PWA) shows **the projects of all your hosts**, one host per workspace in a rail at the window's left edge, and sends each host its own commands through Hersir Cloud, end-to-end encrypted; the host answers from its own database and runs. Nothing is copied, not even a read-only copy (A3). A host that is off stays in the rail, grayed out with an offline icon; a click on it, or on one of its projects, shows since when it is off and what to do, never stale data (A2, 3.11). A repository that is already a project on another of your hosts can be added again, and Hersir says it becomes a separate project (A1). Each host keeps its own Chief, agents, clients, people and memory.
 2. **The screens stay as they are** [V]: every screen talks to the backend through `invoke` and events in `src/api.ts`, which `npm run browser` already swaps for a fake (`src/browser/main.ts`). On the MacBook, Hersir's own Rust side forwards each command to the host of the workspace on screen (through Tauri's app-level invoke handler), so its screens, dialogs and file drops work unchanged; the PWA swaps the IPC as the browser mode does. About **20 to 28 agent-days** for both requirements, on top of the account server; the MacBook can be used first (cards 2, 7, 8 and 9, about 9 to 12 agent-days on the critical path), then the phone (cards 10 to 12). A command takes about 0.1 to 0.2 s instead of 1 ms. Of the 224 commands, 129 work remotely as they are, 8 need a change (files in and out, a binary answer, and the project and settings forms), and 87 stay on the host (the terminal, the editor, folders, the keychain, the updater, and everything that widens what an agent may run); the run and chat streams are forwarded (3.12).
 3. **Security** (3.13): a device is paired from a QR code (or a long code) shown on the PC, holds its own key pair (in the keychain, or a non-extractable WebCrypto key in the PWA), and talks to the PC in a Noise session the server can't read. Removing a device, from the account page or on the PC, ends it at once. A web app's code comes from a server, so the PWA is built in this public repository, served from its own origin (`app.hersir.dev`), deployed only from a signed release, and bounded by the PC's allowlist; the PC shows every connected device and has a switch that turns remote use off.
 4. **The relay** (3.15) is Laravel Reverb's client events on one private channel per host and device, inside the Round 2 Laravel app; files and big answers go sealed through R2. About €0 extra at 10 and 100 customers and about €7 a month at 1,000. **Web Push** for the Chief's questions, holds and approvals works on iOS only for a PWA added to the Home Screen (3.14).
 5. **Plans** (3.16): Hersir on your other devices and the PWA go into Personal (€5 a month, €48 a year) with Cloud Backup, which is still what is sold first (decision 7). Using a host from its own screen stays free.
 6. **Round 2 still holds** for the server (Laravel 13 at `cloud.hersir.dev`, Fortify with TOTP required, Passport with `oauth.rs` as it is, Cashier, SQLite with Litestream, R2 EU; with the relay about €22, €31 and €148 a month at 10, 100 and 1,000 customers, 3.3), payments (Stripe direct; against Managed Payments for now, 3.5) and Cloud Backup (3.6). Round 2's sync engine and chat commands are replaced (3.7, 3.8); twelve cards in two repositories (section 6).
-7. **Open questions** 13 to 27 (section 7): VERI*FACTU invoicing by 1 January 2027 still leads; new ones ask whether a host may keep itself awake while remote use is on, where the PWA is served, and whether a small read-only copy is wanted for while a host is off.
+7. **Open questions** 13 to 27 (section 7): VERI*FACTU invoicing by 1 January 2027 still leads; new ones ask whether a host may keep itself awake while remote use is on, where the PWA is served, and what a paired device may do.
 
 ## 2. The project now
 
@@ -690,6 +699,233 @@ YoTech's two roles: **controller** for account, billing, support and website dat
 | 17 | **Releases** (new) | each release also gets `hersir-web-X.Y.Z.zip`, listed in `SHA256SUMS` and so covered by the signature you already make with `scripts/sign-release.sh`; you approve the `pwa` environment's deploy after signing |
 
 **No longer needed** (replaced): Zitadel, Paddle and its domain review, Hetzner Object Storage, a Scaleway or Backblaze bucket, `api.`, `account.` and `login.` records. Round 3: nothing for sync (no workspaces to set up, no Chief's computer to choose).
+
+### 3.11 Hosts and their projects (C1 to C5, A1 to A4)
+
+**The model** [I]: every Hersir on a computer is a **host** of the projects made on it, with everything that hangs off them: its database, its folders and worktrees, its agents and their CLIs, its runs, its Chief. A **device** is any screen you use: the host's own window, another computer's Hersir (the MacBook) or the PWA. A device shows the projects of every host it is paired with, and sends each host's commands to that host. Nothing is copied between hosts (C3, A3). The MacBook is both: a host of its own projects, if it has any, and a device of the PC.
+
+#### How a device finds your hosts and their projects
+
+1. **The account's computers**: `GET /api/v1/devices` (card 2) lists them, now with `kind` (`desktop` or `web`) and `remote_on` (a host says so when its switch is on, 3.13); Reverb's presence channel `presence-account.<user>` says which are online right now (3.15).
+2. **Pairing makes a host usable** (3.13): a device works only with the hosts it is paired with, and a host answers only devices it has paired. Two desktop Hersirs pair **both ways at once**, so the PC shows the MacBook's projects as the MacBook shows the PC's. A computer on the account that isn't paired yet shows under *Add a computer* in the rail, with **Pair**.
+3. **The directory**: when a device connects to a host, it asks the host for its name and its projects (`remote_directory`, 5.8: each project's id, key, name, colour, team and repository link) and keeps that list, and only that list, until the next connection: in the MacBook's data folder (a this-computer table, never backed up as the host's data) or in the PWA's IndexedDB. It is refreshed when the host's `rows-changed` names `projects`. This is what lets a device show an offline host's projects (A2) and warn about a repository that is already a project elsewhere (A1). It holds no cards, comments, chats or runs: no copy of the data (A3).
+
+#### How a screen shows the projects of two hosts: one workspace per host, in a rail
+
+```
+ ┌────┐ ┌──────────────────┐ ┌──────────────────────────────────────────────┐
+ │ PC │ │ PC               │ │ EUQR · Board                                 │
+ │ ●  │ │ Inbox        3   │ │ To do        In progress    Review           │
+ │    │ │ Chat             │ │ ┌────────┐  ┌────────┐                       │
+ │ Mac│ │ Projects         │ │ │EUQR-12 │  │EUQR-9  │                       │
+ │    │ │  EUQR            │ │ └────────┘  └────────┘                       │
+ │ ⊘  │ │  GA              │ │                                              │
+ │Lap │ │ …                │ │                                              │
+ │    │ │                  │ │                                              │
+ │ +  │ │ PC · remote      │ │                                              │
+ └────┘ └──────────────────┘ └──────────────────────────────────────────────┘
+  rail     sidebar island          page island
+```
+
+- **The rail** sits on the window's background, left of the sidebar island, as the top bar does above the page (`design/README.md`, *Islands on a background*): 44 px wide (`size-topbar`), one 32 px tile per host with its initials or icon, its name under it in `t-xs`, the selected one on `canvas-hover`, a badge with its Inbox count (on `island`, as the Inbox count on the background already is), a 6 px dot in `live` while it is connected, and `+` (*Add a computer*) at the bottom. **This computer** is the first tile on a desktop that has projects of its own; the PWA has no tile of its own.
+- **Choosing a tile switches the whole window** to that host: the sidebar, the board, the chats, the Inbox, the search, the Usage page and Settings are the host's own, as if you sat at it; the sidebar's footer says "PC · remote". Hersir's routes (`src/router.ts`) don't change: each host's pages keep their own `#/…` address, with the host kept beside the route (`hersir.host` in the URL's query, so a link to a card opens on the right host) [I].
+- **With one host and no projects of its own** (the PWA, or a MacBook only used for the PC), the rail can be hidden; it shows as soon as a second host is paired [I].
+- **Why not one merged board** [I]: each host has its own teams, columns, agents, labels, Chief, clients and people (below), so a merged board would need Round 2's sync to agree on them. One workspace per host shows plainly where each project lives and which computer does its work (C1).
+
+#### A host that is off (A2)
+
+- **In the rail**: the tile grayed out (the faint text colour, no badge) with a small **offline icon** (lucide's `MonitorOff`, the same icon everywhere a host is off) and the tooltip "PC is offline since 09:12". Its projects stay listed in its sidebar, grayed out, each with the same icon, from the directory.
+- **A click on the tile, or on one of its projects**, opens the host's workspace on an **offline page** in the page island, never stale data (A3):
+
+```
+  ⊘  PC is offline
+     Since today 09:12. EUQR, GA and its other projects are on PC, and Hersir keeps no copies of them,
+     so they open again when PC is on, awake and running Hersir.
+
+     EUQR · GA · HC                                    (the projects, grayed out; the clicked one marked)
+
+     [Check again]   [ ] Tell me when PC is back
+```
+
+- **The other states of that page**: *Connecting to PC…* (with `LoaderCircle`, at most 10 s, then offline); *Remote use is off on PC* ("Turn it on in Hersir on PC: Settings → Hersir Cloud → Use from other devices"); *PC runs an older Hersir* ("Update Hersir on PC to use it from here": the host's version is below the device's minimum for the session, 3.13); *This device was removed from PC* ("Pair it again from PC's Settings → Hersir Cloud").
+- **A host that goes off while you work** (the socket closes, or presence says it left): the page you are on stays drawn but grayed, with a band at its top in `needs` gold, "PC went offline at 14:02. What you see may be out of date; changes can't be sent.", and every button that would write is disabled. A write that was on its way fails with "PC went offline before it answered. Check on PC whether it was done." [I]
+- **Writes are never queued** for a host that is off (question 20): a Run, an approval or a comment that waited and ran hours later would surprise you.
+- **Tell me when PC is back**: a desktop notification, or a Web Push to the phone, once presence shows the host again (card 7 sends `device.online` to the account's channel).
+
+#### The same repository on two devices (A1)
+
+- **Where it shows**: in the project form (*New project*, and *Folder* on an existing project, `ProjectForm.tsx`), right after a folder is picked and `check_repo` has read its remote (`src/api.ts:297-298`), the form compares the remote's link (`github` or `bitbucket`, normalised to `host/owner/repo`, lowercase, without `.git`) with the `repoUrl` of every project in the directories this device holds, this computer's own projects left out. On a match, an inline note under the *Folder* field, in the field's hint style with the offline-or-host icon, not an error: creating stays allowed.
+- **Its text**: "**This repository is already the project EUQR on PC.** Adding it here makes a separate project on this Mac, with its own cards, agents and runs; nothing is shared with EUQR on PC. To work on EUQR, open PC in the rail." with the buttons **Open EUQR on PC** and the form's own **Create project**. When that host is off: "…is already the project EUQR on PC (offline since 09:12)…". For several matches, one line per host.
+- **The Chief making a project** (its `create_project` tool, `src-tauri/src/tools/mod.rs:202, 452`) gets the same sentence in its tool's answer when the project's folder has a matching remote, so it can tell you [I].
+- **The new project is separate on purpose** (C1): its own key (the same key may be used on both hosts, since keys are unique per host's organisation, `0001_init.sql:147`), its own numbering, cards, worktrees and branches. Two hosts pushing to one repository can still meet in git (the same branch name from two `GA-12`s on different hosts); the card branches carry the host's project key, and a later card could add the host's short name to branch names if that happens in practice [I].
+
+#### The Chief, agents, clients, people and memory when two devices hold projects [I]
+
+| What | With two hosts |
+|---|---|
+| **The Chief** | one per host. Each Chief chats, checks the board and approves on its own host, for its own projects only; the chat you open in a host's workspace is that host's Chief. Its board check never reaches another host. (Round 2's "Chief's computer" setting goes.) |
+| **Agents** | belong to their host and run there with its CLIs, folders and keychain; an agent's form, tools and folders are changed on its host only (3.12). The same team on two hosts is two teams: Team → *Export template* on one host and *Import* on the other (GA-226) copies its setup. |
+| **Agents' questions** | an agent asks its own host's Chief first, then you, in that host's Inbox; the rail's badge shows each host's Inbox count. Round 2's question 19 is settled by this. |
+| **Clients and people** | per host. A client with projects on both hosts exists twice, edited separately; "you" are a person on each host. No link between them in v1. |
+| **Memory** | per host, with its agents. |
+| **Cards building on cards** | only within a host: a card on PC can't build on one on the MacBook. |
+| **Settings, notifications, Usage, Cloud Backup** | per host. Each host notifies its own paired devices (3.14) and backs up its own data (3.6). |
+
+#### Projects in the cloud, later (C5, A4) [I]
+
+Out of scope for a while. Remote keeps the door open: a host is anything that holds projects and answers the protocol of 3.13, identified by its device id, with no assumption of a screen. A Hersir running on a server later would be one more tile in the rail, paired like any computer. Keep the remote module apart from the window code (it already is: the commands take only `State` and `AppHandle`, 2.5) and keep the host-only list in one place (5.8), so a headless host can use both.
+
+### 3.12 What a remote device may do
+
+**The rule** [I]: a remote device may do on a host what you could do there from the board, the cards, the chat and the Inbox; it may not reach the host's own files, programs or accounts, nor widen what the host's agents may run. **Run, Stop and Continue** and **the Chief's chat with Approve and Discard** work from the MacBook and the PWA alike: they are the host's own commands (`startRun`, `stopRun`, `continueRun`, `continueAfterRunForMe`, `src/api.ts:233-238`; `sendChat`, `approvePendingAction`, `approvePendingActions`, `discardPendingAction`, `:452, 478-483`), run on the host as if clicked there, with every rule in force (an approval runs once, through `src-tauri/src/pending.rs:114` and its `pending::claim`).
+
+Of the 224 commands (2.5) [V the list on `723097f`; I the grouping]:
+
+| Group | Commands | Remotely |
+|---|---|---|
+| Clients, contacts, people | `list_clients`, `get_client`, `save_client`, `archive_client`, `list_contacts`, `save_contact`, `remove_contact`, `list_users`, `add_user` (9) | **as they are** |
+| Projects | `list_projects`, `get_project`, `project_team_move` (3) | **as they are** |
+| Cards | `list_tasks`, `get_task`, `create_task`, `update_task`, `move_task`, `set_task_labels`, `get_builds_on`, `add_builds_on`, `remove_builds_on`, `list_archived_tasks`, `archive_task`, `restore_task`, `move_tasks`, `archive_tasks`, `restore_tasks`, `task_activity`, `list_comments`, `add_comment`, `item_id`, `suggest_agent`, `card_changes`, `card_file_diff`, `run_changes`, `list_screenshots` (24) | **as they are** |
+| Teams, columns, labels | `list_teams`, `get_team`, `add_team`, `rename_state`, `add_state`, `set_column`, `add_column_agent`, `remove_column_agent`, `column_removal`, `remove_state`, `list_labels`, `save_label`, `remove_label`, `add_branch`, `remove_branch` (15) | **as they are** (an agent on a column starts runs within its own rights; it doesn't widen them) |
+| Docs and Memory | `list_docs`, `get_doc`, `create_doc`, `save_doc`, `rename_doc`, `doc_versions`, `doc_version_body`, `agent_notes`, `memory_notes`, `memory_create`, `memory_move`, `memory_search`, `memory_recent`, `memory_enabled`, `set_memory_enabled`, `ask_lead_enabled`, `set_ask_lead_enabled` (17) | **as they are** |
+| **Runs** | `start_run`, `stop_run`, `continue_run`, `continue_after_run_for_me`, `list_runs`, `run_events`, `run_commits`, `live_runs` (8) | **as they are**; `run-events` and `runs-changed` forwarded |
+| Pull requests and git hosts (reads) | `open_pull_request`, `check_pull_request`, `github_status`, `github_check`, `bitbucket_status`, `bitbucket_check` (6) | **as they are** (the push and the pull request are the host's, with its `gh` or token) |
+| **The Chief's chat and approvals** | `list_chat_threads`, `get_chat_thread`, `pinned_chats`, `pin_chat`, `unpin_chat`, `rename_chat`, `search_chat_threads`, `chat_messages`, `chat_queue`, `edit_queued_chat`, `remove_queued_chat`, `send_chat_queue`, `set_chat_cli`, `answer_chat_on`, `chat_clis`, `stop_chat`, `chat_live`, `chat_agent`, `dismiss_chat`, `pending_actions`, `approve_pending_action`, `approve_pending_actions`, `discard_pending_action` (23) | **as they are**; `chat-events` and `chat-changed` forwarded |
+| Agents (reads, and pausing) | `get_agent`, `agent_stats`, `agent_runs`, `agent_next_task`, `set_agent_status`, `list_clis`, `claude_models`, `role_template`, `role_tools`, `agent_mcp`, `agent_cli_tools`, `list_mcp_servers`, `browser_entry` (13) | **as they are** (pausing narrows) |
+| Usage and status | `usage_summary`, `subscription_limits`, `get_settings`, `backup_status`, `back_up_now`, `update_status`, `get_logs_info`, `app_info`, `restore_status` (9) | **as they are** |
+| Files: list and remove | `list_files`, `remove_file` (2) | **as they are** |
+| **Files in** | `add_files`, `send_chat` (its `files`), `check_files`, `paste_clipboard_image` (4) | **need a change**: the device uploads the bytes first (3.15) and passes `remote:<upload id>/<name>` tokens; the host refuses any other path from a remote device ("Files from another device must be uploaded"). The MacBook's forwarding does this for its own paths, so its file picker, drops and pasted images work unchanged; the PWA's pickers give File objects, which its client uploads |
+| **Files out** | `open_file`, `screenshot_bytes` (2) | **need a change**: the host answers with a sealed blob through R2 (3.15) instead of opening the file on its own screen; the device opens or shows it itself |
+| **Two forms** | `save_project`, `save_settings` (2) | **need a change**: the host refuses, from a remote device, a change to a project's `repoPath`, `worktreeCopy`, `worktreeInstall`, `worktreeSetup`, `previewCommand` or `leadMayMerge` (they run programs on the host, or are "set only by a person, in the app", `src/types.ts:44-60`), and to the settings' `claudeBin`, `ghBin`, `dataDir`, `editorRoots`, `pushOver`, `previewPortFrom`/`To` and the memory limits; the rest of both forms works. Each refusal names the field: "The project's folder and setup commands can only be changed on PC." |
+| Terminal | `terminal_*` (8) | **host only** |
+| Editor and by-hand cards | `editor_*`, `open_in_app`, `start_by_hand`, `hand_card`, `hand_commit`, `hand_push`, `hand_over` (21) | **host only** (they work in the host's folders) |
+| Folders and worktrees | `check_repo`, `check_agent_folders`, `list_old_worktrees`, `remove_old_worktrees`, `remove_old_worktree_anyway`, `open_logs_folder` (6) | **host only** (`check_repo` runs on the device's own computer when it adds a project of its own) |
+| **What widens what an agent may run** | `add_agent`, `update_agent`, `save_agent_mcp`, `save_agent_cli_tools`, `ask_cli_tools`, `save_clis`, `find_clis`, `detect_claude`, `detect_gh`, `save_mcp_server`, `remove_mcp_server`, `list_mcp_tools`, `scan_claude_code_mcp`, `import_mcp_servers`, `mcp_sign_in`, `mcp_sign_out`, `save_browser_entry`, `list_browser_tools`, `check_team_export`, `save_team_template`, `team_templates`, `preview_team_template`, `import_team_template` (23) | **host only** in v1. `update_agent` changes permissions, tools, folders and the CLI as well as the name; a later card could let a device change the fields that don't widen (name, instructions, model, effort, runs at once) |
+| Keychain and accounts | `github_login`, `github_login_wait`, `github_login_cancel`, `bitbucket_save_login`, `bitbucket_remove_login` (5) | **host only** |
+| The updater | `check_for_updates`, `set_update_auto_check`, `start_update`, `stop_update`, `restart_gizai` (5) | **host only** |
+| Backups and restore | `save_backup_settings`, `list_backups`, `start_restore`, `cancel_restore`, `restart_to_restore`, `dismiss_restore_result` (6) | **host only** |
+| The app and its window | `exit_app`, `selftest_report`, `selftest_panic`, `selftest_paste`, `tour_still`, `tour_steps`, `set_unsaved_edits`, `close_answer`, `glass_support`, `onboarding_pending`, `finish_onboarding`, `skip_onboarding`, `dismiss_unexpected_end` (13) | **host only**; on the MacBook these run on the MacBook itself, for its own window |
+
+Totals: 129 as they are, 8 with a change, 87 on the host only. A command a host doesn't know (a newer device, an older host) is refused with "Update Hersir on PC to do this from here." **The events**: `rows-changed`, `runs-changed`, `run-events`, `chat-changed`, `chat-events`, `backups-changed`, `restore-changed` and `update-changed` are forwarded; `editor-updated`, `terminals-changed` and `quit-requested` are not.
+
+**On screen** [I]: host-only places stay visible but say where they work: the Editor and Terminal pages show "The Editor works on PC itself" with nothing else; in Settings, the tabs and fields above are read-only with "Change this on PC"; the agent form opens read-only with the same line. The screens that import from `@tauri-apps` directly (2.5) need nothing on the MacBook (its plugins are its own) and a shim in the PWA (3.14): `openUrl` opens a new tab; the dialog's `open` gives picked files (the PWA's `FileDrop` gets an `<input type="file">`); `useDropZone.ts` listens to HTML5 drops in the PWA, where they do fire; `glass.ts` answers "none"; the template and folder dialogs are on host-only screens.
+
+### 3.13 Security and pairing
+
+A remote device can make a host's agents run code (a card and Run are enough). So the design keeps four promises [I]: only devices you paired on the host itself can send it commands; Hersir Cloud can neither read nor forge them; a device is withdrawn at once; and even a fully paired device can't widen what the host's agents may do.
+
+#### Pairing a device (replaces question 17's design)
+
+1. **On the host**: Settings → Hersir Cloud → *Use from other devices* → **Add a device**. The host asks Hersir Cloud for a pairing slot (`POST /api/v1/pairings` → `{ pairing_id, expires_at }`, 5 minutes) and makes a random 128-bit **pairing secret**, which never goes to the server. It shows a QR code holding `https://app.hersir.dev/pair#p=<pairing_id>&h=<host device id>&s=<secret, base64url>`: the part after `#` never leaves the phone in a request. For a MacBook without a camera it shows the same as a code to type: `HP-` and 26 characters in groups (the pairing id's short form and the secret, with a check character).
+2. **On the device**: the phone's camera opens the link (the PWA signs in first if needed, password and authenticator, 3.4); the MacBook's *Add a computer* takes the typed code. The device has its own keys: the MacBook its computer keys from Round 2 (Ed25519 and X25519, in its keychain, 3.2); the PWA makes an X25519 and an Ed25519 key pair with WebCrypto, **not extractable**, kept in IndexedDB (both are in WebCrypto in Safari 17, Chrome 133 and 137, Firefox 129 and 130 [V S-R11]). It sends `POST /api/v1/pairings/{id}/join` with its name, kind, public keys and a MAC: HMAC-SHA256 under a key derived from the secret over the pairing id, both device ids and the public keys.
+3. **The host checks the MAC** (it arrives through Reverb's `pairing.joined` on the host's own channel), then asks: "**Add iPhone (Safari) to PC?** It will see PC's projects and can run agents, approve the Chief's calls and add cards and comments. It can't use the terminal, the editor or PC's folders, or change what agents may run." with **What it may do**: *Everything above* (default) or *Board and chat only: no Run, Stop, Continue or approvals* (question 23), and **Add** / **Cancel**.
+4. **Add** stores the device on the host (`remote_devices`, 5.8) and confirms with its own MAC over the host's public keys (`POST …/confirm`); the device checks it and keeps the host's public keys pinned. Two desktops pair both ways in the same exchange (3.11). The server records only that the two devices are paired (for Reverb's channel rules) and never sees the secret, so it can't put its own keys in between: a changed key fails a MAC.
+5. **A device pairs with each host it uses** (question 25): two QR codes for two hosts. A host vouching for a device to your other hosts is a later convenience.
+
+**The PWA's key, replacing question 17**: the PWA holds its own device key pair, made in the browser and registered on each host by pairing. It never holds the account key, a chat key or any data key, so it can't read Cloud Backup's copies; it reads only what a host answers it, while it is connected.
+
+#### The session: Noise, end to end
+
+Each time a device connects to a host, they run the Noise protocol's **KK** handshake (both sides already know the other's static X25519 key from pairing) as `Noise_KK_25519_AESGCM_SHA256`, then send everything in Noise's transport messages (AES-256-GCM with counters, so a replayed, reordered or changed message fails) [I: the Noise Protocol Framework's pattern; the `snow` crate on the host and the MacBook, and about 300 lines of TypeScript on WebCrypto in the PWA, checked against the published Noise test vectors]. Ed25519 signs nothing in the session; it signs the pairing records and the push key (3.14). The session starts with the versions: a host refuses a device whose session version it doesn't know, and says which Hersir it runs.
+
+#### Withdrawing a device, at once
+
+- **On the host** (Settings → Hersir Cloud → *Your devices* → **Remove**) or **on the account page** (*Your computers and devices* → **Remove**): the server revokes the device's Passport token and its pairings at once (its next call gets 401; Reverb refuses its channel); the host, told by `device.removed` on the account's channel or by its own click, deletes the device's keys and ends its sessions mid-stream. Either one alone already stops it.
+- **The account's 2FA** is required for every device (decision 5): the PWA signs in with password and authenticator like the account pages; a new device and a removal each send an email.
+- **The account key doesn't need to change** for Remote: a removed device had none (the PWA) or only what Round 2's 3.2 already covers (a computer with Cloud Backup).
+
+#### What the server still sees (metadata)
+
+Which devices you have and their names and kinds; which are paired with which host; when each is online; how many messages and bytes pass between a device and a host, and when; the sizes of uploaded files; Web Push endpoints and when a push is sent. Never a command, an answer, a project's name, a card, a chat or a file's content; the directory of 3.11 travels inside the session.
+
+#### The PWA's code: where it is built and served, and how a changed web app is kept from using its keys
+
+A web app's code comes from a server each time: whoever controls the origin that serves the PWA can serve code that uses its keys. Non-extractable keys can't be copied out, but any script on the origin can still use them [V S-R11, MDN on `extractable`; I]. No browser lets a page pin its code: the origin can always replace the service worker, and the browser checks for a new one on navigation and at least every 24 hours [V S-R7]. Subresource Integrity covers files the HTML names, not the HTML itself [V S-R8]. WEBCAT (Freedom of the Press Foundation) is an alpha Firefox extension, and Meta's Code Verify is a desktop-browser extension; Chrome's Isolated Web Apps are signed bundles installed by enterprise tools; none of them helps an iPhone today [V S-R8]. So the design limits and shows the risk instead of claiming to remove it [I]:
+
+1. **Built in this repository**, which is public: `npm run build:web` makes the PWA from the same `src/`, so its code is reviewable like the app's.
+2. **Served from its own origin, `app.hersir.dev`**, not from `cloud.hersir.dev`: a hole in the Laravel app (forms, payments, webhooks) can't serve the PWA's code or reach its IndexedDB, and the Forge server never holds it. Served as static files by Cloudflare (Workers static assets, free, up to 20,000 files of 25 MiB [V S-R13]; question 22), with no Worker code.
+3. **Deployed only from a signed release**: the release workflow builds `hersir-web-X.Y.Z.zip`, puts it in `SHA256SUMS`, which `scripts/sign-release.sh` signs as for the app (`release_sig.rs:1-12`), and the `pwa` environment deploys it only after you approve. Anyone can compare what `app.hersir.dev` serves with the signed list; each host checks it daily against its built-in release keys and warns on Settings → Hersir Cloud when they differ ("app.hersir.dev serves files that aren't in Hersir 1.2.0's signed release. Remove your phones until this is explained.") [I].
+4. **A strict Content Security Policy** (scripts only from the origin, no `eval`, `connect-src` only `cloud.hersir.dev` and the R2 endpoint), so injected script can't load more or send keys elsewhere.
+5. **The host's allowlist bounds the damage** (3.12): a changed PWA can do what you can do from a phone, never widen an agent, read a host's files or open its terminal; *Board and chat only* devices can't run anything.
+6. **The MacBook doesn't have this risk**: its code is the installed, signed Hersir, not served by anyone.
+
+**Confirmation on the host for risky commands**: not by default, since you want Run and approvals from the phone; *Board and chat only* (question 23) is the per-device brake instead [I].
+
+#### What the host shows, and its switch
+
+- **The switch**: Settings → Hersir Cloud → **Use from other devices** (a this-computer setting, `remote_on`, **off by default**). Off: the host leaves the relay, refuses sessions and tells its devices "Remote use is off on PC". The tray menu has it too: *Remote use: on · Turn off*.
+- **While a device is connected**: a line at the bottom of the host's sidebar island, in `live` teal: "iPhone and MacBook are connected · Disconnect", and a dot on the tray icon. *Disconnect* ends their sessions until they reconnect; *Remove* is in Settings.
+- **What a device did**: *Your devices* lists each device with when it was last connected and its last 50 writes (the command, the card or chat, when), kept in a local table (`remote_log`, 30 days) [I]. The activity feed on each card already says what changed; Remote adds "from iPhone" to the writes a device made.
+
+### 3.14 The PWA
+
+#### Installing it
+
+- **iPhone and iPad**: open `app.hersir.dev` in Safari, Share → **Add to Home Screen**. Since iOS 26, "by default, every website added to the Home Screen opens as a web app", and Safari has "zero requirements for installability" [V S-R4]; the manifest still gives the name, icons, colours and `display: standalone`.
+- **Android**: Chrome offers *Install app* for a site served over HTTPS with a manifest that has a name, 192 and 512 px icons, a `start_url` and `display: standalone` [V S-R5]; the PWA ships a service worker anyway (for push and the app shell).
+- **Any desktop browser**: the same address works without installing; it is how you'd use a host from someone else's computer (sign in, pair, and remove the device afterwards).
+
+#### Web Push for the Chief's questions, holds and approvals
+
+- **iOS**: Web Push works only for a web app on the Home Screen (since iOS 16.4), the permission must be asked from a tap, and every push must show a notification (`userVisibleOnly`); pushes that show none get the subscription revoked [V S-R1]. Android Chrome and desktop browsers push without installing [V S-R5]. So the PWA asks for notifications from a button on its Settings, after *Add to Home Screen* on iOS, and its service worker always shows one.
+- **What triggers one**: the host's own four notification kinds (a card on hold, a card waiting for you, the Chief asks, the Chief answered; `notifications.rs:41-52`) and the Chief's calls waiting for your OK, under each device's own switches. The host sends them through the same sink as its desktop notifications (`AppState::desktop`), to each paired PWA device that has push on **and isn't connected right now** (a connected one gets the event in the session).
+- **Sealed, so the server can't read them** (question 27): the host seals `{ kind, title, body, url }` (at most 2 KB) with a **push key** that the host and the device derived at pairing (X25519 between their keys, then HKDF), and posts it to `POST /api/v1/push`; the server sends it as the Web Push payload (RFC 8291 caps it near 4 KB [V S-R5]) with `minishlink/web-push` 11 (MIT, July 2026) through `laravel-notification-channels/webpush` 13 (MIT, September 2026; VAPID) [V S-R12]. The service worker opens it with the device's key from IndexedDB and shows "Hersir · PC: The Chief waits for your OK" with the call's line; a tap opens the card or chat. If it can't open it (a re-paired device), it shows "Hersir: something on PC needs you". Apple's Declarative Web Push (iOS 18.4) would show a push without a service worker, but needs a plain payload, so it isn't used [V S-R2].
+- **Limits**: one push per kind per host every 30 seconds per device, at most 100 a day; the server keeps the endpoint, the device and the last push time.
+
+#### Storage and offline
+
+- The PWA stores little: its two keys, its token, the hosts' directories (3.11) and the app shell. No data (A3). Safari gives an origin up to 60% of the disk in a browser app and the same to a Home Screen web app; its 7-day cap on script-writable storage doesn't apply to a Home Screen web app, and `navigator.storage.persist()` is granted by heuristics such as being on the Home Screen [V S-R3]. In a Safari tab that isn't installed, keys unused for 7 days can go: the PWA then asks to pair again. The PWA asks for persistent storage after pairing.
+- **Offline** (no network): the app shell opens from the service worker and says "No connection"; hosts show as unreachable, as in 3.11.
+- A host's answers are held only in memory while a page shows them.
+
+#### The screens that need a phone layout (design card 10, built in card 12)
+
+The phone (under 600 px wide) gets its own layouts for the four places of requirement R1; the rest shows a plain list or "Open this on a computer" [I]:
+
+| Place | Phone layout |
+|---|---|
+| **The hosts and the sidebar** | the rail becomes a host switcher at the top of a slide-in menu; the sidebar's items in that menu; a bottom bar with Board, Inbox, Chat and a host chip |
+| **The board** | one column at a time, full width, with the columns as tabs you swipe between (counts in the tabs); a card's actions (move, Run) from a long press or its page, not drag and drop |
+| **A card** | one column: title and state, then tabs Details, Comments, Runs, Files; the run's output full screen with Stop and Continue in a bottom bar; screenshots full width; Properties in a sheet |
+| **The Chat** | the threads list, then one thread full screen; the text box above the keyboard with files from the camera or photos; waiting calls with Approve and Discard as full-width buttons |
+| **The Inbox** | a list of what waits, each opening its card or chat, with the host's name on each row when there are several hosts |
+
+They use the same tokens and components as the desktop (`design/tokens.json`), at a phone's sizes; touch targets of at least 44 px; `@media (hover: none)` already shows hover-only buttons (`src/styles/app.css:477, 493, 501, 569`).
+
+### 3.15 The relay on the server
+
+**What it is** [I, Reverb's behaviour V S-R6]: Reverb, which Round 2 already runs beside the Laravel app (3.3), relays the session's messages as **client events**: a device and a host both subscribe to one private channel per pair, `private-remote.<host id>.<device id>`, and each sends `client-m` events, which Reverb hands to the other subscribers inside its own process, without the Laravel app's code; Reverb accepts client events from channel members by default (`accept_client_events_from: members`) and never echoes one to its sender. The Laravel app only authorises the channel (`routes/channels.php`: the caller's token is one of the two devices, both are the same account's, they are paired, neither is removed, and the host has remote use on), and rings `device.online`, `device.removed` and `pairing.joined` on `private-account.<user>`.
+
+| Setting (`config/reverb.php`) | Default [V S-R6] | Hersir Cloud |
+|---|---|---|
+| `max_message_size` | 10,000 bytes | 65,536, so a frame carries up to 48 KiB of sealed data in base64 |
+| `rate_limiting` | off (60 a minute when on) | on: 1,200 messages a minute per connection, without cutting it off |
+| `max_connections` | none | 5,000 per server, with the `ext-uv` event loop (needed past 1,000) and `nofile` raised as the docs say |
+| `activity_timeout`, `ping_interval` | 30 s, 60 s | as they are; presence shows a host gone within about a minute |
+
+**Messages** (5.8 has the formats): a client event's `data` must be a JSON object [V S-R6], so each frame is `{ "s": <session>, "n": <counter>, "p": <part>, "of": <parts>, "d": "<base64 of a Noise message>" }`. A message over 48 KiB is split into parts; one over 1 MiB goes through R2.
+
+**Files and big answers through R2**: the sender asks `POST /api/v1/relay/blobs` for an upload URL (presigned `PUT`, 10 minutes, as backups do, 3.3) and gets a blob id; it uploads the bytes sealed with the session (in 4 MiB chunks, each sealed whole), and sends the blob id and size in the session; the receiver asks `POST /api/v1/relay/blobs/download` for its URL, downloads, opens and checks it. Blobs are deleted after 24 hours by an R2 lifecycle rule and as soon as the receiver says it has them. **Limit: 100 MB per file** (question 24), 2 GB of blobs a day per account; R2 can't cap a presigned upload's size, so the server checks it with a `HEAD` before the receiver gets its URL, as backups do (3.3). Over it: "Files from another device can be up to 100 MB."
+
+**Load per connected device** [I, estimates]: each host keeps one websocket open while remote use is on, idle most of the time (a ping a minute). A device on a board makes a burst of 10 to 30 small calls (a few KB each, compressed); watching a run streams its events at most every 250 ms (the host batches `run-events` and `chat-events` for remote devices at 250 ms instead of 50 ms), about 2 to 20 KB a second. A screenshot or a file goes through R2, not Reverb.
+
+**How fast a command is** [I]: from Spain, a round trip to a server in Germany is a few tens of milliseconds, so a command goes device → server → host → server → device in about 100 to 200 ms, plus the host's own time (1 to 20 ms for most reads). A screen's first load makes its calls at once, so it draws in about 0.2 to 0.4 s; a run's output follows a quarter to half a second behind. The first connection's handshake adds one round trip.
+
+**Costs** (EUR a month, excl. VAT) [I, on Round 2's prices S-L11, S-L16, S-L19]: assume 70% of customers keep a host on with remote use, 1.5 devices each connected 2 hours a day, 30 MB a day relayed and 20 files a day through R2 per active customer.
+
+| | 10 customers | 100 customers | 1,000 customers |
+|---|---|---|---|
+| Connections at the busiest time | about 15 | about 100 | about 1,000 |
+| Reverb's memory and CPU | on the CX23 already there | on the CX23 | its own CX23 (€6, no backups needed) beside the CX43 |
+| Traffic (about 1 GB, 10 GB, 0.9 TB a month) | within Hetzner's included traffic | within it | within it (Hetzner's EU cloud servers include 20 TB [I, from S-L19]) |
+| R2 for blobs (short-lived; class A and B operations) | €0 (free tier) | €0 | about €1 |
+| Web Push (Apple's and Google's push services) | €0 | €0 | €0 |
+| **Extra for the relay** | **€0** | **€0** | **about €7** |
+| **Hersir Cloud in total** (3.3's table plus the relay) | about €22 | about €31 | about €148 |
+
+### 3.16 Plans
+
+**Recommended** [I]: one plan, **Personal at €5 a month or €48 a year (excl. VAT)**, holding Cloud Backup **and** Hersir on your other devices with the PWA (question 26). The website's line for Multiple devices becomes "Your projects on all your computers and your phone, worked by the computer that holds them." Reasons: the relay costs about €0.007 per customer a month at 1,000 customers, so it needs no price of its own; one plan keeps Stripe, the entitlement (`features: ["backup", "remote"]`, 5.4) and the website simple; and "my board on my phone" is what makes people pay, which Jefsev said of the chat (decision 12). **Without a plan**: everything on a host's own screen stays free (P1); pairing works, but a device's sessions start only while the account's plan is active, since the relay is the hosted service. A lapsed plan: devices say "Hersir Cloud's plan ended on 9 Dec 2026: use PC on PC itself, or renew", and the hosts go on working as before.
 
 ## 4. Options
 
