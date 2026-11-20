@@ -1,12 +1,13 @@
 // Docs → Commits: the UI's calls and types match the Rust side, read as text (Vite's ?raw) as contract C1's are
 // (changesContract.test.ts), so a change on one side without the other fails here.
 import { describe, expect, it, vi } from "vitest";
-import type { ChangelogEntry, CommitFiles, DecisionNote, DocsCommits, LoggedCommit } from "./types";
+import type { ChangelogEntry, CodeReference, CommitFiles, DecisionNote, DocsCommits, LoggedCommit, ReferenceEntry } from "./types";
 import libRs from "../src-tauri/src/lib.rs?raw";
 import changesRs from "../src-tauri/src/changes.rs?raw";
 import devdocsAppRs from "../src-tauri/src/devdocs.rs?raw";
 import devdocsRs from "../crates/gizai-core/src/devdocs.rs?raw";
 import worktreeRs from "../crates/gizai-agents/src/worktree.rs?raw";
+import docsRs from "../crates/gizai-docs/src/lib.rs?raw";
 
 const invoked: [string, unknown][] = [];
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (cmd: string, args?: unknown) => { invoked.push([cmd, args]); return Promise.resolve(null); } }));
@@ -48,13 +49,14 @@ describe("Docs → Commits' commands", () => {
   });
 });
 
-describe("Docs → Changelog's and Decisions' commands", () => {
+describe("Docs → Reference's, Changelog's and Decisions' commands", () => {
   it("are invoked with camelCase arguments and registered with Tauri", async () => {
     invoked.length = 0;
     await api.docsChangelog("p1");
     await api.docsDecisions("p1");
-    expect(invoked).toEqual([["docs_changelog", { projectId: "p1" }], ["docs_decisions", { projectId: "p1" }]]);
-    for (const cmd of ["docs_changelog", "docs_decisions"]) {
+    await api.docsReference("p1");
+    expect(invoked).toEqual([["docs_changelog", { projectId: "p1" }], ["docs_decisions", { projectId: "p1" }], ["docs_reference", { projectId: "p1" }]]);
+    for (const cmd of ["docs_changelog", "docs_decisions", "docs_reference"]) {
       expect(libRs).toContain(`devdocs::${cmd}`);
       expect(devdocsAppRs).toMatch(new RegExp(`pub async fn ${cmd}\\(`));
     }
@@ -65,5 +67,9 @@ describe("Docs → Changelog's and Decisions' commands", () => {
     expect(serdeFields(devdocsRs, "ChangelogEntry")).toEqual(Object.keys(entry).sort());
     const note: Record<keyof DecisionNote, true> = { id: true, path: true, title: true, bodyMd: true, updatedAt: true };
     expect(serdeFields(devdocsRs, "DecisionNote")).toEqual(Object.keys(note).sort());
+    const entry2: Record<keyof ReferenceEntry, true> = { name: true, kind: true, path: true, line: true, endLine: true, doc: true, text: true };
+    expect(serdeFields(docsRs, "Entry")).toEqual(Object.keys(entry2).sort());
+    const reference: Record<keyof CodeReference, true> = { entries: true, files: true, partial: true };
+    expect(serdeFields(docsRs, "Reference")).toEqual(Object.keys(reference).sort());
   });
 });

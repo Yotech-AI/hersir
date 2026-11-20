@@ -397,6 +397,11 @@ export type CommitFiles = { from: string; to: string; files: FileChange[] };
 export type ChangelogEntry = { taskId: string; identifier: string; title: string; at: number };
 /** A shared memory note about a project's decisions, as Docs → Decisions shows it; `bodyMd` without its properties. */
 export type DecisionNote = { id: string; path: string; title: string; bodyMd: string; updatedAt: number };
+/** A declaration in a project's code, as Docs → Reference lists it: its kind (component, hook, function, class, model,
+ *  controller…), its file and lines (from 1), the comment above it without its markers, and its text (at most 200 lines). */
+export type ReferenceEntry = { name: string; kind: string; path: string; line: number; endLine: number; doc: string; text: string };
+/** Docs → Reference: the declarations, how many files were read, and the files the parser couldn't read in full. */
+export type CodeReference = { entries: ReferenceEntry[]; files: number; partial: string[] };
 export type LiveRun = { runId: string; taskId: string; agentId: string };
 export type Settings = { claudeBin?: string | null; dataDir: string; maxConcurrentRuns: number; agentsPaused: boolean; maxRunUsd?: number | null; maxRunMinutes: number; maxRunToolCalls: number;
   /** Settings → Runs → Memory for agent runs (GA-202), in GB: all agent runs together, half of the computer's memory

@@ -442,7 +442,7 @@ pub async fn docs_file_diff(st: State<'_, AppState>, project_id: String, path: S
 }
 
 /// A project and its repository on this disk (its linked folder), or why Docs → Commits can't read it.
-fn docs_repo(st: &AppState, project_id: &str) -> Result<(Project, PathBuf), String> {
+pub(crate) fn docs_repo(st: &AppState, project_id: &str) -> Result<(Project, PathBuf), String> {
     let project = projects::get(&st.db, project_id).map_err(|e| e.to_string())?;
     let repo = project.repo_path.as_deref().map(str::trim).filter(|r| !r.is_empty()).map(PathBuf::from)
         .ok_or_else(|| format!("{} has no git repository: link one on its project page → Edit", project.name))?;

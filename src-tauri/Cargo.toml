@@ -28,6 +28,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 gizai-core = { path = "../crates/gizai-core" }
 gizai-agents = { path = "../crates/gizai-agents" }
+gizai-docs = { path = "../crates/gizai-docs" }
 gizai-mcp = { path = "../crates/gizai-mcp" }
 tokio = { workspace = true, features = ["signal"] }
 tauri-plugin-opener = "2"

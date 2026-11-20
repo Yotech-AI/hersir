@@ -684,6 +684,13 @@ pub fn commits(dir: &Path, base: &str, head: &str) -> Result<Vec<Commit>, AgentE
         .map(|(sha, subject)| Commit { sha: sha.to_string(), subject: subject.to_string() }).collect())
 }
 
+/// The files git tracks in `dir`, relative to it, with `/`: what Docs → Reference reads. Ignored and untracked files
+/// aren't among them.
+pub fn tracked_files(dir: &Path) -> Result<Vec<String>, AgentError> {
+    let out = git(dir, &["-c", "core.quotepath=off", "ls-files", "-z"])?;
+    Ok(out.split('\0').filter(|p| !p.is_empty()).map(str::to_string).collect())
+}
+
 /// A commit on main, as Docs → Commits lists it.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]

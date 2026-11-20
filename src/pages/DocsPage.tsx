@@ -1,12 +1,14 @@
 // A project's page in the sidebar's Docs section (#/devdocs/<project id>/<tab>). Docs is switched on per project, in the
-// project form; while it is off the page says so, with the way to turn it on. With it on, three tabs:
-// - Changelog (the first): the project's merged cards, newest first, by month, each linking to its card;
+// project form; while it is off the page says so, with the way to turn it on. With it on, four tabs:
+// - Reference (the first): the declarations in the project's code, by kind, with a filter; each opens to its comment and
+//   its code;
+// - Changelog: the project's merged cards, newest first, by month, each linking to its card;
 // - Decisions: the shared memory notes about the project's decisions, each linking to it in Memory;
 // - Commits: main's newest commits as last fetched (no fetch); a commit opens to the files it changed, each in the
 //   Changes view's own box, whose diff loads once the box comes near the screen.
 import { Fragment, useState } from "react";
-import { ChevronDown, ChevronRight, GitCommitHorizontal, Scale, ScrollText, type LucideIcon } from "lucide-react";
-import { docsChangelog, docsCommitFiles, docsCommits, docsDecisions, getProject } from "../api";
+import { Braces, ChevronDown, ChevronRight, GitCommitHorizontal, Scale, ScrollText, type LucideIcon } from "lucide-react";
+import { docsChangelog, docsCommitFiles, docsCommits, docsDecisions, docsReference, getProject } from "../api";
 import { href, type DocsTab } from "../router";
 import { useData } from "../lib/useData";
 import { useDrawer } from "../lib/drawers";
@@ -14,15 +16,16 @@ import { when } from "../lib/screenshots";
 import { useNearScreen } from "../lib/shotUrls";
 import { FileBox, type DiffSource } from "../components/changes/FileBox";
 import { MarkdownView } from "../components/MarkdownView";
-import type { ChangelogEntry, FileChange, LoggedCommit } from "../types";
+import type { ChangelogEntry, CodeReference, FileChange, LoggedCommit, ReferenceEntry } from "../types";
 
 const TABS: { tab: DocsTab; label: string; icon: LucideIcon }[] = [
+  { tab: "reference", label: "Reference", icon: Braces },
   { tab: "changelog", label: "Changelog", icon: ScrollText },
   { tab: "decisions", label: "Decisions", icon: Scale },
   { tab: "commits", label: "Commits", icon: GitCommitHorizontal },
 ];
 
-export function DocsPage({ id, tab = "changelog" }: { id: string; tab?: DocsTab }) {
+export function DocsPage({ id, tab = "reference" }: { id: string; tab?: DocsTab }) {
   const { data: p, error } = useData(() => getProject(id), [id]);
   const open = useDrawer();
   if (error) return <div className="error-banner">{error}</div>;
@@ -39,7 +42,8 @@ export function DocsPage({ id, tab = "changelog" }: { id: string; tab?: DocsTab 
                   <a key={t} className="tab" role="tab" aria-selected={tab === t} href={href({ page: "devdocs", id: p.id, view: t })}><I className="icon" />{label}</a>
                 ))}
               </div>
-              {tab === "changelog" ? <Changelog projectId={p.id} /> : tab === "decisions" ? <Decisions projectId={p.id} /> : <Commits projectId={p.id} />}
+              {tab === "reference" ? <Reference projectId={p.id} /> : tab === "changelog" ? <Changelog projectId={p.id} />
+                : tab === "decisions" ? <Decisions projectId={p.id} /> : <Commits projectId={p.id} />}
             </>
           ) : (
             <div className="empty"><b>Docs is off for this project</b><span>Turn it on in the project's settings, under Docs.</span>
@@ -48,6 +52,70 @@ export function DocsPage({ id, tab = "changelog" }: { id: string; tab?: DocsTab 
         </div>
       </div>
     </>
+  );
+}
+
+/** The kinds in the order Reference shows them; any other kind follows, by name. */
+const KIND_ORDER = ["component", "hook", "function", "class", "interface", "type", "enum", "constant", "model", "controller", "migration",
+  "middleware", "api resource", "job", "command", "seeder", "factory", "notification", "mailable", "cast", "validation rule",
+  "livewire component", "blade component", "exception", "trait"];
+const rank = (kind: string) => { const i = KIND_ORDER.indexOf(kind); return i === -1 ? KIND_ORDER.length : i; };
+const PLURAL: Record<string, string> = { class: "Classes", middleware: "Middleware", "api resource": "API resources" };
+const kindHeading = (kind: string) => PLURAL[kind] ?? `${kind[0]!.toUpperCase()}${kind.slice(1)}s`;
+
+/** Docs → Reference: the declarations in the project's code, by kind, with a filter. */
+function Reference({ projectId }: { projectId: string }) {
+  const { data, error } = useData(() => docsReference(projectId), [projectId]);
+  const [filter, setFilter] = useState("");
+  if (error) return <div className="empty"><b>Hersir can't read the code</b><span>{error}</span></div>;
+  if (!data) return <p className="faint">Reading the code…</p>;
+  if (data.entries.length === 0) {
+    return <div className="empty"><b>No declarations found</b><span>Reference reads the TypeScript, JavaScript, PHP, Vue and Svelte files git tracks.</span></div>;
+  }
+  const many = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
+  return (
+    <section aria-label="Reference">
+      <div className="section-head"><h3>{`${many(data.entries.length, "declaration")} in ${many(data.files, "file")}`}</h3>
+        <input className="input docs-filter" type="search" placeholder="Filter by name, kind or file" aria-label="Filter the declarations"
+          value={filter} onChange={(e) => setFilter(e.target.value)} /></div>
+      {data.partial.length > 0 && <p className="faint">{`${many(data.partial.length, "file")} ${data.partial.length === 1 ? "has" : "have"} syntax the parser can't read: ${data.partial.length === 1 ? "its" : "their"} declarations may be incomplete.`}</p>}
+      <ReferenceList reference={data} filter={filter} />
+    </section>
+  );
+}
+
+/** The declarations whose name, kind or file has every word of `filter`, by kind. */
+export function ReferenceList({ reference, filter }: { reference: CodeReference; filter: string }) {
+  const words = filter.toLowerCase().split(/\s+/).filter(Boolean);
+  const kept = reference.entries.filter((e) => words.every((w) => `${e.name} ${e.kind} ${e.path}`.toLowerCase().includes(w)));
+  if (kept.length === 0) return <p className="faint">Nothing matches.</p>;
+  const kinds = [...new Set(kept.map((e) => e.kind))].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+  return (
+    <>
+      {kinds.map((kind) => {
+        const of = kept.filter((e) => e.kind === kind);
+        return (
+          <Fragment key={kind}>
+            <h3 className="docs-month">{kindHeading(kind)} <span className="faint">{of.length}</span></h3>
+            <ul className="run-commits docs-commits">{of.map((e) => <EntryRow key={`${e.path}:${e.line}:${e.name}`} e={e} />)}</ul>
+          </Fragment>
+        );
+      })}
+    </>
+  );
+}
+
+function EntryRow({ e }: { e: ReferenceEntry }) {
+  const [open, setOpen] = useState(false);
+  const Caret = open ? ChevronDown : ChevronRight;
+  return (
+    <li>
+      <button className="docs-commit" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <Caret className="icon sm" /><span className="mono">{e.name}</span><span className="faint">{`${e.path}:${e.line}`}</span>
+        {e.doc && <span className="doc">{e.doc.split("\n")[0]}</span>}
+      </button>
+      {open && <div className="docs-entry">{e.doc && <p>{e.doc}</p>}<pre className="docs-code">{e.text}</pre></div>}
+    </li>
   );
 }
 

@@ -7,10 +7,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactElement, ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { DocsTab } from "../router";
-import type { ChangelogEntry, CommitFiles, DecisionNote, DocsCommits, Project } from "../types";
+import type { ChangelogEntry, CodeReference, CommitFiles, DecisionNote, DocsCommits, Project } from "../types";
 
 const state = vi.hoisted(() => ({
-  project: null as unknown, commits: null as unknown, files: null as unknown, changelog: null as unknown, decisions: null as unknown, open: vi.fn(),
+  project: null as unknown, commits: null as unknown, files: null as unknown, changelog: null as unknown, decisions: null as unknown,
+  reference: null as unknown, open: vi.fn(),
 }));
 vi.mock("../api", async (orig) => ({
   ...(await orig<object>()),
@@ -19,6 +20,7 @@ vi.mock("../api", async (orig) => ({
   docsCommitFiles: () => state.files,
   docsChangelog: () => state.changelog,
   docsDecisions: () => state.decisions,
+  docsReference: () => state.reference,
 }));
 vi.mock("../lib/useData", () => ({
   useData: (fetch: () => unknown) => {
@@ -28,7 +30,7 @@ vi.mock("../lib/useData", () => ({
 }));
 vi.mock("../lib/drawers", async (orig) => ({ ...(await orig<object>()), useDrawer: () => state.open }));
 
-const { DocsPage, CommitFileList } = await import("./DocsPage");
+const { DocsPage, CommitFileList, ReferenceList } = await import("./DocsPage");
 
 const HOUR = 3_600_000;
 const kade = (devDocs: boolean) => ({
@@ -58,17 +60,19 @@ beforeEach(() => {
   state.files = null;
   state.changelog = [];
   state.decisions = [];
+  state.reference = { entries: [], files: 0, partial: [] };
 });
 
 describe("the Docs page", () => {
   it("names the section and the project in its crumbs", () => {
     expect(page()).toContain('<div class="crumbs"><span>Docs</span><span class="sep">/</span><b>Kade portal</b></div>');
   });
-  it("opens on Changelog, with tabs for Decisions and Commits", () => {
+  it("opens on Reference, with tabs for Changelog, Decisions and Commits", () => {
     const html = page();
-    expect(html).toMatch(/<a class="tab" role="tab" aria-selected="true" href="#\/devdocs\/kade\/changelog"><svg[^>]*>.*?<\/svg>Changelog<\/a>/);
-    expect(html).toMatch(/<a class="tab" role="tab" aria-selected="false" href="#\/devdocs\/kade\/decisions"><svg[^>]*>.*?<\/svg>Decisions<\/a>/);
-    expect(html).toMatch(/<a class="tab" role="tab" aria-selected="false" href="#\/devdocs\/kade\/commits"><svg[^>]*>.*?<\/svg>Commits<\/a>/);
+    expect(html).toMatch(/<a class="tab" role="tab" aria-selected="true" href="#\/devdocs\/kade\/reference"><svg[^>]*>.*?<\/svg>Reference<\/a>/);
+    for (const [tab, label] of [["changelog", "Changelog"], ["decisions", "Decisions"], ["commits", "Commits"]]) {
+      expect(html).toMatch(new RegExp(`<a class="tab" role="tab" aria-selected="false" href="#/devdocs/kade/${tab}"><svg[^>]*>.*?</svg>${label}</a>`));
+    }
     expect(page("decisions")).toMatch(/aria-selected="true" href="#\/devdocs\/kade\/decisions"/);
   });
   it("says Docs is off, with Edit project, which opens the project's form", () => {
@@ -86,19 +90,50 @@ describe("the Docs page", () => {
   });
 });
 
+describe("Reference", () => {
+  const ref = {
+    entries: [
+      { name: "Header", kind: "component", path: "src/Header.tsx", line: 4, endLine: 8, doc: "The page's header.\nWith the site's name.", text: "export function Header() {}" },
+      { name: "useMenu", kind: "hook", path: "src/menu.ts", line: 2, endLine: 4, doc: "", text: "export function useMenu() {}" },
+      { name: "Invoice", kind: "model", path: "app/Models/Invoice.php", line: 10, endLine: 13, doc: "", text: "class Invoice extends Model {}" },
+    ],
+    files: 3, partial: ["src/Broken.tsx"],
+  } satisfies CodeReference;
+  it("groups the declarations by kind, components first, each with where it is and its doc's first line", () => {
+    state.reference = ref;
+    const html = page();
+    expect(html).toContain("3 declarations in 3 files");
+    expect(html.indexOf("Components")).toBeLessThan(html.indexOf("Hooks"));
+    expect(html.indexOf("Hooks")).toBeLessThan(html.indexOf("Models"));
+    expect(html).toContain('<span class="mono">Header</span><span class="faint">src/Header.tsx:4</span><span class="doc">The page&#x27;s header.</span>');
+    expect(html).toContain("1 file has syntax the parser can&#x27;t read: its declarations may be incomplete.");
+  });
+  it("keeps the declarations whose name, kind or file has the words typed", () => {
+    const html = renderToStaticMarkup(<ReferenceList reference={ref} filter="menu" />);
+    expect(html).toContain("useMenu");
+    expect(html).not.toContain("Header");
+    expect(html).not.toContain("Invoice");
+    expect(renderToStaticMarkup(<ReferenceList reference={ref} filter="model" />)).toContain("Invoice");
+    expect(renderToStaticMarkup(<ReferenceList reference={ref} filter="nothing like it" />)).toContain("Nothing matches");
+  });
+  it("says so while it finds no declarations", () => {
+    expect(page()).toContain("<b>No declarations found</b>");
+  });
+});
+
 describe("Changelog", () => {
   it("lists the merged cards newest first, each linking to its card", () => {
     state.changelog = [
       { taskId: "t2", identifier: "KADE-2", title: "The contact form says when it sent", at: Date.now() - HOUR },
       { taskId: "t1", identifier: "KADE-1", title: "Invoices export as CSV", at: Date.now() - 50 * HOUR },
     ] satisfies ChangelogEntry[];
-    const html = page();
+    const html = page("changelog");
     expect(html).toContain('<a class="mono" href="#/task/t2">KADE-2</a><span>The contact form says when it sent</span>');
     expect(html).toContain('<a class="mono" href="#/task/t1">KADE-1</a><span>Invoices export as CSV</span>');
     expect(html.indexOf("KADE-2")).toBeLessThan(html.indexOf("KADE-1"));
   });
   it("says what shows there while nothing is merged", () => {
-    expect(page()).toContain("<b>Nothing merged yet</b><span>A card shows here once its work reaches main: in a Deploy or Done column.</span>");
+    expect(page("changelog")).toContain("<b>Nothing merged yet</b><span>A card shows here once its work reaches main: in a Deploy or Done column.</span>");
   });
 });
 

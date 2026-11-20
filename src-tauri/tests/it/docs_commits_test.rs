@@ -72,3 +72,21 @@ fn a_project_without_a_repository_says_how_to_link_one_and_a_commit_id_is_checke
     let shop = project(&st, "Shop", "SHOP", Some(&repo));
     assert_eq!(changes::files_of_commit(&st, &shop, "--all").unwrap_err(), "\"--all\" isn't a commit id");
 }
+
+#[test]
+fn a_projects_reference_reads_the_files_git_tracks() {
+    let tmp = tempfile::tempdir().unwrap();
+    let st = gizai_lib::test_state(tmp.path());
+    let repo = tmp.path().join("pearl");
+    std::fs::create_dir_all(repo.join("src")).unwrap();
+    git(&repo, &["init", "-q", "-b", "main"]);
+    std::fs::write(repo.join("src/Header.tsx"), "/** The site's header. */\nexport function Header() {\n  return <header />;\n}\n").unwrap();
+    commit(&repo, "src/menu.ts", "export function useMenu() { return 1; }\n", "First");
+    std::fs::write(repo.join("src/untracked.ts"), "export function notYet() {}\n").unwrap();
+    let id = project(&st, "Pearl", "PEARL", Some(&repo));
+
+    let r = gizai_lib::devdocs::reference_of(&st, &id).unwrap();
+    assert_eq!(r.entries.iter().map(|e| (e.name.as_str(), e.kind.as_str(), e.path.as_str())).collect::<Vec<_>>(),
+               [("Header", "component", "src/Header.tsx"), ("useMenu", "hook", "src/menu.ts")], "tracked files only, an untracked one left out");
+    assert_eq!(r.entries[0].doc, "The site's header.");
+}
