@@ -50,7 +50,7 @@ export function slug(s: string) { return s.toLowerCase(); }
 fn tsx_gives_components_hooks_functions_types_and_constants_without_members_or_imports() {
     let dir = tempfile::tempdir().unwrap();
     let file = write(dir.path(), "src/Header.tsx", TSX);
-    let r = reference(dir.path(), &[file.clone()]);
+    let r = reference(dir.path(), std::slice::from_ref(&file));
     assert_eq!(r.files, 1);
     assert!(r.partial.is_empty(), "{:?}", r.partial);
     assert_eq!(of(&r.entries, &file), [
@@ -69,7 +69,7 @@ fn a_vue_file_is_a_component_named_after_it_with_its_scripts_declarations_at_the
     let dir = tempfile::tempdir().unwrap();
     let file = write(dir.path(), "resources/js/UserCard.vue",
         "<template>\n  <div>{{ name }}</div>\n</template>\n\n<script setup lang=\"ts\">\nimport { computed } from 'vue';\n\nfunction initials(name: string) {\n  return name.slice(0, 2);\n}\n</script>\n");
-    let r = reference(dir.path(), &[file.clone()]);
+    let r = reference(dir.path(), std::slice::from_ref(&file));
     assert_eq!(of(&r.entries, &file), [("UserCard", "component", 1), ("initials", "function", 8)]);
 }
 
@@ -108,7 +108,7 @@ interface Billable {}
 fn php_gives_laravels_kinds_by_what_a_class_extends_and_its_doc_block() {
     let dir = tempfile::tempdir().unwrap();
     let file = write(dir.path(), "app/Models/Invoice.php", PHP);
-    let r = reference(dir.path(), &[file.clone()]);
+    let r = reference(dir.path(), std::slice::from_ref(&file));
     assert_eq!(of(&r.entries, &file), [
         ("Invoice", "model", 10), ("InvoiceController", "controller", 15), ("CreateInvoicesTable", "migration", 20),
         ("EnsureClient", "middleware", 22), ("PaymentFailed", "exception", 27), ("Billable", "interface", 29),
@@ -144,7 +144,7 @@ fn installed_built_minified_declaration_big_and_unreadable_files_are_left_out() 
 fn a_file_the_grammar_cant_read_in_full_still_gives_its_declarations_and_is_named() {
     let dir = tempfile::tempdir().unwrap();
     let file = write(dir.path(), "src/Broken.tsx", "export function Fine() { return 1; }\n\nexport function Broken( {\n");
-    let r = reference(dir.path(), &[file.clone()]);
+    let r = reference(dir.path(), std::slice::from_ref(&file));
     assert!(of(&r.entries, &file).iter().any(|(n, ..)| *n == "Fine"), "{:?}", r.entries);
     assert_eq!(r.partial, [file]);
 }
@@ -181,7 +181,7 @@ void main() {
 fn dart_gives_widgets_classes_mixins_extensions_enums_types_constants_and_functions() {
     let dir = tempfile::tempdir().unwrap();
     let file = write(dir.path(), "lib/main.dart", DART);
-    let r = reference(dir.path(), &[file.clone()]);
+    let r = reference(dir.path(), std::slice::from_ref(&file));
     assert!(r.partial.is_empty(), "{:?}", r.partial);
     assert_eq!(of(&r.entries, &file), [
         ("HomePage", "widget", 4), ("_CounterState", "widget", 10), ("Logging", "mixin", 14), ("Pretty", "extension", 16),
@@ -218,7 +218,7 @@ fun main() {
 fn kotlin_gives_classes_interfaces_enums_objects_types_constants_and_functions() {
     let dir = tempfile::tempdir().unwrap();
     let file = write(dir.path(), "app/src/main/java/App.kt", KOTLIN);
-    let r = reference(dir.path(), &[file.clone()]);
+    let r = reference(dir.path(), std::slice::from_ref(&file));
     assert!(r.partial.is_empty(), "{:?}", r.partial);
     assert_eq!(of(&r.entries, &file), [
         ("Case", "class", 4), ("Repository", "interface", 6), ("Court", "enum", 10), ("Cache", "object", 12),
