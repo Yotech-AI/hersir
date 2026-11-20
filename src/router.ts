@@ -1,9 +1,10 @@
 // Tiny hash router: #/page or #/page/id.
 import { startTransition, useEffect, useState } from "react";
 
-export const PAGES_WITH_ID = ["task", "project", "client", "doc", "team", "agent", "chat"] as const;
+export const PAGES_WITH_ID = ["task", "project", "client", "doc", "devdocs", "team", "agent", "chat"] as const;
 // chats: Chat → Archive, every chat with a search (chat/<id> is one chat).
-export const PAGES = ["chat", "chats", "inbox", "tasks", "board", "task", "projects", "project", "clients", "client", "doc", "team", "agent", "users", "settings", "usage", "memory", "editor", "terminal"] as const;
+// devdocs: a project's page in the sidebar's Docs section, #/devdocs/<project id>; doc is one of a project's documents.
+export const PAGES = ["chat", "chats", "inbox", "tasks", "board", "task", "projects", "project", "clients", "client", "doc", "devdocs", "team", "agent", "users", "settings", "usage", "memory", "editor", "terminal"] as const;
 export type Page = (typeof PAGES)[number];
 // The Editor (GA-113): #/editor is the Editor with no folder open, #/editor/<folder> a folder (an EditorFolder id, its
 // path, encoded as one part).
@@ -48,7 +49,7 @@ export function parseHash(hash: string): Route {
   if (page === "editor") return parts[1] ? { page, id: decodeURIComponent(parts.slice(1).join("/")) } : { page };
   if (page === "terminal") return parts[1] ? { page, id: decodeURIComponent(parts[1]) } : { page };
   if ((PAGES_WITH_ID as readonly string[]).includes(page) && parts[1]) return { page, id: decodeURIComponent(parts[1]) };
-  const LIST_OF: Record<string, Page> = { task: "tasks", project: "projects", client: "clients", doc: "projects", team: "team", agent: "team", chat: "chat" };
+  const LIST_OF: Record<string, Page> = { task: "tasks", project: "projects", client: "clients", doc: "projects", devdocs: "projects", team: "team", agent: "team", chat: "chat" };
   if ((PAGES_WITH_ID as readonly string[]).includes(page)) return { page: LIST_OF[page] };
   return { page };
 }

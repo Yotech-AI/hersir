@@ -22,6 +22,14 @@ describe("doc pages", () => {
   });
 });
 
+describe("Docs pages", () => {
+  it("opens a project's Docs by the project's id, and falls back to projects without one", () => {
+    expect(parseHash("#/devdocs/p1")).toEqual({ page: "devdocs", id: "p1" });
+    expect(href({ page: "devdocs", id: "p1" })).toBe("#/devdocs/p1");
+    expect(parseHash("#/devdocs")).toEqual({ page: "projects" });
+  });
+});
+
 describe("team page", () => {
   it("can select an agent and stays on the team page without one", () => {
     expect(parseHash("#/team/agent-1")).toEqual({ page: "team", id: "agent-1" });

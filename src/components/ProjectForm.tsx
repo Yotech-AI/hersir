@@ -30,6 +30,7 @@ export function toProjectInput(p?: Project | null): ProjectInput {
     worktreeCopy: p?.worktreeCopy ?? [], worktreeInstall: p?.worktreeInstall ?? true, worktreeSetup: p?.worktreeSetup ?? "",
     testRunsAtOnce: p?.testRunsAtOnce ?? null,
     leadMayMerge: p?.leadMayMerge ?? false,
+    devDocs: p?.devDocs ?? false,
     screenshots: projectShotsFrom(p?.screenshots), previewCommand: p?.previewCommand ?? "", previewStartSecs: p?.previewStartSecs ?? START_SECS.default,
     teamId: p?.teamId ?? null,
   };
@@ -233,6 +234,11 @@ export function ProjectDrawer({ id, onClose }: { id?: string; onClose: () => voi
           </Field>
           <Field label="Whole page" htmlFor="p-fullpage" wide hint="Off by default: one window’s height at each size.">
             <label className="check"><input id="p-fullpage" type="checkbox" checked={shots.fullPage} onChange={(e) => setShots({ fullPage: e.target.checked })} />The whole length of each page</label>
+          </Field>
+        </FormSection>
+        <FormSection title="Docs" text="The project's own page in the sidebar's Docs section.">
+          <Field label="Docs" htmlFor="p-docs" wide hint="Off by default. On: the project shows under Docs in the sidebar.">
+            <label className="check"><input id="p-docs" type="checkbox" checked={v.devDocs ?? false} onChange={(e) => set("devDocs", e.target.checked)} />Show this project under Docs</label>
           </Field>
         </FormSection>
         <FormSection title="Budget" text="Optional. Shown on the project page.">

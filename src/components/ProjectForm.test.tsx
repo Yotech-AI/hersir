@@ -31,6 +31,16 @@ describe("New worktrees", () => {
     expect([v.worktreeCopy, v.worktreeInstall, v.worktreeSetup]).toEqual([[".env", "vendor/"], false, "php artisan migrate"]);
   });
 
+  it("Docs: shows the switch off for a new project, and keeps a project's own switch", () => {
+    const html = renderToStaticMarkup(<ProjectDrawer onClose={() => {}} />);
+    expect(html).toContain("Off by default. On: the project shows under Docs in the sidebar.");
+    expect(html).toMatch(/<input id="p-docs" type="checkbox"\/>Show this project under Docs/);
+    expect(toProjectInput(null).devDocs).toBe(false);
+    const p = { id: "p1", number: "P-1", key: "SHOP", name: "Shop", status: "active", defaultBranch: "main", openTasks: 0, doneTasks: 0, updatedAt: 0,
+      worktreeCopy: [], worktreeInstall: true, devDocs: true } as unknown as Project;
+    expect(toProjectInput(p).devDocs).toBe(true);
+  });
+
   it("GA-86: shows Chief may merge off for a new project, and keeps a project's own switch", () => {
     const html = renderToStaticMarkup(<ProjectDrawer onClose={() => {}} />);
     expect(html).toContain("Merging");

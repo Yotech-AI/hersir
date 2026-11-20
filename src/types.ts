@@ -33,6 +33,8 @@ export type Project = {
   /** Test runs at once (GA-212): how many of its cards may be in a test run (a run on a card in a Testing column) at the
    *  same time, 1–20. null: no limit of its own. */
   testRunsAtOnce?: number | null;
+  /** Docs: the project is listed in the sidebar's Docs section, with its own Docs page there. Off by default. */
+  devDocs?: boolean;
 };
 export type ProjectScreenshots = {
   on: boolean;                                                // true
@@ -55,6 +57,8 @@ export type ProjectInput = {
   previewStartSecs?: number | null;   // 120, 10–600                     (SB2)
   /** Test runs at once (GA-212): 1–20; 0 removes it (no limit of its own). Left out (null): kept as it is. */
   testRunsAtOnce?: number | null;
+  /** Docs on or off. Left out (null): kept as it is (off for a new project). */
+  devDocs?: boolean | null;
   /** The project's team (GA-225). Left out (null): the first team for a new project, kept on an edit. Another team moves the
    *  project and all its cards there; refused while one of its cards has a run live or starting. */
   teamId?: string | null;

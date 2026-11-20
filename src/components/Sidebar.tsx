@@ -1,7 +1,8 @@
 // The sidebar (design system: Sidebar): quick actions, work areas, projects, the team's agents and their memory scroll;
 // the company pages stay at the bottom, with the update notice above them when a newer release is out, and the restore's
 // (GA-219) when one runs, is ready or has just been done. A Gizai on other data than the usual folder says so there.
-// Terminal (GA-136), Editor (GA-113), Agents and Memory fold with the caret at the end of their heading (GA-90).
+// Terminal (GA-136), Editor (GA-113), Agents, Docs and Memory fold with the caret at the end of their heading (GA-90).
+// Docs, below Agents, lists the projects whose Docs is on (project form → Docs), each linking to its Docs page.
 // Close sidebar (GA-291) sits at the top right, on New task's row; closed, App.tsx shows the toolbar (SidebarToolbar) instead.
 import {
   Building2, ChartColumn, ChevronDown, ChevronUp, Crown, FlaskConical, FolderCode, FolderKanban, Inbox, Keyboard, Library, ListTodo, LoaderCircle, MessagesSquare,
@@ -62,6 +63,7 @@ export function Sidebar({ route, youId, onSearch, onNewTask, dataLabel, dataDir,
   const is = (...pages: Route["page"][]) => pages.includes(route.page);
   const liveFor = (id: string) => live.filter((r) => r.agentId === id).length;
   const allLive = liveTotal(live, agents);
+  const docs = (projects.data ?? []).filter((p) => p.devDocs);
   return (
     <aside className="side" id="sidebar" aria-label="Navigation">
       <div className="side-main">
@@ -108,6 +110,15 @@ export function Sidebar({ route, youId, onSearch, onNewTask, dataLabel, dataDir,
             </a>
           );
         })}
+      </FoldSection>
+
+      <FoldSection section="docs" name="Docs" label="Docs" folded={folded("docs")} onFold={() => fold("docs")}>
+        {docs.length === 0 && <a className="nav-item" href={href({ page: "projects" })}><span className="faint">No project has Docs on</span></a>}
+        {docs.map((p) => (
+          <a key={p.id} className={`nav-item${route.page === "devdocs" && route.id === p.id ? " on" : ""}`} href={href({ page: "devdocs", id: p.id })}>
+            <span className="dot" style={{ background: p.color ?? "var(--text-3)" }} /><span>{p.name}</span>
+          </a>
+        ))}
       </FoldSection>
 
       <MemorySection route={route} lead={lead} agents={agents} notes={notes.data ?? []} folded={folded("memory")} onFold={() => fold("memory")}
