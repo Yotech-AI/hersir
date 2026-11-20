@@ -1,10 +1,11 @@
-# Hersir Cloud for one person: Cloud Backup, Multiple devices and the Chief's chat on every computer
+# Hersir Cloud for one person: Cloud Backup, Hersir on another computer, the PWA, and Multiple devices
 
-Research for GA-67 by the R&D Agent. Round 1: 9 November 2026. **Round 2: 17 November 2026**, rewritten to Jefsev's twelve decisions of 17 November ([section 0](#0-jefsevs-decisions-17-november-2026)). No code was changed. It turns `docs/PAID-FEATURES.md` (Phase 1 and Phase 2) into build cards.
+Research for GA-67 by the R&D Agent. Round 1: 9 November 2026. Round 2: 17 November 2026, rewritten to Jefsev's twelve decisions of 17 November ([section 0](#0-jefsevs-decisions-17-november-2026)). **Round 3: 20 November 2026**, for Jefsev's two requirements of 20 November ([section 0.1](#01-jefsevs-requirements-20-november-2026)): the whole Hersir in a PWA, and Hersir on the MacBook with the cards on the PC. No code was changed. It turns `docs/PAID-FEATURES.md` (Phase 1 and Phase 2) into build cards.
 
 - **[V]** = verified: in this repository (a file and line), or on a primary source (listed in [Sources](#9-sources) with the date read). **[I]** = my judgement.
-- **Replaced** marks a Round 1 recommendation that a decision of 17 November replaced. It stays only where it helps to see why.
-- Code citations are checked against main at `99ce4e3` (Hersir 0.18.0, 17 Nov 2026). This branch could not merge main in this run (`git merge` was refused), so the files in the branch's own tree are older than some lines cited.
+- **Replaced** marks an earlier recommendation that a later decision or requirement replaced. It stays only where it helps to see why.
+- Round 3's code citations are checked against main at `723097f` (Hersir 0.19.0, 19 Nov 2026) with `git show` and `git grep`; Round 2's against `99ce4e3` (0.18.0), and those Round 3 relies on were checked again at `723097f`. This branch could not merge main in Round 2 (`git merge` was refused), so the files in the branch's own tree are older than some lines cited.
+- **Where to start reading Round 3**: the requirements (0.1), the summary (1), Remote or Sync (section 4), what a remote device may do (3.11), its security (3.12), the PWA (3.13), the relay (3.14), plans (3.15), the design (5.8), the cards (6) and the questions (7).
 
 ## 0. Jefsev's decisions (17 November 2026)
 
@@ -29,15 +30,26 @@ These close Round 1's twelve open questions (section 7). Where they differ from 
 
 **What still holds from Round 1**: the account key and recovery code (now without storing the code on computers, 3.2); format 1's manifest with chunked, encrypted, keyed-hash uploads (3.6); the trigger-written `sync_log`, the hybrid logical clock, last writer wins per field and card numbers settled in the server's order (3.7); cloud claims before a run starts (3.7); the legal list (3.9, updated for selling directly).
 
+## 0.1 Jefsev's requirements (20 November 2026)
+
+Added in chat on 20 November, on top of the decisions above, which still count. Where Round 1 or Round 2 put the phone chat or agents across devices out of scope, these count: both are in scope, up to their build cards.
+
+| # | Requirement | Where in this document |
+|---|---|---|
+| R1 | **The PWA is the whole Hersir, not only the chat**: the Kanban board, the cards (comments, files, runs), the Chief's chat with its Approve and Discard buttons, and the Inbox, on the phone and in any browser, through Hersir Cloud. | 3.13, 5.8, cards 10 and 11 |
+| R2 | **Hersir on the MacBook, with the cards on the PC**: the project folders, the agents with their CLIs and the runs stay on the PC. On the MacBook, Jefsev sees and does everything on the board: the cards, the Chief's chat and its approvals, and Run, Stop and Continue. The PC does the work. | 3.11, 5.8, cards 7 to 9 |
+
+**What Round 3 changes in Round 2's plan** [I]: a new way to build both, **Remote** (the MacBook's Hersir and the PWA are screens of the PC, which answers them through an end-to-end encrypted relay), comes **before** Round 2's **Sync** (section 4). Remote replaces Round 2's cards 10 and 11 (the Chief's chat by commands): the chat, its approvals and its live answers come with Remote for free, because the screens call the PC's own chat commands. Round 2's Sync (cards 6 to 9, renumbered 12 to 15) is kept as designed, for later. The PWA no longer needs the account key: it gets its own device key by pairing, and holds no copy of the data (3.12, replacing question 17).
+
 ## 1. Summary
 
-1. **Order** (decision 7): Cloud Backup for your own computers first, with a plan given by hand (cards 1 to 4); Stripe, the account page and the legal pack before the first sale (card 5); then Multiple devices (cards 6 to 9); then the Chief's chat on every computer (cards 10 and 11). Eleven cards, two repositories, about 40 to 60 agent-days.
-2. **The server** is one Laravel 13 app, `hersir-cloud` (private), at `cloud.hersir.dev` on a Forge-managed Hetzner server in Germany: Fortify with TOTP required, Passport, Cashier, Reverb, SQLite in WAL mode streamed by Litestream to R2, and the customers' encrypted chunks uploaded straight to R2 (EU jurisdiction) with presigned URLs. About €22 a month at 10 customers, €31 at 100 and €141 at 1,000, Forge included (3.3).
-3. **Sign-in**: `oauth.rs` works against Passport as it is, given a fixed client id (it then skips registration); it already finds the server through RFC 9728 and RFC 8414 documents, which Hersir Cloud publishes. The first token is exchanged once for the computer's own Passport token, which the account page withdraws (3.4).
-4. **Payments**: Stripe direct with Billing and Tax costs about 8% of the monthly price and 4% of the yearly one; Managed Payments (open to a Spanish S.L., +3.5%, sold through Link, LLC) about 12% and 7%. **Recommended against Managed Payments for now.** Selling directly, the S.L. charges Spanish VAT to EU consumers until EU sales to them pass €10,000 a year, then files the OSS quarterly; the UK needs registration from the first UK consumer (3.5).
-5. **The Chief's chat everywhere**: a message written on another computer goes as an encrypted, signed command through Hersir Cloud to the Chief's computer, which answers there; the answer and its Approve and Discard reach every computer through sync, and an approval from any computer runs once, on the Chief's computer. Reverb rings the doorbell; data goes over plain HTTPS (3.8).
-6. **Still true in the code** (main at 0.18.0): `changes` can't drive sync as it is, so sync gets a trigger-written log beside it (2.4, 3.7).
-7. **New open questions** (13 to 20, section 7): where to sell at launch, and **VERI*FACTU-compliant invoicing, which the S.L. needs by 1 January 2027** (Stripe doesn't claim its invoices comply).
+1. **Build Remote first, Sync later (or never)** (section 4). Remote: the MacBook's Hersir and the PWA send the PC's own commands through Hersir Cloud, end-to-end encrypted, and the PC answers from its own database and runs. About **17 to 25 agent-days** for both requirements on top of the account server, against about **45 to 60** for Sync with a PWA that holds its own copy. Jefsev can use the MacBook first (after cards 2, 7, 8 and 9), then the phone (cards 10 and 11). The cost: nothing of the board works while the PC is off or asleep; a command takes about 0.1 to 0.2 s instead of 1 ms.
+2. **The screens stay as they are** [V]: every screen talks to the backend through `invoke` and events in `src/api.ts`, which `npm run browser` already swaps for a fake (`src/browser/main.ts`). On the MacBook, Hersir's own Rust side forwards the commands to the PC, so its screens, dialogs and file drops work unchanged; the PWA swaps the IPC as the browser mode does. Of the 224 commands, 129 work remotely as they are, 8 need a change (files in and out, a binary answer, and the project and settings forms), and 87 stay on the PC (the terminal, the editor, folders, the keychain, the updater, and everything that widens what an agent may run); the run and chat streams are forwarded (3.11).
+3. **Security** (3.12): a device is paired from a QR code (or a long code) shown on the PC, holds its own key pair (in the keychain, or a non-extractable WebCrypto key in the PWA), and talks to the PC in a Noise session the server can't read. Removing a device, from the account page or on the PC, ends it at once. A web app's code comes from a server, so the PWA is built in this public repository, served from its own origin (`app.hersir.dev`), deployed only from a signed release, and bounded by the PC's allowlist; the PC shows every connected device and has a switch that turns remote use off.
+4. **The relay** (3.14) is Laravel Reverb's client events on one private channel per PC and device, inside the Round 2 Laravel app; files and big answers go sealed through R2. About €0 extra at 10 and 100 customers and about €7 a month at 1,000. **Web Push** for the Chief's questions, holds and approvals works on iOS only for a PWA added to the Home Screen (3.13).
+5. **Plans** (3.15): remote use and the PWA go into Personal (€5); Cloud Backup is still what is sold first (decision 7).
+6. **Round 2 still holds** for the server (Laravel 13 at `cloud.hersir.dev`, Fortify with TOTP required, Passport with `oauth.rs` as it is, Cashier, SQLite with Litestream, R2 EU; about €22, €31 and €141 a month at 10, 100 and 1,000 customers, 3.3), payments (Stripe direct; against Managed Payments for now, 3.5) and Cloud Backup (3.6).
+7. **Open questions** 13 to 26 (section 7): VERI*FACTU invoicing by 1 January 2027 still leads; new ones ask whether the PC may stay awake for remote use, where the PWA is served, and whether Sync is still wanted.
 
 ## 2. The project now
 
@@ -82,6 +94,19 @@ Round 1's findings, checked again on main; item 7 is new. They change the plan m
 5. **Some columns of shared rows belong to one computer** [V]: `repos.local_path`, `agent_configs.folders_json` and `default_cwd`, `projects.folder_path`, `docs.mirror_path`, `chat_threads.session_id` and `session_cli`, the claim columns, and `runs.cwd`, `worktree_path` and `pid` (`docs/backup-format.md:205`).
 6. **Snapshots are plain and compressed whole** [V] (`docs/backup-format.md:5`, `:74`): right for a folder; for the cloud they need encryption, and a whole-file zstd stream changes nearly everywhere when one page changes.
 7. **The Chief works on one computer by design** [V]. Its chat resumes a CLI session that lives in that computer's CLI account (`0003_chat.sql`), its approvals run the waiting call "as the Chief" in that computer's app (`src-tauri/src/pending.rs:114`), and its board check reads that computer's code copies (`docs/features/chief.md`, *It reads your code*). So a message or an approval from another computer must travel to the Chief's computer and run there: it can't be applied as a synced row (3.8).
+
+### 2.5 What remote use touches (Round 3, main at `723097f`, Hersir 0.19.0)
+
+- **One file talks to Tauri** [V]. `src/api.ts:1` says "The only file that talks to Tauri. Swap this file to change the shell." Every command goes through one `invoke` (`src/api.ts:11`), which is Tauri's own `invoke` through the perf counter (`src/lib/perf.ts:5, 28`) and the shared-reads layer (`src/lib/share.ts`); every event through `listen` (`src/lib/perf.ts:6, 43`). The only `Channel` stream is the terminal's output (`terminalAttach`, `src/api.ts:362`).
+- **224 commands** [V]: `#[tauri::command]` in `src-tauri/src`: 176 in `commands.rs`, 21 in `editor.rs`, 8 in `terminal.rs`, 4 in `logs.rs`, 3 each in `lib.rs` and `changes.rs`, 2 each in `unsaved.rs`, `tour.rs` and `screenshots.rs`, 1 each in `paste_guard.rs`, `pasted.rs` and `glass.rs`; registered in one `generate_handler!` (`src-tauri/src/lib.rs:818`). Every one takes only `State<'_, AppState>` and/or `AppHandle` besides its arguments (210 and 68 uses; no `Window` or `Webview` parameter), so Rust code that holds the `AppHandle` can call any of them with `app.state()` [V the signatures; I the use].
+- **Eleven events** [V], each emitted in one place: `rows-changed` (two places), `runs-changed`, `run-events`, `chat-changed`, `chat-events`, `backups-changed`, `restore-changed`, `update-changed`, `editor-updated`, `terminals-changed`, `quit-requested`. `run-events` and `chat-events` come in batches, at most one every 50 ms per run or chat (`src/api.ts:246-251, 485-488`).
+- **The browser mode** [V]: `npm run browser` (GA-185) serves `browser.html`, whose `src/browser/main.ts:19-20` calls Tauri's `mockIPC(…, { shouldMockEvents: true })` before React starts, and `src/browser/mock.ts` answers each command from fixtures and emits `rows-changed` itself (`mock.ts:4, 75`). So every screen already runs in a plain browser with another backend behind `invoke`. The app's build has only `index.html` (`vite.config.ts`).
+- **Imports from `@tauri-apps` outside `src/api.ts`** (main code, tests left out) [V]: `@tauri-apps/plugin-opener`'s `openUrl` in nine files (`BitbucketSettings.tsx:5`, `GithubSettings.tsx:5`, `MarkdownView.tsx:4`, `PullPanel.tsx:7`, `UpdateSettings.tsx:5`, `memory/NoteView.tsx:8`, `lib/terminals.ts:18`, `OnboardingPage.tsx:10`, `ProjectPage.tsx:1`); `@tauri-apps/plugin-dialog`'s `open` or `save` in five (`BackupSettings.tsx:11`, `EditorFoldersSetting.tsx:6`, `FileDrop.tsx:4`, `ProjectForm.tsx:2`, `TeamPage.tsx:2`); the webview's drag-and-drop event in `lib/useDropZone.ts:4` (HTML5 drop "never fires in the webview", `:1-2`) and its type in `lib/drop.ts:1`; window effects in `lib/glass.ts:13`; `emit` in `selftest.ts:4`; and `perf.ts` itself.
+- **Files are host paths** [V]: `addFiles(ownerType, ownerId, paths)` (`src/api.ts:140`), `sendChat(…, files: string[])` with "paths of files added to the message" (`:450-453`), `checkFiles(paths)` (`:455`), `pasteClipboardImage` saving under `<data dir>/pasted/` (`:456-458`); `openFile(id)` opens a stored file on the computer (`:143`); `screenshotBytes` answers raw bytes (`:270`, `tauri::ipc::Response` in `screenshots.rs:235`).
+- **Settings and forms that run things on the computer** [V]: `Settings.claudeBin`, `ghBin`, `editorRoots` and `dataDir` (`src/types.ts:386-405`); a project's `repoPath`, `worktreeCopy`, `worktreeInstall`, `worktreeSetup` and `previewCommand`, the last "set only by a person, in the app" (`types.ts:44-60`); an agent's `permissionMode`, `allowedTools`, `folders`, MCP tools and CLI tools (`types.ts:142-147, 174-192`); MCP servers and coding CLIs (`src/api.ts:192-218`).
+- **Hersir keeps running with its window closed** [V]: closing the main window hides it (`src-tauri/src/lib.rs:896-905`), and quitting is the tray's or Settings' *Quit*. So a PC can answer remote devices with its window closed, as long as it is on and awake.
+- **Desktop notifications** [V]: four kinds with their switches (hold, waiting, the Chief asks, the Chief answered), worked out from the Inbox every few seconds and shown through one sink, `AppState::desktop` (`src-tauri/src/notifications.rs:1-17, 41-52`; `lib.rs:97`). Web Push can hang off the same sink.
+- **Release signatures** [V]: every release has `hersir-X.Y.Z.sig` over `hersir vX.Y.Z <commit>` and the release's `SHA256SUMS`, made on Jeffrey's computer and checked by Hersir against built-in keys (`crates/gizai-agents/src/release_sig.rs:1-12`). The PWA's files can be published and signed the same way.
 
 ## 3. The feature
 
@@ -404,6 +429,8 @@ Not on every change: with Multiple devices every change goes to the cloud anyway
 
 ### 3.7 Multiple devices in detail [Round 1, still holds, with decision 6 and Reverb]
 
+**Round 3**: Sync is no longer the first way to use Hersir on two computers; Remote is (section 4). This design stays for later, as cards 12 to 15, for what Remote can't do: the board while the PC is off, and two computers that both run agents on one board.
+
 **Recommendation** [I]: build sync on a new, complete log beside `changes`, written by triggers, with a real hybrid logical clock, last writer wins per field, and a server that only stores and orders encrypted transactions: Actual Budget's model with Linear's server sequence numbers (S-B4, S-B5). Keep `changes` as the activity feed it is, and carry its rows along, so another computer's feed shows the same lines. No sync engine can be adopted instead: PowerSync, ElectricSQL, Turso Sync and SQLite Sync all need a server that reads the rows, which end-to-end encryption rules out (S-B5).
 
 #### The `changes` log as the code has it now [V]
@@ -508,7 +535,9 @@ Files sync by keyed hash, as backups store them: a push uploads the blobs the se
 
 ### 3.8 The Chief's chat on every computer (decision 12)
 
-**Recommendation** [I]: one computer per workspace is **the Chief's computer**, chosen in Settings. The Chief runs there and only there: its chat answers, its board checks, its approvals. Every other computer writes to it through Hersir Cloud with **commands**: small messages sealed with the account's command key and signed by the computer that wrote them, which the server stores and forwards but can't read, add or change. What the Chief does comes back to every computer through sync, since its threads, messages, queue and pending actions are synced rows with one writer. While it writes, its answer streams live through Reverb.
+**Replaced in Round 3 for v1**: with Remote, the MacBook and the PWA show the PC's own Chat page and call its own chat and approval commands (`sendChat`, `approvePendingAction` and the rest, 3.11), so decision 12 is met without the commands, outbox and roster below, and Round 2's cards 10 and 11 go. An approval from the phone runs on the PC through `src-tauri/src/pending.rs:114` with its `pending::claim`, as a click there does. The design below stays for Sync, where two computers hold copies and the Chief's computer is one of them.
+
+**Recommendation** [I, Round 2]: one computer per workspace is **the Chief's computer**, chosen in Settings. The Chief runs there and only there: its chat answers, its board checks, its approvals. Every other computer writes to it through Hersir Cloud with **commands**: small messages sealed with the account's command key and signed by the computer that wrote them, which the server stores and forwards but can't read, add or change. What the Chief does comes back to every computer through sync, since its threads, messages, queue and pending actions are synced rows with one writer. While it writes, its answer streams live through Reverb.
 
 #### How a message reaches the Chief's computer, and the answer comes back
 
@@ -566,6 +595,8 @@ Remove (account page or Settings) withdraws its token at once, so it can't reach
 
 #### A later PWA on a phone: just another device
 
+**Replaced in Round 3** by 3.12 and 3.13: the PWA is the whole Hersir, as a screen of the PC; it gets its own device key by pairing and never the account key or a chat key.
+
 - **Sign-in**: the same account, in the browser (password and authenticator), as a public client of Passport with an `https` redirect on the PWA's own origin.
 - **The key, by pairing** (recommended): Settings → Hersir Cloud → *Add a phone* shows a QR code holding a one-time pairing secret; the phone makes its own keys (X25519 and Ed25519, kept as non-extractable WebCrypto keys in IndexedDB), sends its public keys through the server tagged with the secret, and the computer seals the key to the phone and signs its join to the roster. The server can't step in between without the secret. **Or** typing the recovery code on the phone, as a computer does.
 - **Which key**: the decision says a device that holds the account key; recommended instead is a **chat key** derived from AK, so a phone holds what the chat needs and nothing else: it can write commands and read the chat, not the backups or the sync log (open question 17).
@@ -595,20 +626,23 @@ YoTech's two roles: **controller** for account, billing, support and website dat
 | 12 | NIS2, accessibility | NIS2 covers medium and large entities; the EAA spares micro-enterprises that provide services; a file note | in-house |
 | 13 | Invoicing and VAT | VERI*FACTU by 1 January 2027, the OSS, the ROI (3.5) | the gestor |
 
-### 3.10 The order, and what you do by hand
+### 3.10 The order, and what you do by hand (Round 3)
 
-**What you can use first** (decision 7) [I]:
+**What you can use first** [I] (Round 3; card numbers of section 6):
 
-1. **Cloud Backup on your own computers**, with a plan given by hand (`php artisan hersir:comp`): cards 1 to 4, and card 2 deployed on Forge. It reuses 0.16.0's snapshot and restore almost whole, and it is the safety net under sync.
-2. **Before the first sale**: card 5 (Stripe and the account page), the legal pack (3.9), the VERI*FACTU route and the OSS choice with the gestor (3.5), the website's pricing and legal pages. Then sell Personal with Cloud Backup, "with sync coming to the same plan".
-3. **Multiple devices**: card 6 (the engine, no network) can be built at the same time as Cloud Backup; then 7, 8 and 9.
-4. **The Chief's chat on every computer**: cards 10 and 11, after sync.
+1. **The base**: card 2, the `hersir-cloud` app's first card (accounts with required 2FA, computers and their tokens, deployed on Forge), with a plan given by hand (`php artisan hersir:comp`). Card 1 (the design) and card 8 (the remote host, against a local fake relay) start at the same time.
+2. **Hersir on the MacBook** (requirement R2): cards 7 (the relay), 8 (the host and the MacBook's forwarding) and 9 (their screens). About 9 to 12 agent-days on the critical path, the first thing you can use. The PC must be on, awake and running Hersir (open question 22).
+3. **The phone** (requirement R1): cards 10 (the phone layouts' design), 11 (the PWA: its web build, client, pairing, install and Web Push) and 12 (the phone layouts). Card 11 can start once card 8's contract is merged; about 7 to 10 more agent-days on the critical path.
+4. **Cloud Backup** (decision 7: still what is sold first): cards 3 (encrypted storage on the server), 4 (the app) and 5 (Settings → Hersir Cloud), in parallel with 2 to 4 above, since they share no files with Remote.
+5. **Before the first sale**: card 6 (Stripe and the account page), the legal pack (3.9, with the relay and Web Push added), the VERI*FACTU route and the OSS choice with the gestor (3.5), the website's pricing and legal pages. Then sell Personal with Cloud Backup, Hersir on your other computers and the phone (3.15).
+6. **Sync** (cards 13 to 16) only if you still want it after some weeks of Remote: for the board while the PC is off, or two computers that both run agents (section 4, question 24).
 
 **What you must do by hand** (no agent can: accounts, money, keys, signatures, DNS):
 
 | # | Where | What |
 |---|---|---|
-| 1 | GitHub | a private repository `Yotech-AI/hersir-cloud`; give Forge access to it; a repository secret with Forge's deploy hook for the Actions workflow |
+| 0 | **The first commit of `hersir-cloud`** (new in Round 3) | The repository exists and is empty. On your computer (PHP 8.3 or newer, Composer, Node, the Laravel installer): `laravel new hersir-cloud --livewire --pest --database=sqlite --npm --git --branch=main`, then in it `git remote add origin git@github.com:Yotech-AI/hersir-cloud.git` and `git push -u origin main`. That is the Livewire starter kit (Livewire 4, Flux UI, Fortify with 2FA on by default; single-file components, the installer's default), Pest, and SQLite (the installer's default) [V S-R10]. Leave out `--workos`, `--teams` and `--github` (the repository exists). Keep Boost, the installer's default, if you want its guidelines for the agents. Push it as the installer made it, so card 2's pull request shows only Hersir Cloud's own code. Then link the folder to project HC in Hersir. |
+| 1 | GitHub | ~~a private repository~~ (done: `Yotech-AI/hersir-cloud`, project HC); give Forge access to it; a repository secret with Forge's deploy hook for the Actions workflow. **New**: in this (the app's) repository, an environment `pwa` with you as its required reviewer, holding the Cloudflare token that deploys the PWA (card 11) |
 | 2 | Hetzner | an account for NEXO IV GRUPO, S.L., its DPA (AVV) accepted in the console; a project and an API token for Forge; check that a CX23 can be ordered in Falkenstein or Nuremberg (the price pages showed "currently unavailable", perhaps only when signed out) |
 | 3 | Laravel Forge | Hobby ($12 a month) for the S.L.; connect Hetzner; create the server (Germany, PHP 8.4; no database server, the app uses SQLite); the site `cloud.hersir.dev` from the repository with zero-downtime deploys; Let's Encrypt; the *Laravel Reverb* switch; daemons for the queue and Litestream (a recipe installs Litestream and its systemd unit); the scheduler; the `.env`; the firewall (22, 80, 443); accept Laravel's terms and DPA |
 | 4 | Cloudflare R2 | turn R2 on in the Cloudflare account that holds `hersir.dev`; three buckets **in the EU jurisdiction** (it can't be changed later): `hersir-cloud-objects`, `hersir-cloud-db`, `hersir-cloud-db-nightly` (a 30-day bucket lock on the last); two API tokens, each limited to its buckets, into Forge's `.env`; Cloudflare's DPA is part of its self-serve terms |
