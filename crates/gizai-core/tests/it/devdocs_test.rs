@@ -81,5 +81,6 @@ fn the_chiefs_memory_block_says_where_a_decision_about_a_project_goes() {
     s.note("Standards/Rust style", "# Rust style\n\nrustfmt.\n");
     let block = memory::prompt_block(&s.db, &Who::Person(s.you.clone()), &Context::default()).unwrap();
     assert!(block.text.contains("A decision about one project goes in `Decisions/`, with that project's key as `project:`: its agents get it, \
-and its Docs page shows it."), "{}", block.text);
+and its Docs page shows it. For a project with Docs on, also record a decision you make or put forward with record_decision: it shows \
+there, numbered, with its context."), "{}", block.text);
 }

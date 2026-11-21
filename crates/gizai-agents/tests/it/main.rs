@@ -9,6 +9,7 @@
 
 mod behind_test;
 mod bitbucket_prompt_test;
+mod changelog_result_test;
 mod changes_test;
 mod chat_stream_test;
 mod checkout_test;
