@@ -8,9 +8,9 @@
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use gizai_agents::worktree;
-use gizai_core::devdocs::{self, ChangelogEntry, DecisionNote};
+use gizai_core::devdocs::{self, Baseline, ChangelogEntry, DecisionNote, DecisionRecord};
 use gizai_core::model::Project;
-use gizai_docs::index::{self, Change, CommitPatches, Decision, Index, Input, Problem, Release, SourceFile};
+use gizai_docs::index::{self, Change, CommitPatches, Decision, DocChanges, Index, Input, Problem, Release, Section, Since, SourceFile};
 use gizai_docs::markdown;
 
 use crate::AppState;
@@ -25,26 +25,29 @@ const MONTHS: [&str; 12] = ["January", "February", "March", "April", "May", "Jun
 /// and a problem that says how to link one.
 pub fn index_of(st: &AppState, project: &Project) -> Result<Index, String> {
     let started = Instant::now();
-    let mut input = Input { title: format!("{} dev docs", project.name), version: env!("CARGO_PKG_VERSION").into(), ..Input::default() };
+    let mut input = Input { title: format!("{} dev docs", project.name), version: env!("CARGO_PKG_VERSION").into(),
+        off: project.docs_off.clone(), ..Input::default() };
     let mut changelog_file = None;
-    match crate::changes::linked_repo(project) {
+    let linked = crate::changes::linked_repo(project);
+    match &linked {
         Ok(repo) => {
+            let repo = repo.as_path();
             let unreadable = |e| format!("Hersir can't read {}'s repository: {}", project.name, crate::pulls::plain(e));
-            let files = worktree::tracked_files(&repo).map_err(unreadable)?;
-            input.reference = gizai_docs::reference(&repo, &files);
-            input.routes = gizai_docs::api::api(&repo, &files);
-            let content = gizai_docs::content::read(&repo, &files);
+            let files = worktree::tracked_files(repo).map_err(unreadable)?;
+            input.reference = gizai_docs::reference(repo, &files);
+            input.routes = gizai_docs::api::api(repo, &files);
+            let content = gizai_docs::content::read(repo, &files);
             (input.guides, input.changelog, input.decisions, input.mcp, input.api, input.problems) =
                 (content.guides, content.changelog, content.decisions, content.mcp, content.api, content.problems);
             changelog_file = content.changelog_file;
-            let (label, main) = crate::changes::main_of(project, &repo);
+            let (label, main) = crate::changes::main_of(project, repo);
             if let Some(main) = main {
-                input.history = index::history(&worktree::log_name_status(&repo, &main, HISTORY).map_err(unreadable)?);
+                input.history = index::history(&worktree::log_name_status(repo, &main, HISTORY).map_err(unreadable)?);
             }
             input.commit = input.history.first().map(|c| c.hash.clone()).unwrap_or_default();
             input.branch = label;
         }
-        Err(why) => input.problems.push(Problem { file: String::new(), message: why, line: None }),
+        Err(why) => input.problems.push(Problem { file: String::new(), message: why.clone(), line: None }),
     }
     // the project's own CHANGELOG.md and decision records, then what Hersir keeps
     let merged = releases(&devdocs::changelog(&st.db, &project.id).map_err(|e| e.to_string())?);
@@ -55,10 +58,16 @@ pub fn index_of(st: &AppState, project: &Project) -> Result<Index, String> {
     };
     input.changelog.extend(merged);
     input.changelog.sort_by(|a, b| b.unreleased.cmp(&a.unreleased).then_with(|| b.date.cmp(&a.date)));
+    // the project's own records and the Chief's as one log, the highest number first; then the Memory notes
+    input.decisions.extend(devdocs::decision_records(&st.db, &project.id).map_err(|e| e.to_string())?.iter().map(record));
+    input.decisions.sort_by_key(|d| std::cmp::Reverse(d.number.parse::<u64>().unwrap_or(0)));
     input.decisions.extend(devdocs::decisions(&st.db, project).map_err(|e| e.to_string())?.iter().map(decision));
     input.built_at = iso(SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64));
     input.duration_ms = started.elapsed().as_millis() as u64;
-    let index = index::build(input);
+    let mut index = index::build(input);
+    if let Ok(repo) = &linked {
+        index.doc_changes = doc_changes(st, project, repo, &index);
+    }
     Ok(index)
 }
 
@@ -118,6 +127,53 @@ fn decision(note: &DecisionNote) -> Decision {
         file: note.path.clone(),
         html: rendered.html,
         headings: rendered.headings,
+    }
+}
+
+/// A decision record the Chief keeps, as the page shows one: its sections, then the card it was made for and the record
+/// it replaces under Related.
+fn record(d: &DecisionRecord) -> Decision {
+    let mut parts: Vec<(&str, String)> = [("Context", &d.context), ("Decision", &d.decision), ("Consequences", &d.consequences),
+        ("Alternatives considered", &d.alternatives)].into_iter().filter(|(_, text)| !text.trim().is_empty())
+        .map(|(heading, text)| (heading, text.trim().to_string())).collect();
+    let related: Vec<String> = d.task.iter().map(|t| format!("- Made for {t}")).chain(d.supersedes.map(|n| format!("- Replaces {n:04}"))).collect();
+    if !related.is_empty() {
+        parts.push(("Related", related.join("\n")));
+    }
+    let md: String = parts.iter().map(|(heading, text)| format!("## {heading}\n\n{text}\n\n")).collect();
+    let rendered = markdown::render(&md);
+    Decision {
+        id: format!("decisions/{:04}", d.number),
+        number: format!("{:04}", d.number),
+        title: d.title.clone(),
+        date: crate::tools::ymd(d.created_at),
+        status: d.status.clone(),
+        sections: parts.iter().map(|(heading, text)| Section { heading: heading.to_string(), html: markdown::render(text).html }).collect(),
+        related_files: d.related_files.clone(),
+        file: format!("by {} in Hersir", d.decided_by),
+        html: rendered.html,
+        headings: rendered.headings,
+    }
+}
+
+/// "Changed in the docs" (yodocs' manifest): what moved in the declarations since the linked folder's last commit,
+/// against the baseline taken then. A new commit takes a new baseline, so the list starts again at every commit. None
+/// without a commit, or with the Reference off.
+fn doc_changes(st: &AppState, project: &Project, repo: &std::path::Path, index: &Index) -> Option<DocChanges> {
+    if project.docs_off.iter().any(|s| s == "reference") {
+        return None;
+    }
+    let head = gizai_agents::changes::commit_of(repo, "HEAD")?;
+    let now = index::fingerprints(&index.entries);
+    let since = |commit: &str, taken_at: i64| Since { commit: commit.chars().take(7).collect(), taken_at: iso(taken_at) };
+    match devdocs::baseline(&st.db, &project.id).ok().flatten() {
+        Some(b) if b.commit == head => Some(index::compare(&serde_json::from_str(&b.entries).ok()?, &now, since(&b.commit, b.taken_at))),
+        _ => {
+            let taken_at = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64);
+            let entries = serde_json::to_string(&now).ok()?;
+            devdocs::set_baseline(&st.db, &project.id, &Baseline { commit: head.clone(), taken_at, entries }).ok()?;
+            Some(index::compare(&now, &now, since(&head, taken_at)))
+        }
     }
 }
 

@@ -113,6 +113,11 @@ pub fn llms_txt(index: &Index) -> String {
         format!("> {} across {}, {} with a description.", plural(s.entries, "entry", "entries"), plural(s.files, "file", "files"), s.described),
         format!("> Built {}{}.", p.built_at, if p.commit.is_empty() { String::new() } else { format!(" from {} on {}", p.commit, p.branch) }),
         String::new(), "Every page below is also Markdown under `md/`. The full index is `index.json`.".into(), String::new()];
+    // said up front, so an agent doesn't go looking for a section that isn't there and conclude the project has none
+    if !index.switched_off.is_empty() {
+        let named: Vec<&str> = index.switched_off.iter().map(|o| o.section.as_str()).collect();
+        out.insert(5, format!("> Switched off in this project, so not in these docs: {} ({}).", named.join(", "), crate::index::SWITCH));
+    }
     if !index.mcp.is_empty() {
         out.extend(["## MCP servers".into(), String::new(), "Used by agents working on this project. Values are never recorded.".into(), String::new()]);
         for m in &index.mcp {

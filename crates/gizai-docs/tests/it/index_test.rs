@@ -5,7 +5,7 @@ use std::path::Path;
 
 use gizai_docs::api::Route;
 use gizai_docs::guides::Guide;
-use gizai_docs::index::{build, entries, history, patches, signature, source, CommitFile, Input};
+use gizai_docs::index::{build, compare, entries, fingerprints, history, patches, signature, source, CommitFile, Input, Since};
 use gizai_docs::{Entry, Reference};
 
 fn entry(name: &str, kind: &str, path: &str, line: usize, doc: &str, text: &str) -> Entry {
@@ -201,4 +201,39 @@ fn a_routes_parameters_come_from_its_path() {
         ("/docs/[[...slug]]".to_string(), vec![("slug".to_string(), false)]),
     ], "a page isn't an endpoint");
     assert!(api.endpoints.iter().all(|e| e.parameters.iter().all(|p| p.location == "path")));
+}
+
+#[test]
+fn a_switched_off_section_is_left_out_whole() {
+    let index = build(Input { reference: reference(), routes: vec![Route { method: "GET".into(), path: "/up".into(), handler: String::new(),
+        file: "src/app/api/leads/route.ts".into(), line: 1 }], off: vec!["reference".into(), "guides".into(), "nonsense".into()],
+        guides: vec![Guide { path: "README.md".into(), title: "Pearl".into(), body_md: "# Pearl\n".into() }], ..Input::default() });
+    let json = serde_json::to_value(&index).unwrap();
+    assert_eq!(json["switchedOff"], serde_json::json!([{ "section": "reference", "key": "Edit project → Docs" }, { "section": "guides", "key": "Edit project → Docs" }]),
+               "only the sections the page knows");
+    assert!(index.entries.is_empty() && index.groups.is_empty() && index.kinds.is_empty() && index.guides.is_empty());
+    assert_eq!((index.stats.entries, index.stats.files, index.stats.problems), (0, 0, 0), "nor the files it didn't show");
+    assert!(index.api.is_some(), "the endpoints the routes make stay, as in yodocs");
+    let all_on = serde_json::to_value(build(Input::default())).unwrap();
+    assert!(all_on.get("switchedOff").is_none(), "absent when every section is on, as yodocs' index had it");
+}
+
+#[test]
+fn what_moved_in_the_docs_since_the_baseline() {
+    let r = |sig: &str, doc: &str| Reference { entries: vec![entry("Kept", "class", "a.php", 1, "", "class Kept {"),
+        entry("Documented", "class", "a.php", 5, doc, "class Documented {"), entry("Undocumented", "class", "a.php", 9, if doc.is_empty() { "Was." } else { "" }, "class Undocumented {"),
+        entry("Changed", "function", "b.ts", 1, "", sig)], ..Reference::default() };
+    let before = fingerprints(&entries(&r("function changed(a) {", "")));
+    let mut after_ref = r("function changed(a, b) {", "Now it says.");
+    after_ref.entries.retain(|e| e.name != "Kept");
+    after_ref.entries.push(entry("New", "class", "c.php", 1, "", "class New {"));
+    let after = fingerprints(&entries(&after_ref));
+    let d = compare(&before, &after, Since { commit: "abc1234".into(), taken_at: "2026-11-21T10:00:00Z".into() });
+    let names = |l: &[gizai_docs::index::DocChange]| l.iter().map(|x| x.name.clone()).collect::<Vec<_>>();
+    assert_eq!((names(&d.documented), names(&d.undocumented), names(&d.changed), names(&d.added), names(&d.removed)),
+               (vec!["Documented".to_string()], vec!["Undocumented".to_string()], vec!["Changed".to_string()], vec!["New".to_string()], vec!["Kept".to_string()]));
+    assert_eq!((d.total, d.since.commit.as_str()), (5, "abc1234"));
+    assert_eq!(compare(&after, &after, Since { commit: String::new(), taken_at: String::new() }).total, 0, "nothing moved");
+    let json = serde_json::to_string(&before).unwrap();
+    assert_eq!(serde_json::from_str::<std::collections::BTreeMap<String, gizai_docs::index::Fingerprint>>(&json).unwrap(), before, "kept as JSON and read back");
 }

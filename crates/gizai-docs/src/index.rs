@@ -7,7 +7,7 @@ use std::path::Path;
 use std::sync::LazyLock;
 
 use regex::Regex;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::api::Route;
 use crate::markdown::{self, Heading};
@@ -34,6 +34,15 @@ pub struct Index {
     pub api: Option<Api>,
     pub doc_changes: Option<DocChanges>,
     pub history: Vec<Commit>,
+    /// The sections the project switched off, and where.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub switched_off: Vec<SwitchedOff>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SwitchedOff {
+    pub section: String,
+    pub key: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -50,7 +59,7 @@ pub struct ProjectInfo {
     pub changelog_from: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Stats {
     pub files: usize,
@@ -361,6 +370,8 @@ pub struct Input {
     pub history: Vec<Commit>,
     /// What else didn't read right: a changelog section outside the format, say.
     pub problems: Vec<Problem>,
+    /// The sections the project switched off (reference, guides, api, changelog, decisions, mcp): left out whole.
+    pub off: Vec<String>,
 }
 
 pub fn build(input: Input) -> Index {
@@ -388,7 +399,7 @@ pub fn build(input: Input) -> Index {
     }).collect();
     problems.extend(input.problems);
     let mcp_tools = crate::mcp::tools(&input.reference, &entries);
-    Index {
+    let mut index = Index {
         schema: SCHEMA,
         project: ProjectInfo {
             title: input.title,
@@ -419,7 +430,79 @@ pub fn build(input: Input) -> Index {
         api: input.api.or(handlers),
         doc_changes: None,
         history: input.history,
+        switched_off: vec![],
+    };
+    switch_off(&mut index, &input.off);
+    index
+}
+
+/// Where a project switches a section off, as the page names it.
+pub const SWITCH: &str = "Edit project → Docs";
+
+/// Leaves the switched-off sections out of `index` whole, not just hidden: whatever the page can reach is in the index.
+/// With the Reference off, the MCP tools and the endpoints its routes make stay, without their links to the code.
+fn switch_off(index: &mut Index, off: &[String]) {
+    for section in off {
+        match section.as_str() {
+            "reference" => {
+                index.entries.clear();
+                index.groups.clear();
+                index.kinds.clear();
+                let partial = "has syntax the parser can't read, so its declarations may be incomplete";
+                index.problems.retain(|p| p.message != partial);
+                index.stats = Stats { files: 0, entries: 0, described: 0, problems: index.problems.len(), ..index.stats.clone() };
+                index.mcp_tools.iter_mut().for_each(|t| t.entry.clear());
+            }
+            "guides" => index.guides.clear(),
+            "api" => index.api = None,
+            "changelog" => index.changelog.clear(),
+            "decisions" => index.decisions.clear(),
+            "mcp" => {
+                index.mcp.clear();
+                index.mcp_tools.clear();
+            }
+            _ => continue,
+        }
+        index.switched_off.push(SwitchedOff { section: section.clone(), key: SWITCH.into() });
     }
+}
+
+/// What "Changed in the docs" compares for an entry: its name, file and kind, whether something is written above it,
+/// and its signature (as an FNV-1a hash, so a project's baseline stays small).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Fingerprint {
+    pub name: String,
+    pub file: String,
+    pub kind: String,
+    pub described: bool,
+    pub signature: u64,
+}
+
+/// The entries' fingerprints by id: what a baseline keeps.
+pub fn fingerprints(entries: &[IndexEntry]) -> BTreeMap<String, Fingerprint> {
+    let hash = |s: &str| s.bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3));
+    entries.iter().map(|e| (e.id.clone(), Fingerprint { name: e.name.clone(), file: e.file.clone(), kind: e.kind.clone(),
+        described: e.has_description, signature: hash(&e.signature) })).collect()
+}
+
+/// What moved between `before` (the baseline) and `after` (yodocs' compareDocs): an entry that got something written
+/// above it is documented, one that lost it undocumented, one whose signature changed changed, and the rest added or
+/// removed.
+pub fn compare(before: &BTreeMap<String, Fingerprint>, after: &BTreeMap<String, Fingerprint>, since: Since) -> DocChanges {
+    let row = |id: &String, f: &Fingerprint| DocChange { id: id.clone(), name: f.name.clone(), file: f.file.clone(), kind: f.kind.clone() };
+    let mut d = DocChanges { since, added: vec![], removed: vec![], documented: vec![], undocumented: vec![], changed: vec![], total: 0 };
+    for (id, now) in after {
+        match before.get(id) {
+            None => d.added.push(row(id, now)),
+            Some(was) if !was.described && now.described => d.documented.push(row(id, now)),
+            Some(was) if was.described && !now.described => d.undocumented.push(row(id, now)),
+            Some(was) if was.signature != now.signature => d.changed.push(row(id, now)),
+            Some(_) => {}
+        }
+    }
+    d.removed = before.iter().filter(|(id, _)| !after.contains_key(*id)).map(|(id, f)| row(id, f)).collect();
+    d.total = d.added.len() + d.removed.len() + d.documented.len() + d.undocumented.len() + d.changed.len();
+    d
 }
 
 /// The Reference's declarations as index entries, each with an id, its signature and what it extends or implements. A

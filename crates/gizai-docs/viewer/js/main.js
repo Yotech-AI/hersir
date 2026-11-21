@@ -95,8 +95,8 @@ async function view() {
     return `<div class="empty">
         ${icon('inbox', 24)}
         <h2>Switched off in this project</h2>
-        <p class="muted">This project sets <span class="mono">${esc(offKey(tab))}=false</span>, so this section
-          was left out of its docs.</p>
+        <p class="muted">This project left this section out of its docs in Hersir:
+          <span class="mono">${esc(offKey(tab))}</span>.</p>
       </div>`;
   }
   if (tab === 'reference') return item === '' ? list() : entry(item);

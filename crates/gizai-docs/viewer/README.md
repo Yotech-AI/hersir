@@ -15,7 +15,7 @@ yodocs' `index.json`, schema 1) and serves both (`src-tauri/src/docs_server.rs`)
   prebuilt `search.json` instead.
 - `js/sidebar.js`: the footer names Hersir, and links `index.json` instead of `search.json`.
 - `js/main.js`, `js/reference.js` and `js/sections.js`: messages that said to run a yodocs command say what to do in
-  Hersir. The Changelog's first line names where its changes come from (`project.changelogFrom`).
+  Hersir, and a switched-off section names where Hersir switches it (`Edit project → Docs`) instead of a `DOCS_` key. The Changelog's first line names where its changes come from (`project.changelogFrom`).
 - `vendor/minisearch.js` is MiniSearch 7.2.0 (MIT, `vendor/minisearch-LICENSE.txt`), its ESM build without the line
   that names a source map.
 

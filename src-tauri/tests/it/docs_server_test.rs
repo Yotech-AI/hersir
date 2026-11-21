@@ -161,3 +161,45 @@ fn with_no_project_on_the_list_says_how_to_turn_docs_on() {
     let (_, list) = ok(route(&gizai_lib::test_state(tmp.path()), "/"));
     assert!(list.contains("No project has Docs on. Turn it on in Hersir: a project's Edit, under Docs."), "{list}");
 }
+
+#[test]
+fn what_moved_since_the_last_commit_the_chiefs_records_and_switched_off_sections() {
+    let tmp = tempfile::tempdir().unwrap();
+    let st = gizai_lib::test_state(tmp.path());
+    let repo = tmp.path().join("pearl");
+    std::fs::create_dir(&repo).unwrap();
+    git(&repo, &["init", "-q", "-b", "main"]);
+    write(&repo, "src/invoice.ts", "export class Invoice {\n}\n");
+    write(&repo, "README.md", "# Pearl\n");
+    git(&repo, &["add", "-A"]);
+    git(&repo, &["commit", "-q", "-m", "First"]);
+    let hash = git(&repo, &["rev-parse", "--short", "HEAD"]);
+    let id = project(&st, "Pearl", "PEARL", true, Some(&repo));
+    let index = || json(route(&st, &format!("/p/{id}/index.json")));
+
+    // the first look takes the baseline at the commit: nothing moved yet
+    let first = index();
+    assert_eq!((first["docChanges"]["total"].as_u64(), first["docChanges"]["since"]["commit"].as_str()), (Some(0), Some(hash.as_str())));
+    // a comment written above a declaration, not committed yet: it moved
+    write(&repo, "src/invoice.ts", "/** An invoice. */\nexport class Invoice {\n}\n");
+    let second = index();
+    assert_eq!((second["docChanges"]["total"].as_u64(), second["docChanges"]["documented"][0]["name"].as_str()), (Some(1), Some("Invoice")));
+
+    // the Chief's record, as the page shows it
+    gizai_core::devdocs::record_decision(&st.db, &st.you_id, "Chief", &id, 0, gizai_core::devdocs::DecisionInput {
+        title: "Use Postgres".into(), decision: "Postgres, not MySQL.".into(), context: "JSON queries.".into(), ..Default::default() }).unwrap();
+    let third = index();
+    let d = &third["decisions"][0];
+    assert_eq!((d["id"].as_str(), d["number"].as_str(), d["status"].as_str(), d["file"].as_str()),
+               (Some("decisions/0001"), Some("0001"), Some("accepted"), Some("by Chief in Hersir")));
+    assert_eq!(d["sections"].as_array().unwrap().iter().map(|s| s["heading"].as_str().unwrap()).collect::<Vec<_>>(), ["Context", "Decision"]);
+
+    // switched off in the project form: left out whole, and said so
+    gizai_core::projects::update(&st.db, &st.you_id, &id, ProjectInput { name: "Pearl".into(), key: "PEARL".into(),
+        repo_path: Some(repo.to_string_lossy().into_owned()), default_branch: Some("main".into()),
+        docs_off: Some(vec!["guides".into(), "decisions".into()]), ..Default::default() }).unwrap();
+    let off = index();
+    assert_eq!((off["guides"].as_array().map(Vec::len), off["decisions"].as_array().map(Vec::len)), (Some(0), Some(0)));
+    assert_eq!(off["switchedOff"].as_array().unwrap().iter().map(|o| o["section"].as_str().unwrap()).collect::<Vec<_>>(), ["guides", "decisions"]);
+    assert!(off["entries"].as_array().is_some_and(|e| !e.is_empty()), "the rest stays");
+}

@@ -149,7 +149,7 @@ function docChanges() {
   // when the truth is that this build is the thing being compared against.
   if (d === null || d === undefined) {
     return `<h2>Changed in the docs</h2>
-      <p class="sm muted">Hersir doesn't compare the docs between builds yet.
+      <p class="sm muted">There is no commit to compare the docs with yet.
         <a href="#/commits">The commits</a> say what each recent one changed.</p>`;
   }
 

@@ -64,3 +64,10 @@ fn html_back_to_markdown_like_text() {
     assert_eq!(plain("<h3 id=\"x\">Run it</h3>\n<p>Use <code>npx x</code> &amp; wait &lt;1s.</p>\n<ul>\n<li>a</li>\n</ul>\n"),
                "### Run it\n\nUse `npx x` & wait <1s.\n\n- a");
 }
+
+#[test]
+fn llms_txt_says_which_sections_are_switched_off() {
+    let index = build(Input { title: "Pearl dev docs".into(), off: vec!["mcp".into(), "reference".into()], ..Input::default() });
+    assert!(llms_txt(&index).contains("> Switched off in this project, so not in these docs: mcp, reference (Edit project → Docs)."), "{}", llms_txt(&index));
+    assert!(!llms_txt(&build(Input::default())).contains("Switched off"));
+}
