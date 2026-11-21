@@ -9,7 +9,8 @@ use gizai_docs::index::{build, entries, history, patches, signature, source, Com
 use gizai_docs::{Entry, Reference};
 
 fn entry(name: &str, kind: &str, path: &str, line: usize, doc: &str, text: &str) -> Entry {
-    Entry { name: name.into(), kind: kind.into(), path: path.into(), line, end_line: line + 3, doc: doc.into(), text: text.into() }
+    Entry { name: name.into(), kind: kind.into(), syntactic: "class".into(), path: path.into(), line, end_line: line + 3, doc: doc.into(),
+            text: text.into() }
 }
 
 fn reference() -> Reference {
@@ -71,7 +72,7 @@ fn every_section_is_in_the_index_in_the_shape_the_viewer_reads() {
     assert_eq!(json["stats"], serde_json::json!({ "files": 4, "entries": 4, "described": 1, "problems": 1, "durationMs": 73, "skipped": {} }));
     assert_eq!(json["kinds"][0], serde_json::json!({ "name": "function", "count": 2 }));
     assert_eq!(json["entries"][0]["hasDescription"], true);
-    assert_eq!(json["entries"][0]["syntacticKind"], "model");
+    assert_eq!(json["entries"][0]["syntacticKind"], "class", "what the grammar called it, before its kind");
     assert!(json["entries"][0].get("parent").is_none());
     assert_eq!(json["problems"][0]["file"], "app/helpers.php");
 
@@ -156,4 +157,19 @@ fn mains_commits_with_their_files_and_a_commits_changed_lines() {
     let long = format!("diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1,500 +1,500 @@\n{}", "+x\n".repeat(500));
     let p = patches(&long);
     assert_eq!((p.files["a.ts"].lines.len(), p.files["a.ts"].truncated), (400, true));
+}
+
+#[test]
+fn a_class_takes_the_kind_of_the_project_class_it_extends() {
+    let r = Reference { entries: vec![
+        entry("FactoryTool", "mcp tool", "app/Mcp/FactoryTool.php", 5, "", "abstract class FactoryTool extends Tool {"),
+        entry("AuthoringTool", "class", "app/Mcp/AuthoringTool.php", 5, "", "abstract class AuthoringTool extends FactoryTool {"),
+        entry("SearchBlueprints", "class", "app/Mcp/SearchBlueprints.php", 5, "", "final class SearchBlueprints extends \\App\\Mcp\\AuthoringTool {"),
+        entry("Helper", "class", "app/Helper.php", 5, "", "class Helper extends Unknown {"),
+        entry("InvoiceController", "controller", "app/Http/InvoiceController.php", 5, "", "class InvoiceController extends FactoryTool {"),
+        entry("Loop", "class", "app/Loop.php", 5, "", "class Loop extends Loop {"),
+    ], ..Reference::default() };
+    let kinds: Vec<(String, String)> = entries(&r).into_iter().map(|e| (e.name, e.kind)).collect();
+    assert_eq!(kinds, [("FactoryTool", "mcp tool"), ("AuthoringTool", "mcp tool"), ("SearchBlueprints", "mcp tool"), ("Helper", "class"),
+        ("InvoiceController", "controller"), ("Loop", "class")].map(|(a, b)| (a.to_string(), b.to_string())));
 }

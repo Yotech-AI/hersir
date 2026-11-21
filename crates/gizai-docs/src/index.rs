@@ -355,6 +355,7 @@ pub struct Input {
     pub changelog: Vec<Release>,
     pub changelog_from: String,
     pub decisions: Vec<Decision>,
+    pub mcp: Vec<McpServer>,
     pub history: Vec<Commit>,
     /// What else didn't read right: a changelog section outside the format, say.
     pub problems: Vec<Problem>,
@@ -382,6 +383,7 @@ pub fn build(input: Input) -> Index {
         line: None,
     }).collect();
     problems.extend(input.problems);
+    let mcp_tools = crate::mcp::tools(&input.reference, &entries);
     Index {
         schema: SCHEMA,
         project: ProjectInfo {
@@ -408,18 +410,19 @@ pub fn build(input: Input) -> Index {
         problems,
         changelog: input.changelog,
         decisions: input.decisions,
-        mcp: vec![],
-        mcp_tools: vec![],
+        mcp_tools,
+        mcp: input.mcp,
         api: None,
         doc_changes: None,
         history: input.history,
     }
 }
 
-/// The Reference's declarations as index entries, each with an id, its signature and what it extends or implements.
+/// The Reference's declarations as index entries, each with an id, its signature and what it extends or implements. A
+/// class no rule named takes the kind of the project class it extends (`inherit_kinds`).
 pub fn entries(reference: &Reference) -> Vec<IndexEntry> {
     let mut seen: HashMap<String, usize> = HashMap::new();
-    reference.entries.iter().map(|e| {
+    let mut out: Vec<IndexEntry> = reference.entries.iter().map(|e| {
         let base = format!("{}#{}", e.path, e.name);
         let n = seen.entry(base.clone()).or_insert(0);
         *n += 1;
@@ -428,7 +431,7 @@ pub fn entries(reference: &Reference) -> Vec<IndexEntry> {
             id: if *n == 1 { base } else { format!("{base}~{n}") },
             name: e.name.clone(),
             kind: e.kind.clone(),
-            syntactic_kind: e.kind.clone(),
+            syntactic_kind: e.syntactic.clone(),
             file: e.path.clone(),
             line_start: e.line,
             line_end: e.end_line,
@@ -441,7 +444,35 @@ pub fn entries(reference: &Reference) -> Vec<IndexEntry> {
             parent: None,
             children: vec![],
         }
-    }).collect()
+    }).collect();
+    inherit_kinds(&mut out);
+    out
+}
+
+/// The kinds a grammar gives a type, whose kind another class can take.
+const TYPE_KINDS: [&str; 6] = ["class", "interface", "trait", "enum", "object", "mixin"];
+
+/// A class no rule named takes the kind of the project class it extends, when a rule named that one (yodocs'
+/// inheritKinds): a tool extending a project's abstract FactoryTool, which extends Laravel's Tool, is an MCP tool too.
+/// By name within the project, to a fixed point, at most six deep; a kind a rule decided stays.
+fn inherit_kinds(entries: &mut [IndexEntry]) {
+    let base_of = |e: &IndexEntry| e.facts.iter().find(|f| f.label == "Extends")
+        .map(|f| f.value.split(',').next().unwrap_or_default().trim().rsplit('\\').next().unwrap_or_default().to_string());
+    for _ in 0..6 {
+        let named: HashMap<String, String> = entries.iter()
+            .filter(|e| e.parent.is_none() && TYPE_KINDS.contains(&e.syntactic_kind.as_str()) && e.kind != e.syntactic_kind)
+            .map(|e| (e.name.clone(), e.kind.clone())).collect();
+        let mut changed = false;
+        for e in entries.iter_mut().filter(|e| e.kind == e.syntactic_kind) {
+            if let Some(kind) = base_of(e).filter(|b| *b != e.name).and_then(|b| named.get(&b)) {
+                e.kind = kind.clone();
+                changed = true;
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
 }
 
 /// Words that start a declaration in the languages the Reference reads (yodocs' DECLARES).

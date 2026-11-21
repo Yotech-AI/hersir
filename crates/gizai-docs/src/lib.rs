@@ -9,6 +9,7 @@ pub mod content;
 pub mod guides;
 pub mod index;
 pub mod markdown;
+pub mod mcp;
 pub mod viewer;
 
 use std::collections::HashMap;
@@ -25,6 +26,8 @@ pub struct Entry {
     pub name: String,
     /// component, hook, function, class, interface, type, enum, constant, model, controller, migration…
     pub kind: String,
+    /// What the grammar calls it (class, function, interface…), before its kind is decided.
+    pub syntactic: String,
     /// The file, relative to the repository, with `/`.
     pub path: String,
     /// The first and last line it spans, counted from 1.
@@ -180,6 +183,7 @@ fn read(g: &Grammar, lang: Lang, path: &str, text: &str, file: &str, offset: usi
         let start = node.start_position().row;
         found.push(Entry {
             kind: kind_for(lang, kind, name, body, file, &node),
+            syntactic: kind.to_string(),
             name: name.to_string(),
             path: path.to_string(),
             line: start + 1 + offset,
@@ -199,7 +203,8 @@ fn component_entry(path: &str, text: &str) -> Entry {
     let file = path.rsplit('/').next().unwrap_or(path);
     let name = file.rsplit_once('.').map_or(file, |(stem, _)| stem);
     Entry {
-        name: name.to_string(), kind: "component".into(), path: path.to_string(), line: 1, end_line: text.split('\n').count(),
+        name: name.to_string(), kind: "component".into(), syntactic: "component".into(), path: path.to_string(), line: 1,
+        end_line: text.split('\n').count(),
         doc: String::new(), text: first_lines(text, TEXT_LINES),
     }
 }
@@ -329,6 +334,14 @@ fn php_kind<'a>(kind: &'a str, name: &str, text: &str, file: &str) -> &'a str {
         "validation rule"
     } else if is("Controller") {
         "controller"
+    } else if is("Tool") && file.contains("Laravel\\Mcp\\Server\\Tool") {
+        "mcp tool"
+    } else if is("Resource") && file.contains("Laravel\\Mcp\\Server\\Resource") {
+        "mcp resource"
+    } else if is("Prompt") && file.contains("Laravel\\Mcp\\Server\\Prompt") {
+        "mcp prompt"
+    } else if is("Server") && file.contains("Laravel\\Mcp\\Server;") {
+        "mcp server"
     } else if is("JsonResource") || is("ResourceCollection") {
         "api resource"
     } else if is("Component") && file.contains("Livewire\\Component") {

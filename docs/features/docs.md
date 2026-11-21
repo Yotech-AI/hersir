@@ -93,6 +93,22 @@ The project's own decision records, the highest number first, then the shared no
   project's key as `project:`. The project's agents get those notes in their runs too.
   - An agent's own notes and the Chief's own aren't shared, so they never show here.
 
+## MCP
+
+The MCP servers the project's agents connect to, and the tools its own MCP server offers.
+
+- **Servers:** from `.mcp.json` (or `.cursor/mcp.json`, `mcp.json`), Claude Code's project file, by name: how each
+  connects (a command or a URL), its arguments, and the names of its environment variables and headers. Values never
+  show: a URL's user, password and query values, and an argument like `--api-key=…`, become placeholders, and Home
+  says which. A `##` section of `docs/mcp.md` named after a server says what it is for.
+- **Tools:** the tools, resources and prompts of the project's own Laravel MCP server, from their classes: a class that
+  extends Laravel's `Tool`, `Resource` or `Prompt`, or a class of the project that does. Each has its name, title,
+  description, annotations (`IsReadOnly` and the like) and inputs, from its attributes and its `schema` method.
+  An abstract one isn't listed.
+
+A class of the project takes the kind of the project class it extends, when no rule names its own: a tool extending
+an abstract `FactoryTool`, which extends Laravel's `Tool`, is a tool too.
+
 ## Commits
 
 The newest 50 commits on main, newest first: each with its short id, its first line, who made it and when, and the files
@@ -116,8 +132,7 @@ it changed. A code file the Reference reads opens to its changed lines, at most 
 
 ## Not there yet
 
-What yodocs also read, and Hersir doesn't yet: its MCP servers (`.mcp.json`) and the tools of its own MCP server, an OpenAPI file's request and
-response bodies, the llms.txt and Markdown pages for agents, what moved in the docs since the last commit, and switching
+What yodocs also read, and Hersir doesn't yet: an OpenAPI file's request and response bodies, the llms.txt and Markdown pages for agents, what moved in the docs since the last commit, and switching
 single sections off.
 
 ## Not to be confused with

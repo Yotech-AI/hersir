@@ -226,3 +226,20 @@ fn kotlin_gives_classes_interfaces_enums_objects_types_constants_and_functions()
     ]);
     assert_eq!(r.entries[0].doc, "A case the student is reading.");
 }
+
+#[test]
+fn php_gives_laravels_mcp_tools_resources_prompts_and_servers_by_what_they_import_and_extend() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    let files = vec![
+        write(d, "app/Mcp/Tools/SearchBlueprints.php", "<?php\nnamespace App\\Mcp\\Tools;\n\nuse Laravel\\Mcp\\Server\\Tool;\n\nclass SearchBlueprints extends Tool\n{\n}\n"),
+        write(d, "app/Mcp/Resources/Plans.php", "<?php\nuse Laravel\\Mcp\\Server\\Resource;\nclass Plans extends Resource {}\n"),
+        write(d, "app/Mcp/Prompts/Brief.php", "<?php\nuse Laravel\\Mcp\\Server\\Prompt;\nclass Brief extends Prompt {}\n"),
+        write(d, "app/Mcp/Servers/Factory.php", "<?php\nuse Laravel\\Mcp\\Server;\nclass Factory extends Server {}\n"),
+        write(d, "app/Support/Tool.php", "<?php\nclass Hammer extends Tool {}\n"),
+    ];
+    let r = reference(d, &files);
+    let kinds: Vec<(&str, &str, &str)> = r.entries.iter().map(|e| (e.name.as_str(), e.kind.as_str(), e.syntactic.as_str())).collect();
+    assert_eq!(kinds, [("SearchBlueprints", "mcp tool", "class"), ("Plans", "mcp resource", "class"), ("Brief", "mcp prompt", "class"),
+        ("Factory", "mcp server", "class"), ("Hammer", "class", "class")]);
+}
