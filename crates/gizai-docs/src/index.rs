@@ -356,6 +356,8 @@ pub struct Input {
     pub changelog_from: String,
     pub decisions: Vec<Decision>,
     pub history: Vec<Commit>,
+    /// What else didn't read right: a changelog section outside the format, say.
+    pub problems: Vec<Problem>,
 }
 
 pub fn build(input: Input) -> Index {
@@ -374,11 +376,12 @@ pub fn build(input: Input) -> Index {
         groups.push(routes);
         probes.push("routes".to_string());
     }
-    let problems: Vec<Problem> = input.reference.partial.iter().map(|file| Problem {
+    let mut problems: Vec<Problem> = input.reference.partial.iter().map(|file| Problem {
         file: file.clone(),
         message: "has syntax the parser can't read, so its declarations may be incomplete".into(),
         line: None,
     }).collect();
+    problems.extend(input.problems);
     Index {
         schema: SCHEMA,
         project: ProjectInfo {

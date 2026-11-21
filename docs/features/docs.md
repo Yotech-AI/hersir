@@ -65,7 +65,12 @@ guides; a guide shows its first 256 KB. HTML in a guide shows as text and never 
 
 ## Changelog
 
-The project's merged cards, newest first, one group a month, each with its identifier and its title.
+The project's own changelog, then its merged cards, newest first, with a filter by kind of change.
+
+- **CHANGELOG.md** (or `CHANGELOG.markdown`, `changelog.md`, `docs/CHANGELOG.md`), in Keep a Changelog format: each
+  `## [version] - date` is a release, Unreleased first, each `### Added` (Changed, Deprecated, Removed, Fixed,
+  Security) its kind of change. A section the format doesn't name is grouped under Other, and Home names it as a problem.
+- **Merged cards:** one group a month, each with its identifier and its title.
 
 - A card counts as merged once it is in a Deploy or Done column. Archived cards stay in the changelog.
 - Its month is when it reached Done. A card in a Deploy column counts from when it last changed.
@@ -73,14 +78,20 @@ The project's merged cards, newest first, one group a month, each with its ident
 
 ## Decisions
 
-The shared notes in Memory about the project's decisions, newest first.
+The project's own decision records, the highest number first, then the shared notes in Memory about its decisions.
 
-- A note shows here when it is in `Decisions/`, or has `type: decision`, and its `project:` is the project's key or
+- **Decision records:** `NNNN-title.md` files in `docs/decisions/` (or `docs/adr/`, `docs/decision-records/`,
+  `adr/`, `decisions/`), the ADR format. Each has its number, its title (front matter, else its first heading), its
+  status (proposed, accepted, rejected, superseded or deprecated, from front matter or a `Status:` line), its date, its
+  `##` sections, and the files its Related section names. They aren't listed among the guides.
+- **Memory notes:**
+
+  - A note shows here when it is in `Decisions/`, or has `type: decision`, and its `project:` is the project's key or
   name, in any case.
-- The Chief keeps them. Its answers to the agents' questions go in `Decisions/<project name>` ([Agents ask the Chief
+  - The Chief keeps them. Its answers to the agents' questions go in `Decisions/<project name>` ([Agents ask the Chief
   first](memory.md)), and its Memory block tells it that a decision about one project goes in `Decisions/` with the
   project's key as `project:`. The project's agents get those notes in their runs too.
-- An agent's own notes and the Chief's own aren't shared, so they never show here.
+  - An agent's own notes and the Chief's own aren't shared, so they never show here.
 
 ## Commits
 
@@ -105,8 +116,7 @@ it changed. A code file the Reference reads opens to its changed lines, at most 
 
 ## Not there yet
 
-What yodocs also read, and Hersir doesn't yet: the project's own CHANGELOG.md, its decision records in
-`docs/decisions/`, its MCP servers (`.mcp.json`) and the tools of its own MCP server, an OpenAPI file's request and
+What yodocs also read, and Hersir doesn't yet: its MCP servers (`.mcp.json`) and the tools of its own MCP server, an OpenAPI file's request and
 response bodies, the llms.txt and Markdown pages for agents, what moved in the docs since the last commit, and switching
 single sections off.
 

@@ -38,8 +38,7 @@ pub fn guides(repo: &Path, files: &[String]) -> Vec<Guide> {
     let mut paths: Vec<&String> = files.iter().filter(|f| is_guide(f)).collect();
     paths.sort_by_key(|p| (!p.eq_ignore_ascii_case("readme.md"), p.to_ascii_lowercase()));
     paths.into_iter().take(MAX_GUIDES).filter_map(|path| {
-        let bytes = std::fs::read(repo.join(path)).ok()?;
-        let text = String::from_utf8_lossy(&bytes[..bytes.len().min(MAX_BYTES)]).into_owned();
+        let text = crate::read_text(repo, path, MAX_BYTES)?;
         let file = path.rsplit('/').next().unwrap_or(path);
         let stem = file.rsplit_once('.').map_or(file, |(s, _)| s);
         let title = text.lines().find_map(|l| l.strip_prefix("# ")).map(str::trim).filter(|t| !t.is_empty()).unwrap_or(stem);

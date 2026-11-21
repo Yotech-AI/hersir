@@ -21,42 +21,43 @@ const HISTORY: usize = 50;
 const MONTHS: [&str; 12] = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October",
     "November", "December"];
 
-/// The project's docs index. A project without a linked repository still gets its changelog and decisions, and a
-/// problem that says how to link one.
+/// The project's docs index. A project without a linked repository still gets the changelog and decisions Hersir keeps,
+/// and a problem that says how to link one.
 pub fn index_of(st: &AppState, project: &Project) -> Result<Index, String> {
     let started = Instant::now();
-    let mut input = Input {
-        title: format!("{} dev docs", project.name),
-        version: env!("CARGO_PKG_VERSION").into(),
-        changelog_from: "the cards merged in Hersir (in a Deploy or Done column)".into(),
-        ..Input::default()
-    };
-    let unlinked = match crate::changes::linked_repo(project) {
+    let mut input = Input { title: format!("{} dev docs", project.name), version: env!("CARGO_PKG_VERSION").into(), ..Input::default() };
+    let mut changelog_file = None;
+    match crate::changes::linked_repo(project) {
         Ok(repo) => {
             let unreadable = |e| format!("Hersir can't read {}'s repository: {}", project.name, crate::pulls::plain(e));
             let files = worktree::tracked_files(&repo).map_err(unreadable)?;
             input.reference = gizai_docs::reference(&repo, &files);
             input.routes = gizai_docs::api::api(&repo, &files);
-            input.guides = gizai_docs::guides::guides(&repo, &files);
+            let content = gizai_docs::content::read(&repo, &files);
+            (input.guides, input.changelog, input.decisions, input.problems) = (content.guides, content.changelog, content.decisions, content.problems);
+            changelog_file = content.changelog_file;
             let (label, main) = crate::changes::main_of(project, &repo);
             if let Some(main) = main {
                 input.history = index::history(&worktree::log_name_status(&repo, &main, HISTORY).map_err(unreadable)?);
             }
             input.commit = input.history.first().map(|c| c.hash.clone()).unwrap_or_default();
             input.branch = label;
-            None
         }
-        Err(why) => Some(why),
+        Err(why) => input.problems.push(Problem { file: String::new(), message: why, line: None }),
+    }
+    // the project's own CHANGELOG.md and decision records, then what Hersir keeps
+    let merged = releases(&devdocs::changelog(&st.db, &project.id).map_err(|e| e.to_string())?);
+    input.changelog_from = match (&changelog_file, merged.is_empty()) {
+        (Some(file), true) => format!("{file} in Keep a Changelog format"),
+        (Some(file), false) => format!("{file} and the cards merged in Hersir"),
+        (None, _) => "the cards merged in Hersir (in a Deploy or Done column)".into(),
     };
-    input.changelog = releases(&devdocs::changelog(&st.db, &project.id).map_err(|e| e.to_string())?);
-    input.decisions = devdocs::decisions(&st.db, project).map_err(|e| e.to_string())?.iter().map(decision).collect();
+    input.changelog.extend(merged);
+    input.changelog.sort_by(|a, b| b.unreleased.cmp(&a.unreleased).then_with(|| b.date.cmp(&a.date)));
+    input.decisions.extend(devdocs::decisions(&st.db, project).map_err(|e| e.to_string())?.iter().map(decision));
     input.built_at = iso(SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64));
     input.duration_ms = started.elapsed().as_millis() as u64;
-    let mut index = index::build(input);
-    if let Some(why) = unlinked {
-        index.problems.push(Problem { file: String::new(), message: why, line: None });
-        index.stats.problems += 1;
-    }
+    let index = index::build(input);
     Ok(index)
 }
 

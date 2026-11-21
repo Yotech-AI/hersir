@@ -5,6 +5,7 @@
 //! yodocs read named their nodes differently.
 //! The caller lists the files (git's tracked files) and this reads them from disk: it starts no program.
 pub mod api;
+pub mod content;
 pub mod guides;
 pub mod index;
 pub mod markdown;
@@ -68,6 +69,17 @@ enum Lang {
     Kotlin,
     /// A .vue or .svelte file: its script blocks, read as TSX.
     Component,
+}
+
+/// A file git tracks in `repo`, as text: at most `max` bytes of it, not through a link (which could reach a file
+/// outside the project), None when it isn't a plain file.
+pub(crate) fn read_text(repo: &Path, path: &str, max: usize) -> Option<String> {
+    let full = repo.join(path);
+    if !std::fs::symlink_metadata(&full).ok()?.is_file() {
+        return None;
+    }
+    let bytes = std::fs::read(&full).ok()?;
+    Some(String::from_utf8_lossy(&bytes[..bytes.len().min(max)]).into_owned())
 }
 
 pub(crate) fn lang_of(path: &str) -> Option<Lang> {

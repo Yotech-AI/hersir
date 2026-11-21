@@ -1,0 +1,111 @@
+//! The docs a project writes itself, as yodocs read them: CHANGELOG.md in Keep a Changelog format (Unreleased first,
+//! then newest, a section outside the format named as a problem), the decision records in docs/decisions (number,
+//! title, status, date, sections, related files; the highest number first), and the guides without the decision
+//! records; only files git tracks, never through a link.
+use std::path::Path;
+
+use gizai_docs::content::{changelog, decisions, decisions_folder, front_matter, read};
+
+fn write(dir: &Path, path: &str, text: &str) -> String {
+    let p = dir.join(path);
+    std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+    std::fs::write(p, text).unwrap();
+    path.to_string()
+}
+
+const CHANGELOG: &str = "# Changelog
+
+- a stray line before any version
+
+## [0.3.0] - 2026-10-30
+
+### Removed
+- The old **settings** page
+
+## [Unreleased]
+
+### Added
+- Search ranks exact names first (SDH-112)
+
+### Chores
+- Bumped a dependency
+
+## [0.4.0](https://github.com/acme/site/compare/v0.3.0...v0.4.0) - 2026-11-05
+
+### Fixed
+- Routes without a name show their URI
+* Deep links scroll below the bar
+";
+
+#[test]
+fn a_changelog_in_keep_a_changelog_format() {
+    let (releases, problems) = changelog("CHANGELOG.md", CHANGELOG);
+    assert_eq!(releases.iter().map(|r| (r.version.as_str(), r.date.as_str(), r.unreleased)).collect::<Vec<_>>(),
+               [("Unreleased", "", true), ("0.4.0", "2026-11-05", false), ("0.3.0", "2026-10-30", false)]);
+    assert_eq!(releases[1].compare_url, "https://github.com/acme/site/compare/v0.3.0...v0.4.0");
+    let kinds = |n: usize| releases[n].changes.iter().map(|c| (c.kind.as_str(), c.text.as_str())).collect::<Vec<_>>();
+    assert_eq!(kinds(0), [("Added", "Search ranks exact names first (SDH-112)"), ("Other", "Bumped a dependency")]);
+    assert_eq!(kinds(1), [("Fixed", "Routes without a name show their URI"), ("Fixed", "Deep links scroll below the bar")]);
+    assert_eq!(releases[2].changes[0].html, "The old <strong>settings</strong> page", "a line of Markdown, without a paragraph around it");
+    assert_eq!(problems.iter().map(|p| (p.line, p.message.as_str())).collect::<Vec<_>>(), [
+        (Some(3), "an entry before any version heading, skipped"),
+        (Some(15), "\"Chores\" is not a Keep a Changelog section, so its entries are grouped under Other"),
+    ]);
+}
+
+#[test]
+fn decision_records_with_their_number_status_sections_and_related_files() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    let files = vec![
+        write(d, "docs/decisions/0119-allowlist.md", "---\ntitle: Docs open only to allowlisted IPs\ndate: 2026-11-05\n---\n\
+# 0119 · Ignored, the front matter names it\n\n**Status:** Accepted\n\n## Context\n\nJeffrey asked for it.\n\n## Decision\n\nOne middleware.\n\n\
+## Related\n\n- app/Http/Middleware/RestrictToIpAddresses.php\n- routes/devdoc.php and app/Http/Middleware/RestrictToIpAddresses.php\n"),
+        write(d, "docs/decisions/0002_search.md", "# 0002 · Search in the browser\n\nStatus: proposed\nDate: 2026-11-04\n"),
+        write(d, "docs/decisions/0010-old.md", "# Old way\n\n* **Status**: superseded by 0119\n"),
+        write(d, "docs/decisions/README.md", "# How we decide\n"),
+        write(d, "docs/decisions/drafts/0003-later.md", "# Later\n"),
+    ];
+    assert_eq!(decisions_folder(&files), Some("docs/decisions"));
+    let got = decisions(d, &files, "docs/decisions");
+    assert_eq!(got.iter().map(|x| (x.id.as_str(), x.number.as_str(), x.title.as_str(), x.status.as_str(), x.date.as_str())).collect::<Vec<_>>(), [
+        ("decisions/0119", "0119", "Docs open only to allowlisted IPs", "accepted", "2026-11-05"),
+        ("decisions/0010", "0010", "Old way", "superseded", ""),
+        ("decisions/0002", "0002", "Search in the browser", "proposed", "2026-11-04"),
+    ]);
+    let adr = &got[0];
+    assert_eq!(adr.sections.iter().map(|s| s.heading.as_str()).collect::<Vec<_>>(), ["Context", "Decision", "Related"]);
+    assert_eq!(adr.sections[0].html, "<p>Jeffrey asked for it.</p>\n");
+    assert_eq!(adr.related_files, ["app/Http/Middleware/RestrictToIpAddresses.php", "routes/devdoc.php"]);
+    assert_eq!(adr.file, "docs/decisions/0119-allowlist.md");
+    assert_eq!(adr.headings.iter().map(|h| h.text.as_str()).collect::<Vec<_>>(), ["0119 · Ignored, the front matter names it", "Context", "Decision", "Related"]);
+}
+
+#[test]
+fn front_matter_is_its_scalars_and_the_text_after_it() {
+    let (data, body) = front_matter("---\ntitle: \"Install\"\norder: 2\n---\n# Install\n");
+    assert_eq!((data["title"].as_str(), data["order"].as_str(), body), ("Install", "2", "# Install\n"));
+    let (data, body) = front_matter("# No front matter\n");
+    assert!(data.is_empty() && body == "# No front matter\n");
+}
+
+#[test]
+fn a_projects_own_docs_without_the_decisions_among_the_guides_and_never_through_a_link() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    let outside = tempfile::tempdir().unwrap();
+    std::fs::write(outside.path().join("secret.md"), "# Secret\n").unwrap();
+    let mut files = vec![write(d, "README.md", "# Pearl\n"), write(d, "docs/setup.md", "# Setting up\n"),
+        write(d, "docs/adr/0001-use-postgres.md", "# Use Postgres\n\nStatus: accepted\n"), write(d, "CHANGELOG.md", CHANGELOG)];
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(outside.path().join("secret.md"), d.join("docs/secret.md")).unwrap();
+        files.push("docs/secret.md".into());
+    }
+    let c = read(d, &files);
+    assert_eq!(c.guides.iter().map(|g| g.path.as_str()).collect::<Vec<_>>(), ["README.md", "docs/setup.md"]);
+    assert_eq!(c.decisions.iter().map(|x| x.title.as_str()).collect::<Vec<_>>(), ["Use Postgres"]);
+    assert_eq!((c.changelog_file.as_deref(), c.changelog.len(), c.problems.len()), (Some("CHANGELOG.md"), 3, 2));
+    let none = read(d, &["README.md".to_string()]);
+    assert!(none.changelog_file.is_none() && none.changelog.is_empty() && none.decisions.is_empty(), "only files git tracks");
+}

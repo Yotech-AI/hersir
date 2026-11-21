@@ -88,6 +88,8 @@ fn a_projects_page_index_sources_and_commits() {
     write(&repo, "src/invoice.ts", "/** An invoice. */\nexport class Invoice extends Model {\n}\n");
     write(&repo, "README.md", "# Pearl\n\nThe site.\n");
     write(&repo, ".env", "KEY=1\n");
+    write(&repo, "CHANGELOG.md", "# Changelog\n\n## [Unreleased]\n\n### Added\n- Invoices\n");
+    write(&repo, "docs/decisions/0001-use-postgres.md", "# Use Postgres\n\nStatus: accepted\n");
     git(&repo, &["add", "-A"]);
     git(&repo, &["commit", "-q", "-m", "Add invoices"]);
     let hash = git(&repo, &["rev-parse", "--short", "HEAD"]);
@@ -109,7 +111,11 @@ fn a_projects_page_index_sources_and_commits() {
     assert_eq!((commit["hash"].as_str(), commit["subject"].as_str(), commit["author"].as_str()), (Some(hash.as_str()), Some("Add invoices"), Some("Tess")));
     let files: Vec<(&str, bool)> = commit["files"].as_array().unwrap().iter().map(|f| (f["path"].as_str().unwrap(), f["diff"].as_bool().unwrap())).collect();
     assert!(files.contains(&("src/invoice.ts", true)) && files.contains(&(".env", false)), "{files:?}");
-    assert_eq!((index["changelog"].as_array().map(Vec::len), index["decisions"].as_array().map(Vec::len)), (Some(0), Some(0)));
+    // the project's own changelog and decision records, and the records aren't guides too
+    assert_eq!(index["project"]["changelogFrom"], "CHANGELOG.md in Keep a Changelog format");
+    assert_eq!((index["changelog"][0]["version"].as_str(), index["changelog"][0]["changes"][0]["type"].as_str()), (Some("Unreleased"), Some("Added")));
+    assert_eq!((index["decisions"][0]["number"].as_str(), index["decisions"][0]["status"].as_str()), (Some("0001"), Some("accepted")));
+    assert_eq!(index["guides"].as_array().unwrap().iter().map(|g| g["file"].as_str().unwrap()).collect::<Vec<_>>(), ["README.md"]);
 
     let source = json(route(&st, &format!("/p/{id}/source/src/invoice.ts.json")));
     assert_eq!(source["lines"][1], "export class Invoice extends Model {");
