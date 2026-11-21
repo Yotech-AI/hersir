@@ -7,7 +7,7 @@ source scripts/env.sh
 [ -d node_modules ] || npm ci
 # Rebuild when a binary is missing or any source file is newer than it. hersir-mcp (the helper Claude Code
 # starts in a chat turn, built by the crate gizai-mcp) must sit next to hersir.
-if [ ! -x target/release/hersir ] || [ -n "$(find src src-tauri/src src-tauri/tauri.conf.json src-tauri/capabilities crates index.html docs.html package.json -newer target/release/hersir -print -quit)" ]; then
+if [ ! -x target/release/hersir ] || [ -n "$(find src src-tauri/src src-tauri/tauri.conf.json src-tauri/capabilities crates index.html package.json -newer target/release/hersir -print -quit)" ]; then
   npm run tauri build -- --no-bundle
 fi
 if [ ! -x target/release/hersir-mcp ] || [ -n "$(find crates/gizai-mcp -newer target/release/hersir-mcp -print -quit)" ]; then

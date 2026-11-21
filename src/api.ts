@@ -260,24 +260,8 @@ export const cardFileDiff = (taskId: string, path: string, oldPath: string | nul
   invoke<T.FileDiff>("card_file_diff", { taskId, path, oldPath, from, to });
 /** The changes one run committed: from the commit it started at to the one it ended at. */
 export const runChanges = (runId: string) => invoke<T.CardChanges>("run_changes", { runId });
-/** Docs → Commits: main's newest commits, newest first, as last fetched. */
-export const docsCommits = (projectId: string) => invoke<T.DocsCommits>("docs_commits", { projectId });
-/** The files commit `sha` changed, against its first parent. */
-export const docsCommitFiles = (projectId: string, sha: string) => invoke<T.CommitFiles>("docs_commit_files", { projectId, sha });
-/** One file of a commit: its texts at `from` and `to`, and git's hunks between them. */
-export const docsFileDiff = (projectId: string, path: string, oldPath: string | null, from: string, to: string) =>
-  invoke<T.FileDiff>("docs_file_diff", { projectId, path, oldPath, from, to });
-/** Docs → Changelog: the project's merged cards, newest first. */
-export const docsChangelog = (projectId: string) => invoke<T.ChangelogEntry[]>("docs_changelog", { projectId });
-/** Docs → Decisions: the shared memory notes about the project's decisions, newest first. */
-export const docsDecisions = (projectId: string) => invoke<T.DecisionNote[]>("docs_decisions", { projectId });
-/** Docs → Reference: the declarations in the files git tracks in the project's repository, as they are on disk. */
-export const docsReference = (projectId: string) => invoke<T.CodeReference>("docs_reference", { projectId });
-/** Docs → API: the routes the project answers on, read from its files without running it. */
-export const docsApi = (projectId: string) => invoke<T.ApiRoute[]>("docs_api", { projectId });
-/** Docs → Guides: the project's own Markdown docs, the README first. */
-export const docsGuides = (projectId: string) => invoke<T.Guide[]>("docs_guides", { projectId });
-/** Starts Hersir's docs server the first time (127.0.0.1 only) and gives its address, like http://127.0.0.1:4380. */
+/** A project's docs page (the Docs section): starts Hersir's docs server the first time (127.0.0.1 only) and gives its
+ *  address, like http://127.0.0.1:4380. The page is at <address>/p/<project id>/. */
 export const docsServe = () => invoke<string>("docs_serve");
 
 // ---- Screenshots (GA-182, contract CS) ----

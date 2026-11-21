@@ -1,16 +1,14 @@
-// Docs → Commits: the UI's calls and types match the Rust side, read as text (Vite's ?raw) as contract C1's are
-// (changesContract.test.ts), so a change on one side without the other fails here.
+// Docs: the UI's call and the page's address match the Rust side, read as text (Vite's ?raw) as contract C1's are
+// (changesContract.test.ts): docs_serve is registered; the page is served under /p/<id>/ and takes ?theme=, which the
+// app sends; each section the app links to is one the page has; the app may frame the page and the page lets it.
 import { describe, expect, it, vi } from "vitest";
-import type { ApiRoute, ChangelogEntry, Guide, CodeReference, CommitFiles, DecisionNote, DocsCommits, LoggedCommit, ReferenceEntry } from "./types";
 import libRs from "../src-tauri/src/lib.rs?raw";
-import changesRs from "../src-tauri/src/changes.rs?raw";
-import devdocsAppRs from "../src-tauri/src/devdocs.rs?raw";
-import devdocsRs from "../crates/gizai-core/src/devdocs.rs?raw";
-import worktreeRs from "../crates/gizai-agents/src/worktree.rs?raw";
-import docsRs from "../crates/gizai-docs/src/lib.rs?raw";
-import apiRs from "../crates/gizai-docs/src/api.rs?raw";
-import guidesRs from "../crates/gizai-docs/src/guides.rs?raw";
 import serverRs from "../src-tauri/src/docs_server.rs?raw";
+import tauriConf from "../src-tauri/tauri.conf.json?raw";
+import themeJs from "../crates/gizai-docs/viewer/js/theme.js?raw";
+import stateJs from "../crates/gizai-docs/viewer/js/state.js?raw";
+import mainJs from "../crates/gizai-docs/viewer/js/main.js?raw";
+import { DOCS_TABS } from "./router";
 
 const invoked: [string, unknown][] = [];
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (cmd: string, args?: unknown) => { invoked.push([cmd, args]); return Promise.resolve(null); } }));
@@ -18,74 +16,8 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: () => Promise.resolve(() => {}
 
 const api = await import("./api");
 
-/** The fields of a Rust struct, camelCased as serde's rename_all = "camelCase" sends them. */
-function serdeFields(rs: string, name: string): string[] {
-  const body = new RegExp(`#\\[serde\\(rename_all = "camelCase"\\)\\]\\s*pub struct ${name} \\{([\\s\\S]*?)\\n\\}`).exec(rs);
-  if (!body) throw new Error(`no camelCase struct ${name}`);
-  return [...body[1].matchAll(/^\s*pub (\w+):/gm)].map((m) => m[1].replace(/_(\w)/g, (_, c: string) => c.toUpperCase())).sort();
-}
-
-describe("Docs → Commits' commands", () => {
-  it("are invoked with camelCase arguments and registered with Tauri", async () => {
-    invoked.length = 0;
-    await api.docsCommits("p1");
-    await api.docsCommitFiles("p1", "abc1234");
-    await api.docsFileDiff("p1", "src/a.ts", null, "a1b2c3d", "e4f5a6b");
-    expect(invoked).toEqual([
-      ["docs_commits", { projectId: "p1" }],
-      ["docs_commit_files", { projectId: "p1", sha: "abc1234" }],
-      ["docs_file_diff", { projectId: "p1", path: "src/a.ts", oldPath: null, from: "a1b2c3d", to: "e4f5a6b" }],
-    ]);
-    for (const cmd of ["docs_commits", "docs_commit_files", "docs_file_diff"]) {
-      expect(libRs).toContain(`changes::${cmd}`);
-      expect(changesRs).toMatch(new RegExp(`pub async fn ${cmd}\\(`));
-    }
-  });
-
-  it("send the fields the UI's types name", () => {
-    const commit: Record<keyof LoggedCommit, true> = { sha: true, parent: true, author: true, at: true, subject: true };
-    expect(serdeFields(worktreeRs, "LoggedCommit")).toEqual(Object.keys(commit).sort());
-    const list: Record<keyof DocsCommits, true> = { label: true, commits: true };
-    expect(serdeFields(changesRs, "DocsCommits")).toEqual(Object.keys(list).sort());
-    const files: Record<keyof CommitFiles, true> = { from: true, to: true, files: true };
-    expect(serdeFields(changesRs, "CommitFiles")).toEqual(Object.keys(files).sort());
-  });
-});
-
-describe("Docs → Reference's, Changelog's and Decisions' commands", () => {
-  it("are invoked with camelCase arguments and registered with Tauri", async () => {
-    invoked.length = 0;
-    await api.docsChangelog("p1");
-    await api.docsDecisions("p1");
-    await api.docsReference("p1");
-    await api.docsApi("p1");
-    await api.docsGuides("p1");
-    expect(invoked).toEqual([["docs_changelog", { projectId: "p1" }], ["docs_decisions", { projectId: "p1" }], ["docs_reference", { projectId: "p1" }],
-      ["docs_api", { projectId: "p1" }], ["docs_guides", { projectId: "p1" }]]);
-    for (const cmd of ["docs_changelog", "docs_decisions", "docs_reference", "docs_api", "docs_guides"]) {
-      expect(libRs).toContain(`devdocs::${cmd}`);
-      expect(devdocsAppRs).toMatch(new RegExp(`pub async fn ${cmd}\\(`));
-    }
-  });
-
-  it("send the fields the UI's types name", () => {
-    const entry: Record<keyof ChangelogEntry, true> = { taskId: true, identifier: true, title: true, at: true };
-    expect(serdeFields(devdocsRs, "ChangelogEntry")).toEqual(Object.keys(entry).sort());
-    const note: Record<keyof DecisionNote, true> = { id: true, path: true, title: true, bodyMd: true, updatedAt: true };
-    expect(serdeFields(devdocsRs, "DecisionNote")).toEqual(Object.keys(note).sort());
-    const entry2: Record<keyof ReferenceEntry, true> = { name: true, kind: true, path: true, line: true, endLine: true, doc: true, text: true };
-    expect(serdeFields(docsRs, "Entry")).toEqual(Object.keys(entry2).sort());
-    const reference: Record<keyof CodeReference, true> = { entries: true, files: true, partial: true };
-    expect(serdeFields(docsRs, "Reference")).toEqual(Object.keys(reference).sort());
-    const route: Record<keyof ApiRoute, true> = { method: true, path: true, handler: true, file: true, line: true };
-    expect(serdeFields(apiRs, "Route")).toEqual(Object.keys(route).sort());
-    const guide: Record<keyof Guide, true> = { path: true, title: true, bodyMd: true };
-    expect(serdeFields(guidesRs, "Guide")).toEqual(Object.keys(guide).sort());
-  });
-});
-
-describe("Docs in a browser", () => {
-  it("is served by docs_serve, registered with Tauri", async () => {
+describe("the Docs page's contract", () => {
+  it("starts the server with docs_serve, registered with Tauri", async () => {
     invoked.length = 0;
     await api.docsServe();
     expect(invoked).toEqual([["docs_serve", undefined]]);
@@ -93,22 +25,18 @@ describe("Docs in a browser", () => {
     expect(serverRs).toMatch(/pub async fn docs_serve\(/);
   });
 
-  it("gets every call its page makes answered by Hersir's docs server, with the arguments it sends", async () => {
-    invoked.length = 0;
-    await api.listProjects();
-    await api.getProject("p1");
-    await api.docsReference("p1");
-    await api.docsGuides("p1");
-    await api.docsApi("p1");
-    await api.docsChangelog("p1");
-    await api.docsDecisions("p1");
-    await api.docsCommits("p1");
-    await api.docsCommitFiles("p1", "abc1234");
-    await api.docsFileDiff("p1", "src/a.ts", null, "a1b2c3d", "e4f5a6b");
-    expect(invoked).toHaveLength(10);
-    for (const [cmd, args] of invoked) {
-      expect(serverRs).toContain(`"${cmd}" =>`);
-      for (const key of Object.keys(args ?? {})) expect(serverRs).toContain(`("${key}")`);
-    }
+  it("finds the page under /p/<id>/, in the theme the app sends", () => {
+    expect(serverRs).toContain('path.strip_prefix("/p/")');
+    expect(themeJs).toContain("new URLSearchParams(location.search).get('theme')");
+  });
+
+  it("links only to sections the page has", () => {
+    for (const tab of DOCS_TABS) expect(`${stateJs}\n${mainJs}`).toMatch(new RegExp(`'${tab}'`));
+  });
+
+  it("may frame the page, which only Hersir's window may frame", () => {
+    const csp: string = JSON.parse(tauriConf).app.security.csp;
+    expect(csp).toMatch(/frame-src [^;]*http:\/\/127\.0\.0\.1:\*/);
+    expect(serverRs).toMatch(/frame-ancestors tauri:\/\/localhost http:\/\/tauri\.localhost https:\/\/tauri\.localhost/);
   });
 });

@@ -183,7 +183,7 @@ describe("the window's rights and its Content Security Policy (GA-141)", () => {
   it("keeps v0.9.1's Content Security Policy", () => {
     expect(JSON.parse(tauri("tauri.conf.json")).app.security).toEqual({
       csp: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; "
-        + "connect-src ipc: http://ipc.localhost; frame-src gizai-artifact:; object-src 'none'; base-uri 'none'",
+        + "connect-src ipc: http://ipc.localhost; frame-src gizai-artifact: http://127.0.0.1:*; object-src 'none'; base-uri 'none'",
     });
   });
 });

@@ -1,77 +1,150 @@
-//! Docs in a browser (`docs_server`): the page and its files for this computer only (another host name refused, a file
-//! name with `..` refused); the read-only Docs calls of a project with Docs on answered; a project with Docs off, any
-//! other command and a call without what it needs refused.
-use std::collections::HashMap;
-use std::sync::Arc;
+//! The docs pages (`docs_server`): for this computer only and only to GET; the list of projects with Docs on; a
+//! project's page (yodocs' viewer), its index (yodocs' index.json) from its linked folder, a file's source only for a
+//! file the Reference reads, a commit's changed lines; Docs off refused, an unknown project not found; a project
+//! without a repository still indexed, with a problem that says how to link one.
+use std::path::Path;
+use std::process::Command;
 
 use gizai_core::model::ProjectInput;
-use gizai_lib::docs_server::{self, Assets};
+use gizai_lib::docs_server::{self, route, Reply};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-/// The server on a free port of 127.0.0.1, with a page and one script as its files.
-async fn server(st: gizai_lib::AppState) -> u16 {
-    let files: HashMap<String, (Vec<u8>, String)> = [
-        ("docs-web/docs.html", "<!doctype html><title>Hersir docs</title>", "text/html"),
-        ("docs-web/assets/docs-1a2b.js", "console.log(1)", "text/javascript"),
-    ].into_iter().map(|(p, b, m)| (p.to_string(), (b.as_bytes().to_vec(), m.to_string()))).collect();
-    let assets: Assets = Arc::new(move |p: &str| files.get(p).cloned());
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let port = listener.local_addr().unwrap().port();
-    tokio::spawn(docs_server::serve(listener, st, assets));
-    port
+/// git in `dir` as a fixed person, whatever this computer's git config says about line ends and signing.
+fn git(dir: &Path, args: &[&str]) -> String {
+    let o = Command::new("git").args(["-c", "user.email=t@t", "-c", "user.name=Tess", "-c", "core.autocrlf=false", "-c", "commit.gpgsign=false"])
+        .args(args).current_dir(dir).output().unwrap();
+    assert!(o.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&o.stderr));
+    String::from_utf8_lossy(&o.stdout).trim_end().to_string()
 }
 
-/// The status and body of one request.
-async fn send(port: u16, method: &str, path: &str, host: &str, body: &str) -> (u16, String) {
-    let mut s = tokio::net::TcpStream::connect(("127.0.0.1", port)).await.unwrap();
-    let request = format!("{method} {path} HTTP/1.1\r\nHost: {host}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}", body.len());
-    s.write_all(request.as_bytes()).await.unwrap();
-    let mut out = String::new();
-    s.read_to_string(&mut out).await.unwrap();
-    let code = out.split(' ').nth(1).and_then(|c| c.parse().ok()).unwrap_or(0);
-    (code, out.split_once("\r\n\r\n").map(|(_, b)| b.to_string()).unwrap_or_default())
+fn write(dir: &Path, path: &str, text: &str) {
+    let p = dir.join(path);
+    std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+    std::fs::write(p, text).unwrap();
 }
 
-fn project(st: &gizai_lib::AppState, name: &str, key: &str, docs: bool) -> String {
-    gizai_core::projects::create(&st.db, &st.you_id, ProjectInput { name: name.into(), key: key.into(), dev_docs: Some(docs),
+/// A project with Docs `on` or off, linked to `repo` (no link to GitHub), its main branch main.
+fn project(st: &gizai_lib::AppState, name: &str, key: &str, on: bool, repo: Option<&Path>) -> String {
+    gizai_core::projects::create(&st.db, &st.you_id, ProjectInput { name: name.into(), key: key.into(),
+        repo_path: repo.map(|r| r.to_string_lossy().into_owned()), default_branch: Some("main".into()), dev_docs: Some(on),
         ..Default::default() }).unwrap()
 }
 
-#[tokio::test]
-async fn the_page_and_its_files_for_this_computer_only() {
-    let tmp = tempfile::tempdir().unwrap();
-    let port = server(gizai_lib::test_state(tmp.path())).await;
-    let host = format!("127.0.0.1:{port}");
-    assert_eq!(send(port, "GET", "/", &host, "").await, (200, "<!doctype html><title>Hersir docs</title>".into()));
-    assert_eq!(send(port, "GET", "/assets/docs-1a2b.js", &format!("localhost:{port}"), "").await, (200, "console.log(1)".into()));
-    assert_eq!(send(port, "GET", "/", &format!("evil.example:{port}"), "").await.0, 403, "another host name");
-    assert_eq!(send(port, "GET", "/", "127.0.0.1", "").await.0, 403, "without this port");
-    assert_eq!(send(port, "GET", "/assets/..%2Fsecret", &host, "").await.0, 404);
-    assert_eq!(send(port, "GET", "/assets/missing.js", &host, "").await.0, 404);
-    assert_eq!(send(port, "DELETE", "/", &host, "").await.0, 404);
+fn ok(reply: Reply) -> (&'static str, String) {
+    match reply {
+        Reply::Ok(mime, body) => (mime, String::from_utf8(body).unwrap()),
+        other => panic!("not served: {other:?}"),
+    }
+}
+
+fn json(reply: Reply) -> serde_json::Value {
+    let (mime, body) = ok(reply);
+    assert_eq!(mime, "application/json");
+    serde_json::from_str(&body).unwrap()
+}
+
+/// The status, head and body of one request.
+async fn send(port: u16, method: &str, path: &str, host: &str) -> (u16, String, String) {
+    let mut s = tokio::net::TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+    s.write_all(format!("{method} {path} HTTP/1.1\r\nHost: {host}\r\n\r\n").as_bytes()).await.unwrap();
+    let mut out = String::new();
+    s.read_to_string(&mut out).await.unwrap();
+    let code = out.split(' ').nth(1).and_then(|c| c.parse().ok()).unwrap_or(0);
+    let (head, body) = out.split_once("\r\n\r\n").unwrap_or_default();
+    (code, head.to_string(), body.to_string())
 }
 
 #[tokio::test]
-async fn only_the_docs_calls_of_projects_with_docs_on() {
+async fn for_this_computer_only_and_only_to_get() {
+    let tmp = tempfile::tempdir().unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(docs_server::serve(listener, gizai_lib::test_state(tmp.path())));
+    let host = format!("127.0.0.1:{port}");
+
+    let (code, head, body) = send(port, "GET", "/", &host).await;
+    assert_eq!(code, 200);
+    assert!(body.contains("<title>Docs · Hersir</title>"), "{body}");
+    assert!(head.contains("Content-Security-Policy: default-src 'self'; script-src 'self';"), "{head}");
+    assert!(head.contains("frame-ancestors tauri://localhost http://tauri.localhost https://tauri.localhost"), "only Hersir's window may frame it: {head}");
+    assert_eq!(send(port, "GET", "/fonts.css", &format!("localhost:{port}")).await.0, 200);
+    assert_eq!(send(port, "GET", "/", &format!("evil.example:{port}")).await.0, 403, "another host name");
+    assert_eq!(send(port, "GET", "/", "127.0.0.1").await.0, 403, "without this port");
+    assert_eq!(send(port, "POST", "/", &host).await.0, 405);
+    assert_eq!(send(port, "GET", "/index.html", &host).await.0, 404, "the page is a project's only");
+    assert_eq!(send(port, "GET", "/p/%zz/", &host).await.0, 400);
+    let (code, head, _) = send(port, "GET", "/p/abc", &host).await;
+    assert_eq!(code, 301);
+    assert!(head.contains("Location: /p/abc/"), "{head}");
+}
+
+#[test]
+fn a_projects_page_index_sources_and_commits() {
     let tmp = tempfile::tempdir().unwrap();
     let st = gizai_lib::test_state(tmp.path());
-    let on = project(&st, "Pearl", "PEARL", true);
-    let off = project(&st, "Kiosk", "KIOSK", false);
-    let port = server(st).await;
-    let host = format!("127.0.0.1:{port}");
-    let call = |cmd: &str, args: String| { let (h, c) = (host.clone(), format!("/api/{cmd}")); async move { send(port, "POST", &c, &h, &args).await } };
+    let repo = tmp.path().join("pearl");
+    std::fs::create_dir(&repo).unwrap();
+    git(&repo, &["init", "-q", "-b", "main"]);
+    write(&repo, "src/invoice.ts", "/** An invoice. */\nexport class Invoice extends Model {\n}\n");
+    write(&repo, "README.md", "# Pearl\n\nThe site.\n");
+    write(&repo, ".env", "KEY=1\n");
+    git(&repo, &["add", "-A"]);
+    git(&repo, &["commit", "-q", "-m", "Add invoices"]);
+    let hash = git(&repo, &["rev-parse", "--short", "HEAD"]);
+    let id = project(&st, "Pearl", "PEARL", true, Some(&repo));
 
-    let (code, body) = call("list_projects", "{}".into()).await;
-    assert_eq!(code, 200);
-    let list: serde_json::Value = serde_json::from_str(&body).unwrap();
-    assert_eq!(list.as_array().unwrap().iter().map(|p| p["name"].as_str().unwrap()).collect::<Vec<_>>(), ["Pearl"], "only projects with Docs on");
-    assert_eq!(call("get_project", format!(r#"{{"id":"{on}"}}"#)).await.0, 200);
-    assert_eq!(call("docs_changelog", format!(r#"{{"projectId":"{on}"}}"#)).await, (200, "[]".into()));
-    assert_eq!(call("docs_changelog", format!(r#"{{"projectId":"{off}"}}"#)).await, (403, "Docs is off for Kiosk.".into()));
-    assert_eq!(call("get_project", format!(r#"{{"id":"{off}"}}"#)).await.0, 403);
-    assert_eq!(call("docs_changelog", r#"{"projectId":"no-such-project"}"#.into()).await.0, 404);
-    assert_eq!(call("save_project", format!(r#"{{"projectId":"{on}"}}"#)).await, (404, "Hersir's docs don't answer save_project.".into()));
-    assert_eq!(call("docs_changelog", "{}".into()).await, (400, "docs_changelog needs projectId".into()));
-    assert_eq!(call("docs_commits", format!(r#"{{"projectId":"{on}"}}"#)).await,
-               (500, "Pearl has no git repository: link one on its project page → Edit".into()));
+    assert_eq!(route(&st, &format!("/p/{id}")), Reply::Moved(format!("/p/{id}/")));
+    let (mime, page) = ok(route(&st, &format!("/p/{id}/")));
+    assert_eq!(mime, "text/html; charset=utf-8");
+    assert!(page.contains(r#"<div id="shell">"#), "yodocs' viewer: {page}");
+    assert_eq!(ok(route(&st, &format!("/p/{id}/js/main.js"))).0, "text/javascript; charset=utf-8");
+
+    let index = json(route(&st, &format!("/p/{id}/index.json")));
+    assert_eq!(index["schema"], 1);
+    assert_eq!((index["project"]["title"].as_str(), index["project"]["branch"].as_str(), index["project"]["commit"].as_str()),
+               (Some("Pearl dev docs"), Some("main"), Some(hash.as_str())));
+    assert_eq!((index["entries"][0]["id"].as_str(), index["entries"][0]["hasDescription"].as_bool()), (Some("src/invoice.ts#Invoice"), Some(true)));
+    assert_eq!(index["guides"][0]["id"], "README");
+    let commit = &index["history"][0];
+    assert_eq!((commit["hash"].as_str(), commit["subject"].as_str(), commit["author"].as_str()), (Some(hash.as_str()), Some("Add invoices"), Some("Tess")));
+    let files: Vec<(&str, bool)> = commit["files"].as_array().unwrap().iter().map(|f| (f["path"].as_str().unwrap(), f["diff"].as_bool().unwrap())).collect();
+    assert!(files.contains(&("src/invoice.ts", true)) && files.contains(&(".env", false)), "{files:?}");
+    assert_eq!((index["changelog"].as_array().map(Vec::len), index["decisions"].as_array().map(Vec::len)), (Some(0), Some(0)));
+
+    let source = json(route(&st, &format!("/p/{id}/source/src/invoice.ts.json")));
+    assert_eq!(source["lines"][1], "export class Invoice extends Model {");
+    for refused in [".env", "README.md", "src/../.env", "nope.ts"] {
+        assert_eq!(route(&st, &format!("/p/{id}/source/{refused}.json")), Reply::Refused(404, "Not found.".into()), "{refused}");
+    }
+    let patches = json(route(&st, &format!("/p/{id}/commits/{hash}.json")));
+    assert_eq!(patches["files"]["src/invoice.ts"]["lines"][0], "@@ -0,0 +1,3 @@");
+    assert!(patches["files"].get(".env").is_none(), ".env's lines never show");
+    assert!(matches!(route(&st, &format!("/p/{id}/commits/--stat.json")), Reply::Refused(404, _)));
+}
+
+#[test]
+fn only_projects_with_docs_on() {
+    let tmp = tempfile::tempdir().unwrap();
+    let st = gizai_lib::test_state(tmp.path());
+    let on = project(&st, "Pearl", "PEARL", true, None);
+    let off = project(&st, "Kiosk", "KIOSK", false, None);
+
+    let (_, list) = ok(route(&st, "/"));
+    assert!(list.contains(&format!(r#"<a class="row-item" href="p/{on}/"><span class="name">Pearl</span></a>"#)), "{list}");
+    assert!(!list.contains("Kiosk"));
+    assert_eq!(route(&st, &format!("/p/{off}/")), Reply::Refused(403, "Docs is off for Kiosk.".into()));
+    assert_eq!(route(&st, &format!("/p/{off}/index.json")), Reply::Refused(403, "Docs is off for Kiosk.".into()));
+    assert_eq!(route(&st, "/p/no-such-project/"), Reply::Refused(404, "There's no such project.".into()));
+
+    // without a repository: indexed all the same, with a problem that says how to link one
+    let index = json(route(&st, &format!("/p/{on}/index.json")));
+    assert_eq!(index["problems"][0]["message"], "Pearl has no git repository: link one on its project page → Edit");
+    assert_eq!((index["stats"]["problems"].as_u64(), index["entries"].as_array().map(Vec::len)), (Some(1), Some(0)));
+}
+
+#[test]
+fn with_no_project_on_the_list_says_how_to_turn_docs_on() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (_, list) = ok(route(&gizai_lib::test_state(tmp.path()), "/"));
+    assert!(list.contains("No project has Docs on. Turn it on in Hersir: a project's Edit, under Docs."), "{list}");
 }

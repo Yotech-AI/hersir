@@ -691,37 +691,24 @@ pub fn tracked_files(dir: &Path) -> Result<Vec<String>, AgentError> {
     Ok(out.split('\0').filter(|p| !p.is_empty()).map(str::to_string).collect())
 }
 
-/// A commit on main, as Docs → Commits lists it.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LoggedCommit {
-    pub sha: String,
-    /// Its first parent: None for a repository's first commit.
-    pub parent: Option<String>,
-    pub author: String,
-    /// When it was committed, in Unix milliseconds.
-    pub at: i64,
-    pub subject: String,
-}
-
-/// The newest `limit` commits of `rev` (a ref or a commit id), newest first, along first parents: a merge into main is
-/// one commit, whose changes are its pull request's.
-pub fn log(dir: &Path, rev: &str, limit: usize) -> Result<Vec<LoggedCommit>, AgentError> {
+/// The newest `limit` commits of `rev` along first parents, each with the files it changed against its first parent,
+/// as git prints them: per commit a line `\x1e<short id>\x1f<author date, ISO>\x1f<author>\x1f<subject>`, then
+/// `<status>\t<path>` lines (`R100\t<old>\t<new>` for a rename). The docs page's commit list
+/// (`gizai_docs::index::history` reads it).
+pub fn log_name_status(dir: &Path, rev: &str, limit: usize) -> Result<String, AgentError> {
     if rev.is_empty() || rev.starts_with('-') {
         return Err(AgentError::Git(format!("{rev:?} is not a branch or a commit")));
     }
-    let out = git(dir, &["log", "--first-parent", &format!("--max-count={limit}"), "--format=%H%x1f%P%x1f%an%x1f%ct%x1f%s", rev, "--"])?;
-    Ok(out.lines().filter_map(|line| {
-        let mut part = line.split('\x1f');
-        let (sha, parents, author, at, subject) = (part.next()?, part.next()?, part.next()?, part.next()?, part.next()?);
-        Some(LoggedCommit {
-            sha: sha.to_string(),
-            parent: parents.split(' ').next().filter(|p| !p.is_empty()).map(str::to_string),
-            author: author.to_string(),
-            at: at.parse::<i64>().ok()? * 1000,
-            subject: subject.to_string(),
-        })
-    }).collect())
+    git(dir, &["-c", "core.quotepath=off", "log", "--first-parent", "-m", "--name-status", &format!("--max-count={limit}"),
+        "--format=%x1e%h%x1f%aI%x1f%an%x1f%s", rev, "--"])
+}
+
+/// One commit's changes against its first parent, as `git show -p` prints them (`gizai_docs::index::patches` reads it).
+pub fn show_patch(dir: &Path, commit: &str) -> Result<String, AgentError> {
+    if commit.len() < 4 || commit.len() > 40 || !commit.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(AgentError::Git(format!("{commit:?} isn't a commit id")));
+    }
+    git(dir, &["-c", "core.quotepath=off", "show", "--first-parent", "-m", "--no-color", "--unified=3", "--format=", commit, "--"])
 }
 
 /// How long a push may take.

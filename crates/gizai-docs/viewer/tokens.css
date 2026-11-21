@@ -1,0 +1,208 @@
+/*
+ * Design tokens, taken from the Yodocs Figma file, page 00 Foundations.
+ * File 83F8VprKDr4FVSFst14WPm, read 6 Nov 2026.
+ *
+ * The names here are the names in Figma. The variables there carry their
+ * CSS syntax, so this file is a transcription and not a translation: if a
+ * colour changes in Figma, the same name changes here.
+ */
+
+:root {
+  /* Text */
+  --yd-text-primary: #101828;
+  --yd-text-secondary: #475467;
+  --yd-text-muted: #667085;
+  --yd-text-disabled: #98a2b3;
+  --yd-text-inverse: #ffffff;
+  --yd-text-link: #1d4ed8;
+
+  /* Surfaces */
+  --yd-bg-canvas: #ffffff;
+  --yd-bg-subtle: #f9fafb;
+  --yd-bg-muted: #f3f4f6;
+  --yd-bg-hover: #f4f5f7;
+  --yd-bg-active: #eef0f3;
+  --yd-bg-inverse: #111827;
+  --yd-bg-overlay: #0b0d1252;
+
+  /* Lines */
+  --yd-border-subtle: #eef0f2;
+  --yd-border-default: #e5e7eb;
+  --yd-border-strong: #d0d5dd;
+  --yd-border-focus: #2563eb;
+
+  /* Icons */
+  --yd-icon-default: #667085;
+  --yd-icon-strong: #344054;
+  --yd-icon-muted: #98a2b3;
+
+  /* Accent. One colour, so a project brand is one change. */
+  --yd-accent-default: #2563eb;
+  --yd-accent-hover: #1d4ed8;
+  --yd-accent-subtle: #eef4ff;
+  --yd-accent-border: #c7d7fe;
+  --yd-accent-on: #ffffff;
+  --yd-focus-ring: #2563eb4d;
+
+  /* Status */
+  --yd-success-bg: #ecfdf3;  --yd-success-fg: #067647;  --yd-success-border: #abefc6;
+  --yd-warning-bg: #fffaeb;  --yd-warning-fg: #b54708;  --yd-warning-border: #fedf89;
+  --yd-danger-bg:  #fef3f2;  --yd-danger-fg:  #b42318;  --yd-danger-border:  #fecdca;
+  --yd-info-bg:    #eff8ff;  --yd-info-fg:    #175cd3;  --yd-info-border:    #b2ddff;
+  --yd-neutral-bg: #f2f4f7;  --yd-neutral-fg: #344054;  --yd-neutral-border: #e4e7ec;
+
+  /* HTTP methods */
+  --yd-method-get-bg: #e6f6ec;    --yd-method-get-fg: #067647;
+  --yd-method-post-bg: #eaf1ff;   --yd-method-post-fg: #1d4ed8;
+  --yd-method-put-bg: #fef4e6;    --yd-method-put-fg: #b54708;
+  --yd-method-patch-bg: #f4efff;  --yd-method-patch-fg: #6941c6;
+  --yd-method-delete-bg: #feeceb; --yd-method-delete-fg: #b42318;
+
+  /* Kind glyphs. Nine are named; anything else falls back to neutral. */
+  --yd-kind-class: #2563eb;
+  --yd-kind-model: #4f46e5;
+  --yd-kind-method: #7c3aed;
+  --yd-kind-route: #059669;
+  --yd-kind-migration: #d97706;
+  --yd-kind-view: #db2777;
+  --yd-kind-config: #64748b;
+  --yd-kind-test: #0d9488;
+  --yd-kind-resource: #ea580c;
+  --yd-kind-fallback: var(--yd-neutral-fg);
+
+  /* Code */
+  --yd-code-bg: #f8f9fb;
+  --yd-code-border: #e8eaee;
+  --yd-code-text: #1f2328;
+  --yd-code-comment: #6e7781;
+  --yd-code-keyword: #cf222e;
+  --yd-code-string: #0a3069;
+  --yd-code-function: #8250df;
+  --yd-code-type: #953800;
+  --yd-code-variable: #0550ae;
+  --yd-code-line: #a0a7b1;
+  --yd-code-highlight: #fff8c5;
+
+  /* Type. Inter for prose, IBM Plex Mono for code and symbol names. */
+  --yd-font-sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --yd-font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --yd-h1: 600 30px/38px var(--yd-font-sans);
+  --yd-h2: 600 22px/30px var(--yd-font-sans);
+  --yd-h3: 600 18px/26px var(--yd-font-sans);
+  --yd-h4: 600 15px/22px var(--yd-font-sans);
+  --yd-lead: 400 17px/28px var(--yd-font-sans);
+  --yd-article: 400 16px/27px var(--yd-font-sans);
+  --yd-body: 400 14px/22px var(--yd-font-sans);
+  --yd-body-strong: 500 14px/22px var(--yd-font-sans);
+  --yd-small: 400 13px/20px var(--yd-font-sans);
+  --yd-small-strong: 500 13px/20px var(--yd-font-sans);
+  --yd-label: 500 13px/20px var(--yd-font-sans);
+  --yd-caption: 400 12px/16px var(--yd-font-sans);
+  --yd-caption-strong: 500 12px/16px var(--yd-font-sans);
+  --yd-badge: 600 11px/16px var(--yd-font-sans);
+  --yd-code: 400 13px/21px var(--yd-font-mono);
+  --yd-code-sm: 400 12px/18px var(--yd-font-mono);
+  --yd-code-badge: 500 11px/16px var(--yd-font-mono);
+
+  --yd-track-h1: -1.5px;
+  --yd-track-h2: -1px;
+  --yd-track-h3: -0.5px;
+  --yd-track-badge: 2px;
+
+  /* Radius, each named for what it is for. */
+  --yd-r-badge: 4px;
+  --yd-r-kbd: 6px;
+  --yd-r-button: 8px;
+  --yd-r-code: 10px;
+  --yd-r-card: 12px;
+  --yd-r-dialog: 16px;
+  --yd-r-pill: 999px;
+
+  /* Spacing */
+  --yd-s1: 4px;  --yd-s2: 8px;  --yd-s3: 12px; --yd-s4: 16px; --yd-s5: 20px;
+  --yd-s6: 24px; --yd-s7: 32px; --yd-s8: 40px; --yd-s9: 48px; --yd-s10: 64px;
+
+  /* Elevation */
+  --yd-shadow-sm: 0 1px 2px 0 #1018280f;
+  --yd-shadow-md: 0 4px 12px -2px #10182814, 0 2px 4px -2px #1018280a;
+  --yd-shadow-lg: 0 24px 48px -12px #1018282e, 0 4px 12px 0 #1018280f;
+
+  /* Layout */
+  --yd-topbar: 60px;
+  --yd-sidebar: 288px;
+  --yd-content: 880px;        /* reference; guides use 760 */
+  --yd-content-guide: 760px;
+  --yd-rail: 232px;
+}
+
+:root[data-theme='dark'] {
+  --yd-text-primary: #f2f4f7;
+  --yd-text-secondary: #aab2c0;
+  --yd-text-muted: #7e8796;
+  --yd-text-disabled: #4d5564;
+  --yd-text-inverse: #0d1017;
+  --yd-text-link: #8ab0f8;
+
+  --yd-bg-canvas: #0d1017;
+  --yd-bg-subtle: #12151d;
+  --yd-bg-muted: #191d27;
+  --yd-bg-hover: #1b202a;
+  --yd-bg-active: #222836;
+  --yd-bg-inverse: #f3f4f6;
+  --yd-bg-overlay: #00000099;
+
+  --yd-border-subtle: #1d212b;
+  --yd-border-default: #252a35;
+  --yd-border-strong: #353c4a;
+  --yd-border-focus: #6b9bf5;
+
+  --yd-icon-default: #8a93a3;
+  --yd-icon-strong: #c8cfda;
+  --yd-icon-muted: #5a6272;
+
+  --yd-accent-default: #4f86f0;
+  --yd-accent-hover: #6b9bf5;
+  --yd-accent-subtle: #16223a;
+  --yd-accent-border: #2a3f6b;
+  --yd-accent-on: #ffffff;
+  --yd-focus-ring: #6b9bf566;
+
+  --yd-success-bg: #0f2a1e;  --yd-success-fg: #5fd39a;  --yd-success-border: #1d4a34;
+  --yd-warning-bg: #2c2210;  --yd-warning-fg: #f5b54a;  --yd-warning-border: #4d3a15;
+  --yd-danger-bg:  #2e1615;  --yd-danger-fg:  #f48a80;  --yd-danger-border:  #55231f;
+  --yd-info-bg:    #0f2236;  --yd-info-fg:    #7cb7f7;  --yd-info-border:    #1e3d61;
+  --yd-neutral-bg: #1f2430;  --yd-neutral-fg: #c8cfda;  --yd-neutral-border: #2e3441;
+
+  --yd-method-get-bg: #0f2a1c;    --yd-method-get-fg: #5fd39a;
+  --yd-method-post-bg: #14213d;   --yd-method-post-fg: #82a8f7;
+  --yd-method-put-bg: #2e2210;    --yd-method-put-fg: #f2b25c;
+  --yd-method-patch-bg: #22193b;  --yd-method-patch-fg: #b69af7;
+  --yd-method-delete-bg: #2f1614; --yd-method-delete-fg: #f28b82;
+
+  --yd-kind-class: #6b9bf5;
+  --yd-kind-model: #818cf8;
+  --yd-kind-method: #a78bfa;
+  --yd-kind-route: #34d399;
+  --yd-kind-migration: #fbbf24;
+  --yd-kind-view: #f472b6;
+  --yd-kind-config: #94a3b8;
+  --yd-kind-test: #2dd4bf;
+  --yd-kind-resource: #fb923c;
+
+  --yd-code-bg: #0a0d13;
+  --yd-code-border: #1f242e;
+  --yd-code-text: #e6edf3;
+  --yd-code-comment: #8b949e;
+  --yd-code-keyword: #ff7b72;
+  --yd-code-string: #a5d6ff;
+  --yd-code-function: #d2a8ff;
+  --yd-code-type: #ffa657;
+  --yd-code-variable: #79c0ff;
+  --yd-code-line: #4b5563;
+  --yd-code-highlight: #2a2716;
+
+  --yd-shadow-sm: 0 1px 2px 0 #00000052;
+  --yd-shadow-md: 0 4px 12px -2px #0000005c, 0 2px 4px -2px #00000038;
+  --yd-shadow-lg: 0 24px 48px -12px #00000080, 0 4px 12px 0 #0000004d;
+}

@@ -6,6 +6,9 @@
 //! The caller lists the files (git's tracked files) and this reads them from disk: it starts no program.
 pub mod api;
 pub mod guides;
+pub mod index;
+pub mod markdown;
+pub mod viewer;
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -32,13 +35,14 @@ pub struct Entry {
     pub text: String,
 }
 
-/// What Docs → Reference shows: the declarations by file and line, how many files were read, and the files with
-/// syntax their grammar can't read, whose declarations may be incomplete.
+/// What Docs → Reference shows: the declarations by file and line, how many files were read and which, and the files
+/// with syntax their grammar can't read, whose declarations may be incomplete.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Reference {
     pub entries: Vec<Entry>,
     pub files: usize,
+    pub read: Vec<String>,
     pub partial: Vec<String>,
 }
 
@@ -66,7 +70,7 @@ enum Lang {
     Component,
 }
 
-fn lang_of(path: &str) -> Option<Lang> {
+pub(crate) fn lang_of(path: &str) -> Option<Lang> {
     let lower = path.to_ascii_lowercase();
     if lower.ends_with(".d.ts") || lower.ends_with(".min.js") {
         return None;
@@ -117,12 +121,14 @@ pub fn reference(repo: &Path, files: &[String]) -> Reference {
     let wanted = files.iter().filter_map(|p| lang_of(p).map(|l| (p, l))).filter(|(p, _)| !skipped(p)).take(MAX_FILES);
     for (path, lang) in wanted {
         let full = repo.join(path);
-        if std::fs::metadata(&full).map_or(true, |m| !m.is_file() || m.len() > MAX_BYTES) {
+        // symlink_metadata: a link git tracks is the link, and reading through it could reach a file outside the project
+        if std::fs::symlink_metadata(&full).map_or(true, |m| !m.is_file() || m.len() > MAX_BYTES) {
             continue;
         }
         let Ok(text) = std::fs::read_to_string(&full) else { continue };
         let g = grammars.entry(lang).or_insert_with(|| grammar(lang));
         out.files += 1;
+        out.read.push(path.clone());
         let complete = if lang == Lang::Component {
             out.entries.push(component_entry(path, &text));
             script_blocks(&text).into_iter().all(|(offset, block)| read(g, lang, path, block, &text, offset, &mut out.entries))

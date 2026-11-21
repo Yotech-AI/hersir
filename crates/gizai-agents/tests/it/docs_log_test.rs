@@ -1,10 +1,9 @@
-//! Docs → Commits: `worktree::log`, main's newest commits along its first parents, newest first, each with its first
-//! parent, author, time and subject; a rev that reads as an option, or isn't there, refused; and a first commit's changes
-//! measured from git's empty tree (`changes::empty_tree`).
+//! The docs page's commit list and diffs: `worktree::log_name_status`, main's newest commits along its first parents with
+//! the files each changed (a merge: its pull request's files); `worktree::show_patch`, one commit's changes against its
+//! first parent; a rev that reads as an option, or a commit id that isn't one, refused.
 use std::path::Path;
 use std::process::Command;
 
-use gizai_agents::changes::{self, FileStatus};
 use gizai_agents::worktree;
 
 /// git in `dir` as a fixed person, whatever this computer's git config says about line ends and signing.
@@ -15,12 +14,12 @@ fn git(dir: &Path, args: &[&str]) -> String {
     String::from_utf8_lossy(&o.stdout).trim_end().to_string()
 }
 
-/// Writes `text` to `path` in `dir`, commits it as `message` and returns the commit's id.
+/// Writes `text` to `path` in `dir`, commits it as `message` and returns the commit's short id.
 fn commit(dir: &Path, path: &str, text: &str, message: &str) -> String {
     std::fs::write(dir.join(path), text).unwrap();
     git(dir, &["add", "-A"]);
     git(dir, &["commit", "-q", "-m", message]);
-    git(dir, &["rev-parse", "HEAD"])
+    git(dir, &["rev-parse", "--short", "HEAD"])
 }
 
 /// A new repository whose branch is main.
@@ -31,47 +30,46 @@ fn repo() -> tempfile::TempDir {
 }
 
 #[test]
-fn log_lists_main_newest_first_along_its_first_parents() {
+fn the_log_lists_main_newest_first_along_its_first_parents_with_each_commits_files() {
     let dir = repo();
     let r = dir.path();
-    let first = commit(r, "a.txt", "one\n", "First");
-    commit(r, "a.txt", "two\n", "Second");
+    commit(r, "a.ts", "one\n", "First");
     git(r, &["switch", "-q", "-c", "feature"]);
-    commit(r, "f.txt", "f\n", "On the branch");
+    commit(r, "f.ts", "f\n", "On the branch");
     git(r, &["switch", "-q", "main"]);
-    let third = commit(r, "c.txt", "c\n", "Third");
+    let second = commit(r, "a.ts", "two\n", "Second");
     git(r, &["merge", "-q", "--no-ff", "-m", "Merge feature", "feature"]);
-    let merge = git(r, &["rev-parse", "HEAD"]);
 
-    let log = worktree::log(r, "main", 50).unwrap();
-    let subjects: Vec<&str> = log.iter().map(|c| c.subject.as_str()).collect();
-    assert_eq!(subjects, ["Merge feature", "Third", "Second", "First"], "the branch's own commit is inside its merge");
-    assert_eq!((log[0].sha.as_str(), log[0].parent.as_deref()), (merge.as_str(), Some(third.as_str())), "a merge's first parent is main before it");
-    assert_eq!((log[3].sha.as_str(), log[3].parent.as_deref()), (first.as_str(), None), "the first commit has no parent");
-    assert_eq!(log[1].author, "Tess");
-    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64;
-    assert!((now - log[1].at).abs() < 3_600_000, "the commit's time, in milliseconds: {}", log[1].at);
-    assert_eq!(worktree::log(r, "main", 2).unwrap().len(), 2, "at most the limit");
+    let log = worktree::log_name_status(r, "main", 50).unwrap();
+    let records: Vec<&str> = log.split('\x1e').filter(|s| !s.trim().is_empty()).collect();
+    let heads: Vec<Vec<&str>> = records.iter().map(|rec| rec.lines().next().unwrap().split('\x1f').collect()).collect();
+    assert_eq!(heads.iter().map(|h| h[3]).collect::<Vec<_>>(), ["Merge feature", "Second", "First"], "the branch's own commit is inside its merge");
+    assert_eq!((heads[1][0], heads[1][2]), (second.as_str(), "Tess"));
+    assert!(heads[1][1].starts_with("20") && heads[1][1].contains('T'), "an ISO date: {}", heads[1][1]);
+    assert!(records[0].contains("A\tf.ts"), "a merge lists its pull request's files: {:?}", records[0]);
+    assert!(records[1].contains("M\ta.ts") && records[2].contains("A\ta.ts"));
+    assert_eq!(worktree::log_name_status(r, "main", 1).unwrap().matches('\x1e').count(), 1, "at most the limit");
 }
 
 #[test]
-fn log_refuses_a_rev_that_reads_as_an_option_or_isnt_there() {
-    let dir = repo();
-    commit(dir.path(), "a.txt", "one\n", "First");
-    assert!(worktree::log(dir.path(), "--output=x", 5).is_err());
-    assert!(!dir.path().join("x").exists(), "no option reached git");
-    assert!(worktree::log(dir.path(), "nope", 5).is_err());
-}
-
-#[test]
-fn a_first_commits_changes_are_measured_from_the_empty_tree() {
+fn a_commits_patch_is_against_its_first_parent() {
     let dir = repo();
     let r = dir.path();
-    let first = commit(r, "a.txt", "one\ntwo\n", "First");
-    let empty = changes::empty_tree(r).unwrap();
-    assert!(changes::is_commit_id(&empty), "{empty}");
-    let files = changes::between(r, &empty, &first).unwrap();
-    assert_eq!(files.iter().map(|f| (f.path.as_str(), f.status, f.additions)).collect::<Vec<_>>(), [("a.txt", FileStatus::Added, Some(2))]);
-    let d = changes::file_diff(r, None, "a.txt", None, &empty, Some(&first)).unwrap();
-    assert_eq!((d.old_text, d.new_text.as_deref()), (None, Some("one\ntwo\n")));
+    commit(r, "a.ts", "one\n", "First");
+    let second = commit(r, "a.ts", "two\n", "Second");
+    let patch = worktree::show_patch(r, &second).unwrap();
+    assert!(patch.starts_with("diff --git a/a.ts b/a.ts"), "{patch}");
+    assert!(patch.contains("-one\n+two"), "{patch}");
+}
+
+#[test]
+fn a_rev_that_reads_as_an_option_or_isnt_a_commit_is_refused() {
+    let dir = repo();
+    commit(dir.path(), "a.ts", "one\n", "First");
+    assert!(worktree::log_name_status(dir.path(), "--output=x", 5).is_err());
+    assert!(!dir.path().join("x").exists(), "no option reached git");
+    assert!(worktree::log_name_status(dir.path(), "nope", 5).is_err());
+    for bad in ["--stat", "HEAD", "abc", "zzzzzzz"] {
+        assert!(worktree::show_patch(dir.path(), bad).is_err(), "{bad}");
+    }
 }

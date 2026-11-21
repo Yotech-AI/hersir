@@ -33,7 +33,6 @@ export default defineConfig(({ mode }) => ({
   // many small ones.
   build: {
     target: "safari16", outDir: "dist", chunkSizeWarningLimit: 2000,
-    // docs.html has a build of its own (vite.docs.config.ts), so it shares none of these chunks
     rolldownOptions: { output: { codeSplitting: { groups: [
       { name: "index", tags: ["$initial"], priority: 1 },
     ] } } },

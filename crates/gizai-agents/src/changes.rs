@@ -200,13 +200,6 @@ pub fn merge_base(repo: &Path, a: &str, b: &str) -> Option<String> {
     is_commit_id(id).then(|| id.to_string())
 }
 
-/// git's empty tree in `repo`, what a first commit's changes are measured from. Asked of git, as its id depends on the
-/// repository's hash (SHA-1 or SHA-256).
-pub fn empty_tree(repo: &Path) -> Result<String, AgentError> {
-    let id = String::from_utf8_lossy(&git_bytes(repo, &["hash-object", "-t", "tree", "--stdin"], Some(&[]))?).trim().to_string();
-    if is_commit_id(&id) { Ok(id) } else { Err(AgentError::Git(format!("git gave {id:?} as the empty tree"))) }
-}
-
 /// Whether `path` is in Gizai's temp folder (`.gizai-tmp/`), which never shows.
 fn in_temp(path: &str) -> bool {
     path.strip_prefix(TEMP_DIR).is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))

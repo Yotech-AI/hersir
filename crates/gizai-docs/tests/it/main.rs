@@ -2,4 +2,7 @@
 
 mod api_test;
 mod guides_test;
+mod index_test;
+mod markdown_test;
 mod reference_test;
+mod viewer_test;

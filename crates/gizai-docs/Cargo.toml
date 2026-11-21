@@ -1,13 +1,15 @@
 [package]
 name = "gizai-docs"
-description = "Hersir docs: a project's declarations read with tree-sitter (Reference), its routes (API) and guides, from its files (no Tauri)"
+description = "Hersir docs: a project's docs page (yodocs' viewer) and its index, read from its files with tree-sitter (no Tauri)"
 edition.workspace = true
 license.workspace = true
 version.workspace = true
 
 [dependencies]
+pulldown-cmark = { version = "0.13.6", default-features = false, features = ["html"] }
 regex = "1"
 serde = { workspace = true }
+serde_json = { workspace = true }
 streaming-iterator = "0.1"
 tree-sitter = "0.27"
 tree-sitter-dart = "0.3"

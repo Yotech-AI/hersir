@@ -1,37 +1,31 @@
-// The Docs page of one project (the Docs section): its crumbs and tabs; with Docs on, Changelog (the merged cards),
-// Decisions (the shared decision notes about the project) and Commits (main's newest commits, an opened one showing each
-// changed file in its own box); with Docs off, the way to turn it on; Open in browser, in the app only. Rendered to HTML on the server: the data hooks are
-// replaced so the page gets its data at once (a thrown error is the hook's error), and a button's click is tried on the
-// element tree (the page called as a function, its hooks being the replaced ones).
+// A project's Docs page (the Docs section): its crumbs; with Docs on, the project's docs page (yodocs' viewer, which
+// Hersir serves on this computer) in a frame, in this window's theme, on the section in the address, and Open in
+// browser, which opens the same page in the browser; with Docs off, the way to turn it on. Rendered to HTML on the
+// server: the data hooks are replaced so the page gets its data at once (a thrown error is the hook's error), and
+// Open in browser's click is tried on the element tree (the page called as a function, its own state replaced).
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactElement, ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { DocsTab } from "../router";
-import type { ApiRoute, ChangelogEntry, Guide, CodeReference, CommitFiles, DecisionNote, DocsCommits, Project } from "../types";
+import type { Project } from "../types";
 
 const state = vi.hoisted(() => ({
-  project: null as unknown, commits: null as unknown, files: null as unknown, changelog: null as unknown, decisions: null as unknown,
-  reference: null as unknown, api: null as unknown, guides: null as unknown, open: vi.fn(),
-  serve: null as unknown, opened: [] as string[], direct: false, sets: [] as unknown[],
+  project: null as unknown, serve: null as unknown, open: vi.fn(), opened: [] as string[], refuse: null as string | null,
+  direct: false, sets: [] as unknown[],
 }));
-// Open in browser called as a function (state.direct): useState gives the first value, and its setter records into sets.
+// The page called as a function (state.direct): useState gives the first value, and its setter records into sets.
 vi.mock("react", async (orig) => {
   const R = await orig<typeof import("react")>();
   const useState = ((init: unknown) => (state.direct ? [init, (v: unknown) => state.sets.push(v)] : R.useState(init))) as typeof R.useState;
   return { ...R, default: { ...R, useState }, useState };
 });
-vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: (url: string) => { state.opened.push(url); return Promise.resolve(); } }));
+vi.mock("@tauri-apps/plugin-opener", () => ({
+  openUrl: (url: string) => (state.refuse ? Promise.reject(state.refuse) : (state.opened.push(url), Promise.resolve())),
+}));
 vi.mock("../api", async (orig) => ({
   ...(await orig<object>()),
   getProject: () => state.project,
-  docsCommits: () => { if (state.commits instanceof Error) throw state.commits; return state.commits; },
-  docsCommitFiles: () => state.files,
-  docsChangelog: () => state.changelog,
-  docsDecisions: () => state.decisions,
-  docsReference: () => state.reference,
-  docsApi: () => state.api,
-  docsGuides: () => state.guides,
-  docsServe: () => (state.serve instanceof Error ? Promise.reject(state.serve.message) : Promise.resolve(state.serve)),
+  docsServe: () => { if (state.serve instanceof Error) throw state.serve; return state.serve; },
 }));
 vi.mock("../lib/useData", () => ({
   useData: (fetch: () => unknown) => {
@@ -41,9 +35,8 @@ vi.mock("../lib/useData", () => ({
 }));
 vi.mock("../lib/drawers", async (orig) => ({ ...(await orig<object>()), useDrawer: () => state.open }));
 
-const { DocsPage, CommitFileList, ReferenceList } = await import("./DocsPage");
+const { DocsPage, docsUrl } = await import("./DocsPage");
 
-const HOUR = 3_600_000;
 const kade = (devDocs: boolean) => ({
   id: "kade", name: "Kade portal", key: "KADE", number: "2026-001", status: "active", defaultBranch: "main", openTasks: 0,
   doneTasks: 0, updatedAt: 1, devDocs,
@@ -51,29 +44,30 @@ const kade = (devDocs: boolean) => ({
 const page = (tab?: DocsTab) => renderToStaticMarkup(<DocsPage id="kade" tab={tab} />);
 
 type El = ReactElement<{ onClick?: () => void; children?: ReactNode }>;
-/** The elements of an element tree whose type is `type`: a tag, or a component's name. */
-function find(n: ReactNode, type: string): El[] {
-  if (!n || typeof n !== "object") return [];
-  if (Array.isArray(n)) return n.flatMap((c: ReactNode) => find(c, type));
+/** The buttons in an element tree, by their text. */
+function buttons(n: ReactNode, found: El[] = []): El[] {
+  if (!n || typeof n !== "object") return found;
+  if (Array.isArray(n)) { n.forEach((c: ReactNode) => buttons(c, found)); return found; }
   const el = n as El;
-  return [...((typeof el.type === "function" ? el.type.name : el.type) === type ? [el] : []), ...find(el.props?.children, type)];
+  if (el.type === "button") found.push(el);
+  buttons(el.props?.children, found);
+  return found;
 }
-/** The buttons in the page's element tree. */
-const buttons = () => find(DocsPage({ id: "kade" }), "button");
+const text = (n: ReactNode): string => (typeof n === "string" ? n : Array.isArray(n) ? n.map(text).join("") : "");
+/** Clicks the button whose text is `label`, on the page called as a function. */
+function click(label: string, tab?: DocsTab) {
+  state.direct = true;
+  try { buttons(DocsPage({ id: "kade", tab })).find((b) => text(b.props.children) === label)!.props.onClick!(); }
+  finally { state.direct = false; }
+}
 const settle = () => new Promise((r) => setTimeout(r, 0));
 
 beforeEach(() => {
   state.open.mockReset();
   state.project = kade(true);
-  state.commits = { label: "origin/main", commits: [] };
-  state.files = null;
-  state.changelog = [];
-  state.decisions = [];
-  state.reference = { entries: [], files: 0, partial: [] };
-  state.api = [];
-  state.guides = [];
   state.serve = "http://127.0.0.1:4380";
   state.opened = [];
+  state.refuse = null;
   state.sets = [];
 });
 
@@ -81,22 +75,23 @@ describe("the Docs page", () => {
   it("names the section and the project in its crumbs", () => {
     expect(page()).toContain('<div class="crumbs"><span>Docs</span><span class="sep">/</span><b>Kade portal</b></div>');
   });
-  it("opens on Reference, with tabs for Guides, API, Changelog, Decisions and Commits", () => {
-    const html = page();
-    expect(html).toMatch(/<a class="tab" role="tab" aria-selected="true" href="#\/devdocs\/kade\/reference"><svg[^>]*>.*?<\/svg>Reference<\/a>/);
-    for (const [tab, label] of [["guides", "Guides"], ["api", "API"], ["changelog", "Changelog"], ["decisions", "Decisions"], ["commits", "Commits"]]) {
-      expect(html).toMatch(new RegExp(`<a class="tab" role="tab" aria-selected="false" href="#/devdocs/kade/${tab}"><svg[^>]*>.*?</svg>${label}</a>`));
-    }
-    expect(page("decisions")).toMatch(/aria-selected="true" href="#\/devdocs\/kade\/decisions"/);
+  it("shows the project's docs page in a frame, in this window's theme, on the section in the address", () => {
+    expect(page("api")).toContain('<iframe title="Kade portal dev docs" src="http://127.0.0.1:4380/p/kade/?theme=dark#/api"'
+      + ' sandbox="allow-scripts allow-same-origin allow-popups" allow="clipboard-write"></iframe>');
+    expect(page()).toContain('src="http://127.0.0.1:4380/p/kade/?theme=dark#/"');
   });
   it("says Docs is off, with Edit project, which opens the project's form", () => {
     state.project = kade(false);
     expect(page()).toContain("<b>Docs is off for this project</b>");
-    expect(page()).not.toContain('role="tablist"');
-    const edit = buttons().filter((b) => b.props.children === "Edit project");
-    expect(edit).toHaveLength(1);
-    edit[0]!.props.onClick!();
+    expect(page()).not.toContain("<iframe");
+    expect(page()).not.toContain("Open in browser");
+    click("Edit project");
     expect(state.open).toHaveBeenCalledWith({ kind: "project", id: "kade" });
+  });
+  it("says why when Hersir can't serve the docs", () => {
+    state.serve = new Error("Hersir couldn't find a free port for the docs from 4380 to 4399");
+    expect(page()).toContain('<div class="error-banner">Hersir couldn&#x27;t find a free port for the docs from 4380 to 4399</div>');
+    expect(page()).not.toContain("<iframe");
   });
   it("shows nothing while the project loads", () => {
     state.project = null;
@@ -105,159 +100,21 @@ describe("the Docs page", () => {
 });
 
 describe("Open in browser", () => {
-  /** Clicks Open in browser on the API tab, its component called as a function. */
-  const click = () => {
-    const [el] = find(DocsPage({ id: "kade", tab: "api" }), "OpenInBrowser");
-    state.direct = true;
-    try { find((el!.type as (p: object) => ReactNode)(el!.props), "button")[0]!.props.onClick!(); } finally { state.direct = false; }
-  };
-  it("shows in the app, not on the page Hersir serves to a browser", () => {
-    expect(page()).toContain("Open in browser</button>");
-    expect(renderToStaticMarkup(<DocsPage id="kade" web />)).not.toContain("Open in browser");
-  });
-  it("opens the tab at the address Hersir serves it on", async () => {
-    click();
+  it("opens the same page in the browser, in the browser's own theme", async () => {
+    click("Open in browser", "decisions");
     await settle();
-    expect(state.opened).toEqual(["http://127.0.0.1:4380/#/devdocs/kade/api"]);
+    expect(state.opened).toEqual(["http://127.0.0.1:4380/p/kade/#/decisions"]);
   });
-  it("says why when Hersir can't serve it", async () => {
-    state.serve = new Error("Hersir couldn't find a free port for the docs from 4380 to 4399");
-    click();
+  it("says why when the browser can't be opened", async () => {
+    state.refuse = "No browser to open";
+    click("Open in browser");
     await settle();
-    expect(state.sets).toEqual([null, "Hersir couldn't find a free port for the docs from 4380 to 4399"]);
-    expect(state.opened).toEqual([]);
+    expect(state.sets).toEqual([null, "No browser to open"]);
   });
 });
 
-describe("Reference", () => {
-  const ref = {
-    entries: [
-      { name: "Header", kind: "component", path: "src/Header.tsx", line: 4, endLine: 8, doc: "The page's header.\nWith the site's name.", text: "export function Header() {}" },
-      { name: "useMenu", kind: "hook", path: "src/menu.ts", line: 2, endLine: 4, doc: "", text: "export function useMenu() {}" },
-      { name: "Invoice", kind: "model", path: "app/Models/Invoice.php", line: 10, endLine: 13, doc: "", text: "class Invoice extends Model {}" },
-    ],
-    files: 3, partial: ["src/Broken.tsx"],
-  } satisfies CodeReference;
-  it("groups the declarations by kind, components first, each with where it is and its doc's first line", () => {
-    state.reference = ref;
-    const html = page();
-    expect(html).toContain("3 declarations in 3 files");
-    expect(html.indexOf("Components")).toBeLessThan(html.indexOf("Hooks"));
-    expect(html.indexOf("Hooks")).toBeLessThan(html.indexOf("Models"));
-    expect(html).toContain('<span class="mono">Header</span><span class="faint">src/Header.tsx:4</span><span class="doc">The page&#x27;s header.</span>');
-    expect(html).toContain("1 file has syntax the parser can&#x27;t read: its declarations may be incomplete.");
-  });
-  it("keeps the declarations whose name, kind or file has the words typed", () => {
-    const html = renderToStaticMarkup(<ReferenceList reference={ref} filter="menu" />);
-    expect(html).toContain("useMenu");
-    expect(html).not.toContain("Header");
-    expect(html).not.toContain("Invoice");
-    expect(renderToStaticMarkup(<ReferenceList reference={ref} filter="model" />)).toContain("Invoice");
-    expect(renderToStaticMarkup(<ReferenceList reference={ref} filter="nothing like it" />)).toContain("Nothing matches");
-  });
-  it("says so while it finds no declarations", () => {
-    expect(page()).toContain("<b>No declarations found</b>");
-  });
-});
-
-describe("Guides", () => {
-  it("lists the guides, the README first, each opening to its Markdown", () => {
-    state.guides = [
-      { path: "README.md", title: "Pearl", bodyMd: "# Pearl\n\nThe corporate site.\n" },
-      { path: "docs/setup.md", title: "Setting up", bodyMd: "# Setting up\n" },
-    ] satisfies Guide[];
-    const html = page("guides");
-    expect(html).toMatch(/<button class="docs-commit" aria-expanded="true">.*?<span class="subj">Pearl<\/span><span class="faint">README.md<\/span><\/button>/);
-    expect(html).toContain("The corporate site.");
-    expect(html).toMatch(/<button class="docs-commit" aria-expanded="false">.*?<span class="subj">Setting up<\/span><span class="faint">docs\/setup.md<\/span><\/button>/);
-  });
-  it("says where it looks while there are none", () => {
-    expect(page("guides")).toContain("<b>No guides found</b><span>Guides shows the README at the project&#x27;s root and the Markdown under docs/.</span>");
-  });
-});
-
-describe("API", () => {
-  it("lists the endpoints, then the pages, each with its method, path, handler and where it is", () => {
-    state.api = [
-      { method: "PAGE", path: "/about", handler: "", file: "src/app/about/page.tsx", line: 1 },
-      { method: "GET", path: "/api/invoices/{invoice}", handler: "InvoiceController@show", file: "routes/api.php", line: 12 },
-    ] satisfies ApiRoute[];
-    const html = page("api");
-    expect(html.indexOf("Endpoints")).toBeLessThan(html.indexOf("Pages"));
-    expect(html).toContain('<span class="docs-method get">GET</span><span class="mono">/api/invoices/{invoice}</span><span>InvoiceController@show</span><span class="faint">routes/api.php:12</span>');
-    expect(html).toContain('<span class="mono">/about</span><span class="faint">src/app/about/page.tsx:1</span>');
-  });
-  it("says what it reads while it finds no routes", () => {
-    expect(page("api")).toContain("<b>No routes found</b><span>API reads a Next.js app&#x27;s route and page files, and a Laravel app&#x27;s routes/ files.</span>");
-  });
-});
-
-describe("Changelog", () => {
-  it("lists the merged cards newest first, each linking to its card", () => {
-    state.changelog = [
-      { taskId: "t2", identifier: "KADE-2", title: "The contact form says when it sent", at: Date.now() - HOUR },
-      { taskId: "t1", identifier: "KADE-1", title: "Invoices export as CSV", at: Date.now() - 50 * HOUR },
-    ] satisfies ChangelogEntry[];
-    const html = page("changelog");
-    expect(html).toContain('<a class="mono" href="#/task/t2">KADE-2</a><span>The contact form says when it sent</span>');
-    expect(html).toContain('<a class="mono" href="#/task/t1">KADE-1</a><span>Invoices export as CSV</span>');
-    expect(html.indexOf("KADE-2")).toBeLessThan(html.indexOf("KADE-1"));
-  });
-  it("says what shows there while nothing is merged", () => {
-    expect(page("changelog")).toContain("<b>Nothing merged yet</b><span>A card shows here once its work reaches main: in a Deploy or Done column.</span>");
-  });
-});
-
-describe("Decisions", () => {
-  it("shows each decision note with a link to it in Memory, without its title twice", () => {
-    state.decisions = [
-      { id: "n1", path: "Decisions/Kade portal", title: "Kade portal", bodyMd: "# Kade portal\n\n- 2026-11-20 (KADE-3): Postgres, not MySQL.\n", updatedAt: Date.now() - HOUR },
-    ] satisfies DecisionNote[];
-    const html = page("decisions");
-    expect(html).toContain('<h3><a href="#/memory/n1">Kade portal</a></h3><span class="faint">Decisions/Kade portal, 1 h ago</span>');
-    expect(html).toContain("Postgres, not MySQL.");
-    expect(html).not.toContain("<h1>Kade portal</h1>");
-  });
-  it("says where the Chief keeps them while there are none", () => {
-    expect(page("decisions")).toContain("<b>No decisions yet</b><span>The Chief keeps them in Memory, in Decisions/, with this project&#x27;s key as project:.</span>");
-  });
-});
-
-describe("Commits", () => {
-  it("lists main's newest commits, newest first, each with its short id, subject, author and when", () => {
-    state.commits = { label: "origin/main", commits: [
-      { sha: "abc1234def0", parent: "0123456aaa1", author: "Remi", at: Date.now() - 2 * HOUR, subject: "Add the contact form" },
-      { sha: "0123456aaa1", parent: null, author: "Jeffrey", at: Date.now() - 50 * HOUR, subject: "First commit" },
-    ] } satisfies DocsCommits;
-    const html = page("commits");
-    expect(html).toContain("<h3>Commits</h3><span class=\"faint\">origin/main</span>");
-    expect(html).toContain('<span class="mono">abc1234</span><span class="subj">Add the contact form</span><span class="faint">Remi, 2 h ago</span>');
-    expect(html.indexOf("Add the contact form")).toBeLessThan(html.indexOf("First commit"));
-    expect(html.match(/aria-expanded="false"/g)).toHaveLength(2);
-  });
-  it("says so while main has no commits yet", () => {
-    state.commits = { label: "main", commits: [] } satisfies DocsCommits;
-    expect(page("commits")).toContain("<b>No commits on main yet</b>");
-  });
-  it("says why when it can't read the commits", () => {
-    state.commits = new Error("Kade portal has no git repository: link one on its project page → Edit");
-    expect(page("commits")).toContain("<b>Hersir can&#x27;t show the commits</b><span>Kade portal has no git repository: link one on its project page → Edit</span>");
-  });
-});
-
-describe("an opened commit", () => {
-  it("shows each file it changed in its own box", () => {
-    state.files = { from: "0123456aaa1", to: "abc1234def0", files: [
-      { path: "src/form.tsx", oldPath: null, status: "added", additions: 40, deletions: 0, binary: false, uncommitted: false },
-      { path: "README.md", oldPath: null, status: "modified", additions: 2, deletions: 1, binary: false, uncommitted: false },
-    ] } satisfies CommitFiles;
-    const html = renderToStaticMarkup(<CommitFileList projectId="kade" sha="abc1234def0" />);
-    expect(html).toContain('aria-label="src/form.tsx"');
-    expect(html).toContain('aria-label="README.md"');
-    expect(html).toContain("+40");
-  });
-  it("says so when it changed no files", () => {
-    state.files = { from: "0123456aaa1", to: "abc1234def0", files: [] } satisfies CommitFiles;
-    expect(renderToStaticMarkup(<CommitFileList projectId="kade" sha="abc1234def0" />)).toContain("This commit changed no files");
+describe("docsUrl", () => {
+  it("puts the project's id in the address as one part", () => {
+    expect(docsUrl("http://127.0.0.1:4380", "a b/c", "guides", "light")).toBe("http://127.0.0.1:4380/p/a%20b%2Fc/?theme=light#/guides");
   });
 });

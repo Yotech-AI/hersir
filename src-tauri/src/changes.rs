@@ -24,7 +24,6 @@ use gizai_agents::worktree;
 use gizai_core::model::{Project, Task};
 use gizai_core::pulls::PrCard;
 use gizai_core::{projects, runs as core_runs, tasks};
-use serde::Serialize;
 use tauri::State;
 
 use crate::AppState;
@@ -395,94 +394,21 @@ fn pull_files(st: &AppState, card: &PrCard, number: u64) -> Result<Arc<Vec<(File
     Ok(files)
 }
 
-// ---- Docs → Commits ----
+// ---- the docs page (devdocs) ----
 
-/// How many of main's commits Docs → Commits lists.
-const DOCS_COMMITS: usize = 50;
-
-/// Main's newest commits for Docs → Commits, and where main is: "origin/main", or "main" for a project without a link.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DocsCommits {
-    pub label: String,
-    pub commits: Vec<worktree::LoggedCommit>,
-}
-
-/// One commit's changed files, and the commits they are measured between: its first parent (git's empty tree for a
-/// first commit) and the commit itself.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CommitFiles {
-    pub from: String,
-    pub to: String,
-    pub files: Vec<FileChange>,
-}
-
-/// Main's newest commits, newest first, as last fetched (no fetch), as a card's changes measure from it.
-#[tauri::command]
-pub async fn docs_commits(st: State<'_, AppState>, project_id: String) -> Result<DocsCommits, String> {
-    let st = st.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || commits_of_project(&st, &project_id)).await.map_err(|e| e.to_string())?
-}
-
-/// The files commit `sha` changed, against its first parent.
-#[tauri::command]
-pub async fn docs_commit_files(st: State<'_, AppState>, project_id: String, sha: String) -> Result<CommitFiles, String> {
-    let st = st.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || files_of_commit(&st, &project_id, &sha)).await.map_err(|e| e.to_string())?
-}
-
-/// One file of a commit: its texts at `from` and at `to`, at most 1 MB a side, and git's hunks between them.
-#[tauri::command]
-pub async fn docs_file_diff(st: State<'_, AppState>, project_id: String, path: String, old_path: Option<String>,
-                            from: String, to: String) -> Result<FileDiff, String> {
-    let st = st.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || file_of_commit(&st, &project_id, &path, old_path.as_deref(), &from, &to))
-        .await.map_err(|e| e.to_string())?
-}
-
-/// A project and its repository on this disk (its linked folder), or why Docs → Commits can't read it.
-pub(crate) fn docs_repo(st: &AppState, project_id: &str) -> Result<(Project, PathBuf), String> {
-    let project = projects::get(&st.db, project_id).map_err(|e| e.to_string())?;
+/// A project's linked folder, or why the docs page can't read its code: no link, or no repository there any more.
+pub(crate) fn linked_repo(project: &Project) -> Result<PathBuf, String> {
     let repo = project.repo_path.as_deref().map(str::trim).filter(|r| !r.is_empty()).map(PathBuf::from)
         .ok_or_else(|| format!("{} has no git repository: link one on its project page → Edit", project.name))?;
     if !crate::git::is_repo(&repo) {
         return Err(format!("{} isn't a git repository any more", repo.display()));
     }
-    Ok((project, repo))
+    Ok(repo)
 }
 
-/// Main's newest commits in `project_id`'s repository (`docs_commits`). Blocking.
-pub fn commits_of_project(st: &AppState, project_id: &str) -> Result<DocsCommits, String> {
-    let (project, repo) = docs_repo(st, project_id)?;
-    let main = Main::of(&project, &repo);
-    let commits = match &main.commit {
-        Some(commit) => worktree::log(&repo, commit, DOCS_COMMITS)
-            .map_err(|e| format!("Hersir can't read {}'s commits: {}", project.name, crate::pulls::plain(e)))?,
-        None => vec![],
-    };
-    Ok(DocsCommits { label: main.label, commits })
-}
-
-/// One file of a commit in `project_id`'s repository (`docs_file_diff`). Blocking.
-pub fn file_of_commit(st: &AppState, project_id: &str, path: &str, old_path: Option<&str>, from: &str, to: &str)
-    -> Result<FileDiff, String> {
-    let (_, repo) = docs_repo(st, project_id)?;
-    git_changes::file_diff(&repo, None, path, old_path, from, Some(to))
-        .map_err(|e| format!("Hersir can't show {path}: {}", crate::pulls::plain(e)))
-}
-
-/// The files commit `sha` changed in `project_id`'s repository, against its first parent (`docs_commit_files`). Blocking.
-pub fn files_of_commit(st: &AppState, project_id: &str, sha: &str) -> Result<CommitFiles, String> {
-    let (project, repo) = docs_repo(st, project_id)?;
-    if !git_changes::is_commit_id(sha) {
-        return Err(format!("{sha:?} isn't a commit id"));
-    }
-    let unreadable = |e: gizai_agents::AgentError| format!("Hersir can't read {}'s commit {sha}: {}", project.name, crate::pulls::plain(e));
-    let from = match git_changes::commit_of(&repo, &format!("{sha}^1")) {
-        Some(parent) => parent,
-        None => git_changes::empty_tree(&repo).map_err(unreadable)?,
-    };
-    let files = git_changes::between(&repo, &from, sha).map_err(unreadable)?;
-    Ok(CommitFiles { from, to: sha.to_string(), files })
+/// Main as last fetched (no fetch), as a card's changes measure from it: its name on screen ("origin/main", or "main"
+/// for a project without a link) and its commit, if there is one yet. The docs page lists its commits.
+pub(crate) fn main_of(project: &Project, repo: &Path) -> (String, Option<String>) {
+    let main = Main::of(project, repo);
+    (main.label, main.commit)
 }
