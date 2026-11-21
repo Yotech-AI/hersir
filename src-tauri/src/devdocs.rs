@@ -77,7 +77,8 @@ pub fn patches_of(project: &Project, commit: &str) -> Result<CommitPatches, Stri
     Ok(index::patches(&show))
 }
 
-/// The merged cards, newest first, as one release a month ("November 2026"), dated by its newest card.
+/// The merged cards, newest first, as one release a month ("November 2026"), dated by its newest card: each with the line
+/// its builder wrote, else its title as Other.
 fn releases(merged: &[ChangelogEntry]) -> Vec<Release> {
     let mut out: Vec<Release> = vec![];
     for card in merged {
@@ -88,10 +89,11 @@ fn releases(merged: &[ChangelogEntry]) -> Vec<Release> {
             out.push(Release { version, date: day, unreleased: false, compare_url: String::new(), changes: vec![] });
         }
         if let Some(release) = out.last_mut() {
+            let line = card.text.as_deref().unwrap_or(&card.title);
             release.changes.push(Change {
-                kind: "Other".into(),
-                text: format!("{} {}", card.identifier, card.title),
-                html: format!("<span class=\"mono\">{}</span> {}", markdown::escape(&card.identifier), markdown::escape(&card.title)),
+                kind: card.kind.clone().unwrap_or_else(|| "Other".into()),
+                text: format!("{} {line}", card.identifier),
+                html: format!("<span class=\"mono\">{}</span> {}", markdown::escape(&card.identifier), markdown::escape(line)),
             });
         }
     }
@@ -135,7 +137,7 @@ mod tests {
 
     #[test]
     fn the_merged_cards_are_one_release_a_month_newest_first() {
-        let card = |id: &str, title: &str, at| ChangelogEntry { task_id: id.into(), identifier: id.into(), title: title.into(), at };
+        let card = |id: &str, title: &str, at| ChangelogEntry { task_id: id.into(), identifier: id.into(), title: title.into(), at, kind: None, text: None };
         let got = super::releases(&[card("PEAR-3", "Dark <mode>", NOV_21), card("PEAR-2", "Search", NOV_21 - 2 * DAY),
                                     card("PEAR-1", "Blog", NOV_21 - 30 * DAY)]);
         assert_eq!(got.iter().map(|r| (r.version.as_str(), r.date.as_str(), r.changes.len())).collect::<Vec<_>>(),
@@ -144,6 +146,10 @@ mod tests {
         assert_eq!((change.kind.as_str(), change.text.as_str()), ("Other", "PEAR-3 Dark <mode>"));
         assert_eq!(change.html, "<span class=\"mono\">PEAR-3</span> Dark &lt;mode&gt;");
         assert!(super::releases(&[]).is_empty());
+        let typed = ChangelogEntry { kind: Some("Fixed".into()), text: Some("Search finds <names>".into()), ..card("PEAR-4", "Search", NOV_21) };
+        let change = &super::releases(&[typed])[0].changes[0];
+        assert_eq!((change.kind.as_str(), change.text.as_str()), ("Fixed", "PEAR-4 Search finds <names>"), "the builder's line, not the title");
+        assert_eq!(change.html, "<span class=\"mono\">PEAR-4</span> Search finds &lt;names&gt;");
     }
 
     #[test]

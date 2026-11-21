@@ -88,7 +88,7 @@ fn v20_db(path: &Path) -> Connection {
         include_str!("../../migrations/0018_indexes.sql"), include_str!("../../migrations/0019_screenshots.sql"),
         include_str!("../../migrations/0020_test_runs_at_once.sql"),
     ];
-    assert_eq!(all.len() as i64, db::SCHEMA_VERSION - 3, "three schema steps back (0021, and GA-261's 0022 and 0023 after it)");
+    assert_eq!(all.len() as i64, db::SCHEMA_VERSION - 4, "four schema steps back (0021, and GA-261's 0022, 0023 and 0024 after it)");
     let mut c = Connection::open(path).unwrap();
     c.pragma_update(None, "foreign_keys", "OFF").unwrap();
     Migrations::new(all.iter().map(|sql| M::up(sql)).collect()).to_latest(&mut c).unwrap();
@@ -109,7 +109,7 @@ fn version(c: &Connection) -> i64 {
 
 #[test]
 fn a_schema_20_database_gets_the_builds_on_table_and_nothing_else_after_a_backup() {
-    assert_eq!(db::SCHEMA_VERSION, 23, "0021, and GA-261's 0022 and 0023 after it");
+    assert_eq!(db::SCHEMA_VERSION, 24, "0021, and GA-261's 0022, 0023 and 0024 after it");
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("gizai.db");
     let ga = {
@@ -122,9 +122,9 @@ fn a_schema_20_database_gets_the_builds_on_table_and_nothing_else_after_a_backup
         ga
     };
     // three steps back to the database the version before GA-228 leaves (schema 20): 0021 only adds the table and its index,
-    // GA-261's 0022 two columns, 0023 one column
+    // GA-261's 0022 two columns, 0023 one column, 0024 one column and three tables
     let c = Connection::open(&path).unwrap();
-    c.execute_batch("ALTER TABLE projects DROP COLUMN dev_docs; ALTER TABLE tasks DROP COLUMN hold_kind; ALTER TABLE chat_threads DROP COLUMN outside_tool; DROP INDEX task_builds_on_needed_by; DROP TABLE task_builds_on; PRAGMA user_version = 20;").unwrap();
+    c.execute_batch("DROP TABLE docs_baselines; DROP TABLE docs_decisions; DROP TABLE docs_changes; ALTER TABLE projects DROP COLUMN docs_off; ALTER TABLE projects DROP COLUMN dev_docs; ALTER TABLE tasks DROP COLUMN hold_kind; ALTER TABLE chat_threads DROP COLUMN outside_tool; DROP INDEX task_builds_on_needed_by; DROP TABLE task_builds_on; PRAGMA user_version = 20;").unwrap();
     let other = tempfile::tempdir().unwrap();
     let genuine = v20_db(&other.path().join("gizai.db"));
     assert_eq!(schema(&c), schema(&genuine), "the step back is exactly schema 20 (migrations 0001..0020)");
@@ -132,7 +132,7 @@ fn a_schema_20_database_gets_the_builds_on_table_and_nothing_else_after_a_backup
 
     let db = Db::open(&path).unwrap();
     db.read(|c| {
-        assert_eq!(version(c), 23, "0021 ran (and GA-261's 0022 and 0023 after it)");
+        assert_eq!(version(c), 24, "0021 ran (and GA-261's 0022, 0023 and 0024 after it)");
         let cols: Vec<(String, String, i64, i64)> = c.prepare("SELECT name, type, \"notnull\", pk FROM pragma_table_info('task_builds_on') ORDER BY cid")?
             .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?.collect::<rusqlite::Result<_>>()?;
         assert_eq!(cols, vec![("task_id".to_string(), "TEXT".to_string(), 1, 1), ("builds_on_id".to_string(), "TEXT".to_string(), 1, 2),
@@ -141,10 +141,11 @@ fn a_schema_20_database_gets_the_builds_on_table_and_nothing_else_after_a_backup
         assert_eq!(n, 0, "no card builds on another yet");
         let mut rest = schema(c);
         rest.retain(|(_, name, _)| name != "task_builds_on" && name != "task_builds_on_needed_by");
-        // GA-261's 0022 and 0023 after it only add their columns
+        // GA-261's 0022, 0023 and 0024 after it only add their columns (and 0024 its tables)
         let with_0022 = v20_db(&other.path().join("with-0022.db"));
         with_0022.execute_batch(include_str!("../../migrations/0022_outside_marks.sql")).unwrap();
         with_0022.execute_batch(include_str!("../../migrations/0023_dev_docs.sql")).unwrap();
+        with_0022.execute_batch(include_str!("../../migrations/0024_docs_records.sql")).unwrap();
         assert_eq!(rest, schema(&with_0022), "nothing else changed");
         Ok(())
     }).unwrap();
@@ -153,13 +154,13 @@ fn a_schema_20_database_gets_the_builds_on_table_and_nothing_else_after_a_backup
     assert_eq!(list.len(), 2);
     assert!(list.iter().all(|t| t.waits_for.is_empty()));
     let snaps: Vec<_> = std::fs::read_dir(dir.path().join("backups")).unwrap().map(|e| e.unwrap().path()).collect();
-    assert!(snaps.len() == 1 && snaps[0].file_name().unwrap().to_string_lossy().starts_with("gizai-before-v23-"), "{snaps:?}");
+    assert!(snaps.len() == 1 && snaps[0].file_name().unwrap().to_string_lossy().starts_with("gizai-before-v24-"), "{snaps:?}");
     let old = Connection::open(&snaps[0]).unwrap();
     assert_eq!(version(&old), 20, "the backup is the schema 20 database");
     assert_eq!(schema(&old), schema(&genuine));
     drop(db);
     let db = Db::open(&path).unwrap();
-    assert_eq!(db.read(|c| Ok(version(c))).unwrap(), 23);
+    assert_eq!(db.read(|c| Ok(version(c))).unwrap(), 24);
     assert_eq!(std::fs::read_dir(dir.path().join("backups")).unwrap().count(), 1, "no new backup");
 }
 

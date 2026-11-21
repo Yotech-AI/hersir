@@ -329,7 +329,7 @@ fn schema_10_gives_existing_sessions_the_cli_of_their_last_turn() {
     // One schema step back: 0012 hadn't run (nor GA-19's 0014, GA-86's 0015, GA-96's 0016, GA-102's 0017, GA-182's 0019 and
     // GA-212's 0020, which come after it).
     let c = rusqlite::Connection::open(&path).unwrap();
-    c.execute_batch(&format!("PRAGMA foreign_keys=OFF; BEGIN; {UNDO_0023} {UNDO_0022} {UNDO_0021} {UNDO_0020} {UNDO_0019} {UNDO_0017} {} ALTER TABLE projects DROP COLUMN lead_may_merge; {} COMMIT;", undo_0016(&c), undo_0014())).unwrap();
+    c.execute_batch(&format!("PRAGMA foreign_keys=OFF; BEGIN; {UNDO_0024} {UNDO_0023} {UNDO_0022} {UNDO_0021} {UNDO_0020} {UNDO_0019} {UNDO_0017} {} ALTER TABLE projects DROP COLUMN lead_may_merge; {} COMMIT;", undo_0016(&c), undo_0014())).unwrap();
     c.execute_batch("DROP TABLE chat_queue; ALTER TABLE chat_messages DROP COLUMN meta_json;
                      ALTER TABLE chat_threads DROP COLUMN session_cli; ALTER TABLE chat_threads DROP COLUMN cli; PRAGMA user_version = 11;").unwrap();
     drop(c);
@@ -344,6 +344,8 @@ fn schema_10_gives_existing_sessions_the_cli_of_their_last_turn() {
 
 /// Undoes 0023: no Docs switch on projects.
 const UNDO_0023: &str = "ALTER TABLE projects DROP COLUMN dev_docs;";
+/// Undoes 0024: no Docs records, baselines or section switches.
+const UNDO_0024: &str = "DROP TABLE docs_baselines; DROP TABLE docs_decisions; DROP TABLE docs_changes; ALTER TABLE projects DROP COLUMN docs_off;";
 
 /// Undoes GA-261's 0022: no outside-tool mark on chats and no hold kind on cards.
 const UNDO_0022: &str = "ALTER TABLE tasks DROP COLUMN hold_kind; ALTER TABLE chat_threads DROP COLUMN outside_tool;";

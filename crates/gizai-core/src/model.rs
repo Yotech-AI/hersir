@@ -136,6 +136,9 @@ pub struct Project {
     /// project form.
     #[serde(default)]
     pub dev_docs: bool,
+    /// Docs: the sections switched off on the project's Docs page (`devdocs::SECTIONS`); empty, every one shows.
+    #[serde(default)]
+    pub docs_off: Vec<String>,
 }
 
 fn default_start_secs() -> u32 {
@@ -177,6 +180,9 @@ pub struct ProjectInput {
     pub preview_start_secs: Option<u32>,
     /// Docs on or off; None keeps it (off for a new project).
     pub dev_docs: Option<bool>,
+    /// The Docs page's sections to switch off (`devdocs::SECTIONS`; others are left out); None keeps them (none for a
+    /// new project).
+    pub docs_off: Option<Vec<String>>,
     /// The project's team (GA-225); None: the first team for a new project, unchanged on update. Another team on update
     /// moves the project and all its cards there (`projects::update`).
     pub team_id: Option<String>,

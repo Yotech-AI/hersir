@@ -11,7 +11,7 @@ fn version(c: &Connection) -> i64 {
 
 #[test]
 fn a_schema_22_database_gets_docs_off_for_every_project_after_a_backup() {
-    assert_eq!(db::SCHEMA_VERSION, 23, "0023 adds projects.dev_docs");
+    assert_eq!(db::SCHEMA_VERSION, 24, "0023 adds projects.dev_docs, and 0024 the Docs records after it");
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("gizai.db");
     let kade = {
@@ -19,14 +19,15 @@ fn a_schema_22_database_gets_docs_off_for_every_project_after_a_backup() {
         let s = seed::ensure_seed(&db, "Jeffrey").unwrap();
         projects::create(&db, &s.you_id, ProjectInput { name: "Kade".into(), key: "KADE".into(), ..Default::default() }).unwrap()
     };
-    // one step back, to the database the version before Docs leaves (schema 22): 0023 only adds the column
+    // two steps back, to the database the version before Docs leaves (schema 22): 0023 only adds the column, 0024 after it
+    // one more and three tables
     let c = Connection::open(&path).unwrap();
-    c.execute_batch("ALTER TABLE projects DROP COLUMN dev_docs; PRAGMA user_version = 22;").unwrap();
+    c.execute_batch("DROP TABLE docs_baselines; DROP TABLE docs_decisions; DROP TABLE docs_changes; ALTER TABLE projects DROP COLUMN docs_off; ALTER TABLE projects DROP COLUMN dev_docs; PRAGMA user_version = 22;").unwrap();
     drop(c);
 
     let db = Db::open(&path).unwrap();
     db.read(|c| {
-        assert_eq!(version(c), 23, "0023 ran");
+        assert_eq!(version(c), 24, "0023 ran (and 0024 after it)");
         let col: (String, i64, Option<String>) = c.query_row(
             "SELECT type, \"notnull\", dflt_value FROM pragma_table_info('projects') WHERE name = 'dev_docs'", [],
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
@@ -36,7 +37,7 @@ fn a_schema_22_database_gets_docs_off_for_every_project_after_a_backup() {
     assert!(!projects::get(&db, &kade).unwrap().dev_docs, "Docs is off for a project that was there before");
     // the backup made before the upgrade is the schema 22 database
     let snaps: Vec<_> = std::fs::read_dir(dir.path().join("backups")).unwrap().map(|e| e.unwrap().path()).collect();
-    assert!(snaps.len() == 1 && snaps[0].file_name().unwrap().to_string_lossy().starts_with("gizai-before-v23-"), "{snaps:?}");
+    assert!(snaps.len() == 1 && snaps[0].file_name().unwrap().to_string_lossy().starts_with("gizai-before-v24-"), "{snaps:?}");
     assert_eq!(version(&Connection::open(&snaps[0]).unwrap()), 22, "the backup is the schema 22 database");
 }
 

@@ -65,13 +65,13 @@ describe("the notice chat_pins", () => {
 });
 
 describe("no schema change for the pins", () => {
-  // The schema is at 23 since 0023_dev_docs.sql (a project's Docs switch), after GA-261's 0022_outside_marks.sql; the pins
+  // The schema is at 24 since 0024_docs_records.sql (Docs records), after 0023_dev_docs.sql (a project's Docs switch); the pins
   // add no migration of their own.
-  it("keeps SCHEMA_VERSION at 23 with the Docs migration last, and no migration for the pins", () => {
-    expect(dbRs).toMatch(/pub const SCHEMA_VERSION: i64 = 23;/);
+  it("keeps SCHEMA_VERSION at 24 with the Docs records migration last, and no migration for the pins", () => {
+    expect(dbRs).toMatch(/pub const SCHEMA_VERSION: i64 = 24;/);
     const names = Object.keys(migrations).map((p) => p.split("/").pop()).sort();
-    expect(names).toHaveLength(23);
-    expect(names.at(-1)).toBe("0023_dev_docs.sql");
+    expect(names).toHaveLength(24);
+    expect(names.at(-1)).toBe("0024_docs_records.sql");
     for (const sql of Object.values(migrations)) expect(String(sql)).not.toContain("chat_pins");
   });
 });
