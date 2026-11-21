@@ -1,7 +1,7 @@
 //! The docs pages: Hersir serves each project's docs page at http://127.0.0.1:<port>/p/<project id>/, for this
 //! computer only. The page is yodocs' viewer (`gizai_docs::viewer`), which draws the Yodocs Figma from the project's
 //! `index.json` (`devdocs::index_of`), and fetches a file's source (`source/<path>.json`) and a commit's changed lines
-//! (`commits/<hash>.json`) when it shows them. The app shows the same page in a frame, and Open in browser opens it in
+//! (`commits/<hash>.json`) when it shows them; `llms.txt` and `md/…` are the same docs for agents. The app shows the same page in a frame, and Open in browser opens it in
 //! a browser. Only projects with Docs on are served, and only to GET. A request whose Host isn't 127.0.0.1 or
 //! localhost at this port (a page elsewhere pointing a name of its own at it) gets a 403. One request per connection:
 //! it is one person's browser on this computer.
@@ -142,6 +142,18 @@ pub fn route(st: &AppState, path: &str) -> Reply {
             Ok(index) => json(serde_json::to_vec(&index)),
             Err(why) => Reply::Refused(500, why),
         };
+    }
+    // for agents: llms.txt, and every page as Markdown, as plain text so a browser shows it
+    if file == "llms.txt" || file.starts_with("md/") {
+        let index = match crate::devdocs::index_of(st, &project) {
+            Ok(index) => index,
+            Err(why) => return Reply::Refused(500, why),
+        };
+        let text = match file.strip_prefix("md/") {
+            Some(md) => gizai_docs::agents::page(&index, md, &|path| crate::devdocs::source_of(&project, path).map(|s| s.lines)),
+            None => Some(gizai_docs::agents::llms_txt(&index)),
+        };
+        return text.map_or_else(not_found, |t| Reply::Ok("text/plain; charset=utf-8", t.into_bytes()));
     }
     if let Some(source) = file.strip_prefix("source/").and_then(|f| f.strip_suffix(".json")) {
         return match crate::devdocs::source_of(&project, source) {

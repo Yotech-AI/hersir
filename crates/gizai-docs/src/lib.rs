@@ -4,6 +4,7 @@
 //! Kotlin, and the script blocks of Vue and Svelte files (read as TSX). Dart's and Kotlin's queries are new: the grammars
 //! yodocs read named their nodes differently.
 //! The caller lists the files (git's tracked files) and this reads them from disk: it starts no program.
+pub mod agents;
 pub mod api;
 pub mod content;
 pub mod guides;

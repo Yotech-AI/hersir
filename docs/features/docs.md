@@ -130,6 +130,16 @@ it changed. A code file the Reference reads opens to its changed lines, at most 
 - A merge into main is one commit, with its pull request's files.
 - A project without a git repository still has its changelog and decisions; its Home says how to link one.
 
+## For agents
+
+The same docs as text an agent can read, next to the page: `llms.txt` and `md/`.
+
+- **`llms.txt`:** the way in. It names every section, lists the MCP servers and the endpoints whole, the recent
+  commits with their files, and what Hersir couldn't read.
+- **`md/…`:** each page as Markdown, at the address the page's own Markdown links use: `md/reference/<file>/<name>.md`
+  for a declaration (its facts, signature and code), `md/<guide>.md`, `md/decisions/<number>.md`, `md/changelog.md`
+  and `md/mcp.md`.
+
 ## In a browser
 
 **Open in browser** opens the same page in your browser.
@@ -143,7 +153,7 @@ it changed. A code file the Reference reads opens to its changed lines, at most 
 
 ## Not there yet
 
-What yodocs also read, and Hersir doesn't yet: the llms.txt and Markdown pages for agents, what moved in the docs since the last commit, and switching
+What yodocs also read, and Hersir doesn't yet: what moved in the docs since the last commit, and switching
 single sections off.
 
 ## Not to be confused with

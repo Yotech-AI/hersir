@@ -122,6 +122,13 @@ fn a_projects_page_index_sources_and_commits() {
     for refused in [".env", "README.md", "src/../.env", "nope.ts"] {
         assert_eq!(route(&st, &format!("/p/{id}/source/{refused}.json")), Reply::Refused(404, "Not found.".into()), "{refused}");
     }
+    // the same docs for agents, as plain text
+    let (mime, llms) = ok(route(&st, &format!("/p/{id}/llms.txt")));
+    assert_eq!(mime, "text/plain; charset=utf-8");
+    assert!(llms.starts_with("# Pearl dev docs\n") && llms.contains("- [0001 Use Postgres](md/decisions/0001.md) — accepted"), "{llms}");
+    let (_, md) = ok(route(&st, &format!("/p/{id}/md/reference/src/invoice.ts/Invoice.md")));
+    assert!(md.contains("```ts\nexport class Invoice extends Model {\n}\n```"), "{md}");
+    assert_eq!(route(&st, &format!("/p/{id}/md/nope.md")), Reply::Refused(404, "Not found.".into()));
     let patches = json(route(&st, &format!("/p/{id}/commits/{hash}.json")));
     assert_eq!(patches["files"]["src/invoice.ts"]["lines"][0], "@@ -0,0 +1,3 @@");
     assert!(patches["files"].get(".env").is_none(), ".env's lines never show");

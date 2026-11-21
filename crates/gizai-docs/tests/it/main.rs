@@ -1,5 +1,6 @@
 //! The crate's integration tests as one test program, as in the other crates (GA-213).
 
+mod agents_test;
 mod api_test;
 mod content_test;
 mod guides_test;
