@@ -356,6 +356,8 @@ pub struct Input {
     pub changelog_from: String,
     pub decisions: Vec<Decision>,
     pub mcp: Vec<McpServer>,
+    /// The project's OpenAPI document; without one, its routes fill the API section.
+    pub api: Option<Api>,
     pub history: Vec<Commit>,
     /// What else didn't read right: a changelog section outside the format, say.
     pub problems: Vec<Problem>,
@@ -365,6 +367,7 @@ pub fn build(input: Input) -> Index {
     let mut entries = entries(&input.reference);
     let mut groups = vec![folder_tree(&input.reference.read, &entries)];
     let mut probes = vec![];
+    let mut handlers = None;
     if !input.routes.is_empty() {
         let routes = routes_group(&input.routes, &entries);
         // each route on the entry that answers it, for that page's "Used by routes"
@@ -374,6 +377,7 @@ pub fn build(input: Input) -> Index {
                 entries[i].facts.push(Fact { label: "Route".into(), value: format!("{} {}", route.method, route.path), target: None });
             }
         }
+        handlers = routes_api(&input.routes, &routes.rows, &entries);
         groups.push(routes);
         probes.push("routes".to_string());
     }
@@ -412,7 +416,7 @@ pub fn build(input: Input) -> Index {
         decisions: input.decisions,
         mcp_tools,
         mcp: input.mcp,
-        api: None,
+        api: input.api.or(handlers),
         doc_changes: None,
         history: input.history,
     }
@@ -576,6 +580,54 @@ fn routes_group(routes: &[Route], entries: &[IndexEntry]) -> Group {
         GroupRow { label: r.path.clone(), target: target.map(|t| t.to_string()).unwrap_or_default(), count: 0, badge: Some(r.method.clone()), children: None }
     }).collect();
     Group { name: "Routes".into(), kind: "flat".into(), count: rows.len(), rows }
+}
+
+/// Without an OpenAPI document, the routes as the API section (yodocs' route handlers): each one that isn't a page, with
+/// its path's parameters, summed up by the first sentence of what answers it, tagged by the first part of its path.
+fn routes_api(routes: &[Route], rows: &[GroupRow], entries: &[IndexEntry]) -> Option<Api> {
+    let by_id: HashMap<&str, &IndexEntry> = entries.iter().map(|e| (e.id.as_str(), e)).collect();
+    let mut endpoints: Vec<Endpoint> = routes.iter().zip(rows).filter(|(r, _)| r.method != "PAGE").map(|(r, row)| {
+        let described = by_id.get(row.target.as_str()).map_or("", |e| e.description.as_str());
+        let first = described.split_inclusive(". ").next().unwrap_or_default().lines().next().unwrap_or_default().trim();
+        let answered = if r.handler.is_empty() { format!("In {}:{}.", r.file, r.line) } else { format!("{} answers it, in {}:{}.", r.handler, r.file, r.line) };
+        Endpoint {
+            id: format!("{}{}", r.method.to_lowercase(), r.path),
+            method: r.method.clone(),
+            path: r.path.clone(),
+            summary: if first.is_empty() { format!("{} {}", r.method, r.path) } else { first.to_string() },
+            description: [described.trim(), &answered].iter().filter(|s| !s.is_empty()).copied().collect::<Vec<_>>().join("\n\n"),
+            tags: vec![r.path.split('/').find(|s| !s.is_empty() && *s != "api").unwrap_or("Endpoints").to_string()],
+            auth: vec![],
+            parameters: path_params(&r.path),
+            request_body: serde_json::Value::Null,
+            responses: vec![],
+        }
+    }).collect();
+    if endpoints.is_empty() {
+        return None;
+    }
+    endpoints.sort_by(|a, b| a.path.cmp(&b.path).then_with(|| a.method.cmp(&b.method)));
+    let mut files: Vec<&str> = routes.iter().filter(|r| r.method != "PAGE").map(|r| r.file.as_str()).collect();
+    files.sort_unstable();
+    files.dedup();
+    Some(Api { title: "Route handlers".into(), version: String::new(), file: files.join(" and "), endpoints, schemas: BTreeMap::new() })
+}
+
+/// A path's parameters: Laravel's `{invoice}` (`{page?}` optional), Next.js's `[id]` and `[...all]` (`[[...all]]`
+/// optional).
+fn path_params(path: &str) -> Vec<Parameter> {
+    path.split('/').filter_map(|s| {
+        let (name, required) = if let Some(inner) = s.strip_prefix('{').and_then(|s| s.strip_suffix('}')) {
+            inner.strip_suffix('?').map_or((inner, true), |n| (n, false))
+        } else if let Some(inner) = s.strip_prefix("[[").and_then(|s| s.strip_suffix("]]")) {
+            (inner, false)
+        } else if let Some(inner) = s.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
+            (inner, true)
+        } else {
+            return None;
+        };
+        Some(Parameter { name: name.trim_start_matches("...").to_string(), location: "path".into(), required, description: String::new() })
+    }).collect()
 }
 
 /// A guide with its Markdown as HTML. Its group is its folder under docs/ (or doc/): none at the root, right in docs/, or

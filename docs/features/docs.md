@@ -56,6 +56,17 @@ it, and its source with line numbers.
     controller groups, `match`, `view`, `resource` and `apiResource` (with `only` and `except`); `routes/api.php` under
     `/api`. Routes a package or a service provider adds aren't in these files, so they don't show.
 
+## API
+
+The project's endpoints, grouped by tag, each with a page.
+
+- **From its OpenAPI document**, when git tracks one in JSON (`openapi.json`, `docs/openapi.json` or
+  `public/openapi.json`): each operation with its summary, tags, the security it needs, its parameters, its request
+  body and its responses, and the schemas they use. A YAML spec is named on Home: Hersir reads JSON only for now. A
+  document over 8 MB is left out.
+- **Without one, from its routes:** each route that isn't a page, with its path's parameters (`{invoice}`, `[id]`),
+  summed up by the first sentence of the comment on what answers it, and tagged by the first part of its path.
+
 ## Guides
 
 The project's own Markdown docs, from the files git tracks: the README at its root first, then the Markdown under
@@ -132,7 +143,7 @@ it changed. A code file the Reference reads opens to its changed lines, at most 
 
 ## Not there yet
 
-What yodocs also read, and Hersir doesn't yet: an OpenAPI file's request and response bodies, the llms.txt and Markdown pages for agents, what moved in the docs since the last commit, and switching
+What yodocs also read, and Hersir doesn't yet: the llms.txt and Markdown pages for agents, what moved in the docs since the last commit, and switching
 single sections off.
 
 ## Not to be confused with

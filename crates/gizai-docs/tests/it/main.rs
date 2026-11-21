@@ -6,5 +6,6 @@ mod guides_test;
 mod index_test;
 mod markdown_test;
 mod mcp_test;
+mod openapi_test;
 mod reference_test;
 mod viewer_test;

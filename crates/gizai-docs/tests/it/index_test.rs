@@ -66,7 +66,16 @@ fn every_section_is_in_the_index_in_the_shape_the_viewer_reads() {
         assert!(json.get(key).is_some(), "no {key}");
     }
     assert_eq!(json["schema"], 1);
-    assert_eq!(json["api"], serde_json::Value::Null);
+    // no OpenAPI document: the routes that aren't pages are the API section, with their path's parameters
+    let api = &json["api"];
+    assert_eq!((api["title"].as_str(), api["file"].as_str()), (Some("Route handlers"), Some("routes/web.php and src/app/api/leads/route.ts")));
+    let endpoints: Vec<(&str, &str, &str, &str)> = api["endpoints"].as_array().unwrap().iter().map(|e| (e["id"].as_str().unwrap(),
+        e["summary"].as_str().unwrap(), e["tags"][0].as_str().unwrap(), e["description"].as_str().unwrap())).collect();
+    assert_eq!(endpoints, [
+        ("post/api/leads", "POST /api/leads", "leads", "In src/app/api/leads/route.ts:1."),
+        ("get/invoices", "GET /invoices", "invoices", "App\\Http\\Controllers\\InvoiceController@index answers it, in routes/web.php:3."),
+        ("get/up", "GET /up", "up", "Closure answers it, in routes/web.php:9."),
+    ]);
     assert_eq!(json["project"]["yodocsVersion"], "0.21.0");
     assert_eq!(json["project"]["builtAt"], "2026-11-21T10:00:00Z");
     assert_eq!(json["stats"], serde_json::json!({ "files": 4, "entries": 4, "described": 1, "problems": 1, "durationMs": 73, "skipped": {} }));
@@ -172,4 +181,24 @@ fn a_class_takes_the_kind_of_the_project_class_it_extends() {
     let kinds: Vec<(String, String)> = entries(&r).into_iter().map(|e| (e.name, e.kind)).collect();
     assert_eq!(kinds, [("FactoryTool", "mcp tool"), ("AuthoringTool", "mcp tool"), ("SearchBlueprints", "mcp tool"), ("Helper", "class"),
         ("InvoiceController", "controller"), ("Loop", "class")].map(|(a, b)| (a.to_string(), b.to_string())));
+}
+
+#[test]
+fn a_routes_parameters_come_from_its_path() {
+    let routes = vec![
+        Route { method: "GET".into(), path: "/api/invoices/{invoice}/lines/{line?}".into(), handler: String::new(), file: "routes/api.php".into(), line: 1 },
+        Route { method: "ANY".into(), path: "/api/files/[...path]".into(), handler: String::new(), file: "pages/api/files/[...path].ts".into(), line: 1 },
+        Route { method: "GET".into(), path: "/docs/[[...slug]]".into(), handler: String::new(), file: "src/app/docs/[[...slug]]/route.ts".into(), line: 1 },
+        Route { method: "PAGE".into(), path: "/about".into(), handler: String::new(), file: "src/app/about/page.tsx".into(), line: 1 },
+    ];
+    let index = build(Input { routes, ..Input::default() });
+    let api = index.api.expect("the routes as the API section");
+    let params: Vec<(String, Vec<(String, bool)>)> = api.endpoints.iter()
+        .map(|e| (e.path.clone(), e.parameters.iter().map(|p| (p.name.clone(), p.required)).collect())).collect();
+    assert_eq!(params, [
+        ("/api/files/[...path]".to_string(), vec![("path".to_string(), true)]),
+        ("/api/invoices/{invoice}/lines/{line?}".to_string(), vec![("invoice".to_string(), true), ("line".to_string(), false)]),
+        ("/docs/[[...slug]]".to_string(), vec![("slug".to_string(), false)]),
+    ], "a page isn't an endpoint");
+    assert!(api.endpoints.iter().all(|e| e.parameters.iter().all(|p| p.location == "path")));
 }

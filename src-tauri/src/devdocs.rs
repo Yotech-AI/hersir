@@ -34,8 +34,8 @@ pub fn index_of(st: &AppState, project: &Project) -> Result<Index, String> {
             input.reference = gizai_docs::reference(&repo, &files);
             input.routes = gizai_docs::api::api(&repo, &files);
             let content = gizai_docs::content::read(&repo, &files);
-            (input.guides, input.changelog, input.decisions, input.mcp, input.problems) =
-                (content.guides, content.changelog, content.decisions, content.mcp, content.problems);
+            (input.guides, input.changelog, input.decisions, input.mcp, input.api, input.problems) =
+                (content.guides, content.changelog, content.decisions, content.mcp, content.api, content.problems);
             changelog_file = content.changelog_file;
             let (label, main) = crate::changes::main_of(project, &repo);
             if let Some(main) = main {

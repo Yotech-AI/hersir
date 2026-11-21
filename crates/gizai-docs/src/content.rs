@@ -7,7 +7,7 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-use crate::index::{Change, Decision, McpServer, Problem, Release, Section};
+use crate::index::{Api, Change, Decision, McpServer, Problem, Release, Section};
 use crate::{guides, markdown};
 
 /// Where a project keeps its changelog and its decision records, best first (yodocs' CHANGELOGS and DECISION_FOLDERS).
@@ -26,6 +26,8 @@ pub struct Content {
     pub decisions: Vec<Decision>,
     /// The MCP servers its agents connect to (`.mcp.json`).
     pub mcp: Vec<McpServer>,
+    /// Its OpenAPI document, when it has one.
+    pub api: Option<Api>,
     pub problems: Vec<Problem>,
 }
 
@@ -48,6 +50,9 @@ pub fn read(repo: &Path, files: &[String]) -> Content {
     }
     let (servers, problems) = crate::mcp::servers(repo, files);
     content.mcp = servers;
+    content.problems.extend(problems);
+    let (api, problems) = crate::openapi::read(repo, files);
+    content.api = api;
     content.problems.extend(problems);
     content
 }

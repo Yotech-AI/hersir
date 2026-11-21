@@ -10,6 +10,7 @@ pub mod guides;
 pub mod index;
 pub mod markdown;
 pub mod mcp;
+pub mod openapi;
 pub mod viewer;
 
 use std::collections::HashMap;
