@@ -649,6 +649,10 @@ a.member:hover { border-color: var(--line-2); }
 /* a project's Time tracking tab (GA-331): a working card's teal dot before its time; the footer's sums stay on one line */
 .card-time { display: inline-flex; align-items: center; gap: 7px; }
 .tablefoot > .card-time-sums { flex: none; white-space: nowrap; }
+/* its list: a fixed layout, so the numbers keep their widths and the Card column takes what is left, its title cut */
+.card-times { display: contents; }
+.card-times table.grid { table-layout: fixed; }
+.card-times .grid td { max-width: none; }
 .usage-page { gap: 18px; padding-top: 16px; }
 .usage-page .usage-metric { margin-top: 10px; }
 .usage-unknown { text-decoration: underline dotted var(--text-3); text-underline-offset: 3px; cursor: help; }

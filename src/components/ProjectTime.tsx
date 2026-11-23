@@ -26,14 +26,14 @@ export function ProjectTime({ projectId }: { projectId: string }) {
   const cols: Col<CardTime>[] = [
     { key: "card", header: "Card", sort: (c) => cardNumber(c.identifier),
       cell: (c) => <span title={`${c.identifier} ${c.title}`}><span className="id">{c.identifier}</span> {c.title}</span> },
-    { key: "column", header: "Column", width: 160, sort: (c) => columnLabel(c),
+    { key: "column", header: "Column", width: 140, sort: (c) => columnLabel(c),
       cell: (c) => (c.archived ? <span className="muted">Archived</span> : c.column) },
-    { key: "runs", header: "Runs", width: 90, align: "right", sort: (c) => c.runs, title: "Runs that started: each start, Continue and nudge is a run",
+    { key: "runs", header: "Runs", width: 72, align: "right", sort: (c) => c.runs, title: "Runs that started: each start, Continue and nudge is a run",
       cell: (c) => (c.runs > 0 ? fullCount(c.runs) : faintDash) },
-    { key: "tokens", header: "Tokens", width: 110, align: "right", sort: (c) => c.inputTokens + c.outputTokens, title: "Input (cache included) and output tokens",
+    { key: "tokens", header: "Tokens", width: 100, align: "right", sort: (c) => c.inputTokens + c.outputTokens, title: "Input (cache included) and output tokens",
       cell: (c) => (c.inputTokens + c.outputTokens > 0
         ? <span title={tokensTitle(c.inputTokens, c.outputTokens)}>{formatTokenCount(c.inputTokens + c.outputTokens)}</span> : faintDash) },
-    { key: "time", header: "Agent time", width: 130, align: "right", sort: (c) => agentTimeMs(c, now), title: "From each run's start to its end, over every run on the card",
+    { key: "time", header: "Agent time", width: 124, align: "right", sort: (c) => agentTimeMs(c, now), title: "From each run's start to its end, over every run on the card",
       cell: (c) => {
         const ms = agentTimeMs(c, now);
         return (
@@ -45,13 +45,16 @@ export function ProjectTime({ projectId }: { projectId: string }) {
       } },
   ];
   const t = timeTotals(data, now);
+  // .card-times: a fixed layout, so in a narrow window the Card column gives way and cuts its title (app.css)
   return (
-    <DataTable rows={data} columns={cols} rowId={(c) => c.taskId} onRowClick={(c) => go({ page: "task", id: c.taskId })} keyboardNav
-      initialSort={[{ id: "card", desc: true }]}
-      empty={<div className="empty"><b>No cards yet.</b></div>}
-      footer={data.length > 0 && <>
-        <span className="card-time-sums">{plural(t.cards, "card")} · {plural(t.runs, "run")} · <span title={tokensTitle(t.inputTokens, t.outputTokens)}>{formatTokenCount(t.inputTokens + t.outputTokens)} tokens</span> · {formatAgentTime(t.timeMs)} agent time</span>
-        <span>{TIME_NOTE}</span>
-      </>} />
+    <div className="card-times">
+      <DataTable rows={data} columns={cols} rowId={(c) => c.taskId} onRowClick={(c) => go({ page: "task", id: c.taskId })} keyboardNav
+        initialSort={[{ id: "card", desc: true }]}
+        empty={<div className="empty"><b>No cards yet.</b></div>}
+        footer={data.length > 0 && <>
+          <span className="card-time-sums">{plural(t.cards, "card")} · {plural(t.runs, "run")} · <span title={tokensTitle(t.inputTokens, t.outputTokens)}>{formatTokenCount(t.inputTokens + t.outputTokens)} tokens</span> · {formatAgentTime(t.timeMs)} agent time</span>
+          <span>{TIME_NOTE}</span>
+        </>} />
+    </div>
   );
 }
