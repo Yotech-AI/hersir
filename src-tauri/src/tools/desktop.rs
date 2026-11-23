@@ -112,6 +112,28 @@ pub(super) async fn chief_reply(st: &AppState, a: &Args) -> Result<Value, String
     Ok(reply(st, &thread, after.as_deref())?.json(&thread))
 }
 
+/// GA-345: the chat as chief_reply gives it, at once, without waiting: `{"thread", "status", "messages", "draft"}`, the
+/// draft null while the Chief isn't writing. For the Chief's view in Claude Desktop's chat (`apps`, view_read).
+pub(super) fn now(st: &AppState, thread: &str) -> Result<Value, String> {
+    known(st, thread)?;
+    let mut out = reply(st, thread, None)?.json(thread);
+    if out.get("draft").is_none() {
+        out["draft"] = Value::Null;
+    }
+    Ok(out)
+}
+
+/// GA-345: the chat From Claude Desktop, when ask_chief made it (`core_chat::desktop_thread`) and it wasn't deleted since;
+/// None before that. Only reads: it never makes the chat.
+pub(super) fn from_claude_desktop(st: &AppState) -> Result<Option<core_chat::ChatThread>, String> {
+    let Some(id) = gizai_core::settings::get::<String>(&st.db, core_chat::DESKTOP_CHAT).map_err(err)? else { return Ok(None) };
+    match core_chat::get_thread(&st.db, &id) {
+        Ok(t) => Ok(Some(t)),
+        Err(gizai_core::Error::NotFound(_)) => Ok(None),
+        Err(e) => Err(err(e)),
+    }
+}
+
 /// A chat by its id, or why there is none. Nothing changes either way.
 fn known(st: &AppState, thread: &str) -> Result<(), String> {
     match core_chat::get_thread(&st.db, thread) {
@@ -134,12 +156,20 @@ impl Reply {
         self.messages.last().and_then(|m| m["id"].as_str()).map(str::to_string)
     }
 
+    /// GA-345: under `apps::MAX_RESULT` characters, as every result is: when the messages would pass it, the oldest go
+    /// first. Measured as chief_reply sends it, as JSON text in a result's `content` (escaped once more).
     fn json(&self, thread: &str) -> Value {
-        let mut out = json!({"thread": thread, "status": self.status, "messages": self.messages});
-        if let Some(d) = &self.draft {
-            out["draft"] = Value::String(d.clone());
+        let mut from = 0;
+        loop {
+            let mut out = json!({"thread": thread, "status": self.status, "messages": &self.messages[from..]});
+            if let Some(d) = &self.draft {
+                out["draft"] = Value::String(d.clone());
+            }
+            if from == self.messages.len() || Value::String(out.to_string()).to_string().len() <= super::apps::BUDGET {
+                return out;
+            }
+            from += 1;
         }
-        out
     }
 }
 
@@ -201,10 +231,16 @@ fn message(m: &ChatMessage) -> Option<Value> {
 
 /// At most `MAX_TEXT` characters: a longer text keeps its start and ends with `CUT`, `MAX_TEXT` characters in all.
 pub fn cut(text: &str) -> String {
-    if text.chars().count() <= MAX_TEXT {
+    cut_at(text, MAX_TEXT)
+}
+
+/// GA-345: at most `max` characters: a longer text keeps its start and ends with `CUT`, `max` characters in all (`CUT`
+/// alone when `max` is shorter than it).
+pub fn cut_at(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
         return text.to_string();
     }
-    let keep = MAX_TEXT - CUT.chars().count();
+    let keep = max.saturating_sub(CUT.chars().count());
     let end = text.char_indices().nth(keep).map_or(text.len(), |(i, _)| i);
     format!("{}{CUT}", &text[..end])
 }
