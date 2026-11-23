@@ -269,6 +269,17 @@ pub fn backup_data_dir(dir: &std::path::Path, label: &str) -> Result<PathBuf, St
     gizai_core::db::snapshot(&db, &dir.join("backups"), label).map_err(|e| e.to_string())
 }
 
+/// GA-322: each project's card worktrees (`<data dir>/worktrees/<KEY>`) belong to its linked repository, so Hersir's git
+/// in them gets its git folders from that repository (`worktree::card_folder`); a card's start says so again
+/// (`worktree::ensure_on`), for a project linked or relinked since.
+fn card_folders(db: &Db, dir: &std::path::Path) {
+    for p in gizai_core::projects::list(db).unwrap_or_default() {
+        if let Some(repo) = p.repo_path.as_deref().map(str::trim).filter(|r| !r.is_empty()) {
+            gizai_agents::worktree::card_folder(&dir.join("worktrees").join(&p.key), std::path::Path::new(repo));
+        }
+    }
+}
+
 /// Housekeeping (README → Your data): the chat tools' dead tokens, and the run and chat logs in `dir` older than 30 days,
 /// go; then old screenshots, as Settings → Agents and runs → Screenshots says, and the blobs no row uses any more
 /// (GA-182). When Gizai starts (`open_state`) and once a day while it runs.
@@ -358,7 +369,9 @@ fn open_data(dir: PathBuf, notify: Arc<dyn Fn(runs::Note) + Send + Sync>, defaul
     run_memory::end_leftovers_at_start(&dir);
     // Runs a previous Gizai left running: end their claude process groups (only when /proc proves they are
     // ours), save where a card's run ended (a chat answer has no worktree of its own), then mark them interrupted
-    // and release their cards.
+    // and release their cards. GA-322: first, Hersir's git in each project's card worktrees gets its git folders from
+    // the project's repository, never from files in the worktree (`worktree::card_folder`).
+    card_folders(&db, &dir);
     for r in gizai_core::runs::active(&db).unwrap_or_default() {
         if let (Some(pid), Some(wt)) = (r.pid, r.worktree_path.as_deref()) {
             gizai_agents::process::end_orphan_group(pid as u32, std::path::Path::new(wt));

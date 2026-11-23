@@ -334,7 +334,7 @@ fn open_blocking(via: &Via, card: &PrCard, title: &str, body: &str, over: &PushO
         Some(p) => (p.url.clone(), p.state().to_string(), false),
         None => (via.create_pull(card, title, body)?, "open".to_string(), true),
     };
-    let left_out = worktree::worktree_of(repo, &card.branch).ok().flatten()
+    let left_out = worktree::safe_worktree_of(repo, &card.branch).ok().flatten()
         .and_then(|wt| worktree::uncommitted(&wt).ok())
         .filter(|n| *n > 0);
     let note = left_out.map(|n| format!("Its worktree has {n} uncommitted {}, which the pull request doesn't have",

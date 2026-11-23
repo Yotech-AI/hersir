@@ -34,6 +34,7 @@ mod ga319_approve_gaps_test;
 mod ga323_chat_allow_list_test;
 mod ga31_flow_test;
 mod ga49_flow_test;
+mod git_folder_flow_test;
 mod glass_support_test;
 mod hand_flow_test;
 mod housekeeping_flow_test;
