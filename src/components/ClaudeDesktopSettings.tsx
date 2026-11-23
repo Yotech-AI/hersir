@@ -90,7 +90,7 @@ export function ClaudeDesktopSettings() {
   // counts the commands: a status asked for before one of them answered is older than its answer, so it is dropped
   const seq = useRef(0);
   const alive = useRef(true);
-  useEffect(() => () => { alive.current = false; }, []);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
 
   /** Asks for the status again. Connect's answer stays only while the connection it made is still the one. */
   const refresh = async () => {

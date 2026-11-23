@@ -644,9 +644,9 @@ a.member:hover { border-color: var(--line-2); }
 .cd .cd-line.ok .icon { color: var(--success); }
 .cd .cd-check { display: grid; gap: 4px; justify-items: start; }
 .cd .cd-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.cd .cd-result { display: grid; gap: 6px; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--raised); overflow-wrap: anywhere; }
-.cd .cd-entry { display: flex; align-items: flex-start; gap: 8px; }
-.cd .cd-entry pre { flex: 1; min-width: 0; max-height: 260px; margin: 0; padding: 8px 10px; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius);
+.cd .cd-result { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--raised); overflow-wrap: anywhere; }
+.cd .cd-entry { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: start; gap: 6px; }
+.cd .cd-entry pre { justify-self: stretch; min-width: 0; max-height: 260px; margin: 0; padding: 8px 10px; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius);
   background: var(--bg); color: var(--text); font-size: var(--fs-xs); line-height: 1.5; white-space: pre; user-select: text; }
 .ct-head { display: flex; justify-content: flex-end; }
 .ct-group { display: grid; gap: 6px; margin-top: 6px; }
