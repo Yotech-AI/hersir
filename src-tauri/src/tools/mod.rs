@@ -56,12 +56,15 @@ impl gizai_mcp::Tools for GizaiTools {
         self.call_with_meta(name, args, &Value::Null).await
     }
     async fn call_with_meta(&self, name: &str, args: Value, meta: &Value) -> Result<Value, String> {
+        // GA-344: Claude Desktop's own tool, which only reads; no other token knows it.
+        if name == BOARD_CHANGES {
+            return match self.client.as_deref() {
+                Some(CLAUDE_DESKTOP) => read::board_changes(&self.st, &Args::of(args)?),
+                _ => Err(format!("unknown tool {name}")),
+            };
+        }
         if self.question.is_some() && !reads_only(name) {
             return Err(IN_A_QUESTION.replace("{tool}", name));
-        }
-        // GA-344: Claude Desktop's own tool, which only reads; any other token doesn't know it.
-        if self.client.as_deref() == Some(CLAUDE_DESKTOP) && name == BOARD_CHANGES {
-            return read::board_changes(&self.st, &Args::of(args)?);
         }
         // GA-338: refused before anything runs, whatever else the scope says.
         if self.client.as_deref() == Some(CLAUDE_DESKTOP) && !reads_only(name) {
