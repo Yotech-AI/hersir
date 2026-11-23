@@ -1,0 +1,4 @@
+# GA-343: the board view, one HTML file that npm run build makes (vite build --mode mcp-app) and build.rs embeds in
+# Hersir. Build output: never committed. The folder stays in git so that cargo sees the file come and change.
+*
+!.gitignore

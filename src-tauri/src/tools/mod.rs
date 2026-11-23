@@ -1,6 +1,7 @@
 //! The Chief's tools: Gizai's clients, projects, tasks, agents, docs, memory, files and inbox, served over MCP.
 //! Each tool takes human references (KADE-12, "Kade portal", "Backend Agent"), calls gizai-core as the agent
 //! (so activity shows who did it) and tells open screens what changed, exactly like the UI's commands.
+pub mod apps;
 mod memory;
 mod merge;
 pub(crate) mod preview;
@@ -66,6 +67,33 @@ impl gizai_mcp::Tools for GizaiTools {
             return call_desktop(&self.st, &self.actor, from, name, args).await;
         }
         call_scoped(&self.st, &self.actor, self.thread.as_deref(), self.check.as_deref(), Some(from), name, args, false, false).await
+    }
+    /// GA-343: Claude Desktop also gets the board view's tools (`apps::tools`) when it shows MCP Apps' views. Every other
+    /// token, and Claude Desktop without the extension, gets `list` as before.
+    fn list_in(&self, session: &gizai_mcp::Session) -> Vec<ToolDef> {
+        let mut list = self.list();
+        if session.apps && self.desktop() {
+            list.extend(apps::tools());
+        }
+        list
+    }
+    /// GA-343: show_board and board_read answer Claude Desktop with the board for the view too (`apps::reply`); any other
+    /// call, and theirs from another token (an unknown tool there), as `call_with_meta`.
+    async fn reply(&self, name: &str, args: Value, meta: &Value, _session: &gizai_mcp::Session) -> Result<gizai_mcp::Reply, String> {
+        if self.desktop() && apps::is_app_tool(name) {
+            let a = Args(match args {
+                Value::Object(m) => m,
+                Value::Null => Map::new(),
+                _ => return Err("arguments must be an object".into()),
+            });
+            let cx = Cx { st: &self.st, actor: &self.actor, thread: None, check: None, from: None, approved: false, desktop: true };
+            return apps::reply(&cx, name, &a);
+        }
+        self.call_with_meta(name, args, meta).await.map(|v| gizai_mcp::Reply::of(&v))
+    }
+    /// GA-343: the board view, for any client that declared MCP Apps (its HTML holds no data: the tools bring that).
+    fn apps(&self) -> Vec<gizai_mcp::AppView> {
+        vec![apps::view()]
     }
 }
 
@@ -492,7 +520,7 @@ fn schema(props: &[(&str, &str, &str)], required: &[&str]) -> Value {
 fn tool(name: &str, description: &str, props: &[(&str, &str, &str)], required: &[&str]) -> ToolDef {
     let read_only = name.starts_with("get_") || name.starts_with("list_") || name.starts_with("read_") || name == "check_board"
         || matches!(name, "memory_list" | "memory_search" | "memory_read");
-    ToolDef { name: name.into(), description: description.into(), input_schema: schema(props, required), read_only }
+    ToolDef { name: name.into(), description: description.into(), input_schema: schema(props, required), read_only, meta: None }
 }
 
 const TASK: (&str, &str, &str) = ("task", "string", "The task's identifier, like KADE-12 (or its id)");
