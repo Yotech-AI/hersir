@@ -1,6 +1,7 @@
 //! `hersir-mcp --desktop`: the shim as Claude Desktop runs it (GA-339). Claude Desktop starts it once, when Claude
 //! Desktop itself starts, and keeps it running. So unlike a chat turn's shim it doesn't end when Hersir isn't there: it
-//! answers by itself and says why, and connects when Hersir opens. It ends, with 0, when stdin ends.
+//! answers by itself and says why, and connects when Hersir opens. It ends, with 0, when stdin ends (after up to a
+//! second for Hersir's answers to requests it passed on).
 //!
 //! Stdin and Hersir's answers are read line by line (newline-delimited JSON-RPC), in one of two states:
 //! - **connected:** each line passes on both ways unchanged;
@@ -14,9 +15,10 @@
 //! While Hersir isn't running, the shim tries its socket every 2 seconds and before each request. After the hello line
 //! it sends a `ping` of its own and keeps the answer to itself, to learn whether Hersir took the token: Hersir writes
 //! nothing after the hello until a request comes, and refuses a token with one `{"error": …}` line and a close. Once
-//! Hersir answers, the shim writes [`LIST_CHANGED`], so Claude Desktop fetches Hersir's tools. A request still waiting
-//! for Hersir when the connection drops is answered at once. After a refusal the shim stops trying: a refused token
-//! never becomes valid (Connect in Hersir makes a new one, which Claude Desktop reads only when it starts again).
+//! Hersir answers, the shim writes [`LIST_CHANGED`], so Claude Desktop fetches Hersir's tools; not when it connects as
+//! it starts, before Claude Desktop has been given any tools. A request still waiting for Hersir when the connection
+//! drops is answered at once. After a refusal the shim stops trying: a refused token never becomes valid (Connect in
+//! Hersir makes a new one, which Claude Desktop reads only when it starts again).
 //!
 //! Stderr gets one line per change of state, which Claude Desktop keeps in its MCP log. The token goes only to Hersir's
 //! socket, never to stdout or stderr. On Windows the socket is Hersir's named pipe, with the checks a chat turn's shim
