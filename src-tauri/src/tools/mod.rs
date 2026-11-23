@@ -15,7 +15,7 @@ use crate::runs::Note;
 pub use gizai_mcp::ToolDef;
 
 /// The MCP server's view of the tools for one agent (the token's owner), in one chat thread or one board check (the
-/// token's scope).
+/// token's scope); for Claude Desktop (GA-338) the owner is you, and the tools only read.
 pub struct GizaiTools {
     pub st: AppState,
     pub actor: String,
@@ -27,12 +27,25 @@ pub struct GizaiTools {
     /// GA-70: the question (the run that asked) a Chief's run on a question was minted for: only the tools that
     /// read work there (`IN_A_QUESTION`).
     pub question: Option<String>,
+    /// GA-338: the app outside Hersir the token was made for (its scope's `client`): `CLAUDE_DESKTOP`, where only the
+    /// tools that read work (`IN_CLAUDE_DESKTOP`).
+    pub client: Option<String>,
+}
+
+/// GA-338: the `client` in the scope of Claude Desktop's lasting token (`crate::claude_desktop`).
+pub const CLAUDE_DESKTOP: &str = "claude-desktop";
+
+impl GizaiTools {
+    /// Only the tools that read are offered and run: in a question (GA-70), and in Claude Desktop (GA-338).
+    fn only_reads(&self) -> bool {
+        self.question.is_some() || self.client.as_deref() == Some(CLAUDE_DESKTOP)
+    }
 }
 
 impl gizai_mcp::Tools for GizaiTools {
     fn list(&self) -> Vec<ToolDef> {
-        // A run on a question only reads: it isn't offered the rest.
-        catalog().into_iter().filter(|t| self.question.is_none() || t.read_only).collect()
+        // A run on a question, and Claude Desktop, only read: they aren't offered the rest.
+        catalog().into_iter().filter(|t| t.read_only || !self.only_reads()).collect()
     }
     async fn call(&self, name: &str, args: Value) -> Result<Value, String> {
         self.call_with_meta(name, args, &Value::Null).await
@@ -40,6 +53,10 @@ impl gizai_mcp::Tools for GizaiTools {
     async fn call_with_meta(&self, name: &str, args: Value, meta: &Value) -> Result<Value, String> {
         if self.question.is_some() && !reads_only(name) {
             return Err(IN_A_QUESTION.replace("{tool}", name));
+        }
+        // GA-338: refused before anything runs, whatever else the scope says.
+        if self.client.as_deref() == Some(CLAUDE_DESKTOP) && !reads_only(name) {
+            return Err(IN_CLAUDE_DESKTOP.replace("{tool}", name));
         }
         // The answer's stream shows the tool use each call comes from, with the id Claude Code gives the call.
         let from = Stream { run: self.run.as_deref().unwrap_or_default(), tool_use: meta.get("claudecode/toolUseId").and_then(Value::as_str) };
@@ -51,6 +68,15 @@ impl gizai_mcp::Tools for GizaiTools {
 /// says (answers on the card and continues the agent, or asks the user).
 const IN_A_QUESTION: &str = "{tool} can't be used while you look at an agent's question: you only look things up (memory, the card, \
     docs, your copies of the code). End with your GIZAI_RESULT line: Hersir answers on the card and continues the agent, or asks the user.";
+
+/// GA-338: why Claude Desktop can't use a tool that changes something (writes come later, and will wait for the user's
+/// Approve in Hersir). Word for word as the card has it.
+pub const IN_CLAUDE_DESKTOP: &str = "{tool} isn't available in Claude Desktop yet: Claude Desktop can only read your Hersir board for now.";
+
+/// GA-338: why a call over MCP whose token is for no chat, board check or question can't use a tool that changes
+/// something (`call_scoped`): none of the rules that make such a call wait for the user's Approve would hold.
+pub const ONLY_READS: &str = "{tool} isn't available with this token: it is for no chat, board check or question, so it can only read \
+    your Hersir board.";
 
 /// A tool that only reads (`ToolDef::read_only`): the gets, lists and reads, check_board and the memory reads.
 fn reads_only(name: &str) -> bool {
@@ -173,6 +199,14 @@ async fn shown(st: &AppState, thread: &str, from: Option<Stream<'_>>, name: &str
 #[allow(clippy::too_many_arguments)]
 async fn call_scoped(st: &AppState, actor: &str, thread: Option<&str>, check: Option<&str>, from: Option<Stream<'_>>, name: &str, args: Value,
                      approved: bool) -> Result<Value, String> {
+    // GA-338: fail closed. A call over MCP (`from`) with no chat thread and no board check would skip every rule that makes
+    // a call wait for the user's Approve (`Cx::outside` is None without a thread), so only a tool that reads runs there,
+    // whatever else its token's scope says: Claude Desktop's token (refused before this already, `IN_CLAUDE_DESKTOP`), a
+    // question's (refused before this too, `IN_A_QUESTION`), or any other. The calls Hersir makes itself (`call`,
+    // `call_in`, `call_check`, `call_approved`) have no `from`.
+    if from.is_some() && thread.is_none() && check.is_none() && !reads_only(name) {
+        return Err(ONLY_READS.replace("{tool}", name));
+    }
     let a = Args(match args {
         Value::Object(m) => m,
         Value::Null => Map::new(),

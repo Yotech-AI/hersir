@@ -283,7 +283,8 @@ async fn the_team_leads_run_on_a_question_starts_claude_code_with_its_own_memory
 async fn in_a_question_the_team_lead_gets_only_the_tools_that_read_memory_and_cards() {
     let tmp = tempfile::tempdir().unwrap();
     let t = setup(tmp.path(), "FAKE_ASKS");
-    let tools = gizai_lib::tools::GizaiTools { st: t.st.clone(), actor: t.lead.clone(), thread: None, check: None, run: None, question: Some("asked".into()) };
+    let tools = gizai_lib::tools::GizaiTools { st: t.st.clone(), actor: t.lead.clone(), thread: None, check: None, run: None, question: Some("asked".into()),
+                                              client: None };
     let listed: Vec<String> = tools.list().into_iter().map(|d| d.name).collect();
     let all: Vec<String> = gizai_lib::tools::catalog().into_iter().map(|d| d.name).collect();
     for name in ["memory_search", "memory_read", "memory_list", "get_task", "read_doc", "list_docs", "check_board"] {
@@ -300,7 +301,7 @@ async fn in_a_question_the_team_lead_gets_only_the_tools_that_read_memory_and_ca
     let got = tools.call("get_task", json!({"task": "KADE-1"})).await.unwrap();
     assert_eq!(got["task"]["with_team_lead"], false);
     // a chat or board check token isn't limited this way
-    let chat = gizai_lib::tools::GizaiTools { st: t.st.clone(), actor: t.lead.clone(), thread: None, check: None, run: None, question: None };
+    let chat = gizai_lib::tools::GizaiTools { st: t.st.clone(), actor: t.lead.clone(), thread: None, check: None, run: None, question: None, client: None };
     assert_eq!(chat.list().len(), all.len());
 }
 

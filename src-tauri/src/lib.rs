@@ -4,6 +4,8 @@ pub mod bitbucket;
 pub mod board;
 pub mod changes;
 pub mod chat;
+// Claude Desktop's chat reads your Hersir board: its lasting token and the entry for its settings (GA-338).
+pub mod claude_desktop;
 pub mod clis;
 pub mod code;
 mod commands;
@@ -69,6 +71,9 @@ pub struct AppState {
     pub mcp_socket: PathBuf,
     /// The `hersir-mcp` shim Claude Code starts in a chat turn (None: not found next to Gizai).
     pub mcp_shim: Option<PathBuf>,
+    /// GA-338: where Claude Desktop keeps its settings on this computer (`gizai_agents::claude_desktop::folder`; it may not
+    /// be there). A test's Gizai points it into its own folder (`test_state`), never at the real one.
+    pub claude_desktop_dir: Option<PathBuf>,
     pub chat: Arc<chat::ChatManager>,
     /// The Chief's read-only copies of the projects' code (see `code`).
     pub code: Arc<code::Copies>,
@@ -410,7 +415,7 @@ fn open_data(dir: PathBuf, notify: Arc<dyn Fn(runs::Note) + Send + Sync>, defaul
     let libreoffice = Arc::new(gizai_agents::libreoffice::LibreOffice::new(dir.join("libreoffice")));
     let st = AppState { keychain, tokens, db: Arc::new(db), you_id: seed.you_id, data_dir: dir, runs: Arc::new(runs::RunManager::default()),
                   run_memory: Arc::new(Default::default()), temp_base: gizai_agents::worktree::temp_base(), mcp_socket,
-                  mcp_shim: mcp::shim_bin(), chat: Arc::new(chat::ChatManager::default()), code: Arc::new(code::Copies::default()), pulls: Arc::new(pulls::PullChecks::default()),
+                  mcp_shim: mcp::shim_bin(), claude_desktop_dir: gizai_agents::claude_desktop::folder(), chat: Arc::new(chat::ChatManager::default()), code: Arc::new(code::Copies::default()), pulls: Arc::new(pulls::PullChecks::default()),
                   changes: Arc::new(changes::PullDiffs::default()), editor: Arc::new(editor::Fetches::default()),
                   github: Arc::new(github::Logins::default()), updates: Arc::new(update::Updates::default()), _lock: Arc::new(lock), notify,
                   desktop: notifications::Desktop::silent(), inbox: Arc::new(notifications::Watch::default()),
@@ -582,6 +587,9 @@ pub fn test_state(dir: &std::path::Path) -> AppState {
     {
         st.mcp_socket = mcp::socket_path(&st.data_dir);
     }
+    // GA-338: never the real Claude Desktop's settings in tests: a folder of the test's own, not made yet (as if Claude
+    // Desktop isn't installed); a test that wants it installed makes the folder.
+    st.claude_desktop_dir = Some(dir.join("claude-desktop"));
     // Never the real keychain in tests: one in memory, unless the test names a file for it.
     if env::var_os("HERSIR_FAKE_KEYCHAIN").is_none() {
         st.keychain = Arc::new(gizai_agents::secrets::MemoryKeychain::default());
@@ -834,6 +842,7 @@ pub fn run() {
             logs::get_logs_info, logs::open_logs_folder, logs::dismiss_unexpected_end, logs::selftest_panic,
             commands::list_mcp_servers, commands::save_mcp_server, commands::remove_mcp_server, commands::list_mcp_tools,
             commands::scan_claude_code_mcp, commands::import_mcp_servers, commands::mcp_sign_in, commands::mcp_sign_out,
+            commands::claude_desktop_status, commands::claude_desktop_connect, commands::claude_desktop_disconnect,
             commands::agent_mcp, commands::save_agent_mcp, commands::agent_cli_tools, commands::save_agent_cli_tools, commands::ask_cli_tools,
             commands::browser_entry, commands::save_browser_entry, commands::list_browser_tools,
             commands::list_clients, commands::get_client, commands::save_client, commands::archive_client,

@@ -33,7 +33,8 @@ async fn initialize_echoes_the_clients_protocol_version() {
     let r = ask(req(1, "initialize", json!({"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "claude-code"}}))).await;
     assert_eq!(r["id"], 1);
     assert_eq!(r["result"]["protocolVersion"], "2025-11-25");
-    assert_eq!(r["result"]["serverInfo"]["name"], "gizai");
+    // GA-338: the name Claude Desktop shows; the Chief's tools keep mcp__gizai__… from the key in its MCP config.
+    assert_eq!(r["result"]["serverInfo"]["name"], "hersir");
     assert!(r["result"]["capabilities"]["tools"].is_object());
 }
 

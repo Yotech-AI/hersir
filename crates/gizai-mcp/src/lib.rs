@@ -66,7 +66,9 @@ pub async fn handle<T: Tools>(tools: &T, msg: &Value) -> Option<Value> {
             ok(id, json!({
                 "protocolVersion": version,
                 "capabilities": {"tools": {"listChanged": false}},
-                "serverInfo": {"name": "gizai", "version": env!("CARGO_PKG_VERSION")},
+                // GA-338: the name Claude Desktop shows. Claude Code names the Chief's tools by the key in its MCP config
+                // (`gizai`, so mcp__gizai__…), not by this.
+                "serverInfo": {"name": "hersir", "version": env!("CARGO_PKG_VERSION")},
                 "instructions": INSTRUCTIONS,
             }))
         }
@@ -99,7 +101,19 @@ pub async fn handle<T: Tools>(tools: &T, msg: &Value) -> Option<Value> {
 }
 
 /// Reads JSON-RPC messages, one per line, and writes one line per answer until the reader ends.
-pub async fn serve<R, W, T>(reader: R, mut writer: W, tools: &T) -> std::io::Result<()>
+pub async fn serve<R, W, T>(reader: R, writer: W, tools: &T) -> std::io::Result<()>
+where
+    R: AsyncBufRead + Unpin,
+    W: AsyncWrite + Unpin,
+    T: Tools,
+{
+    serve_while(reader, writer, tools, || None).await
+}
+
+/// `serve`, asking `refused` before each message whether the connection may go on. When it gives a reason, the message
+/// isn't answered: the reason goes to the client as a refused hello's does (`{"error": why}`), and the connection ends.
+/// GA-338: Claude Desktop's lasting token, revoked while its connection is open.
+pub async fn serve_while<R, W, T>(reader: R, mut writer: W, tools: &T, refused: impl Fn() -> Option<String>) -> std::io::Result<()>
 where
     R: AsyncBufRead + Unpin,
     W: AsyncWrite + Unpin,
@@ -109,6 +123,11 @@ where
     while let Some(line) = lines.next_line().await? {
         if line.trim().is_empty() {
             continue;
+        }
+        if let Some(why) = refused() {
+            writer.write_all(format!("{}\n", json!({"error": why})).as_bytes()).await?;
+            writer.flush().await?;
+            return writer.shutdown().await;
         }
         let answer = match serde_json::from_str::<Value>(&line) {
             Ok(msg) => handle(tools, &msg).await,

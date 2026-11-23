@@ -57,7 +57,7 @@ async fn a_valid_token_gets_tools() {
         json!({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "get_overview", "arguments": {}}}),
     ]).await;
     assert_eq!(out.len(), 3, "{out:?}");
-    assert_eq!(out[0]["result"]["serverInfo"]["name"], "gizai");
+    assert_eq!(out[0]["result"]["serverInfo"]["name"], "hersir", "GA-338");
     assert_eq!(out[1]["result"]["tools"].as_array().unwrap().len(), tools::catalog().len());
     assert_eq!(out[2]["result"]["isError"], false, "{}", out[2]);
     let overview: Value = serde_json::from_str(out[2]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();

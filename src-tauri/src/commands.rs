@@ -1176,6 +1176,28 @@ pub async fn mcp_sign_out(app: AppHandle, st: State<'_, AppState>, id: String) -
     Ok(out)
 }
 
+// ---- Claude Desktop (Settings → MCP servers → Claude Desktop, GA-338) ----
+
+#[tauri::command]
+pub async fn claude_desktop_status(st: State<'_, AppState>) -> R<crate::claude_desktop::ClaudeDesktopStatus> {
+    off(&st, crate::claude_desktop::status).await
+}
+
+/// Called from JS with `{ addToConfig }`.
+#[tauri::command]
+pub async fn claude_desktop_connect(app: AppHandle, st: State<'_, AppState>, add_to_config: bool) -> R<crate::claude_desktop::ClaudeDesktopConnection> {
+    let out = off(&st, move |st| crate::claude_desktop::connect(st, add_to_config)).await?;
+    changed(&app, "settings");
+    Ok(out)
+}
+
+#[tauri::command]
+pub async fn claude_desktop_disconnect(app: AppHandle, st: State<'_, AppState>) -> R<crate::claude_desktop::ClaudeDesktopStatus> {
+    let out = off(&st, crate::claude_desktop::disconnect).await?;
+    changed(&app, "settings");
+    Ok(out)
+}
+
 /// The agent form's Tools section.
 #[tauri::command]
 pub async fn agent_mcp(st: State<'_, AppState>, agent_id: String) -> R<crate::mcp_servers::AgentMcpView> {
