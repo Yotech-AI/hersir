@@ -6,6 +6,7 @@
 // same drag and drop rules.
 // GA-306 (the Tasks page's board): Deploy and Done have Move all (to Deploy's next column) and Archive all in their head,
 // and a checkbox on each card to move or archive a selection at once, one column at a time.
+// GA-343 (the board view in Claude Desktop's chat, src/widget): readOnly, no card can be dragged.
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   DndContext, MeasuringStrategy, PointerSensor, closestCenter, getFirstCollision, pointerWithin, useDroppable, useSensor, useSensors,
@@ -213,8 +214,11 @@ function Column({ state, ids, byId, rail, onToggleRail, onOpen, onAdd, onArchive
   );
 }
 
-export function Board({ tasks, states, onMove, onOpen, onAdd, onArchive, onMoveMany, onArchiveMany, working = new Map(), members, shots, compact, marked }: {
+export function Board({ tasks, states, onMove, onOpen, onAdd, onArchive, onMoveMany, onArchiveMany, working = new Map(), members, shots, compact, marked,
+  readOnly }: {
   tasks: Task[]; states: WorkflowState[];
+  /** GA-343 (the board view in Claude Desktop's chat): no card can be dragged. */
+  readOnly?: boolean;
   /** task id → the newest round's screenshots of a card in Review (GA-185); the other columns show none. */
   shots?: Map<string, number>;
   /** The team's members, so an Auto column's note names its agents. */
@@ -255,7 +259,8 @@ export function Board({ tasks, states, onMove, onOpen, onAdd, onArchive, onMoveM
     if (!dragging.current) setCols(groupByColumn(tasks, stateKey.split(",")));
   }, [tasks, stateKey]);
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const pointer = useSensor(PointerSensor, { activationConstraint: { distance: 5 } });
+  const sensors = useSensors(readOnly ? null : pointer);
   const findCol = (id: string) => (id in colsRef.current ? id : Object.keys(colsRef.current).find((k) => colsRef.current[k].includes(id)));
   const isRail = (stateId: string) => {
     const s = states.find((x) => x.id === stateId);
