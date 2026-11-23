@@ -254,13 +254,14 @@ pub fn run_note(db: &Db, run_id: &str) -> Result<Option<RunNote>> {
     Ok(raw.map(|j| serde_json::from_str(&j).unwrap_or_default()))
 }
 
+/// GA-344: logged on the run, as its card's Screenshots tab changes with it (`feed`).
 fn write_note(db: &Db, run_id: &str, note: &RunNote) -> Result<()> {
     db.write(None, |w| {
         let n = w.conn().execute("UPDATE runs SET screenshots_note = ?2 WHERE id = ?1", rusqlite::params![run_id, serde_json::to_string(note)?])?;
         if n == 0 {
             return Err(Error::NotFound(format!("run {run_id}")));
         }
-        Ok(())
+        w.update("runs", run_id, serde_json::json!({"screenshots_note": "saved"}))
     })
 }
 
@@ -422,6 +423,8 @@ pub fn prune(db: &Db, now_ms: i64, keep_sets: u32, keep_days: u32) -> Result<Pru
             pruned.files += ids.len();
             if c.execute("UPDATE runs SET screenshots_note = NULL WHERE id = ?1 AND screenshots_note IS NOT NULL", [run])? > 0 || !ids.is_empty() {
                 pruned.sets += 1;
+                // GA-344: on the run too, so the card it was on counts as changed (`feed`): its files' rows are gone.
+                w.update("runs", run, serde_json::json!({"screenshots_note": null}))?;
             }
         }
         Ok(pruned)
