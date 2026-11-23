@@ -153,6 +153,26 @@ const WRITES: Record<string, (args: Row) => unknown> = {
     const view = fixture("agent_mcp", { agentId });
     return view.found ? structuredClone(view.value) : empty("agent_mcp", view.why);
   },
+  // Settings → MCP servers → Claude Desktop (GA-340, on GA-338's contract): Connect makes a made-up key, new each time, and
+  // with addToConfig "adds" the entry (only the status changes: a browser writes no file); Disconnect ends the key, and the
+  // settings keep the entry, as the real ones do.
+  claude_desktop_connect: ({ addToConfig }) => {
+    const st = claudeDesktop();
+    if (!st) return empty("claude_desktop_connect", "claude_desktop_connect");
+    if (!st.shimPath) return Promise.reject("Hersir can't find its hersir-mcp program next to Hersir: reinstall Hersir");
+    const configPath = (st.configPath as string | null) ?? null;
+    const wroteConfig = !!addToConfig && !!configPath;
+    const backupPath = wroteConfig && !st.configHasHersir ? `${configPath}.before-hersir` : null;
+    Object.assign(st, { connected: true, connectedAt: Date.now(), configHasHersir: !!st.configHasHersir || wroteConfig });
+    const entry = JSON.stringify({ mcpServers: { hersir: { command: st.shimPath, args: [], env: { HERSIR_MCP_KEY: madeUpKey() } } } }, null, 2);
+    return { entry, wroteConfig, configPath, backupPath, configError: null, status: structuredClone(st) };
+  },
+  claude_desktop_disconnect: () => {
+    const st = claudeDesktop();
+    if (!st) return empty("claude_desktop_disconnect", "claude_desktop_disconnect");
+    Object.assign(st, { connected: false, connectedAt: null });
+    return structuredClone(st);
+  },
   open_file: ({ id }) => { console.info(`Hersir in a browser: Open would show file ${id} in the system's image viewer.`); return null; },
   // Settings → General → Backups (GA-217): the backend's refusals, the status with what changed, and backups-changed. There
   // is no folder picker in a browser, so Browse… does nothing; Turn off does.
@@ -266,6 +286,15 @@ function bulk(ids: string[], one: (t: Row) => string | null) {
   }
   changed("tasks");
   return out;
+}
+
+/** claude_desktop_status's fixture, to change it in place. */
+const claudeDesktop = () => commands.claude_desktop_status as Row | undefined;
+
+/** A key for the browser mode's Claude Desktop entry: made up, and no key to any board. */
+function madeUpKey(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return `browser-demo-${[...bytes].map((b) => b.toString(16).padStart(2, "0")).join("")}`;
 }
 
 /** How long each step of a browser-mode backup takes. */

@@ -1785,6 +1785,13 @@
       },
       "$by": "path"
     },
+    "claude_desktop_status": {
+      "configHasHersir": false,
+      "configPath": "/home/you/.config/Claude/claude_desktop_config.json",
+      "connected": false,
+      "connectedAt": null,
+      "shimPath": "/home/you/.local/lib/hersir/hersir-mcp"
+    },
     "claude_models": [
       {
         "description": "Use the default model (currently Opus 5.5) · $4/$20 per Mtok",

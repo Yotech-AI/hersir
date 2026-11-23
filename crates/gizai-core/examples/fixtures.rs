@@ -636,6 +636,11 @@ fn main() {
                            browser.version),
         "needs": needs, "problem": null, "listed": null,
         "usedBy": agents.iter().filter(|a| a.tools.browser_on()).map(|a| a.name.clone()).collect::<Vec<_>>()}));
+    // Settings → MCP servers → Claude Desktop (GA-340, on GA-338's ClaudeDesktopStatus): not connected yet, its settings file
+    // found without the Hersir entry, and hersir-mcp next to Hersir. mock.ts answers Connect and Disconnect.
+    c.insert("claude_desktop_status".into(), json!({"connected": false, "connectedAt": null,
+        "configPath": "/home/you/.config/Claude/claude_desktop_config.json", "configHasHersir": false,
+        "shimPath": "/home/you/.local/lib/hersir/hersir-mcp"}));
     let catalog: Vec<Value> = CATALOG.iter().map(|(id, label, group, description, risk, how, note)| json!({"id": id, "label": label, "group": group,
         "description": description, "risk": risk, "how": how, "note": note, "reported": false})).collect();
     // ToolsView for Claude Code: the browser's state in the agent's last run, and its saved switches (null for a new agent).
