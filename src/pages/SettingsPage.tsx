@@ -9,6 +9,7 @@ import { AppearanceSettings } from "../components/AppearanceSettings";
 import { AskLeadSetting } from "../components/AskLeadSetting";
 import { BackupSettings } from "../components/BackupSettings";
 import { BitbucketSettings } from "../components/BitbucketSettings";
+import { ClaudeDesktopSettings } from "../components/ClaudeDesktopSettings";
 import { CliSettings } from "../components/CliSettings";
 import { EditorFoldersSetting } from "../components/EditorFoldersSetting";
 import { GithubSettings } from "../components/GithubSettings";
@@ -20,6 +21,7 @@ import { QuitSettings } from "../components/QuitSettings";
 import { focusLimit, ScreenshotSettings } from "../components/ScreenshotSettings";
 import { UpdateSettings } from "../components/UpdateSettings";
 import { limitsProblem, type LimitsProblem } from "../lib/screenshotSettings";
+import { CD_TEXT, CD_TITLE } from "../lib/claudeDesktop";
 import { cardAgents, RUNS_MEMORY_PER_RUN_HINT, runsAtOnceWarning, runsMemoryError, runsMemoryHint, runsMemoryPerRunError, type CardAgent } from "../lib/settings";
 
 /** Settings → Notifications: a switch per kind, in this order. */
@@ -147,6 +149,7 @@ export function SettingsPage({ tab }: { tab?: string } = {}) {
           <FormSection title="MCP servers" text="Outside services your agents can use, like Otus OS: one list for all agents, switched on per agent in its form → Tools. Values of environment and header lines and sign-ins stay in your keychain.">
             <Field label="Servers" wide hint="Saved as soon as you add, change or remove one. Only you add, import, sign in to and switch on servers: the Chief can't."><McpSettings /></Field>
           </FormSection>
+          <FormSection title={CD_TITLE} text={CD_TEXT}><ClaudeDesktopSettings /></FormSection>
         </div>
         <div {...panel("github")}>
           <GithubSettings s={s} setS={setS} save={save} say={say} savedAt={savedAt} />

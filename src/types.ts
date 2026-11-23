@@ -822,3 +822,20 @@ export type ToolsView = {
 /** The built-in browser in Settings → MCP servers: only its version and browser program change. */
 export type BrowserEntry = { version: string; program: string };
 export type BrowserView = BrowserEntry & { id: string; command: string; needs: BrowserNeeds; problem?: string | null; listed?: McpListed | null; usedBy: string[] };
+// Claude Desktop (GA-338's contract): Settings → MCP servers → Claude Desktop connects the Claude Desktop app to Hersir
+// through the hersir-mcp program, with a key of its own.
+export interface ClaudeDesktopStatus {
+  connected: boolean;
+  connectedAt: number | null;   // ms: when the current connection was made
+  configPath: string | null;    // Claude Desktop's settings file, when its folder exists on this computer
+  configHasHersir: boolean;     // that file has an mcpServers.hersir entry
+  shimPath: string | null;      // the hersir-mcp program; null when Hersir can't find it
+}
+export interface ClaudeDesktopConnection {
+  entry: string;                // the JSON to paste, with the key in it: shown only now
+  wroteConfig: boolean;         // Hersir added the entry to configPath
+  configPath: string | null;
+  backupPath: string | null;    // the copy of the old settings file, when Hersir wrote over one
+  configError: string | null;   // why Hersir didn't write the file, when it was asked to
+  status: ClaudeDesktopStatus;  // after connecting
+}
