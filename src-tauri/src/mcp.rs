@@ -196,7 +196,8 @@ async fn pipe_connection(st: AppState, pipe: NamedPipeServer, me: Arc<gizai_mcp:
     serve_turn(st, r, w, same_user).await
 }
 
-/// One connection, the same on every system: the hello line with the turn's token, then the tools as its agent.
+/// One connection, the same on every system: the hello line with the turn's token, then the tools as its agent (or, for
+/// Claude Desktop's lasting token, as you: GA-338).
 async fn serve_turn<R, W>(st: AppState, r: R, w: W, same_user: bool)
 where
     R: AsyncRead + Unpin,
@@ -216,12 +217,30 @@ where
     };
     let grant = match gizai_core::tokens::verify(&st.db, &token) {
         Ok(Some(g)) => g,
-        _ => return refuse(w, "this token is not valid: the chat turn has ended or it was never issued").await,
+        _ => return refuse(w, NOT_VALID).await,
     };
     let thread = grant.scope.get("chat").and_then(|v| v.as_str()).map(str::to_string);
     let check = grant.scope.get("check").and_then(|v| v.as_str()).map(str::to_string);
     let run = grant.scope.get("run").and_then(|v| v.as_str()).map(str::to_string);
     let question = grant.scope.get("question").and_then(|v| v.as_str()).map(str::to_string);
-    let tools = GizaiTools { st, actor: grant.actor_id, thread, check, run, question };
-    let _ = gizai_mcp::serve(reader, w, &tools).await;
+    // GA-338: Claude Desktop's lasting token says `{"client": "claude-desktop"}`: only the tools that read.
+    let client = grant.scope.get("client").and_then(|v| v.as_str()).map(str::to_string);
+    let lasting = client.is_some();
+    let db = st.db.clone();
+    let tools = GizaiTools { st, actor: grant.actor_id, thread, check, run, question, client };
+    if lasting {
+        // GA-338: Claude Desktop keeps its connection while it runs, for days, and Disconnect revokes its token meanwhile:
+        // the token is checked again before each message, and once it is revoked the connection ends, refused as a new
+        // one with that token would be.
+        let refused = || match gizai_core::tokens::verify(&db, &token) {
+            Ok(Some(_)) => None,
+            _ => Some(NOT_VALID.to_string()),
+        };
+        let _ = gizai_mcp::serve_while(reader, w, &tools, refused).await;
+    } else {
+        let _ = gizai_mcp::serve(reader, w, &tools).await;
+    }
 }
+
+/// Why a token is refused: revoked, expired or never made.
+const NOT_VALID: &str = "this token is not valid: the chat turn has ended or it was never issued";
