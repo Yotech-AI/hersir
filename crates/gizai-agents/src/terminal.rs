@@ -181,6 +181,10 @@ impl Terminals {
     /// Starts `start.program` in a new pseudo-terminal in `start.folder` and adds it to the list; `changed` hears of it
     /// and of everything that happens to it later. Nothing starts when the pseudo-terminal or the shell can't.
     pub fn open(&self, start: Start, changed: Changed) -> Result<TerminalSession, String> {
+        // GA-322: not in a card worktree whose git folder a run changed, which the shell's git (its prompt's too) follows
+        if let Some(why) = crate::worktree::card_problem(std::path::Path::new(&start.folder)) {
+            return Err(why);
+        }
         let shell = shell_name(&start.program);
         let (cols, rows) = (size(start.cols, 80), size(start.rows, 24));
         let opened = std::panic::catch_unwind(|| native_pty_system().openpty(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 }))

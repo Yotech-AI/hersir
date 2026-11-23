@@ -257,6 +257,13 @@ pub fn git_folder_problem(repo: &Path, wt: &Path) -> Option<String> {
     None
 }
 
+/// `git_folder_problem` for the folder `dir` when it is (or is in) a card worktree (`card_folder`), before Hersir starts
+/// a program of yours there that runs git itself, such as your editor or a terminal's shell. None for any other folder.
+pub fn card_problem(dir: &Path) -> Option<String> {
+    let (wt, repo) = card_of(dir)?;
+    git_folder_problem(&repo, &wt)
+}
+
 /// Whether the `.git` file of the worktree at `work_tree` says `gitdir: <git_dir>` (absolute, or relative to the
 /// worktree), and is a file, not a folder or a link.
 fn gitfile_points_at(work_tree: &Path, git_dir: &Path) -> bool {

@@ -1173,6 +1173,10 @@ pub fn open_args(id: AppId, dir: &Path, file: Option<&Path>, line: Option<u32>) 
 /// Starts the editor `id` at `program` (`find_app`) with `open_args`, with `path` as its PATH, and leaves it: Gizai
 /// doesn't wait for it, and on Linux and macOS it has a process group of its own, so it doesn't end with Gizai.
 pub fn open_in(id: AppId, program: &Path, dir: &Path, file: Option<&Path>, line: Option<u32>, path: &OsStr) -> Result<(), String> {
+    // GA-322: not in a card worktree whose git folder a run changed, which the editor's own git would follow
+    if let Some(why) = worktree::card_problem(dir) {
+        return Err(why);
+    }
     let mut cmd = os::command(program);
     cmd.args(open_args(id, dir, file, line)).current_dir(dir).env("PATH", path)
         .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
