@@ -149,3 +149,106 @@ Notes:
 - A card's click does nothing yet; GA-349's card view could open there.
 - A column's count in the view is the number of cards sent (at most 50, 20 in a folded column), not its `total`:
   Board.tsx counts the cards it gets.
+
+## A Desktop Extension (`.mcpb`, GA-346)
+
+GA-346, 24 Nov 2026. The question: could a Desktop Extension, an `.mcpb` file you double-click, set Claude Desktop up in
+one click instead of Connect's entry in its settings, and do Hersir's views show for a server installed that way?
+
+**Result: an `.mcpb` for Hersir builds and validates; whether Claude Desktop shows its views is not confirmed. The docs
+recommend Connect (the settings entry), and Hersir offers no `.mcpb`.** docs/features/claude-desktop.md says so to
+users.
+
+### What was tried
+
+A bundle with the manifest below and a placeholder for `server/hersir-mcp`, packed with the official CLI,
+`npx -y @anthropic-ai/mcpb pack <folder> hersir.mcpb` (`@anthropic-ai/mcpb` 2.1.2): "Manifest schema validation
+passes!", then an unsigned bundle ("WARNING: Not signed"). The key goes in as a `sensitive` user setting, which the
+manifest spec says Claude Desktop masks and stores securely; the socket as a plain one.
+
+```json
+{
+  "manifest_version": "0.3",
+  "name": "hersir",
+  "display_name": "Hersir",
+  "version": "0.19.0",
+  "description": "Your Hersir board in Claude's chat: Claude gets the Chief's tools and works by its rules. Hersir must be open.",
+  "author": { "name": "Yotech" },
+  "homepage": "https://hersir.dev",
+  "server": {
+    "type": "binary",
+    "entry_point": "server/hersir-mcp",
+    "mcp_config": {
+      "command": "${__dirname}/server/hersir-mcp",
+      "args": ["--desktop"],
+      "env": { "HERSIR_SOCKET": "${user_config.socket}", "HERSIR_TOKEN": "${user_config.key}" }
+    }
+  },
+  "user_config": {
+    "key": {
+      "type": "string", "title": "Key", "sensitive": true, "required": true,
+      "description": "The HERSIR_TOKEN value from Hersir: Settings → MCP servers → Claude Desktop → Connect, with Add it to Claude Desktop's settings off."
+    },
+    "socket": { "type": "string", "title": "Hersir's socket", "required": true, "description": "The HERSIR_SOCKET value from the same entry." }
+  },
+  "compatibility": { "platforms": ["darwin", "win32"] }
+}
+```
+
+Not tried: installing it. Agents can't run Claude Desktop (it would open on Jefsev's screen, with their Claude account),
+so the checklist below is for Jefsev, on the Mac.
+
+### What is known
+
+- **Views.** Nothing in the MCPB manifest spec (0.3) or Claude's page on building `.mcpb` files mentions MCP Apps: a
+  bundle names its server, not its resources, and the server still declares the extension at `initialize`, as the shim
+  does now. Claude Desktop starts an extension's server over stdio, as it starts the settings entry, so an `.mcpb` is
+  not expected to show views where the entry doesn't. An open report,
+  [ext-apps#671](https://github.com/modelcontextprotocol/ext-apps/issues/671) (since May 2026, no fix by 24 Nov), says
+  Claude Desktop on Windows and Mac shows no view for MCP Apps from some servers, a local stdio server in
+  `claude_desktop_config.json` among them, while the tool call and the resource read succeed.
+- **Systems.** Claude's page on `.mcpb` files names macOS and Windows. Connect works on Linux too (Claude Desktop's beta).
+- **Install.** Double-click the file, drag it into Claude Desktop, or Settings → Extensions → Advanced settings →
+  Install Extension…. Claude Desktop then shows the extension's details and a form for its user settings.
+
+### Connect or an `.mcpb`
+
+| | Connect (the settings entry) | An `.mcpb` |
+| --- | --- | --- |
+| Setup | One click when Claude Desktop's settings are found; else Copy and paste | A file to make, then a double-click and a form |
+| The key | In `claude_desktop_config.json`, 0600 on macOS and Linux | Pasted into the install form, or inside the `.mcpb` file; Claude Desktop stores a `sensitive` setting securely |
+| Connect again | Writes the new key into the file | The new key is pasted in the extension's settings |
+| `hersir-mcp` | The installed one, updated with Hersir | A copy in the extension, not updated with Hersir |
+| Systems | macOS, Windows, Linux | macOS, Windows |
+| Views | Shown when Claude Desktop shows MCP Apps (GA-343's checklist) | Unconfirmed |
+
+An `.mcpb` would gain one thing: the key out of a plain file, if Claude Desktop keeps `sensitive` settings in the
+system's keychain. It costs a file to make for each Connect, a copy of `hersir-mcp` that falls behind on updates, and
+Linux. Revisit when the checklist shows views for an `.mcpb` and Claude Desktop keeps the key in the keychain: then
+Hersir could make the bundle itself, with the installed shim and the socket filled in, and only the key to paste.
+
+### Jefsev's checklist for the `.mcpb` (Mac)
+
+With a Hersir built from main:
+
+1. Hersir: Settings → MCP servers → Claude Desktop. Switch **Add it to Claude Desktop's settings** off, press
+   **Connect again**, and keep the entry open. In Claude Desktop → Settings → Developer → Edit Config, remove the
+   `hersir` server, so the extension is the only Hersir server.
+2. In a new folder `hersir-mcpb`: `manifest.json` above, and `server/hersir-mcp`, a copy of the entry's `command`.
+3. `npx -y @anthropic-ai/mcpb pack hersir-mcpb hersir.mcpb`
+4. Double-click `hersir.mcpb`. In the form, paste the entry's `HERSIR_TOKEN` as Key and `HERSIR_SOCKET` as Hersir's
+   socket, and install.
+5. In a new chat: "Show me the board of project GA in Hersir".
+6. Afterwards: remove the extension, and Connect again with the box on.
+
+| Check | Mac |
+| --- | --- |
+| Does an unsigned `.mcpb` install? What does Claude Desktop say? | |
+| Does the server start, and does Claude list Hersir's tools? | |
+| Does the board view show inline? | |
+| Does it show inline with the settings entry (GA-343's checklist)? | |
+| Is the Key kept in the keychain (Keychain Access), or in a file? | |
+
+Notes:
+
+-
