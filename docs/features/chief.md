@@ -106,6 +106,16 @@ Ask the Chief in a chat, like "Archive Done", and it archives the cards in Done,
 - `list_tasks` with `archived: true` lists the archived cards, and `get_task` finds one by its identifier.
 - A board check never archives or restores cards: it asks you in a chat instead. In a chat that used a tool from outside Hersir, an archive waits for your Approve ([Approve with one click](#approve-with-one-click)); a restore runs at once.
 
+## How long cards took
+
+The Chief estimates a new card from how long similar cards really took: the agents' time and tokens, counted as on the project's Time tracking tab (GA-331). Each start, Continue and nudge is a run. A run counts from its start to its end, up to now while it works; a run cut off when Hersir closed counts at most the run time limit (Settings → Agents and runs). The Chief's chats and board checks have no card, so they count nowhere.
+
+- `get_task` gives the card `agent_time`, over all its runs: `{"runs": 4, "minutes": 95, "working_now": false, "input_tokens": 12345678, "output_tokens": 234567}`. Each of its latest 5 runs has `minutes` (null for a run that never started) and `tokens` (input and output).
+- `list_tasks` gives every card `agent_minutes` and `tokens` (0 for a card without runs), also with `archived: true`.
+- `get_project` gives `time_tracking`: `cards_with_runs`, and the runs, agent minutes and tokens over all its cards, archived ones too. Its `done_cards` counts the cards in Done that had runs, with the median and 90th percentile of their agent minutes (null when there are none).
+
+Minutes are whole minutes, rounded. Input tokens include the cache.
+
 ## The board check
 
 Agent settings → Chat → Check the board every 15 min, off until you turn it on; the minutes go from 5 to 1440. It looks for answered questions, held and stuck cards, and cards no agent will start.

@@ -47,7 +47,11 @@ fn the_catalog_has_unique_names_and_object_schemas() {
     for t in &cat {
         assert_eq!(t.input_schema["type"], "object", "{}", t.name);
         assert!(t.input_schema["properties"].is_object(), "{}", t.name);
-        assert!(!t.description.is_empty() && t.description.len() < 600, "{}", t.name);
+        // GA-332 ends get_task's and get_project's descriptions with a sentence on agent time, word for word as its card
+        // asks, which takes them past 600 characters: what comes before it stays under 600
+        let before_ga332 = ["agent_time: what the agents' runs", "time_tracking: its agents' minutes"].iter()
+            .fold(t.description.as_str(), |d, s| d.split(s).next().unwrap_or(d));
+        assert!(!t.description.is_empty() && before_ga332.len() < 600, "{}: {} characters before GA-332's sentence", t.name, before_ga332.len());
         let reads = t.name.starts_with("get_") || t.name.starts_with("list_") || t.name.starts_with("read_") || t.name == "check_board"
             || matches!(t.name.as_str(), "memory_list" | "memory_search" | "memory_read");
         assert_eq!(t.read_only, reads, "{}", t.name);

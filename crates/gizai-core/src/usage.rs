@@ -9,12 +9,14 @@
 //! - A run with tokens but no cost has an unknown cost, not $0: Codex, Gemini and Other CLIs report no cost (their runs
 //!   save 0), while Claude Code always reports one, and tokens always cost something.
 //! - Days and months are UTC, like the agents' monthly budgets (`runs::month_start_ms`).
+use std::collections::{HashMap, HashSet};
 use std::ops::AddAssign;
 
-use rusqlite::params;
+use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
 use crate::db::Db;
+use crate::model::Run;
 use crate::{Error, Result};
 
 const DAY_MS: i64 = 86_400_000;
@@ -221,10 +223,30 @@ pub struct CardTime {
     pub output_tokens: i64,
 }
 
+/// The error of a run Hersir found working when it started again (`runs::recover_interrupted`): it ended then, at the
+/// next start-up, not when it stopped.
+const INTERRUPTED: &str = "interrupted";
+
+const MINUTE_MS: i64 = 60_000;
+
 /// The project's Time tracking tab (GA-331): one row per card of the project (open, done, cancelled and archived), with
-/// what every agent's runs on it added up to (builders, QA, DevOps and the Chief's), newest card first. A run removed
-/// (`deleted_at`) is left out, as in `runs::list_for_task`; the Chief's chat turns and board checks have no card, so
-/// they never count.
+/// what every agent's runs on it added up to (builders, QA, DevOps and the Chief's), newest card first, by the rules of
+/// `card_times` (GA-332: the Chief's tools count with them too, so the tab and the tools agree).
+///
+/// An unknown project is `Error::NotFound`.
+pub fn project_time(db: &Db, project_id: &str, max_run_ms: i64) -> Result<Vec<CardTime>> {
+    db.read(|c| {
+        let ids = project_cards(c, project_id)?;
+        let mut times = card_times_in(c, &ids, max_run_ms)?;
+        Ok(ids.iter().filter_map(|id| times.remove(id)).collect())
+    })
+}
+
+/// Each card's agent time and tokens, added up over all of its runs, keyed by task id (GA-332): the one place for the
+/// rules of the project's Time tracking tab (`project_time`) and of the Chief's get_task, list_tasks and get_project. One
+/// query over `task_ids`, archived cards included; an id given twice counts once, and an unknown one isn't in the map.
+/// A run removed (`deleted_at`) is left out, as in `runs::list_for_task`; the Chief's chat turns and board checks have
+/// no card, so they never count.
 ///
 /// - `runs`: the runs that started; a queued run that never did isn't one.
 /// - `time_ms`: each ended run's wall-clock span, from its start to its end (waiting for an approval included), never
@@ -232,34 +254,144 @@ pub struct CardTime {
 ///   counts at most `max_run_ms`, the run time limit as it is set now.
 /// - `running_since`: the earliest start of a run that started and hasn't ended.
 /// - Tokens: the sums; a running run's are saved when it ends.
-///
-/// An unknown project is `Error::NotFound`.
-pub fn project_time(db: &Db, project_id: &str, max_run_ms: i64) -> Result<Vec<CardTime>> {
+pub fn card_times(db: &Db, task_ids: &[String], max_run_ms: i64) -> Result<HashMap<String, CardTime>> {
+    db.read(|c| card_times_in(c, task_ids, max_run_ms))
+}
+
+fn card_times_in(c: &Connection, task_ids: &[String], max_run_ms: i64) -> Result<HashMap<String, CardTime>> {
+    let mut out = HashMap::with_capacity(task_ids.len());
+    if task_ids.is_empty() {
+        return Ok(out);
+    }
     let span = "MAX(r.ended_at - r.started_at, 0)";
     let ended = "r.started_at IS NOT NULL AND r.ended_at IS NOT NULL";
+    // DISTINCT: a card given twice would join its runs twice and count them double
+    let mut st = c.prepare_cached(&format!(
+        "SELECT t.id, t.identifier, t.title, COALESCE(s.name, ''), t.deleted_at IS NOT NULL,
+                count(r.started_at),
+                COALESCE(SUM(CASE WHEN {ended} THEN
+                    CASE WHEN r.error = ?3 THEN MIN({span}, ?2) ELSE {span} END END), 0),
+                MIN(CASE WHEN r.started_at IS NOT NULL AND r.ended_at IS NULL THEN r.started_at END),
+                COALESCE(SUM(r.input_tokens), 0), COALESCE(SUM(r.output_tokens), 0)
+         FROM (SELECT DISTINCT value AS id FROM json_each(?1)) j
+         JOIN tasks t ON t.id = j.id
+         LEFT JOIN workflow_states s ON s.id = t.state_id
+         LEFT JOIN runs r ON r.task_id = t.id AND r.deleted_at IS NULL
+         GROUP BY t.id"))?;
+    let rows = st.query_map(params![serde_json::to_string(task_ids)?, max_run_ms.max(0), INTERRUPTED], |r| Ok(CardTime {
+        task_id: r.get(0)?, identifier: r.get(1)?, title: r.get(2)?, column: r.get(3)?, archived: r.get(4)?,
+        runs: r.get(5)?, time_ms: r.get(6)?, running_since: r.get(7)?, input_tokens: r.get(8)?, output_tokens: r.get(9)?,
+    }))?;
+    for row in rows {
+        let card = row?;
+        out.insert(card.task_id.clone(), card);
+    }
+    Ok(out)
+}
+
+/// The ids of a project's cards (open, done, cancelled and archived), newest first: the rows of its Time tracking tab.
+/// An unknown project is `Error::NotFound`.
+fn project_cards(c: &Connection, project_id: &str) -> Result<Vec<String>> {
+    c.query_row("SELECT 1 FROM projects WHERE id = ?1", [project_id], |_| Ok(()))
+        .optional()?
+        .ok_or_else(|| Error::NotFound(format!("project {project_id}")))?;
+    let mut st = c.prepare("SELECT id FROM tasks WHERE project_id = ?1 ORDER BY created_at DESC, identifier DESC")?;
+    Ok(st.query_map([project_id], |r| r.get(0))?.collect::<rusqlite::Result<Vec<String>>>()?)
+}
+
+/// A card's agent time at `now`, in ms: its ended runs' time, plus the time of the run working on it now (the Time
+/// tracking tab's `agentTimeMs`).
+pub fn agent_ms(c: &CardTime, now: i64) -> i64 {
+    c.time_ms.saturating_add(c.running_since.map_or(0, |since| now.saturating_sub(since).max(0)))
+}
+
+/// A card's agent minutes at `now`, as the Chief's tools give them (GA-332): `agent_ms` in whole minutes, rounded.
+pub fn agent_minutes(c: &CardTime, now: i64) -> i64 {
+    whole_minutes(agent_ms(c, now))
+}
+
+/// One run's agent time at `now`, in ms, by `card_times`' rules for that run alone (GA-332): None for a run that never
+/// started; from its start up to `now` while it works (it started and hasn't ended); once it ended, its span, never below
+/// 0, and at most `max_run_ms` for an interrupted run.
+pub fn run_ms(r: &Run, max_run_ms: i64, now: i64) -> Option<i64> {
+    let start = r.started_at?;
+    Some(match r.ended_at {
+        None => now.saturating_sub(start).max(0),
+        Some(end) if r.error.as_deref() == Some(INTERRUPTED) => end.saturating_sub(start).max(0).min(max_run_ms.max(0)),
+        Some(end) => end.saturating_sub(start).max(0),
+    })
+}
+
+/// `ms` in whole minutes, rounded: 29 seconds are 0 minutes, 30 seconds 1, 89 seconds 1 and 90 seconds 2.
+pub fn whole_minutes(ms: i64) -> i64 {
+    ms.max(0).saturating_add(MINUTE_MS / 2) / MINUTE_MS
+}
+
+/// The nearest rank of `sorted` (low to high) at `percent`: the value at rank ceil(percent / 100 × its length), counted
+/// from 1 (50 is the median); None when it is empty. Of 10, 20, 30 and 40, 50 gives 20 and 90 gives 40.
+pub fn nearest_rank(sorted: &[i64], percent: u32) -> Option<i64> {
+    let rank = (sorted.len() * percent.min(100) as usize).div_ceil(100).max(1);
+    sorted.get(rank - 1).copied()
+}
+
+/// get_project's time_tracking (GA-332): a project's Time tracking tab added up at `now`, over all its cards (archived
+/// ones included), and the agent minutes its cards in Done took, to estimate new cards from.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TimeTracking {
+    /// Its cards with a run that started.
+    pub cards_with_runs: i64,
+    /// The runs that started, on all its cards.
+    pub runs: i64,
+    /// All its cards' agent time at `now` (`agent_ms`) added up, then in whole minutes, rounded.
+    pub agent_minutes: i64,
+    /// Cache reads and writes included.
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub done_cards: DoneCards,
+}
+
+/// A project's cards in a done column (category `done`; archived ones included, cancelled ones left out) with a run that
+/// started, and the nearest rank (`nearest_rank`) of their agent minutes (`agent_minutes`) at 50 and 90 percent.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DoneCards {
+    pub count: i64,
+    /// None when `count` is 0.
+    pub median_minutes: Option<i64>,
+    /// None when `count` is 0.
+    pub p90_minutes: Option<i64>,
+}
+
+/// A project's `TimeTracking` at `now`, from its Time tracking tab's rows (`project_time`). An unknown project is
+/// `Error::NotFound`.
+pub fn time_tracking(db: &Db, project_id: &str, max_run_ms: i64, now: i64) -> Result<TimeTracking> {
     db.read(|c| {
-        use rusqlite::OptionalExtension;
-        c.query_row("SELECT 1 FROM projects WHERE id = ?1", [project_id], |_| Ok(()))
-            .optional()?
-            .ok_or_else(|| Error::NotFound(format!("project {project_id}")))?;
-        let mut st = c.prepare(&format!(
-            "SELECT t.id, t.identifier, t.title, COALESCE(s.name, ''), t.deleted_at IS NOT NULL,
-                    count(r.started_at),
-                    COALESCE(SUM(CASE WHEN {ended} THEN
-                        CASE WHEN r.error = 'interrupted' THEN MIN({span}, ?2) ELSE {span} END END), 0),
-                    MIN(CASE WHEN r.started_at IS NOT NULL AND r.ended_at IS NULL THEN r.started_at END),
-                    COALESCE(SUM(r.input_tokens), 0), COALESCE(SUM(r.output_tokens), 0)
-             FROM tasks t
-             LEFT JOIN workflow_states s ON s.id = t.state_id
-             LEFT JOIN runs r ON r.task_id = t.id AND r.deleted_at IS NULL
-             WHERE t.project_id = ?1
-             GROUP BY t.id
-             ORDER BY t.created_at DESC, t.identifier DESC"))?;
-        let rows = st.query_map(params![project_id, max_run_ms.max(0)], |r| Ok(CardTime {
-            task_id: r.get(0)?, identifier: r.get(1)?, title: r.get(2)?, column: r.get(3)?, archived: r.get(4)?,
-            runs: r.get(5)?, time_ms: r.get(6)?, running_since: r.get(7)?, input_tokens: r.get(8)?, output_tokens: r.get(9)?,
-        }))?;
-        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+        let ids = project_cards(c, project_id)?;
+        let times = card_times_in(c, &ids, max_run_ms)?;
+        let done: HashSet<String> = c.prepare(
+            "SELECT t.id FROM tasks t JOIN workflow_states s ON s.id = t.state_id WHERE t.project_id = ?1 AND s.category = 'done'")?
+            .query_map([project_id], |r| r.get(0))?
+            .collect::<rusqlite::Result<_>>()?;
+        let (mut tt, mut ms, mut done_minutes) = (TimeTracking::default(), 0i64, Vec::new());
+        for card in times.values() {
+            tt.runs += card.runs;
+            tt.input_tokens += card.input_tokens;
+            tt.output_tokens += card.output_tokens;
+            ms = ms.saturating_add(agent_ms(card, now));
+            if card.runs > 0 {
+                tt.cards_with_runs += 1;
+                if done.contains(&card.task_id) {
+                    done_minutes.push(agent_minutes(card, now));
+                }
+            }
+        }
+        tt.agent_minutes = whole_minutes(ms);
+        done_minutes.sort_unstable();
+        tt.done_cards = DoneCards {
+            count: done_minutes.len() as i64,
+            median_minutes: nearest_rank(&done_minutes, 50),
+            p90_minutes: nearest_rank(&done_minutes, 90),
+        };
+        Ok(tt)
     })
 }
 
