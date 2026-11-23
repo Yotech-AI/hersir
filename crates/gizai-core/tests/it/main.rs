@@ -27,6 +27,7 @@ mod clis_test;
 mod db_test;
 mod docs_files_test;
 mod editor_test;
+mod feed_test;
 mod folders_test;
 mod folders_windows_test;
 mod ga191_core_test;

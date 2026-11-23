@@ -355,6 +355,8 @@ fn unstarted(db: &Db, run_id: &str, hold: Option<&str>) -> Result<()> {
     let task_id = run.task_id.clone().ok_or_else(|| Error::Invalid("this run has no task".into()))?;
     db.write(Some(&run.agent_id), |w| {
         w.conn().execute("UPDATE runs SET outcome=COALESCE(outcome, 'no_result'), updated_at=?2 WHERE id=?1", rusqlite::params![run_id, ids::now_ms()])?;
+        // GA-344: logged, as the card's claim comes off with it, also without a hold (`feed`)
+        w.update("runs", run_id, serde_json::json!({"unstarted": true}))?;
         runs::release_claim(w, run_id)?;
         match hold {
             Some(reason) => set_hold(w, &task_id, "blocked", reason),
@@ -663,6 +665,8 @@ fn record_verdict(w: &Writer, run_id: &str, agent: &str, task_id: &str, outcome:
                 status=CASE WHEN status IN ('queued','running','waiting_approval') THEN 'succeeded' ELSE status END,
                 ended_at=COALESCE(ended_at, ?5), updated_at=?5 WHERE id=?1",
         rusqlite::params![run_id, label, json, outcome.map(|o| o.summary.clone()), ids::now_ms()])?;
+    // GA-344: logged, as the card shows its last run's verdict also when the card stays where it is (`feed`)
+    w.update("runs", run_id, serde_json::json!({"outcome": label}))?;
     runs::release_claim(w, run_id)?;
     if let Some(o) = outcome {
         let mut body = o.summary.trim().to_string();

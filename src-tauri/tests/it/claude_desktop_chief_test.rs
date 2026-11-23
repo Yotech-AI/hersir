@@ -3,8 +3,8 @@
 //! GA-341 QA: Claude Desktop works like the Chief. Over the socket, with the token Connect makes
 //! (`claude_desktop::connect`, the scope `{"client":"claude-desktop"}`, actor: you), as the hersir-mcp shim talks:
 //! - tools/list is get_chief_brief (GA-342: then ask_chief and chief_reply), then every tool of the Chief's chat turns
-//!   (`tools::catalog`) but start_chat and update_checkout; a chat's, a board check's and a question's tokens don't get
-//!   get_chief_brief.
+//!   (`tools::catalog`) but start_chat and update_checkout, then board_changes (GA-344); a chat's, a board check's and a
+//!   question's tokens don't get get_chief_brief.
 //! - start_chat and update_checkout answer isError with the card's texts and change nothing.
 //! - The tools that change the board run at once, as you: no pending action, and the activity and comments are yours.
 //! - The Chief's rules hold: GA-101's hold (ONLY_THE_USER, and move_task keeps it), GA-323's new commands (not run, no
@@ -248,16 +248,22 @@ async fn the_desktop_token_lists_get_chief_brief_then_every_tool_of_the_chiefs_c
     // GA-342: ask_chief and chief_reply come after get_chief_brief (claude_desktop_ask_chief_test.rs checks them)
     let mut want = vec!["get_chief_brief".to_string(), "ask_chief".into(), "chief_reply".into()];
     want.extend(catalog.iter().map(|d| d.name.clone()).filter(|n| n != "start_chat" && n != "update_checkout"));
-    assert_eq!(names(&listed), want, "get_chief_brief first, then ask_chief and chief_reply, then the Chief's tools in their order");
-    assert_eq!(listed.len(), catalog.len() + 1);
+    // GA-344: and last board_changes, Claude Desktop's other own tool (for a view of the board in its chat)
+    want.push(tools::BOARD_CHANGES.to_string());
+    assert_eq!(names(&listed), want, "get_chief_brief first, then ask_chief and chief_reply, then the Chief's tools in their order, then board_changes");
+    assert_eq!(listed.len(), catalog.len() + 2);
     // get_chief_brief: read-only, the card's description, no arguments
     let brief = &listed[0];
     assert_eq!(brief["annotations"]["readOnlyHint"], true, "{brief}");
     assert_eq!(brief["description"], BRIEF_DESCRIPTION);
     assert_eq!(brief["inputSchema"]["type"], "object");
     assert!(brief["inputSchema"]["properties"].as_object().unwrap().is_empty(), "{brief}");
+    // board_changes: read-only, with since, a whole number (GA-344)
+    let changes = listed.last().unwrap();
+    assert_eq!(changes["annotations"]["readOnlyHint"], true, "{changes}");
+    assert_eq!(changes["inputSchema"]["properties"]["since"]["type"], "integer", "{changes}");
     // the others exactly as the Chief gets them: description, schema and readOnlyHint
-    for d in &listed[3..] {
+    for d in &listed[3..listed.len() - 1] {
         let chief = catalog.iter().find(|t| t.name == d["name"].as_str().unwrap()).unwrap();
         assert_eq!(d["description"], chief.description.as_str(), "{}", chief.name);
         assert_eq!(d["inputSchema"], chief.input_schema, "{}", chief.name);

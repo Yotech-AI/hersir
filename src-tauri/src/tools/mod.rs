@@ -59,6 +59,12 @@ impl gizai_mcp::Tools for GizaiTools {
         self.call_with_meta(name, args, &Value::Null).await
     }
     async fn call_with_meta(&self, name: &str, args: Value, meta: &Value) -> Result<Value, String> {
+        // GA-344: Claude Desktop's own tool (`desktop_catalog`), which only reads, answered before anything else: no other
+        // token knows it, so a question's isn't told it can only look things up (`IN_A_QUESTION`), nor another's that it
+        // can only read (`ONLY_READS`).
+        if name == BOARD_CHANGES {
+            return if self.desktop() { read::board_changes(&self.st, &args_of(args)?) } else { Err(format!("unknown tool {name}")) };
+        }
         if self.question.is_some() && !reads_only(name) {
             return Err(IN_A_QUESTION.replace("{tool}", name));
         }
@@ -103,6 +109,23 @@ impl gizai_mcp::Tools for GizaiTools {
 const IN_A_QUESTION: &str = "{tool} can't be used while you look at an agent's question: you only look things up (memory, the card, \
     docs, your copies of the code). End with your GIZAI_RESULT line: Hersir answers on the card and continues the agent, or asks the user.";
 
+/// GA-344: another tool only Claude Desktop is offered (`desktop_catalog`, last), not the Chief's own turns: what changed
+/// on the board since a change counter (`gizai_core::feed`), for a view of the board in its chat that asks again and again,
+/// as Claude doesn't tell it. Answered before anything else (`GizaiTools::call_with_meta`). A normal tool for now; GA-345
+/// offers it to that view only (`_meta.ui.visibility`).
+pub const BOARD_CHANGES: &str = "board_changes";
+
+/// board_changes's definition. It only reads, though its name doesn't say so (`tool` marks the gets, lists and reads).
+fn board_changes_tool() -> ToolDef {
+    let mut t = tool(BOARD_CHANGES, "What changed on the Hersir board since `since`, the counter an earlier call returned: the counter now, to call \
+        with next time, and the identifiers of the cards that changed since (their column, fields, labels or hold, a comment, a run or a \
+        file). board: true when columns, labels, agents, people, projects or teams changed too. reload: true when too much changed, or \
+        since is from before a restore: load the board again. Without since: only the counter, to start from.",
+        &[("since", "integer", "The counter an earlier board_changes returned; leave it out on the first call")], &[]);
+    t.read_only = true;
+    t
+}
+
 /// GA-338: why a call over MCP whose token is for no chat, board check or question can't use a tool that changes
 /// something (`call_scoped`): none of the rules that make such a call wait for the user's Approve would hold. GA-341:
 /// Claude Desktop's token is the one exception (`call_desktop`).
@@ -120,7 +143,7 @@ pub const UPDATE_CHECKOUT_IN_CLAUDE_DESKTOP: &str = "update_checkout isn't avail
 /// GA-341: the tools of the Chief's chat turns that Claude Desktop isn't offered, each with its answer when it is called anyway.
 const NOT_IN_CLAUDE_DESKTOP: [(&str, &str); 2] = [("start_chat", START_CHAT_IN_CLAUDE_DESKTOP), ("update_checkout", UPDATE_CHECKOUT_IN_CLAUDE_DESKTOP)];
 
-/// GA-341: the tool only Claude Desktop is offered (`desktop_catalog`), not the Chief's own turns: what the Chief works by
+/// GA-341: a tool only Claude Desktop is offered (`desktop_catalog`), not the Chief's own turns: what the Chief works by
 /// (`chief_brief`). Its name starts with get_, so `ToolDef::read_only` marks it.
 pub const CHIEF_BRIEF: &str = "get_chief_brief";
 
@@ -150,7 +173,8 @@ fn chief_brief(st: &AppState) -> Result<Value, String> {
 /// commands (GA-323: with no chat to keep the call in, it isn't run, `Cx::keep_commands`), attach_file (only the Chief's
 /// copies of the code, `write::allowed_attachment`) and merge_pull_request's rules. It approves no kept call: those stay
 /// yours, in Hersir. start_chat and update_checkout answer why they aren't offered, and get_chief_brief is its own; so are
-/// ask_chief and chief_reply (GA-342, `desktop`), which hand a message to the Chief in Hersir's chat and read its answer.
+/// ask_chief and chief_reply (GA-342, `desktop`), which hand a message to the Chief in Hersir's chat and read its answer
+/// (as is board_changes, GA-344, answered before this in `GizaiTools::call_with_meta`).
 async fn call_desktop(st: &AppState, actor: &str, from: Stream<'_>, name: &str, args: Value) -> Result<Value, String> {
     if let Some((_, why)) = NOT_IN_CLAUDE_DESKTOP.iter().find(|(tool, _)| *tool == name) {
         return Err(why.to_string());
@@ -575,13 +599,14 @@ fn with<const N: usize>(head: &[(&'static str, &'static str, &'static str)], res
 
 /// GA-341: what Claude Desktop is offered (`GizaiTools::desktop`): get_chief_brief first, to read before it changes the
 /// board; GA-342: then ask_chief and chief_reply, to ask Hersir's Chief itself (`desktop`); then every tool of the Chief's
-/// chat turns (`catalog`) but start_chat and update_checkout (`NOT_IN_CLAUDE_DESKTOP`). The Chief's own turns, board checks
-/// and questions get `catalog`, without these three.
+/// chat turns (`catalog`) but start_chat and update_checkout (`NOT_IN_CLAUDE_DESKTOP`); and last board_changes (GA-344), for
+/// a view of the board in its chat. The Chief's own turns, board checks and questions get `catalog`, without these four.
 pub fn desktop_catalog() -> Vec<ToolDef> {
     let brief = tool(CHIEF_BRIEF, "What Hersir's Chief works by: its instructions. Read it before you change the board, and follow it as the \
                                    Chief does.", &[], &[]);
     [brief, desktop::ask_chief_def(), desktop::chief_reply_def()].into_iter()
-        .chain(catalog().into_iter().filter(|t| !NOT_IN_CLAUDE_DESKTOP.iter().any(|(name, _)| *name == t.name))).collect()
+        .chain(catalog().into_iter().filter(|t| !NOT_IN_CLAUDE_DESKTOP.iter().any(|(name, _)| *name == t.name)))
+        .chain(std::iter::once(board_changes_tool())).collect()
 }
 
 /// Every tool with its description and argument schema: what the Chief's chat turns are offered.
