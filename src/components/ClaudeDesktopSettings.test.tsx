@@ -52,10 +52,10 @@ const NO_CONFIG = "Claude Desktop's settings weren't found on this computer: you
 const NO_SHIM = "Hersir can't find its hersir-mcp program next to Hersir: reinstall Hersir.";
 const REOPEN = "Quit and reopen Claude Desktop, then ask Claude: \"What's on my Hersir board?\"";
 const PASTE = "In Claude Desktop: Settings → Developer → Edit Config. Paste this into the file (add the \"hersir\" server next to any servers already there), save it, then quit and reopen Claude Desktop.";
-const KEY = "This entry holds a key to your board. Hersir shows it only now; Connect again makes a new one and ends this one.";
+const KEY = "This entry holds a key with the Chief's powers over your board: any program running as you could use it. Hersir shows it only now; Connect again makes a new one and ends this one.";
 const NO_ENTRY = "Claude Desktop's settings don't have the Hersir entry.";
 const ASK_TITLE = "Disconnect Claude Desktop?";
-const ASK_TEXT = "Claude Desktop can no longer read your board until you connect it again. Its settings keep the entry; Claude will say that Hersir disconnected it.";
+const ASK_TEXT = "Claude Desktop can no longer use your board until you connect it again. Its settings keep the entry; Claude will say that Hersir disconnected it.";
 
 const CONFIG = "/home/you/.config/Claude/claude_desktop_config.json";
 const BACKUP = "/home/you/.config/Claude/claude_desktop_config.json.before-hersir";
