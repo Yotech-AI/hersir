@@ -376,7 +376,7 @@ export function App() {
         ) : view === "board" ? (
           whole ? <button className="btn ghost sm" onClick={() => setWhole(false)}>Show the summary</button>
             : board && <button className="btn sm" onClick={openBoard}><SquareKanban className="icon" />Open board</button>
-        ) : (
+        ) : (view === "card" ? card : chief) && (
           <button className="btn ghost sm" onClick={() => void askMode("fullscreen")}><Maximize2 className="icon" />Open full screen</button>
         )}
       </div>

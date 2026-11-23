@@ -22,3 +22,4 @@ html, body { margin: 0; background: var(--h-bg); color: var(--h-text); font: 14p
 body.fullscreen #frame-box { position: fixed; inset: 0; z-index: 10; width: auto !important; max-width: none; border: 0; border-radius: 0; }
 body.fullscreen #frame-box iframe { height: 100%; }
 body.fullscreen #exit { display: block; position: fixed; bottom: 12px; right: 12px; z-index: 11; font: inherit; padding: 4px 10px; }
+.panel label.stack { flex-direction: column; align-items: stretch; gap: 4px; }
