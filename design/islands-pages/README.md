@@ -129,9 +129,11 @@ above them (y −1100).
 - **Projects: one island.** Its header: New project, then the status chips (All, Planned, Active, Paused, Done) on the
   right. The table (DataTable) fills the island: the header row (36), the rows (40), the foot (**3 of 4 projects** and the
   AI usage note with **Open Usage**) at the island's bottom with a `line` above it.
-- **A project: one island without a header** (it has no toolbar and no tabs): the page as today inside it (padding
-  `24 28 48`): the tile, the name and its line, Open tasks, New task and Edit; then Goal, Docs and Files on the left,
-  Tasks, Repository and Budget on the right, each a `raised` panel.
+- **A project: one island with two tabs in its header** (GA-331), Overview and Time tracking, as Island tabs like
+  Usage's and Settings', and no toolbar. Overview is the page as before (padding `24 28 48`): the tile, the name and its
+  line, Open tasks, New task and Edit; then Goal, Docs and Files on the left, Tasks, Repository and Budget on the right,
+  each a `raised` panel. Time tracking is a table (DataTable) that fills the island, as on Projects, with its foot (the
+  sums and a note) at the island's bottom.
 
 ### Clients (`312:14365`) and a client (`312:14901`)
 

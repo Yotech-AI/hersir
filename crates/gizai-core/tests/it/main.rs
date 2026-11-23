@@ -47,6 +47,7 @@ mod outside_marks_migration_test;
 mod pending_test;
 mod project_key_test;
 mod project_team_test;
+mod project_time_test;
 mod pulls_test;
 mod questions_test;
 mod readable_test;

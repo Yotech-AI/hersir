@@ -307,7 +307,9 @@ describe("opening a page the first time (GA-178)", () => {
     ["#/clients", "ClientsPage", "ClientsPage"],
     ["#/client/k1", "ClientPage", "ClientPage k1"],
     ["#/projects", "ProjectsPage", "ProjectsPage"],
-    ["#/project/p1", "ProjectPage", "ProjectPage p1"],
+    // a project's Overview, then its Time tracking tab (GA-331): the page already loaded, it opens at once
+    ["#/project/p1", "ProjectPage", "ProjectPage p1 overview"],
+    ["#/project/p1/time", "", "ProjectPage p1 time"],
     ["#/doc/d1", "DocPage", "DocPage d1"],
     ["#/task/t1", "TaskPage", "TaskPage t1 card"],
     ["#/task/t1/changes", "", "TaskPage t1 changes"],

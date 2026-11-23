@@ -18,14 +18,14 @@ let backupsFolderName = "";
 
 const isKeyed = (f: unknown): f is Keyed => !!f && typeof f === "object" && "$by" in f && "$answers" in f;
 
-/** Moves every time (a field whose name ends in "At", `at`, and a backup status's `next`) by `delta`, so "2 h ago" in the fixtures
- *  stays 2 h ago. */
+/** Moves every time (a field whose name ends in "At", `at`, a backup status's `next` and a card's `runningSince`) by `delta`, so
+ *  "2 h ago" in the fixtures stays 2 h ago. */
 function shiftTimes(v: unknown, delta: number): void {
   if (Array.isArray(v)) { v.forEach((x) => shiftTimes(x, delta)); return; }
   if (!v || typeof v !== "object") return;
   const o = v as Record<string, unknown>;
   for (const [k, x] of Object.entries(o)) {
-    if (typeof x === "number" && (k === "at" || k === "next" || k.endsWith("At")) && x > 0) o[k] = x + delta;
+    if (typeof x === "number" && (k === "at" || k === "next" || k === "runningSince" || k.endsWith("At")) && x > 0) o[k] = x + delta;
     else shiftTimes(x, delta);
   }
 }

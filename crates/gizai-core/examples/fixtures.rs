@@ -24,7 +24,7 @@ use gizai_core::files::{self, Evidence};
 use gizai_core::mcp_servers::{self, AgentServer, AgentTools};
 use gizai_core::model::*;
 use gizai_core::{backups, clients, clis, comments, db, docs, editor, ids, labels, memory, onboarding, projects, pulls, questions, restore, runs,
-    screenshots, seed, settings, tasks, team, tokens, users, workflow};
+    screenshots, seed, settings, tasks, team, tokens, usage, users, workflow};
 use serde::Serialize;
 use serde_json::{Map, Value, json};
 
@@ -515,6 +515,8 @@ fn main() {
     c.insert("list_comments".into(), by("taskId", per_task(&|id| val(comments::list(&db, id).unwrap()))));
     c.insert("task_activity".into(), by("taskId", per_task(&|id| val(tasks::activity(&db, id).unwrap()))));
     c.insert("list_runs".into(), by("taskId", per_task(&|id| val(runs::list_for_task(&db, id).unwrap()))));
+    // a project's Time tracking tab (GA-331), with the default run time limit of 90 minutes
+    c.insert("project_time".into(), by("id", all_projects.iter().map(|p| (p.id.clone(), val(usage::project_time(&db, &p.id, 90 * 60_000).unwrap())))));
     c.insert("list_screenshots".into(), by("taskId", per_task(&|id| val(screenshots::sets(&db, id).unwrap()))));
     c.insert("suggest_agent".into(), by("taskId", per_task(&|id| json!(workflow::run_agent(&db, id).unwrap().map(|(a, _)| a)))));
     let mut owners: Vec<(String, &str)> = task_ids.iter().map(|id| (id.clone(), "task")).collect();
