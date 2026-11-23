@@ -208,6 +208,57 @@ async fn a_codex_run_that_adds_a_config_worktree_holds_the_card_and_the_changes_
     // and the Changes view says why (hand-over: "with a plain reason, also in the Changes view and the Editor"), not
     // that the worktree has no commit
     assert!(shown.contains("Hersir doesn't run git in") && shown.contains("config.worktree"), "{shown}");
+    assert!(shown.starts_with("Hersir couldn't read what KADE-1 changed: ") && !shown.contains("has no commit"), "{shown}");
+    // a file's diff too (fix round of QA issue 1)
+    std::fs::remove_file(&probe).unwrap();
+    let main = git(&repo, &["rev-parse", "main"]);
+    let file = gizai_lib::changes::file_of_card(&st, &task, "a.txt", None, &main, None).map(|_| ()).unwrap_err();
+    assert!(file.starts_with("Hersir can't show a.txt: Hersir doesn't run git in") && file.contains("config.worktree"), "{file}");
+    assert!(!probe.exists(), "a file's diff ran the planted filter");
+}
+
+#[tokio::test]
+async fn a_codex_run_that_points_its_gitdir_file_at_a_folder_of_its_own_holds_the_card_and_the_changes_view_runs_no_filter() {
+    let tmp = tempfile::tempdir().unwrap();
+    let tmp = tmp.path().canonicalize().unwrap();
+    let st = gizai_lib::test_state(&tmp);
+    let repo = repo_at(&tmp.join("repo"), &[]);
+    let task = gizai_lib::test_task(&st, repo.to_str().unwrap(), "backend");
+    let (probe, evil) = (tmp.join("probe-ran"), tmp.join("evil-wt"));
+    let codex = fake(&tmp, "codex", FAKE_GIT_FOLDER);
+    backend_on_cli(&st, "Codex", "codex", &codex, &["FAKE_KIND=codex".into(), "FAKE_GIT_FOLDER=gitdir".into(),
+        format!("FAKE_PROBE={}", probe.display()), format!("FAKE_EVIL={}", evil.display())]);
+    in_progress_manual(&st);
+
+    let s = gizai_lib::runs::run_once(&st, &task, None, None).await.unwrap();
+    let run = gizai_core::runs::get(&st.db, &s.run_id).unwrap();
+    let (wt, branch) = (PathBuf::from(run.worktree_path.clone().unwrap()), run.branch.clone().unwrap());
+    let gitdir = repo.join(".git/worktrees/KADE-1/gitdir");
+    assert_eq!(std::fs::read_to_string(&gitdir).unwrap().trim(), evil.join(".git").display().to_string(), "the fake changed it");
+    assert_eq!(gizai_agents::worktree::worktree_of(&repo, &branch).unwrap().as_deref(), Some(evil.as_path()),
+               "git lists the card's branch at the run's folder");
+
+    // the card is held, blocked, with a sentence, and didn't move on
+    let t = gizai_core::tasks::get(&st.db, &task).unwrap();
+    let reason = t.hold_reason.clone().unwrap_or_default();
+    assert_eq!(t.hold.as_deref(), Some("blocked"), "{t:?} {run:?}");
+    assert!(reason.starts_with(&format!("Hersir doesn't run git in this card's worktree {}", wt.display()))
+            && reason.contains("no folder in") && reason.contains("take the hold off"), "{reason}");
+    assert_ne!(t.state_name, "Testing");
+    assert!(!probe.exists(), "Hersir's git ran the planted filter at the run's end");
+
+    // the Changes view and a file's diff say why, and don't run git in the folder git lists
+    let shown = gizai_lib::changes::of_card(&st, &task).map(|c| c.files.len()).unwrap_err();
+    assert!(shown.starts_with(&format!("Hersir couldn't read what KADE-1 changed: Hersir doesn't run git in {}", wt.display()))
+            && shown.contains("no folder in"), "{shown}");
+    let main = git(&repo, &["rev-parse", "main"]);
+    let file = gizai_lib::changes::file_of_card(&st, &task, "a.txt", None, &main, None).map(|_| ()).unwrap_err();
+    assert!(file.starts_with("Hersir can't show a.txt: Hersir doesn't run git in"), "{file}");
+    assert!(!probe.exists(), "Hersir's Changes view ran the planted filter");
+
+    // the probe is real: plain git in the folder git lists runs it
+    git(&evil, &["diff"]);
+    assert!(probe.exists(), "plain git didn't run the planted filter, so this probe proves nothing");
 }
 
 #[tokio::test]

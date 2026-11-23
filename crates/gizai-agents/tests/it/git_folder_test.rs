@@ -279,3 +279,94 @@ fn your_editor_and_a_terminal_dont_open_in_a_worktree_whose_git_folder_a_run_cha
     assert_eq!(refused, why);
     assert!(terms.list().is_empty(), "no terminal opened");
 }
+
+/// A repository of the run's own at `dir`, with a.txt committed, then a filter `x` that touches `probe` in its config and
+/// a.txt changed under it (`plant_in_worktree`): plain git status or git diff there runs the filter.
+fn evil_repo(dir: &Path, probe: &Path) {
+    std::fs::create_dir_all(dir).unwrap();
+    git(dir, &["init", "-q", "-b", "main"]);
+    std::fs::write(dir.join("a.txt"), "one\n").unwrap();
+    git(dir, &["add", "a.txt"]);
+    git(dir, &["commit", "-q", "-m", "init"]);
+    let config = std::fs::read_to_string(dir.join(".git/config")).unwrap();
+    std::fs::write(dir.join(".git/config"), format!("{config}{}", filter(probe))).unwrap();
+    plant_in_worktree(dir);
+}
+
+#[cfg(unix)]
+#[test]
+fn safe_worktree_of_never_gives_the_folder_a_runs_gitdir_file_points_at() {
+    let tmp = real_tempdir();
+    let (repo, wt, admin) = card(tmp.path());
+    let branch = "hersir/kade-1-probe";
+    // as Hersir made them: the card's worktree for its branch, the main checkout for main
+    assert_eq!(worktree::safe_worktree_of(&repo, branch).unwrap().as_deref(), Some(wt.as_path()));
+    assert_eq!(worktree::safe_worktree_of(&repo, "main").unwrap().as_deref(), Some(repo.as_path()));
+    assert_eq!(worktree::safe_worktree_of(&repo, "no-such-branch").unwrap(), None);
+
+    // the worktree's own git folder (which Codex's sandbox may write) says the worktree is a folder of the run's own
+    let probe = tmp.path().join("probe-ran");
+    let evil = tmp.path().join("evil-wt");
+    evil_repo(&evil, &probe);
+    std::fs::write(admin.join("gitdir"), format!("{}\n", evil.join(".git").display())).unwrap();
+    let listed = worktree::worktree_of(&repo, branch).unwrap();
+    assert_eq!(listed.as_deref(), Some(evil.as_path()), "git lists the card's branch at the run's folder");
+    assert_eq!(worktree::safe_worktree_of(&repo, branch).unwrap(), None, "Hersir's git doesn't go there");
+    assert!(worktree::checked_git_command(&wt).unwrap_err().contains("no folder in"), "nor in the card's own folder");
+    assert!(!probe.exists(), "listing the worktrees ran the planted filter");
+    // the probe is real: what Open pull request's note did before (uncommitted in the folder git lists) runs it
+    let _ = worktree::uncommitted(&evil);
+    assert!(probe.exists(), "git in the listed folder didn't run the planted filter, so this probe proves nothing");
+    std::fs::remove_file(&probe).unwrap();
+
+    // a folder of the run's own inside the card's worktree: only the worktree's top folder, where Hersir refuses git
+    let sub = wt.join("sub");
+    evil_repo(&sub, &probe);
+    std::fs::write(admin.join("gitdir"), format!("{}\n", sub.join(".git").display())).unwrap();
+    assert_eq!(worktree::worktree_of(&repo, branch).unwrap().as_deref(), Some(sub.as_path()));
+    assert_eq!(worktree::safe_worktree_of(&repo, branch).unwrap().as_deref(), Some(wt.as_path()));
+    let why = worktree::checked_git_command(&wt).unwrap_err();
+    assert!(why.starts_with(&format!("Hersir doesn't run git in {}", wt.display())) && why.contains("no folder in"), "{why}");
+    assert!(worktree::uncommitted(&sub).is_err(), "Hersir's git in a folder of the card's worktree refuses too");
+    assert!(!probe.exists(), "Hersir's git ran the planted filter");
+    git(&sub, &["status", "--porcelain"]);
+    assert!(probe.exists(), "plain git there didn't run the planted filter, so this probe proves nothing");
+}
+
+#[cfg(unix)]
+#[test]
+fn removing_a_card_worktree_keeps_one_whose_git_folder_a_run_changed_and_runs_no_planted_filter() {
+    let tmp = real_tempdir();
+    let (repo, wt, admin) = card(tmp.path());
+    let branch = "hersir/kade-1-probe";
+    let base = tmp.path().join("data").join("worktrees");
+    let probe = tmp.path().join("probe-ran");
+    let evil = tmp.path().join("evil-common");
+    copy_dir(&repo.join(".git"), &evil);
+    let config = std::fs::read_to_string(evil.join("config")).unwrap();
+    std::fs::write(evil.join("config"), format!("{config}{}", filter(&probe))).unwrap();
+    std::fs::write(admin.join("commondir"), format!("{}\n", evil.display())).unwrap();
+    plant_in_worktree(&wt);
+
+    // after a merge, or in Settings → Data: kept, with its branch, and no git status there that follows commondir
+    let r = worktree::remove_card_worktree_with(&repo, &base, &tmp.path().join("run-temp"), branch, true);
+    assert_eq!(r.removed, None, "{r:?}");
+    assert_eq!(r.kept.as_ref().map(|(p, _)| p.as_path()), Some(wt.as_path()), "{r:?}");
+    assert!(!r.branch_deleted, "a kept worktree keeps its branch: {r:?}");
+    assert_eq!(r.phrases(branch), [format!("kept its worktree {} (its git folder was changed, so Hersir doesn't run git there)",
+                                           wt.display())]);
+    assert!(wt.is_dir());
+    assert!(!probe.exists(), "removing the worktree ran the planted filter");
+
+    // the probe is real: plain git's worktree remove runs git status in the worktree, which follows commondir
+    let _ = git_out(&repo, &["worktree", "remove", wt.to_str().unwrap()]);
+    assert!(probe.exists(), "plain git worktree remove didn't run the planted filter, so this probe proves nothing");
+
+    // set right again, and clean: it goes, with its branch, as before
+    std::fs::write(admin.join("commondir"), "../..\n").unwrap();
+    std::fs::remove_file(wt.join(".gitattributes")).unwrap();
+    std::fs::write(wt.join("a.txt"), "one\n").unwrap();
+    let r = worktree::remove_card_worktree_with(&repo, &base, &tmp.path().join("run-temp"), branch, true);
+    assert_eq!((r.removed.as_deref(), r.kept.is_none(), r.branch_deleted), (Some(wt.as_path()), true, true), "{r:?}");
+    assert!(!wt.exists());
+}
