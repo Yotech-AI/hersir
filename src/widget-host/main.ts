@@ -85,7 +85,7 @@ function result(tool: "show" | "view_read", args: ViewArgs) {
       : `"view" is board, card or chief, not "${args.view ?? ""}"`);
   }
   const id = args.id ?? null;
-  if (id !== null && id.toUpperCase() !== PROJECT.key) return failed(`No project matches "${id}".`);
+  if (id !== null && id.toUpperCase() !== PROJECT.key) return failed(`No project called "${id}". Projects: ${PROJECT.name} (${PROJECT.key}).`);
   // view_read's seq is read before its data, as Hersir reads it
   const seq = board.seq;
   const data = board.data(id === null ? null : PROJECT.key);
