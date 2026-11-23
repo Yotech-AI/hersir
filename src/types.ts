@@ -686,7 +686,8 @@ export type PreviewField = { label: string; value: string; from?: string | null 
 /** What a pending call does, as things are now: one plain line, what it is about and what changes, the text it saves or adds,
  *  what changes against the current version (a note, an agent's instructions), and why approving fails, when Gizai can tell. */
 export type PendingPreview = { line: string; fields: PreviewField[]; text?: string | null; diff?: DiffLine[] | null; warning?: string | null };
-/** GA-102: a call of the Team Lead's that wasn't run because its answer (`runId`) used a tool from outside Gizai (`outsideTool`). It
+/** GA-102: a call of the Team Lead's that wasn't run because its answer (`runId`) used a tool from outside Gizai (`outsideTool`), or
+ *  (GA-323, `outsideTool` is `NEW_COMMANDS` of lib/pending) because it gives an agent commands the Chief may only add with your OK. It
  *  waits under that answer until you approve it (it runs exactly as called, once) or discard it. status: pending, or running while
  *  an approval runs it. */
 export type PendingAction = { id: string; threadId: string; runId?: string | null; actorId: string; tool: string; args: Record<string, unknown>;

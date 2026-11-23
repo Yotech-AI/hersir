@@ -115,6 +115,10 @@ export function foldDiff(lines: DiffLine[], keep = 2): DiffPart[] {
   return out;
 }
 
+/** GA-323: the `outsideTool` of a call kept for another reason than a tool from outside Hersir: create_agent or update_agent
+ *  giving an agent commands the Chief may only add with your OK. The same text as gizai-core's `pending::NEW_COMMANDS`. */
+export const NEW_COMMANDS = "new commands";
+
 /** A tool from outside Gizai in words: "search on the otus server", "web search", "fetching a web page". */
 export function outsideLabel(tool: string): string {
   if (tool === "WebSearch") return "web search";
