@@ -7,11 +7,18 @@
 //   board_changes since view_read's seq, and view_read again only when something changed.
 // - views.ts reads show's, view_read's and board_changes' results; the stand-in host's made-up board answers as Hersir.
 // - The built view is one file under 1 MB; neither build has the stand-in host page.
+// GA-349 QA: the view lists no display mode of its own at ui/initialize (that breaks it in Claude); the poll lives in
+// App.tsx; the built file may hold a JS `new URL(…)` (react-markdown's vfile), which loads nothing. views.ts' card,
+// Chief and change helpers, the board's real order keys, every MarkdownView with openLink, and the stand-in host's card
+// and Chief (App.tsx itself as a host drives it: WidgetApp.test.tsx).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Bridge, BridgeError, PROTOCOL, reportSize, type ToolResult } from "./bridge";
 import { boardOf, statesOf, tasksOf, titleOf, workingOf, WORKING } from "./board";
-import { CUT, changesOf, viewOf, type BoardData } from "./views";
+import { CUT, cardOf, changesOf, chiefOf, jsonOf, keyOf, sentOf, touches, viewOf, type BoardData, type CardData } from "./views";
 import { FakeBoard, PROJECT, sentence } from "../widget-host/fakeBoard";
+import { FakeCards } from "../widget-host/fakeCard";
+import { DESKTOP_THREAD, FakeChief } from "../widget-host/fakeChief";
+import { generateKeyBetween } from "fractional-indexing";
 
 const fs = await import(/* @vite-ignore */ ["node", "fs"].join(":"));
 const ROOT = new URL("../../", import.meta.url);
@@ -91,7 +98,8 @@ describe("the board view makes no network call (GA-343)", () => {
   it("the files the view's entry imports are its own code and the app's Board, and none of them uses a network API", () => {
     const { files, packages } = widgetFiles();
     for (const f of ["src/widget/main.tsx", "src/widget/BoardView.tsx", "src/widget/bridge.ts", "src/widget/board.ts", "src/widget/fonts.ts",
-      "src/components/Board.tsx"]) expect(files).toContain(f);
+      "src/components/Board.tsx", "src/widget/App.tsx", "src/widget/CardView.tsx", "src/widget/ChiefView.tsx", "src/widget/views.ts",
+      "src/components/MarkdownView.tsx"]) expect(files).toContain(f);
     // the stand-in host is no part of it
     expect(files.filter((f) => f.includes("widget-host"))).toEqual([]);
     // @modelcontextprotocol/ext-apps for its types only: never imported as a value
@@ -159,7 +167,9 @@ describe("the view's bridge to the host (GA-343)", () => {
     expect(w.sent).toHaveLength(1);
     expect(w.sent[0].origin).toBe("*");
     expect(w.sent[0].msg).toEqual({ jsonrpc: "2.0", id: 1, method: "ui/initialize", params: {
-      appInfo: { name: "Hersir board", version: "1" }, appCapabilities: { availableDisplayModes: ["inline", "fullscreen"] }, protocolVersion: PROTOCOL } });
+      appInfo: { name: "Hersir board", version: "1" }, appCapabilities: {}, protocolVersion: PROTOCOL } });
+    // GA-349: no display modes of its own (listing them breaks ui/initialize in Claude): it takes the host's
+    expect(JSON.stringify(w.sent[0].msg)).not.toContain("availableDisplayModes");
     expect(PROTOCOL).toBe("2026-01-26");
     w.deliver({ jsonrpc: "2.0", id: 1, result: { protocolVersion: PROTOCOL, hostContext: { theme: "dark", displayMode: "inline" } } });
     await connected;
@@ -340,14 +350,16 @@ describe("the board from structuredContent, as the app's Board draws it (GA-343,
   });
 
   it("asks board_changes every 2 to 5 seconds since the last seq, and view_read only when something changed", async () => {
-    const src = read("src/widget/BoardView.tsx");
+    // GA-349: the poll moved to App.tsx, for the board, a card and the Chief's thread (stepped through in WidgetApp.test.tsx)
+    const src = read("src/widget/App.tsx");
     const poll = Number(/export const POLL_MS = ([\d_]+);/.exec(src)?.[1].replace(/_/g, ""));
     expect(poll).toBeGreaterThanOrEqual(2000);
     expect(poll).toBeLessThanOrEqual(5000);
     expect(src).toContain(`export const VIEW_READ = "view_read";`);
     expect(src).toContain(`export const BOARD_CHANGES = "board_changes";`);
     expect(src).toContain("callTool(BOARD_CHANGES, { since: seq.current })");
-    expect(src).toMatch(/callTool\(VIEW_READ, project\.current \? \{ view: "board", id: project\.current \} : \{ view: "board" \}\)/);
+    expect(src).toMatch(/callTool\(VIEW_READ, argsOf\(p\)\)/);
+    expect(src).toContain("const argsOf = (p: Place) => (p.id ? { view: p.view, id: p.id } : { view: p.view });");
     // the spike's tools are gone from the view
     for (const f of widgetFiles().files) expect(read(f), f).not.toMatch(/\b(show_board|board_read)\b/);
   });
@@ -429,6 +441,144 @@ describe("the stand-in host answers view_read and board_changes as Hersir does (
   });
 });
 
+// ---- GA-349: the card's and the Chief's data, what a change touches, the board's order keys --------------------------
+
+describe("views.ts reads a card, the Chief's thread and ask_chief's answer, and knows what a change touches (GA-349)", () => {
+  it("cardOf takes a card, with lists and texts left out as empty; nothing without an identifier", () => {
+    expect(cardOf({ identifier: "GA-12" })).toEqual({
+      identifier: "GA-12", title: "", project: null, column: "", assignee: null, labels: [], priority: 0, hold: null, hold_reason: null,
+      description_md: "", acceptance_md: null, pr_url: null, comments: [], runs: [], live: null,
+    });
+    const live = { agent: "QA Agent", output: "Started" };
+    expect(cardOf({ identifier: "GA-12", title: "Fix", column: "Review", priority: 3, live, comments: "x" })).toMatchObject({ title: "Fix", column: "Review", priority: 3, live, comments: [] });
+    for (const not of [null, undefined, "GA-12", {}, { identifier: 12 }]) expect(cardOf(not)).toBeNull();
+  });
+
+  it("chiefOf takes the thread as chief_reply gives it: a status it doesn't know reads as answered, no draft as null", () => {
+    const messages = [{ id: "m1", from: "you", time: "2026-11-23T14:05:09Z", text: "Hi" }];
+    expect(chiefOf({ thread: "t1", status: "working", messages, draft: "Wri" })).toEqual({ thread: "t1", status: "working", messages, draft: "Wri" });
+    expect(chiefOf({ thread: "t1", status: "waiting for you", messages })).toEqual({ thread: "t1", status: "waiting for you", messages, draft: null });
+    expect(chiefOf({ thread: null, status: "odd", messages: [] })).toEqual({ thread: null, status: "answered", messages: [], draft: null });
+    for (const not of [null, "x", { thread: "t1" }, { messages: "x" }]) expect(chiefOf(not)).toBeNull();
+  });
+
+  it("sentOf, jsonOf and keyOf", () => {
+    expect(sentOf({ thread: "t1", message: "m1", status: "working" })).toEqual({ thread: "t1", message: "m1" });
+    expect(sentOf({ thread: "t1" })).toEqual({ thread: "t1", message: null });
+    expect(sentOf({ message: "m1" })).toBeNull();
+    expect(jsonOf(`{"a":1}`)).toEqual({ a: 1 });
+    expect(jsonOf("Open Hersir first")).toBeUndefined();
+    expect(keyOf("GA-12")).toBe("GA");
+    expect(keyOf(" WEB-APP-7 ")).toBe("WEB-APP");
+    expect(keyOf("GA")).toBeNull();
+  });
+
+  it("touches: the card on show, a card of the board's project or on it, any card for every project; board and reload always", () => {
+    const c = (cards: string[], more: Partial<{ board: boolean; reload: boolean }> = {}) => ({ seq: 2, cards, board: false, reload: false, ...more });
+    expect(touches(c(["ga-12"]), "card", "GA-12")).toBe(true);
+    expect(touches(c(["GA-13"]), "card", "GA-12")).toBe(false);
+    expect(touches(c([]), "card", "GA-12")).toBe(false);
+    expect(touches(c(["GA-99"]), "board", "GA")).toBe(true); // a new card of the project counts
+    expect(touches(c(["XY-1"]), "board", "GA")).toBe(false);
+    expect(touches(c(["XY-1"]), "board", "GA", (id) => id === "XY-1")).toBe(true); // one on the board on show
+    expect(touches(c(["XY-1"]), "board", null)).toBe(true);
+    expect(touches(c([]), "board", null)).toBe(false);
+    for (const view of ["board", "card", "chief"] as const) {
+      expect(touches(c([], { board: true }), view, "GA")).toBe(true);
+      expect(touches(c([], { reload: true }), view, "GA")).toBe(true);
+    }
+    expect(touches(c(["GA-12"]), "chief", null)).toBe(false);
+  });
+
+  it("the Board gets real fractional-indexing order keys, so a card dropped between two gets one (it snapped back before)", () => {
+    const tasks = tasksOf(BOARD);
+    const todo = tasks.filter((t) => t.stateId === "column-1").map((t) => t.sortKey);
+    expect(todo).toHaveLength(2);
+    // the Board makes a dropped card's key from its neighbours': every pair, and either end, must give one
+    expect(generateKeyBetween(todo[0], todo[1]) > todo[0]).toBe(true);
+    expect(generateKeyBetween(null, todo[0]) < todo[0]).toBe(true);
+    expect(generateKeyBetween(todo[1], null) > todo[1]).toBe(true);
+    expect(() => generateKeyBetween("000000", null)).toThrow();
+  });
+
+  it("every MarkdownView in the view gets openLink: a link opens through the chat (ui/open-link), never with Tauri", () => {
+    for (const f of ["src/widget/CardView.tsx", "src/widget/ChiefView.tsx", "src/widget/BoardView.tsx", "src/widget/App.tsx"]) {
+      const uses = [...code(read(f)).matchAll(/<MarkdownView\b[^>]*>/g)].map((m) => m[0]);
+      for (const u of uses) expect(u, `${f}: ${u}`).toMatch(/\bopenLink=\{openLink\}/);
+    }
+    expect(read("src/widget/bridge.ts")).toContain(`this.request("ui/open-link", { url })`);
+  });
+});
+
+describe("the stand-in host's card and Chief answer as Hersir does (GA-349)", () => {
+  const CARD_KEYS: (keyof CardData)[] = ["identifier", "title", "project", "column", "assignee", "labels", "priority", "hold", "hold_reason",
+    "description_md", "acceptance_md", "pr_url", "comments", "runs", "live"];
+
+  it("a card has the contract's fields; its comments oldest first, at most 20; its runs newest first, at most 5", () => {
+    let now = Date.parse("2026-11-23T14:00:00Z");
+    const board = new FakeBoard();
+    const cards = new FakeCards(board, () => now);
+    const card = cards.data("ga-109") as CardData;
+    expect(Object.keys(card).sort()).toEqual([...CARD_KEYS].sort());
+    expect(card).toMatchObject({ identifier: "GA-109", column: "Review", hold: "needs_decision", live: null });
+    expect(card.hold_reason).toBeTruthy();
+    expect(card.pr_url).toMatch(/^https:\/\//);
+    for (const c of card.comments) expect(c.at).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/);
+    for (let i = 0; i < 25; i++) { now += 1000; expect(cards.comment("GA-109", `Comment ${i}`)).toBeNull(); }
+    const many = cards.data("GA-109") as CardData;
+    expect(many.comments).toHaveLength(20);
+    expect(many.comments.at(-1)?.body_md).toBe("Comment 24");
+    for (let i = 0; i < 6; i++) { now += 1000; expect(cards.start("GA-109")).toBeNull(); now += 1000; expect(cards.stop("GA-109")).toBeNull(); }
+    const runs = (cards.data("GA-109") as CardData).runs;
+    expect(runs).toHaveLength(5);
+    expect(runs.map((r) => r.started_at)).toEqual([...runs.map((r) => r.started_at)].sort().reverse());
+    expect(cards.data("GA-404")).toBeNull();
+    expect(cards.comment("GA-109", "  ")).toMatch(/body_md/);
+    expect(cards.stop("GA-109")).toBe("No agent is working on GA-109 right now.");
+  });
+
+  it("a run's live output grows, and past 200 lines keeps the last 200 and says it was cut", () => {
+    let now = Date.parse("2026-11-23T14:00:00Z");
+    const cards = new FakeCards(new FakeBoard(), () => now);
+    expect(cards.start("GA-103")).toBeNull();
+    expect(cards.start("GA-103")).toMatch(/already has an agent/);
+    const lines = () => (cards.data("GA-103") as CardData).live!.output.split("\n");
+    expect(lines()).toHaveLength(3);
+    now += 5_000;
+    expect(lines()).toHaveLength(13);
+    now += 200_000;
+    expect(lines()).toHaveLength(201);
+    expect(lines().at(-1)).toBe(CUT);
+  });
+
+  it("the Chief: no thread before the first message; ask_chief makes the chat From Claude Desktop, the draft grows, then its answer", () => {
+    let now = Date.parse("2026-11-23T14:00:00Z");
+    const chief = new FakeChief(() => now);
+    expect(chief.view(null)).toEqual({ thread: null, status: "answered", messages: [], draft: null });
+    expect(chief.reply(undefined)).toMatch(/thread/);
+    expect(chief.ask("Hi", "other")).toMatch(/There is no chat other/);
+    expect(chief.ask("Hi")).toEqual({ thread: DESKTOP_THREAD, message: "msg-1", status: "working" });
+    now += 3000;
+    const working = chief.reply(DESKTOP_THREAD) as Exclude<ReturnType<FakeChief["reply"]>, string>;
+    expect(working.status).toBe("working");
+    expect(working.draft?.length).toBeGreaterThan(0);
+    expect(Object.keys(working).sort()).toEqual(["draft", "messages", "status", "thread"]);
+    now += 6000;
+    const done = chief.reply(DESKTOP_THREAD, "msg-1") as Exclude<ReturnType<FakeChief["reply"]>, string>;
+    expect(done).toMatchObject({ status: "answered", draft: null });
+    expect(done.messages.map((m) => m.from)).toEqual(["Chief"]);
+    expect(chief.view(DESKTOP_THREAD)).toMatchObject({ thread: DESKTOP_THREAD, status: "answered" });
+  });
+
+  it("the host page shows the board, a card and the Chief's thread, and answers the view's writes", () => {
+    const page = read("mcp-host.html");
+    for (const v of ["board:GA", "board", "card:GA-109", "card:GA-106", "card:GA-404", "chief"]) expect(page).toContain(`<option value="${v}">`);
+    const src = read("src/widget-host/main.ts");
+    expect(src).toContain(`const WRITES = ["move_task", "comment_on_task", "start_agent_run", "stop_agent_run", "ask_chief"];`);
+    for (const m of [`"chief_reply"`, `"ui/open-link"`, `"ui/request-display-mode"`]) expect(src).toContain(m);
+  });
+});
+
 // ---- the builds ----------------------------------------------------------------------------------------------------
 
 // npm run build makes both (CI runs it before npm test); a checkout that wasn't built skips these.
@@ -441,7 +591,10 @@ describe("the built view and the app's build (GA-343)", () => {
     expect(html.toLowerCase().startsWith("<!doctype html")).toBe(true);
     expect(html.match(/<script[^>]*\ssrc=/gi) ?? []).toEqual([]);
     expect(html.match(/<link[^>]*>/gi) ?? []).toEqual([]);
-    expect(html.match(/url\((?!["']?data:)[^)]*\)/gi) ?? []).toEqual([]);
+    // CSS url() of anything but data: (case ignored, as CSS ignores it); a JS `new URL(…)` (vfile's, in react-markdown) loads nothing
+    expect(html.match(/(?<!new\s+)\burl\((?!["']?data:)[^)]*\)/gi) ?? []).toEqual([]);
+    expect("a{background:url(https://x/y.png)}".match(/(?<!new\s+)\burl\((?!["']?data:)[^)]*\)/gi)).toEqual(["url(https://x/y.png)"]);
+    expect("a{background:URL(/y.png)}".match(/(?<!new\s+)\burl\((?!["']?data:)[^)]*\)/gi)).toEqual(["URL(/y.png)"]);
     expect(html.match(/@import/gi) ?? []).toEqual([]);
     expect(html.match(NETWORK) ?? []).toEqual([]);
     // and the stand-in host isn't in it

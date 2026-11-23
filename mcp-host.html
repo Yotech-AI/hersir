@@ -6,7 +6,7 @@
     <title>Hersir's view: stand-in host</title>
   </head>
   <body>
-    <!-- GA-343, GA-345: a stand-in for Claude Desktop's side of MCP Apps, for development and QA (npm run mcp-host). It loads
+    <!-- GA-343, GA-345, GA-349: a stand-in for Claude Desktop's side of MCP Apps, for development and QA (npm run mcp-host). It loads
          Hersir's view as built (npm run build:mcp-app). Never part of the app's build or the view's file. -->
     <div class="host">
       <div class="chat">
@@ -18,10 +18,23 @@
       <aside class="panel" aria-label="Stand-in host">
         <h2>Stand-in host (Claude's side)</h2>
         <button id="theme" type="button">Theme: dark</button>
-        <label><input id="open" type="checkbox" checked /> Hersir is open (off: view_read and board_changes say "Open Hersir first")</label>
+        <label class="stack">Show (a new tool call)
+          <select id="show">
+            <option value="board:GA">The board of GA</option>
+            <option value="board">Every project on the board (no id)</option>
+            <option value="card:GA-109">Card GA-109 (on hold, in Review)</option>
+            <option value="card:GA-106">Card GA-106 (an agent works on it)</option>
+            <option value="card:GA-104">Card GA-104 (a long description)</option>
+            <option value="card:GA-404">Card GA-404 (no such card)</option>
+            <option value="chief">The Chief's thread (From Claude Desktop)</option>
+          </select>
+        </label>
+        <label><input id="open" type="checkbox" checked /> Hersir is open (off: every tool says "Open Hersir first")</label>
+        <label><input id="fail" type="checkbox" /> Writes fail (move_task, comment_on_task, start_agent_run, stop_agent_run and ask_chief answer with an error)</label>
         <label><input id="auto" type="checkbox" checked /> Auto change: a card moves every 6 s</label>
-        <label><input id="whole" type="checkbox" /> Every project on the board (show without an id, from the next tool call)</label>
         <button id="change" type="button">Move a card now</button>
+        <button id="hersir-comment" type="button">A comment from Hersir on the card shown last</button>
+        <button id="hersir-chat" type="button">A message in Hersir's chat (the Chief answers)</button>
         <button id="remount" type="button">New tool call (a new view)</button>
         <label>Width
           <select id="width">
@@ -33,10 +46,12 @@
         <dl>
           <dt>board_changes calls</dt><dd id="change-calls">0</dd>
           <dt>view_read calls</dt><dd id="reads">0</dd>
+          <dt>Writes</dt><dd id="writes">0</dd>
           <dt>Last view_read</dt><dd id="last-read">never</dd>
           <dt>Board changes</dt><dd id="changes">0</dd>
           <dt>View's height</dt><dd id="height">not said yet</dd>
           <dt>Display mode</dt><dd id="mode">inline</dd>
+          <dt>Last link opened</dt><dd id="link">none</dd>
           <dt>View's file</dt><dd id="size">not loaded</dd>
         </dl>
         <h2>Messages (newest first)</h2>

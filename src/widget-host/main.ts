@@ -1,17 +1,22 @@
-// GA-343, GA-345: the stand-in host (mcp-host.html, `npm run mcp-host`), for development and QA only: never in the app's
-// build nor in the view's file. It plays Claude Desktop's side of MCP Apps' bridge, so the view can be seen to draw, poll
-// and follow the theme without Claude Desktop:
+// GA-343, GA-345, GA-349: the stand-in host (mcp-host.html, `npm run mcp-host`), for development and QA only: never in
+// the app's build nor in the view's file. It plays Claude Desktop's side of MCP Apps' bridge, so the view can be seen to
+// draw, poll, write and follow the theme without Claude Desktop:
 // - it loads the view as built (src-tauri/mcp-app/mcp-app.html, at /built/mcp-app.html) into an iframe with
 //   sandbox="allow-scripts" and srcdoc, so the view has an opaque origin and no server, as in Claude;
-// - it answers ui/initialize with a host context (theme, display modes), then sends show's input and result
-//   ({"view": "board", "id": "GA"}, or no id for every project);
-// - it answers the view's tools/call of view_read (the board) and board_changes from a made-up board that changes every
-//   few seconds (fakeBoard.ts), or with Hersir's "Open Hersir first" error while "Hersir is open" is off. Only the board:
-//   the card and the Chief's thread come with GA-349;
-// - it sizes the frame from ui/notifications/size-changed, and goes full screen on ui/request-display-mode;
+// - it answers ui/initialize with a host context (theme, display modes), then sends show's input and result: the board
+//   ({"view": "board", "id": "GA"}, or no id for every project), a card or the Chief's thread, as "Show" picks;
+// - it answers the view's tools/call of view_read and board_changes from a made-up board that changes every few seconds
+//   (fakeBoard.ts), its cards (fakeCard.ts) and a made-up Chief (fakeChief.ts); and the writes the view makes with the
+//   model's tools (move_task, comment_on_task, start_agent_run, stop_agent_run, ask_chief, chief_reply), each as Hersir
+//   answers it, or as an error while "Writes fail" is on. While "Hersir is open" is off, every tool says "Open Hersir
+//   first";
+// - it sizes the frame from ui/notifications/size-changed, goes full screen on ui/request-display-mode, and notes the
+//   links ui/open-link asks it to open;
 // - Theme sends ui/notifications/host-context-changed; New tool call mounts a new view, as Claude does for every call.
 // Every message both ways shows in the log.
 import { FakeBoard, PROJECT, sentence } from "./fakeBoard";
+import { FakeCards } from "./fakeCard";
+import { FakeChief } from "./fakeChief";
 import "./host.css";
 
 const PROTOCOL = "2026-01-26";
@@ -29,21 +34,31 @@ const SHOW = {
   annotations: { readOnlyHint: true },
   _meta: { ui: { visibility: ["model", "app"], resourceUri: APP_URI }, "ui/resourceUri": APP_URI },
 };
+/** The model's tools the view writes with. */
+const WRITES = ["move_task", "comment_on_task", "start_agent_run", "stop_agent_run", "ask_chief"];
 
 type Msg = { jsonrpc: "2.0"; id?: string | number | null; method?: string; params?: Record<string, unknown>; result?: unknown; error?: unknown };
-type ViewArgs = { view?: string; id?: string };
+type Args = { view?: string; id?: string; since?: unknown; task?: string; column?: string; body_md?: string; agent?: string; message?: string;
+  thread?: string; after?: string };
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
 const board = new FakeBoard();
+const cards = new FakeCards(board);
+const chief = new FakeChief();
 const state = {
   theme: (new URLSearchParams(location.search).get("theme") === "light" ? "light" : "dark") as "light" | "dark",
   mode: "inline" as "inline" | "fullscreen",
   open: true,
-  /** show's id: the project's key, or null for every project on the board. */
-  project: PROJECT.key as string | null,
+  failWrites: false,
+  /** show's arguments for the next tool call (the Show select). */
+  show: { view: "board", id: PROJECT.key } as Args,
+  /** The card the view showed last (show's or view_read's), for "A comment from Hersir". */
+  lastCard: null as string | null,
   reads: 0,
   changeCalls: 0,
+  writes: 0,
   lastRead: null as Date | null,
+  lastLink: null as string | null,
   height: 0,
   frame: null as HTMLIFrameElement | null,
   calls: 0,
@@ -61,10 +76,12 @@ function log(dir: string, m: unknown) {
 function status() {
   $("#reads").textContent = String(state.reads);
   $("#change-calls").textContent = String(state.changeCalls);
+  $("#writes").textContent = String(state.writes);
   $("#last-read").textContent = state.lastRead ? state.lastRead.toLocaleTimeString() : "never";
   $("#height").textContent = state.height ? `${state.height} px` : "not said yet";
   $("#mode").textContent = state.mode;
   $("#changes").textContent = `${board.changes} (seq ${board.seq})`;
+  $("#link").textContent = state.lastLink ?? "none";
 }
 
 function post(m: Msg) {
@@ -75,37 +92,71 @@ function post(m: Msg) {
 const notify = (method: string, params: unknown) => post({ jsonrpc: "2.0", method, params: params as Record<string, unknown> });
 
 const failed = (text: string) => ({ content: [{ type: "text", text }], isError: true });
+/** A model tool's answer: JSON as its text, no structuredContent (gizai_mcp's Reply::of). */
+const answered = (value: unknown) => ({ content: [{ type: "text", text: JSON.stringify(value) }], isError: false });
 
-/** show's or view_read's result as Hersir gives it, for the made-up board. */
-function result(tool: "show" | "view_read", args: ViewArgs) {
+/** show's or view_read's result as Hersir gives it, for the made-up board, cards and Chief. */
+function result(tool: "show" | "view_read", args: Args) {
   if (!state.open) return failed(NOT_RUNNING);
-  if (args.view !== "board") {
-    return failed(args.view === "card" || args.view === "chief"
-      ? `The stand-in host has only the board: the ${args.view} view comes with GA-349.`
-      : `"view" is board, card or chief, not "${args.view ?? ""}"`);
-  }
-  const id = args.id ?? null;
-  if (id !== null && id.toUpperCase() !== PROJECT.key) return failed(`No project called "${id}". Projects: ${PROJECT.name} (${PROJECT.key}).`);
   // view_read's seq is read before its data, as Hersir reads it
   const seq = board.seq;
-  const data = board.data(id === null ? null : PROJECT.key);
-  return {
-    content: [{ type: "text", text: sentence(data) }], isError: false,
-    structuredContent: tool === "view_read" ? { view: "board", id: data.project?.key ?? null, seq, data } : { view: "board", id: data.project?.key ?? null, data },
+  const out = (view: string, id: string | null, data: unknown, text: string) => ({
+    content: [{ type: "text", text }], isError: false,
+    structuredContent: tool === "view_read" ? { view, id, seq, data } : { view, id, data },
     ...(tool === "show" ? { _meta: { ui: { resourceUri: APP_URI }, "ui/resourceUri": APP_URI } } : {}),
-  };
+  });
+  const id = args.id ?? null;
+  if (args.view === "board") {
+    if (id !== null && id.toUpperCase() !== PROJECT.key) return failed(`No project called "${id}". Projects: ${PROJECT.name} (${PROJECT.key}).`);
+    const data = board.data(id === null ? null : PROJECT.key);
+    return out("board", data.project?.key ?? null, data, sentence(data));
+  }
+  if (args.view === "card") {
+    if (!id) return failed("missing \"id\": the card's identifier, like GA-12");
+    const data = cards.data(id);
+    if (!data) return failed(`There is no card ${id} in Hersir.`);
+    state.lastCard = data.identifier;
+    const hold = data.hold ? `, on hold (${data.hold.replace(/_/g, " ")})` : "";
+    return out("card", data.identifier, data, `${data.identifier} – ${data.title.replace(/\.$/, "")}, in ${data.column}${hold}.`);
+  }
+  if (args.view === "chief") {
+    const data = chief.view(id);
+    if (typeof data === "string") return failed(data);
+    return out("chief", data.thread, data, chief.sentence(data));
+  }
+  return failed(`"view" is board, card or chief, not "${args.view ?? ""}"`);
 }
 
 /** board_changes' result as Hersir gives it: JSON text and structuredContent. */
-function changes(args: { since?: unknown }) {
+function changes(args: Args) {
   if (!state.open) return failed(NOT_RUNNING);
   if (args.since !== undefined && typeof args.since !== "number") return failed("\"since\" must be a whole number");
   const c = board.since(args.since as number | undefined);
   return { content: [{ type: "text", text: JSON.stringify(c) }], structuredContent: c, isError: false };
 }
 
+/** A write with one of the model's tools, as Hersir answers it; while "Writes fail" is on, Hersir's refusal. */
+function write(name: string, a: Args) {
+  if (!state.open) return failed(NOT_RUNNING);
+  state.writes++;
+  if (state.failWrites) return failed(`Hersir didn't do ${name}: the stand-in host's "Writes fail" is on (as when a column refuses a card, or a run can't start).`);
+  const task = String(a.task ?? "");
+  const why = name === "move_task" ? (a.column ? board.move(task, a.column) : "missing \"column\": the column's name, like In progress")
+    : name === "comment_on_task" ? cards.comment(task, String(a.body_md ?? ""))
+    : name === "start_agent_run" ? cards.start(task, a.agent)
+    : name === "stop_agent_run" ? cards.stop(task)
+    : null;
+  if (name === "ask_chief") {
+    const sent = chief.ask(String(a.message ?? ""), a.thread);
+    return typeof sent === "string" ? failed(sent) : answered(sent);
+  }
+  if (why) return failed(why);
+  const found = board.find(task);
+  return answered({ task: found?.card.identifier ?? task, column: found?.column ?? null, done: name });
+}
+
 /** show's arguments for this tool call. */
-const showArgs = (): ViewArgs => (state.project ? { view: "board", id: state.project } : { view: "board" });
+const showArgs = (): Args => ({ ...state.show });
 
 function hostContext() {
   const frame = $("#frame-box");
@@ -125,24 +176,40 @@ function onRequest(m: Msg) {
     case "ui/initialize":
       return answer({
         protocolVersion: PROTOCOL, hostInfo: { name: "Hersir stand-in host", version: "1" },
-        hostCapabilities: { serverTools: {}, logging: {} }, hostContext: hostContext(),
+        hostCapabilities: { serverTools: {}, logging: {}, openLinks: {} }, hostContext: hostContext(),
       });
     case "tools/call": {
       const name = String(m.params?.name ?? "");
-      const args = (m.params?.arguments ?? {}) as ViewArgs & { since?: unknown };
+      const args = (m.params?.arguments ?? {}) as Args;
+      let res: unknown;
       if (name === "board_changes") {
         state.changeCalls++;
-        status();
-        return answer(changes(args));
+        res = changes(args);
+      } else if (name === "view_read" || name === "show") {
+        if (name === "view_read") { state.reads++; state.lastRead = new Date(); }
+        res = result(name, args);
+      } else if (name === "chief_reply") {
+        // it only reads: "Writes fail" doesn't touch it
+        const r = !state.open ? NOT_RUNNING : chief.reply(args.thread, args.after);
+        res = typeof r === "string" ? failed(r) : answered(r);
+      } else if (WRITES.includes(name)) {
+        res = write(name, args);
+      } else {
+        return fail(-32602, `unknown tool ${name}`);
       }
-      if (name !== "view_read" && name !== "show") return fail(-32602, `unknown tool ${name}`);
-      if (name === "view_read") { state.reads++; state.lastRead = new Date(); status(); }
-      return answer(result(name, args));
+      status();
+      return answer(res);
     }
     case "ui/request-display-mode": {
       const want = m.params?.mode === "fullscreen" ? "fullscreen" : "inline";
       setMode(want);
       return answer({ mode: want });
+    }
+    case "ui/open-link": {
+      // as Claude does: it opens the link in the user's browser (here only noted)
+      state.lastLink = String(m.params?.url ?? "");
+      status();
+      return answer({});
     }
     case "ping":
       return answer({});
@@ -156,6 +223,7 @@ function onNotification(m: Msg) {
     // As Claude does once the view is ready: the tool's input, then its result.
     notify("ui/notifications/tool-input", { arguments: showArgs() });
     notify("ui/notifications/tool-result", result("show", showArgs()));
+    status();
   } else if (m.method === "ui/notifications/size-changed") {
     const h = Number(m.params?.height);
     if (Number.isFinite(h) && h > 0) {
@@ -189,6 +257,10 @@ async function mount() {
   box.replaceChildren();
   state.calls++;
   state.height = 0;
+  if (state.mode === "fullscreen") {
+    state.mode = "inline";
+    document.body.classList.remove("fullscreen");
+  }
   $("#call").textContent = `show ${JSON.stringify(showArgs())}`;
   const res = await fetch(`/built/mcp-app.html?t=${Date.now()}`);
   const html = await res.text();
@@ -209,6 +281,12 @@ async function mount() {
   status();
 }
 
+/** The Show select's value → show's arguments: "board", "board:GA", "card:GA-109", "chief". */
+function showOf(value: string): Args {
+  const [view, id] = value.split(":");
+  return id ? { view, id } : { view };
+}
+
 $("#theme").addEventListener("click", () => {
   state.theme = state.theme === "dark" ? "light" : "dark";
   document.documentElement.dataset.theme = state.theme;
@@ -216,8 +294,18 @@ $("#theme").addEventListener("click", () => {
   notify("ui/notifications/host-context-changed", { theme: state.theme });
 });
 $<HTMLInputElement>("#open").addEventListener("change", (e) => { state.open = (e.target as HTMLInputElement).checked; });
-$<HTMLInputElement>("#whole").addEventListener("change", (e) => { state.project = (e.target as HTMLInputElement).checked ? null : PROJECT.key; });
+$<HTMLInputElement>("#fail").addEventListener("change", (e) => { state.failWrites = (e.target as HTMLInputElement).checked; });
+$<HTMLSelectElement>("#show").addEventListener("change", (e) => {
+  state.show = showOf((e.target as HTMLSelectElement).value);
+  void mount();
+});
 $("#change").addEventListener("click", () => { board.change(); status(); });
+$("#hersir-comment").addEventListener("click", () => {
+  const id = state.lastCard ?? "GA-109";
+  cards.comment(id, "A comment written in Hersir: **the view shows it within a few seconds**.", "Jefsev");
+  status();
+});
+$("#hersir-chat").addEventListener("click", () => { chief.fromHersir("A message typed in Hersir's chat: what is left for 0.20.0?"); status(); });
 $("#remount").addEventListener("click", () => void mount());
 $("#exit").addEventListener("click", () => setMode("inline"));
 $<HTMLSelectElement>("#width").addEventListener("change", (e) => { $("#frame-box").style.width = (e.target as HTMLSelectElement).value; });
@@ -227,4 +315,10 @@ setInterval(() => { if ($<HTMLInputElement>("#auto").checked) { board.change(); 
 
 document.documentElement.dataset.theme = state.theme;
 $("#theme").textContent = `Theme: ${state.theme}`;
+const first = new URLSearchParams(location.search).get("show");
+if (first) {
+  state.show = showOf(first);
+  const select = $<HTMLSelectElement>("#show");
+  if ([...select.options].some((o) => o.value === first)) select.value = first;
+}
 void mount();

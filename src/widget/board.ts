@@ -1,5 +1,6 @@
 // GA-343, GA-345: the board as show and view_read give it (views.ts, src-tauri/src/tools/apps.rs), and what the app's
 // Board (src/components/Board.tsx) draws from it. A column is known by its place, a card by its identifier.
+import { generateNKeysBetween } from "fractional-indexing";
 import type { Task, WorkflowState } from "../types";
 import type { BoardData } from "./views";
 
@@ -19,16 +20,20 @@ export function statesOf(board: BoardData): WorkflowState[] {
   }));
 }
 
-/** The Board's cards: what the board shows of each, the rest empty. */
+/** The Board's cards: what the board shows of each, the rest empty. Their order keys are real ones (fractional-indexing's,
+ *  in board order), as the Board makes a dropped card's key from its neighbours' (GA-349: a card is dragged there). */
 export function tasksOf(board: BoardData): Task[] {
-  return board.columns.flatMap((c, i) => c.cards.map((card, at) => ({
-    id: card.identifier, identifier: card.identifier, title: card.title, descriptionMd: "", projectName: card.project,
-    stateId: columnId(i), stateName: c.name, stateCategory: CATEGORY[c.kind] ?? c.kind,
-    priority: card.priority ?? 0, assigneeName: card.assignee ?? null, assigneeKind: null,
-    labels: (card.labels ?? []).map((l) => ({ id: l.name, name: l.name, color: l.color ?? null })),
-    hold: card.hold ?? null, withLead: false, byHand: false, waitsFor: [],
-    bounceCount: 0, failCount: 0, sortKey: String(at).padStart(6, "0"), testing: false, createdAt: 0, updatedAt: 0, screenshots: null,
-  })));
+  return board.columns.flatMap((c, i) => {
+    const keys = generateNKeysBetween(null, null, c.cards.length);
+    return c.cards.map((card, at) => ({
+      id: card.identifier, identifier: card.identifier, title: card.title, descriptionMd: "", projectName: card.project,
+      stateId: columnId(i), stateName: c.name, stateCategory: CATEGORY[c.kind] ?? c.kind,
+      priority: card.priority ?? 0, assigneeName: card.assignee ?? null, assigneeKind: null,
+      labels: (card.labels ?? []).map((l) => ({ id: l.name, name: l.name, color: l.color ?? null })),
+      hold: card.hold ?? null, withLead: false, byHand: false, waitsFor: [],
+      bounceCount: 0, failCount: 0, sortKey: keys[at], testing: false, createdAt: 0, updatedAt: 0, screenshots: null,
+    }));
+  });
 }
 
 /** Card id → who works on it now, for the Board's "… is working". */

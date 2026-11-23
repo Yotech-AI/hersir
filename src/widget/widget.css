@@ -1,19 +1,95 @@
-/* GA-343: the board view in Claude Desktop's chat. The app's styles (tokens, components, app) draw the board; these fit
-   it in a frame the host sizes to the view's own height (ui/notifications/size-changed). */
+/* GA-343, GA-349: Hersir's view in Claude Desktop's chat: the board, a card or the Chief's thread. The app's styles
+   (tokens, components, app) draw them; these fit them in a frame the host sizes to the view's own height
+   (ui/notifications/size-changed), or in the window in full screen. Teal (--live) only for an agent working now, gold
+   (--needs) only for what needs you. */
 html, body, #root { height: auto; min-height: 0; }
 body { margin: 0; background: var(--bg); }
 
-.mcp-board { display: flex; flex-direction: column; gap: 4px; padding: 10px 0 0; }
+.mcp-app { display: flex; flex-direction: column; gap: 8px; padding: 10px 0 14px; }
 .mcp-head { display: flex; align-items: center; gap: 10px; min-height: 30px; padding: 0 20px; }
 .mcp-head .grow { flex: 1; }
-.mcp-title { font-size: var(--fs-md); font-weight: 700; }
-.mcp-updated { font-size: var(--fs-sm); }
+.mcp-title { font-size: var(--fs-md); font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mcp-updated { font-size: var(--fs-sm); white-space: nowrap; }
 .mcp-note { margin: 0 20px; padding: 8px 12px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--raised);
   color: var(--text-2); font-size: var(--fs-sm); }
+.mcp-error { margin: 0; color: var(--danger); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.mcp-whole > .mcp-error { margin: 0 20px 6px; }
+.mcp-empty { margin: 0; font-size: var(--fs-sm); }
+.mcp-hint { font-size: var(--fs-xs); }
+.mcp-app h3 .n, .mcp-column .n { color: var(--text-3); font-weight: 500; font-variant-numeric: tabular-nums; }
 
-/* Inline in the chat: the columns scroll within a height that fits a message. Full screen: the window's height. */
-.mcp-board .col-body { max-height: 420px; }
-.mcp-board.fullscreen .col-body { max-height: calc(100vh - 120px); }
+/* Full screen: the window's height, the view's parts scrolling inside it. */
+.mcp-app.fullscreen { height: 100vh; box-sizing: border-box; overflow: hidden; }
+.mcp-app.fullscreen.view-card, .mcp-app.fullscreen.view-board:has(.mcp-summary) { overflow-y: auto; }
 
-/* Read-only: nothing to drag or open. */
-.mcp-board .card { cursor: default; }
+/* ---- the board ---- */
+
+.mcp-summary { display: flex; flex-direction: column; gap: 12px; padding: 0 20px; }
+.mcp-columns { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.mcp-column { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--radius-pill);
+  background: var(--raised); font-size: var(--fs-sm); }
+.mcp-column .name { font-weight: 600; }
+.mcp-section { display: flex; flex-direction: column; gap: 4px; }
+.mcp-section h3 { display: flex; align-items: center; gap: 6px; margin: 0; font-size: var(--fs-sm); font-weight: 700; color: var(--text-2); }
+.mcp-section h3.needs { color: var(--needs); }
+.mcp-section h3.live { color: var(--live); }
+.mcp-list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.mcp-row { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: center; gap: 8px; width: 100%; min-height: 32px; padding: 4px 8px;
+  border: 0; border-radius: var(--radius); background: transparent; color: var(--text); font: inherit; font-size: var(--fs); text-align: left; cursor: pointer; }
+.mcp-row:hover, .mcp-row:focus-visible { background: var(--hover); }
+.mcp-row .id { font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-2); }
+.mcp-row-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mcp-row-why { font-size: var(--fs-sm); color: var(--text-3); white-space: nowrap; }
+.mcp-list.needs .mcp-row-why { color: var(--needs); }
+.mcp-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--needs); }
+.mcp-more { padding: 4px 8px; font-size: var(--fs-sm); }
+
+/* The whole board: inline, its columns scroll within a height that fits a message; full screen, the window's. */
+.mcp-whole { display: flex; flex-direction: column; min-height: 0; }
+.mcp-app .col-body { max-height: 420px; }
+.mcp-app.fullscreen .mcp-whole { flex: 1; }
+.mcp-app.fullscreen .mcp-whole .board { flex: 1; min-height: 0; }
+.mcp-app.fullscreen .col-body { max-height: calc(100vh - 130px); }
+
+/* ---- a card ---- */
+
+.mcp-card { display: flex; flex-direction: column; gap: 12px; padding: 0 20px; }
+.mcp-app.fullscreen .mcp-card { width: 100%; max-width: 900px; margin: 0 auto; box-sizing: border-box; }
+.mcp-card .task-head .id { font-family: var(--font-mono); font-size: var(--fs-sm); }
+.mcp-card-title { margin: 0; font-size: 19px; line-height: 1.3; overflow-wrap: anywhere; }
+.mcp-props { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 16px; margin: 0; font-size: var(--fs); }
+.mcp-props dt { color: var(--text-3); }
+.mcp-props dd { margin: 0; min-width: 0; }
+.mcp-who { display: inline-flex; align-items: center; gap: 6px; }
+.mcp-labels { display: flex; flex-wrap: wrap; gap: 4px; }
+.mcp-link { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); text-decoration: none; }
+.mcp-link:hover { text-decoration: underline; }
+.mcp-hold { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: 1px solid var(--needs); border-radius: var(--radius); background: var(--needs-soft); }
+.mcp-hold > b { color: var(--needs); font-size: var(--fs-sm); }
+.mcp-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.mcp-move { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 6px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--raised); }
+.mcp-compose { display: flex; flex-direction: column; gap: 6px; }
+.mcp-compose-acts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.mcp-block { display: flex; flex-direction: column; gap: 4px; }
+.mcp-block > h3 { display: flex; align-items: center; gap: 6px; margin: 4px 0 0; font-size: var(--fs-sm); font-weight: 700; color: var(--text-2); }
+.mcp-live > h3 { color: var(--live); }
+.mcp-output { margin: 0; max-height: 300px; overflow: auto; padding: 8px 10px; border: 1px solid var(--line); border-left: 2px solid var(--live); border-radius: var(--radius);
+  background: var(--raised); font-family: var(--font-mono); font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.mcp-runs { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.mcp-run { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.mcp-run .by { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.mcp-card .comment { padding: 10px 0; }
+
+/* ---- the Chief's thread ---- */
+
+.mcp-chief { display: flex; flex-direction: column; gap: 10px; padding: 0 20px; min-height: 0; }
+.mcp-app.fullscreen .mcp-chief { flex: 1; width: 100%; max-width: 900px; margin: 0 auto; box-sizing: border-box; }
+.mcp-messages { display: flex; flex-direction: column; gap: 10px; }
+.mcp-app.fullscreen .mcp-messages { flex: 1; min-height: 0; overflow-y: auto; }
+.mcp-msg { display: flex; flex-direction: column; gap: 2px; max-width: 760px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--raised); }
+.mcp-msg .by { display: flex; align-items: center; gap: 8px; font-size: var(--fs-sm); }
+.mcp-msg.from-you { align-self: flex-end; background: var(--accent-soft); border-color: transparent; }
+.mcp-msg.from-hersir { color: var(--text-2); font-size: var(--fs-sm); }
+.mcp-msg.draft { border-left: 2px solid var(--live); }
+.mcp-plain { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.mcp-chief .textarea { min-height: 64px; }

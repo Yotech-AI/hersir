@@ -6,7 +6,7 @@
 // same drag and drop rules.
 // GA-306 (the Tasks page's board): Deploy and Done have Move all (to Deploy's next column) and Archive all in their head,
 // and a checkbox on each card to move or archive a selection at once, one column at a time.
-// GA-343 (the board view in Claude Desktop's chat, src/widget): readOnly, no card can be dragged.
+// GA-343: readOnly, no card can be dragged. GA-349: the board in Claude Desktop's chat (src/widget) drags, with move_task.
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   DndContext, MeasuringStrategy, PointerSensor, closestCenter, getFirstCollision, pointerWithin, useDroppable, useSensor, useSensors,
