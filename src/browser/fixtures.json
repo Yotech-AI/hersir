@@ -5137,6 +5137,123 @@
     "live_runs": [],
     "memory_enabled": true,
     "onboarding_pending": false,
+    "project_time": {
+      "$answers": {
+        "01a1b19a-2be6-769c-9af1-f72fdafe3dae": [
+          {
+            "taskId": "01a1b19a-30a5-70d2-9b85-a85e16750360",
+            "identifier": "GFW-5",
+            "title": "Wishlist: save a bike for later",
+            "column": "To do",
+            "archived": false,
+            "runs": 0,
+            "timeMs": 0,
+            "runningSince": null,
+            "inputTokens": 0,
+            "outputTokens": 0
+          },
+          {
+            "taskId": "01a1b19a-2bee-725e-bda8-a89f0cda6d78",
+            "identifier": "GFW-4",
+            "title": "BTW 9% for the books category",
+            "column": "Done",
+            "archived": false,
+            "runs": 0,
+            "timeMs": 0,
+            "runningSince": null,
+            "inputTokens": 0,
+            "outputTokens": 0
+          },
+          {
+            "taskId": "01a1b19a-2bed-77e0-bd65-5d1f4ca1b657",
+            "identifier": "GFW-3",
+            "title": "Postcode and house number lookup on checkout",
+            "column": "To do",
+            "archived": false,
+            "runs": 0,
+            "timeMs": 0,
+            "runningSince": null,
+            "inputTokens": 0,
+            "outputTokens": 0
+          },
+          {
+            "taskId": "01a1b19a-2bec-7456-b39c-26558476a7aa",
+            "identifier": "GFW-2",
+            "title": "Product filters: price range slider",
+            "column": "Review",
+            "archived": false,
+            "runs": 6,
+            "timeMs": 15120000,
+            "runningSince": null,
+            "inputTokens": 18830000,
+            "outputTokens": 238900
+          },
+          {
+            "taskId": "01a1b19a-2beb-73fc-aa11-bdbd64248494",
+            "identifier": "GFW-1",
+            "title": "Mollie webhook: retry failed payment updates",
+            "column": "In progress",
+            "archived": false,
+            "runs": 0,
+            "timeMs": 0,
+            "runningSince": null,
+            "inputTokens": 0,
+            "outputTokens": 0
+          }
+        ],
+        "01a1b19a-2be5-77c9-94a7-49c1eb4154a3": [
+          {
+            "taskId": "01a1b19a-2bea-7134-badf-129243bc5788",
+            "identifier": "KADE-4",
+            "title": "Driver app: offline queue, one-page spec",
+            "column": "Backlog",
+            "archived": false,
+            "runs": 0,
+            "timeMs": 0,
+            "runningSince": null,
+            "inputTokens": 0,
+            "outputTokens": 0
+          },
+          {
+            "taskId": "01a1b19a-2be9-759c-86c1-365829fbd085",
+            "identifier": "KADE-3",
+            "title": "Filament table: remember column order per user",
+            "column": "Review",
+            "archived": false,
+            "runs": 0,
+            "timeMs": 0,
+            "runningSince": null,
+            "inputTokens": 0,
+            "outputTokens": 0
+          },
+          {
+            "taskId": "01a1b19a-2be8-777e-b55a-c693701536ec",
+            "identifier": "KADE-2",
+            "title": "Rate limit the public tracking endpoint",
+            "column": "Testing",
+            "archived": false,
+            "runs": 1,
+            "timeMs": 1760000,
+            "runningSince": null,
+            "inputTokens": 2200000,
+            "outputTokens": 24000
+          },
+          {
+            "taskId": "01a1b19a-2be7-7753-b1c5-51e9c36c3a66",
+            "identifier": "KADE-1",
+            "title": "Export invoices as CSV from the portal",
+            "column": "In progress",
+            "archived": false,
+            "runs": 0,
+            "timeMs": 0,
+            "runningSince": null,
+            "inputTokens": 0,
+            "outputTokens": 0
+          }
+        ]
+      },
+      "$by": "id"
+    },
     "restore_status": {
       "error": null,
       "folder": null,
