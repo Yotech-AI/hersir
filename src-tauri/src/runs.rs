@@ -1399,6 +1399,25 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
     // the parts of it that a commit writes (`worktree::commit_dirs`), never its config or hooks. With rerere on in your
     // git config, every commit would make the git folder's rr-cache, which the sandbox refuses: there the run's own git
     // goes without rerere (a writable rr-cache would let an agent leave a conflict resolution for your own merges).
+    // GA-322: a Gemini run reads its own system settings file, yours with the worktree's .env off
+    // (`agent_cli::gemini_settings`), so it doesn't load the .env's variables; it goes when the run ends. Without it the
+    // run doesn't start: Gemini would refuse system settings that can't be read, too.
+    let gemini_settings = if spec.kind == Kind::Gemini {
+        let path = log_dir.join(format!("{run_id}.gemini.json"));
+        let written = agent_cli::gemini_settings(&spec.env)
+            .and_then(|text| std::fs::write(&path, text).map_err(|e| format!("Couldn't write {}: {e}", path.display())));
+        if let Err(e) = written {
+            if let Some(p) = &mcp_config {
+                let _ = std::fs::remove_file(p);
+            }
+            let _ = core_runs::finish(&st.db, &run_id, "failed", None, 0, 0, 0, Some(&e));
+            (st.notify)(Note::RowsChanged("runs"));
+            return Err(StartError::Card(e));
+        }
+        Some(path)
+    } else {
+        None
+    };
     let mut git_config = git_config;
     let writable_dirs: Vec<String> = if spec.kind == Kind::Codex {
         if permission_mode != "danger-full-access" {
@@ -1416,7 +1435,7 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
         permission_mode, allowed_tools, mcp_config: mcp_config.clone(), disallowed_tools: mcp_refused, web, slash_commands,
         model: agent.model.clone(), max_budget_usd: get_settings(st).max_run_usd, effort: agent.effort.clone(),
         writable_dirs, mcp_servers,
-        folders, temp_dir, git_config,
+        folders, temp_dir, git_config, gemini_settings: gemini_settings.clone(),
     };
     // GA-202: the CLI and everything it starts run in the slice of the agent runs, under their memory limit (Linux), in a
     // scope with the run's own limit, Memory per run (GA-277), which it keeps to its end.
@@ -1432,7 +1451,7 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
         .chain((!claude_code_signs_in.is_empty()).then(|| agent_cli::claude_code_line(&claude_code_signs_in)))
         .chain(notes.iter().map(|n| agent_cli::note_line(n)))
         .map(|l| format!("{l}\n")).collect();
-    let drop_config = || if let Some(p) = &mcp_config { let _ = std::fs::remove_file(p); };
+    let drop_config = || for p in mcp_config.iter().chain(&gemini_settings) { let _ = std::fs::remove_file(p); };
     if !head.is_empty() {
         if let Err(e) = std::fs::write(&log_path, head) {
             drop_config();
@@ -1485,6 +1504,7 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
     let kind = spec.kind;
     let dir = wt.path.clone();
     let (run_agent, run_config) = (agent_id.clone(), mcp_config.clone());
+    let run_settings = gemini_settings.clone();
     let (seen_log, seen_cli) = (log_path.clone(), cli.id.clone());
     let agent_name = agent.name.clone();
     let shots_agent = agent_id.clone();
@@ -1558,8 +1578,8 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
             note_run(&st2, &rid, &crate::run_memory::ended_note(&st2, ended_together, None));
         }
         // The run's process group has ended, whatever way (finished, Stop, a limit): its throwaway files go, its MCP
-        // config (with its servers' secrets) first.
-        if let Some(p) = &run_config {
+        // config (with its servers' secrets) first, and a Gemini run's own settings file (GA-322).
+        for p in run_config.iter().chain(&run_settings) {
             let _ = std::fs::remove_file(p);
         }
         // The tools Claude Code's init line named: the agent's "seen in the last run" (agent form → Tools → Built-in tools).

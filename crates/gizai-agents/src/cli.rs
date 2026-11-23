@@ -103,6 +103,9 @@ pub struct TaskRun {
     /// without `--disable-slash-commands` and gets `SlashCommand` and `Skill` in its allowed tools; hooks stay off and
     /// settings still come from the user's only. Off by default; other CLIs ignore it.
     pub slash_commands: bool,
+    /// Gemini: the run's own system settings file (`gemini_settings`: yours, with the worktree's `.env` off), which Gemini
+    /// reads in place of yours (`gemini_env`). None: it reads yours, and the worktree's `.env` with them.
+    pub gemini_settings: Option<PathBuf>,
 }
 
 /// The Web switches of a run. Claude Code gets `WebSearch` and `WebFetch` (or one `WebFetch(domain:…)` per domain) in its
@@ -196,7 +199,10 @@ fn cli_exec(cli: &CliSpec, run: &TaskRun) -> Exec {
             ..Default::default()
         }.exec(),
         Kind::Codex => Exec { bin: cli.bin.clone(), args: codex_args(run), env: cli.env.clone(), stdin: run.prompt.clone(), slice: None },
-        Kind::Gemini => Exec { bin: cli.bin.clone(), args: gemini_args(run), env: cli.env.clone(), stdin: run.prompt.clone(), slice: None },
+        Kind::Gemini => Exec {
+            bin: cli.bin.clone(), args: gemini_args(run), env: cli.env.iter().cloned().chain(gemini_env(cli, run)).collect(),
+            stdin: run.prompt.clone(), slice: None,
+        },
         Kind::Other => {
             let (args, on_stdin) = other_args(&cli.args, &run.prompt, run.model.as_deref());
             Exec { bin: cli.bin.clone(), args, env: cli.env.clone(), stdin: if on_stdin { run.prompt.clone() } else { String::new() }, slice: None }
@@ -276,6 +282,126 @@ pub const GEMINI_FOLDER: &str = "This repository has a .gemini folder, whose set
 /// it in every run (see `gemini_args`).
 pub fn gemini_folder(wt: &Path) -> bool {
     std::fs::symlink_metadata(wt.join(".gemini")).is_ok()
+}
+
+/// GA-322 (CWE-15): what a Gemini run gets in its environment after the CLI's own lines (`cli_exec`). Gemini reads a
+/// `.env` in the folder it works in (all of it once it trusts the folder, which `--skip-trust` makes it do some seconds
+/// after its start, checked with Gemini CLI 0.65.0), and sets each variable of it that isn't set yet: `BASH_ENV` or
+/// `ENV` there would run a script before each allowed command, and `GOOGLE_GEMINI_BASE_URL` or `GOOGLE_VERTEX_BASE_URL`
+/// would send your key elsewhere. So:
+/// - `BASH_ENV` and `ENV` are set, empty, unless the CLI's own lines set them;
+/// - the two base URLs are set, empty (to Gemini an empty one is no URL), unless the CLI's own lines or Hersir's own
+///   environment set them;
+/// - with the run's settings file (`TaskRun::gemini_settings`), Gemini reads that one as its system settings
+///   (`GEMINI_CLI_SYSTEM_SETTINGS_PATH`): yours with `advanced.ignoreLocalEnv` on (`gemini_settings`), so it doesn't read
+///   the worktree's `.env` at all. Its system defaults stay where they were (`GEMINI_CLI_SYSTEM_DEFAULTS_PATH`).
+///
+/// `--ignore-env` would do the same, but Gemini 0.65 refuses it as an unknown argument. A `.gemini/.env` is read even
+/// so: one in the worktree holds the card before the run (`gemini_folder`), and one the agent writes during the run
+/// can't set the four variables above.
+fn gemini_env(cli: &CliSpec, run: &TaskRun) -> Vec<(String, String)> {
+    let own = |name: &str| cli.env.iter().any(|(k, _)| k == name);
+    let mut env: Vec<(String, String)> = ["BASH_ENV", "ENV"].into_iter().filter(|n| !own(n)).map(|n| (n.to_string(), String::new())).collect();
+    env.extend(["GOOGLE_GEMINI_BASE_URL", "GOOGLE_VERTEX_BASE_URL"].into_iter()
+        .filter(|n| !own(n) && std::env::var_os(n).is_none()).map(|n| (n.to_string(), String::new())));
+    if let Some(file) = &run.gemini_settings {
+        env.push((GEMINI_SETTINGS.into(), file.display().to_string()));
+        if !own(GEMINI_DEFAULTS) && std::env::var_os(GEMINI_DEFAULTS).is_none() {
+            env.push((GEMINI_DEFAULTS.into(), gemini_system_files(&cli.env).1.display().to_string()));
+        }
+    }
+    env
+}
+
+/// The variables that tell Gemini where its system settings and its system defaults are.
+const GEMINI_SETTINGS: &str = "GEMINI_CLI_SYSTEM_SETTINGS_PATH";
+const GEMINI_DEFAULTS: &str = "GEMINI_CLI_SYSTEM_DEFAULTS_PATH";
+
+/// Where Gemini reads its system settings and its system defaults (`gemini_env`): as the CLI's own lines or Hersir's
+/// environment say (`GEMINI_CLI_SYSTEM_SETTINGS_PATH`, `GEMINI_CLI_SYSTEM_DEFAULTS_PATH`), else where Gemini 0.65 looks:
+/// /etc/gemini-cli/settings.json on Linux, /Library/Application Support/GeminiCli/settings.json on macOS,
+/// C:\ProgramData\gemini-cli\settings.json on Windows, with system-defaults.json next to it.
+fn gemini_system_files(cli_env: &[(String, String)]) -> (PathBuf, PathBuf) {
+    let set = |name: &str| cli_env.iter().rev().find(|(k, _)| k == name).map(|(_, v)| PathBuf::from(v))
+        .or_else(|| std::env::var_os(name).map(PathBuf::from)).filter(|p| !p.as_os_str().is_empty());
+    let settings = set(GEMINI_SETTINGS).unwrap_or_else(|| PathBuf::from(if cfg!(target_os = "macos") {
+        "/Library/Application Support/GeminiCli/settings.json"
+    } else if cfg!(windows) {
+        r"C:\ProgramData\gemini-cli\settings.json"
+    } else {
+        "/etc/gemini-cli/settings.json"
+    }));
+    let defaults = set(GEMINI_DEFAULTS)
+        .unwrap_or_else(|| settings.parent().unwrap_or(Path::new("")).join("system-defaults.json"));
+    (settings, defaults)
+}
+
+/// GA-322: the text of a Gemini run's own system settings file (`TaskRun::gemini_settings`): your system settings
+/// (`gemini_system_files`; none is fine), with `advanced.ignoreLocalEnv` on, so Gemini doesn't read the `.env` of the
+/// worktree it works in (`gemini_env`). System settings win over yours and the worktree's. An error says why, in plain
+/// words, when yours are there but can't be read or aren't a JSON object, as Gemini itself would refuse them.
+pub fn gemini_settings(cli_env: &[(String, String)]) -> Result<String, String> {
+    let (file, _) = gemini_system_files(cli_env);
+    let mut settings = match std::fs::read_to_string(&file) {
+        Ok(text) => serde_json::from_str::<Value>(&strip_json_comments(&text))
+            .map_err(|e| format!("Gemini's system settings {} aren't valid JSON: {e}", file.display()))?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Value::Object(Default::default()),
+        Err(e) => return Err(format!("Hersir can't read Gemini's system settings {}: {e}", file.display())),
+    };
+    let Some(all) = settings.as_object_mut() else {
+        return Err(format!("Gemini's system settings {} aren't a JSON object", file.display()));
+    };
+    let advanced = all.entry("advanced").or_insert_with(|| Value::Object(Default::default()));
+    if !advanced.is_object() {
+        *advanced = Value::Object(Default::default());
+    }
+    advanced["ignoreLocalEnv"] = Value::Bool(true);
+    serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())
+}
+
+/// `text` without its `//` and `/* */` comments outside strings, as Gemini reads a settings file (strip-json-comments,
+/// then JSON.parse).
+fn strip_json_comments(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    let (mut in_string, mut escaped) = (false, false);
+    while let Some(c) = chars.next() {
+        if in_string {
+            out.push(c);
+            if escaped {
+                escaped = false;
+            } else if c == '\\' {
+                escaped = true;
+            } else if c == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match (c, chars.peek().copied()) {
+            ('"', _) => {
+                in_string = true;
+                out.push(c);
+            }
+            ('/', Some('/')) => {
+                while chars.peek().is_some_and(|&n| n != '\n') {
+                    chars.next();
+                }
+            }
+            ('/', Some('*')) => {
+                chars.next();
+                let mut last = '\0';
+                for n in chars.by_ref() {
+                    if last == '*' && n == '/' {
+                        break;
+                    }
+                    last = n;
+                }
+                out.push(' ');
+            }
+            _ => out.push(c),
+        }
+    }
+    out
 }
 
 /// `gemini --output-format stream-json …`, headless; the prompt comes on stdin and `-p` only adds a last line after it.
