@@ -174,7 +174,10 @@ fn a_gemini_run_starts_with_bash_env_env_and_the_base_urls_empty_and_its_own_sys
     assert_eq!(env_value(&e.env, "GOOGLE_GEMINI_BASE_URL"), Some("https://proxy.example"));
     assert_eq!(env_value(&e.env, "GEMINI_CLI_SYSTEM_SETTINGS_PATH"), Some("/data/runs/r2.gemini.json"), "the run's own file comes last");
     if unset("GEMINI_CLI_SYSTEM_DEFAULTS_PATH") {
-        assert_eq!(env_value(&e.env, "GEMINI_CLI_SYSTEM_DEFAULTS_PATH"), Some("/opt/gemini/system-defaults.json"));
+        // GA-337: compared as paths, since Path::join puts a \ on Windows (/opt/gemini\system-defaults.json is the same
+        // file there); another folder or another file name still differs
+        assert_eq!(env_value(&e.env, "GEMINI_CLI_SYSTEM_DEFAULTS_PATH").map(std::path::Path::new),
+                   Some(std::path::Path::new("/opt/gemini/system-defaults.json")), "next to the CLI's own settings: {:?}", e.env);
     }
 
     // without a settings file of its own (no run sets none, but the exec doesn't make one up)
