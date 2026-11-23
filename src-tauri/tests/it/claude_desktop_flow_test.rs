@@ -151,8 +151,20 @@ fn the_token_is_stored_as_its_sha256_with_no_expiry_the_scope_client_claude_desk
             let m = std::fs::symlink_metadata(&p).unwrap();
             if m.is_dir() {
                 walk(&p, needle, out);
-            } else if m.is_file() && std::fs::read(&p).unwrap().windows(needle.len()).any(|w| w == needle) {
-                out.push(p);
+            } else if m.is_file() {
+                // On Windows the open database is locked against reading; its rows are checked above. On Linux and macOS
+                // every file is read, the database and its WAL too.
+                let bytes = match std::fs::read(&p) {
+                    Ok(b) => b,
+                    Err(e) if cfg!(windows) => {
+                        eprintln!("not read: {} ({e})", p.display());
+                        continue;
+                    }
+                    Err(e) => panic!("{}: {e}", p.display()),
+                };
+                if bytes.windows(needle.len()).any(|w| w == needle) {
+                    out.push(p);
+                }
             }
         }
     }
