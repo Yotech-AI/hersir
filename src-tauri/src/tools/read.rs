@@ -116,6 +116,14 @@ fn usd(micros: i64) -> f64 {
     (micros as f64 / 10_000.0).round() / 100.0
 }
 
+/// GA-344: board_changes, Claude Desktop's own (`super::BOARD_CHANGES`): what changed on the board since `since`, a
+/// counter an earlier call returned (`gizai_core::feed::since`). It needs only the database, so no actor or chat.
+pub(crate) fn board_changes(st: &crate::AppState, a: &Args) -> Result<Value, String> {
+    let since = a.int("since")?;
+    let c = gizai_core::feed::since(&st.db, since).map_err(err)?;
+    Ok(json!({"counter": c.counter, "tasks": c.tasks, "board": c.board, "reload": c.reload}))
+}
+
 pub(crate) fn overview(cx: &Cx) -> Result<Value, String> {
     let db = cx.db();
     let you = users::list(db).map_err(err)?.into_iter().find(|p| p.id == cx.st.you_id);

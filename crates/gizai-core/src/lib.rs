@@ -26,6 +26,8 @@ pub mod workflow;
 pub mod questions;
 pub mod pending;
 pub mod board;
+// GA-344: the cards that changed after a change counter, for a view of the board that asks again and again.
+pub mod feed;
 pub mod chat;
 pub mod clis;
 pub mod tokens;

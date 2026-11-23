@@ -488,10 +488,11 @@ mod socket {
         assert_eq!(init["result"]["serverInfo"]["name"], "hersir", "{init}");
         let list = c.ask(json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})).await.unwrap();
         let listed: Vec<String> = list["result"]["tools"].as_array().unwrap().iter().map(|d| d["name"].as_str().unwrap().to_string()).collect();
-        // GA-341: the Chief's tools (claude_desktop_chief_test.rs checks the list in detail)
+        // GA-341: the Chief's tools (claude_desktop_chief_test.rs checks the list in detail); GA-344: and board_changes
         let desktop: Vec<String> = tools::desktop_catalog().into_iter().map(|d| d.name).collect();
         assert_eq!(listed, desktop);
-        for name in ["get_overview", "list_tasks", "memory_read", "memory_list", "memory_search", "get_task", "check_board", "create_task"] {
+        for name in ["get_overview", "list_tasks", "memory_read", "memory_list", "memory_search", "get_task", "check_board", "create_task",
+                     tools::BOARD_CHANGES] {
             assert!(listed.contains(&name.to_string()), "{name}");
         }
         // get_overview, list_tasks and memory_read work
@@ -508,6 +509,14 @@ mod socket {
         assert_eq!(n["note"]["body_md"], "Exports are CSV, for the accountant.");
         let task = c.call(6, "get_task", json!({"task": "KADE-1"})).await;
         assert_eq!(task["isError"], false, "{task}");
+        // GA-344: board_changes over the socket: without since only the counter; with it, nothing changed since
+        let first = c.call(7, "board_changes", json!({})).await;
+        assert_eq!(first["isError"], false, "{first}");
+        let f: Value = serde_json::from_str(&text(&first)).unwrap();
+        assert!(f["counter"].as_i64().unwrap() > 0, "{f}");
+        assert_eq!((f["tasks"].clone(), f["board"].clone(), f["reload"].clone()), (json!([]), json!(false), json!(false)), "{f}");
+        let again: Value = serde_json::from_str(&text(&c.call(8, "board_changes", json!({"since": f["counter"]})).await)).unwrap();
+        assert_eq!(again, f, "with the latest counter: the same counter and no cards");
         let _ = &s.lead;
     }
 
@@ -683,8 +692,10 @@ mod socket {
         }).await.unwrap();
         assert_eq!(out.len(), 4, "{out:?}");
         assert_eq!(out[0]["result"]["serverInfo"]["name"], "hersir");
-        // GA-341: the Chief's tools and get_chief_brief, and create_task makes the card at once, as you
-        assert_eq!(out[1]["result"]["tools"].as_array().unwrap().len(), tools::desktop_catalog().len());
+        // GA-341: the Chief's tools and get_chief_brief, and create_task makes the card at once, as you; GA-344: and board_changes
+        let listed = out[1]["result"]["tools"].as_array().unwrap();
+        assert_eq!(listed.len(), tools::desktop_catalog().len());
+        assert!(listed.iter().any(|d| d["name"] == tools::BOARD_CHANGES), "{listed:?}");
         assert_eq!(out[2]["result"]["isError"], false, "{}", out[2]);
         assert!(text(&out[2]["result"]).contains("KADE-1"));
         assert_eq!(out[3]["result"]["isError"], false, "{}", out[3]);
@@ -703,5 +714,48 @@ mod socket {
         assert!(!read.contains("KADE-1") && !read.contains("Export invoices as CSV"), "{all}");
         assert!(out.iter().all(|l| l["result"]["isError"] != false || l["id"] != 3), "{all}");
         assert_eq!(counts(&s.t.st), tasks_before, "and its create_task makes nothing");
+    }
+
+    /// GA-344 QA: a view of the board in Claude Desktop's chat asks board_changes again and again, through the real
+    /// hersir-mcp from Connect's entry. A card Claude Desktop made over the shim and a card you renamed in Hersir's window
+    /// (what update_task runs: `tasks::update` as you) both come back after the counter before them, the one changed last
+    /// first; with the counter that answer gave, no cards come back and the counter stays.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn ga344_board_changes_through_the_real_hersir_mcp_names_the_cards_changed_since_the_counter_and_none_after_the_latest() {
+        let mut s = served();
+        s.t.st.mcp_shim = Some(real_shim());
+        let c = s.t.connect(false);
+        let run = |calls: Vec<(&'static str, Value)>| {
+            let c = c.clone();
+            let mut requests = vec![json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18"}}),
+                                    json!({"jsonrpc": "2.0", "method": "notifications/initialized"})];
+            for (i, (name, args)) in calls.into_iter().enumerate() {
+                requests.push(json!({"jsonrpc": "2.0", "id": i + 2, "method": "tools/call", "params": {"name": name, "arguments": args}}));
+            }
+            tokio::task::spawn_blocking(move || run_entry(&c, &requests))
+        };
+        let answer = |out: &[Value]| -> Value {
+            let r = out.iter().find(|l| l["id"] == 2).unwrap_or_else(|| panic!("{out:?}"));
+            assert_eq!(r["result"]["isError"], false, "{r}");
+            serde_json::from_str(&text(&r["result"])).unwrap()
+        };
+        let before = s.t.st.db.change_seq();
+        // Claude Desktop makes a card over the shim
+        let out = run(vec![("create_task", json!({"project": "KADE", "title": "Made from Claude Desktop"}))]).await.unwrap();
+        assert_eq!(out.iter().find(|l| l["id"] == 2).map(|l| l["result"]["isError"].clone()), Some(json!(false)), "{out:?}");
+        // and you rename KADE-1 in Hersir's window
+        let kade1: String = s.t.st.db.read(|db| Ok(db.query_row("SELECT id FROM tasks WHERE identifier='KADE-1'", [], |r| r.get(0))?)).unwrap();
+        tasks::update(&s.t.st.db, &s.t.st.you_id, &kade1, gizai_core::model::TaskPatch { title: Some("Export invoices as CSV and PDF".into()),
+            ..Default::default() }).unwrap();
+        // the view asks what changed since the counter before both
+        let out = run(vec![(tools::BOARD_CHANGES, json!({"since": before}))]).await.unwrap();
+        let a = answer(&out);
+        assert_eq!(a["counter"], s.t.st.db.change_seq(), "{a}");
+        assert!(a["counter"].as_i64().unwrap() > before, "{a}");
+        assert_eq!((a["tasks"].clone(), a["board"].clone(), a["reload"].clone()), (json!(["KADE-1", "KADE-2"]), json!(false), json!(false)), "{a}");
+        // and again with the counter it was given: nothing changed since
+        let out = run(vec![(tools::BOARD_CHANGES, json!({"since": a["counter"]}))]).await.unwrap();
+        assert_eq!(answer(&out), json!({"counter": a["counter"], "tasks": [], "board": false, "reload": false}));
+        let _ = &s.lead;
     }
 }

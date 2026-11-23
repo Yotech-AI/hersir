@@ -3,7 +3,7 @@
 //! GA-342 QA: Claude Desktop asks Hersir's Chief (ask_chief) and reads its answer (chief_reply). Over the socket, with the
 //! token Connect makes (`claude_desktop::connect`), as the hersir-mcp shim talks; the Chief's turns run a fake Claude Code
 //! (fake-claude-chat.py, fake-claude-chat-outside.py) with the real gizai-mcp shim, never the real one.
-//! - tools/list: get_chief_brief, ask_chief, chief_reply, then the Chief's tools; the card's descriptions word for word.
+//! - tools/list: get_chief_brief, ask_chief, chief_reply, then the Chief's tools, then board_changes (GA-344); the card's descriptions word for word.
 //!   A chat's, a board check's and a question's tokens aren't offered them, and a Chief's turn that calls ask_chief
 //!   anyway starts no other turn.
 //! - ask_chief: without a thread, the chat From Claude Desktop (made once, the same after a rename, a new one after it
@@ -289,6 +289,8 @@ async fn the_desktop_token_lists_ask_chief_and_chief_reply_after_get_chief_brief
     let listed = c.list().await;
     let mut want = vec!["get_chief_brief".to_string(), "ask_chief".into(), "chief_reply".into()];
     want.extend(tools::catalog().into_iter().map(|d| d.name).filter(|n| n != "start_chat" && n != "update_checkout"));
+    // GA-344: and last board_changes
+    want.push(tools::BOARD_CHANGES.to_string());
     assert_eq!(names(&listed), want);
     let ask = &listed[1];
     assert_eq!(ask["description"], ASK_DESCRIPTION);

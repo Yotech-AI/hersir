@@ -166,31 +166,40 @@ pub fn finish_chat(db: &Db, run_id: &str, status: &str, cost_usd_micros: i64, in
     })
 }
 
-/// The session the CLI started, when the CLI picks it (Codex names its thread once it runs).
+/// The session the CLI started, when the CLI picks it (Codex names its thread once it runs). GA-344: logged, as what a
+/// run records shows on its card (`feed`).
 pub fn set_session(db: &Db, run_id: &str, session_id: &str) -> Result<()> {
     db.write(None, |w| {
-        w.conn().execute("UPDATE runs SET session_id=?2 WHERE id=?1", rusqlite::params![run_id, session_id])?;
+        if w.conn().execute("UPDATE runs SET session_id=?2 WHERE id=?1", rusqlite::params![run_id, session_id])? > 0 {
+            w.update("runs", run_id, serde_json::json!({"session_id": session_id}))?;
+        }
         Ok(())
     })
 }
 
-/// The commit the run's worktree was at when it started.
+/// The commit the run's worktree was at when it started. GA-344: logged (`feed`).
 pub fn set_base_sha(db: &Db, run_id: &str, sha: &str) -> Result<()> {
     db.write(None, |w| {
-        w.conn().execute("UPDATE runs SET base_sha=?2 WHERE id=?1", rusqlite::params![run_id, sha])?;
+        if w.conn().execute("UPDATE runs SET base_sha=?2 WHERE id=?1", rusqlite::params![run_id, sha])? > 0 {
+            w.update("runs", run_id, serde_json::json!({"base_sha": sha}))?;
+        }
         Ok(())
     })
 }
 
-/// The commit the run's worktree was at when it ended: with `base_sha`, it gives the commits the run made.
+/// The commit the run's worktree was at when it ended: with `base_sha`, it gives the commits the run made. GA-344:
+/// logged (`feed`).
 pub fn set_head_sha(db: &Db, run_id: &str, sha: &str) -> Result<()> {
     db.write(None, |w| {
-        w.conn().execute("UPDATE runs SET head_sha=?2 WHERE id=?1", rusqlite::params![run_id, sha])?;
+        if w.conn().execute("UPDATE runs SET head_sha=?2 WHERE id=?1", rusqlite::params![run_id, sha])? > 0 {
+            w.update("runs", run_id, serde_json::json!({"head_sha": sha}))?;
+        }
         Ok(())
     })
 }
 
-/// The tool calls the run's CLI refused (Refused in this run), in the order it reported them (`run_refusals`).
+/// The tool calls the run's CLI refused (Refused in this run), in the order it reported them (`run_refusals`). GA-344:
+/// logged on the run, with how many (`feed`).
 pub fn set_refused(db: &Db, run_id: &str, refused: &[Refusal]) -> Result<()> {
     db.write(None, |w| {
         let c = w.conn();
@@ -201,7 +210,7 @@ pub fn set_refused(db: &Db, run_id: &str, refused: &[Refusal]) -> Result<()> {
         c.execute("INSERT INTO run_refusals(run_id, refused_json) VALUES (?1, ?2)
                    ON CONFLICT(run_id) DO UPDATE SET refused_json = excluded.refused_json",
                   rusqlite::params![run_id, serde_json::to_string(refused)?])?;
-        Ok(())
+        w.update("runs", run_id, serde_json::json!({"refused": refused.len()}))
     })
 }
 
