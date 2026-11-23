@@ -10,6 +10,10 @@
 //! read and written with tokio's overlapped I/O: blocking reads and writes on one pipe handle from two threads wait
 //! for each other. And the token goes only to a pipe served by the shim's own user, in case another program took the
 //! name before Gizai started.
+//!
+//! Claude Desktop starts the shim with `--desktop`, once, and keeps it running (GA-339): then it never exits while
+//! stdin is open, answers by itself while Hersir is closed or refuses the token, and connects when Hersir opens. See
+//! `gizai_mcp::desktop`. Without `--desktop` nothing of that applies.
 use std::ffi::OsStr;
 use std::io::{Read, Write};
 #[cfg(unix)]
@@ -31,9 +35,17 @@ fn var(name: &str) -> Option<std::ffi::OsString> {
 }
 
 fn main() -> ExitCode {
+    let desktop = std::env::args_os().skip(1).any(|a| a == "--desktop");
     let (Some(socket), Some(token)) = (var("SOCKET"), var("TOKEN").and_then(|t| t.into_string().ok())) else {
-        return fail("HERSIR_SOCKET and HERSIR_TOKEN (or GIZAI_SOCKET and GIZAI_TOKEN) must be set (Hersir sets them for each chat turn)");
+        return fail(if desktop {
+            "HERSIR_SOCKET and HERSIR_TOKEN must be set (Hersir writes them into Claude Desktop's settings: in Hersir, Settings → MCP servers → Claude Desktop → Connect)"
+        } else {
+            "HERSIR_SOCKET and HERSIR_TOKEN (or GIZAI_SOCKET and GIZAI_TOKEN) must be set (Hersir sets them for each chat turn)"
+        });
     };
+    if desktop {
+        return gizai_mcp::desktop::run(&socket, &token);
+    }
     run(&socket, &token)
 }
 

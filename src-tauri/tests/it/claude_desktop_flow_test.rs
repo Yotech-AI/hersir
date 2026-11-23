@@ -697,7 +697,10 @@ mod socket {
         desktop::disconnect(&s.t.st).unwrap();
         let out = tokio::task::spawn_blocking(move || run_entry(&c, &requests)).await.unwrap();
         let all = format!("{out:?}");
-        assert!(!all.contains("KADE-1") && !all.contains("Export invoices as CSV"), "{all}");
+        // GA-339: the shim answers initialize itself, with Hersir's instructions, which name KADE-12 as an example; board
+        // data could only come in the answers to tools/list (2) and to the list_tasks call (3)
+        let read = format!("{:?}", out.iter().filter(|l| l["id"] == 2 || l["id"] == 3).collect::<Vec<_>>());
+        assert!(!read.contains("KADE-1") && !read.contains("Export invoices as CSV"), "{all}");
         assert!(out.iter().all(|l| l["result"]["isError"] != false || l["id"] != 3), "{all}");
         assert_eq!(counts(&s.t.st), tasks_before, "and its create_task makes nothing");
     }
