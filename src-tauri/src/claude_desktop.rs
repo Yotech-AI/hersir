@@ -1,5 +1,6 @@
-//! GA-338: Claude Desktop's chat reads your Hersir board. Connect makes a lasting token for it, as you and only reading
-//! (`tools::CLAUDE_DESKTOP`), and gives the entry for Claude Desktop's settings: the `hersir-mcp` shim in its `--desktop`
+//! GA-338: Claude Desktop's chat uses your Hersir board. Connect makes a lasting token for it, as you (`tools::CLAUDE_DESKTOP`;
+//! GA-341: with the Chief's tools and rules, `tools::GizaiTools::desktop`), and gives the entry for Claude Desktop's
+//! settings: the `hersir-mcp` shim in its `--desktop`
 //! mode, with Hersir's socket and the token. Hersir can put that entry in the settings file itself
 //! (`gizai_agents::claude_desktop::add_server`). Disconnect revokes the token, and the settings file stays as it is.
 //! The token is in the entry only: Hersir keeps its sha256, never the token itself, in its database or its data folder.
