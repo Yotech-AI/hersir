@@ -165,7 +165,7 @@ a drop does on the desktop (`moveTask`), and closes the sheet with the toast **G
 - **Head**: glyph, column, project; the title (`t-drawer-title`, wraps); the working strip (`live-soft`: **Design Agent is
   working · Run 3 · 12 min**).
 - **Tabs**: Details, Comments 4, Runs 3, Files 2 (island tabs at touch size: a 32 high pill in a 44 hit area).
-- **Details**: Description (`t-prose`), Acceptance criteria with **1 of 3** and 36 high checkbox rows, **Properties**.
+- **Details**: Description (`t-prose`), Acceptance criteria with **1 of 3** and 44 high checkbox rows (a tap on the row ticks it), **Properties**.
 - **Foot** (inside the island, a `line` above): **Comment** and the run action: **Show output** while live, **Run** when the
   card can run, **Continue** when its last run can go on; in Review: **Comment** and **Move to**.
 - **What changes:** `.task-page` two islands → one; Properties island → sheet (P5); Card/Changes/Screenshots island tabs →
