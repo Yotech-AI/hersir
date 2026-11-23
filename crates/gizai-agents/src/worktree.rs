@@ -89,13 +89,27 @@ fn command_in(dir: &Path) -> (std::process::Command, Option<String>) {
     let Some((wt, repo)) = card_of(dir) else { return (cmd, None) };
     match card_git(&repo, &wt) {
         Ok(g) => {
-            cmd.env("GIT_DIR", &g.git_dir).env("GIT_COMMON_DIR", &g.common_dir).env("GIT_WORK_TREE", &g.work_tree);
+            cmd.env("GIT_DIR", for_git(&g.git_dir)).env("GIT_COMMON_DIR", for_git(&g.common_dir))
+                .env("GIT_WORK_TREE", for_git(&g.work_tree));
             (cmd, None)
         }
         Err(why) => {
             cmd.env("GIT_DIR", nowhere()).env_remove("GIT_COMMON_DIR").env_remove("GIT_WORK_TREE");
             (cmd, Some(format!("Hersir doesn't run git in {}: {why}", wt.display())))
         }
+    }
+}
+
+/// `p` as git takes a path: on Windows a path Windows was given whole (`\\?\C:\…`, `\\?\UNC\server\share\…`, what
+/// `canonicalize` gives there) as the usual kind, so git can compare it with the folder it runs in; elsewhere as it is.
+fn for_git(p: &Path) -> PathBuf {
+    if !cfg!(windows) {
+        return p.to_path_buf();
+    }
+    let s = p.to_string_lossy();
+    match s.strip_prefix(r"\\?\UNC\") {
+        Some(unc) => PathBuf::from(format!(r"\\{unc}")),
+        None => PathBuf::from(s.strip_prefix(r"\\?\").unwrap_or(&s)),
     }
 }
 
