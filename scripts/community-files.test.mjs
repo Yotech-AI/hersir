@@ -466,7 +466,9 @@ const QUOTES = ["Open Hersir", "Quit Hersir completely", "From Hersir's catalog"
 // format.
 const CODE_NAMES = ["hersir --version", "hersir-mcp", "hersir-launch", "dev.hersir.app", "HERSIR_PREFIX", "hersir-installed.txt",
   "gizai --version", "gizai-mcp", "gizai-launch", "~/.local/share/gizai", "~/.local/share/hersir", "GIZAI_DATA_DIR", "HERSIR_DATA_DIR", "GIZAI_PREFIX", "GIZAI_RESULT", "ai.gizai.app", "mcp__gizai", ".gizai-tmp", "gizai-installed.txt", ".gizai-team.json", ".hersir-team.json", "gizai-backups.json"];
-const RENAMED = /\bhersir(-backups|\.db|\.lock)\b|\bHERSIR_RESULT\b|ai\.hersir|mcp__hersir|\.hersir-tmp|\bhersir:[a-z]/;
+// A renamed item link is hersir: with one of the kinds a gizai: link has (ITEM_LINK_SOURCE in src/lib/itemLinks.ts), so
+// another hersir: stays as written, such as the Hersir Cloud server's own `php artisan hersir:comp` (GA-333).
+const RENAMED = /\bhersir(-backups|\.db|\.lock)\b|\bHERSIR_RESULT\b|ai\.hersir|mcp__hersir|\.hersir-tmp|\bhersir:(task|project|client|agent|person|doc)\//;
 
 describe("one name: Hersir in the docs, and Gizai only in the names the code keeps (GA-234)", () => {
   it("the docs it covers include the README, NOTICE, the community files, every doc in docs/ and design's READMEs, but not the records of their day", () => {
