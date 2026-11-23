@@ -58,7 +58,7 @@
 .term-panel .term-place { padding: var(--space-1) var(--space-3); }
 /* The shell ended or couldn't start: the bar is the Editor's file bar, under the tabs; the screen stays as it was. Not the
    global .file card (app.css): the bar keeps its height and the terminal takes the rest (GA-136). */
-.term-page > .ed-bar.file, .chat-side-in > .ed-bar.file { flex: none; border-width: 0 0 1px; border-radius: 0; cursor: default; }
+.term-page > .ed-bar.file, .term-pane > .ed-bar.file, .chat-side-in > .ed-bar.file { flex: none; border-width: 0 0 1px; border-radius: 0; cursor: default; }
 
 /* In islands (design/islands-settings: A terminal's own page, GA-295): the page is one island, its header the folder's
    terminals as Island tabs (size-island-head, padding 0 6px, 2px apart, no line under it) with New terminal (+) on the
@@ -78,6 +78,31 @@
 .term-page > .term-tabs > .ed-tab .x:hover { background: var(--hover); color: var(--text); }
 .term-page > .term-tabs > .btn.icon-only { width: 26px; height: 26px; margin: 0 0 0 auto; }
 .term-page > .term-place { padding: 6px 14px 8px; }
+/* Layout (GA-348): right of +, the same size; + keeps the room on its left */
+.term-page > .term-tabs > .btn.icon-only.term-layout { margin-left: 0; }
+/* A tab whose terminal shows in another pane than the focused one has the hover fill; the focused one stays the pill */
+.term-page > .term-tabs > .ed-tab.in-pane { background: var(--hover); }
+
+/* Panes (GA-348): the folder's terminals side by side in the page's island, equal widths (2 × 2: two rows of two), with
+   a 1px line between them (the line is the grid's background, through its gaps); no dragging. Each pane: a caption (the
+   terminal icon, its name and what runs in it, as its tab shows them; the focused pane's in text, the others in text-3),
+   its bar when its shell ended or couldn't start, and its terminal. */
+.term-panes { display: grid; flex: 1; min-height: 0; gap: 1px; background: var(--line); grid-auto-rows: minmax(0, 1fr); }
+.term-panes[data-layout="two"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.term-panes[data-layout="three"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.term-panes[data-layout="four"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.term-panes[data-layout="grid"] { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); }
+.term-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--term-bg); }
+.term-cap { display: flex; flex: none; align-items: center; gap: 6px; height: 24px; padding: 0 14px; overflow: hidden; color: var(--text-3);
+  font-size: var(--fs-sm); font-weight: 500; white-space: nowrap; cursor: default; user-select: none; }
+.term-pane.on > .term-cap { color: var(--text); }
+.term-cap > .icon { flex: none; width: 14px; height: 14px; }
+.term-cap .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.term-cap .card-id { flex: none; font-family: var(--font-mono); }
+.term-cap .prog { flex: none; font-family: var(--font-mono); font-size: var(--fs-xs); font-weight: 400; }
+.term-cap .state { flex: none; height: auto; padding: 0; border-radius: 0; background: none; color: inherit; font-size: var(--fs-xs); font-weight: 500; } /* not the global .state badge */
+.term-pane > .term-place { padding: 2px 14px 8px; }
+.term-pane.wait .term-away { font-size: var(--fs-sm); }
 .term-place.ended { cursor: default; }
 
 /* Find (Ctrl+Shift+F, Cmd+F): a small box at the top right, over the terminal, so the terminal keeps its size */
