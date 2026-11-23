@@ -640,7 +640,7 @@ struct Board;
 impl gizai_mcp::Tools for Board {
     fn list(&self) -> Vec<gizai_mcp::ToolDef> {
         vec![gizai_mcp::ToolDef { name: "get_overview".into(), description: "The board.".into(),
-            input_schema: json!({"type": "object", "properties": {}}), read_only: true }]
+            input_schema: json!({"type": "object", "properties": {}}), read_only: true, meta: None }]
     }
     async fn call(&self, name: &str, _: Value) -> Result<Value, String> {
         if name == "get_overview" { Ok(Value::String(BOARD.into())) } else { Err(format!("unknown tool {name}")) }
@@ -775,5 +775,147 @@ fn when_hersir_revokes_the_token_on_an_open_connection_a_waiting_request_that_is
     assert_only_status(&shim.call(5, "tools/list", json!({})));
     assert_eq!(hersir.connections(), 1);
     assert_eq!(shim.close(), Some(0));
+    shim.assert_no_token();
+}
+
+// ---- GA-343 QA: MCP Apps through the shim ----------------------------------------------------------------------------
+
+const RESOURCES_CHANGED: &str = r#"{"jsonrpc":"2.0","method":"notifications/resources/list_changed"}"#;
+const APP_URI: &str = "ui://hersir/app.html";
+
+/// Claude Desktop's `initialize` params when it shows MCP Apps' views.
+fn apps_initialize_params() -> Value {
+    json!({"protocolVersion": "2025-11-25", "capabilities": {"extensions": {"io.modelcontextprotocol/ui": {"mimeTypes": ["text/html;profile=mcp-app"]}}},
+        "clientInfo": {"name": "claude-ai", "version": "0.14.0"}})
+}
+
+fn assert_apps_initialize(answer: &Value, version: &str) {
+    let r = &answer["result"];
+    assert_eq!(r["protocolVersion"], version, "{answer}");
+    assert_eq!(r["capabilities"], json!({
+        "tools": {"listChanged": true},
+        "resources": {"listChanged": true},
+        "extensions": {"io.modelcontextprotocol/ui": {"mimeTypes": ["text/html;profile=mcp-app"]}},
+    }), "{answer}");
+    assert_eq!(r["serverInfo"], json!({"name": "hersir", "version": env!("CARGO_PKG_VERSION")}), "{answer}");
+    assert_eq!(r["instructions"], hersir_instructions(), "{answer}");
+}
+
+/// The lines Hersir got, as JSON.
+fn values(server: &Server) -> Vec<Value> {
+    server.lines().iter().map(|l| serde_json::from_str(l).unwrap_or_else(|e| panic!("not JSON ({e}): {l}"))).collect()
+}
+
+#[test]
+fn without_hersir_a_declaring_client_gets_the_extension_no_views_and_open_hersir_first_on_a_read_and_any_other_client_what_it_got_before() {
+    let dir = tempfile::tempdir().unwrap();
+    let sock = dir.path().join("h.sock");
+
+    let mut shim = Desktop::start(&sock);
+    assert_apps_initialize(&shim.call(1, "initialize", apps_initialize_params()), "2025-11-25");
+    shim.notify("notifications/initialized");
+    assert_eq!(shim.call(2, "resources/list", json!({}))["result"], json!({"resources": []}));
+    assert_eq!(shim.call(3, "resources/templates/list", json!({}))["result"], json!({"resourceTemplates": []}));
+    let read = shim.call(4, "resources/read", json!({"uri": APP_URI}));
+    assert_eq!(read["error"]["message"], NOT_RUNNING, "{read}");
+    assert_eq!(read["error"]["code"], -32000, "{read}");
+    assert!(read.get("result").is_none(), "{read}");
+    // the tools are the shim's own, without _meta
+    let list = shim.call(5, "tools/list", json!({}));
+    assert_only_status(&list);
+    assert!(list["result"]["tools"][0].get("_meta").is_none(), "{list}");
+    assert!(shim.running());
+    assert_eq!(shim.close(), Some(0));
+    assert!(!shim.seen.iter().any(|l| l == RESOURCES_CHANGED || l == LIST_CHANGED), "{:?}", shim.seen);
+
+    // a client that declares nothing: the shim's initialize and "method not found" for resources, as before GA-343
+    let mut shim = Desktop::start(&sock);
+    assert_own_initialize(&shim.call(1, "initialize", initialize_params()), "2025-06-18");
+    for (id, method) in [(2, "resources/list"), (3, "resources/read"), (4, "resources/templates/list")] {
+        let r = shim.call(id, method, json!({"uri": APP_URI}));
+        assert_eq!(r["error"]["code"], -32601, "{method}: {r}");
+    }
+    assert_eq!(shim.close(), Some(0));
+    shim.assert_no_token();
+}
+
+#[test]
+fn when_hersir_opens_after_a_declaring_client_it_hears_the_client_note_between_the_hello_and_the_ping_and_claude_desktop_fetches_tools_and_views() {
+    let dir = tempfile::tempdir().unwrap();
+    let sock = dir.path().join("h.sock");
+    let mut shim = Desktop::start(&sock);
+    assert_apps_initialize(&shim.call(1, "initialize", apps_initialize_params()), "2025-11-25");
+    shim.notify("notifications/initialized");
+
+    let server = Server::start(&sock, Mode::Answer);
+    assert!(wait_until(Duration::from_secs(4), || !server.hellos().is_empty()), "no hello after Hersir opened");
+    assert_eq!(gizai_mcp::parse_hello(&server.hellos()[0]).as_deref(), Some(TOKEN));
+    // tools/list_changed, then resources/list_changed
+    assert_eq!(shim.next_line(PATIENCE).as_deref(), Some(LIST_CHANGED));
+    assert_eq!(shim.next_line(PATIENCE).as_deref(), Some(RESOURCES_CHANGED));
+    // Hersir got the client's initialize params in the note, before the shim's check ping
+    let got = values(&server);
+    assert!(got.len() >= 2, "{got:?}");
+    assert_eq!(got[0], json!({"jsonrpc": "2.0", "method": "notifications/hersir/client", "params": apps_initialize_params()}), "{got:?}");
+    assert!(got[0].get("id").is_none(), "a notification: {}", got[0]);
+    assert_eq!(got[1]["method"], "ping", "{got:?}");
+    assert_eq!(server.got("notifications/hersir/client").len(), 1, "once: {got:?}");
+
+    // from then on resources/… go to Hersir unchanged
+    shim.send(r#"{"jsonrpc":"2.0","id":2,"method":"resources/read","params":{"uri":"ui://hersir/app.html"}}"#);
+    assert_eq!(shim.next_line(PATIENCE).as_deref(), Some(answer_line(&json!(2), "resources/read").trim_end()));
+    shim.send(r#"{"jsonrpc":"2.0","id":3,"method":"resources/list"}"#);
+    assert_eq!(shim.next_line(PATIENCE).as_deref(), Some(answer_line(&json!(3), "resources/list").trim_end()));
+    assert!(server.got("initialize").is_empty(), "initialize stays the shim's own");
+    assert_eq!(shim.close(), Some(0));
+    shim.assert_no_token();
+}
+
+#[test]
+fn a_connected_shim_passes_the_client_note_on_at_once_tells_hersir_when_it_changes_and_again_on_each_new_connection() {
+    let dir = tempfile::tempdir().unwrap();
+    let sock = dir.path().join("h.sock");
+    let mut server = Server::start(&sock, Mode::Answer);
+    let mut shim = Desktop::start(&sock);
+    assert_apps_initialize(&shim.call(1, "initialize", apps_initialize_params()), "2025-11-25");
+    shim.notify("notifications/initialized");
+    assert!(wait_until(PATIENCE, || server.got("notifications/hersir/client").len() == 1), "{:?}", server.lines());
+    assert_eq!(server.got("notifications/hersir/client")[0]["params"], apps_initialize_params());
+    assert!(wait_until(PATIENCE, || server.got("notifications/initialized").len() == 1), "{:?}", server.lines());
+
+    // Hersir restarts: the next connection hears the note again, before the check ping, and Claude Desktop fetches both
+    server.stop();
+    let server = Server::start(&sock, Mode::Answer);
+    assert_eq!(shim.next_line(Duration::from_secs(5)).as_deref(), Some(LIST_CHANGED));
+    assert_eq!(shim.next_line(PATIENCE).as_deref(), Some(RESOURCES_CHANGED));
+    let got = values(&server);
+    assert_eq!(got[0]["method"], "notifications/hersir/client", "{got:?}");
+    assert_eq!(got[0]["params"], apps_initialize_params());
+    assert_eq!(got[1]["method"], "ping", "{got:?}");
+
+    // Claude Desktop starts again without the extension: Hersir hears that at once too, and no view is offered any more
+    assert_own_initialize(&shim.call(2, "initialize", initialize_params()), "2025-06-18");
+    assert!(wait_until(PATIENCE, || server.got("notifications/hersir/client").len() == 2), "{:?}", server.lines());
+    assert_eq!(server.got("notifications/hersir/client")[1]["params"], initialize_params());
+    assert_eq!(shim.close(), Some(0));
+    shim.assert_no_token();
+}
+
+#[test]
+fn a_client_that_declares_nothing_sends_hersir_no_note_and_gets_no_resources_list_changed() {
+    let dir = tempfile::tempdir().unwrap();
+    let sock = dir.path().join("h.sock");
+    let mut shim = Desktop::start(&sock);
+    assert_own_initialize(&shim.call(1, "initialize", initialize_params()), "2025-06-18");
+    shim.notify("notifications/initialized");
+    let server = Server::start(&sock, Mode::Answer);
+    assert_eq!(shim.next_line(Duration::from_secs(4)).as_deref(), Some(LIST_CHANGED));
+    shim.send(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#);
+    assert_eq!(shim.next_line(PATIENCE).as_deref(), Some(answer_line(&json!(2), "tools/list").trim_end()), "no resources/list_changed first");
+    let got = values(&server);
+    assert_eq!(got[0]["method"], "ping", "the check ping right after the hello: {got:?}");
+    assert!(server.got("notifications/hersir/client").is_empty(), "{got:?}");
+    assert_eq!(shim.close(), Some(0));
+    assert!(!shim.seen.iter().any(|l| l == RESOURCES_CHANGED), "{:?}", shim.seen);
     shim.assert_no_token();
 }

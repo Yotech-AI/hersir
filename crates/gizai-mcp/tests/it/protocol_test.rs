@@ -7,8 +7,8 @@ struct Fake;
 impl Tools for Fake {
     fn list(&self) -> Vec<ToolDef> {
         vec![
-            ToolDef { name: "echo".into(), description: "Returns its input.".into(), input_schema: json!({"type": "object"}), read_only: true },
-            ToolDef { name: "boom".into(), description: "Always fails.".into(), input_schema: json!({"type": "object"}), read_only: false },
+            ToolDef { name: "echo".into(), description: "Returns its input.".into(), input_schema: json!({"type": "object"}), read_only: true, meta: None },
+            ToolDef { name: "boom".into(), description: "Always fails.".into(), input_schema: json!({"type": "object"}), read_only: false, meta: None },
         ]
     }
     async fn call(&self, name: &str, args: Value) -> Result<Value, String> {

@@ -1,0 +1,19 @@
+/* GA-343: the board view in Claude Desktop's chat. The app's styles (tokens, components, app) draw the board; these fit
+   it in a frame the host sizes to the view's own height (ui/notifications/size-changed). */
+html, body, #root { height: auto; min-height: 0; }
+body { margin: 0; background: var(--bg); }
+
+.mcp-board { display: flex; flex-direction: column; gap: 4px; padding: 10px 0 0; }
+.mcp-head { display: flex; align-items: center; gap: 10px; min-height: 30px; padding: 0 20px; }
+.mcp-head .grow { flex: 1; }
+.mcp-title { font-size: var(--fs-md); font-weight: 700; }
+.mcp-updated { font-size: var(--fs-sm); }
+.mcp-note { margin: 0 20px; padding: 8px 12px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--raised);
+  color: var(--text-2); font-size: var(--fs-sm); }
+
+/* Inline in the chat: the columns scroll within a height that fits a message. Full screen: the window's height. */
+.mcp-board .col-body { max-height: 420px; }
+.mcp-board.fullscreen .col-body { max-height: calc(100vh - 120px); }
+
+/* Read-only: nothing to drag or open. */
+.mcp-board .card { cursor: default; }

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hersir board view: stand-in host</title>
+  </head>
+  <body>
+    <!-- GA-343: a stand-in for Claude Desktop's side of MCP Apps, for development and QA (npm run mcp-host). It loads the
+         board view as built (npm run build:mcp-app). Never part of the app's build or the view's file. -->
+    <div class="host">
+      <div class="chat">
+        <div class="bubble">Show me the Giz AI board.</div>
+        <div class="bubble">Calling <code>show_board {"project": "GA"}</code>…</div>
+        <div id="frame-box"></div>
+        <button id="exit" type="button">Exit full screen</button>
+      </div>
+      <aside class="panel" aria-label="Stand-in host">
+        <h2>Stand-in host (Claude's side)</h2>
+        <button id="theme" type="button">Theme: dark</button>
+        <label><input id="open" type="checkbox" checked /> Hersir is open (off: board_read says "Open Hersir first")</label>
+        <label><input id="auto" type="checkbox" checked /> Auto change: a card moves every 6 s</label>
+        <label><input id="whole" type="checkbox" /> The team's whole board (no project)</label>
+        <button id="change" type="button">Move a card now</button>
+        <button id="remount" type="button">New tool call (a new view)</button>
+        <label>Width
+          <select id="width">
+            <option value="100%">Fill</option>
+            <option value="720px">Chat column (720 px)</option>
+            <option value="480px">Narrow (480 px)</option>
+          </select>
+        </label>
+        <dl>
+          <dt>board_read calls</dt><dd id="reads">0</dd>
+          <dt>Last one</dt><dd id="last-read">never</dd>
+          <dt>Board changes</dt><dd id="changes">0</dd>
+          <dt>View's height</dt><dd id="height">not said yet</dd>
+          <dt>Display mode</dt><dd id="mode">inline</dd>
+          <dt>View's file</dt><dd id="size">not loaded</dd>
+        </dl>
+        <h2>Messages (newest first)</h2>
+        <ol id="log"></ol>
+      </aside>
+    </div>
+    <script type="module" src="/src/widget-host/main.ts"></script>
+  </body>
+</html>

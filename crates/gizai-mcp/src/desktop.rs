@@ -10,7 +10,13 @@
 //!   as a tool's error.
 //!
 //! In both states the shim answers `initialize` and calls of [`STATUS_TOOL`] itself and never passes them on: Hersir's
-//! server keeps no state per connection, so it doesn't need an `initialize`.
+//! server needs no `initialize` of its own.
+//!
+//! GA-343: a client that declares MCP Apps (`crate::declares_apps`) gets the extension and the resources in the shim's
+//! `initialize` answer, and Hersir learns it from [`crate::CLIENT_NOTE`]: once connected, and on every connection after
+//! that (before the shim's ping). While not connected, its `resources/list` is empty and a `resources/read` gets the
+//! reason as an error. When Hersir answers, the shim writes [`RESOURCES_CHANGED`] after [`LIST_CHANGED`] to it too. A
+//! client that declares nothing sees exactly what it saw before.
 //!
 //! While Hersir isn't running, the shim tries its socket every 2 seconds and before each request. After the hello line
 //! it sends a `ping` of its own and keeps the answer to itself, to learn whether Hersir took the token: Hersir writes
@@ -34,7 +40,7 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
-use crate::{DEFAULT_PROTOCOL, INSTRUCTIONS, ToolDef, Tools, error, handle, hello_line, ok};
+use crate::{CLIENT_NOTE, DEFAULT_PROTOCOL, INSTRUCTIONS, Session, ToolDef, Tools, capabilities, error, handle_in, hello_line, ok};
 
 /// Every call's answer while Hersir isn't running: the shim can't reach it, or it closed the connection.
 pub const NOT_RUNNING: &str =
@@ -56,6 +62,10 @@ their Hersir board, cards or Chief and no other Hersir tool is listed.";
 
 /// Written to stdout once Hersir took the token, so Claude Desktop fetches Hersir's tools.
 pub const LIST_CHANGED: &str = "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/tools/list_changed\"}";
+
+/// GA-343: written after [`LIST_CHANGED`] for a client that declared MCP Apps, so it fetches Hersir's views (resources)
+/// too: while Hersir wasn't running, the shim listed none.
+pub const RESOURCES_CHANGED: &str = "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/resources/list_changed\"}";
 
 /// How often the shim tries Hersir's socket while Hersir isn't running.
 const RETRY: Duration = Duration::from_secs(2);
@@ -103,6 +113,11 @@ struct Shim {
     said_waiting: bool,
     /// Stdout is gone: Claude Desktop doesn't read any more.
     gone: bool,
+    /// GA-343: what Claude Desktop declared at its `initialize` (nothing before it).
+    session: Session,
+    /// GA-343: the [`CLIENT_NOTE`] line that tells Hersir what Claude Desktop declared, sent on every connection; None
+    /// while it declared no MCP Apps (Hersir then needs no word: a new connection declares nothing).
+    note: Option<Vec<u8>>,
 }
 
 impl Shim {
@@ -114,6 +129,8 @@ impl Shim {
             next_try: Instant::now(),
             said_waiting: false,
             gone: false,
+            session: Session::default(),
+            note: None,
         }
     }
 
@@ -141,15 +158,19 @@ impl Shim {
         ExitCode::SUCCESS
     }
 
-    /// Tries Hersir's socket (only while waiting). `tell`: once connected, tell Claude Desktop to fetch the tools.
+    /// Tries Hersir's socket (only while waiting). `tell`: once connected, tell Claude Desktop to fetch the tools (and,
+    /// for a client that declared MCP Apps, the views).
     async fn dial(&mut self, tell: bool) {
-        match open(&self.socket, &self.token).await {
+        match open(&self.socket, &self.token, self.note.as_deref()).await {
             Dialed::Connected(link) => {
                 self.state = State::Connected(link);
                 self.said_waiting = false;
                 say("connected to Hersir");
                 if tell {
                     self.write(LIST_CHANGED.as_bytes());
+                    if self.session.apps {
+                        self.write(RESOURCES_CHANGED.as_bytes());
+                    }
                 }
             }
             Dialed::Refused(why) => self.refused(&why),
@@ -179,7 +200,8 @@ impl Shim {
         let id = method.and(msg.get("id")).cloned();
         if method == Some("initialize") {
             if let Some(id) = id {
-                self.write_value(&initialize(id, msg.get("params")));
+                self.initialized(msg.get("params").unwrap_or(&Value::Null));
+                self.write_value(&initialize(id, msg.get("params"), &self.session));
             }
             return;
         }
@@ -192,9 +214,24 @@ impl Shim {
         if !own && matches!(self.state, State::Connected(_)) {
             return self.pass_on(line, id.map(|id| Pending { id, call }));
         }
+        // GA-343: a view can't be read without Hersir: the reason, as for a request whose connection dropped.
+        if let (Some(id), Some(why), Some("resources/read"), true) = (&id, self.down(), method, self.session.apps) {
+            return self.write_value(&error(id.clone(), CONNECTION_CLOSED, why));
+        }
         let tools = Own { down: self.down() };
-        if let Some(answer) = handle(&tools, &msg).await {
+        if let Some(answer) = handle_in(&tools, &mut self.session.clone(), &msg).await {
             self.write_value(&answer);
+        }
+    }
+
+    /// GA-343: Claude Desktop's `initialize` with these params: what it declared, and Hersir's word of it ([`CLIENT_NOTE`]),
+    /// passed on at once while connected. Hersir hears again when that changes, also to nothing declared.
+    fn initialized(&mut self, params: &Value) {
+        let before = std::mem::replace(&mut self.session, Session::from_initialize(params));
+        let note = format!("{}\n", json!({"jsonrpc": "2.0", "method": CLIENT_NOTE, "params": params})).into_bytes();
+        self.note = self.session.apps.then(|| note.clone());
+        if self.session != before && matches!(self.state, State::Connected(_)) {
+            self.pass_on(note, None);
         }
     }
 
@@ -371,12 +408,17 @@ enum Dialed {
 }
 
 /// Connects to Hersir, sends the hello with the token, and learns from a ping of the shim's own whether Hersir took it.
-async fn open(socket: &OsStr, token: &str) -> Dialed {
+/// `note`: GA-343's [`CLIENT_NOTE`] line, sent between the hello and the ping, so Hersir knows what the client declared
+/// before any request of its own comes.
+async fn open(socket: &OsStr, token: &str, note: Option<&[u8]>) -> Dialed {
     let Ok(stream) = connect(socket).await else {
         return Dialed::NotRunning;
     };
     let mut link = Link::new(stream);
-    let _ = link.to.send(format!("{}{}", hello_line(token), CHECK_PING).into_bytes());
+    let mut first = hello_line(token).into_bytes();
+    first.extend_from_slice(note.unwrap_or_default());
+    first.extend_from_slice(CHECK_PING.as_bytes());
+    let _ = link.to.send(first);
     let until = Instant::now() + CHECK;
     loop {
         let Ok(Some(line)) = tokio::time::timeout_at(until, link.from.recv()).await else {
@@ -465,6 +507,7 @@ impl Tools for Own {
             description: STATUS_DESCRIPTION.into(),
             input_schema: json!({"type": "object", "properties": {}, "required": []}),
             read_only: true,
+            meta: None,
         }]
     }
 
@@ -479,12 +522,12 @@ impl Tools for Own {
 }
 
 /// The shim's own answer to `initialize`, in both states. Its tools change when Hersir opens or closes, so it says
-/// `listChanged`.
-fn initialize(id: Value, params: Option<&Value>) -> Value {
+/// `listChanged`; for a client that declared MCP Apps (`session`), the resources and the extension too (GA-343).
+fn initialize(id: Value, params: Option<&Value>, session: &Session) -> Value {
     let version = params.and_then(|p| p.get("protocolVersion")).and_then(Value::as_str).unwrap_or(DEFAULT_PROTOCOL);
     ok(id, json!({
         "protocolVersion": version,
-        "capabilities": {"tools": {"listChanged": true}},
+        "capabilities": capabilities(session, true),
         "serverInfo": {"name": "hersir", "version": env!("CARGO_PKG_VERSION")},
         "instructions": INSTRUCTIONS,
     }))
