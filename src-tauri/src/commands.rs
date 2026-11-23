@@ -744,6 +744,17 @@ pub async fn usage_summary(st: State<'_, AppState>, period: String) -> R<gizai_c
     off(&st, move |st| gizai_core::usage::for_period(&st.db, &period, gizai_core::ids::now_ms()).map_err(e)).await
 }
 
+/// A project's Time tracking tab (GA-331): per card, its runs, agent time and tokens over all of its runs. An interrupted
+/// run counts at most the run time limit (Settings → Agents and runs), read as `get_settings` reads it.
+#[tauri::command]
+pub async fn project_time(st: State<'_, AppState>, id: String) -> R<Vec<gizai_core::usage::CardTime>> {
+    off(&st, move |st| {
+        let minutes: u64 = gizai_core::settings::get(&st.db, "max_run_minutes").ok().flatten().unwrap_or(crate::runs::DEFAULT_MAX_RUN_MINUTES);
+        let max_run_ms = i64::try_from(minutes).unwrap_or(i64::MAX / 60_000).saturating_mul(60_000);
+        gizai_core::usage::project_time(&st.db, &id, max_run_ms).map_err(e)
+    }).await
+}
+
 /// The Usage page's Subscription tab: per coding CLI, the newest reading of each of its limits and the agents on it.
 #[tauri::command]
 pub async fn subscription_limits(st: State<'_, AppState>) -> R<Vec<gizai_core::limits::CliLimits>> {

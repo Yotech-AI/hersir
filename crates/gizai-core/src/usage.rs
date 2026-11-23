@@ -199,6 +199,70 @@ pub fn summary(db: &Db, since: i64, until: i64) -> Result<Usage> {
     })
 }
 
+/// One card on a project's Time tracking tab (GA-331): how long the agents worked on it and the tokens that took, added
+/// up over all of its runs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CardTime {
+    pub task_id: String,
+    pub identifier: String,
+    pub title: String,
+    /// The name of the card's board column.
+    pub column: String,
+    pub archived: bool,
+    /// Runs that started.
+    pub runs: i64,
+    /// The ended runs' time; an interrupted run counts at most the run time limit.
+    pub time_ms: i64,
+    /// `started_at` of the run working on the card now.
+    pub running_since: Option<i64>,
+    /// Cache reads and writes included.
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+}
+
+/// The project's Time tracking tab (GA-331): one row per card of the project (open, done, cancelled and archived), with
+/// what every agent's runs on it added up to (builders, QA, DevOps and the Chief's), newest card first. A run removed
+/// (`deleted_at`) is left out, as in `runs::list_for_task`; the Chief's chat turns and board checks have no card, so
+/// they never count.
+///
+/// - `runs`: the runs that started; a queued run that never did isn't one.
+/// - `time_ms`: each ended run's wall-clock span, from its start to its end (waiting for an approval included), never
+///   below 0. An interrupted run (`runs::recover_interrupted`) ended at the next start-up, not when it stopped, so it
+///   counts at most `max_run_ms`, the run time limit as it is set now.
+/// - `running_since`: the earliest start of a run that started and hasn't ended.
+/// - Tokens: the sums; a running run's are saved when it ends.
+///
+/// An unknown project is `Error::NotFound`.
+pub fn project_time(db: &Db, project_id: &str, max_run_ms: i64) -> Result<Vec<CardTime>> {
+    let span = "MAX(r.ended_at - r.started_at, 0)";
+    let ended = "r.started_at IS NOT NULL AND r.ended_at IS NOT NULL";
+    db.read(|c| {
+        use rusqlite::OptionalExtension;
+        c.query_row("SELECT 1 FROM projects WHERE id = ?1", [project_id], |_| Ok(()))
+            .optional()?
+            .ok_or_else(|| Error::NotFound(format!("project {project_id}")))?;
+        let mut st = c.prepare(&format!(
+            "SELECT t.id, t.identifier, t.title, COALESCE(s.name, ''), t.deleted_at IS NOT NULL,
+                    count(r.started_at),
+                    COALESCE(SUM(CASE WHEN {ended} THEN
+                        CASE WHEN r.error = 'interrupted' THEN MIN({span}, ?2) ELSE {span} END END), 0),
+                    MIN(CASE WHEN r.started_at IS NOT NULL AND r.ended_at IS NULL THEN r.started_at END),
+                    COALESCE(SUM(r.input_tokens), 0), COALESCE(SUM(r.output_tokens), 0)
+             FROM tasks t
+             LEFT JOIN workflow_states s ON s.id = t.state_id
+             LEFT JOIN runs r ON r.task_id = t.id AND r.deleted_at IS NULL
+             WHERE t.project_id = ?1
+             GROUP BY t.id
+             ORDER BY t.created_at DESC, t.identifier DESC"))?;
+        let rows = st.query_map(params![project_id, max_run_ms.max(0)], |r| Ok(CardTime {
+            task_id: r.get(0)?, identifier: r.get(1)?, title: r.get(2)?, column: r.get(3)?, archived: r.get(4)?,
+            runs: r.get(5)?, time_ms: r.get(6)?, running_since: r.get(7)?, input_tokens: r.get(8)?, output_tokens: r.get(9)?,
+        }))?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    })
+}
+
 /// The highest cost first, then the most tokens.
 fn most_first(a: &UsageTotals, b: &UsageTotals) -> std::cmp::Ordering {
     b.cost_usd_micros.cmp(&a.cost_usd_micros).then_with(|| (b.input_tokens + b.output_tokens).cmp(&(a.input_tokens + a.output_tokens)))
