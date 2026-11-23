@@ -355,7 +355,7 @@ function OneTerminal({ id, youId }: { id: string; youId: string }) {
             }
             const on = t === s.id;
             return (
-              <section key={t} className={`term-pane${on ? " on" : ""}`} aria-label={ts.name}
+              <div key={t} className={`term-pane${on ? " on" : ""}`} role="group" aria-label={ts.name}
                 onMouseDownCapture={() => focusPane(t)} onFocusCapture={() => focusPane(t)}
                 onClick={(e) => { if (!e.currentTarget.contains(document.activeElement)) focusTerminal(t); }}>
                 <div className="term-cap" title={tabTitle(ts)} onClick={() => { focusPane(t); focusTerminal(t); }}>
@@ -365,7 +365,7 @@ function OneTerminal({ id, youId }: { id: string; youId: string }) {
                 </div>
                 {bar(ts)}
                 <TerminalView key={t} id={t} place={PAGE} autoFocus={on} findAsk={finds[t] ?? 0} />
-              </section>
+              </div>
             );
           })}
         </div>
