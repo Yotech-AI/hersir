@@ -1,30 +1,37 @@
-// GA-343: the stand-in host (mcp-host.html, `npm run mcp-host`), for development and QA only: never in the app's build
-// nor in the board view's file. It plays Claude Desktop's side of MCP Apps' bridge, so the board view can be seen to
-// draw, poll and follow the theme without Claude Desktop:
+// GA-343, GA-345: the stand-in host (mcp-host.html, `npm run mcp-host`), for development and QA only: never in the app's
+// build nor in the view's file. It plays Claude Desktop's side of MCP Apps' bridge, so the view can be seen to draw, poll
+// and follow the theme without Claude Desktop:
 // - it loads the view as built (src-tauri/mcp-app/mcp-app.html, at /built/mcp-app.html) into an iframe with
 //   sandbox="allow-scripts" and srcdoc, so the view has an opaque origin and no server, as in Claude;
-// - it answers ui/initialize with a host context (theme, display modes), then sends show_board's input and result;
-// - it answers the view's tools/call of board_read from a made-up board that changes every few seconds (fakeBoard.ts),
-//   or with Hersir's "Open Hersir first" error while "Hersir is open" is off;
+// - it answers ui/initialize with a host context (theme, display modes), then sends show's input and result
+//   ({"view": "board", "id": "GA"}, or no id for every project);
+// - it answers the view's tools/call of view_read (the board) and board_changes from a made-up board that changes every
+//   few seconds (fakeBoard.ts), or with Hersir's "Open Hersir first" error while "Hersir is open" is off. Only the board:
+//   the card and the Chief's thread come with GA-349;
 // - it sizes the frame from ui/notifications/size-changed, and goes full screen on ui/request-display-mode;
 // - Theme sends ui/notifications/host-context-changed; New tool call mounts a new view, as Claude does for every call.
 // Every message both ways shows in the log.
-import { FakeBoard, sentence } from "./fakeBoard";
+import { FakeBoard, PROJECT, sentence } from "./fakeBoard";
 import "./host.css";
 
 const PROTOCOL = "2026-01-26";
 const APP_URI = "ui://hersir/app.html";
 const NOT_RUNNING = "Open Hersir first: Claude Desktop reaches your board through the Hersir app on this computer, and it isn't running.";
-/** show_board as Hersir lists it to Claude Desktop (src-tauri/src/tools/apps.rs). */
-const SHOW_BOARD = {
-  name: "show_board",
-  description: "Shows the user Hersir's board in this chat, live: its columns and cards, as on Hersir's Tasks page.",
-  inputSchema: { type: "object", properties: { project: { type: "string" } }, required: [] },
+/** show as Hersir lists it to Claude Desktop (src-tauri/src/tools/apps.rs). */
+const SHOW = {
+  name: "show",
+  description: "Shows the user Hersir's board, a card or the Chief's thread inside this chat. Use it when the user wants to see the board or a "
+    + "card, and before you answer about a card, so they see exactly what it says.",
+  inputSchema: {
+    type: "object", required: ["view"],
+    properties: { view: { type: "string", enum: ["board", "card", "chief"] }, id: { type: "string" } },
+  },
   annotations: { readOnlyHint: true },
   _meta: { ui: { visibility: ["model", "app"], resourceUri: APP_URI }, "ui/resourceUri": APP_URI },
 };
 
 type Msg = { jsonrpc: "2.0"; id?: string | number | null; method?: string; params?: Record<string, unknown>; result?: unknown; error?: unknown };
+type ViewArgs = { view?: string; id?: string };
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
 const board = new FakeBoard();
@@ -32,8 +39,10 @@ const state = {
   theme: (new URLSearchParams(location.search).get("theme") === "light" ? "light" : "dark") as "light" | "dark",
   mode: "inline" as "inline" | "fullscreen",
   open: true,
-  project: "GA" as string | null,
+  /** show's id: the project's key, or null for every project on the board. */
+  project: PROJECT.key as string | null,
   reads: 0,
+  changeCalls: 0,
   lastRead: null as Date | null,
   height: 0,
   frame: null as HTMLIFrameElement | null,
@@ -51,10 +60,11 @@ function log(dir: string, m: unknown) {
 
 function status() {
   $("#reads").textContent = String(state.reads);
+  $("#change-calls").textContent = String(state.changeCalls);
   $("#last-read").textContent = state.lastRead ? state.lastRead.toLocaleTimeString() : "never";
   $("#height").textContent = state.height ? `${state.height} px` : "not said yet";
   $("#mode").textContent = state.mode;
-  $("#changes").textContent = String(board.changes);
+  $("#changes").textContent = `${board.changes} (seq ${board.seq})`;
 }
 
 function post(m: Msg) {
@@ -64,15 +74,38 @@ function post(m: Msg) {
 
 const notify = (method: string, params: unknown) => post({ jsonrpc: "2.0", method, params: params as Record<string, unknown> });
 
-/** A tool's result as Hersir gives it. */
-function result(tool: "show_board" | "board_read") {
-  if (!state.open) return { content: [{ type: "text", text: NOT_RUNNING }], isError: true };
-  const data = board.data(state.project);
+const failed = (text: string) => ({ content: [{ type: "text", text }], isError: true });
+
+/** show's or view_read's result as Hersir gives it, for the made-up board. */
+function result(tool: "show" | "view_read", args: ViewArgs) {
+  if (!state.open) return failed(NOT_RUNNING);
+  if (args.view !== "board") {
+    return failed(args.view === "card" || args.view === "chief"
+      ? `The stand-in host has only the board: the ${args.view} view comes with GA-349.`
+      : `"view" is board, card or chief, not "${args.view ?? ""}"`);
+  }
+  const id = args.id ?? null;
+  if (id !== null && id.toUpperCase() !== PROJECT.key) return failed(`No project matches "${id}".`);
+  // view_read's seq is read before its data, as Hersir reads it
+  const seq = board.seq;
+  const data = board.data(id === null ? null : PROJECT.key);
   return {
-    content: [{ type: "text", text: sentence(data) }], structuredContent: data, isError: false,
-    ...(tool === "show_board" ? { _meta: { ui: { resourceUri: APP_URI }, "ui/resourceUri": APP_URI } } : {}),
+    content: [{ type: "text", text: sentence(data) }], isError: false,
+    structuredContent: tool === "view_read" ? { view: "board", id: data.project?.key ?? null, seq, data } : { view: "board", id: data.project?.key ?? null, data },
+    ...(tool === "show" ? { _meta: { ui: { resourceUri: APP_URI }, "ui/resourceUri": APP_URI } } : {}),
   };
 }
+
+/** board_changes' result as Hersir gives it: JSON text and structuredContent. */
+function changes(args: { since?: unknown }) {
+  if (!state.open) return failed(NOT_RUNNING);
+  if (args.since !== undefined && typeof args.since !== "number") return failed("\"since\" must be a whole number");
+  const c = board.since(args.since as number | undefined);
+  return { content: [{ type: "text", text: JSON.stringify(c) }], structuredContent: c, isError: false };
+}
+
+/** show's arguments for this tool call. */
+const showArgs = (): ViewArgs => (state.project ? { view: "board", id: state.project } : { view: "board" });
 
 function hostContext() {
   const frame = $("#frame-box");
@@ -80,7 +113,7 @@ function hostContext() {
     theme: state.theme, displayMode: state.mode, availableDisplayModes: ["inline", "fullscreen"], platform: "desktop",
     locale: navigator.language, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     containerDimensions: { width: frame.clientWidth, maxHeight: 4000 },
-    toolInfo: { id: state.calls, tool: SHOW_BOARD },
+    toolInfo: { id: state.calls, tool: SHOW },
   };
 }
 
@@ -96,11 +129,15 @@ function onRequest(m: Msg) {
       });
     case "tools/call": {
       const name = String(m.params?.name ?? "");
-      if (name !== "board_read" && name !== "show_board") return fail(-32602, `unknown tool ${name}`);
-      if (name === "board_read") { state.reads++; state.lastRead = new Date(); status(); }
-      const args = (m.params?.arguments ?? {}) as { project?: string };
-      if (args.project && args.project !== "p-ga" && args.project !== "GA") return answer({ content: [{ type: "text", text: `project "${args.project}" was not found` }], isError: true });
-      return answer(result(name));
+      const args = (m.params?.arguments ?? {}) as ViewArgs & { since?: unknown };
+      if (name === "board_changes") {
+        state.changeCalls++;
+        status();
+        return answer(changes(args));
+      }
+      if (name !== "view_read" && name !== "show") return fail(-32602, `unknown tool ${name}`);
+      if (name === "view_read") { state.reads++; state.lastRead = new Date(); status(); }
+      return answer(result(name, args));
     }
     case "ui/request-display-mode": {
       const want = m.params?.mode === "fullscreen" ? "fullscreen" : "inline";
@@ -117,8 +154,8 @@ function onRequest(m: Msg) {
 function onNotification(m: Msg) {
   if (m.method === "ui/notifications/initialized") {
     // As Claude does once the view is ready: the tool's input, then its result.
-    notify("ui/notifications/tool-input", { arguments: state.project ? { project: state.project } : {} });
-    notify("ui/notifications/tool-result", result("show_board"));
+    notify("ui/notifications/tool-input", { arguments: showArgs() });
+    notify("ui/notifications/tool-result", result("show", showArgs()));
   } else if (m.method === "ui/notifications/size-changed") {
     const h = Number(m.params?.height);
     if (Number.isFinite(h) && h > 0) {
@@ -152,6 +189,7 @@ async function mount() {
   box.replaceChildren();
   state.calls++;
   state.height = 0;
+  $("#call").textContent = `show ${JSON.stringify(showArgs())}`;
   const res = await fetch(`/built/mcp-app.html?t=${Date.now()}`);
   const html = await res.text();
   if (!res.ok) {
@@ -164,7 +202,7 @@ async function mount() {
   $("#size").textContent = `${(new Blob([html]).size / 1024).toFixed(0)} KB`;
   const frame = document.createElement("iframe");
   frame.setAttribute("sandbox", "allow-scripts");
-  frame.title = "Hersir board view";
+  frame.title = "Hersir's view";
   frame.srcdoc = html;
   state.frame = frame;
   box.append(frame);
@@ -178,7 +216,7 @@ $("#theme").addEventListener("click", () => {
   notify("ui/notifications/host-context-changed", { theme: state.theme });
 });
 $<HTMLInputElement>("#open").addEventListener("change", (e) => { state.open = (e.target as HTMLInputElement).checked; });
-$<HTMLInputElement>("#whole").addEventListener("change", (e) => { state.project = (e.target as HTMLInputElement).checked ? null : "GA"; });
+$<HTMLInputElement>("#whole").addEventListener("change", (e) => { state.project = (e.target as HTMLInputElement).checked ? null : PROJECT.key; });
 $("#change").addEventListener("click", () => { board.change(); status(); });
 $("#remount").addEventListener("click", () => void mount());
 $("#exit").addEventListener("click", () => setMode("inline"));
