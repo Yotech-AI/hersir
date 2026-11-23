@@ -59,6 +59,7 @@ that researches a feature before it's built.
 - **Memory.** The Chief, the agents and you keep notes for later, and each run gets the notes for its card. [Read more](docs/features/memory.md)
 - **Tools per agent.** Give each agent only the commands, folders, MCP servers, web access and hidden browser it needs. [Read more](docs/features/tools.md)
 - **The Inbox.** Questions, approvals, commands to run and cards to review wait for you in one list. [Read more](docs/features/inbox.md)
+- **Claude Desktop.** Use your board from the Claude Desktop app: Claude gets the Chief's tools and rules, asks the Chief, and shows the board or a card in its chat. [Read more](docs/features/claude-desktop.md)
 
 ## Install
 
@@ -126,7 +127,7 @@ Please send us the file of the start that crashed, and say roughly when it happe
 
 - [Install](docs/install.md): what each system needs, when macOS or Windows warns, updates, your data and no telemetry.
 - [Settings](docs/settings.md): what each tab holds, how Hersir looks, the tray, and the screenshot settings.
-- Features: [Board](docs/features/board.md) · [Chief](docs/features/chief.md) · [CLIs](docs/features/cli.md) · [Testing](docs/features/testing.md) · [Editor and Terminal](docs/features/editor-and-terminal.md) · [Memory](docs/features/memory.md) · [Tools](docs/features/tools.md) · [Inbox](docs/features/inbox.md) · [Screenshots](docs/features/screenshots.md)
+- Features: [Board](docs/features/board.md) · [Chief](docs/features/chief.md) · [CLIs](docs/features/cli.md) · [Testing](docs/features/testing.md) · [Editor and Terminal](docs/features/editor-and-terminal.md) · [Memory](docs/features/memory.md) · [Tools](docs/features/tools.md) · [Inbox](docs/features/inbox.md) · [Screenshots](docs/features/screenshots.md) · [Claude Desktop](docs/features/claude-desktop.md)
 - [Memory in depth](docs/memory.md): folders, properties, links, search, and how runs get notes.
 - [Agent tools in depth](docs/agent-tools.md): MCP servers, signing in, the web, the browser and the safety rules.
 - [Linux, macOS and Windows](docs/PLATFORMS.md): what differs on each system.
