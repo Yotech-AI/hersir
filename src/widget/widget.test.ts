@@ -1,13 +1,17 @@
-// GA-343 QA: the board view for Claude Desktop (src/widget).
+// GA-343 QA, GA-345 QA: Hersir's view for Claude Desktop (src/widget).
 // - No network: no fetch, XMLHttpRequest, WebSocket, EventSource or sendBeacon anywhere in the view's code (every file
 //   main.tsx imports, the app's Board among them), nor in the built file; the bridge works with each of them made to fail.
 // - The bridge: ui/initialize then ui/notifications/initialized, the tool's input and result, the host's context (theme),
 //   tools/call through the host, display modes, the host's requests, size-changed from a ResizeObserver.
-// - The board in structuredContent as the app's Board draws it; board_read every 2 to 5 s.
+// - The board in structuredContent ({view, id, data}, GA-345's contract) as the app's Board draws it; every 2 to 5 s
+//   board_changes since view_read's seq, and view_read again only when something changed.
+// - views.ts reads show's, view_read's and board_changes' results; the stand-in host's made-up board answers as Hersir.
 // - The built view is one file under 1 MB; neither build has the stand-in host page.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Bridge, BridgeError, PROTOCOL, reportSize, type ToolResult } from "./bridge";
-import { boardOf, statesOf, tasksOf, titleOf, workingOf, type BoardData } from "./board";
+import { boardOf, statesOf, tasksOf, titleOf, workingOf, WORKING } from "./board";
+import { CUT, changesOf, viewOf, type BoardData } from "./views";
+import { FakeBoard, PROJECT, sentence } from "../widget-host/fakeBoard";
 
 const fs = await import(/* @vite-ignore */ ["node", "fs"].join(":"));
 const ROOT = new URL("../../", import.meta.url);
@@ -185,13 +189,13 @@ describe("the view's bridge to the host (GA-343)", () => {
   it("calls the server's tools through the host, with its answer or its error, and asks for another display mode", async () => {
     const w = windows();
     const b = new Bridge(w.host, {}, w.self);
-    const read = b.callTool("board_read", { project: "p-ga" });
+    const read = b.callTool("view_read", { view: "board", id: "GA" });
     const ask = w.last();
-    expect(ask).toEqual({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "board_read", arguments: { project: "p-ga" } } });
+    expect(ask).toEqual({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "view_read", arguments: { view: "board", id: "GA" } } });
     w.deliver({ jsonrpc: "2.0", id: 1, result: { content: [{ type: "text", text: "ok" }], structuredContent: { view: "board" } } });
     await expect(read).resolves.toEqual({ content: [{ type: "text", text: "ok" }], structuredContent: { view: "board" } });
 
-    const failed = b.callTool("board_read", {});
+    const failed = b.callTool("view_read", { view: "board" });
     w.deliver({ jsonrpc: "2.0", id: 2, error: { code: -32000, message: "Open Hersir first" } });
     await expect(failed).rejects.toBeInstanceOf(BridgeError);
     await expect(failed).rejects.toMatchObject({ code: -32000, message: "Open Hersir first" });
@@ -208,7 +212,7 @@ describe("the view's bridge to the host (GA-343)", () => {
     expect(w.last()).toEqual({ jsonrpc: "2.0", method: "ui/notifications/size-changed", params: { width: 720, height: 480 } });
 
     // closed: a request still waiting fails, and the host's messages reach nothing any more
-    const waiting = b.callTool("board_read", {});
+    const waiting = b.callTool("view_read", { view: "board" });
     b.close();
     await expect(waiting).rejects.toThrow("the view closed");
     const before = w.sent.length;
@@ -235,7 +239,7 @@ describe("the view's bridge to the host (GA-343)", () => {
     try {
       const w = windows();
       const b = new Bridge(w.host, {}, w.self);
-      const call = b.callTool("board_read", {});
+      const call = b.callTool("view_read", { view: "board" });
       const caught = call.catch((e: Error) => e);
       await vi.advanceTimersByTimeAsync(61_000);
       expect(String(await caught)).toContain("no answer to tools/call");
@@ -293,47 +297,135 @@ describe("the view's bridge to the host (GA-343)", () => {
 // ---- the board -----------------------------------------------------------------------------------------------------
 
 const BOARD: BoardData = {
-  view: "board", team: "Giz team", project: { id: "p-ga", key: "GA", name: "Giz app" },
+  team: "Giz team", project: { key: "GA", name: "Giz app" },
   columns: [
-    { id: "s-backlog", name: "Backlog", category: "backlog", total: 1 },
-    { id: "s-ready", name: "To do", category: "ready", wipLimit: 3, auto: true, total: 2 },
+    { name: "Backlog", kind: "backlog", total: 1, cards: [
+      { identifier: "GA-1", title: "One", project: "Giz app", assignee: null, labels: [], priority: 0, hold: null, running: false, needs_you: false },
+    ] },
+    { name: "To do", kind: "waiting", total: 3, cards: [
+      { identifier: "GA-2", title: "Two", project: "Giz app", assignee: "Backend Agent", labels: [{ name: "bug", color: "#f2706b" }], priority: 2,
+        hold: "needs_decision", running: true, needs_you: true },
+      { identifier: "GA-3", title: "Three", project: "Giz app", assignee: null, labels: [{ name: "plain", color: null }], priority: 1, hold: null,
+        running: false, needs_you: false },
+    ] },
+    { name: "In progress", kind: "work", total: 0, cards: [] },
   ],
-  cards: [
-    { id: "t1", identifier: "GA-1", title: "One", column: "s-backlog", sortKey: "a", priority: 0, labels: [], hold: false },
-    { id: "t2", identifier: "GA-2", title: "Two", column: "s-ready", sortKey: "b", priority: 2, assignee: "Backend Agent", assigneeKind: "agent",
-      labels: [{ name: "bug", color: "#f2706b" }], hold: true, byHand: true, waitsFor: ["GA-1"], working: "Backend Agent" },
-  ],
-  onHold: 1,
 };
 
-describe("the board from structuredContent, as the app's Board draws it (GA-343)", () => {
-  it("takes only a board", () => {
-    for (const not of [null, undefined, "board", {}, { view: "card", columns: [], cards: [] }, { view: "board", columns: [] }, { view: "board", cards: [] }])
-      expect(boardOf(not)).toBeNull();
+describe("the board from structuredContent, as the app's Board draws it (GA-343, GA-345)", () => {
+  it("takes only a board's data", () => {
+    for (const not of [null, undefined, "board", {}, { cards: [] }, { columns: "x" }]) expect(boardOf(not)).toBeNull();
     expect(boardOf(BOARD)).toEqual(BOARD);
-    expect(boardOf({ ...BOARD, onHold: undefined })?.onHold).toBe(0);
+    expect(boardOf({ columns: [] })).toEqual({ team: "", project: null, columns: [] });
   });
 
-  it("gives the Board its columns in board order and its cards with what the board shows", () => {
+  it("gives the Board its columns in board order, by place, with the app's categories for the contract's kinds", () => {
     expect(statesOf(BOARD).map((s) => [s.id, s.name, s.category, s.wipLimit, s.auto])).toEqual([
-      ["s-backlog", "Backlog", "backlog", null, false], ["s-ready", "To do", "ready", 3, true]]);
+      ["column-0", "Backlog", "backlog", null, false], ["column-1", "To do", "ready", null, false], ["column-2", "In progress", "in_progress", null, false]]);
     const sortKeys = statesOf(BOARD).map((s) => s.sortKey);
     expect([...sortKeys].sort()).toEqual(sortKeys);
-    const [one, two] = tasksOf(BOARD);
-    expect(one).toMatchObject({ id: "t1", identifier: "GA-1", stateId: "s-backlog", stateName: "Backlog", hold: null, labels: [], descriptionMd: "" });
-    expect(two).toMatchObject({ id: "t2", stateId: "s-ready", stateName: "To do", stateCategory: "ready", priority: 2, assigneeName: "Backend Agent",
-      hold: "hold", byHand: true, waitsFor: ["GA-1"], labels: [{ name: "bug", color: "#f2706b" }] });
-    expect([...workingOf(BOARD)]).toEqual([["t2", "Backend Agent"]]);
+  });
+
+  it("gives the Board its cards with what the board shows, in their column's order, and the running ones as working", () => {
+    const [one, two, three] = tasksOf(BOARD);
+    expect(one).toMatchObject({ id: "GA-1", identifier: "GA-1", title: "One", projectName: "Giz app", stateId: "column-0", stateName: "Backlog",
+      stateCategory: "backlog", hold: null, labels: [], descriptionMd: "", priority: 0, assigneeName: null });
+    expect(two).toMatchObject({ id: "GA-2", stateId: "column-1", stateName: "To do", stateCategory: "ready", priority: 2, assigneeName: "Backend Agent",
+      hold: "needs_decision", labels: [{ id: "bug", name: "bug", color: "#f2706b" }] });
+    expect(three).toMatchObject({ id: "GA-3", stateId: "column-1", labels: [{ name: "plain", color: null }] });
+    expect(two.sortKey < three.sortKey).toBe(true);
+    expect([...workingOf(BOARD)]).toEqual([["GA-2", WORKING]]);
     expect(titleOf(BOARD)).toBe("Giz app (GA)");
     expect(titleOf({ ...BOARD, project: null })).toBe("Giz team");
   });
 
-  it("asks board_read every 2 to 5 seconds, as the card says", async () => {
+  it("asks board_changes every 2 to 5 seconds since the last seq, and view_read only when something changed", async () => {
     const src = read("src/widget/BoardView.tsx");
     const poll = Number(/export const POLL_MS = ([\d_]+);/.exec(src)?.[1].replace(/_/g, ""));
     expect(poll).toBeGreaterThanOrEqual(2000);
     expect(poll).toBeLessThanOrEqual(5000);
-    expect(src).toContain(`export const BOARD_READ = "board_read";`);
+    expect(src).toContain(`export const VIEW_READ = "view_read";`);
+    expect(src).toContain(`export const BOARD_CHANGES = "board_changes";`);
+    expect(src).toContain("callTool(BOARD_CHANGES, { since: seq.current })");
+    expect(src).toMatch(/callTool\(VIEW_READ, project\.current \? \{ view: "board", id: project\.current \} : \{ view: "board" \}\)/);
+    // the spike's tools are gone from the view
+    for (const f of widgetFiles().files) expect(read(f), f).not.toMatch(/\b(show_board|board_read)\b/);
+  });
+});
+
+// ---- show's, view_read's and board_changes' results (GA-345) ----------------------------------------------------------
+
+describe("the view reads show's, view_read's and board_changes' results as the contract has them (GA-345)", () => {
+  it("cuts end with the contract's words", () => {
+    expect(CUT).toBe("…(cut: read the rest in Hersir)");
+  });
+
+  it("viewOf takes {view, id, seq?, data} for board, card and chief, and nothing else", () => {
+    expect(viewOf({ view: "board", id: "GA", data: BOARD })).toEqual({ view: "board", id: "GA", seq: undefined, data: BOARD });
+    expect(viewOf({ view: "board", id: null, seq: 1042, data: BOARD })).toEqual({ view: "board", id: null, seq: 1042, data: BOARD });
+    const card = { identifier: "GA-12", title: "Fix the login" };
+    expect(viewOf({ view: "card", id: "GA-12", seq: 7, data: card })).toEqual({ view: "card", id: "GA-12", seq: 7, data: card });
+    const chief = { thread: null, status: "answered", messages: [], draft: null };
+    expect(viewOf({ view: "chief", id: null, data: chief })).toEqual({ view: "chief", id: null, seq: undefined, data: chief });
+    for (const not of [null, undefined, "board", {}, { view: "column", data: {} }, { view: "board" }, { view: "board", data: "x" }, BOARD])
+      expect(viewOf(not)).toBeNull();
+  });
+
+  it("changesOf takes board_changes' {seq, cards, board, reload}, and not GA-344's old names", () => {
+    expect(changesOf({ seq: 12, cards: ["GA-1"], board: false, reload: false })).toEqual({ seq: 12, cards: ["GA-1"], board: false, reload: false });
+    expect(changesOf({ seq: 12, cards: [] })).toEqual({ seq: 12, cards: [], board: false, reload: false });
+    expect(changesOf({ counter: 12, tasks: ["GA-1"], board: false, reload: false })).toBeNull();
+    expect(changesOf(null)).toBeNull();
+  });
+});
+
+// ---- the stand-in host's made-up board (GA-345) ---------------------------------------------------------------------
+
+describe("the stand-in host answers view_read and board_changes as Hersir does (GA-345)", () => {
+  const BOARD_CARD_KEYS = ["assignee", "hold", "identifier", "labels", "needs_you", "priority", "project", "running", "title"];
+
+  it("its board has the contract's fields, and its sentence is Hersir's", () => {
+    const b = new FakeBoard();
+    const data = b.data(PROJECT.key);
+    expect(data.project).toEqual(PROJECT);
+    expect(b.data(null).project).toBeNull();
+    for (const c of data.columns) {
+      expect(Object.keys(c).sort()).toEqual(["cards", "kind", "name", "total"]);
+      expect(c.total).toBe(c.cards.length);
+      for (const card of c.cards) {
+        expect(Object.keys(card).sort()).toEqual(BOARD_CARD_KEYS);
+        expect([null, "needs_decision", "blocked", "stalled"]).toContain(card.hold);
+      }
+    }
+    const n = data.columns.reduce((s, c) => s + c.cards.length, 0);
+    expect(sentence(data)).toBe(`The user sees the board of ${PROJECT.name} (${PROJECT.key}) from Hersir in this chat: ${n} cards in ${data.columns.length} columns, 1 on hold.`);
+  });
+
+  it("board_changes names the cards changed since a seq, the one changed last first, and none after the latest", () => {
+    const b = new FakeBoard();
+    const start = b.since(undefined);
+    expect(start).toEqual({ seq: b.seq, cards: [], board: false, reload: false });
+    const where = () => new Map(b.data(null).columns.flatMap((c) => c.cards.map((card) => [card.identifier, c.name] as const)));
+    const before = where();
+    b.change();
+    const first = [...where()].filter(([id, col]) => before.get(id) !== col).map(([id]) => id);
+    expect(first).toHaveLength(1);
+    b.change();
+    const after = b.since(start.seq);
+    expect(after.seq).toBe(start.seq + 2);
+    expect(after.cards.length).toBeGreaterThanOrEqual(1);
+    expect(after.cards[after.cards.length - 1] === first[0] || after.cards.length === 1).toBe(true);
+    expect(b.since(after.seq)).toEqual({ seq: after.seq, cards: [], board: false, reload: false });
+    expect(b.since(after.seq + 5).reload).toBe(true);
+  });
+
+  it("the host page calls show and answers view_read and board_changes, not the spike's tools", () => {
+    const src = read("src/widget-host/main.ts") + read("mcp-host.html");
+    expect(src).not.toMatch(/\b(show_board|board_read)\b/);
+    expect(src).toContain(`name: "show"`);
+    expect(src).toContain(`show {"view": "board", "id": "GA"}`);
+    expect(src).toMatch(/view_read/);
+    expect(src).toMatch(/board_changes/);
   });
 });
 

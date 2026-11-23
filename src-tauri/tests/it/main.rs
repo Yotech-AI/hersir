@@ -29,6 +29,7 @@ mod claude_desktop_ask_chief_test;
 mod claude_desktop_board_view_test;
 mod claude_desktop_chief_test;
 mod claude_desktop_flow_test;
+mod claude_desktop_views_test;
 mod claude_memory_switch_test;
 mod cli_run_flow_test;
 mod commands_off_main_thread_test;

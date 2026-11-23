@@ -25,12 +25,12 @@ fn desktop(st: &AppState) -> GizaiTools {
     tools_for(st, Some(tools::CLAUDE_DESKTOP), None)
 }
 
-/// board_changes as Claude Desktop calls it: (counter, cards, board, reload).
+/// board_changes as Claude Desktop calls it: (seq, cards, board, reload). GA-345: the contract's names, seq and cards.
 async fn board_changes(st: &AppState, since: Option<i64>) -> (i64, Vec<String>, bool, bool) {
     let args = since.map_or(json!({}), |n| json!({"since": n}));
     let v = desktop(st).call(tools::BOARD_CHANGES, args).await.unwrap();
-    let cards = v["tasks"].as_array().unwrap_or_else(|| panic!("{v}")).iter().map(|t| t.as_str().unwrap().to_string()).collect();
-    (v["counter"].as_i64().unwrap(), cards, v["board"].as_bool().unwrap(), v["reload"].as_bool().unwrap())
+    let cards = v["cards"].as_array().unwrap_or_else(|| panic!("{v}")).iter().map(|t| t.as_str().unwrap().to_string()).collect();
+    (v["seq"].as_i64().unwrap(), cards, v["board"].as_bool().unwrap(), v["reload"].as_bool().unwrap())
 }
 
 async fn counter(st: &AppState) -> i64 {
@@ -168,7 +168,7 @@ async fn board_changes_says_board_for_a_new_label_and_reload_for_a_counter_from_
     assert_eq!(board_changes(&st, Some(after + 50)).await, (after, vec![], false, true), "since past the counter");
     // since as text, as some clients send numbers; not a number is refused
     let v = desktop(&st).call(tools::BOARD_CHANGES, json!({"since": after.to_string()})).await.unwrap();
-    assert_eq!(v["counter"], after);
+    assert_eq!(v["seq"], after);
     let err = desktop(&st).call(tools::BOARD_CHANGES, json!({"since": "yesterday"})).await.unwrap_err();
     assert_eq!(err, "\"since\" must be a whole number");
     let err = desktop(&st).call(tools::BOARD_CHANGES, json!(["since"])).await.unwrap_err();
@@ -179,12 +179,18 @@ async fn board_changes_says_board_for_a_new_label_and_reload_for_a_counter_from_
 async fn only_claude_desktop_is_offered_board_changes_and_any_other_token_is_told_it_is_an_unknown_tool() {
     let tmp = tempfile::tempdir().unwrap();
     let (st, _) = state(tmp.path());
-    let def = desktop(&st).list().into_iter().find(|d| d.name == tools::BOARD_CHANGES).expect("Claude Desktop is offered board_changes");
+    // GA-345: offered to a Claude Desktop that shows MCP Apps' views, for its view alone (visibility app); not in the list
+    // of one that doesn't, though a call still answers (above)
+    let apps = gizai_mcp::Session { apps: true };
+    let def = desktop(&st).list_in(&apps).into_iter().find(|d| d.name == tools::BOARD_CHANGES).expect("Claude Desktop is offered board_changes");
     assert!(def.read_only, "it only reads");
+    assert_eq!(def.meta, Some(json!({"ui": {"visibility": ["app"]}})));
+    assert!(!desktop(&st).list_in(&gizai_mcp::Session::default()).iter().any(|d| d.name == tools::BOARD_CHANGES));
     assert!(!tools::catalog().iter().any(|d| d.name == tools::BOARD_CHANGES), "not in the catalog every other token gets");
     for (who, t) in [("no client", tools_for(&st, None, None)), ("another client", tools_for(&st, Some("something-else"), None)),
                      ("a question", tools_for(&st, None, Some("R1")))] {
         assert!(!t.list().iter().any(|d| d.name == tools::BOARD_CHANGES), "{who}: not offered");
+        assert!(!t.list_in(&apps).iter().any(|d| d.name == tools::BOARD_CHANGES), "{who}: not offered, even with MCP Apps");
         assert_eq!(t.call(tools::BOARD_CHANGES, json!({})).await.unwrap_err(), "unknown tool board_changes", "{who}");
     }
     // the Chief's own tool calls don't know it either
