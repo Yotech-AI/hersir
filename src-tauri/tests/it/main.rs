@@ -21,6 +21,7 @@ mod chat_files_flow_test;
 mod chat_flow_test;
 mod chat_limits_test;
 mod chief_archive_test;
+mod chief_card_time_test;
 mod chief_flow_test;
 mod chief_folder_flow_test;
 mod claude_memory_switch_test;
