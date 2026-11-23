@@ -494,9 +494,11 @@ mod socket {
         let list = c.ask(json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})).await.unwrap();
         let mut listed: Vec<String> = list["result"]["tools"].as_array().unwrap().iter().map(|d| d["name"].as_str().unwrap().to_string()).collect();
         let mut read_only: Vec<String> = tools::catalog().into_iter().filter(|d| d.read_only).map(|d| d.name).collect();
+        // GA-344: and board_changes, Claude Desktop's own (not in the catalog the other tokens get)
+        read_only.push(tools::BOARD_CHANGES.to_string());
         listed.sort();
         read_only.sort();
-        assert_eq!(listed, read_only, "exactly the tools ToolDef::read_only marks");
+        assert_eq!(listed, read_only, "exactly the tools ToolDef::read_only marks, and board_changes");
         assert!(list["result"]["tools"].as_array().unwrap().iter().all(|d| d["annotations"]["readOnlyHint"] == true));
         for name in ["get_overview", "list_tasks", "memory_read", "memory_list", "memory_search", "get_task", "check_board"] {
             assert!(read_only.contains(&name.to_string()), "{name} reads");
@@ -515,6 +517,14 @@ mod socket {
         assert_eq!(n["note"]["body_md"], "Exports are CSV, for the accountant.");
         let task = c.call(6, "get_task", json!({"task": "KADE-1"})).await;
         assert_eq!(task["isError"], false, "{task}");
+        // GA-344: board_changes over the socket: without since only the counter; with it, nothing changed since
+        let first = c.call(7, "board_changes", json!({})).await;
+        assert_eq!(first["isError"], false, "{first}");
+        let f: Value = serde_json::from_str(&text(&first)).unwrap();
+        assert!(f["counter"].as_i64().unwrap() > 0, "{f}");
+        assert_eq!((f["tasks"].clone(), f["board"].clone(), f["reload"].clone()), (json!([]), json!(false), json!(false)), "{f}");
+        let again: Value = serde_json::from_str(&text(&c.call(8, "board_changes", json!({"since": f["counter"]})).await)).unwrap();
+        assert_eq!(again, f, "with the latest counter: the same counter and no cards");
         let _ = &s.lead;
     }
 
@@ -695,7 +705,10 @@ mod socket {
         }).await.unwrap();
         assert_eq!(out.len(), 4, "{out:?}");
         assert_eq!(out[0]["result"]["serverInfo"]["name"], "hersir");
-        assert_eq!(out[1]["result"]["tools"].as_array().unwrap().len(), tools::catalog().iter().filter(|d| d.read_only).count());
+        // the tools that read, and board_changes (GA-344)
+        let listed = out[1]["result"]["tools"].as_array().unwrap();
+        assert_eq!(listed.len(), tools::catalog().iter().filter(|d| d.read_only).count() + 1);
+        assert!(listed.iter().any(|d| d["name"] == tools::BOARD_CHANGES), "{listed:?}");
         assert_eq!(out[2]["result"]["isError"], false, "{}", out[2]);
         assert!(text(&out[2]["result"]).contains("KADE-1"));
         assert_eq!(out[3]["result"]["isError"], true);
