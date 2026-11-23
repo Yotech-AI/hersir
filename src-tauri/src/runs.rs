@@ -1183,6 +1183,12 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
         hold_card(st, &agent_id, task_id, agent_cli::GEMINI_FOLDER);
         return Err(StartError::Held(agent_cli::GEMINI_FOLDER.into()));
     }
+    // GA-322: nor does a worktree whose git folder an earlier run changed (Codex's sandbox may write the worktree's own
+    // folder in the repository's git folder): the card goes on hold "blocked" with what changed, as the agent.
+    if let Some(why) = git_folder_problem(Path::new(&repo), &wt.path).await {
+        hold_card(st, &agent_id, task_id, &why);
+        return Err(StartError::Held(why));
+    }
     let behind = if project.repo_url.is_none() || wt.created { 0 } else {
         let (dir, from) = (wt.path.clone(), start.clone());
         tokio::task::spawn_blocking(move || worktree::behind(&dir, &from).unwrap_or(0)).await.unwrap_or(0)
@@ -1622,6 +1628,25 @@ pub(crate) fn web_for_run(agent: &team::Member, kind: Kind, cli_name: &str) -> (
     (web, notes)
 }
 
+/// GA-322: what is wrong with the git folder of the card worktree `wt` of the project's repository `repo`, in a sentence
+/// for the card's hold (`worktree::git_folder_problem`); None when nothing is. Off the async threads.
+async fn git_folder_problem(repo: &Path, wt: &Path) -> Option<String> {
+    let (repo, wt) = (repo.to_path_buf(), wt.to_path_buf());
+    tokio::task::spawn_blocking(move || worktree::git_folder_problem(&repo, &wt)).await.ok().flatten()
+}
+
+/// GA-322: `git_folder_problem` once the run `run_id` has ended in its worktree `dir`, with the repository of its card's
+/// project. None for a run without a worktree (as `record_head`), without a card, or of a project without a repository.
+async fn git_folder_after(st: &AppState, run_id: &str, dir: &Path) -> Option<String> {
+    if !dir.join(".git").exists() {
+        return None;
+    }
+    let task = tasks::get(&st.db, core_runs::get(&st.db, run_id).ok()?.task_id.as_deref()?).ok()?;
+    let project = projects::get(&st.db, task.project_id.as_deref()?).ok()?;
+    let repo = project.repo_path.filter(|p| !p.trim().is_empty())?;
+    git_folder_problem(Path::new(&repo), dir).await
+}
+
 /// Saves the commit the run's worktree `dir` ended at (`runs.head_sha`). With the one it started at, it gives the
 /// commits the run made (`commits`). Only a worktree counts: never the commit of a repository around it.
 pub(crate) fn record_head(db: &gizai_core::db::Db, run_id: &str, dir: &Path) {
@@ -1741,17 +1766,24 @@ async fn finish_run(st: &AppState, run_id: &str, task_id: &str, dir: &Path, ran:
     if status == "succeeded" && after_result {
         note_run(st, run_id, &after_result_note(cli));
     }
+    // GA-322: first, whether the run changed its worktree's git folder (Codex's sandbox may write the worktree's own
+    // folder in the repository's git folder). Then the card stays where it is, on hold with what changed, whatever the
+    // run's answer, and Hersir pushes nothing. Its own git there doesn't read what changed (`worktree::git_command`).
+    let tampered = git_folder_after(st, run_id, dir).await;
+    if let Some(why) = &tampered {
+        note_run(st, run_id, why);
+    }
     record_head(&st.db, run_id, dir);
     let agent = core_runs::get(&st.db, run_id).map(|r| r.agent_id).unwrap_or_default();
     let unstarted = status == "failed" && tools == 0 && error.as_deref().is_some_and(login_problem);
     // Gizai pushes the card's branch itself (GA-56), before the run counts as ended and the card moves on, so the next
     // agent (QA, for its pull request) finds it on the remote, also when the agent's own push was refused. Not after a run
-    // that couldn't start working, nor for a run Gizai's quitting stopped.
-    let pushed = if quit || unstarted { None } else { push_after_run(st, run_id, dir).await };
+    // that couldn't start working, nor for a run Gizai's quitting stopped, nor after one that changed its git folder.
+    let pushed = if quit || unstarted || tampered.is_some() { None } else { push_after_run(st, run_id, dir).await };
     for text in pushed.as_ref().map(AfterRun::notes).unwrap_or_default() {
         note_run(st, run_id, &text);
     }
-    let unpushed = pushed.and_then(|p| p.push.err());
+    let unpushed = tampered.or_else(|| pushed.and_then(|p| p.push.err()));
     // A Stop pressed while Gizai pushed came after the run had ended: it changes nothing.
     st.runs.stopped.lock().unwrap().remove(run_id);
     if !refused.is_empty() && let Err(e) = core_runs::set_refused(&st.db, run_id, &refused) {
@@ -1769,9 +1801,10 @@ async fn finish_run(st: &AppState, run_id: &str, task_id: &str, dir: &Path, ran:
     // Only a run that finished has a verdict for the gates, and only then do its commands to run count.
     let (gated, asks) = if status == "succeeded" { (verdict.as_ref(), run_for_me.as_slice()) } else { (None, &[][..]) };
     if let Some(reason) = &unpushed {
-        // The push failed: the card stays where it is, on hold with the reason, whatever the run's answer (its summary is
-        // still posted), so it shows in the Inbox. Nothing retries: the next run's end pushes again. Commands it asks you
-        // to run are kept with its verdict, so the held card still shows them.
+        // The push failed, or the run changed its git folder (GA-322): the card stays where it is, on hold with the
+        // reason, whatever the run's answer (its summary is still posted), so it shows in the Inbox. Nothing retries: the
+        // next run's end pushes again. Commands it asks you to run are kept with its verdict, so the held card still
+        // shows them.
         if cancelled {
             hold_card(st, &agent, task_id, reason);
         } else if let Err(e) = workflow::hold_unpushed_with(&st.db, run_id, gated, asks, reason) {
@@ -1939,6 +1972,10 @@ pub async fn start_by_hand(st: &AppState, task_id: &str) -> Result<worktree::Wor
     // Commit, Push and Hand over work on the card's branch (`hand`): its worktree must have it checked out.
     if let Some(b) = task.branch.as_deref().filter(|b| !b.trim().is_empty() && *b != wt.branch) {
         return Err(format!("{}'s worktree is on branch {}, not on the card's branch {b}: switch it back first", task.identifier, wt.branch));
+    }
+    // GA-322: nor one whose git folder a run changed, which your editor's git would follow
+    if let Some(why) = git_folder_problem(Path::new(&repo), &wt.path).await {
+        return Err(why);
     }
     if let Some(todo) = worktree::unprepared(&wt.path) {
         prepare_worktree(st, None, &task, &project, Path::new(&repo), &wt, todo).await.map_err(StartError::message)?;
