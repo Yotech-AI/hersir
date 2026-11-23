@@ -1395,10 +1395,6 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
         Some(r) => prompt::continue_prompt_with(&r.reason, note.as_ref(), Some(limits)),
         None => prompt::with_memory(&prompt::build_from(&ctx, &instructions, fetched_from(&project)), &memory.text),
     }, shots.as_ref().map(|s| &s.section)), &rules);
-    // A worktree's commits go to the repository's git folder, outside the worktree. GA-263: Codex's sandbox may write only
-    // the parts of it that a commit writes (`worktree::commit_dirs`), never its config or hooks. With rerere on in your
-    // git config, every commit would make the git folder's rr-cache, which the sandbox refuses: there the run's own git
-    // goes without rerere (a writable rr-cache would let an agent leave a conflict resolution for your own merges).
     // GA-322: a Gemini run reads its own system settings file, yours with the worktree's .env off
     // (`agent_cli::gemini_settings`), so it doesn't load the .env's variables; it goes when the run ends. Without it the
     // run doesn't start: Gemini would refuse system settings that can't be read, too.
@@ -1418,6 +1414,10 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
     } else {
         None
     };
+    // A worktree's commits go to the repository's git folder, outside the worktree. GA-263: Codex's sandbox may write only
+    // the parts of it that a commit writes (`worktree::commit_dirs`), never its config or hooks. With rerere on in your
+    // git config, every commit would make the git folder's rr-cache, which the sandbox refuses: there the run's own git
+    // goes without rerere (a writable rr-cache would let an agent leave a conflict resolution for your own merges).
     let mut git_config = git_config;
     let writable_dirs: Vec<String> = if spec.kind == Kind::Codex {
         if permission_mode != "danger-full-access" {

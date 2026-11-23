@@ -73,6 +73,15 @@ pub fn git_command(dir: &Path) -> std::process::Command {
     command_in(dir).0
 }
 
+/// `git_command`, or why Hersir doesn't run git in `dir` (a card worktree its project's repository doesn't vouch for,
+/// `card_git`), in words for after "Couldn't …: ", for a caller that shows why.
+pub fn checked_git_command(dir: &Path) -> Result<std::process::Command, String> {
+    match command_in(dir) {
+        (_, Some(why)) => Err(why),
+        (cmd, None) => Ok(cmd),
+    }
+}
+
 /// `git_command`, and why Hersir doesn't run git in `dir` when it doesn't (in words for after "Couldn't …: ").
 fn command_in(dir: &Path) -> (std::process::Command, Option<String>) {
     let mut cmd = crate::os::command("git");

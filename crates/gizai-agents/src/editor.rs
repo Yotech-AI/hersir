@@ -713,21 +713,27 @@ fn unreadable(rel: &str, e: std::io::Error) -> String {
 /// git in the folder `dir`: without the repository's hooks and fsmonitor program (`worktree::git_command`), without
 /// optional locks (an agent's git in the same worktree never finds the index locked by the Editor) and with literal
 /// pathspecs, but for check-ignore, which refuses them ("pathspec magic not supported by this command: 'literal'"),
-/// also when Gizai itself was started with them.
-fn git_command(dir: &Path, args: &[&str]) -> Command {
-    let mut cmd = worktree::git_command(dir);
+/// also when Gizai itself was started with them. In a card worktree its project's repository doesn't vouch for, git
+/// doesn't start: the error says why (`worktree::checked_git_command`).
+fn git_command(dir: &Path, args: &[&str]) -> Result<Command, String> {
+    let mut cmd = worktree::checked_git_command(dir)?;
     cmd.args(args).env("GIT_OPTIONAL_LOCKS", "0");
     if args.first() == Some(&"check-ignore") {
         cmd.env_remove("GIT_LITERAL_PATHSPECS");
     } else {
         cmd.env("GIT_LITERAL_PATHSPECS", "1");
     }
-    cmd
+    Ok(cmd)
 }
 
-/// `git_command` with `input` on its stdin, ended after `GIT_LIMIT`: (succeeded, stdout, stderr).
+/// `git_command` with `input` on its stdin, ended after `GIT_LIMIT`: (succeeded, stdout, stderr). A git that doesn't
+/// start in a card worktree (`git_command`) fails with the reason as what it said.
 fn git(dir: &Path, args: &[&str], input: Option<Vec<u8>>) -> Result<(bool, Vec<u8>, String), String> {
-    let mut child = git_command(dir, args).stdin(if input.is_some() { Stdio::piped() } else { Stdio::null() })
+    let mut cmd = match git_command(dir, args) {
+        Ok(cmd) => cmd,
+        Err(why) => return Ok((false, vec![], why)),
+    };
+    let mut child = cmd.stdin(if input.is_some() { Stdio::piped() } else { Stdio::null() })
         .stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| format!("Hersir can't run git: {e}"))?;
     if let (Some(bytes), Some(mut pipe)) = (input, child.stdin.take()) {
         std::thread::spawn(move || {
@@ -1012,8 +1018,8 @@ fn grep(dir: &Path, query: &str, how: Find, repo: bool, kind: &str, max_hits: us
         args.push("-w");
     }
     args.extend([kind, "-e", query]);
-    let mut child = git_command(dir, &args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()
-        .map_err(|e| Grep::Said(format!("Hersir can't run git: {e}")))?;
+    let mut child = git_command(dir, &args).map_err(Grep::Said)?.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped())
+        .spawn().map_err(|e| Grep::Said(format!("Hersir can't run git: {e}")))?;
     let err = drain(child.stderr.take());
     // a few hits ahead at most: git waits for the rest, and is ended once there are enough
     let (tx, rx) = mpsc::sync_channel(256);

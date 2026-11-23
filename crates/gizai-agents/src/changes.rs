@@ -150,9 +150,10 @@ pub struct FileDiff {
 // ---- git ----
 
 /// git in `dir`, reading only: literal paths, no optional lock (git status and diff otherwise refresh the index), and
-/// none of the repository's hooks or its fsmonitor program (`worktree::git_command`).
+/// none of the repository's hooks or its fsmonitor program (`worktree::git_command`). In a card worktree its project's
+/// repository doesn't vouch for, git doesn't start, and the error says why (`worktree::checked_git_command`).
 fn git_bytes(dir: &Path, args: &[&str], input: Option<&[u8]>) -> Result<Vec<u8>, AgentError> {
-    let mut cmd = crate::worktree::git_command(dir);
+    let mut cmd = crate::worktree::checked_git_command(dir).map_err(AgentError::Git)?;
     cmd.args(args).env("GIT_LITERAL_PATHSPECS", "1").env("GIT_OPTIONAL_LOCKS", "0")
         .stdin(if input.is_some() { Stdio::piped() } else { Stdio::null() }).stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = cmd.spawn().map_err(|e| AgentError::Git(format!("can't run git: {e}")))?;
