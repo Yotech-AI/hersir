@@ -617,3 +617,163 @@ fn the_desktop_shim_still_needs_its_environment() {
     assert!(err.starts_with("hersir-mcp:") && err.contains("HERSIR_SOCKET") && err.contains("HERSIR_TOKEN"), "{err}");
     assert!(out.stdout.is_empty());
 }
+
+// ---- a token revoked on an open connection (GA-338's serve_while) --------------------------------------------------
+
+/// What the stand-in board's one tool answers.
+const BOARD: &str = "KADE-1 Export invoices as CSV";
+
+/// Hersir as it serves Claude Desktop's lasting token since GA-338: the hello, then Hersir's own loop,
+/// `gizai_mcp::serve_while`, which asks before each message whether the token still holds. Once revoked (Disconnect in
+/// Hersir, or a new Connect), the next message gets one `{"error": …}` line instead of its answer and the connection
+/// closes; a new connection with that token is refused at its hello.
+struct Revocable {
+    revoked: Arc<AtomicBool>,
+    connections: Arc<AtomicUsize>,
+    stop: Arc<AtomicBool>,
+    accept: Option<JoinHandle<()>>,
+}
+
+/// The stand-in board: one tool that reads.
+struct Board;
+
+impl gizai_mcp::Tools for Board {
+    fn list(&self) -> Vec<gizai_mcp::ToolDef> {
+        vec![gizai_mcp::ToolDef { name: "get_overview".into(), description: "The board.".into(),
+            input_schema: json!({"type": "object", "properties": {}}), read_only: true }]
+    }
+    async fn call(&self, name: &str, _: Value) -> Result<Value, String> {
+        if name == "get_overview" { Ok(Value::String(BOARD.into())) } else { Err(format!("unknown tool {name}")) }
+    }
+}
+
+impl Revocable {
+    fn start(path: &Path) -> Revocable {
+        let listener = UnixListener::bind(path).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let (revoked, connections, stop) = (Arc::new(AtomicBool::new(false)), Arc::new(AtomicUsize::new(0)), Arc::new(AtomicBool::new(false)));
+        let accept = {
+            let (revoked, connections, stop) = (revoked.clone(), connections.clone(), stop.clone());
+            std::thread::spawn(move || {
+                while !stop.load(Ordering::SeqCst) {
+                    match listener.accept() {
+                        Ok((stream, _)) => {
+                            connections.fetch_add(1, Ordering::SeqCst);
+                            let revoked = revoked.clone();
+                            std::thread::spawn(move || serve_revocable(stream, revoked));
+                        }
+                        Err(_) => sleep(Duration::from_millis(10)),
+                    }
+                }
+            })
+        };
+        Revocable { revoked, connections, stop, accept: Some(accept) }
+    }
+
+    /// Disconnect in Hersir: the token is revoked, the open connection stays until its next message.
+    fn revoke(&self) {
+        self.revoked.store(true, Ordering::SeqCst);
+    }
+
+    fn connections(&self) -> usize {
+        self.connections.load(Ordering::SeqCst)
+    }
+}
+
+impl Drop for Revocable {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::SeqCst);
+        if let Some(t) = self.accept.take() {
+            let _ = t.join();
+        }
+    }
+}
+
+fn serve_revocable(stream: UnixStream, revoked: Arc<AtomicBool>) {
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+    let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+    rt.block_on(async move {
+        stream.set_nonblocking(true).unwrap();
+        let (r, mut w) = tokio::net::UnixStream::from_std(stream).unwrap().into_split();
+        let mut r = tokio::io::BufReader::new(r);
+        let mut hello = String::new();
+        if r.read_line(&mut hello).await.unwrap_or(0) == 0 {
+            return;
+        }
+        if gizai_mcp::parse_hello(&hello).as_deref() != Some(TOKEN) || revoked.load(Ordering::SeqCst) {
+            let _ = w.write_all(format!("{}\n", json!({"error": REASON})).as_bytes()).await;
+            let _ = w.shutdown().await;
+            return;
+        }
+        let refused = || revoked.load(Ordering::SeqCst).then(|| REASON.to_string());
+        let _ = gizai_mcp::serve_while(r, w, &Board, refused).await;
+    });
+}
+
+/// Starts the shim against `hersir`, initializes it, and checks that Hersir's own tool answers through it.
+fn connected_to(sock: &Path, hersir: &Revocable) -> Desktop {
+    let mut shim = Desktop::start(sock);
+    assert_own_initialize(&shim.call(1, "initialize", initialize_params()), "2025-06-18");
+    shim.notify("notifications/initialized");
+    assert!(wait_until(PATIENCE, || hersir.connections() == 1), "the shim connected as it started");
+    let list = shim.call(2, "tools/list", json!({}));
+    assert_eq!(list["result"]["tools"][0]["name"], "get_overview", "Hersir's own list: {list}");
+    let read = shim.call_tool(3, "get_overview");
+    assert_eq!(read["result"], json!({"content": [{"type": "text", "text": BOARD}], "isError": false}));
+    shim
+}
+
+#[test]
+fn when_hersir_revokes_the_token_on_an_open_connection_a_waiting_tools_call_says_hersir_disconnected_it_and_the_shim_stops_trying() {
+    let dir = tempfile::tempdir().unwrap();
+    let sock = dir.path().join("h.sock");
+    let hersir = Revocable::start(&sock);
+    let mut shim = connected_to(&sock, &hersir);
+
+    // Disconnect in Hersir; the next tools/call is the first message Hersir gets after it, and is refused in its place
+    hersir.revoke();
+    let asked = Instant::now();
+    shim.send(r#"{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"get_overview","arguments":{}}}"#);
+    let answer = shim.next_value(PATIENCE);
+    assert!(asked.elapsed() < Duration::from_secs(1), "answered {:?} after it was asked", asked.elapsed());
+    assert_eq!(answer, json!({"jsonrpc": "2.0", "id": 4, "result": tool_error(REFUSED)}), "the card's refusal text, not Hersir's line");
+
+    // from then on the shim answers by itself, with the refusal, and never dials again (more than two tries' time)
+    assert_eq!(shim.call_tool(5, "get_overview")["result"], tool_error(REFUSED));
+    assert_eq!(shim.call_tool(6, "hersir_status")["result"], tool_error(REFUSED));
+    assert_only_status(&shim.call(7, "tools/list", json!({})));
+    sleep(Duration::from_millis(4500));
+    assert_eq!(shim.call_tool(8, "list_tasks")["result"], tool_error(REFUSED));
+    assert!(shim.running(), "the shim ended after the refusal");
+    assert_eq!(hersir.connections(), 1, "the shim dialed again after a refusal");
+
+    // Hersir's refusal line never reaches Claude Desktop; stderr has one line per state, with Hersir's reason
+    assert!(shim.seen.iter().all(|l| !l.contains("this token is not valid") && !l.contains(r#""error":"#)), "{:?}", shim.seen);
+    assert!(shim.seen.iter().all(|l| l != LIST_CHANGED), "{:?}", shim.seen);
+    assert_eq!(shim.stderr(), format!("{CONNECTED_LINE}hersir-mcp: Hersir refused the token: {REASON}\n"));
+    assert_eq!(shim.close(), Some(0));
+    shim.assert_no_token();
+}
+
+#[test]
+fn when_hersir_revokes_the_token_on_an_open_connection_a_waiting_request_that_is_no_tools_call_gets_a_json_rpc_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let sock = dir.path().join("h.sock");
+    let hersir = Revocable::start(&sock);
+    let mut shim = connected_to(&sock, &hersir);
+
+    hersir.revoke();
+    let asked = Instant::now();
+    shim.send(r#"{"jsonrpc":"2.0","id":"list-4","method":"tools/list"}"#);
+    let answer = shim.next_value(PATIENCE);
+    assert!(asked.elapsed() < Duration::from_secs(1), "answered {:?} after it was asked", asked.elapsed());
+    assert_eq!(answer["id"], "list-4", "{answer}");
+    assert_eq!(answer["error"]["message"], REFUSED, "a JSON-RPC error with the refusal: {answer}");
+    assert!(answer["error"]["code"].is_i64() && answer.get("result").is_none(), "{answer}");
+
+    // and a later tools/list is the shim's own
+    assert_only_status(&shim.call(5, "tools/list", json!({})));
+    assert_eq!(hersir.connections(), 1);
+    assert_eq!(shim.close(), Some(0));
+    shim.assert_no_token();
+}
