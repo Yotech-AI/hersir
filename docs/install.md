@@ -2,7 +2,7 @@
 
 Hersir was called GizAi until version 0.14.
 
-Hersir installs for you alone, without sudo or administrator rights; on Arch Linux and Omarchy, the AUR's package installs it for the whole computer instead ([With a package manager](#with-a-package-manager)). It runs on Linux, on Macs with Apple silicon and on Windows 11.
+Hersir installs for you alone, without sudo or administrator rights. It runs on Linux, on Macs with Apple silicon and on Windows 11.
 
 The one line installs the latest release's ready-made build for your system, in about a minute, once it has checked the release's signature. Where there is no ready-made build, it builds Hersir from the release's source on your own computer, as a clone does. Updates from inside Hersir install the release's ready-made build too, once its signature checks ([Updates](#updates)). There are no installers and no browser downloads, on any system. The `production` branch holds the released version; `main` is development.
 
@@ -53,19 +53,9 @@ The scripts' variables from before 0.17.0, `GIZAI_PREFIX`, `GIZAI_REPO` and the 
 
 ## With a package manager
 
-### Arch Linux and Omarchy: the AUR
+### Arch Linux and Omarchy: not on the AUR yet
 
-Hersir is in the AUR as [`hersir-bin`](https://aur.archlinux.org/packages/hersir-bin). Install it with an AUR helper, such as yay, which Omarchy has:
-
-```sh
-yay -S hersir-bin
-```
-
-- It is the release's ready-made build for Linux (x86_64), the one the one line installs. The package gets a new release only once it is signed, usually the same day, and its build is checked against the release's signed `SHA256SUMS`.
-- pacman installs it for the whole computer: the programs in `/usr/lib/hersir`, the `hersir` command in `/usr/bin`, and Hersir in your app launcher, with the same launcher, desktop entry and icon as the one line. It brings WebKitGTK 4.1, libayatana-appindicator for the tray icon, git and curl. Claude Code, Codex and Gemini stay your own installs ([What every system needs](#what-every-system-needs)).
-- `yay -Syu` updates it, with the rest of your system. Hersir doesn't update itself then: Settings → Updates says `Hersir came from the AUR, so it doesn't update itself. Update it with yay -Syu, then restart Hersir.`
-- `sudo pacman -Rns hersir-bin` removes it. Your data stays in `~/.local/share/hersir` ([Your data](#your-data)).
-- Use one way to install Hersir, not both: to move from the one line to the AUR, first remove the one line's install with its `--uninstall`, which keeps your data.
+Hersir isn't on the AUR yet: the AUR has paused new accounts, so Hersir's package can't go there for now. On Arch Linux and Omarchy, install Hersir with the one line ([In one line](#in-one-line)): it installs the release's ready-made build for Linux (x86_64), for you alone, and Hersir updates itself ([Updates](#updates)).
 
 ### macOS: Homebrew
 
@@ -235,7 +225,7 @@ If a step fails, the version you have keeps working, and Settings → Updates sa
 
 You can still update from a terminal: run the [one line](#in-one-line) again, or in a clone `git pull`, then `./install.sh` (on Windows `.\install.ps1`). How an update works, step by step: [docs/RELEASING.md](RELEASING.md#how-hersir-updates-itself).
 
-A Hersir from the AUR never updates itself: `yay -Syu` updates it ([With a package manager](#with-a-package-manager)). Neither does a Hersir from Homebrew: `brew update && brew upgrade hersir` updates it.
+A Hersir from Homebrew never updates itself: `brew update && brew upgrade hersir` updates it.
 
 A Hersir from Scoop doesn't either: quit it, then `scoop update; scoop update hersir` updates it ([Windows: Scoop](#windows-scoop)).
 
