@@ -770,6 +770,8 @@ button.label-pill[aria-pressed="true"] { border-color: var(--accent); color: var
 .pop .opt:disabled, .pop .opt[aria-disabled="true"] { opacity: .45; cursor: default; }
 .pop .opt:disabled:hover { background: none; }
 .pop .opt .kbd { margin-left: auto; }
+/* One of a choice (role menuitemradio, the Terminal page's Layout): the current one has a check on the right */
+.pop .opt > .icon.check { flex: none; width: 14px; height: 14px; margin-left: auto; color: var(--text-2); }
 .pop .pop-note { padding: 6px 8px 4px; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.45; }
 
 /* ---------- the folder picker: a popover from + on the Editor heading, like the @ picker ---------- */

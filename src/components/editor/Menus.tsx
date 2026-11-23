@@ -2,14 +2,15 @@
 // PhpStorm, which lists only the editors Gizai found on this computer.
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, ExternalLink } from "lucide-react";
+import { Check, ChevronDown, ExternalLink } from "lucide-react";
 import { editorApps, openInApp } from "../../api";
 import type { EditorApp } from "../../types";
 import { Popover } from "../Popover";
 
 export type MenuItem =
-  /** `icon`: before the label (the side island's tabs that don't fit, each with its kind's icon). */
-  | { label: string; kbd?: string; disabled?: boolean; title?: string; danger?: boolean; icon?: ReactNode; run: () => void }
+  /** `icon`: before the label (the side island's tabs that don't fit, each with its kind's icon). `checked`: one of a
+   *  choice (the Terminal page's Layout, GA-348), a menuitemradio with a check on the right when it is the current one. */
+  | { label: string; kbd?: string; disabled?: boolean; title?: string; danger?: boolean; icon?: ReactNode; checked?: boolean; run: () => void }
   | { sep: true }
   | { note: string }
   /** A heading over the items (the Chat's tool strip: "Terminal · 2 open"). */
@@ -48,8 +49,9 @@ export function ContextMenu({ at, items, label, onClose }: { at: { x: number; y:
       {items.map((it, i) => "sep" in it ? <div key={i} className="sep" />
         : "note" in it ? <div key={i} className="pop-note">{it.note}</div>
         : "head" in it ? <div key={i} className="pop-head">{it.head}</div>
-        : <button key={i} className={`opt${it.danger ? " danger" : ""}`} role="menuitem" disabled={it.disabled} title={it.title} onClick={() => { onClose(); it.run(); }}>
-            {it.icon}{it.label}{it.kbd && <span className="kbd">{it.kbd}</span>}
+        : <button key={i} className={`opt${it.danger ? " danger" : ""}`} role={it.checked === undefined ? "menuitem" : "menuitemradio"}
+            aria-checked={it.checked} disabled={it.disabled} title={it.title} onClick={() => { onClose(); it.run(); }}>
+            {it.icon}{it.label}{it.kbd && <span className="kbd">{it.kbd}</span>}{it.checked && <Check className="icon check" aria-hidden />}
           </button>)}
     </div>,
     document.body,
