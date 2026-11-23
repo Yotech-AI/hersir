@@ -2024,13 +2024,15 @@ fn stderr_tail(log_path: &Path) -> String {
     if chars.len() > 400 { chars[chars.len() - 400..].iter().collect() } else { tail }
 }
 
-/// At start-up: MCP configs a crashed Gizai left behind hold tokens; remove them (the tokens expire anyway).
+/// At start-up: MCP configs a crashed Gizai left behind hold tokens; remove them (the tokens expire anyway). So do the
+/// Gemini runs' own settings files (GA-322), a copy of your Gemini system settings.
 pub fn remove_stray_configs(data_dir: &Path) {
     // Chat turns' configs, and task runs' (with the secrets of the agent's MCP servers).
     for dir in ["chat", "runs"] {
         let Ok(entries) = std::fs::read_dir(data_dir.join(dir)) else { continue };
         for e in entries.flatten() {
-            if e.file_name().to_string_lossy().ends_with(".mcp.json") {
+            let name = e.file_name().to_string_lossy().into_owned();
+            if name.ends_with(".mcp.json") || name.ends_with(".gemini.json") {
                 let _ = std::fs::remove_file(e.path());
             }
         }
