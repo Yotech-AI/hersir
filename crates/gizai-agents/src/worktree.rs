@@ -1161,11 +1161,11 @@ pub fn worktree_of(repo: &Path, branch: &str) -> Result<Option<PathBuf>, AgentEr
 /// from the repository. None for any other folder: git lists a linked worktree where the `gitdir` file in its own folder
 /// in the repository's git folder says, and a run may write that file (Codex's sandbox does, for its commits), so the
 /// folder could be one of the agent's own, whose git settings start programs. Never the path as git lists it: a link
-/// there could point elsewhere by the time git runs.
+/// there could point elsewhere by the time git runs. On Windows a plain path (`for_git`), for `git -C`.
 pub fn safe_worktree_of(repo: &Path, branch: &str) -> Result<Option<PathBuf>, AgentError> {
     let Some(wt) = worktree_of(repo, branch)? else { return Ok(None) };
     Ok(match card_of(&wt) {
-        Some((card, of)) => same(&of, repo).then_some(card),
+        Some((card, of)) => same(&of, repo).then(|| for_git(&card)),
         None => same(&wt, repo).then(|| repo.to_path_buf()),
     })
 }
