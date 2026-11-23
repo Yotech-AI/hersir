@@ -354,6 +354,37 @@ async fn show_board_without_a_project_is_the_first_teams_board_and_an_unknown_pr
     assert!(text(&r).contains("NOPE"), "{r}");
 }
 
+/// After the merge with GA-344: a Claude Desktop that declared MCP Apps still has board_changes, just before show_board
+/// and board_read, and calls it over the socket as before (GizaiTools::reply hands it to call_with_meta): JSON text
+/// alone, no structuredContent or _meta, naming a card moved since its counter.
+#[tokio::test]
+async fn a_claude_desktop_that_declared_mcp_apps_still_calls_board_changes_and_gets_text_alone() {
+    let s = served(None);
+    let mut c = Conn::as_shim(&s.st, &s.token, claude_desktop_apps()).await;
+    let listed = names(&c.list().await);
+    let at = listed.iter().position(|n| n == tools::BOARD_CHANGES).unwrap_or_else(|| panic!("board_changes isn't listed: {listed:?}"));
+    assert_eq!(&listed[at..], [tools::BOARD_CHANGES, "show_board", "board_read"], "{listed:?}");
+
+    let changes = |r: &Value| -> Value {
+        assert_eq!(r["isError"], false, "{r}");
+        assert!(r.get("structuredContent").is_none() && r.get("_meta").is_none(), "text alone: {r}");
+        assert_eq!(r["content"].as_array().unwrap().len(), 1, "{r}");
+        serde_json::from_str(&text(r)).unwrap_or_else(|e| panic!("{e}: {r}"))
+    };
+    let start = changes(&c.call(tools::BOARD_CHANGES, json!({})).await);
+    let since = start["counter"].as_i64().unwrap_or_else(|| panic!("{start}"));
+    assert_eq!(start["tasks"], json!([]), "{start}");
+
+    let kade3 = s.st.db.read(|db| Ok(db.query_row("SELECT id FROM tasks WHERE identifier='KADE-3'", [], |r| r.get::<_, String>(0))?)).unwrap();
+    let other = s.columns().into_iter().find(|c| c.2 != "ready" && c.2 != "backlog").unwrap().0;
+    tasks::move_to(&s.st.db, &s.st.you_id, &kade3, &other, "zzz").unwrap();
+
+    let after = changes(&c.call(tools::BOARD_CHANGES, json!({"since": since})).await);
+    assert!(after["counter"].as_i64().unwrap() > since, "{after}");
+    assert_eq!(after["tasks"], json!(["KADE-3"]), "{after}");
+    assert_eq!(after["reload"], false, "{after}");
+}
+
 // ---- the real hersir-mcp --desktop ----
 
 /// The real hersir-mcp: target/debug/hersir-mcp, which the crate gizai-mcp builds (built here when missing).
