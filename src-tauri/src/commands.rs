@@ -1,13 +1,14 @@
 //! Thin command layer: every command calls gizai-core and maps errors to strings.
-//! Write commands emit `rows-changed` so open screens refresh.
+//! Write commands send `rows-changed` through the app's one notifier (`changed`) so open screens refresh.
 //!
 //! Every command is async and does its work off the main thread, which also runs the window (GA-191): the database, files
 //! and processes on a thread that may wait (`off`), what only reads memory on the async runtime. The few left on the main
 //! thread say why.
 use crate::AppState;
+use crate::runs::Note;
 use gizai_core::model::*;
 use gizai_core::{clients, comments, docs, files, projects, tasks, team, users};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Manager, State};
 
 type R<T> = Result<T, String>;
 
@@ -15,8 +16,13 @@ fn e(err: gizai_core::Error) -> String {
     err.to_string()
 }
 
-fn changed(app: &AppHandle, table: &str) {
-    let _ = app.emit("rows-changed", serde_json::json!({ "table": table }));
+/// GA-344: through the app's one notifier (`AppState::notify`), as the tools, runs and chats tell the window, no longer
+/// straight to the window: `rows-changed` with `table`, as before. Your own change in the window, so the desktop
+/// notifications don't look at the Inbox for it, as before (`Note::RowsChangedInWindow`).
+fn changed(app: &AppHandle, table: &'static str) {
+    if let Some(st) = app.try_state::<AppState>() {
+        (st.notify)(Note::RowsChangedInWindow(table));
+    }
 }
 
 /// Runs `f` with the app's state on a thread that may wait (for SQL, the database's lock, a file or a process): never on

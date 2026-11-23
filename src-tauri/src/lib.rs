@@ -457,16 +457,21 @@ impl Timed {
     }
 }
 
+/// The one notifier (GA-344): everything that changes something tells the window through it, the Tauri commands
+/// (`commands::changed`), the tools, runs and chats alike. What changed in the database is counted there too, whoever
+/// wrote it (`Db::change_seq`).
 fn ui_notifier(app: AppHandle) -> Arc<dyn Fn(runs::Note) + Send + Sync> {
     Arc::new(move |note| {
-        // Tasks or chats changed: the desktop notifications look at the Inbox again.
+        // Tasks or chats changed: the desktop notifications look at the Inbox again. Not for your own change in the window.
         if matches!(note, runs::Note::RowsChanged("tasks" | "chat_threads") | runs::Note::ChatChanged)
             && let Some(st) = app.try_state::<AppState>()
         {
             notifications::poke(st.inner());
         }
         let _ = match note {
-            runs::Note::RowsChanged(table) => app.emit("rows-changed", serde_json::json!({ "table": table })),
+            runs::Note::RowsChanged(table) | runs::Note::RowsChangedInWindow(table) => {
+                app.emit("rows-changed", serde_json::json!({ "table": table }))
+            }
             runs::Note::RunsChanged => app.emit("runs-changed", ()),
             runs::Note::RunEvents { run_id, events } => app.emit("run-events", serde_json::json!({ "runId": run_id, "events": events })),
             // each event names its chat too, as the page's ChatEvent has it

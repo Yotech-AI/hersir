@@ -39,6 +39,10 @@ pub use gizai_core::seed::DEFAULT_TOOLS;
 /// What the UI hears about.
 pub enum Note {
     RowsChanged(&'static str),
+    /// GA-344: rows you changed in the window (a Tauri command, `commands::changed`): the same `rows-changed` as
+    /// `RowsChanged`, but the desktop notifications don't look at the Inbox again for it, as they never did for your own
+    /// change in the window.
+    RowsChangedInWindow(&'static str),
     RunsChanged,
     /// A run's events since its last message, in `seq` order: at most one message every 50 ms per run (`stream`).
     RunEvents { run_id: String, events: Vec<SeqEvent> },
