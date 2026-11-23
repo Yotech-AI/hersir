@@ -49,7 +49,7 @@ The board: the project's team's columns in board order (each with its `total`), 
 only what a card on the board shows (identifier, title, column, priority, assignee, labels, on hold, by hand, waits for,
 the agent working on it now). No description, hold reason, branch, pull request or path: some hosts show
 `structuredContent` to the model. At most 50 cards a column, 20 in Backlog, Done and Cancelled, and fewer when the whole
-would pass 100,000 characters. Without a project: the first team's board with all its projects' cards (as the Tasks
+would pass 100,000 characters; `onHold` counts the held cards among all of them. Without a project: the first team's board with all its projects' cards (as the Tasks
 page shows it).
 
 Every client that declared MCP Apps gets the view `ui://hersir/app.html` (its HTML holds no data); only Claude Desktop
@@ -147,3 +147,5 @@ Notes:
   asking. If that shows in Hersir, poll only the newest view, or stop after a while without a change (GA-344's change
   feed could tell a view what changed since its last read).
 - A card's click does nothing yet; GA-349's card view could open there.
+- A column's count in the view is the number of cards sent (at most 50, 20 in a folded column), not its `total`:
+  Board.tsx counts the cards it gets.

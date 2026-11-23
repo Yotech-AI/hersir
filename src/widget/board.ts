@@ -13,13 +13,15 @@ export type BoardCard = {
 export type BoardData = {
   view: "board"; team: string; project: { id: string; key: string; name: string } | null;
   columns: BoardColumn[]; cards: BoardCard[];
+  /** How many of all its cards are on hold (not only the cards sent). */
+  onHold?: number;
 };
 
 /** The board in a tool's structuredContent; null when it isn't one. */
 export function boardOf(structured: unknown): BoardData | null {
   const b = structured as Partial<BoardData> | null | undefined;
   if (!b || b.view !== "board" || !Array.isArray(b.columns) || !Array.isArray(b.cards)) return null;
-  return { view: "board", team: String(b.team ?? ""), project: b.project ?? null, columns: b.columns, cards: b.cards };
+  return { view: "board", team: String(b.team ?? ""), project: b.project ?? null, columns: b.columns, cards: b.cards, onHold: b.onHold ?? 0 };
 }
 
 /** The Board's columns: board order is their order here. */

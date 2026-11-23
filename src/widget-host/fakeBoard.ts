@@ -62,6 +62,7 @@ export class FakeBoard {
       columns: COLUMNS.map((c) => ({ ...c, wipLimit: null, total: this.cards.filter((x) => x.column === c.id).length })),
       cards: COLUMNS.flatMap((c) => this.cards.filter((x) => x.column === c.id).sort((a, b) => (a.sortKey < b.sortKey ? -1 : 1)))
         .map((c) => ({ ...c, labels: c.labels.map((l) => ({ ...l })) })),
+      onHold: this.cards.filter((c) => c.hold).length,
     };
   }
 }
@@ -69,7 +70,7 @@ export class FakeBoard {
 /** The one sentence the tools give in `content`, as Hersir writes it. */
 export function sentence(b: BoardData): string {
   const n = b.columns.reduce((s, c) => s + c.total, 0);
-  const held = b.cards.filter((c) => c.hold).length;
+  const held = b.onHold ?? 0;
   const what = b.project ? `the board of ${b.project.name} (${b.project.key})` : `${b.team}'s board`;
   const cards = n === 0 ? "no cards yet" : n === 1 ? "1 card" : `${n} cards`;
   return `The user sees ${what} from Hersir in this chat: ${cards} in ${b.columns.length} columns${held ? `, ${held} on hold` : ""}.`;

@@ -102,7 +102,7 @@ pub(crate) fn reply(cx: &Cx, name: &str, a: &Args) -> Result<Reply, String> {
 fn sentence(board: &Value) -> String {
     let count = |k: &str| board[k].as_array().map_or(0, Vec::len);
     let cards: u64 = board["columns"].as_array().map_or(0, |c| c.iter().filter_map(|c| c["total"].as_u64()).sum());
-    let held = board["cards"].as_array().map_or(0, |c| c.iter().filter(|c| c["hold"] == true).count());
+    let held = board["onHold"].as_u64().unwrap_or(0);
     let what = match board["project"]["name"].as_str() {
         Some(name) => format!("the board of {name} ({})", board["project"]["key"].as_str().unwrap_or_default()),
         None => format!("{}'s board", board["team"].as_str().unwrap_or("the team")),
@@ -118,9 +118,9 @@ fn sentence(board: &Value) -> String {
 
 /// The board as the view draws it (`structuredContent`): the columns of the project's team (none given: of the first
 /// team) in board order, each with its `total` of cards, and the cards on them in board order, at most `PER_COLUMN` a
-/// column (`PER_RAIL` in a folded one), fewer when the whole would pass `BUDGET`. With a project, its cards; without, the
-/// team's: those of its projects, and on the first team's board also those without a project (as the Tasks page has it,
-/// GA-225).
+/// column (`PER_RAIL` in a folded one), fewer when the whole would pass `BUDGET`; `onHold`: how many of all its cards are
+/// on hold. With a project, its cards; without, the team's: those of its projects, and on the first team's board also
+/// those without a project (as the Tasks page has it, GA-225).
 pub(crate) fn board(cx: &Cx, project: Option<&Project>) -> Result<Value, String> {
     let db = cx.db();
     let team = resolve::team_of(cx, project)?;
@@ -144,6 +144,7 @@ pub(crate) fn board(cx: &Cx, project: Option<&Project>) -> Result<Value, String>
         let column = json!({"id": s.id, "name": s.name, "category": s.category, "wipLimit": s.wip_limit, "auto": s.auto, "total": on.len()});
         (column, on)
     }).collect();
+    let on_hold = columns.iter().flat_map(|(_, on)| on).filter(|c| c["hold"] == true).count();
     let mut cap = PER_COLUMN;
     loop {
         let shown: Vec<Value> = columns.iter().flat_map(|(c, on)| {
@@ -156,6 +157,7 @@ pub(crate) fn board(cx: &Cx, project: Option<&Project>) -> Result<Value, String>
             "project": project.map(|p| json!({"id": p.id, "key": p.key, "name": p.name})),
             "columns": columns.iter().map(|(c, _)| c.clone()).collect::<Vec<_>>(),
             "cards": shown,
+            "onHold": on_hold,
         });
         if cap <= 5 || board.to_string().len() <= BUDGET {
             return Ok(board);
