@@ -188,17 +188,53 @@ pub fn create_thread(db: &Db, you: &str, agent_id: &str, first_text: &str) -> Re
 pub fn create_thread_on(db: &Db, you: &str, agent_id: &str, first_text: &str, cli: Option<&str>) -> Result<String> {
     let title = title_from(first_text);
     let cli = chat_cli(db, cli)?;
+    db.write(Some(you), |w| insert_thread(w, you, agent_id, &title, cli.as_deref()))
+}
+
+/// A new chat of yours with the Chief `agent_id`, titled `title`, inside a write. Returns its id.
+fn insert_thread(w: &Writer, you: &str, agent_id: &str, title: &str, cli: Option<&str>) -> Result<String> {
+    let c = w.conn();
+    let now = ids::now_ms();
+    let id = ids::new_id();
+    c.execute(
+        "INSERT INTO chat_threads(id, created_at, updated_at, created_by, updated_by, org_id, agent_actor_id, title, cli) VALUES (?1, ?2, ?2, ?3, ?3, ?4, ?5, ?6, ?7)",
+        rusqlite::params![id, now, you, util::org_id(c)?, agent_id, title, cli],
+    )?;
+    w.insert("chat_threads", &id, serde_json::json!({"agent": agent_id, "title": title, "cli": cli}))?;
+    Ok(id)
+}
+
+/// GA-342: the title of the chat Claude Desktop's ask_chief writes in when it names no chat (`desktop_thread`).
+pub const FROM_CLAUDE_DESKTOP: &str = "From Claude Desktop";
+
+/// GA-342: the setting that holds the id of the chat from Claude Desktop (`desktop_thread`), so it stays that chat when you
+/// rename it in Hersir.
+pub const DESKTOP_CHAT: &str = "claude_desktop_chat";
+
+/// GA-342: the chat Claude Desktop's ask_chief writes in when it names no chat: the one made for it before (`DESKTOP_CHAT`),
+/// else, in the same write, a new chat of yours with the Chief `agent_id`, titled `FROM_CLAUDE_DESKTOP`. One that was
+/// deleted since is replaced by a new one. Returns its id and whether it is new.
+pub fn desktop_thread(db: &Db, you: &str, agent_id: &str) -> Result<(String, bool)> {
     db.write(Some(you), |w| {
-        let c = w.conn();
-        let now = ids::now_ms();
-        let id = ids::new_id();
-        c.execute(
-            "INSERT INTO chat_threads(id, created_at, updated_at, created_by, updated_by, org_id, agent_actor_id, title, cli) VALUES (?1, ?2, ?2, ?3, ?3, ?4, ?5, ?6, ?7)",
-            rusqlite::params![id, now, you, util::org_id(c)?, agent_id, title, cli],
-        )?;
-        w.insert("chat_threads", &id, serde_json::json!({"agent": agent_id, "title": title, "cli": cli}))?;
-        Ok(id)
+        let kept: Option<String> = crate::settings::get_in(w.conn(), DESKTOP_CHAT)?;
+        if let Some(id) = kept {
+            match get_thread_in(w.conn(), &id) {
+                Ok(()) => return Ok((id, false)),
+                Err(Error::NotFound(_)) => {}
+                Err(e) => return Err(e),
+            }
+        }
+        let id = insert_thread(w, you, agent_id, FROM_CLAUDE_DESKTOP, None)?;
+        crate::settings::set_in(w, DESKTOP_CHAT, &id)?;
+        Ok((id, true))
     })
+}
+
+/// GA-342: the newest message in the chat from you, the Chief or Hersir (a tool call isn't one): its id, None without one.
+/// Claude Desktop's chief_reply waits for it to change.
+pub fn newest_said(db: &Db, thread_id: &str) -> Result<Option<String>> {
+    db.read(|c| Ok(c.query_row("SELECT id FROM chat_messages WHERE thread_id=?1 AND deleted_at IS NULL AND role IN ('user', 'agent', 'system')
+                                ORDER BY rowid DESC LIMIT 1", [thread_id], |r| r.get(0)).optional()?))
 }
 
 /// A chat's own pick of coding CLI, checked: it is in Settings and can run the Chief's chat. None or empty: none.
