@@ -228,7 +228,8 @@ fn runs_any_command(entry: &str) -> Option<String> {
 
 /// GA-262: the Chief reads text other people and agents wrote, so it gives an agent no shell or interpreter
 /// (`runs_any_command`), unless the entry is in `kept`: the agent's own list or its role's default list. Only the user
-/// adds one, in the agent form.
+/// adds one, in the agent form. GA-323: what passes here and isn't in the allow list (`new_commands`) waits for the user's
+/// Approve.
 fn guard_commands(a: &Args, kept: &[String]) -> Result<(), String> {
     for t in a.list("allowed_tools").unwrap_or_default() {
         if kept.iter().any(|k| k.trim() == t) {
@@ -240,6 +241,37 @@ fn guard_commands(a: &Args, kept: &[String]) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// GA-323: the chat's allow list. Of `given`, the commands an agent gets from chat only with the user's Approve: those not
+/// in `has` (what the agent runs with now; nothing for a new agent) and not one of Gizai's default list that runs no other
+/// command and writes no file (`seed::CHAT_MAY_ADD`). In the order given, once each; empty: the call saves at once.
+pub(crate) fn new_commands(given: &[String], has: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = vec![];
+    for t in given.iter().map(|t| t.trim()) {
+        let allowed = has.iter().any(|h| h.trim() == t) || gizai_core::seed::CHAT_MAY_ADD.contains(&t);
+        if !allowed && !out.iter().any(|o| o == t) {
+            out.push(t.to_string());
+        }
+    }
+    out
+}
+
+/// What an agent with this list of allowed commands runs with: its list, else (empty) Gizai's default list.
+fn runs_with(list: &[String]) -> Vec<String> {
+    if list.is_empty() { gizai_core::seed::DEFAULT_TOOLS.map(String::from).to_vec() } else { list.to_vec() }
+}
+
+/// GA-323: the commands a call of create_agent gives the new agent only with the user's Approve (`new_commands`). None
+/// without allowed_tools or with an empty list: the new agent gets its role's own list (`seed::role_tools`), at once.
+pub(crate) fn create_agent_new_commands(a: &Args) -> Vec<String> {
+    a.list("allowed_tools").map(|l| new_commands(&l, &[])).unwrap_or_default()
+}
+
+/// GA-323: the commands a call of update_agent gives the agent `m` only with the user's Approve (`new_commands`): what
+/// its allowed_tools (an empty list is Gizai's default list) has that `m` doesn't run with now. None without allowed_tools.
+pub(crate) fn update_agent_new_commands(m: &team::Member, a: &Args) -> Vec<String> {
+    a.list("allowed_tools").map(|l| new_commands(&runs_with(&l), &runs_with(&m.allowed_tools))).unwrap_or_default()
 }
 
 /// A repository path from chat must be a git repository (it has a .git folder or file), and never `/`, your
@@ -823,14 +855,22 @@ pub(crate) async fn create_agent(cx: &Cx<'_>, a: &Args) -> Result<Value, String>
     let (name, role) = (a.req("name")?, a.req("role")?);
     // No list given: its role's, as the agent form starts it.
     let allowed_tools = a.list("allowed_tools").filter(|l| !l.is_empty()).unwrap_or_else(|| gizai_core::seed::role_tools(&team::role_key(&role)));
-    let id = team::add_agent(cx.db(), cx.actor, &team_id, AgentInput {
-        name, role_key: role, title: a.opt("title"), adapter: cli.map(|c| c.id).unwrap_or_default(), model: a.opt("model"),
+    let input = AgentInput {
+        name: name.clone(), role_key: role, title: a.opt("title"), adapter: cli.map(|c| c.id).unwrap_or_default(), model: a.opt("model"),
         instructions_md: a.opt("instructions_md"), permission_mode: a.opt("permission_mode").unwrap_or_default(),
         allowed_tools, wakeup: String::new(),
         heartbeat_minutes: None, budget_usd_micros: budget(a, None)?, chat_enabled: None, effort: a.opt("effort"),
         max_runs: a.int("cards_at_once")?, board_check_minutes: a.int("board_check_minutes")?, folders: None, use_memory: None,
         shares_memory_with: shares,
-    }).map_err(err)?;
+    };
+    // GA-323: a command chat doesn't give at once waits for the user's Approve, the whole call with it; checked after the
+    // rest, so a call that can never work is refused at once instead.
+    let new = create_agent_new_commands(a);
+    if !new.is_empty() && !cx.approved {
+        team::check_agent(cx.db(), &input).map_err(err)?;
+        return Err(cx.keep_commands("create_agent", a, name.trim(), &new));
+    }
+    let id = team::add_agent(cx.db(), cx.actor, &team_id, input).map_err(err)?;
     agent_result(cx, &id, "created")
 }
 
@@ -857,7 +897,7 @@ pub(crate) async fn update_agent(cx: &Cx<'_>, a: &Args) -> Result<Value, String>
     if on_claude && (moved || a.text("model").is_some() || a.text("effort").is_some()) {
         check_model(cx, model.as_deref(), effort.as_deref()).await?;
     }
-    team::update_agent(cx.db(), cx.actor, &m.actor_id, AgentInput {
+    let input = AgentInput {
         name: a.opt("name").unwrap_or(m.name.clone()), role_key: a.opt("role").unwrap_or(m.role_key.clone()),
         title: keep(a, "title", &m.title), adapter: adapter.unwrap_or_default(), model,
         instructions_md: a.opt("instructions_md"), permission_mode,
@@ -866,7 +906,16 @@ pub(crate) async fn update_agent(cx: &Cx<'_>, a: &Args) -> Result<Value, String>
         heartbeat_minutes: m.heartbeat_minutes,
         budget_usd_micros: budget(a, m.budget_usd_micros)?, chat_enabled: None, effort, max_runs: a.int("cards_at_once")?,
         board_check_minutes: a.int("board_check_minutes")?, folders: None, use_memory: None, shares_memory_with: shares,
-    }).map_err(err)?;
+    };
+    // GA-323: a command the agent doesn't run with yet, and that chat doesn't give at once, waits for the user's Approve, the
+    // whole call with it (its role's list no longer counts: a narrowed agent gets nothing back from chat by itself); checked
+    // after the rest, so a call that can never work is refused at once instead.
+    let new = update_agent_new_commands(&m, a);
+    if !new.is_empty() && !cx.approved {
+        team::check_agent(cx.db(), &input).map_err(err)?;
+        return Err(cx.keep_commands("update_agent", a, &m.name, &new));
+    }
+    team::update_agent(cx.db(), cx.actor, &m.actor_id, input).map_err(err)?;
     crate::runs::resume_pull(cx.st, &m.actor_id);
     agent_result(cx, &m.actor_id, "updated")
 }

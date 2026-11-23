@@ -709,9 +709,9 @@ async fn the_team_leads_allowed_tools_take_only_commands_and_anything_else_chang
     // any command is still refused with its own reason
     let e = call("update_agent", json!({"agent": "Backend Agent", "allowed_tools": ["Bash"]})).await.unwrap_err();
     assert!(e.contains("can't be allowed to run any command"), "{e}");
-    // commands only: saved
-    call("update_agent", json!({"agent": "Backend Agent", "allowed_tools": ["Bash(git status:*)", " Bash(npm test:*) "]})).await.unwrap();
-    assert!(gizai_core::team::agent(&st.db, &t.backend).unwrap().allowed_tools.iter().any(|a| a.contains("npm test")));
+    // commands only: saved (GA-323: ones chat gives an agent at once; a new one like Bash(npm test:*) waits for the user's Approve)
+    call("update_agent", json!({"agent": "Backend Agent", "allowed_tools": ["Bash(git status:*)", " Bash(grep:*) "]})).await.unwrap();
+    assert_eq!(gizai_core::team::agent(&st.db, &t.backend).unwrap().allowed_tools, ["Bash(git status:*)", "Bash(grep:*)"]);
     // no list: the role's, which is commands only, so a run leaves nothing of it out
     call("create_agent", json!({"name": "Web QA", "role": "qa"})).await.unwrap();
     for role in ["lead", "backend", "frontend", "qa", "devops", "design"] {
