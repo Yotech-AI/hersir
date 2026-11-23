@@ -31,6 +31,7 @@ mod editor_flow_test;
 mod folders_flow_test;
 mod ga191_perf_test;
 mod ga319_approve_gaps_test;
+mod ga323_chat_allow_list_test;
 mod ga31_flow_test;
 mod ga49_flow_test;
 mod glass_support_test;
