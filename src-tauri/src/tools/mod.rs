@@ -45,7 +45,12 @@ impl GizaiTools {
 impl gizai_mcp::Tools for GizaiTools {
     fn list(&self) -> Vec<ToolDef> {
         // A run on a question, and Claude Desktop, only read: they aren't offered the rest.
-        catalog().into_iter().filter(|t| t.read_only || !self.only_reads()).collect()
+        let mut list: Vec<ToolDef> = catalog().into_iter().filter(|t| t.read_only || !self.only_reads()).collect();
+        // GA-344: board_changes is Claude Desktop's own
+        if self.client.as_deref() == Some(CLAUDE_DESKTOP) {
+            list.push(board_changes_tool());
+        }
+        list
     }
     async fn call(&self, name: &str, args: Value) -> Result<Value, String> {
         self.call_with_meta(name, args, &Value::Null).await
@@ -53,6 +58,10 @@ impl gizai_mcp::Tools for GizaiTools {
     async fn call_with_meta(&self, name: &str, args: Value, meta: &Value) -> Result<Value, String> {
         if self.question.is_some() && !reads_only(name) {
             return Err(IN_A_QUESTION.replace("{tool}", name));
+        }
+        // GA-344: Claude Desktop's own tool, which only reads; any other token doesn't know it.
+        if self.client.as_deref() == Some(CLAUDE_DESKTOP) && name == BOARD_CHANGES {
+            return read::board_changes(&self.st, &Args::of(args)?);
         }
         // GA-338: refused before anything runs, whatever else the scope says.
         if self.client.as_deref() == Some(CLAUDE_DESKTOP) && !reads_only(name) {
@@ -72,6 +81,22 @@ const IN_A_QUESTION: &str = "{tool} can't be used while you look at an agent's q
 /// GA-338: why Claude Desktop can't use a tool that changes something (writes come later, and will wait for the user's
 /// Approve in Hersir). Word for word as the card has it.
 pub const IN_CLAUDE_DESKTOP: &str = "{tool} isn't available in Claude Desktop yet: Claude Desktop can only read your Hersir board for now.";
+
+/// GA-344: the tool only Claude Desktop is offered (`GizaiTools::list`): what changed on the board since a change counter
+/// (`gizai_core::feed`), for a view of the board in its chat that asks again and again, as Claude doesn't tell it. A
+/// normal tool for now; GA-345 offers it to that view only (`_meta.ui.visibility`).
+pub const BOARD_CHANGES: &str = "board_changes";
+
+/// board_changes's definition. It only reads, though its name doesn't say so (`tool` marks the gets, lists and reads).
+fn board_changes_tool() -> ToolDef {
+    let mut t = tool(BOARD_CHANGES, "What changed on the Hersir board since `since`, the counter an earlier call returned: the counter now, to call \
+        with next time, and the identifiers of the cards that changed since (their column, fields, labels or hold, a comment, a run or a \
+        file). board: true when columns, labels, agents, people, projects or teams changed too. reload: true when too much changed, or \
+        since is from before a restore: load the board again. Without since: only the counter, to start from.",
+        &[("since", "integer", "The counter an earlier board_changes returned; leave it out on the first call")], &[]);
+    t.read_only = true;
+    t
+}
 
 /// GA-338: why a call over MCP whose token is for no chat, board check or question can't use a tool that changes
 /// something (`call_scoped`): none of the rules that make such a call wait for the user's Approve would hold.
@@ -207,11 +232,7 @@ async fn call_scoped(st: &AppState, actor: &str, thread: Option<&str>, check: Op
     if from.is_some() && thread.is_none() && check.is_none() && !reads_only(name) {
         return Err(ONLY_READS.replace("{tool}", name));
     }
-    let a = Args(match args {
-        Value::Object(m) => m,
-        Value::Null => Map::new(),
-        _ => return Err("arguments must be an object".into()),
-    });
+    let a = Args::of(args)?;
     if check.is_some() && NOT_IN_A_CHECK.contains(&name) {
         return Err(match name {
             "attach_file" => "In a board check nobody named a file, so nothing can be attached. Ask the user in a chat (start_chat) instead.".into(),
@@ -363,6 +384,14 @@ pub(crate) fn err(e: gizai_core::Error) -> String {
 pub(crate) struct Args(Map<String, Value>);
 
 impl Args {
+    /// A call's arguments: an object, or none (null).
+    fn of(args: Value) -> Result<Args, String> {
+        match args {
+            Value::Object(m) => Ok(Args(m)),
+            Value::Null => Ok(Args(Map::new())),
+            _ => Err("arguments must be an object".into()),
+        }
+    }
     /// A string that must be there and not empty.
     pub fn req(&self, k: &str) -> Result<String, String> {
         self.text(k).filter(|s| !s.is_empty()).ok_or_else(|| format!("missing \"{k}\""))

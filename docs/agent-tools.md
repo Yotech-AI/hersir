@@ -249,6 +249,18 @@ In a project you switch on, the Chief may merge a card's pull request once QA pa
 
 **In a board check.** A card in Review that QA passed, in a project that lets the Chief merge, is a finding (`review`, `may_merge`), so the check starts for it; the Chief merges what the tool allows and says so in the check's summary, and never works around a refusal. When the merge has to wait (checks still running, GitHub still working out whether it can be merged), the next check offers the card again, for up to three hours after QA passed it. Failed checks, conflicts and blocked merges go to you in a chat.
 
+## What changed on the board: `board_changes` (GA-344)
+
+Claude Desktop (Settings → MCP servers → Claude Desktop) gets one tool no other token is offered: `board_changes`. A view of your board in Claude's chat calls it again and again, as Claude doesn't tell such a view when something changes. It only reads.
+
+- **`since`** is the counter an earlier call returned. Without it, the answer is only the counter, to start from.
+- **`counter`** is the counter now: call again with it. With the latest counter, no cards come back.
+- **`tasks`** are the identifiers of the cards that changed since, the one changed last first: a card's column, fields, labels, hold or pull request, a comment, a run (its start, end, verdict and what it recorded) or a file on it, and a card that builds on a card that moved.
+- **`board: true`** when columns, labels, agents, people, projects or teams changed too: what every card shows.
+- **`reload: true`** when more than 200 cards changed, or `since` is past the counter (after a restore): load the whole board again.
+
+Every change counts, whoever makes it: you in the window, the Chief and Claude Desktop through the tools, the agents' runs and Hersir itself. Each one goes through Hersir's database, which adds it to its change log (the card's Activity reads it too), and the counter is the number of the newest entry. It only goes up while Hersir runs; a restored backup may start it lower. Writes that change no card, like settings, sign-in tokens, an agent's heartbeat or a chat's session, add nothing.
+
 ## Try it with Otus OS
 
 1. Settings → Coding CLIs lists the Claude Code account that has Otus OS (for a second account, its `CLAUDE_CONFIG_DIR`).

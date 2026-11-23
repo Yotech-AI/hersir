@@ -59,7 +59,8 @@ pub fn since(db: &Db, since: Option<i64>) -> Result<Changes> {
 }
 
 /// The identifiers of the cards with a change after `since` up to `until`, the one changed last first: at most
-/// `MAX_CARDS` + 1, so the caller can tell there were more.
+/// `MAX_CARDS` + 1, so the caller can tell there were more. Each part starts from the few changes in the range (CROSS JOIN
+/// keeps SQLite from starting at every file on a card instead).
 fn cards(c: &Connection, since: i64, until: i64) -> Result<Vec<String>> {
     let mut st = c.prepare_cached(
         "WITH ch AS (SELECT seq, table_name, row_id FROM changes WHERE seq > ?1 AND seq <= ?2),
@@ -68,9 +69,9 @@ fn cards(c: &Connection, since: i64, until: i64) -> Result<Vec<String>> {
              UNION ALL SELECT m.task_id, ch.seq FROM ch JOIN comments m ON m.id = ch.row_id WHERE ch.table_name = 'comments'
              UNION ALL SELECT r.task_id, ch.seq FROM ch JOIN runs r ON r.id = ch.row_id
                        WHERE ch.table_name = 'runs' AND r.task_id IS NOT NULL
-             UNION ALL SELECT f.owner_id, ch.seq FROM ch JOIN files f ON f.id = ch.row_id
+             UNION ALL SELECT f.owner_id, ch.seq FROM ch CROSS JOIN files f ON f.id = ch.row_id
                        WHERE ch.table_name = 'files' AND f.owner_type = 'task'
-             UNION ALL SELECT m.task_id, ch.seq FROM ch JOIN files f ON f.id = ch.row_id JOIN comments m ON m.id = f.owner_id
+             UNION ALL SELECT m.task_id, ch.seq FROM ch CROSS JOIN files f ON f.id = ch.row_id JOIN comments m ON m.id = f.owner_id
                        WHERE ch.table_name = 'files' AND f.owner_type = 'comment'
              UNION ALL SELECT b.task_id, ch.seq FROM ch JOIN task_builds_on b ON b.builds_on_id = ch.row_id
                        WHERE ch.table_name = 'tasks'
