@@ -180,11 +180,11 @@ describe("what each tab has", () => {
     for (const s of ["the CLI list", "Runs at once", "Pause all agents"]) expect(t).toContain(s);
     expect(t.indexOf("Coding CLIs")).toBeLessThan(t.indexOf("Runs at once"));
   });
-  it("MCP servers: the server list, then Claude Desktop (GA-340) with the card's text", () => {
+  it("MCP servers: the server list, then Claude Desktop (GA-340) with GA-341's text", () => {
     expect(sections(of("MCP servers"))).toEqual(["MCP servers", "Claude Desktop"]);
     const t = text(of("MCP servers"));
     expect(t).toContain("the MCP server list");
-    expect(t).toContain("Claude Desktop Use your Hersir board from the Claude Desktop app on this computer: Claude can read your board, cards, docs and memory. Hersir must be open. the Claude Desktop section");
+    expect(t).toContain("Claude Desktop Use your Hersir board from the Claude Desktop app on this computer: Claude gets the Chief's tools and works by its rules. Hersir must be open. the Claude Desktop section");
     expect(t.indexOf("the MCP server list")).toBeLessThan(t.indexOf("the Claude Desktop section"));
   });
   it("GitHub and Bitbucket: GitHub, then Bitbucket", () => {

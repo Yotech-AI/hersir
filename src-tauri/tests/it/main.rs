@@ -24,6 +24,7 @@ mod chief_archive_test;
 mod chief_card_time_test;
 mod chief_flow_test;
 mod chief_folder_flow_test;
+mod claude_desktop_chief_test;
 mod claude_desktop_flow_test;
 mod claude_memory_switch_test;
 mod cli_run_flow_test;

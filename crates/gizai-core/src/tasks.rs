@@ -551,19 +551,23 @@ fn update_in(w: &Writer, actor: &str, id: &str, patch: &TaskPatch) -> Result<()>
     }
 }
 
-/// A move by hand (the board, the Chief's `move_task`). A person dragging a card on hold into To do or In progress
-/// answers the hold: it comes off (with fresh tries), so the queue or the next board check starts the card. Gates move
-/// cards with `move_in` and keep their holds.
+/// A move by hand on the board. A person dragging a card on hold into To do or In progress answers the hold: it comes off
+/// (with fresh tries), so the queue or the next board check starts the card. Gates move cards with `move_in` and keep their
+/// holds, and so does the move_task tool (`move_to_held`).
 pub fn move_to(db: &Db, actor: &str, id: &str, state_id: &str, sort_key: &str) -> Result<()> {
-    move_to_held(db, actor, id, state_id, sort_key, None)
+    db.write(Some(actor), |w| {
+        move_in(w, actor, id, state_id, Some(sort_key))?;
+        release_by_hand(w, actor, id)
+    })
 }
 
-/// `move_to`, and then on hold when `hold` (the hold and its reason, and its kind, GA-261) is given: in the same write, so
-/// no agent picks the card up first (GA-101).
+/// The move_task tool's move: the Chief's, and Claude Desktop's (GA-341), which is made as you. Unlike `move_to` it keeps
+/// a hold on the card, also when the actor is a person: a tool takes a hold off only with update_task's clear_hold, which
+/// keeps its rules (only the user takes GA-101's hold off, GA-261). Then on hold when `hold` (the hold and its reason, and
+/// its kind, GA-261) is given: in the same write, so no agent picks the card up first (GA-101).
 pub fn move_to_held(db: &Db, actor: &str, id: &str, state_id: &str, sort_key: &str, hold: Option<NewHold>) -> Result<()> {
     db.write(Some(actor), |w| {
         move_in(w, actor, id, state_id, Some(sort_key))?;
-        release_by_hand(w, actor, id)?;
         if let Some(h) = hold {
             crate::workflow::set_hold_as(w, id, h.hold, h.reason, h.kind)?;
         }

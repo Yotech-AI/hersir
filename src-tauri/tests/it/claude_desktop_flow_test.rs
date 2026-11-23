@@ -1,9 +1,9 @@
 //! GA-338 QA: Claude Desktop's chat reads your Hersir board. Connect (`claude_desktop::connect`) makes a lasting token as
 //! you with the scope `{"client":"claude-desktop"}` and gives the entry for Claude Desktop's settings; with
-//! add_to_config it puts that entry in the settings file. Over the socket that token offers and runs only the tools that
-//! read; any other is refused before it runs and changes nothing. A token whose scope has no chat, check or question
-//! can't run a tool that writes either. Disconnect revokes the token. Claude's folder is always the test's own
-//! (`test_state` points it at `<tmp>/claude-desktop`), never the real one.
+//! add_to_config it puts that entry in the settings file. Over the socket that token offers the Chief's tools since
+//! GA-341 (claude_desktop_chief_test.rs has its rules); a token whose scope has no chat, check or question and isn't
+//! Claude Desktop's still can't run a tool that writes. Disconnect revokes the token. Claude's folder is always the
+//! test's own (`test_state` points it at `<tmp>/claude-desktop`), never the real one.
 use std::path::{Path, PathBuf};
 
 use gizai_core::memory::{self, Who};
@@ -18,11 +18,6 @@ const NOT_JSON: &str = "Claude Desktop's settings file can't be read as JSON wit
 const NO_FOLDER: &str = "Claude Desktop's settings folder wasn't found on this computer. Paste the entry yourself: Claude Desktop → Settings → \
     Developer → Edit Config.";
 const NO_SHIM: &str = "Hersir can't find its hersir-mcp program next to Hersir: reinstall Hersir.";
-
-/// The card's refusal for Claude Desktop, word for word.
-fn not_in_desktop(tool: &str) -> String {
-    format!("{tool} isn't available in Claude Desktop yet: Claude Desktop can only read your Hersir board for now.")
-}
 
 struct T {
     st: AppState,
@@ -485,21 +480,19 @@ mod socket {
     }
 
     #[tokio::test]
-    async fn the_desktop_token_names_the_server_hersir_lists_exactly_the_read_only_tools_and_reads_the_board() {
+    async fn the_desktop_token_names_the_server_hersir_lists_the_chiefs_tools_and_reads_the_board() {
         let s = served();
         let token = token_of(&s.t.connect(false));
         let mut c = Conn::open(&s.t.st, &token).await;
         let init = c.initialize().await;
         assert_eq!(init["result"]["serverInfo"]["name"], "hersir", "{init}");
         let list = c.ask(json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})).await.unwrap();
-        let mut listed: Vec<String> = list["result"]["tools"].as_array().unwrap().iter().map(|d| d["name"].as_str().unwrap().to_string()).collect();
-        let mut read_only: Vec<String> = tools::catalog().into_iter().filter(|d| d.read_only).map(|d| d.name).collect();
-        listed.sort();
-        read_only.sort();
-        assert_eq!(listed, read_only, "exactly the tools ToolDef::read_only marks");
-        assert!(list["result"]["tools"].as_array().unwrap().iter().all(|d| d["annotations"]["readOnlyHint"] == true));
-        for name in ["get_overview", "list_tasks", "memory_read", "memory_list", "memory_search", "get_task", "check_board"] {
-            assert!(read_only.contains(&name.to_string()), "{name} reads");
+        let listed: Vec<String> = list["result"]["tools"].as_array().unwrap().iter().map(|d| d["name"].as_str().unwrap().to_string()).collect();
+        // GA-341: the Chief's tools (claude_desktop_chief_test.rs checks the list in detail)
+        let desktop: Vec<String> = tools::desktop_catalog().into_iter().map(|d| d.name).collect();
+        assert_eq!(listed, desktop);
+        for name in ["get_overview", "list_tasks", "memory_read", "memory_list", "memory_search", "get_task", "check_board", "create_task"] {
+            assert!(listed.contains(&name.to_string()), "{name}");
         }
         // get_overview, list_tasks and memory_read work
         let overview = c.call(3, "get_overview", json!({})).await;
@@ -519,33 +512,29 @@ mod socket {
     }
 
     #[tokio::test]
-    async fn the_desktop_token_is_refused_every_tool_that_writes_with_the_cards_text_and_nothing_changes() {
+    async fn ga341_the_desktop_token_is_no_longer_refused_a_tool_that_writes_for_being_claude_desktops_or_for_naming_no_chat() {
         let s = served();
         let token = token_of(&s.t.connect(false));
         let mut c = Conn::open(&s.t.st, &token).await;
         c.initialize().await;
-        // a read first, so whatever a first call does is done
-        assert_eq!(c.call(2, "get_overview", json!({})).await["isError"], false);
-        let before = dump(&s.t.st);
-        let counted = counts(&s.t.st);
-        assert!(counted.iter().any(|(t, n)| t == "changes" && *n > 0), "the setup left activity lines: {counted:?}");
+        // GA-338's refusal is gone, and GA-338's fail-closed guard doesn't hold it: each tool that writes runs its own checks
+        // (here: its arguments are missing), but start_chat and update_checkout, which say why (claude_desktop_chief_test.rs)
         let mut id = 10;
-        for (name, args) in writes() {
-            id += 1;
-            let r = c.call(id, name, args).await;
-            assert_eq!(r["isError"], true, "{name}: {r}");
-            assert_eq!(text(&r), not_in_desktop(name), "{name}");
-        }
-        // every other tool that isn't read-only too, with or without arguments
-        for d in tools::catalog().into_iter().filter(|d| !d.read_only) {
+        for d in tools::catalog().into_iter().filter(|d| !d.read_only && d.name != "start_chat" && d.name != "update_checkout") {
             id += 1;
             let r = c.call(id, &d.name, json!({})).await;
-            assert_eq!((r["isError"].clone(), text(&r)), (json!(true), not_in_desktop(&d.name)), "{}", d.name);
+            let t = text(&r);
+            assert!(!t.contains("isn't available"), "{}: {t}", d.name);
+            assert!(!t.contains("can only read"), "{}: {t}", d.name);
         }
-        assert_eq!(counts(&s.t.st), counted, "no row, no activity line, no pending action");
-        assert_eq!(dump(&s.t.st), before, "nothing in the database changed");
-        // the connection still answers reads afterwards
-        assert_eq!(c.call(id + 1, "list_tasks", json!({})).await["isError"], false);
+        // and with arguments that work, a tool that writes runs
+        let made = c.call(id + 1, "create_task", json!({"project": "KADE", "title": "Made from Claude Desktop"})).await;
+        assert_eq!(made["isError"], false, "{made}");
+        assert!(list_has(&s.t.st, "Made from Claude Desktop"));
+    }
+
+    fn list_has(st: &AppState, title: &str) -> bool {
+        st.db.read(|c| Ok(c.query_row("SELECT count(*) FROM tasks WHERE title=?1", [title], |r| r.get::<_, i64>(0))?)).unwrap() == 1
     }
 
     #[tokio::test]
@@ -677,7 +666,7 @@ mod socket {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn the_real_hersir_mcp_from_the_entry_with_only_its_environment_reads_the_board_and_is_refused_a_write() {
+    async fn the_real_hersir_mcp_from_the_entry_with_only_its_environment_reads_the_board_and_makes_a_card_as_you() {
         let mut s = served();
         s.t.st.mcp_shim = Some(real_shim());
         let c = s.t.connect(false);
@@ -688,27 +677,31 @@ mod socket {
             json!({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "list_tasks", "arguments": {}}}),
             json!({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "create_task", "arguments": {"project": "KADE", "title": "x"}}}),
         ];
-        let tasks_before = counts(&s.t.st);
         let out = tokio::task::spawn_blocking({
             let (c, requests) = (c.clone(), requests.clone());
             move || run_entry(&c, &requests)
         }).await.unwrap();
         assert_eq!(out.len(), 4, "{out:?}");
         assert_eq!(out[0]["result"]["serverInfo"]["name"], "hersir");
-        assert_eq!(out[1]["result"]["tools"].as_array().unwrap().len(), tools::catalog().iter().filter(|d| d.read_only).count());
+        // GA-341: the Chief's tools and get_chief_brief, and create_task makes the card at once, as you
+        assert_eq!(out[1]["result"]["tools"].as_array().unwrap().len(), tools::desktop_catalog().len());
         assert_eq!(out[2]["result"]["isError"], false, "{}", out[2]);
         assert!(text(&out[2]["result"]).contains("KADE-1"));
-        assert_eq!(out[3]["result"]["isError"], true);
-        assert_eq!(text(&out[3]["result"]), not_in_desktop("create_task"));
-        assert_eq!(counts(&s.t.st), tasks_before);
+        assert_eq!(out[3]["result"]["isError"], false, "{}", out[3]);
+        let (by, pending): (String, i64) = s.t.st.db.read(|db| Ok((
+            db.query_row("SELECT created_by FROM tasks WHERE identifier='KADE-2' AND title='x'", [], |r| r.get(0))?,
+            db.query_row("SELECT count(*) FROM pending_actions", [], |r| r.get(0))?))).unwrap();
+        assert_eq!((by, pending), (s.t.st.you_id.clone(), 0));
+        let tasks_before = counts(&s.t.st);
         // after Disconnect the same entry reads nothing from Hersir any more (whatever the shim then tells Claude)
         desktop::disconnect(&s.t.st).unwrap();
-        let out = tokio::task::spawn_blocking(move || run_entry(&c, &requests[..4])).await.unwrap();
+        let out = tokio::task::spawn_blocking(move || run_entry(&c, &requests)).await.unwrap();
         let all = format!("{out:?}");
         // GA-339: the shim answers initialize itself, with Hersir's instructions, which name KADE-12 as an example; board
         // data could only come in the answers to tools/list (2) and to the list_tasks call (3)
         let read = format!("{:?}", out.iter().filter(|l| l["id"] == 2 || l["id"] == 3).collect::<Vec<_>>());
         assert!(!read.contains("KADE-1") && !read.contains("Export invoices as CSV"), "{all}");
         assert!(out.iter().all(|l| l["result"]["isError"] != false || l["id"] != 3), "{all}");
+        assert_eq!(counts(&s.t.st), tasks_before, "and its create_task makes nothing");
     }
 }
