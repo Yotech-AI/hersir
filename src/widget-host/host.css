@@ -1,0 +1,24 @@
+/* GA-343: the stand-in host page (development and QA only). Plain, so the view in its frame is what stands out. */
+:root, [data-theme="dark"] { color-scheme: dark; --h-bg: #101114; --h-panel: #1a1b1f; --h-line: #30323a; --h-text: #e8e8ec; --h-dim: #9a9ca5; }
+[data-theme="light"] { color-scheme: light; --h-bg: #f3f3f5; --h-panel: #ffffff; --h-line: #d6d7dc; --h-text: #1b1c20; --h-dim: #5f616a; }
+html, body { margin: 0; background: var(--h-bg); color: var(--h-text); font: 14px/1.45 system-ui, sans-serif; }
+.host { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; padding: 16px; }
+.chat { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.bubble { max-width: 640px; padding: 10px 14px; border-radius: 12px; background: var(--h-panel); border: 1px solid var(--h-line); }
+#frame-box { width: 100%; max-width: 100%; border: 1px solid var(--h-line); border-radius: 12px; overflow: hidden; background: var(--h-panel); }
+#frame-box iframe { display: block; width: 100%; height: 200px; border: 0; }
+.panel { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--h-line); border-radius: 12px; background: var(--h-panel);
+  align-self: start; position: sticky; top: 16px; }
+.panel h2 { margin: 0; font-size: 14px; }
+.panel label { display: flex; align-items: center; gap: 8px; }
+.panel button, .panel select { font: inherit; padding: 4px 10px; border: 1px solid var(--h-line); border-radius: 6px; background: var(--h-bg); color: var(--h-text); cursor: pointer; }
+.panel dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0; }
+.panel dt { color: var(--h-dim); }
+.panel dd { margin: 0; font-variant-numeric: tabular-nums; }
+#log { margin: 0; padding: 0 0 0 16px; max-height: 340px; overflow: auto; font: 11px/1.4 ui-monospace, monospace; color: var(--h-dim); word-break: break-all; }
+.host-error { margin: 12px; color: #f2706b; }
+#exit { display: none; }
+/* Full screen: the view fills the window, as Claude's full screen does; Exit stays on top. */
+body.fullscreen #frame-box { position: fixed; inset: 0; z-index: 10; width: auto !important; max-width: none; border: 0; border-radius: 0; }
+body.fullscreen #frame-box iframe { height: 100%; }
+body.fullscreen #exit { display: block; position: fixed; top: 10px; right: 12px; z-index: 11; font: inherit; padding: 4px 10px; }
