@@ -118,10 +118,12 @@ fn usd(micros: i64) -> f64 {
 
 /// GA-344: board_changes, Claude Desktop's own (`super::BOARD_CHANGES`): what changed on the board since `since`, a
 /// counter an earlier call returned (`gizai_core::feed::since`). It needs only the database, so no actor or chat.
+/// GA-345: in the names of the view's contract (`apps`): `seq`, the counter now (view_read's `seq` too), and `cards`, the
+/// identifiers of the cards that changed; then `board` and `reload` as before.
 pub(crate) fn board_changes(st: &crate::AppState, a: &Args) -> Result<Value, String> {
     let since = a.int("since")?;
     let c = gizai_core::feed::since(&st.db, since).map_err(err)?;
-    Ok(json!({"counter": c.counter, "tasks": c.tasks, "board": c.board, "reload": c.reload}))
+    Ok(json!({"seq": c.counter, "cards": c.tasks, "board": c.board, "reload": c.reload}))
 }
 
 pub(crate) fn overview(cx: &Cx) -> Result<Value, String> {
@@ -471,9 +473,15 @@ pub(crate) fn workflow(cx: &Cx, a: &Args) -> Result<Value, String> {
     }
 }
 
+/// A column's kind, as get_workflow names it and add_column takes it (waiting, work, testing, review, deploy, done,
+/// backlog), from its category; a category with no kind (cancelled) as it is.
+pub(crate) fn kind_of(category: &str) -> String {
+    gizai_core::columns::KINDS.iter().find(|(_, cat)| *cat == category).map(|(k, _)| *k).unwrap_or(category).to_string()
+}
+
 /// A team's columns in board order, as get_workflow lists them.
 fn columns_json(t: &team::Team) -> Vec<Value> {
-    let kind = |c: &str| gizai_core::columns::KINDS.iter().find(|(_, cat)| *cat == c).map(|(k, _)| *k).unwrap_or(c).to_string();
+    let kind = kind_of;
     t.states.iter().map(|s| {
         let agents: Vec<String> = s.agent_ids.iter().filter_map(|id| t.members.iter().find(|m| &m.actor_id == id).map(|m| m.name.clone())).collect();
         let next = s.next_state_id.as_ref().and_then(|n| t.states.iter().find(|x| &x.id == n)).map(|x| x.name.clone());

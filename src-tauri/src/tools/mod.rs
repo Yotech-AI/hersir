@@ -45,6 +45,11 @@ impl GizaiTools {
     fn desktop(&self) -> bool {
         self.client.as_deref() == Some(CLAUDE_DESKTOP) && self.thread.is_none() && self.check.is_none() && self.question.is_none()
     }
+
+    /// GA-345: what the view's tools (`apps::reply`) get for Claude Desktop's token: you, in no chat or board check.
+    fn desktop_cx(&self) -> Cx<'_> {
+        Cx { st: &self.st, actor: &self.actor, thread: None, check: None, from: None, approved: false, desktop: true }
+    }
 }
 
 impl gizai_mcp::Tools for GizaiTools {
@@ -59,11 +64,16 @@ impl gizai_mcp::Tools for GizaiTools {
         self.call_with_meta(name, args, &Value::Null).await
     }
     async fn call_with_meta(&self, name: &str, args: Value, meta: &Value) -> Result<Value, String> {
-        // GA-344: Claude Desktop's own tool (`desktop_catalog`), which only reads, answered before anything else: no other
-        // token knows it, so a question's isn't told it can only look things up (`IN_A_QUESTION`), nor another's that it
-        // can only read (`ONLY_READS`).
-        if name == BOARD_CHANGES {
-            return if self.desktop() { read::board_changes(&self.st, &args_of(args)?) } else { Err(format!("unknown tool {name}")) };
+        // GA-344, GA-345: the tools of Claude Desktop's view (`apps::tools`: show, view_read, board_changes), which only read,
+        // answered before anything else: no other token knows them, so a question's isn't told it can only look things up
+        // (`IN_A_QUESTION`), nor another's that it can only read (`ONLY_READS`). As a value: their data, as `reply` puts it in
+        // `structuredContent`.
+        if apps::is_app_tool(name) {
+            if !self.desktop() {
+                return Err(format!("unknown tool {name}"));
+            }
+            let r = apps::reply(&self.desktop_cx(), name, &args_of(args)?)?;
+            return Ok(r.structured.unwrap_or(Value::String(r.text)));
         }
         if self.question.is_some() && !reads_only(name) {
             return Err(IN_A_QUESTION.replace("{tool}", name));
@@ -75,8 +85,9 @@ impl gizai_mcp::Tools for GizaiTools {
         }
         call_scoped(&self.st, &self.actor, self.thread.as_deref(), self.check.as_deref(), Some(from), name, args, false, false).await
     }
-    /// GA-343: Claude Desktop also gets the board view's tools (`apps::tools`) when it shows MCP Apps' views. Every other
-    /// token, and Claude Desktop without the extension, gets `list` as before.
+    /// GA-343, GA-345: Claude Desktop also gets its view's tools (`apps::tools`: show, then view_read and board_changes for
+    /// the view alone) when it shows MCP Apps' views. Every other token, and Claude Desktop without the extension, gets
+    /// `list` as before (GA-345: without board_changes, which only the view calls).
     fn list_in(&self, session: &gizai_mcp::Session) -> Vec<ToolDef> {
         let mut list = self.list();
         if session.apps && self.desktop() {
@@ -84,17 +95,12 @@ impl gizai_mcp::Tools for GizaiTools {
         }
         list
     }
-    /// GA-343: show_board and board_read answer Claude Desktop with the board for the view too (`apps::reply`); any other
-    /// call, and theirs from another token (an unknown tool there), as `call_with_meta`.
+    /// GA-343, GA-345: show, view_read and board_changes answer Claude Desktop with the view's data too
+    /// (`structuredContent`, `apps::reply`); any other call, and theirs from another token (an unknown tool there), as
+    /// `call_with_meta`.
     async fn reply(&self, name: &str, args: Value, meta: &Value, _session: &gizai_mcp::Session) -> Result<gizai_mcp::Reply, String> {
         if self.desktop() && apps::is_app_tool(name) {
-            let a = Args(match args {
-                Value::Object(m) => m,
-                Value::Null => Map::new(),
-                _ => return Err("arguments must be an object".into()),
-            });
-            let cx = Cx { st: &self.st, actor: &self.actor, thread: None, check: None, from: None, approved: false, desktop: true };
-            return apps::reply(&cx, name, &a);
+            return apps::reply(&self.desktop_cx(), name, &args_of(args)?);
         }
         self.call_with_meta(name, args, meta).await.map(|v| gizai_mcp::Reply::of(&v))
     }
@@ -109,19 +115,19 @@ impl gizai_mcp::Tools for GizaiTools {
 const IN_A_QUESTION: &str = "{tool} can't be used while you look at an agent's question: you only look things up (memory, the card, \
     docs, your copies of the code). End with your GIZAI_RESULT line: Hersir answers on the card and continues the agent, or asks the user.";
 
-/// GA-344: another tool only Claude Desktop is offered (`desktop_catalog`, last), not the Chief's own turns: what changed
-/// on the board since a change counter (`gizai_core::feed`), for a view of the board in its chat that asks again and again,
-/// as Claude doesn't tell it. Answered before anything else (`GizaiTools::call_with_meta`). A normal tool for now; GA-345
-/// offers it to that view only (`_meta.ui.visibility`).
+/// GA-344: a tool only Claude Desktop is offered, not the Chief's own turns: what changed on the board since a change
+/// counter (`gizai_core::feed`), for a view in its chat that asks again and again, as Claude doesn't tell it. Answered
+/// before anything else (`GizaiTools::call_with_meta`). GA-345: one of the view's tools (`apps::tools`), offered with
+/// `_meta.ui.visibility` `["app"]` to a Claude Desktop that shows MCP Apps' views, so that only the view calls it.
 pub const BOARD_CHANGES: &str = "board_changes";
 
 /// board_changes's definition. It only reads, though its name doesn't say so (`tool` marks the gets, lists and reads).
 fn board_changes_tool() -> ToolDef {
-    let mut t = tool(BOARD_CHANGES, "What changed on the Hersir board since `since`, the counter an earlier call returned: the counter now, to call \
-        with next time, and the identifiers of the cards that changed since (their column, fields, labels or hold, a comment, a run or a \
-        file). board: true when columns, labels, agents, people, projects or teams changed too. reload: true when too much changed, or \
-        since is from before a restore: load the board again. Without since: only the counter, to start from.",
-        &[("since", "integer", "The counter an earlier board_changes returned; leave it out on the first call")], &[]);
+    let mut t = tool(BOARD_CHANGES, "What changed on the Hersir board since `since`, the seq an earlier view_read or board_changes returned: seq, \
+        the counter now, to call with next time, and cards, the identifiers of the cards that changed since (their column, fields, labels \
+        or hold, a comment, a run or a file). board: true when columns, labels, agents, people, projects or teams changed too. reload: \
+        true when too much changed, or since is from before a restore: read the view again. Without since: only the counter, to start from.",
+        &[("since", "integer", "The seq an earlier view_read or board_changes returned; leave it out on the first call")], &[]);
     t.read_only = true;
     t
 }
@@ -599,14 +605,15 @@ fn with<const N: usize>(head: &[(&'static str, &'static str, &'static str)], res
 
 /// GA-341: what Claude Desktop is offered (`GizaiTools::desktop`): get_chief_brief first, to read before it changes the
 /// board; GA-342: then ask_chief and chief_reply, to ask Hersir's Chief itself (`desktop`); then every tool of the Chief's
-/// chat turns (`catalog`) but start_chat and update_checkout (`NOT_IN_CLAUDE_DESKTOP`); and last board_changes (GA-344), for
-/// a view of the board in its chat. The Chief's own turns, board checks and questions get `catalog`, without these four.
+/// chat turns (`catalog`) but start_chat and update_checkout (`NOT_IN_CLAUDE_DESKTOP`). The Chief's own turns, board
+/// checks and questions get `catalog`, without these three. GA-345: board_changes (GA-344) is no longer here but one of the
+/// view's tools (`apps::tools`), which a Claude Desktop that shows MCP Apps' views gets after these (`GizaiTools::list_in`).
 pub fn desktop_catalog() -> Vec<ToolDef> {
     let brief = tool(CHIEF_BRIEF, "What Hersir's Chief works by: its instructions. Read it before you change the board, and follow it as the \
                                    Chief does.", &[], &[]);
     [brief, desktop::ask_chief_def(), desktop::chief_reply_def()].into_iter()
         .chain(catalog().into_iter().filter(|t| !NOT_IN_CLAUDE_DESKTOP.iter().any(|(name, _)| *name == t.name)))
-        .chain(std::iter::once(board_changes_tool())).collect()
+        .collect()
 }
 
 /// Every tool with its description and argument schema: what the Chief's chat turns are offered.
