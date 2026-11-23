@@ -1,4 +1,4 @@
-// GA-343, GA-345, the stand-in host (development and QA only): a made-up board in the shape show and view_read give it
+// GA-343, GA-345, GA-349, the stand-in host (development and QA only): a made-up board in the shape show and view_read give it
 // (src/widget/views.ts, src-tauri/src/tools/apps.rs), which changes as Hersir's board would: a card moves on, an agent
 // starts or stops. It keeps a change counter, as Hersir's change feed does, so it answers board_changes too.
 import type { BoardCard, BoardData, Changes } from "../widget/views";
@@ -63,6 +63,48 @@ export class FakeBoard {
     card.running = card.column === 2 || card.column === 3;
     card.order = 100 + this.step;
     card.changed = this.seq;
+  }
+
+  /** GA-349: the columns' names, in board order. */
+  get columnNames(): string[] {
+    return COLUMNS.map((c) => c.name);
+  }
+
+  /** GA-349: a card as the board shows it, with its column's name and kind; undefined when there is none (case ignored). */
+  find(identifier: string): { card: BoardCard; column: string; kind: string; order: number } | undefined {
+    const c = this.cards.find((x) => x.identifier.toUpperCase() === identifier.trim().toUpperCase());
+    if (!c) return undefined;
+    const { column, order, changed: _x, ...card } = c;
+    return { card: { ...card, needs_you: card.hold !== null || COLUMNS[column].kind === "review" }, column: COLUMNS[column].name, kind: COLUMNS[column].kind, order };
+  }
+
+  /** GA-349: move_task, to the bottom of the column named (case ignored). Why it can't, or null when it moved. */
+  move(identifier: string, column: string): string | null {
+    const c = this.cards.find((x) => x.identifier.toUpperCase() === identifier.trim().toUpperCase());
+    if (!c) return `There is no card ${identifier} in Hersir.`;
+    const to = COLUMNS.findIndex((x) => x.name.toLowerCase() === column.trim().toLowerCase());
+    if (to < 0) return `No column called "${column}". Columns: ${this.columnNames.join(", ")}.`;
+    if (to === c.column) return null;
+    c.column = to;
+    c.order = 1000 + this.step + 1;
+    this.touch(c.identifier);
+    return null;
+  }
+
+  /** GA-349: a change to a card that its face may not show (a comment, a run): board_changes names it. */
+  touch(identifier: string) {
+    const c = this.cards.find((x) => x.identifier.toUpperCase() === identifier.trim().toUpperCase());
+    if (!c) return;
+    this.step++;
+    c.changed = this.seq;
+  }
+
+  /** GA-349: an agent starts or stops on a card. */
+  setRunning(identifier: string, on: boolean) {
+    const c = this.cards.find((x) => x.identifier.toUpperCase() === identifier.trim().toUpperCase());
+    if (!c) return;
+    c.running = on;
+    this.touch(c.identifier);
   }
 
   /** The board as view_read gives it: the project's, or (null) every project on the board. */
