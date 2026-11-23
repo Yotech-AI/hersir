@@ -5,10 +5,27 @@ use std::sync::Mutex;
 
 use gizai_core::model::{FileRow, Task, TaskFilter};
 use gizai_agents::libreoffice::LibreOffice;
+use gizai_core::usage::{self, CardTime};
 use gizai_core::{clients, comments, docs, files, ids, projects, runs, tasks, team, users};
 use serde_json::{Value, json};
 
 use super::{Args, Cx, err, resolve, ymd};
+
+/// The run time limit (Settings → Agents and runs) in ms: an interrupted run counts at most this, as on the project's
+/// Time tracking tab (GA-331).
+fn max_run_ms(cx: &Cx) -> i64 {
+    i64::try_from(crate::runs::get_settings(cx.st).max_run_minutes).unwrap_or(i64::MAX / 60_000).saturating_mul(60_000)
+}
+
+/// get_task's agent_time (GA-332): what the agents' runs on the card took at `now`, over all of its runs, as its row on
+/// the project's Time tracking tab counts them (`usage::card_times`).
+fn agent_time(c: Option<&CardTime>, now: i64) -> Value {
+    json!({
+        "runs": c.map_or(0, |c| c.runs), "minutes": c.map_or(0, |c| usage::agent_minutes(c, now)),
+        "working_now": c.is_some_and(|c| c.running_since.is_some()),
+        "input_tokens": c.map_or(0, |c| c.input_tokens), "output_tokens": c.map_or(0, |c| c.output_tokens),
+    })
+}
 
 fn task_line(t: &Task) -> Value {
     let mut v = json!({
@@ -190,6 +207,14 @@ pub(crate) async fn get_project(cx: &Cx<'_>, a: &Args) -> Result<Value, String> 
     let docs: Vec<Value> = docs::list(cx.db(), &p.id).map_err(err)?.into_iter()
         .map(|d| json!({"title": d.title, "version": d.current_version, "updated": ymd(d.updated_at)})).collect();
     let files = file_lines(cx, files::list(cx.db(), "project", &p.id).map_err(err)?).await;
+    // GA-332: what its agents' runs took over all its cards (archived ones too), as its Time tracking tab adds them up,
+    // and per card in Done that had runs, to estimate new cards from
+    let tt = usage::time_tracking(cx.db(), &p.id, max_run_ms(cx), ids::now_ms()).map_err(err)?;
+    let time_tracking = json!({
+        "cards_with_runs": tt.cards_with_runs, "runs": tt.runs, "agent_minutes": tt.agent_minutes,
+        "input_tokens": tt.input_tokens, "output_tokens": tt.output_tokens,
+        "done_cards": {"count": tt.done_cards.count, "median_minutes": tt.done_cards.median_minutes, "p90_minutes": tt.done_cards.p90_minutes},
+    });
     Ok(json!({"project": {
         "id": p.id, "key": p.key, "number": p.number, "name": p.name, "client": p.client_name, "status": p.status, "goal_md": p.goal_md,
         "repo_path": p.repo_path, "default_branch": p.default_branch, "color": p.color,
@@ -201,7 +226,7 @@ pub(crate) async fn get_project(cx: &Cx<'_>, a: &Args) -> Result<Value, String> 
         "test_runs_at_once": p.test_runs_at_once,
         // GA-225: the team whose board its cards are on (update_project's team moves it)
         "team": p.team_name,
-    }, "tasks_by_column": by_column, "docs": docs, "files": files}))
+    }, "tasks_by_column": by_column, "time_tracking": time_tracking, "docs": docs, "files": files}))
 }
 
 pub(crate) fn list_tasks(cx: &Cx, a: &Args) -> Result<Value, String> {
@@ -236,7 +261,18 @@ pub(crate) fn list_tasks(cx: &Cx, a: &Args) -> Result<Value, String> {
         list.retain(|t| t.title.to_lowercase().contains(&q) || t.identifier.to_lowercase() == q);
     }
     let limit = a.int("limit")?.unwrap_or(50).clamp(1, 200) as usize;
-    let shown: Vec<Value> = list.iter().take(limit).map(task_line).collect();
+    let lines = &list[..list.len().min(limit)];
+    // GA-332: each line's agent time and tokens over all its runs, from one card_times for the whole list
+    let task_ids: Vec<String> = lines.iter().map(|t| t.id.clone()).collect();
+    let times = usage::card_times(cx.db(), &task_ids, max_run_ms(cx)).map_err(err)?;
+    let now = ids::now_ms();
+    let shown: Vec<Value> = lines.iter().map(|t| {
+        let mut v = task_line(t);
+        let c = times.get(&t.id);
+        v["agent_minutes"] = json!(c.map_or(0, |c| usage::agent_minutes(c, now)));
+        v["tokens"] = json!(c.map_or(0, |c| c.input_tokens + c.output_tokens));
+        v
+    }).collect();
     Ok(json!({"count": list.len(), "shown": shown.len(), "tasks": shown}))
 }
 
@@ -245,10 +281,17 @@ pub(crate) async fn get_task(cx: &Cx<'_>, a: &Args) -> Result<Value, String> {
     let all = comments::list(cx.db(), &t.id).map_err(err)?;
     let skip = all.len().saturating_sub(20);
     let comments: Vec<Value> = all.into_iter().skip(skip).map(|c| json!({"author": c.author_name, "at": ymd(c.created_at), "body_md": c.body_md})).collect();
-    let runs: Vec<Value> = runs::list_for_task(cx.db(), &t.id).map_err(err)?.into_iter().take(5).map(|r| json!({
-        "agent": r.agent_name, "status": r.status, "outcome": r.outcome, "trigger": r.trigger, "at": ymd(r.created_at), "summary": r.summary_md, "error": r.error,
-        "refused": r.refused,
-    })).collect();
+    let (max_run, now) = (max_run_ms(cx), ids::now_ms());
+    let runs: Vec<Value> = runs::list_for_task(cx.db(), &t.id).map_err(err)?.into_iter().take(5).map(|r| {
+        // GA-332: what this run took, by the Time tracking tab's rules for one run (null: it never started)
+        let (minutes, tokens) = (usage::run_ms(&r, max_run, now).map(usage::whole_minutes), r.input_tokens + r.output_tokens);
+        json!({
+            "agent": r.agent_name, "status": r.status, "outcome": r.outcome, "trigger": r.trigger, "at": ymd(r.created_at), "summary": r.summary_md, "error": r.error,
+            "refused": r.refused, "minutes": minutes, "tokens": tokens,
+        })
+    }).collect();
+    // GA-332: over all its runs, not only the 5 above
+    let time = usage::card_times(cx.db(), std::slice::from_ref(&t.id), max_run).map_err(err)?.remove(&t.id);
     let files = file_lines(cx, files::list(cx.db(), "task", &t.id).map_err(err)?).await;
     // GA-228: the cards it builds on (merged: in Deploy or Done, so their code is on main) and those that build on it.
     let links = gizai_core::builds_on::of(cx.db(), &t.id).map_err(err)?;
@@ -273,6 +316,7 @@ pub(crate) async fn get_task(cx: &Cx<'_>, a: &Args) -> Result<Value, String> {
         "created": ymd(t.created_at), "updated": ymd(t.updated_at),
         "archived": t.archived_at.is_some(), "archived_on": t.archived_at.map(ymd), "archived_by": t.archived_by,
         "builds_on": builds_on, "needed_by": needed_by,
+        "agent_time": agent_time(time.as_ref(), now),
     }, "comments": comments, "runs": runs, "files": files}))
 }
 
