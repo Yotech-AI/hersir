@@ -59,7 +59,6 @@ that researches a feature before it's built.
 - **Memory.** The Chief, the agents and you keep notes for later, and each run gets the notes for its card. [Read more](docs/features/memory.md)
 - **Tools per agent.** Give each agent only the commands, folders, MCP servers, web access and hidden browser it needs. [Read more](docs/features/tools.md)
 - **The Inbox.** Questions, approvals, commands to run and cards to review wait for you in one list. [Read more](docs/features/inbox.md)
-- **Claude Desktop.** Use your board from the Claude Desktop app: Claude gets the Chief's tools and rules, asks the Chief, and shows the board or a card in its chat. [Read more](docs/features/claude-desktop.md)
 
 ## Install
 
