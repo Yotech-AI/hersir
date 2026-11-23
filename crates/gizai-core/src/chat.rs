@@ -352,13 +352,16 @@ pub fn outside_tool(db: &Db, thread_id: &str) -> Result<Option<String>> {
 /// GA-261: the chat used `tool`, a tool from outside Hersir: it is marked for good, with the first such tool it used. True
 /// when this marked it (it wasn't marked before).
 pub fn mark_outside(db: &Db, thread_id: &str, tool: &str) -> Result<bool> {
-    db.write(None, |w| {
-        let n = w.conn().execute("UPDATE chat_threads SET outside_tool=?2 WHERE id=?1 AND outside_tool IS NULL", rusqlite::params![thread_id, tool])?;
-        if n > 0 {
-            w.update("chat_threads", thread_id, serde_json::json!({"outsideTool": tool}))?;
-        }
-        Ok(n > 0)
-    })
+    db.write(None, |w| mark_in(w, thread_id, tool))
+}
+
+/// `mark_outside` inside an open write.
+fn mark_in(w: &Writer, thread_id: &str, tool: &str) -> Result<bool> {
+    let n = w.conn().execute("UPDATE chat_threads SET outside_tool=?2 WHERE id=?1 AND outside_tool IS NULL", rusqlite::params![thread_id, tool])?;
+    if n > 0 {
+        w.update("chat_threads", thread_id, serde_json::json!({"outsideTool": tool}))?;
+    }
+    Ok(n > 0)
 }
 
 /// Chat → Pinned (GA-257): the setting that holds the pinned chats' ids, the most recently pinned first. A setting, so pins
@@ -419,6 +422,16 @@ pub const LEAD_KINDS: [&str; 2] = ["question", "approval"];
 /// moves to the top again, and its cards are joined). Returns the chat's id and whether it was a new chat.
 pub fn start_lead_chat(db: &Db, agent_id: &str, title: &str, kind: &str, task_ids: &[String], body_md: &str, run_id: Option<&str>)
     -> Result<(String, bool)> {
+    start_lead_chat_from(db, agent_id, title, kind, task_ids, body_md, run_id, None).map(|(id, new, _)| (id, new))
+}
+
+/// `start_lead_chat` from a chat that used `outside`, a tool from outside Hersir (GA-319): the chat it starts, or the waiting
+/// chat its message goes to, is marked with that tool (`mark_outside`) in the same write that makes it or adds the card, so
+/// before the message is in it: what the Chief does there waits for your Approve too, from its first answer on. A chat
+/// marked already keeps its own first tool. Also returns whether this marked the chat.
+#[allow(clippy::too_many_arguments)]
+pub fn start_lead_chat_from(db: &Db, agent_id: &str, title: &str, kind: &str, task_ids: &[String], body_md: &str, run_id: Option<&str>,
+                            outside: Option<&str>) -> Result<(String, bool, bool)> {
     if !LEAD_KINDS.contains(&kind) {
         return Err(Error::Invalid(format!("a chat the Chief starts is a question or an approval, not {kind}")));
     }
@@ -427,18 +440,22 @@ pub fn start_lead_chat(db: &Db, agent_id: &str, title: &str, kind: &str, task_id
     }
     let title = title_from(title);
     let existing = waiting_lead_chats(db)?.into_iter().find(|t| t.agent_id == agent_id && t.task_ids.iter().any(|id| task_ids.contains(id)));
-    let (id, new) = match existing {
+    let mark = |w: &Writer, id: &str| match outside {
+        Some(tool) => mark_in(w, id, tool),
+        None => Ok(false),
+    };
+    let (id, new, marked) = match existing {
         Some(t) => {
             let mut ids = t.task_ids.clone();
             ids.extend(task_ids.iter().filter(|id| !t.task_ids.contains(id)).cloned());
-            db.write(Some(agent_id), |w| {
+            let marked = db.write(Some(agent_id), |w| {
                 w.conn().execute("UPDATE chat_threads SET task_ids_json=?2 WHERE id=?1", rusqlite::params![t.id, serde_json::to_string(&ids)?])?;
-                Ok(())
+                mark(w, &t.id)
             })?;
-            (t.id, false)
+            (t.id, false, marked)
         }
         None => {
-            let id = db.write(Some(agent_id), |w| {
+            let (id, marked) = db.write(Some(agent_id), |w| {
                 let c = w.conn();
                 let now = ids::now_ms();
                 let id = ids::new_id();
@@ -448,14 +465,15 @@ pub fn start_lead_chat(db: &Db, agent_id: &str, title: &str, kind: &str, task_id
                     rusqlite::params![id, now, agent_id, util::org_id(c)?, title, kind, serde_json::to_string(task_ids)?],
                 )?;
                 w.insert("chat_threads", &id, serde_json::json!({"agent": agent_id, "title": title, "kind": kind, "tasks": task_ids}))?;
-                Ok(id)
+                let marked = mark(w, &id)?;
+                Ok((id, marked))
             })?;
-            (id, true)
+            (id, true, marked)
         }
     };
     add_message(db, NewMessage { thread_id: id.clone(), role: "agent".into(), author_id: Some(agent_id.to_string()), body_md: Some(body_md.trim().to_string()),
                                  run_id: run_id.map(str::to_string), ..Default::default() })?;
-    Ok((id, new))
+    Ok((id, new, marked))
 }
 
 /// You dismissed a Chief chat in the Inbox: it stays in Chat → Recent, no longer waiting.

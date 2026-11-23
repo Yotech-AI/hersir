@@ -74,6 +74,7 @@ pub(crate) fn preview(st: &crate::AppState, actor: &str, thread: &str, tool: &st
         "comment_on_task" => comment(&cx, &a),
         "update_task" => update_task(&cx, &a),
         "update_project" => update_project(&cx, &a),
+        "create_project" => create_project(&cx, &a),
         _ => Ok(Preview { line: format!("Call {tool}"), fields: plain_fields(&a.0), ..Default::default() }),
     };
     // A call whose own arguments are wrong still shows what it was called with, and why it fails.
@@ -596,6 +597,9 @@ fn update_task(cx: &Cx, a: &Args) -> Result<Preview, String> {
     } else if let Some(h) = a.opt("hold") {
         let new = a.opt("hold_reason").map(|r| format!("{h}: {r}")).unwrap_or(h);
         fields.push(change("Hold", hold_now.unwrap_or_else(|| "none".into()), new));
+    } else if let Some(r) = a.text("hold_reason").filter(|r| r.trim() != t.hold_reason.as_deref().unwrap_or_default().trim()) {
+        // GA-319: only the reason, which waits for the user's Approve after a tool from outside Hersir
+        fields.push(change("Hold reason", or_none(t.hold_reason.clone()), or_none(Some(r))));
     }
     let (diff, text) = match (&description, &acceptance) {
         (Some(d), _) if !d.is_empty() => (Some(line_diff(&t.description_md, d)), Some(d.clone())),
@@ -624,6 +628,50 @@ fn update_project(cx: &Cx, a: &Args) -> Result<Preview, String> {
     let warning = (fields.len() == 1).then(|| format!("Nothing of {} would change.", p.name));
     Ok(Preview { line: format!("Change the project {} ({})", p.name, p.key), fields, diff: goal.as_ref().map(|(from, to)| line_diff(from, to)),
                  text: goal.map(|(_, to)| to), warning })
+}
+
+/// GA-319: a new project: its name and key, and each field the call gives (its repository, folder, main branch and goal
+/// among them), as the project would have them, with its goal below. A key that is taken, or a folder that isn't a git
+/// repository now, says approving fails.
+fn create_project(cx: &Cx, a: &Args) -> Result<Preview, String> {
+    let name = a.req("name")?;
+    let key = match a.opt("key") {
+        Some(k) => k.to_uppercase(),
+        None => gizai_core::projects::unused_key(cx.db(), &name).map_err(err)?,
+    };
+    let mut warning = gizai_core::projects::list(cx.db()).map_err(err)?.iter().any(|p| p.key.eq_ignore_ascii_case(&key))
+        .then(|| format!("A project has the key {key} already, so approving fails."));
+    let mut fields = vec![field("Name", name.clone()), field("Key", key.clone())];
+    if let Some(c) = a.opt("client") {
+        fields.push(field("Client", resolve::client(cx, &c)?.name));
+    }
+    let team = match a.opt("team") {
+        Some(t) => resolve::team(cx, &t)?,
+        None => resolve::team_of(cx, None)?,
+    };
+    fields.extend(team_field(cx, &team));
+    fields.push(field("Status", a.opt("status").unwrap_or_else(|| "active".into())));
+    if let Some(c) = a.opt("color") {
+        fields.push(field("Colour", c));
+    }
+    let repository = if a.text("repository").is_some() { "repository" } else { "github" };
+    if let Some(link) = a.opt(repository) {
+        // As the link is saved: a GitHub or Bitbucket link in its tidy form.
+        let tidy = gizai_core::repo_url::normalize(&link).ok().flatten().map(|l| l.url).unwrap_or(link);
+        fields.push(field("Repository", tidy));
+    }
+    if let Some(folder) = a.opt("repo_path") {
+        fields.push(field("Folder", super::write::checked_repo(&folder).unwrap_or_else(|_| {
+            warning.get_or_insert_with(|| format!("{folder} isn't a git repository now, so approving fails."));
+            folder.clone()
+        })));
+    }
+    fields.push(field("Main branch", a.opt("default_branch").unwrap_or_else(|| "main".into())));
+    let goal = a.opt("goal_md");
+    if goal.is_some() {
+        fields.push(field("Goal", "new text, below"));
+    }
+    Ok(Preview { line: format!("Add the project {name} ({key})"), fields, text: goal, warning, ..Default::default() })
 }
 
 /// What an approved call did, from its result: a short sentence, like "Saved as version 4."
@@ -657,6 +705,10 @@ pub(crate) fn done(tool: &str, result: &Value) -> String {
         "update_project" => match s("/done") {
             Some(moved) => format!("The project is saved, and {moved}."),
             None => "The project is saved.".into(),
+        },
+        "create_project" => match (s("/project/name"), s("/project/key")) {
+            (Some(name), Some(key)) => format!("{name} ({key}) is added."),
+            _ => "The project is added.".into(),
         },
         "merge_pull_request" => match (n("/pull_request/number"), s("/card")) {
             // "moved to Deploy", or "still in Review: …"

@@ -484,11 +484,12 @@ async fn after_an_outside_tool_update_task_that_changes_what_a_card_outside_an_a
     assert_eq!(field(&fields(&v[2]), "Assignee"), &("Assignee".into(), Some("none".into()), "Backend Agent".into()));
     assert_eq!(field(&fields(&v[3]), "Builds on"), &("Builds on".into(), Some("none".into()), "KADE-5".into()));
 
-    // other changes, and the same text again, apply at once outside an Auto column
-    let r = t.ok(Some(&thread), "update_task", json!({"task": "KADE-1", "title": "Export v2", "priority": 2, "labels": [], "testing": false})).await;
+    // other changes, and the same text again, apply at once outside an Auto column (GA-319: a new title waits too, as
+    // ga319_approve_gaps_test checks)
+    let r = t.ok(Some(&thread), "update_task", json!({"task": "KADE-1", "priority": 2, "labels": [], "testing": false})).await;
     assert!(r["task"]["hold"].is_null() && r.get("on_hold").is_none(), "{r}");
     t.ok(Some(&thread), "update_task", json!({"task": "KADE-2", "description_md": "  Export invoices.  ", "acceptance_md": "- [ ] CSV", "assignee": "none"})).await;
-    assert_eq!(t.task("KADE-1").await["title"], "Export v2");
+    assert_eq!(t.task("KADE-1").await["priority"], 2);
     assert_eq!(t.waiting(&thread), 12);
 
     // in an Auto column the card is saved and waits on hold, as GA-101 has it, of the kind only you take off

@@ -100,7 +100,8 @@ const NOT_IN_A_CHECK: [&str; 8] = ["attach_file", "create_agent", "update_agent"
 /// Archiving cards too (GA-307): restore_tasks, which only undoes an archive, runs at once.
 /// Comments too (GA-261): an agent hears them, also in a Continue you approve. A card such a chat puts where an agent would
 /// start it, or changes there, waits on hold for the user's OK instead (GA-101, `Cx::outside`); some calls of
-/// `KEPT_SOMETIMES` are kept too.
+/// `KEPT_SOMETIMES` are kept too. GA-319: start_chat runs, but the chat its message goes to is marked with the same tool,
+/// so what the Chief does there waits for the user's Approve too (`write::start_chat`).
 pub const NOT_AFTER_OUTSIDE: [&str; 15] = ["start_agent_run", "continue_agent_run", "create_agent", "update_agent", "set_agent_status", "add_column",
     "set_column", "attach_file", "update_checkout", "memory_write", "memory_append", "memory_move", "merge_pull_request", "archive_tasks",
     "comment_on_task"];
@@ -109,8 +110,10 @@ pub const NOT_AFTER_OUTSIDE: [&str; 15] = ["start_agent_run", "continue_agent_ru
 /// `NOT_AFTER_OUTSIDE` keeps all of theirs (`Cx::keep`): `update_project` one that changes a project's repository, folder,
 /// main branch or goal (new cards fetch and run that code, and every agent's prompt carries the goal), `update_task` one
 /// that changes the description, acceptance criteria, assignee or builds_on of a card outside an Auto column (in an Auto
-/// column the card waits on hold instead, GA-101).
-pub const KEPT_SOMETIMES: [&str; 2] = ["update_project", "update_task"];
+/// column the card waits on hold instead, GA-101). GA-319: `update_task` one that changes a card's title the same way, and
+/// one that changes its hold's reason in any column (a board check reads it); `create_project` one that gives a repository,
+/// folder, main branch or goal (`write::STEERS_PROJECT`).
+pub const KEPT_SOMETIMES: [&str; 3] = ["update_project", "update_task", "create_project"];
 
 /// GA-261: why a call that would take GA-101's hold off a card (`Task::waits_for_your_ok`) is refused, from a board check or
 /// a chat answer: `update_task` with `clear_hold` (or another hold), `continue_agent_run`, `start_agent_run`. Only the
@@ -182,7 +185,7 @@ async fn call_scoped(st: &AppState, actor: &str, thread: Option<&str>, check: Op
         "get_overview" => read::overview(&cx),
         "read_inbox" => read::inbox(&cx),
         "check_board" => crate::board::check_json(st),
-        "start_chat" => write::start_chat(&cx, &a),
+        "start_chat" => write::start_chat(&cx, &a).await,
         "continue_agent_run" => write::continue_run(&cx, &a).await,
         "list_clients" => read::list_clients(&cx, &a),
         "get_client" => read::get_client(&cx, &a).await,
@@ -199,7 +202,7 @@ async fn call_scoped(st: &AppState, actor: &str, thread: Option<&str>, check: Op
         "create_client" => write::create_client(&cx, &a),
         "update_client" => write::update_client(&cx, &a),
         "save_contact" => write::save_contact(&cx, &a),
-        "create_project" => write::create_project(&cx, &a),
+        "create_project" => write::create_project(&cx, &a).await,
         "update_project" => write::update_project(&cx, &a).await,
         "create_task" => write::create_task(&cx, &a).await,
         "update_task" => write::update_task(&cx, &a).await,
@@ -467,14 +470,14 @@ pub fn catalog() -> Vec<ToolDef> {
                ("color", "string", "A colour like #7b9bff"), ("status", "enum:planned|active|paused|done|archived", "Status"),
                ("test_runs_at_once", "integer", "Test runs at once: how many of its cards may be in a test run (a run on a card in a Testing column) at the same time, 1 to 20; 0 clears it (no limit of its own). A test run builds and runs the whole test suite: keep a heavy project (Rust, a large monorepo) to 1")], &["project"]),
         tool("create_task", "Adds a task to a project. In an Auto column the agents on that column pick it up; assign an agent to have only that agent start it. Labels are tags for people (any existing label; add one with save_label).",
-             &[PROJECT, ("title", "string", "Short title"), ("description_md", "string", "What to do and why (Markdown)"),
+             &[PROJECT, ("title", "string", "Short title: one line, at most 200 characters"), ("description_md", "string", "What to do and why (Markdown)"),
                ("acceptance_md", "string", "Acceptance criteria, as a Markdown checklist"), ("column", "string", "Column name (default the first, Backlog)"),
                ("priority", "integer", "0 none, 1 urgent, 2 high, 3 medium, 4 low"), ("assignee", "string", "A person or agent name; \"me\" for the user"),
                ("labels", "string[]", "Existing label names, like Must have or bug"),
                ("testing", "boolean", "On (default): the QA Agent tests it before Review. Off: straight to Review, for a small UI fix or bug fix"),
                BUILDS_ON], &["project", "title"]),
         tool("update_task", "Changes a task's fields, labels, assignee, hold or builds_on. Only what is given changes.",
-             &[TASK, ("title", "string", "New title"), ("description_md", "string", "Description (Markdown)"), ("acceptance_md", "string", "Acceptance criteria (Markdown)"),
+             &[TASK, ("title", "string", "New title: one line, at most 200 characters"), ("description_md", "string", "Description (Markdown)"), ("acceptance_md", "string", "Acceptance criteria (Markdown)"),
                ("priority", "integer", "0 none, 1 urgent, 2 high, 3 medium, 4 low"), ("assignee", "string", "A person or agent name; \"none\" to unassign"),
                ("labels", "string[]", "The full new set of existing label names"), ("hold", "enum:needs_decision|blocked|stalled", "Put it on hold"),
                ("hold_reason", "string", "Why it is on hold"),
