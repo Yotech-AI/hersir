@@ -1,11 +1,14 @@
 //! The server side of MCP (Model Context Protocol) as Claude Code speaks it over stdio: newline-delimited
 //! JSON-RPC 2.0 with `initialize`, `ping`, `tools/list` and `tools/call`. Gizai serves it on a local socket (a
 //! named pipe on Windows, see `pipe`); the `hersir-mcp` shim (src/bin) connects Claude Code's stdio to that socket.
+//! Claude Desktop runs the shim as `hersir-mcp --desktop`, which keeps answering while Hersir is closed (`desktop`).
 //! No Tauri, no database.
 use std::future::Future;
 
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt};
+
+pub mod desktop;
 
 /// Answered when the client doesn't name a protocol version. Otherwise the server answers with the
 /// client's version: the four methods served here are the same in every version so far.
