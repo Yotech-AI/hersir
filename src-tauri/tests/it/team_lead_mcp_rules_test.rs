@@ -997,8 +997,9 @@ async fn after_an_outside_tool_update_task_that_changes_what_a_card_in_an_auto_c
         assert_eq!((v["task"]["hold"].as_str(), v["task"]["hold_reason"].as_str()), (Some("needs_decision"), Some(WAITING)), "{task}");
         assert!(!queued(&t, v["task"]["id"].as_str().unwrap()), "{task}");
     }
-    // other changes and the same text again: as before
-    for (task, args) in [("KADE-4", json!({"title": "Card 4, by Otus", "priority": 1, "labels": ["backend"]})),
+    // other changes and the same text again: as before (GA-319: a new title holds the card too, as ga319_approve_gaps_test
+    // checks)
+    for (task, args) in [("KADE-4", json!({"priority": 1, "labels": ["backend"]})),
                          ("KADE-5", json!({"description_md": "  Export invoices.  ", "acceptance_md": "- [ ] CSV", "assignee": "none"}))] {
         let mut a = args.clone();
         a["task"] = json!(task);
