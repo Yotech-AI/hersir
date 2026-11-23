@@ -513,3 +513,33 @@ async fn the_cards_changes_tab_shows_what_you_changed_by_hand_committed_or_not()
                              ("notes.md".to_string(), FileStatus::Added, true)]);
     runs::stop_all(&c.st, Duration::from_secs(10)).await;
 }
+
+/// GA-318 (GA-270 #1): a link git would read as an option, saved before Hersir refused those: Push and Hand over on a
+/// person's card refuse with the sentence a card start gives, instead of acting as if there were no link, git never
+/// runs it (a probe file that must not appear), and the card stays as it was.
+#[tokio::test]
+async fn push_and_hand_over_refuse_a_link_saved_before_that_git_would_read_as_an_option_and_change_nothing() {
+    let tmp = real_tempdir();
+    let c = yours(tmp.path());
+    hand::start(&c.st, &c.task).await.unwrap();
+    std::fs::write(c.wt().join("export.csv"), "id\n").unwrap();
+    hand::commit(&c.st, &c.task, "Mine").await.unwrap();
+    let probe = c.tmp.join("probe");
+    let link = format!("--upload-pack=touch${{IFS}}{};#@x:y", probe.display());
+    let id = gizai_core::projects::list(&c.st.db).unwrap().into_iter().find(|p| p.key == "KADE").unwrap().id;
+    c.st.db.write(None, |w| {
+        w.conn().execute("UPDATE repos SET remote_url=?2 WHERE project_id=?1 AND deleted_at IS NULL", [id.as_str(), link.as_str()])?;
+        Ok(())
+    }).unwrap();
+    let want = format!("{link} isn't a repository link: it, or its user name, host or port, starts with \"-\", which git reads as an option: \
+                        change Kade's link on its page (Edit)");
+    let e = hand::push(&c.st, &c.task).await.unwrap_err();
+    assert!(e.contains(&want), "{e}");
+    let e = hand::over(&c.st, &c.task).await.unwrap_err();
+    assert!(e.contains(&want), "{e}");
+    assert!(!probe.exists(), "the link ran a command");
+    assert!(!has_branch(&c.bare, BRANCH), "nothing pushed");
+    let t = c.task();
+    assert_eq!((t.state_name.as_str(), t.by_hand), ("In progress", true));
+    assert!(gizai_core::comments::list(&c.st.db, &c.task).unwrap().is_empty());
+}

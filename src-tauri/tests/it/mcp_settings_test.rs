@@ -257,9 +257,14 @@ fn names_take_letters_digits_dash_and_underscore_and_gizais_own_and_duplicates_a
     let first = mcp::save(&t.st, command_server("Notes", "hints")).unwrap();
     let keys_before = keychain_keys(&t);
 
-    for bad in ["my server", "notes.v2", "ünicode", "", "  ", "a/b", "semi;colon", &"x".repeat(65)] {
+    for bad in ["my server", "notes.v2", "", "  ", "a/b", "semi;colon", &"x".repeat(65)] {
         let e = mcp::save(&t.st, command_server(bad, "hints")).expect_err(bad);
         assert!(e.contains("letters, digits, - and _"), "{bad:?}: {e}");
+    }
+    // GA-318: one that doesn't start with a letter (a-z, A-Z) hears that first
+    for bad in ["ünicode", "-x", "--dangerously-skip-permissions", "_notes", "9notes"] {
+        let e = mcp::save(&t.st, command_server(bad, "hints")).expect_err(bad);
+        assert!(e.contains(&format!("an MCP server's name starts with a letter, not \"{bad}\"")), "{bad:?}: {e}");
     }
     for own in ["gizai", "GIZAI", "chrome-devtools", "Chrome-DevTools"] {
         let e = mcp::save(&t.st, command_server(own, "hints")).expect_err(own);

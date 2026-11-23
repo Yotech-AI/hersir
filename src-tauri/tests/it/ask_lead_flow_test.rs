@@ -260,7 +260,7 @@ async fn the_team_leads_run_reads_the_question_and_has_the_always_escalate_rules
     let argv: Vec<&str> = log.split("argv>>").nth(1).unwrap().split("<<argv").next().unwrap().lines().collect();
     let after = |flag: &str| argv.iter().position(|a| *a == flag).map(|i| argv[i + 1]);
     assert_eq!(after("--tools"), Some("Read,Glob,Grep"), "{argv:?}");
-    assert_eq!(after("--allowedTools"), Some("mcp__gizai"), "{argv:?}");
+    assert!(argv.contains(&"--allowedTools=mcp__gizai") && !argv.contains(&"--allowedTools"), "GA-318: one argument: {argv:?}");
     assert!(argv.contains(&"--no-session-persistence") && argv.contains(&"--strict-mcp-config"), "{argv:?}");
     assert!(after("--mcp-config").is_some(), "{argv:?}");
 }

@@ -60,8 +60,17 @@ fn argv_of(run: &Run) -> Vec<String> {
     line.split_whitespace().map(str::to_string).collect()
 }
 
-/// The words after `flag`, up to the next `--` option.
+/// The words after `flag`, up to the next `--` option. GA-318: `--allowedTools` and `--disallowedTools` go as one argument,
+/// `<flag>=<rule>,<rule>,…`, which `argv_of` splits at its spaces: their rules, from the words up to the next option.
 fn values(argv: &[String], flag: &str) -> Vec<String> {
+    if flag.ends_with("Tools") {
+        assert!(!argv.iter().any(|a| a == flag), "GA-318: {flag} as an argument of its own: {argv:?}");
+        let prefix = format!("{flag}=");
+        let Some(at) = argv.iter().position(|a| a.starts_with(prefix.as_str())) else { return vec![] };
+        let words: Vec<&str> = std::iter::once(&argv[at][prefix.len()..])
+            .chain(argv[at + 1..].iter().take_while(|a| !a.starts_with("--")).map(String::as_str)).collect();
+        return words.join(" ").split(',').map(str::to_string).collect();
+    }
     let Some(at) = argv.iter().position(|a| a == flag) else { return vec![] };
     argv[at + 1..].iter().take_while(|a| !a.starts_with("--")).cloned().collect()
 }

@@ -55,6 +55,7 @@ mod office_docs;
 #[path = "../../../crates/gizai-agents/tests/support/fake_soffice.rs"]
 mod fake_soffice;
 mod onboarding_flow_test;
+mod option_links_flow_test;
 mod outside_chat_mark_test;
 mod own_push_test;
 mod paste_guard_test;

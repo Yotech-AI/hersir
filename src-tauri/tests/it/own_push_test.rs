@@ -536,9 +536,12 @@ async fn a_claude_code_run_with_slash_commands_on_gets_the_push_settings_and_the
 
     // GA-93: the same run's command line has slash commands and skills
     let err = stderr_of(&run);
-    let argv: Vec<&str> = err.lines().find_map(|l| l.strip_prefix("argv: ")).unwrap_or_else(|| panic!("no argv in {err}")).split_whitespace().collect();
+    let line = err.lines().find_map(|l| l.strip_prefix("argv: ")).unwrap_or_else(|| panic!("no argv in {err}"));
+    let argv: Vec<&str> = line.split_whitespace().collect();
     assert!(!argv.contains(&"--disable-slash-commands"), "{argv:?}");
-    let allowed: Vec<&str> = argv.iter().skip_while(|a| **a != "--allowedTools").skip(1).take_while(|a| !a.starts_with("--")).copied().collect();
+    // GA-318: the allowed tools as one argument, --allowedTools=<rule>,<rule>,…
+    let value = line.split(" --allowedTools=").nth(1).unwrap_or_else(|| panic!("no --allowedTools= in {line}"));
+    let allowed: Vec<&str> = value.split(" --").next().unwrap().split(',').collect();
     for id in ["SlashCommand", "Skill"] {
         assert_eq!(allowed.iter().filter(|a| **a == id).count(), 1, "{id} once: {allowed:?}");
     }
