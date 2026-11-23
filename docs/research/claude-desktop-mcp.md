@@ -37,11 +37,11 @@ it with JSON-RPC over `postMessage`. The view can call the server's tools throug
 
 ### Hersir's tools (`src-tauri/src/tools/apps.rs`)
 
-For Claude Desktop's token (GA-341's `GizaiTools::desktop`), and only when it declared MCP Apps:
+For Claude Desktop's token alone (the check GA-341 added for it), and only when it declared MCP Apps:
 
-- `show_board {project?}`, for the model. One sentence in `content` ("The user sees the board of Giz AI (GA) from Hersir
-  in this chat: 42 cards in 7 columns, 3 on hold."), the board in `structuredContent`, and both resourceUri keys in the
-  tool's `_meta` and in the result's.
+- `show_board {project?}`, for the model. One sentence in `content` ("The user sees the board of Kade portal (KADE) from
+  Hersir in this chat: 42 cards in 7 columns, 3 on hold."), the board in `structuredContent`, and both resourceUri keys
+  in the tool's `_meta` and in the result's.
 - `board_read {project?}`, for the view alone: `_meta.ui.visibility` is `["app"]`. Same answer, without the result's
   `_meta`.
 
@@ -124,8 +124,8 @@ version changes what `initialize` and the tools look like. Then wrap rmcp's serv
 ## Jefsev's checklist (after the merge)
 
 Agents can't run Claude Desktop. With a Hersir built from main after this merge: Settings → MCP servers → Claude Desktop
-→ Connect (GA-338), quit and reopen Claude Desktop, then ask in a new chat "Show me the Giz AI board in Hersir". The
-answers decide GA-345.
+→ Connect (GA-338), quit and reopen Claude Desktop, then ask in a new chat "Show me the board of project GA in Hersir".
+The answers decide GA-345.
 
 | Check | Mac | Linux (Omarchy, Claude Desktop beta) |
 | --- | --- | --- |
