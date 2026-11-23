@@ -4,6 +4,7 @@
 //! tests change process-wide state (`std::env::set_var`, `set_current_dir`) or count on it stays in tests/, alone.
 //! Paths in `include_str!` and `#[path]` are relative to this folder.
 
+mod desktop_test;
 mod protocol_test;
 mod shim_test;
 
