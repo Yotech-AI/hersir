@@ -4,8 +4,9 @@
 //
 // The view asks `ui/initialize` and says `ui/notifications/initialized`; the host then sends the tool's input and result
 // (`ui/notifications/tool-input`, `ui/notifications/tool-result`) and changes of its context (theme, display mode). The
-// view calls the server's tools through the host (`tools/call`), asks for another display mode, and says its size
-// (`ui/notifications/size-changed`). No network: everything goes through the host.
+// view calls the server's tools through the host (`tools/call`), asks for another display mode, opens a link in the browser
+// (`ui/open-link`, GA-349) and says its size (`ui/notifications/size-changed`). No network: everything goes through the host.
+// GA-349: it lists no display mode of its own at `ui/initialize` (that breaks it in Claude): it takes the host's.
 import type { McpUiDisplayMode, McpUiHostContext, McpUiInitializeResult } from "@modelcontextprotocol/ext-apps";
 
 /** The MCP Apps protocol version this view speaks (ext-apps 2.1.0's LATEST_PROTOCOL_VERSION). */
@@ -63,7 +64,7 @@ export class Bridge {
   async connect(appInfo: { name: string; version: string }): Promise<McpUiInitializeResult> {
     const result = (await this.request("ui/initialize", {
       appInfo,
-      appCapabilities: { availableDisplayModes: ["inline", "fullscreen"] },
+      appCapabilities: {},
       protocolVersion: PROTOCOL,
     })) as McpUiInitializeResult;
     this.ctx = { ...(result?.hostContext ?? {}) };
@@ -81,6 +82,13 @@ export class Bridge {
   async requestDisplayMode(mode: McpUiDisplayMode): Promise<McpUiDisplayMode> {
     const r = (await this.request("ui/request-display-mode", { mode })) as { mode?: McpUiDisplayMode };
     return r?.mode ?? mode;
+  }
+
+  /** GA-349: opens a web link in the user's browser, through the host: the view itself can't. Fails when the host says it
+   *  didn't. */
+  async openLink(url: string): Promise<void> {
+    const r = (await this.request("ui/open-link", { url })) as { isError?: boolean } | null;
+    if (r?.isError) throw new Error("the chat didn't open the link");
   }
 
   /** The view's size in pixels, so the host sizes its frame. */

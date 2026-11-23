@@ -83,3 +83,61 @@ export function changesOf(structured: unknown): Changes | null {
   if (!c || typeof c.seq !== "number" || !Array.isArray(c.cards)) return null;
   return { seq: c.seq, cards: c.cards, board: !!c.board, reload: !!c.reload };
 }
+
+// ---- GA-349: the card's and the Chief's views, and the answers of the tools the view writes with ----------------------
+
+/** The card in a view's data; null when it isn't one. Lists and texts left out come as empty. */
+export function cardOf(data: unknown): CardData | null {
+  const c = data as Partial<CardData> | null | undefined;
+  if (!c || typeof c !== "object" || typeof c.identifier !== "string") return null;
+  return {
+    identifier: c.identifier, title: String(c.title ?? ""), project: c.project ?? null, column: String(c.column ?? ""), assignee: c.assignee ?? null,
+    labels: Array.isArray(c.labels) ? c.labels : [], priority: typeof c.priority === "number" ? c.priority : 0, hold: c.hold ?? null,
+    hold_reason: c.hold_reason ?? null, description_md: String(c.description_md ?? ""), acceptance_md: c.acceptance_md ?? null, pr_url: c.pr_url ?? null,
+    comments: Array.isArray(c.comments) ? c.comments : [], runs: Array.isArray(c.runs) ? c.runs : [], live: c.live ?? null,
+  };
+}
+
+/** A chat with the Chief in a view's data, or in chief_reply's answer; null when it isn't one. */
+export function chiefOf(data: unknown): ChiefData | null {
+  const c = data as Partial<ChiefData> | null | undefined;
+  if (!c || typeof c !== "object" || !Array.isArray(c.messages)) return null;
+  const status = c.status === "working" || c.status === "waiting for you" ? c.status : "answered";
+  return { thread: typeof c.thread === "string" ? c.thread : null, status, messages: c.messages, draft: typeof c.draft === "string" ? c.draft : null };
+}
+
+/** ask_chief's answer: the chat the message went to, and the message's id. */
+export type Sent = { thread: string; message: string | null };
+
+/** ask_chief's answer, from its JSON text; null when it isn't one. */
+export function sentOf(value: unknown): Sent | null {
+  const s = value as { thread?: unknown; message?: unknown } | null | undefined;
+  if (!s || typeof s !== "object" || typeof s.thread !== "string") return null;
+  return { thread: s.thread, message: typeof s.message === "string" ? s.message : null };
+}
+
+/** The JSON a tool answers with as its text (the model's tools have no structuredContent); undefined when it isn't JSON. */
+export function jsonOf(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
+/** A card's project key, from its identifier: GA-12 → GA. Null when it has none. */
+export function keyOf(identifier: string): string | null {
+  const m = /^(.+)-\d+$/.exec(identifier.trim());
+  return m ? m[1] : null;
+}
+
+/** Whether board_changes' answer touches the view on show, so that it is read again: a card on show that changed; on a
+ *  board, a changed card of its project (by its key, so a new card counts too) or one on it, or any card on the board of
+ *  every project; the board's columns, labels or people (`board`); too much (`reload`). The Chief's thread isn't on the
+ *  board: its view asks chief_reply. */
+export function touches(c: Changes, view: ViewName, id: string | null, onBoard: (identifier: string) => boolean = () => false): boolean {
+  if (c.reload || c.board) return true;
+  if (view === "card") return id !== null && c.cards.some((x) => x.toUpperCase() === id.toUpperCase());
+  if (view === "board") return id === null ? c.cards.length > 0 : c.cards.some((x) => keyOf(x)?.toUpperCase() === id.toUpperCase() || onBoard(x));
+  return false;
+}
