@@ -209,6 +209,18 @@ You can skip it. Hersir is set up already: you (named after your login), My comp
 
 `HERSIR_SKIP_ONBOARDING=1` starts Hersir as if you skipped it: for scripts and tests on a new data folder.
 
+## Claude Desktop
+
+You can use your Hersir board from the Claude Desktop app on the same computer too: Claude gets the Chief's tools and works by its rules, can ask Hersir's Chief, and can show the board, a card or the Chief's thread in its chat.
+
+1. Open Claude Desktop once, so its settings are there.
+2. In Hersir, go to Settings → MCP servers → **Claude Desktop**, leave **Add it to Claude Desktop's settings** on and press **Connect**.
+3. Quit and reopen Claude Desktop, then ask Claude: "What's on my Hersir board?"
+
+Hersir must be open: otherwise Claude says "Open Hersir first". **Disconnect**, in the same place, ends Claude Desktop's access. The entry Connect adds holds a key with the Chief's powers over your board, which any program running as you could use.
+
+Connect is the way to set it up: there is no Desktop Extension (`.mcpb`) for Hersir. [Claude Desktop](features/claude-desktop.md) has the rest: pasting the entry yourself, what stays yours in Hersir, asking the Chief, the views and the key.
+
 ## Updates
 
 Hersir asks GitHub for the latest release 20 seconds after it starts, then every six hours. When a newer one is out and signed, **Update to X.Y.Z** shows above Company in the sidebar. Click it and Hersir:
@@ -262,6 +274,7 @@ Your code still goes where you send it: your agents' coding CLIs work with their
 ## Read more
 
 - [Bring your own CLI](features/cli.md#on-your-own-machine): your own machine, your logins and accounts, and your keys.
+- [Claude Desktop](features/claude-desktop.md): your board in the Claude Desktop app.
 - [Settings](settings.md): where each setting lives.
 - [docs/PLATFORMS.md](PLATFORMS.md): what differs on Linux, macOS and Windows.
 - [docs/RELEASING.md](RELEASING.md): how a release is made, how Hersir updates itself, and what its release check reads.
