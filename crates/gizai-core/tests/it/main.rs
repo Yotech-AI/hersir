@@ -34,6 +34,7 @@ mod ga49_core_test;
 mod ga49_migration_test;
 mod housekeeping_test;
 mod indexes_test;
+mod lasting_tokens_test;
 mod lead_folder_test;
 mod lead_merges_core_test;
 mod limits_test;

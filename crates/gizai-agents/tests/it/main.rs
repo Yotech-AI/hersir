@@ -12,6 +12,7 @@ mod bitbucket_prompt_test;
 mod changes_test;
 mod chat_stream_test;
 mod checkout_test;
+mod claude_desktop_test;
 mod cli_test;
 mod connection_test;
 mod copies_test;

@@ -637,6 +637,17 @@ a.member:hover { border-color: var(--line-2); }
 .ma-trust-label { color: var(--text-2); }
 .ma-trust .warn { font-size: var(--fs-xs); color: var(--warning); }
 .ma-trust-web { margin-top: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
+/* GA-340: Settings → MCP servers → Claude Desktop (ClaudeDesktopSettings): Connect, its answer, and the entry to paste. */
+.cd { gap: 10px; color: var(--text); font-size: var(--fs-sm); line-height: 1.5; }
+.cd .cd-line { display: flex; align-items: flex-start; gap: 8px; }
+.cd .cd-line .icon { flex: none; margin-top: 2px; }
+.cd .cd-line.ok .icon { color: var(--success); }
+.cd .cd-check { display: grid; gap: 4px; justify-items: start; }
+.cd .cd-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.cd .cd-result { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--raised); overflow-wrap: anywhere; }
+.cd .cd-entry { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: start; gap: 6px; }
+.cd .cd-entry pre { justify-self: stretch; min-width: 0; max-height: 260px; margin: 0; padding: 8px 10px; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--bg); color: var(--text); font-size: var(--fs-xs); line-height: 1.5; white-space: pre; user-select: text; }
 .ct-head { display: flex; justify-content: flex-end; }
 .ct-group { display: grid; gap: 6px; margin-top: 6px; }
 .ct-label { color: var(--text-3); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.04em; }

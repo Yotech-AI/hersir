@@ -210,6 +210,11 @@ export const askCliTools = (cliId: string) => invoke<string[]>("ask_cli_tools", 
 export const browserEntry = () => invoke<T.BrowserView>("browser_entry");
 export const saveBrowserEntry = (entry: T.BrowserEntry) => invoke<T.BrowserView>("save_browser_entry", { entry });
 export const listBrowserTools = () => invoke<T.BrowserView>("list_browser_tools");
+/** Settings → MCP servers → Claude Desktop (GA-338): its status; Connect makes a new key (the old one ends) and, with
+ *  addToConfig, adds the entry to Claude Desktop's settings; Disconnect ends the key. */
+export const claudeDesktopStatus = () => invoke<T.ClaudeDesktopStatus>("claude_desktop_status");
+export const claudeDesktopConnect = (addToConfig: boolean) => invoke<T.ClaudeDesktopConnection>("claude_desktop_connect", { addToConfig });
+export const claudeDesktopDisconnect = () => invoke<T.ClaudeDesktopStatus>("claude_desktop_disconnect");
 
 /** Settings → Coding CLIs. */
 export const listClis = () => invoke<T.CliStatus[]>("list_clis");
