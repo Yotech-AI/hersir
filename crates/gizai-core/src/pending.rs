@@ -119,6 +119,15 @@ pub fn waiting(db: &Db, thread_id: &str) -> Result<Vec<PendingAction>> {
     })
 }
 
+/// GA-342: how many calls of the Chief's last answer in the chat (its newest chat run there) still wait for your approval.
+/// Claude Desktop's chief_reply says `waiting for you` while there are any.
+pub fn waiting_from_last_answer(db: &Db, thread_id: &str) -> Result<i64> {
+    db.read(|c| Ok(c.query_row(
+        "SELECT count(*) FROM pending_actions WHERE thread_id=?1 AND status='pending'
+           AND run_id = (SELECT id FROM runs WHERE chat_thread_id=?1 ORDER BY created_at DESC, rowid DESC LIMIT 1)",
+        [thread_id], |r| r.get(0))?))
+}
+
 /// Why a call that no longer waits can't be approved or discarded now.
 fn not_waiting(a: &PendingAction) -> Error {
     Error::Invalid(match a.status.as_str() {
