@@ -290,6 +290,19 @@ pub const DEFAULT_TOOLS: [&str; 29] = [
     "Bash(pwd:*)", "Bash(which:*)", "Bash(tree:*)", "Bash(sleep:*)",
 ];
 
+/// GA-323: the entries of Gizai's default list (`DEFAULT_TOOLS`) that run no other command and write no file, the only new
+/// commands the Chief may give an agent from chat at once (`create_agent` and `update_agent`'s allowed_tools, in src-tauri's
+/// tools); any other entry the agent doesn't have yet waits for the user's Approve. Left out, as each can run another
+/// command, at once or later: npm, npx, composer, cargo and pytest (they run a project's scripts and code), php (an
+/// interpreter), ./vendor/bin/* (any program in that folder), rg (`--pre` runs a command on each file), sort
+/// (`--compress-program` runs a program; `-o` writes a file), git commit and git merge (they run the repository's hooks,
+/// which can be files of the worktree), and git diff, git log, uniq and tree (they can write a file anywhere: `--output`,
+/// the second file, `-o`), like a shell's start-up file or a git hook. docs/agent-tools.md lists them too.
+pub const CHAT_MAY_ADD: [&str; 14] = [
+    "Bash(git status:*)", "Bash(git add:*)", "Bash(ls:*)", "Bash(cat:*)", "Bash(head:*)", "Bash(tail:*)", "Bash(wc:*)", "Bash(cut:*)",
+    "Bash(diff:*)", "Bash(grep:*)", "Bash(jq:*)", "Bash(pwd:*)", "Bash(which:*)", "Bash(sleep:*)",
+];
+
 /// What builders (every role but lead, qa and devops) may run on top of Gizai's default list: look around the repository,
 /// push, pull and fetch their branch, and node, echo and printf.
 const BUILDER_TOOLS: [&str; 11] = [

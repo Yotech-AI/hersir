@@ -322,6 +322,13 @@ fn clean_agent(db: &Db, i: &AgentInput) -> Result<CleanAgent> {
     clean_agent_on(crate::clis::get(db, &i.adapter)?, i, places.as_ref())
 }
 
+/// GA-323: refuses settings `add_agent` and `update_agent` would refuse (a name, role, permission mode, effort, cards at once,
+/// board check, budget, allowed command), with the same error, and saves nothing: the Chief's create_agent and update_agent
+/// check them before a call waits for the user's Approve, so one that can never work is refused at once.
+pub fn check_agent(db: &Db, input: &AgentInput) -> Result<()> {
+    clean_agent(db, input).map(|_| ())
+}
+
 /// `clean_agent` for an agent on `cli`, the CLI it runs on (Settings → Coding CLIs): its kind decides the permission
 /// modes and effort levels. Its folders are checked against `places`; without places they are left out.
 fn clean_agent_on(cli: crate::clis::Cli, i: &AgentInput, places: Option<&crate::folders::Places>) -> Result<CleanAgent> {

@@ -136,6 +136,22 @@ fn not_run(name: &str, tool: &str, kept: Result<(), String>) -> String {
     }
 }
 
+/// GA-323: why create_agent or update_agent (`name`) wasn't run: it gives `who` the commands `entries`, which chat doesn't
+/// give an agent at once (`write::new_commands`), naming them. It waits for the user's click (`kept`), or, when Gizai couldn't
+/// keep it (`Err`), nothing changed and the user adds them themselves.
+fn not_run_for_commands(name: &str, who: &str, entries: &[String], kept: Result<(), String>) -> String {
+    let list = preview::listed(entries, entries.len());
+    let (is, them) = if entries.len() == 1 { ("is", "it") } else { ("are", "them") };
+    let why = format!("{name} wasn't run: {list} {is} new for {who}, and from chat an agent gets a command it doesn't have at once only \
+                       when it is one of Hersir's default list that runs no other command and writes no file.");
+    match kept {
+        Ok(()) => format!("{why} Hersir keeps the call for the user to approve with one click. Tell them in a sentence what it does, and \
+                           name {list}."),
+        Err(e) => format!("{why} Hersir couldn't keep the call for the user to approve ({e}), so nothing changed. Tell the user, so they can \
+                           add {them} themselves in the agent form (Permissions → Allowed commands)."),
+    }
+}
+
 /// Why a tool that acts is refused after a tool from outside Gizai in the chat (GA-261: for the rest of the chat).
 pub(crate) fn refused_after(name: &str, tool: &str) -> String {
     format!("{name} is refused in this chat: it used {tool}, a tool from outside Hersir, and what that returned could be trying to \
@@ -274,6 +290,18 @@ impl Cx<'_> {
         };
         not_run(name, tool, kept)
     }
+
+    /// GA-323: keeps the call `name` (create_agent or update_agent) for the user's Approve, as it gives the agent `who` the
+    /// commands `entries`, which chat doesn't give at once (`write::new_commands`): pending as a call after a tool from
+    /// outside Gizai is (`pending::keep`), marked `NEW_COMMANDS` instead of a tool. What the call returns, for the Chief.
+    pub fn keep_commands(&self, name: &str, a: &Args, who: &str, entries: &[String]) -> String {
+        let kept = match self.thread {
+            Some(t) => crate::pending::keep(self.st, self.actor, t, self.from.map(|s| s.run), name, &a.0, gizai_core::pending::NEW_COMMANDS)
+                .map(|_| ()),
+            None => Err("there is no chat to keep it in".into()),
+        };
+        not_run_for_commands(name, who, entries, kept)
+    }
     pub fn db(&self) -> &gizai_core::db::Db {
         &self.st.db
     }
@@ -406,7 +434,7 @@ const AGENT_FIELDS: [(&str, &str, &str); 11] = [
     ("instructions_md", "string", "Instructions sent with every run (Markdown). Omit on create to use the role's template; it must end by asking for the GIZAI_RESULT line"),
     ("cards_at_once", "integer", "How many cards it works on at the same time, each in its own git worktree (1–10, default 1)"),
     ("permission_mode", "string", "Permission mode for task runs, in its CLI's terms. Claude Code: acceptEdits (the usual), dontAsk, auto, plan or manual. Codex: workspace-write (the usual) or read-only. Gemini: auto_edit (the usual), plan or default"),
-    ("allowed_tools", "string[]", "Commands it may run without asking, each its own entry as Bash(…), like Bash(npm test:*). Never a shell, an interpreter or a path, like Bash(bash:*), Bash(python3:*) or Bash(/bin/sh:*), unless the agent has it already or its role's list has it: only the user adds those. Omit on create for its role's list (builders: Hersir's default list plus git push, pull and fetch; QA also gh pr; DevOps its release commands); an empty list on update = Hersir's default list"),
+    ("allowed_tools", "string[]", "Commands it may run without asking, each its own entry as Bash(…), like Bash(npm test:*). Never a shell, an interpreter or a path, like Bash(bash:*), Bash(python3:*) or Bash(/bin/sh:*), unless the agent has it already or its role's list has it: only the user adds those. A command the agent doesn't have yet waits for the user's Approve, the whole call with it, unless it is one of Bash(git status:*), Bash(git add:*), Bash(ls:*), Bash(cat:*), Bash(head:*), Bash(tail:*), Bash(wc:*), Bash(cut:*), Bash(diff:*), Bash(grep:*), Bash(jq:*), Bash(pwd:*), Bash(which:*) and Bash(sleep:*). Omit on create for its role's list (builders: Hersir's default list plus git push, pull and fetch; QA also gh pr; DevOps its release commands), saved at once; an empty list on update = Hersir's default list"),
     ("monthly_budget_usd", "number", "Monthly spending cap in dollars; empty = no cap"),
     ("title", "string", "Job title shown on the team page"),
     ("shares_memory_with", "string", "Memory: the agent whose memory folder it shares, by name, like Backend Agent for Backend Agent 2 (their runs get that folder's notes and their learned lines go there). An agent that shares a folder itself stands for that folder's owner; never the Chief. \"none\" = its own folder. Joining moves its notes into that folder; leaving gives it a fresh Notes. Omit: its own folder for a new agent, unchanged on update"),

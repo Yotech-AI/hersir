@@ -259,6 +259,12 @@ fn agent_fields(cx: &Cx, a: &Args) -> Vec<(&'static str, &'static str, String)> 
     out
 }
 
+/// GA-323: the commands of a call of create_agent or update_agent that chat gives an agent only with your OK
+/// (`write::new_commands`), as a field, when it has any: they make the call wait without a tool from outside Gizai.
+fn needs_your_ok(new: &[String]) -> Option<Field> {
+    (!new.is_empty()).then(|| field("Needs your OK", listed(new, new.len())))
+}
+
 fn create_agent(cx: &Cx, a: &Args) -> Result<Preview, String> {
     let name = a.req("name")?;
     let role = a.req("role")?;
@@ -266,6 +272,7 @@ fn create_agent(cx: &Cx, a: &Args) -> Result<Preview, String> {
     let t = resolve::team_arg(cx, a)?;
     let mut fields: Vec<Field> = team_field(cx, &t).into_iter().collect();
     fields.extend(agent_fields(cx, a).into_iter().map(|(_, label, v)| field(label, if v.is_empty() { "—".into() } else { v })));
+    fields.extend(needs_your_ok(&super::write::create_agent_new_commands(a)));
     Ok(Preview { line: format!("Add the agent {name} ({role})"), fields, text: a.opt("instructions_md"), ..Default::default() })
 }
 
@@ -303,6 +310,7 @@ fn update_agent(cx: &Cx, a: &Args) -> Result<Preview, String> {
     let current = m.instructions_md.clone().unwrap_or_default();
     let instructions = new_instructions.filter(|i| i.trim() != current.trim());
     let warning = (fields.is_empty() && instructions.is_none()).then(|| format!("Nothing of {}'s settings would change.", m.name));
+    fields.extend(needs_your_ok(&super::write::update_agent_new_commands(&m, a)));
     if instructions.is_some() {
         fields.push(field("Instructions", "new text, below"));
     }
@@ -438,7 +446,7 @@ fn merge_pull_request(cx: &Cx, a: &Args) -> Result<Preview, String> {
 }
 
 /// Names, the first `n` of them: "GA-1, GA-2 and GA-3", or "GA-1, GA-2, GA-3 and 680 more"; "none" for none.
-fn listed(items: &[String], n: usize) -> String {
+pub(crate) fn listed(items: &[String], n: usize) -> String {
     match items.split_last() {
         None => "none".into(),
         Some(_) if items.len() > n => format!("{} and {} more", items[..n].join(", "), items.len() - n),
