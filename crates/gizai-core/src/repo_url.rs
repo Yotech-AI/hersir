@@ -31,12 +31,14 @@ pub fn provider_name(provider: &str) -> Option<&'static str> {
 /// None for empty input. A GitHub link in any usual form (https, ssh, git@, "owner/name", a page inside the
 /// repository) becomes https://github.com/<owner>/<name>; a Bitbucket Cloud link in any usual form (https with or
 /// without a user name, git@, ssh://, a page inside the repository like /src/master/) becomes
-/// https://bitbucket.org/<workspace>/<repository>; other git URLs and paths are kept as given.
+/// https://bitbucket.org/<workspace>/<repository>; other git URLs and paths are kept as given. A link git could read as
+/// an option is refused (`refuse_option`).
 pub fn normalize(input: &str) -> Result<Option<RepoUrl>> {
     let s = input.trim();
     if s.is_empty() {
         return Ok(None);
     }
+    refuse_option(s)?;
     if let Some((owner, name)) = github(s) {
         return Ok(Some(RepoUrl { url: format!("https://github.com/{owner}/{name}"), provider: "github".into(), owner: Some(owner), name: Some(name) }));
     }
@@ -51,6 +53,44 @@ pub fn normalize(input: &str) -> Result<Option<RepoUrl>> {
         return Err(Error::Invalid(format!("{s} isn't a GitHub link (https://github.com/owner/name) or a git URL")));
     }
     Ok(Some(RepoUrl { url: s.to_string(), provider: "git".into(), owner: None, name: None }))
+}
+
+/// GA-318 (CWE-88): whether git, or the ssh it starts, could read `link` or a part of it as an option instead of an
+/// address: the link starts with "-", or the user name, host or port in it does (in a URL, scheme://user@host:port/…;
+/// in git's scp form, user@host:path). git runs some of its options as a command, and so does ssh. Such a link is never
+/// saved (`normalize`), and one saved before this check is refused where a fetch or a push starts, before git runs.
+pub fn reads_as_option(link: &str) -> bool {
+    let s = link.trim();
+    if s.starts_with('-') {
+        return true;
+    }
+    let authority = match s.split_once("://") {
+        Some((_, rest)) => rest.split(['/', '?', '#']).next().unwrap_or_default(),
+        None if is_scp(s) => s.split_once(':').map_or("", |(host, _)| host),
+        None => return false,
+    };
+    // user[:password]@host[:port], the host maybe an IPv6 address in brackets
+    let (user, host_port) = match authority.rsplit_once('@') {
+        Some((user, rest)) => (Some(user), rest),
+        None => (None, authority),
+    };
+    let (host, port) = match host_port.strip_prefix('[').and_then(|r| r.split_once(']')) {
+        Some((host, rest)) => (host, rest.strip_prefix(':')),
+        None => match host_port.split_once(':') {
+            Some((host, port)) => (host, Some(port)),
+            None => (host_port, None),
+        },
+    };
+    [user, Some(host), port].into_iter().flatten().any(|part| part.starts_with('-'))
+}
+
+/// Err with a sentence when git could read `link` as an option (`reads_as_option`).
+pub fn refuse_option(link: &str) -> Result<()> {
+    if reads_as_option(link) {
+        return Err(Error::Invalid(format!("{} isn't a repository link: it, or its user name, host or port, starts with \"-\", which \
+                                           git reads as an option", link.trim())));
+    }
+    Ok(())
 }
 
 /// Whether two links name the same repository (GitHub and Bitbucket ignore case and the form of the link; ".git", a

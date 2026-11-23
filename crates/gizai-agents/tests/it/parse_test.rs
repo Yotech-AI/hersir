@@ -43,8 +43,9 @@ fn argv_contains_the_safety_flags() {
     for f in ["-p", "--output-format", "stream-json", "--verbose", "--session-id", "--strict-mcp-config", "--setting-sources"] {
         assert!(a.contains(&f.to_string()), "missing {f}");
     }
-    let pos = a.iter().position(|x| x == "--allowedTools").unwrap();
-    assert_eq!(a[pos + 1], "Bash(npm test:*)");
+    // GA-318: the rules as one argument, so none can pass for an option
+    assert!(a.contains(&"--allowedTools=Bash(npm test:*)".to_string()), "{a:?}");
+    assert!(!a.contains(&"--allowedTools".to_string()), "{a:?}");
     assert!(!a.contains(&"--max-budget-usd".to_string()));
     // the prompt goes in on stdin (argv is capped at 128 KiB per argument on Linux)
     assert!(!a.contains(&"hi".to_string()) && !a.contains(&"--".to_string()));
@@ -57,7 +58,7 @@ fn argv_adds_budget_model_and_system_prompt_when_set() {
     assert_eq!(after("--max-budget-usd"), "2.50");
     assert_eq!(after("--model"), "sonnet");
     assert_eq!(after("--append-system-prompt"), "Be brief.");
-    assert!(!a.contains(&"--allowedTools".to_string()));
+    assert!(!a.iter().any(|x| x.starts_with("--allowedTools")), "{a:?}");
 }
 
 #[test]
@@ -93,8 +94,39 @@ fn argv_for_a_chat_turn() {
     let dirs = a.iter().position(|x| x == "--add-dir").unwrap();
     assert_eq!(&a[dirs + 1..dirs + 3], ["/a", "/b"]);
     assert!(a.contains(&"--no-session-persistence".to_string()));
-    // variadic options must not swallow each other: the allow-list comes last
-    assert_eq!(&a[a.len() - 2..], ["--allowedTools", "mcp__gizai"]);
+    // variadic options must not swallow each other: the allow-list comes last, as one argument (GA-318)
+    assert_eq!(&a[a.len() - 2..], ["/b", "--allowedTools=mcp__gizai"]);
+}
+
+/// GA-318 (GA-270 #3, CWE-88): allowed and disallowed tools reach Claude Code only as the values of `--allowedTools=` and
+/// `--disallowedTools=`, one argument each, and a rule that doesn't start with a letter (a tool called
+/// `--dangerously-skip-permissions`, say) never reaches its argv: no argument of it can turn off the permission checks.
+#[test]
+fn allowed_and_disallowed_tools_go_as_one_value_each_and_a_rule_that_starts_with_a_dash_never_reaches_argv() {
+    let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<String>>();
+    let a = ClaudeArgs {
+        allowed_tools: s(&["Bash(npm test:*)", "Read", "--dangerously-skip-permissions", " -x ", "mcp__otus__get_card", "_y", "9z",
+                           " Bash(git status:*) ", "--permission-mode=bypassPermissions"]),
+        disallowed_tools: s(&["Edit(//home/me/My docs/**)", "--dangerously-skip-permissions", "mcp__docs__delete_page", "-"]),
+        add_dirs: s(&["/a"]),
+        ..args()
+    }.argv();
+    let of = |flag: &str| a.iter().filter(|x| x.starts_with(flag)).cloned().collect::<Vec<_>>();
+    assert_eq!(of("--allowedTools"), ["--allowedTools=Bash(npm test:*),Read,mcp__otus__get_card,Bash(git status:*)"]);
+    assert_eq!(of("--disallowedTools"), ["--disallowedTools=Edit(//home/me/My docs/**),mcp__docs__delete_page"]);
+    for x in &a {
+        assert!(!x.contains("dangerously") && !x.contains("bypassPermissions") && x != "-x" && x != "-" && x != "_y" && x != "9z", "{x}: {a:?}");
+    }
+    assert_eq!(a[a.iter().position(|x| x == "--permission-mode").unwrap() + 1], "acceptEdits", "the permission mode stays");
+    // every argument that starts with "-" is one of the options Hersir passes itself
+    let own = ["-p", "--output-format", "--verbose", "--session-id", "--permission-mode", "--setting-sources", "--strict-mcp-config",
+               "--add-dir", "--allowedTools", "--disallowedTools"];
+    for x in a.iter().filter(|x| x.starts_with('-')) {
+        assert!(own.contains(&x.split('=').next().unwrap()), "{x} isn't one of Hersir's own options: {a:?}");
+    }
+    // only such rules: no flag at all
+    let a = ClaudeArgs { allowed_tools: s(&["--dangerously-skip-permissions"]), disallowed_tools: s(&["-x"]), ..args() }.argv();
+    assert!(!a.iter().any(|x| x.starts_with("--allowedTools") || x.starts_with("--disallowedTools") || x.contains("dangerously")), "{a:?}");
 }
 
 #[test]

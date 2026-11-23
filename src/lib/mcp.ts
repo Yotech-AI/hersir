@@ -145,6 +145,8 @@ export const TAKEN_NAMES = ["gizai", "chrome-devtools"];
  * null when it can. The same rules as `name_problem` in crates/gizai-core/src/mcp_servers.rs. */
 export function nameProblem(name: string, taken: string[]): string | null {
   const n = name.trim();
+  // GA-318: a name that starts with "-" could pass for one of Claude Code's own options
+  if (n && !/^[A-Za-z]/.test(n)) return `A name starts with a letter, not "${n}"`;
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(n)) return `A name takes letters, digits, - and _ (at most 64)${n ? `, not "${n}"` : ""}`;
   if (n.includes("__") || n.endsWith("_")) {
     return `A name can't have two _ in a row or end with _, not "${n}": its tools are called mcp__<name>__<tool>, and Claude Code reads __ as where the name ends`;

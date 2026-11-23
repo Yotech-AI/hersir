@@ -90,7 +90,8 @@ async fn a_claude_code_run_gets_its_folders_and_skips_a_missing_one_with_a_note_
     let argv = argv_line(&stderr_of(&run));
     let (shared, out) = (real(&d.shared), real(&d.out));
     assert!(argv.contains(&format!("--add-dir {shared} {out}")), "{argv}");
-    assert!(argv.ends_with(&format!("--disallowedTools Edit(/{shared}/**) Write(/{shared}/**)")), "{argv}");
+    // GA-318: the rules as one argument
+    assert!(argv.ends_with(&format!("--disallowedTools=Edit(/{shared}/**),Write(/{shared}/**)")), "{argv}");
     assert!(!argv.contains(&d.gone.display().to_string()), "the missing folder isn't passed: {argv}");
 }
 

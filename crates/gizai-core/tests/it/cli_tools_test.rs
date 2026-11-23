@@ -173,3 +173,36 @@ fn the_tools_claude_code_reported_are_kept_per_agent_and_per_cli_without_mcp_too
     assert_eq!(m::asked_tools(&db).unwrap()["claude-code"].tools, ["Task", "WebFetch"]);
     assert_eq!(m::seen_tools(&db).unwrap().len(), 2);
 }
+
+// ---- GA-318 (GA-270 #3, CWE-88): a built-in tool's name starts with a letter ----
+
+#[test]
+fn a_built_in_tool_whose_name_doesnt_start_with_a_letter_is_refused_with_a_sentence_and_nothing_changes() {
+    let (db, you, _, id) = setup();
+    let before = m::set_cli_tools(&db, &you, &id, CliTools { builtin: strs(&["FancyNewTool"]), ..Default::default() }).unwrap();
+    for bad in ["--dangerously-skip-permissions", "-x", "--permission-mode", "_Tool", "9Tool", "-"] {
+        assert!(!m::valid_builtin_name(bad), "{bad}");
+        let e = m::set_cli_tools(&db, &you, &id, CliTools { builtin: strs(&["AnotherTool", bad]), ..Default::default() }).unwrap_err().to_string();
+        assert_eq!(e, format!("\"{bad}\" isn't the name of one of the CLI's own tools: a tool's name starts with a letter"), "{bad}");
+    }
+    assert_eq!(m::agent_cli_tools(&db, &id).unwrap(), before, "nothing changed");
+    for ok in ["FancyNewTool", "Read", "a-b_c", "Z9"] {
+        assert!(m::valid_builtin_name(ok), "{ok}");
+    }
+    // the tools a CLI reports: one whose name doesn't start with a letter is never offered as a built-in tool
+    assert_eq!(m::builtin_names(&strs(&["Read", "--dangerously-skip-permissions", "-x", "mcp__otus__search", "Edit", "_y"])), ["Read", "Edit"]);
+}
+
+#[test]
+fn an_mcp_servers_name_starts_with_a_letter_on_save() {
+    let (db, ..) = setup();
+    for bad in ["-x", "--dangerously-skip-permissions", "_otus", "9otus", "-oProxyCommand=x"] {
+        assert!(!m::valid_name(bad), "{bad}");
+        let e = m::save(&db, McpServer { name: bad.into(), transport: "stdio".into(), command: "/opt/x".into(), ..Default::default() })
+            .expect_err(bad).to_string();
+        assert!(e.contains(&format!("an MCP server's name starts with a letter, not \"{bad}\"")), "{bad}: {e}");
+        assert_eq!(m::name_problem(&[], bad, "").as_deref(), Some(format!("an MCP server's name starts with a letter, not \"{bad}\"").as_str()));
+    }
+    assert!(m::list(&db).unwrap().is_empty(), "nothing saved");
+    m::save(&db, McpServer { name: "otus".into(), transport: "stdio".into(), command: "/opt/x".into(), ..Default::default() }).unwrap();
+}

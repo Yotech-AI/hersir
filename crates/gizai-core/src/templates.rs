@@ -310,8 +310,11 @@ fn export_in(c: &Connection, team_id: &str) -> Result<TemplateFile> {
     let file_agents = agents.iter().zip(&names).map(|(m, name)| {
         let adapter = m.adapter.as_deref().map(str::trim).filter(|a| !a.is_empty()).unwrap_or(clis::CLAUDE_CODE);
         let cli = clis.iter().find(|x| x.id == adapter).map(|x| x.kind.clone()).unwrap_or_else(claude_code_kind);
+        // GA-318: a server or a built-in tool whose name doesn't start with a letter (saved before that was checked) is left
+        // out, as runs leave it out and importing refuses it.
         let mcp = m.tools.servers_on().filter(|s| s.server_id != mcp_servers::BROWSER)
             .filter_map(|s| servers.iter().find(|x| x.id == s.server_id).map(|x| FileServer { name: x.name.clone(), tools_off: s.tools_off.clone() }))
+            .filter(|s| team::starts_with_letter(&s.name))
             .collect();
         FileAgent {
             name: name.clone(), role: m.role_key.clone(), title: m.title.clone(), cli, model: m.model.clone(), effort: m.effort.clone(),
@@ -321,7 +324,8 @@ fn export_in(c: &Connection, team_id: &str) -> Result<TemplateFile> {
             chat: m.chat_enabled, board_check_minutes: m.board_check_minutes, use_memory: m.use_memory,
             shares_memory_with: m.shares_memory_with.as_deref().filter(|o| *o != m.actor_id).and_then(name_of),
             web_search: m.cli_tools.web_search, web_fetch: m.cli_tools.web_fetch, fetch_domains: m.cli_tools.fetch_domains.clone(),
-            builtin_tools: m.cli_tools.builtin.clone(), slash_commands: m.cli_tools.slash_commands, browser: m.tools.browser_on(),
+            builtin_tools: m.cli_tools.builtin.iter().filter(|t| mcp_servers::valid_builtin_name(t)).cloned().collect(),
+            slash_commands: m.cli_tools.slash_commands, browser: m.tools.browser_on(),
             insecure_certs: m.cli_tools.insecure_certs, screenshots: Some(m.cli_tools.screenshots), mcp_servers: mcp,
         }
     }).collect();
@@ -786,7 +790,8 @@ fn thousands(n: usize) -> String {
 /// Refuses a template a team can't be made from, saying why: no columns, more than 50 agents or 30 columns,
 /// instructions over 100,000 characters, an unknown kind, two columns or agents with one name (ignoring case), a next
 /// column or a column's agent that isn't in it, agents or Auto on a backlog, review, done or cancelled column, an Auto
-/// column without a next one, and an allowed command that isn't one rule (GA-262, `team::one_rule`).
+/// column without a next one, an allowed command that isn't one rule (GA-262, `team::one_rule`), and a built-in tool or
+/// MCP server whose name doesn't start with a letter (GA-318, `team::starts_with_letter`).
 fn check(f: &TemplateFile) -> Result<()> {
     let no = |why: String| Err(Error::Invalid(why));
     if f.name.trim().is_empty() {
@@ -834,6 +839,14 @@ fn check(f: &TemplateFile) -> Result<()> {
         }
         if let Some(t) = a.allowed_tools.iter().map(|t| t.trim()).find(|t| !t.is_empty() && !team::one_rule(t)) {
             return no(format!("{}'s allowed commands: {}", a.name.trim(), team::not_one_rule(t)));
+        }
+        // GA-318: a name that starts with "-" could reach Claude Code as one of its own options
+        if let Some(t) = a.builtin_tools.iter().map(|t| t.trim()).find(|t| !t.is_empty() && !team::starts_with_letter(t)) {
+            return no(format!("{}'s built-in tools: \"{t}\" isn't the name of one of the CLI's own tools: a tool's name starts with a letter.",
+                              a.name.trim()));
+        }
+        if let Some(n) = a.mcp_servers.iter().map(|s| s.name.trim()).find(|n| !n.is_empty() && !team::starts_with_letter(n)) {
+            return no(format!("{}'s MCP servers: \"{n}\" isn't an MCP server's name: an MCP server's name starts with a letter.", a.name.trim()));
         }
     }
     for c in &f.columns {
@@ -1155,7 +1168,7 @@ fn plan(f: &TemplateFile, builtin: bool, name: Option<&str>, here: &Here) -> Res
         }
         let mut builtin_tools = vec![];
         for t in tidy(&a.builtin_tools) {
-            if mcp_servers::valid_tool_name(&t) {
+            if mcp_servers::valid_builtin_name(&t) {
                 builtin_tools.push(t);
             } else {
                 notes.push(format!("{t} isn't the name of a CLI's own tool: {name} comes without it."));

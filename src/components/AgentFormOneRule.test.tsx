@@ -57,6 +57,16 @@ describe("oneRule and notOneRule (src/lib/agents.ts), as team.rs's one_rule", ()
     expect(real.notOneRule(" Bash(a) b ")).toBe(`Bash(a) b ${SENTENCE}`);
   });
 
+  // GA-318 (GA-270 #3): a rule starts with a tool's name, which starts with a letter; one that starts with "-" could pass
+  // for one of Claude Code's own options
+  it("refuses an entry that doesn't start with a letter, with team.rs's sentence", () => {
+    for (const bad of ["--dangerously-skip-permissions", "-x", "_Bash(ls:*)", "9Read", " -Bash(npm test:*) "]) {
+      expect(real.oneRule(bad), bad).toBe(false);
+      expect(real.notOneRule(bad)).toBe(`${bad.trim()} isn't a rule: a rule starts with a tool's name, which starts with a letter, like Bash(npm test:*).`);
+    }
+    expect(real.oneRule("Z9")).toBe(true);
+  });
+
   it("finds every entry of Hersir's default list one rule, and loads a saved agent's old entry so the form can show it", () => {
     expect(real.DEFAULT_TOOLS.filter((t) => !real.oneRule(t))).toEqual([]);
     const m = { actorId: "a1", name: "Backend Agent", roleKey: "backend", kind: "agent", isLead: false,

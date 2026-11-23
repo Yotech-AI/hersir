@@ -204,6 +204,15 @@ describe("renameLine", () => {
 });
 
 describe("nameProblem", () => {
+  // GA-318 (GA-270 #3): one that starts with "-" could pass for one of Claude Code's own options
+  it("asks for a name that starts with a letter, as name_problem in crates/gizai-core does", () => {
+    for (const n of ["-x", "--dangerously-skip-permissions", " -oProxyCommand=x ", "9otus", "_otus", "ünicode"]) {
+      expect(nameProblem(n, []), n).toBe(`A name starts with a letter, not "${n.trim()}"`);
+    }
+    for (const n of ["otus", "Otus-2", "z_9"]) expect(nameProblem(n, []), n).toBeNull();
+    expect(rust("crates/gizai-core/src/mcp_servers.rs")).toContain("an MCP server's name starts with a letter, not \\\"{name}\\\"");
+  });
+
   it("takes letters, digits, - and _ up to 64", () => {
     expect(nameProblem("otus_os-2", [])).toBeNull();
     expect(nameProblem("  otus  ", [])).toBeNull();
@@ -230,10 +239,12 @@ describe("nameProblem", () => {
   });
 
   it("refuses two _ in a row or a _ at the end, as name_problem in crates/gizai-core does, so no tool passes for Gizai's own", () => {
-    for (const n of ["gizai_", "gizai__notes", "gizai___x", "otus__x", "otus_", "__otus", " otus_ "]) {
+    for (const n of ["gizai_", "gizai__notes", "gizai___x", "otus__x", "otus_", " otus_ "]) {
       expect(nameProblem(n, [])).toBe(`A name can't have two _ in a row or end with _, not "${n.trim()}": its tools are called mcp__<name>__<tool>, and Claude Code reads __ as where the name ends`);
     }
-    for (const n of ["otus", "my_server", "a_b_c", "x-_y", "gizai-notes", "_otus"]) expect(nameProblem(n, [])).toBeNull();
+    for (const n of ["otus", "my_server", "a_b_c", "x-_y", "gizai-notes"]) expect(nameProblem(n, [])).toBeNull();
+    // GA-318: "__otus" and "_otus" don't start with a letter, and hear that first
+    for (const n of ["__otus", "_otus"]) expect(nameProblem(n, [])).toBe(`A name starts with a letter, not "${n}"`);
     expect(rust("crates/gizai-core/src/mcp_servers.rs")).toContain("can't have two _ in a row or end with _, not \\\"{name}\\\": its tools are called mcp__<name>__<tool>, and Claude Code reads __ as where the name ends");
   });
 });
