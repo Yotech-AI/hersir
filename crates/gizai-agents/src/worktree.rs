@@ -1156,6 +1156,20 @@ pub fn worktree_of(repo: &Path, branch: &str) -> Result<Option<PathBuf>, AgentEr
     Ok(worktrees(repo)?.into_iter().find(|(_, b)| b.as_deref() == Some(branch)).map(|(p, _)| p))
 }
 
+/// `worktree_of`, when Hersir's git may read that worktree (GA-322): `repo` itself (its main checkout), or the card
+/// worktree of `repo` that the folder is in (its top folder, `card_folder`), where Hersir's git takes its git folders
+/// from the repository. None for any other folder: git lists a linked worktree where the `gitdir` file in its own folder
+/// in the repository's git folder says, and a run may write that file (Codex's sandbox does, for its commits), so the
+/// folder could be one of the agent's own, whose git settings start programs. Never the path as git lists it: a link
+/// there could point elsewhere by the time git runs.
+pub fn safe_worktree_of(repo: &Path, branch: &str) -> Result<Option<PathBuf>, AgentError> {
+    let Some(wt) = worktree_of(repo, branch)? else { return Ok(None) };
+    Ok(match card_of(&wt) {
+        Some((card, of)) => same(&of, repo).then_some(card),
+        None => same(&wt, repo).then(|| repo.to_path_buf()),
+    })
+}
+
 /// Removes a worktree, never by force: git refuses one with uncommitted changes or untracked files, and says so. Its
 /// `.gizai-tmp` goes with it: `info/exclude` makes it ignored, not untracked (`exclude_temp`).
 pub fn remove_worktree(repo: &Path, path: &Path) -> Result<(), AgentError> {
@@ -1172,7 +1186,8 @@ pub fn delete_branch(repo: &Path, branch: &str) -> Result<(), AgentError> {
 pub struct Removal {
     /// The worktree it removed.
     pub removed: Option<PathBuf>,
-    /// The worktree it left in place, and why: it isn't one of Gizai's, or git refused (uncommitted changes).
+    /// The worktree it left in place, and why: it isn't one of Gizai's, its git folder was changed, or git refused
+    /// (uncommitted changes).
     pub kept: Option<(PathBuf, String)>,
     /// Whether it deleted the branch.
     pub branch_deleted: bool,
@@ -1205,6 +1220,8 @@ impl Removal {
 /// - The worktree is the one that has `branch` checked out. Only one inside `worktrees_dir` (Gizai's own folder) is
 ///   removed, and never by force: git keeps one with uncommitted changes or untracked files. One whose folder is
 ///   already gone only leaves git's list. Its runs' temp folder in `temp_base()` goes with it (`remove_run_temp`).
+///   One whose git folder a run changed stays (`git_folder_problem`, GA-322): git's check for uncommitted changes there
+///   would read its settings from where the run pointed it.
 /// - The branch goes only when no worktree has it checked out any more (a kept worktree keeps it). `git branch -D`
 ///   also deletes commits that aren't merged anywhere, so the caller decides whether that is fine.
 pub fn remove_card_worktree(repo: &Path, worktrees_dir: &Path, branch: &str, delete_branch: bool) -> Removal {
@@ -1219,6 +1236,12 @@ pub fn remove_card_worktree_with(repo: &Path, worktrees_dir: &Path, temp_base: &
         Ok(None) => false,
         Ok(Some(wt)) if !inside(&wt, worktrees_dir) => {
             out.kept = Some((wt, "it isn't one of Hersir's worktrees".into()));
+            true
+        }
+        // GA-322: git's own look for uncommitted changes before it removes one (a git status in it) follows the worktree's
+        // .git file and its git folder's commondir, which a run may have changed (`git_folder_problem`)
+        Ok(Some(wt)) if wt.exists() && git_folder_problem(repo, &wt).is_some() => {
+            out.kept = Some((wt, "its git folder was changed, so Hersir doesn't run git there".into()));
             true
         }
         Ok(Some(wt)) => {
