@@ -297,7 +297,7 @@ export default function App({ onboarding = false }: { onboarding?: boolean }) {
               : route.page === "editor" ? <EditorPage id={route.id} youId={info?.you_id ?? ""} />
               : route.page === "terminal" ? <TerminalPage id={route.id} youId={info?.you_id ?? ""} />
               : route.page === "projects" ? <ProjectsPage />
-              : route.page === "project" && route.id ? <ProjectPage key={route.id} id={route.id} />
+              : route.page === "project" && route.id ? <ProjectPage key={route.id} id={route.id} view={route.view === "time" ? "time" : "overview"} />
               : <Placeholder route={route} info={info} />}
           </Suspense>
         </div></main>

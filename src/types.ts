@@ -637,6 +637,13 @@ export type ProjectUsage = { projectId: string; number: string; key: string; nam
 export type Usage = { since: number; until: number; total: UsageTotals; days: UsageDay[]; agents: AgentUsage[]; projects: ProjectUsage[];
   chat: UsageTotals; noProject: UsageTotals };
 
+// ---- a project's Time tracking tab (gizai-core usage.rs, GA-331) ----
+/** One card and what all of its runs added up to. `runs`: the runs that started; `timeMs`: the ended runs' time (an interrupted run
+ *  counts at most the run time limit); `runningSince`: the start of the run working on it now; input tokens include cache reads
+ *  and writes. */
+export type CardTime = { taskId: string; identifier: string; title: string; column: string; archived: boolean; runs: number;
+  timeMs: number; runningSince: number | null; inputTokens: number; outputTokens: number };
+
 // ---- the Usage page's Subscription tab (gizai-core limits.rs) ----
 /** One reading of a subscription limit, as the coding CLI reported it in a run or chat turn. `usedPercent`: 0 to 100 (more past the
  *  cap), null when the CLI only said the limit was reached; `status`: allowed, allowed_warning (near it) or rejected (reached);
