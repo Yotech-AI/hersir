@@ -223,7 +223,8 @@ where
     let check = grant.scope.get("check").and_then(|v| v.as_str()).map(str::to_string);
     let run = grant.scope.get("run").and_then(|v| v.as_str()).map(str::to_string);
     let question = grant.scope.get("question").and_then(|v| v.as_str()).map(str::to_string);
-    // GA-338: Claude Desktop's lasting token says `{"client": "claude-desktop"}`: only the tools that read.
+    // GA-338: Claude Desktop's lasting token says `{"client": "claude-desktop"}`; GA-341: it gets the Chief's tools with the
+    // Chief's rules (`GizaiTools::desktop`).
     let client = grant.scope.get("client").and_then(|v| v.as_str()).map(str::to_string);
     let lasting = client.is_some();
     let db = st.db.clone();

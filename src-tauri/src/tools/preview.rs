@@ -55,7 +55,7 @@ fn card(t: &gizai_core::model::Task) -> String {
 /// The pending call `tool` with `args`, as the Chief `actor` in the chat `thread` would make it.
 pub(crate) fn preview(st: &crate::AppState, actor: &str, thread: &str, tool: &str, args: &Value) -> Preview {
     let a = Args(args.as_object().cloned().unwrap_or_default());
-    let cx = Cx { st, actor, thread: Some(thread), check: None, from: None, approved: false };
+    let cx = Cx { st, actor, thread: Some(thread), check: None, from: None, approved: false, desktop: false };
     let p = match tool {
         "memory_write" => memory_write(&cx, &a),
         "memory_append" => memory_append(&cx, &a),
@@ -116,7 +116,7 @@ pub(crate) fn note_key(st: &crate::AppState, actor: &str, thread: &str, tool: &s
         _ => return None,
     };
     let r = args.get(key)?.as_str()?.trim();
-    let cx = Cx { st, actor, thread: Some(thread), check: None, from: None, approved: false };
+    let cx = Cx { st, actor, thread: Some(thread), check: None, from: None, approved: false, desktop: false };
     let found =if tool == "memory_write" { note_at(&cx, r) } else { note(&cx, r) };
     Some(match found {
         Some(n) => n.id,
