@@ -1,6 +1,6 @@
 // Settings → MCP servers → Claude Desktop (GA-340, on GA-338's contract): connect the Claude Desktop app on this computer to
-// Hersir, through the hersir-mcp program, so Claude can read the board, cards, docs and memory; and end that again. It
-// saves at once, as McpSettings does: Save settings has nothing to do with it.
+// Hersir, through the hersir-mcp program, so Claude gets the Chief's tools and works by its rules (GA-341); and end that
+// again. Its texts are in lib/claudeDesktop.ts. It saves at once, as McpSettings does: Save settings has nothing to do with it.
 //
 // Connect (and Connect again: a new key, the old one ends) adds the entry to Claude Desktop's settings when the box is on,
 // or shows it to paste. What it says stays until you leave Settings (the panel is only hidden between tabs); Disconnect

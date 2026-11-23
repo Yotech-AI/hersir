@@ -15,7 +15,8 @@ use crate::runs::Note;
 pub use gizai_mcp::ToolDef;
 
 /// The MCP server's view of the tools for one agent (the token's owner), in one chat thread or one board check (the
-/// token's scope); for Claude Desktop (GA-338) the owner is you, and the tools only read.
+/// token's scope); for Claude Desktop (GA-338) the owner is you, and it gets the Chief's tools with the Chief's rules
+/// (GA-341, `call_desktop`).
 pub struct GizaiTools {
     pub st: AppState,
     pub actor: String,
@@ -27,8 +28,8 @@ pub struct GizaiTools {
     /// GA-70: the question (the run that asked) a Chief's run on a question was minted for: only the tools that
     /// read work there (`IN_A_QUESTION`).
     pub question: Option<String>,
-    /// GA-338: the app outside Hersir the token was made for (its scope's `client`): `CLAUDE_DESKTOP`, where only the
-    /// tools that read work (`IN_CLAUDE_DESKTOP`).
+    /// GA-338: the app outside Hersir the token was made for (its scope's `client`): `CLAUDE_DESKTOP`, which gets the
+    /// Chief's tools with the Chief's rules (GA-341, `desktop`).
     pub client: Option<String>,
 }
 
@@ -36,16 +37,21 @@ pub struct GizaiTools {
 pub const CLAUDE_DESKTOP: &str = "claude-desktop";
 
 impl GizaiTools {
-    /// Only the tools that read are offered and run: in a question (GA-70), and in Claude Desktop (GA-338).
-    fn only_reads(&self) -> bool {
-        self.question.is_some() || self.client.as_deref() == Some(CLAUDE_DESKTOP)
+    /// GA-341: Claude Desktop's token, by its client's name (`CLAUDE_DESKTOP`), for no chat, board check or question: it is
+    /// offered the Chief's tools (`desktop_catalog`), and its calls run with the Chief's rules (`call_desktop`). The only
+    /// token for no chat, board check or question that may change something; any other only reads (`call_scoped`).
+    fn desktop(&self) -> bool {
+        self.client.as_deref() == Some(CLAUDE_DESKTOP) && self.thread.is_none() && self.check.is_none() && self.question.is_none()
     }
 }
 
 impl gizai_mcp::Tools for GizaiTools {
     fn list(&self) -> Vec<ToolDef> {
-        // A run on a question, and Claude Desktop, only read: they aren't offered the rest.
-        catalog().into_iter().filter(|t| t.read_only || !self.only_reads()).collect()
+        if self.desktop() {
+            return desktop_catalog();
+        }
+        // A run on a question only reads: it isn't offered the rest.
+        catalog().into_iter().filter(|t| t.read_only || self.question.is_none()).collect()
     }
     async fn call(&self, name: &str, args: Value) -> Result<Value, String> {
         self.call_with_meta(name, args, &Value::Null).await
@@ -54,13 +60,12 @@ impl gizai_mcp::Tools for GizaiTools {
         if self.question.is_some() && !reads_only(name) {
             return Err(IN_A_QUESTION.replace("{tool}", name));
         }
-        // GA-338: refused before anything runs, whatever else the scope says.
-        if self.client.as_deref() == Some(CLAUDE_DESKTOP) && !reads_only(name) {
-            return Err(IN_CLAUDE_DESKTOP.replace("{tool}", name));
-        }
         // The answer's stream shows the tool use each call comes from, with the id Claude Code gives the call.
         let from = Stream { run: self.run.as_deref().unwrap_or_default(), tool_use: meta.get("claudecode/toolUseId").and_then(Value::as_str) };
-        call_scoped(&self.st, &self.actor, self.thread.as_deref(), self.check.as_deref(), Some(from), name, args, false).await
+        if self.desktop() {
+            return call_desktop(&self.st, &self.actor, from, name, args).await;
+        }
+        call_scoped(&self.st, &self.actor, self.thread.as_deref(), self.check.as_deref(), Some(from), name, args, false, false).await
     }
 }
 
@@ -69,14 +74,62 @@ impl gizai_mcp::Tools for GizaiTools {
 const IN_A_QUESTION: &str = "{tool} can't be used while you look at an agent's question: you only look things up (memory, the card, \
     docs, your copies of the code). End with your GIZAI_RESULT line: Hersir answers on the card and continues the agent, or asks the user.";
 
-/// GA-338: why Claude Desktop can't use a tool that changes something (writes come later, and will wait for the user's
-/// Approve in Hersir). Word for word as the card has it.
-pub const IN_CLAUDE_DESKTOP: &str = "{tool} isn't available in Claude Desktop yet: Claude Desktop can only read your Hersir board for now.";
-
 /// GA-338: why a call over MCP whose token is for no chat, board check or question can't use a tool that changes
-/// something (`call_scoped`): none of the rules that make such a call wait for the user's Approve would hold.
+/// something (`call_scoped`): none of the rules that make such a call wait for the user's Approve would hold. GA-341:
+/// Claude Desktop's token is the one exception (`call_desktop`).
 pub const ONLY_READS: &str = "{tool} isn't available with this token: it is for no chat, board check or question, so it can only read \
     your Hersir board.";
+
+/// GA-341: why Claude Desktop can't start a chat in Hersir: it asks the user in its own chat. Word for word as the card has it.
+pub const START_CHAT_IN_CLAUDE_DESKTOP: &str = "start_chat isn't available in Claude Desktop: ask the user here, in this chat.";
+
+/// GA-341: why Claude Desktop can't update a project's linked folder: update_checkout needs a chat in Hersir, where its
+/// result comes as a message (`write::update_checkout`). Word for word as the card has it.
+pub const UPDATE_CHECKOUT_IN_CLAUDE_DESKTOP: &str = "update_checkout isn't available in Claude Desktop: it works only in Hersir's chat, \
+    where its result comes as a message.";
+
+/// GA-341: the tools of the Chief's chat turns that Claude Desktop isn't offered, each with its answer when it is called anyway.
+const NOT_IN_CLAUDE_DESKTOP: [(&str, &str); 2] = [("start_chat", START_CHAT_IN_CLAUDE_DESKTOP), ("update_checkout", UPDATE_CHECKOUT_IN_CLAUDE_DESKTOP)];
+
+/// GA-341: the tool only Claude Desktop is offered (`desktop_catalog`), not the Chief's own turns: what the Chief works by
+/// (`chief_brief`). Its name starts with get_, so `ToolDef::read_only` marks it.
+pub const CHIEF_BRIEF: &str = "get_chief_brief";
+
+/// GA-341: what get_chief_brief starts with, for the user named `you`, word for word as the card has it; the Chief's
+/// instructions follow (`chief_brief`).
+pub fn chief_brief_line(you: &str) -> String {
+    format!("You are working as Hersir's Chief for {you}, from Claude Desktop. Hersir's tools act at once, like the Chief's do in Hersir's \
+             chat. Leave out what only fits a run on a card, like the GIZAI_RESULT line. Look things up in Hersir's memory (memory_search) \
+             before you ask the user.")
+}
+
+/// GA-341: get_chief_brief's answer, as plain text: `chief_brief_line` for the user, a blank line, then the Chief's
+/// instructions as the Chief's chat gets them (`chat::system_prompt`): the instructions in the agent form of the agent with
+/// Chat on, as they are, else (none written, or no agent has Chat on) the Chief's standard ones, its role's template.
+fn chief_brief(st: &AppState) -> Result<Value, String> {
+    let you = gizai_core::users::list(&st.db).map_err(err)?.into_iter().find(|p| p.id == st.you_id).map(|p| p.name)
+        .unwrap_or_else(|| "the user".into());
+    let instructions = gizai_core::team::chat_agent(&st.db).map_err(err)?.and_then(|chief| chief.instructions_md)
+        .filter(|i| !i.trim().is_empty()).unwrap_or_else(|| gizai_core::seed::role_template("lead"));
+    Ok(Value::String(format!("{}\n\n{instructions}", chief_brief_line(&you))))
+}
+
+/// GA-341: a call from Claude Desktop (`GizaiTools::desktop`). It runs as a call from a Chief's chat turn in a chat that
+/// used no tool from outside Hersir, as the token's actor (you), so its activity and comments show your name. Hersir can't
+/// see what else Claude used in its chat, so the rules about tools from outside Hersir (GA-101, GA-261, GA-319) don't
+/// apply; every other rule does, whoever the actor is: the hold that waits for your OK (`ONLY_THE_USER`), new agent
+/// commands (GA-323: with no chat to keep the call in, it isn't run, `Cx::keep_commands`), attach_file (only the Chief's
+/// copies of the code, `write::allowed_attachment`) and merge_pull_request's rules. It approves no kept call: those stay
+/// yours, in Hersir. start_chat and update_checkout answer why they aren't offered, and get_chief_brief is its own.
+async fn call_desktop(st: &AppState, actor: &str, from: Stream<'_>, name: &str, args: Value) -> Result<Value, String> {
+    if let Some((_, why)) = NOT_IN_CLAUDE_DESKTOP.iter().find(|(tool, _)| *tool == name) {
+        return Err(why.to_string());
+    }
+    if name == CHIEF_BRIEF {
+        return chief_brief(st);
+    }
+    call_scoped(st, actor, None, None, Some(from), name, args, false, true).await
+}
 
 /// A tool that only reads (`ToolDef::read_only`): the gets, lists and reads, check_board and the memory reads.
 fn reads_only(name: &str) -> bool {
@@ -98,19 +151,19 @@ pub async fn call(st: &AppState, actor: &str, name: &str, args: Value) -> Result
 /// Runs one tool as `actor` for a chat thread (what the user said there widens `attach_file`). Called directly, not by
 /// an answer's Claude Code, so no stream shows it: only a thread already marked refuses the tools that act.
 pub async fn call_in(st: &AppState, actor: &str, thread: Option<&str>, name: &str, args: Value) -> Result<Value, String> {
-    call_scoped(st, actor, thread, None, None, name, args, false).await
+    call_scoped(st, actor, thread, None, None, name, args, false, false).await
 }
 
 /// Runs one tool as `actor` in the board check `run_id`: nobody named a file, and the check's rules hold.
 pub async fn call_check(st: &AppState, actor: &str, run_id: &str, name: &str, args: Value) -> Result<Value, String> {
-    call_scoped(st, actor, None, Some(run_id), None, name, args, false).await
+    call_scoped(st, actor, None, Some(run_id), None, name, args, false, false).await
 }
 
 /// Runs a call you approved (GA-102, `pending::approve`): exactly the stored call, as `actor` (the Chief) in its chat
 /// `thread`, with every rule in force but the ones about a tool from outside Gizai in that chat: it isn't kept again, a card
 /// it changes doesn't wait on hold for your OK (GA-101), and it may take that hold off (GA-261).
 pub(crate) async fn call_approved(st: &AppState, actor: &str, thread: &str, name: &str, args: Value) -> Result<Value, String> {
-    call_scoped(st, actor, Some(thread), None, None, name, args, true).await
+    call_scoped(st, actor, Some(thread), None, None, name, args, true, false).await
 }
 
 /// What a board check may not do, whatever it is asked: attach a file nobody named, change an agent's settings, set up
@@ -196,15 +249,17 @@ async fn shown(st: &AppState, thread: &str, from: Option<Stream<'_>>, name: &str
     Ok(())
 }
 
+/// `desktop`: the call comes from Claude Desktop (GA-341, `call_desktop`, the only caller that sets it).
 #[allow(clippy::too_many_arguments)]
 async fn call_scoped(st: &AppState, actor: &str, thread: Option<&str>, check: Option<&str>, from: Option<Stream<'_>>, name: &str, args: Value,
-                     approved: bool) -> Result<Value, String> {
+                     approved: bool, desktop: bool) -> Result<Value, String> {
     // GA-338: fail closed. A call over MCP (`from`) with no chat thread and no board check would skip every rule that makes
     // a call wait for the user's Approve (`Cx::outside` is None without a thread), so only a tool that reads runs there,
-    // whatever else its token's scope says: Claude Desktop's token (refused before this already, `IN_CLAUDE_DESKTOP`), a
-    // question's (refused before this too, `IN_A_QUESTION`), or any other. The calls Hersir makes itself (`call`,
-    // `call_in`, `call_check`, `call_approved`) have no `from`.
-    if from.is_some() && thread.is_none() && check.is_none() && !reads_only(name) {
+    // whatever else its token's scope says: a question's (refused before this already, `IN_A_QUESTION`), or any other.
+    // GA-341: Claude Desktop's token is the one exception, by its client's name (`GizaiTools::desktop`): its calls run as a
+    // Chief's chat turn's in a chat that used no tool from outside Hersir (`call_desktop`). The calls Hersir makes itself
+    // (`call`, `call_in`, `call_check`, `call_approved`) have no `from`.
+    if from.is_some() && thread.is_none() && check.is_none() && !desktop && !reads_only(name) {
         return Err(ONLY_READS.replace("{tool}", name));
     }
     let a = Args(match args {
@@ -225,7 +280,7 @@ async fn call_scoped(st: &AppState, actor: &str, thread: Option<&str>, check: Op
     if name == "archive_tasks" {
         write::archive_scope(&a)?;
     }
-    let cx = Cx { st, actor, thread, check, from, approved };
+    let cx = Cx { st, actor, thread, check, from, approved, desktop };
     // A call you approved (GA-102) was kept because of that rule, so it doesn't apply to it; every other rule does.
     if NOT_AFTER_OUTSIDE.contains(&name) && let Some(tool) = cx.outside(name, &a).await? {
         // Not run: kept under the answer for the user to approve with one click, or discard (GA-102).
@@ -302,6 +357,9 @@ pub(crate) struct Cx<'a> {
     from: Option<Stream<'a>>,
     /// A call the user approved (GA-102, `call_approved`): the rules about a tool from outside Gizai don't apply to it.
     pub approved: bool,
+    /// GA-341: a call from Claude Desktop (`call_desktop`), as you: the rules of a Chief's chat turn in a chat that used no
+    /// tool from outside Hersir, with no chat to keep a call in or to name a file in.
+    pub desktop: bool,
 }
 
 impl Cx<'_> {
@@ -478,7 +536,15 @@ fn with<const N: usize>(head: &[(&'static str, &'static str, &'static str)], res
     head.iter().copied().chain(rest).collect()
 }
 
-/// Every tool with its description and argument schema.
+/// GA-341: what Claude Desktop is offered (`GizaiTools::desktop`): get_chief_brief first, to read before it changes the
+/// board, then every tool of the Chief's chat turns (`catalog`) but start_chat and update_checkout (`NOT_IN_CLAUDE_DESKTOP`).
+pub fn desktop_catalog() -> Vec<ToolDef> {
+    let brief = tool(CHIEF_BRIEF, "What Hersir's Chief works by: its instructions. Read it before you change the board, and follow it as the \
+                                   Chief does.", &[], &[]);
+    std::iter::once(brief).chain(catalog().into_iter().filter(|t| !NOT_IN_CLAUDE_DESKTOP.iter().any(|(name, _)| *name == t.name))).collect()
+}
+
+/// Every tool with its description and argument schema: what the Chief's chat turns are offered.
 pub fn catalog() -> Vec<ToolDef> {
     vec![
         tool("get_overview", "A summary of the organisation: clients, active projects, tasks per column, how many items wait in the inbox, the agents and who is working now. Start here.", &[], &[]),
