@@ -221,7 +221,49 @@ pub struct CardTime {
     /// Cache reads and writes included.
     pub input_tokens: i64,
     pub output_tokens: i64,
+    /// The runs' API cost that is known (GA-354): an estimate at API prices, not a bill.
+    pub cost_usd_micros: i64,
+    /// Runs with tokens but no cost (`unknown_cost`): their cost is unknown, and `cost_usd_micros` leaves it out.
+    pub unknown_cost_runs: i64,
 }
+
+/// One UTC day of a project's Time tracking tab (GA-354): what the runs that started on it added up to, by the rules of
+/// `card_times` (a run counts on the day it started, its whole time included).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TimeDay {
+    /// Midnight UTC (Unix ms).
+    pub day_start: i64,
+    /// Runs that started on it.
+    pub runs: i64,
+    /// Those runs' time once they ended; an interrupted run counts at most the run time limit.
+    pub time_ms: i64,
+    /// Cache reads and writes included.
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub cost_usd_micros: i64,
+    pub unknown_cost_runs: i64,
+}
+
+/// A project's Time tracking tab for a period (GA-354): its cards and its UTC days.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectTime {
+    /// The period, Unix ms: the runs that started from `since` up to (not including) `until`. Both None: all of them.
+    pub since: Option<i64>,
+    pub until: Option<i64>,
+    /// When the project's first run started (over all time, whatever the period), None before its first run.
+    pub first_run: Option<i64>,
+    /// All time: every card of the project. In a period: only the cards with a run that started in it, with their sums for
+    /// that period. Newest card first.
+    pub cards: Vec<CardTime>,
+    /// All time: from the UTC day of `first_run` to today. In a period: every day of it. Oldest first; days without runs
+    /// are 0. At most `MAX_TIME_DAYS`.
+    pub days: Vec<TimeDay>,
+}
+
+/// The most days `ProjectTime::days` holds: ten years. A longer period is `Error::Invalid`; all time keeps its newest days.
+pub const MAX_TIME_DAYS: i64 = 3_660;
 
 /// The error of a run Hersir found working when it started again (`runs::recover_interrupted`): it ended then, at the
 /// next start-up, not when it stopped.
@@ -237,9 +279,84 @@ const MINUTE_MS: i64 = 60_000;
 pub fn project_time(db: &Db, project_id: &str, max_run_ms: i64) -> Result<Vec<CardTime>> {
     db.read(|c| {
         let ids = project_cards(c, project_id)?;
-        let mut times = card_times_in(c, &ids, max_run_ms)?;
+        let mut times = card_times_in(c, &ids, max_run_ms, None)?;
         Ok(ids.iter().filter_map(|id| times.remove(id)).collect())
     })
+}
+
+/// The project's Time tracking tab for a period (GA-354): its cards and UTC days, by the rules of `card_times`, for the runs
+/// that started from `since` up to (not including) `until`, Unix ms, or for all of them with neither. A run counts in a
+/// period when it started in it, and on the UTC day it started. `project_time` is this tab for all time, as a list.
+///
+/// Give both `since` and `until` or neither; a period that ends before it starts, or is longer than `MAX_TIME_DAYS`, is
+/// `Error::Invalid`. An unknown project is `Error::NotFound`.
+pub fn project_time_period(db: &Db, project_id: &str, max_run_ms: i64, since: Option<i64>, until: Option<i64>) -> Result<ProjectTime> {
+    project_time_at(db, project_id, max_run_ms, since, until, crate::ids::now_ms())
+}
+
+/// `project_time_period` at `now`: all time's days end with the UTC day of `now`.
+pub fn project_time_at(db: &Db, project_id: &str, max_run_ms: i64, since: Option<i64>, until: Option<i64>, now: i64) -> Result<ProjectTime> {
+    let period = match (since, until) {
+        (None, None) => None,
+        (Some(s), Some(u)) if u <= s => return Err(Error::Invalid("the period ends before it starts".into())),
+        (Some(s), Some(u)) if (u as i128 - s as i128) > (MAX_TIME_DAYS as i128) * DAY_MS as i128 =>
+            return Err(Error::Invalid(format!("a period of at most {MAX_TIME_DAYS} days"))),
+        (Some(s), Some(u)) => Some((s, u)),
+        _ => return Err(Error::Invalid("give both since and until, or neither".into())),
+    };
+    db.read(|c| {
+        let ids = project_cards(c, project_id)?;
+        let mut times = card_times_in(c, &ids, max_run_ms, period)?;
+        let cards: Vec<CardTime> = ids.iter().filter_map(|id| times.remove(id)).filter(|t| period.is_none() || t.runs > 0).collect();
+        let first_run: Option<i64> = c.query_row(
+            "SELECT MIN(r.started_at) FROM runs r JOIN tasks t ON t.id = r.task_id
+             WHERE t.project_id = ?1 AND r.deleted_at IS NULL AND r.started_at IS NOT NULL",
+            [project_id], |r| r.get(0))?;
+        // the days: the period's, or all time's from the day of the first run to today (or the newest run's day, if later)
+        let (start, end) = match (period, first_run) {
+            (Some(p), _) => p,
+            (None, None) => (0, 0),
+            (None, Some(first)) => {
+                let last: i64 = c.query_row(
+                    "SELECT COALESCE(MAX(r.started_at), 0) FROM runs r JOIN tasks t ON t.id = r.task_id
+                     WHERE t.project_id = ?1 AND r.deleted_at IS NULL AND r.started_at IS NOT NULL",
+                    [project_id], |r| r.get(0))?;
+                let end = utc_day(now.max(last)) + DAY_MS;
+                (utc_day(first).max(end - MAX_TIME_DAYS * DAY_MS), end)
+            }
+        };
+        let n_days = ((end as i128 - start as i128 + DAY_MS as i128 - 1) / DAY_MS as i128).clamp(0, MAX_TIME_DAYS as i128) as i64;
+        let mut days: Vec<TimeDay> = (0..n_days).map(|i| TimeDay { day_start: start + i * DAY_MS, ..TimeDay::default() }).collect();
+        if n_days > 0 {
+            let span = "MAX(r.ended_at - r.started_at, 0)";
+            let unknown = unknown_cost("r");
+            let mut st = c.prepare_cached(&format!(
+                "SELECT (r.started_at - ?2) / {DAY_MS}, count(*),
+                        COALESCE(SUM(CASE WHEN r.ended_at IS NOT NULL THEN
+                            CASE WHEN r.error = ?5 THEN MIN({span}, ?4) ELSE {span} END END), 0),
+                        COALESCE(SUM(r.input_tokens), 0), COALESCE(SUM(r.output_tokens), 0),
+                        COALESCE(SUM(r.cost_usd_micros), 0), COALESCE(SUM({unknown}), 0)
+                 FROM runs r JOIN tasks t ON t.id = r.task_id
+                 WHERE t.project_id = ?1 AND r.deleted_at IS NULL AND r.started_at >= ?2 AND r.started_at < ?3
+                 GROUP BY 1"))?;
+            let rows = st.query_map(params![project_id, start, end, max_run_ms.max(0), INTERRUPTED], |r| Ok((r.get::<_, i64>(0)?, TimeDay {
+                day_start: 0, runs: r.get(1)?, time_ms: r.get(2)?, input_tokens: r.get(3)?, output_tokens: r.get(4)?,
+                cost_usd_micros: r.get(5)?, unknown_cost_runs: r.get(6)?,
+            })))?;
+            for row in rows {
+                let (i, d) = row?;
+                if let Some(day) = usize::try_from(i).ok().and_then(|i| days.get_mut(i)) {
+                    *day = TimeDay { day_start: day.day_start, ..d };
+                }
+            }
+        }
+        Ok(ProjectTime { since: period.map(|p| p.0), until: period.map(|p| p.1), first_run, cards, days })
+    })
+}
+
+/// Midnight UTC of the day `ms` falls on.
+fn utc_day(ms: i64) -> i64 {
+    ms - ms.rem_euclid(DAY_MS)
 }
 
 /// Each card's agent time and tokens, added up over all of its runs, keyed by task id (GA-332): the one place for the
@@ -255,16 +372,19 @@ pub fn project_time(db: &Db, project_id: &str, max_run_ms: i64) -> Result<Vec<Ca
 /// - `running_since`: the earliest start of a run that started and hasn't ended.
 /// - Tokens: the sums; a running run's are saved when it ends.
 pub fn card_times(db: &Db, task_ids: &[String], max_run_ms: i64) -> Result<HashMap<String, CardTime>> {
-    db.read(|c| card_times_in(c, task_ids, max_run_ms))
+    db.read(|c| card_times_in(c, task_ids, max_run_ms, None))
 }
 
-fn card_times_in(c: &Connection, task_ids: &[String], max_run_ms: i64) -> Result<HashMap<String, CardTime>> {
+/// `card_times` over the runs that started in `period` (from its start up to, not including, its end), or over all of
+/// them with None (GA-354): a run that never started is in no period.
+fn card_times_in(c: &Connection, task_ids: &[String], max_run_ms: i64, period: Option<(i64, i64)>) -> Result<HashMap<String, CardTime>> {
     let mut out = HashMap::with_capacity(task_ids.len());
     if task_ids.is_empty() {
         return Ok(out);
     }
     let span = "MAX(r.ended_at - r.started_at, 0)";
     let ended = "r.started_at IS NOT NULL AND r.ended_at IS NOT NULL";
+    let unknown = unknown_cost("r");
     // DISTINCT: a card given twice would join its runs twice and count them double
     let mut st = c.prepare_cached(&format!(
         "SELECT t.id, t.identifier, t.title, COALESCE(s.name, ''), t.deleted_at IS NOT NULL,
@@ -272,15 +392,19 @@ fn card_times_in(c: &Connection, task_ids: &[String], max_run_ms: i64) -> Result
                 COALESCE(SUM(CASE WHEN {ended} THEN
                     CASE WHEN r.error = ?3 THEN MIN({span}, ?2) ELSE {span} END END), 0),
                 MIN(CASE WHEN r.started_at IS NOT NULL AND r.ended_at IS NULL THEN r.started_at END),
-                COALESCE(SUM(r.input_tokens), 0), COALESCE(SUM(r.output_tokens), 0)
+                COALESCE(SUM(r.input_tokens), 0), COALESCE(SUM(r.output_tokens), 0),
+                COALESCE(SUM(r.cost_usd_micros), 0), COALESCE(SUM({unknown}), 0)
          FROM (SELECT DISTINCT value AS id FROM json_each(?1)) j
          JOIN tasks t ON t.id = j.id
          LEFT JOIN workflow_states s ON s.id = t.state_id
          LEFT JOIN runs r ON r.task_id = t.id AND r.deleted_at IS NULL
+                         AND (?4 IS NULL OR r.started_at >= ?4) AND (?5 IS NULL OR r.started_at < ?5)
          GROUP BY t.id"))?;
-    let rows = st.query_map(params![serde_json::to_string(task_ids)?, max_run_ms.max(0), INTERRUPTED], |r| Ok(CardTime {
+    let (since, until) = (period.map(|p| p.0), period.map(|p| p.1));
+    let rows = st.query_map(params![serde_json::to_string(task_ids)?, max_run_ms.max(0), INTERRUPTED, since, until], |r| Ok(CardTime {
         task_id: r.get(0)?, identifier: r.get(1)?, title: r.get(2)?, column: r.get(3)?, archived: r.get(4)?,
         runs: r.get(5)?, time_ms: r.get(6)?, running_since: r.get(7)?, input_tokens: r.get(8)?, output_tokens: r.get(9)?,
+        cost_usd_micros: r.get(10)?, unknown_cost_runs: r.get(11)?,
     }))?;
     for row in rows {
         let card = row?;
@@ -366,7 +490,7 @@ pub struct DoneCards {
 pub fn time_tracking(db: &Db, project_id: &str, max_run_ms: i64, now: i64) -> Result<TimeTracking> {
     db.read(|c| {
         let ids = project_cards(c, project_id)?;
-        let times = card_times_in(c, &ids, max_run_ms)?;
+        let times = card_times_in(c, &ids, max_run_ms, None)?;
         let done: HashSet<String> = c.prepare(
             "SELECT t.id FROM tasks t JOIN workflow_states s ON s.id = t.state_id WHERE t.project_id = ?1 AND s.category = 'done'")?
             .query_map([project_id], |r| r.get(0))?

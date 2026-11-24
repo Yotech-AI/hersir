@@ -515,8 +515,9 @@ fn main() {
     c.insert("list_comments".into(), by("taskId", per_task(&|id| val(comments::list(&db, id).unwrap()))));
     c.insert("task_activity".into(), by("taskId", per_task(&|id| val(tasks::activity(&db, id).unwrap()))));
     c.insert("list_runs".into(), by("taskId", per_task(&|id| val(runs::list_for_task(&db, id).unwrap()))));
-    // a project's Time tracking tab (GA-331), with the default run time limit of 90 minutes
-    c.insert("project_time".into(), by("id", all_projects.iter().map(|p| (p.id.clone(), val(usage::project_time(&db, &p.id, 90 * 60_000).unwrap())))));
+    // a project's Time tracking tab for all time (GA-331, GA-354), with the default run time limit of 90 minutes; the mock counts a
+    // period from the runs (list_runs)
+    c.insert("project_time".into(), by("id", all_projects.iter().map(|p| (p.id.clone(), val(usage::project_time_at(&db, &p.id, 90 * 60_000, None, None, now).unwrap())))));
     c.insert("list_screenshots".into(), by("taskId", per_task(&|id| val(screenshots::sets(&db, id).unwrap()))));
     c.insert("suggest_agent".into(), by("taskId", per_task(&|id| json!(workflow::run_agent(&db, id).unwrap().map(|(a, _)| a)))));
     let mut owners: Vec<(String, &str)> = task_ids.iter().map(|id| (id.clone(), "task")).collect();

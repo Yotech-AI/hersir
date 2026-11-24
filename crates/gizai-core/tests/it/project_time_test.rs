@@ -103,7 +103,9 @@ fn a_card_adds_up_the_time_runs_and_tokens_of_all_its_ended_runs() {
     let c = w.row(&w.kade, &t);
     let task = tasks::get(&w.db, &t).unwrap();
     assert_eq!(c, CardTime { task_id: t.clone(), identifier: task.identifier, title: "Export invoices".into(), column: "In progress".into(),
-        archived: false, runs: 2, time_ms: 30 * MIN, running_since: None, input_tokens: 3_500, output_tokens: 350 });
+        archived: false, runs: 2, time_ms: 30 * MIN, running_since: None, input_tokens: 3_500, output_tokens: 350,
+        // GA-354: each run here reports 1_000 micros of API cost
+        cost_usd_micros: 2_000, unknown_cost_runs: 0 });
 }
 
 #[test]
@@ -297,7 +299,8 @@ fn a_project_without_cards_is_an_empty_list_and_an_unknown_one_an_error() {
 #[test]
 fn it_says_card_time_in_camel_case_as_the_ui_reads_it() {
     let c = CardTime { task_id: "t".into(), identifier: "KADE-1".into(), title: "A".into(), column: "Done".into(), archived: true, runs: 2,
-        time_ms: 3, running_since: Some(4), input_tokens: 5, output_tokens: 6 };
+        time_ms: 3, running_since: Some(4), input_tokens: 5, output_tokens: 6, cost_usd_micros: 7, unknown_cost_runs: 8 };
     assert_eq!(serde_json::to_value(&c).unwrap(), serde_json::json!({"taskId": "t", "identifier": "KADE-1", "title": "A", "column": "Done",
-        "archived": true, "runs": 2, "timeMs": 3, "runningSince": 4, "inputTokens": 5, "outputTokens": 6}));
+        "archived": true, "runs": 2, "timeMs": 3, "runningSince": 4, "inputTokens": 5, "outputTokens": 6, "costUsdMicros": 7,
+        "unknownCostRuns": 8}));
 }
