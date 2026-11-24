@@ -664,6 +664,22 @@ a.member:hover { border-color: var(--line-2); }
 .card-times { display: contents; }
 .card-times table.grid { table-layout: fixed; }
 .card-times .grid td { max-width: none; }
+/* GA-354: its period's chips right of the project's tabs (in a narrow window they scroll sideways, not out of the header); above
+   its list, scrolling away with it, the period's days (and Custom's From and To) under the chips, the totals as the Usage page's
+   stat cards, and its two charts, many bars closer together */
+.time-tools .chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+.time-tools .chip { flex: none; }
+.time-head { display: flex; flex-direction: column; gap: 12px; padding: 10px 24px 20px; }
+.time-head .time-stats { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.time-head .usage-charts { margin-top: 0; }
+.time-head .usage-metric { margin-top: 6px; }
+.time-period { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px 12px; min-height: 28px; color: var(--text-2); font-size: var(--fs-sm); }
+.time-days { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; }
+.time-days label { display: inline-flex; align-items: center; gap: 6px; }
+.time-days .input { width: 150px; height: 28px; font-size: var(--fs-sm); }
+.time-problem { color: var(--danger); }
+.usage-bars .seg-time { background: var(--accent); border-radius: 1px; }
+.bars.dense { gap: 1px; }
 .usage-page { gap: 18px; padding-top: 16px; }
 .usage-page .usage-metric { margin-top: 10px; }
 .usage-unknown { text-decoration: underline dotted var(--text-3); text-underline-offset: 3px; cursor: help; }
