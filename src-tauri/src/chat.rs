@@ -158,6 +158,9 @@ pub struct ChatManager {
     questions: Mutex<HashMap<String, Option<StopHandle>>>,
     /// GA-70: how each question the Chief took ends (by the run that asked), for whoever waits for it (`ask_lead::take`).
     pub(crate) settled: Mutex<HashMap<String, (Instant, tokio::task::JoinHandle<crate::ask_lead::Settled>)>>,
+    /// GA-342: wakes the calls waiting in `wait_until` (Claude Desktop's chief_reply): a message was saved in a chat, or a
+    /// chat stopped answering.
+    changed: tokio::sync::Notify,
 }
 
 /// A use of one of Gizai's tools that an answer's stream showed.
@@ -386,8 +389,16 @@ pub fn mark_outside(st: &AppState, thread_id: &str, tool: &str) {
     st.chat.outside.lock().unwrap().entry(thread_id.to_string()).or_insert(first);
 }
 
-/// What a chat's note says it is about (`meta.kind`) when it says the chat used a tool from outside Gizai (GA-261): once,
-/// when that marked it.
+/// GA-319: the Chief's message from a chat that used `tool`, a tool from outside Gizai, marked the chat `thread_id` (a chat
+/// it started with start_chat, or the waiting one the message went to, `chat::start_lead_chat_from`): the note there says
+/// so, once, as `mark_outside`'s does when a chat uses such a tool itself.
+pub(crate) fn marked_from_chat(st: &AppState, thread_id: &str, tool: &str) {
+    note(st, thread_id, &format!("The Chief wrote here from a chat that used {}, a tool from outside Hersir: from now on, what the Chief \
+                                 does here waits for your Approve.", outside_label(tool)), json!({"kind": OUTSIDE_NOTE, "tool": tool}));
+}
+
+/// What a chat's note says it is about (`meta.kind`) when it says the chat used a tool from outside Gizai (GA-261), or that
+/// the Chief wrote there from a chat that did (GA-319): once, when that marked it.
 pub const OUTSIDE_NOTE: &str = "outside";
 
 /// A tool from outside Gizai in words, as the Chat page says it (`outsideLabel`): "search on the otus server", "web
@@ -502,10 +513,45 @@ fn save(st: &AppState, m: NewMessage) -> Option<ChatMessage> {
         Ok(msg) => {
             emit(st, &thread, ChatUiEvent::Message { message: msg.clone() });
             (st.notify)(Note::RowsChanged("chat_messages"));
+            st.chat.changed.notify_waiters();
             Some(msg)
         }
         Err(e) => { eprintln!("gizai: saving a chat message failed: {e}"); None }
     }
+}
+
+/// GA-342: how often `wait_until` asks again without being woken: a message saved outside `save` (the core's own), or a
+/// change it wasn't told of.
+const WAIT_TICK: Duration = Duration::from_millis(500);
+
+/// GA-342: waits until `done` holds, at most until `deadline`. `done` is asked at once, then each time a message is saved
+/// in a chat or a chat stops answering, and every `WAIT_TICK` besides. Returns whether it held.
+pub(crate) async fn wait_until(st: &AppState, deadline: tokio::time::Instant, mut done: impl FnMut() -> bool) -> bool {
+    loop {
+        // Listening before looking, so a change in between still wakes this call.
+        let changed = st.chat.changed.notified();
+        tokio::pin!(changed);
+        changed.as_mut().enable();
+        if done() {
+            return true;
+        }
+        let now = tokio::time::Instant::now();
+        if now >= deadline {
+            return false;
+        }
+        let _ = tokio::time::timeout_at(deadline.min(now + WAIT_TICK), changed).await;
+    }
+}
+
+/// GA-342: the text the Chief is writing in the chat now, as `chat_live` has it (`ChatStatus::draft`), while it answers there.
+pub(crate) fn draft(st: &AppState, thread_id: &str) -> Option<String> {
+    st.chat.live.lock().unwrap().get(thread_id).map(|l| l.draft.clone())
+}
+
+/// GA-342: whether the Chief can answer in a new chat now (`prepare`, as for the first message of a new chat): its actor id,
+/// else why not, in the words Hersir's chat uses.
+pub(crate) fn chief_ready(st: &AppState) -> Result<String, String> {
+    prepare(st, None, None, None).map(|p| p.agent.actor_id)
 }
 
 /// Saves a system message in the chat (a note from Gizai, not from the Chief).
@@ -542,6 +588,9 @@ struct Plan {
 struct NewTurn {
     ids: Vec<String>,
     text: String,
+    /// GA-351: one of them came from Claude Desktop (`ChatMessage::from_desktop`), as they were saved or sent from the queue:
+    /// the turn has Claude Desktop's limits (`turn`).
+    desktop: bool,
 }
 
 const ANSWERING: &str = "The Chief is still answering in this chat: wait for it, or press Stop";
@@ -587,14 +636,14 @@ fn queued() -> tokio::task::JoinHandle<TurnSummary> {
     tokio::spawn(async { TurnSummary { run_id: String::new(), status: "queued".into(), error: None } })
 }
 
-/// While the Chief is answering in the thread: queues the message (`text` and its stored files, Some), or refuses
-/// when there is none to queue. Otherwise the thread is marked as answering from now on (None), and its old Stop is
-/// forgotten.
-fn begin_or_queue(st: &AppState, thread_id: &str, msg: Option<(&str, &[Blob])>) -> Result<Option<QueuedMessage>, String> {
+/// While the Chief is answering in the thread: queues the message (`text`, its stored files and its details, Some), or
+/// refuses when there is none to queue. Otherwise the thread is marked as answering from now on (None), and its old Stop
+/// is forgotten.
+fn begin_or_queue(st: &AppState, thread_id: &str, msg: Option<(&str, &[Blob], Option<&serde_json::Value>)>) -> Result<Option<QueuedMessage>, String> {
     let mut live = st.chat.live.lock().unwrap();
     if live.contains_key(thread_id) {
-        let (text, blobs) = msg.ok_or(ANSWERING)?;
-        let q = chat::enqueue_with_files(&st.db, &st.you_id, thread_id, text, blobs).map_err(|e| e.to_string())?;
+        let (text, blobs, meta) = msg.ok_or(ANSWERING)?;
+        let q = chat::enqueue_with_meta(&st.db, &st.you_id, thread_id, text, blobs, meta).map_err(|e| e.to_string())?;
         drop(live);
         (st.notify)(Note::ChatChanged);
         return Ok(Some(q));
@@ -609,6 +658,7 @@ fn begin_or_queue(st: &AppState, thread_id: &str, msg: Option<(&str, &[Blob])>) 
 fn end_live(st: &AppState, thread_id: &str) {
     st.chat.live.lock().unwrap().remove(thread_id);
     (st.notify)(Note::ChatChanged);
+    st.chat.changed.notify_waiters();
 }
 
 /// Where the chat moves to another coding CLI (its session is in another account): a note before the messages that go
@@ -654,6 +704,36 @@ pub async fn send_on(st: &AppState, thread_id: Option<String>, text: String, cli
 /// says which. With files, the text may be empty. The Chief gets a copy of each in its own folder (`lead_files_dir`).
 pub async fn send_with_files(st: &AppState, thread_id: Option<String>, text: String, cli: Option<String>, files: Vec<String>,
                              bin_override: Option<String>) -> Result<(String, tokio::task::JoinHandle<TurnSummary>), String> {
+    let sent = send_message(st, thread_id, text, cli, files, bin_override).await?;
+    Ok((sent.thread_id, sent.done))
+}
+
+/// What became of a message you sent (`send_message`).
+pub struct Sent {
+    pub thread_id: String,
+    /// The message's id. One that waits in the chat's queue keeps it when it goes (`chat::send_queued`).
+    pub message_id: String,
+    /// Resolves when the answer has ended (`send`); at once, status "queued", for a message that waits in the queue.
+    pub done: tokio::task::JoinHandle<TurnSummary>,
+}
+
+/// `send_with_files`, which is this, also giving the message's id.
+pub async fn send_message(st: &AppState, thread_id: Option<String>, text: String, cli: Option<String>, files: Vec<String>,
+                          bin_override: Option<String>) -> Result<Sent, String> {
+    send_marked(st, thread_id, text, cli, files, bin_override, None).await
+}
+
+/// GA-342: Claude Desktop's ask_chief hands its message on here, as the Chat page's Send hands one on (`send_message`): saved
+/// as yours, it starts the Chief's answer or waits in the chat's queue. GA-351: marked as from Claude Desktop
+/// (`chat::desktop_meta`), sent or queued, so the Chat page says so over it and the Chief's answer to it has Claude
+/// Desktop's limits (`turn`).
+pub async fn send_from_desktop(st: &AppState, thread_id: String, text: String) -> Result<Sent, String> {
+    send_marked(st, Some(thread_id), text, None, vec![], None, Some(chat::desktop_meta())).await
+}
+
+/// `send_message` for a message with details (`meta`), which it keeps sent or queued.
+async fn send_marked(st: &AppState, thread_id: Option<String>, text: String, cli: Option<String>, files: Vec<String>,
+                     bin_override: Option<String>, meta: Option<serde_json::Value>) -> Result<Sent, String> {
     let text = text.trim().to_string();
     if text.is_empty() && files.is_empty() {
         return Err("Type a message first".into());
@@ -670,10 +750,10 @@ pub async fn send_with_files(st: &AppState, thread_id: Option<String>, text: Str
     if let Some(id) = &thread_id {
         let live = st.chat.live.lock().unwrap();
         if live.contains_key(id) {
-            chat::enqueue_with_files(&st.db, &st.you_id, id, &text, &blobs).map_err(|e| e.to_string())?;
+            let q = chat::enqueue_with_meta(&st.db, &st.you_id, id, &text, &blobs, meta.as_ref()).map_err(|e| e.to_string())?;
             drop(live);
             (st.notify)(Note::ChatChanged);
-            return Ok((id.clone(), queued()));
+            return Ok(Sent { thread_id: id.clone(), message_id: q.id, done: queued() });
         }
     }
     let plan = prepare(st, thread.as_ref(), if thread.is_none() { cli.as_deref() } else { None }, bin_override.clone())?;
@@ -688,8 +768,8 @@ pub async fn send_with_files(st: &AppState, thread_id: Option<String>, text: Str
             id
         }
     };
-    if begin_or_queue(st, &thread_id, Some((&text, &blobs)))?.is_some() {
-        return Ok((thread_id, queued()));
+    if let Some(q) = begin_or_queue(st, &thread_id, Some((&text, &blobs, meta.as_ref())))? {
+        return Ok(Sent { thread_id, message_id: q.id, done: queued() });
     }
     let Ok(thread) = chat::get_thread(&st.db, &thread_id) else {
         end_live(st, &thread_id);
@@ -697,13 +777,15 @@ pub async fn send_with_files(st: &AppState, thread_id: Option<String>, text: Str
     };
     switch_note(st, &thread, &plan, false);
     let Some(msg) = save(st, NewMessage { thread_id: thread_id.clone(), role: "user".into(), author_id: Some(st.you_id.clone()), body_md: Some(text.clone()),
-                                          files: blobs, ..Default::default() }) else {
+                                          files: blobs, meta, ..Default::default() }) else {
         end_live(st, &thread_id);
         return Err("Your message couldn't be saved".into());
     };
     (st.notify)(Note::ChatChanged);
-    let done = start_chain(st, &thread_id, plan, NewTurn { ids: vec![msg.id], text }, bin_override);
-    Ok((thread_id, done))
+    let message_id = msg.id.clone();
+    let desktop = msg.from_desktop();
+    let done = start_chain(st, &thread_id, plan, NewTurn { ids: vec![msg.id], text, desktop }, bin_override);
+    Ok(Sent { thread_id, message_id, done })
 }
 
 /// Copies the files of a message into Gizai's file store, off the async threads. Fails on the first that can't be
@@ -886,8 +968,10 @@ fn sent(st: &AppState, thread_id: &str, msgs: Vec<ChatMessage>) -> NewTurn {
         emit(st, thread_id, ChatUiEvent::Message { message: m.clone() });
     }
     (st.notify)(Note::RowsChanged("chat_messages"));
+    st.chat.changed.notify_waiters();
     let text = joined_text(&msgs);
-    NewTurn { ids: msgs.into_iter().map(|m| m.id).collect(), text }
+    let desktop = msgs.iter().any(ChatMessage::from_desktop);
+    NewTurn { ids: msgs.into_iter().map(|m| m.id).collect(), text, desktop }
 }
 
 /// The text a turn sends for messages that go together (`chat::joined`); a message of files only says so (its files
@@ -938,7 +1022,8 @@ pub async fn answer_on(st: &AppState, thread_id: &str, cli: &str, note_id: &str,
     switch_note(st, &thread, &plan, true);
     (st.notify)(Note::ChatChanged);
     let text = joined_text(&msgs);
-    Ok(start_chain(st, thread_id, plan, NewTurn { ids: msgs.into_iter().map(|m| m.id).collect(), text }, bin_override))
+    let desktop = msgs.iter().any(ChatMessage::from_desktop);
+    Ok(start_chain(st, thread_id, plan, NewTurn { ids: msgs.into_iter().map(|m| m.id).collect(), text, desktop }, bin_override))
 }
 
 /// A turn, and while each answer is done and messages were queued meanwhile, the next turn with them. Ends with the
@@ -1009,6 +1094,7 @@ fn next_turn(st: &AppState, thread_id: &str, summary: &TurnSummary, bin_override
         live.remove(thread_id);
         drop(live);
         st.chat.stopped.lock().unwrap().remove(thread_id);
+        st.chat.changed.notify_waiters();
         return None;
     }
 }
@@ -1031,12 +1117,16 @@ async fn turn(st: &AppState, thread_id: &str, plan: &Plan, new: &NewTurn) -> Tur
         && m.meta.as_ref().and_then(|v| v.get("action")).and_then(|v| v.as_str()).is_some_and(|id| !decided.ids.iter().any(|d| d == id));
     let (own, earlier): (Vec<ChatMessage>, Vec<ChatMessage>) = chat::messages(&st.db, thread_id).unwrap_or_default().into_iter()
         .filter(|m| m.role != "system" || heard(m)).partition(|m| new.ids.contains(&m.id));
+    // GA-351: an answer to a message from Claude Desktop (ask_chief), also one that goes with messages you typed, has Claude
+    // Desktop's limits (`tools::Desktop::Answering`): its token says so. As the messages were saved or sent (`new.desktop`),
+    // so a chat that can't be read now doesn't lose the mark. Your next message alone gets the normal rules again.
+    let answers_desktop = new.desktop || own.iter().any(ChatMessage::from_desktop);
     let history = earlier.iter().any(|m| m.role == "user" || m.role == "agent");
     // The files of this turn's messages: the Chief reads its copies of them, and the message names them.
     let files: Vec<FileRow> = own.iter().flat_map(|m| m.files.clone()).collect();
     let copies = lead_copies(st, files.clone()).await;
     let text = with_files(&new.text, &files_text(st, &files, &copies));
-    let new = &NewTurn { ids: new.ids.clone(), text };
+    let new = &NewTurn { ids: new.ids.clone(), text, desktop: answers_desktop };
     // A session lives in one CLI's account (its CLAUDE_CONFIG_DIR): another one can't resume it, so it doesn't try.
     let resumable = thread.session_id.is_some() && thread.session_cli.as_deref().is_none_or(|c| c == plan.cli.id);
     // The Chief's copies of the code, refreshed (at most 10 s): the prompt starts with the line that says where
@@ -1052,7 +1142,7 @@ async fn turn(st: &AppState, thread_id: &str, plan: &Plan, new: &NewTurn) -> Tur
     let mut prompt = with_line(if !resumable && history { handover_prompt(st, thread_id, &earlier, &new.text, &why) } else { new.text.clone() });
     for attempt in 0..2 {
         let fresh = attempt == 1 || !resumable;
-        let a = attempt_once(st, &thread, plan, &prompt, fresh, &code.dirs, caps).await;
+        let a = attempt_once(st, &thread, plan, &prompt, fresh, &code.dirs, caps, answers_desktop).await;
         if !fresh && !a.saw_init && a.summary.status == "failed" {
             // The session can't be resumed (its file is gone, or Claude Code refused to start): try once in a new
             // session that knows the conversation. The old session stays recorded until a new one starts.
@@ -1372,8 +1462,11 @@ fn shim_env(st: &AppState, token: &str) -> serde_json::Value {
 
 /// One `claude -p` run for a turn on the plan's CLI: resuming the thread's session, or `fresh` in a new one. `add_dirs`:
 /// the folders the Chief may read (its copies of the code); its own folders from the agent form are added here.
-/// `caps`: the limits the answer started with.
-async fn attempt_once(st: &AppState, thread: &ChatThread, plan: &Plan, prompt: &str, fresh: bool, add_dirs: &[String], caps: Caps) -> Attempt {
+/// `caps`: the limits the answer started with. `answers_desktop` (GA-351): the turn answers a message from Claude Desktop,
+/// so its token says so (`tools::ANSWERS`) and its calls of Hersir's tools have Claude Desktop's limits.
+#[allow(clippy::too_many_arguments)]
+async fn attempt_once(st: &AppState, thread: &ChatThread, plan: &Plan, prompt: &str, fresh: bool, add_dirs: &[String], caps: Caps,
+                      answers_desktop: bool) -> Attempt {
     let (agent, bin, shim) = (&plan.agent, &plan.bin, plan.shim.as_path());
     let fail = |run_id: &str, msg: String| Attempt { summary: TurnSummary { run_id: run_id.into(), status: "failed".into(), error: Some(msg) },
                                                      saw_init: false, limit: None };
@@ -1393,7 +1486,11 @@ async fn attempt_once(st: &AppState, thread: &ChatThread, plan: &Plan, prompt: &
         Ok(r) => r,
         Err(e) => return fail("", e.to_string()),
     };
-    let token = match tokens::mint(&st.db, &agent.actor_id, json!({"chat": thread.id, "run": run_id}), token_ttl_ms(caps)) {
+    let mut scope = json!({"chat": thread.id, "run": run_id});
+    if answers_desktop {
+        scope[crate::tools::ANSWERS] = json!(crate::tools::CLAUDE_DESKTOP);
+    }
+    let token = match tokens::mint(&st.db, &agent.actor_id, scope, token_ttl_ms(caps)) {
         Ok(t) => t,
         Err(e) => { let _ = core_runs::finish_chat(&st.db, &run_id, "failed", 0, 0, 0, Some(&e.to_string())); return fail(&run_id, e.to_string()); }
     };
@@ -2016,13 +2113,15 @@ fn stderr_tail(log_path: &Path) -> String {
     if chars.len() > 400 { chars[chars.len() - 400..].iter().collect() } else { tail }
 }
 
-/// At start-up: MCP configs a crashed Gizai left behind hold tokens; remove them (the tokens expire anyway).
+/// At start-up: MCP configs a crashed Gizai left behind hold tokens; remove them (the tokens expire anyway). So do the
+/// Gemini runs' own settings files (GA-322), a copy of your Gemini system settings.
 pub fn remove_stray_configs(data_dir: &Path) {
     // Chat turns' configs, and task runs' (with the secrets of the agent's MCP servers).
     for dir in ["chat", "runs"] {
         let Ok(entries) = std::fs::read_dir(data_dir.join(dir)) else { continue };
         for e in entries.flatten() {
-            if e.file_name().to_string_lossy().ends_with(".mcp.json") {
+            let name = e.file_name().to_string_lossy().into_owned();
+            if name.ends_with(".mcp.json") || name.ends_with(".gemini.json") {
                 let _ = std::fs::remove_file(e.path());
             }
         }

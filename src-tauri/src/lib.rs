@@ -4,6 +4,8 @@ pub mod bitbucket;
 pub mod board;
 pub mod changes;
 pub mod chat;
+// Claude Desktop's chat reads your Hersir board: its lasting token and the entry for its settings (GA-338).
+pub mod claude_desktop;
 pub mod clis;
 pub mod code;
 pub mod devdocs;
@@ -71,6 +73,9 @@ pub struct AppState {
     pub mcp_socket: PathBuf,
     /// The `hersir-mcp` shim Claude Code starts in a chat turn (None: not found next to Gizai).
     pub mcp_shim: Option<PathBuf>,
+    /// GA-338: where Claude Desktop keeps its settings on this computer (`gizai_agents::claude_desktop::folder`; it may not
+    /// be there). A test's Gizai points it into its own folder (`test_state`), never at the real one.
+    pub claude_desktop_dir: Option<PathBuf>,
     pub chat: Arc<chat::ChatManager>,
     /// The Chief's read-only copies of the projects' code (see `code`).
     pub code: Arc<code::Copies>,
@@ -271,6 +276,17 @@ pub fn backup_data_dir(dir: &std::path::Path, label: &str) -> Result<PathBuf, St
     gizai_core::db::snapshot(&db, &dir.join("backups"), label).map_err(|e| e.to_string())
 }
 
+/// GA-322: each project's card worktrees (`<data dir>/worktrees/<KEY>`) belong to its linked repository, so Hersir's git
+/// in them gets its git folders from that repository (`worktree::card_folder`); a card's start says so again
+/// (`worktree::ensure_on`), for a project linked or relinked since.
+fn card_folders(db: &Db, dir: &std::path::Path) {
+    for p in gizai_core::projects::list(db).unwrap_or_default() {
+        if let Some(repo) = p.repo_path.as_deref().map(str::trim).filter(|r| !r.is_empty()) {
+            gizai_agents::worktree::card_folder(&dir.join("worktrees").join(&p.key), std::path::Path::new(repo));
+        }
+    }
+}
+
 /// Housekeeping (README → Your data): the chat tools' dead tokens, and the run and chat logs in `dir` older than 30 days,
 /// go; then old screenshots, as Settings → Agents and runs → Screenshots says, and the blobs no row uses any more
 /// (GA-182). When Gizai starts (`open_state`) and once a day while it runs.
@@ -360,7 +376,9 @@ fn open_data(dir: PathBuf, notify: Arc<dyn Fn(runs::Note) + Send + Sync>, defaul
     run_memory::end_leftovers_at_start(&dir);
     // Runs a previous Gizai left running: end their claude process groups (only when /proc proves they are
     // ours), save where a card's run ended (a chat answer has no worktree of its own), then mark them interrupted
-    // and release their cards.
+    // and release their cards. GA-322: first, Hersir's git in each project's card worktrees gets its git folders from
+    // the project's repository, never from files in the worktree (`worktree::card_folder`).
+    card_folders(&db, &dir);
     for r in gizai_core::runs::active(&db).unwrap_or_default() {
         if let (Some(pid), Some(wt)) = (r.pid, r.worktree_path.as_deref()) {
             gizai_agents::process::end_orphan_group(pid as u32, std::path::Path::new(wt));
@@ -399,7 +417,7 @@ fn open_data(dir: PathBuf, notify: Arc<dyn Fn(runs::Note) + Send + Sync>, defaul
     let libreoffice = Arc::new(gizai_agents::libreoffice::LibreOffice::new(dir.join("libreoffice")));
     let st = AppState { keychain, tokens, db: Arc::new(db), you_id: seed.you_id, data_dir: dir, runs: Arc::new(runs::RunManager::default()),
                   run_memory: Arc::new(Default::default()), temp_base: gizai_agents::worktree::temp_base(), mcp_socket,
-                  mcp_shim: mcp::shim_bin(), chat: Arc::new(chat::ChatManager::default()), code: Arc::new(code::Copies::default()), pulls: Arc::new(pulls::PullChecks::default()),
+                  mcp_shim: mcp::shim_bin(), claude_desktop_dir: gizai_agents::claude_desktop::folder(), chat: Arc::new(chat::ChatManager::default()), code: Arc::new(code::Copies::default()), pulls: Arc::new(pulls::PullChecks::default()),
                   changes: Arc::new(changes::PullDiffs::default()), editor: Arc::new(editor::Fetches::default()),
                   github: Arc::new(github::Logins::default()), updates: Arc::new(update::Updates::default()), _lock: Arc::new(lock), notify,
                   desktop: notifications::Desktop::silent(), inbox: Arc::new(notifications::Watch::default()),
@@ -441,16 +459,21 @@ impl Timed {
     }
 }
 
+/// The one notifier (GA-344): everything that changes something tells the window through it, the Tauri commands
+/// (`commands::changed`), the tools, runs and chats alike. What changed in the database is counted there too, whoever
+/// wrote it (`Db::change_seq`).
 fn ui_notifier(app: AppHandle) -> Arc<dyn Fn(runs::Note) + Send + Sync> {
     Arc::new(move |note| {
-        // Tasks or chats changed: the desktop notifications look at the Inbox again.
+        // Tasks or chats changed: the desktop notifications look at the Inbox again. Not for your own change in the window.
         if matches!(note, runs::Note::RowsChanged("tasks" | "chat_threads") | runs::Note::ChatChanged)
             && let Some(st) = app.try_state::<AppState>()
         {
             notifications::poke(st.inner());
         }
         let _ = match note {
-            runs::Note::RowsChanged(table) => app.emit("rows-changed", serde_json::json!({ "table": table })),
+            runs::Note::RowsChanged(table) | runs::Note::RowsChangedInWindow(table) => {
+                app.emit("rows-changed", serde_json::json!({ "table": table }))
+            }
             runs::Note::RunsChanged => app.emit("runs-changed", ()),
             runs::Note::RunEvents { run_id, events } => app.emit("run-events", serde_json::json!({ "runId": run_id, "events": events })),
             // each event names its chat too, as the page's ChatEvent has it
@@ -571,6 +594,9 @@ pub fn test_state(dir: &std::path::Path) -> AppState {
     {
         st.mcp_socket = mcp::socket_path(&st.data_dir);
     }
+    // GA-338: never the real Claude Desktop's settings in tests: a folder of the test's own, not made yet (as if Claude
+    // Desktop isn't installed); a test that wants it installed makes the folder.
+    st.claude_desktop_dir = Some(dir.join("claude-desktop"));
     // Never the real keychain in tests: one in memory, unless the test names a file for it.
     if env::var_os("HERSIR_FAKE_KEYCHAIN").is_none() {
         st.keychain = Arc::new(gizai_agents::secrets::MemoryKeychain::default());
@@ -823,6 +849,7 @@ pub fn run() {
             logs::get_logs_info, logs::open_logs_folder, logs::dismiss_unexpected_end, logs::selftest_panic,
             commands::list_mcp_servers, commands::save_mcp_server, commands::remove_mcp_server, commands::list_mcp_tools,
             commands::scan_claude_code_mcp, commands::import_mcp_servers, commands::mcp_sign_in, commands::mcp_sign_out,
+            commands::claude_desktop_status, commands::claude_desktop_connect, commands::claude_desktop_disconnect,
             commands::agent_mcp, commands::save_agent_mcp, commands::agent_cli_tools, commands::save_agent_cli_tools, commands::ask_cli_tools,
             commands::browser_entry, commands::save_browser_entry, commands::list_browser_tools,
             commands::list_clients, commands::get_client, commands::save_client, commands::archive_client,
@@ -848,7 +875,7 @@ pub fn run() {
             commands::detect_claude, commands::get_settings, commands::save_settings, commands::start_run, commands::continue_run,
             commands::continue_after_run_for_me, commands::stop_run,
             commands::list_runs, commands::run_events, commands::run_commits, commands::live_runs, commands::suggest_agent, commands::get_agent, commands::claude_models, commands::list_clis, commands::save_clis, commands::find_clis, commands::agent_stats, commands::agent_runs, commands::agent_next_task,
-            commands::usage_summary, commands::subscription_limits,
+            commands::usage_summary, commands::project_time, commands::subscription_limits,
             commands::list_chat_threads, commands::get_chat_thread, commands::pinned_chats, commands::pin_chat, commands::unpin_chat, commands::rename_chat,
             commands::search_chat_threads, commands::chat_messages, commands::send_chat, commands::stop_chat, commands::chat_live, commands::chat_agent,
             commands::dismiss_chat, commands::chat_queue, commands::edit_queued_chat, commands::remove_queued_chat, commands::send_chat_queue,

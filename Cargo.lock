@@ -1734,7 +1734,7 @@ dependencies = [
 
 [[package]]
 name = "gizai"
-version = "0.19.0"
+version = "0.20.1"
 dependencies = [
  "gizai-agents",
  "gizai-core",
@@ -1761,7 +1761,7 @@ dependencies = [
 
 [[package]]
 name = "gizai-agents"
-version = "0.19.0"
+version = "0.20.1"
 dependencies = [
  "flate2",
  "getrandom 0.4.3",
@@ -1783,7 +1783,7 @@ dependencies = [
 
 [[package]]
 name = "gizai-core"
-version = "0.19.0"
+version = "0.20.1"
 dependencies = [
  "calamine",
  "cfb",
@@ -1807,7 +1807,7 @@ dependencies = [
 
 [[package]]
 name = "gizai-docs"
-version = "0.19.0"
+version = "0.20.1"
 dependencies = [
  "pulldown-cmark",
  "regex",
@@ -1825,7 +1825,7 @@ dependencies = [
 
 [[package]]
 name = "gizai-mcp"
-version = "0.19.0"
+version = "0.20.1"
 dependencies = [
  "serde_json",
  "tempfile",
@@ -5992,9 +5992,9 @@ dependencies = [
 
 [[package]]
 name = "webpki-roots"
-version = "1.0.9"
+version = "1.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7dcd9d09a39985f5344844e66b0c530a33843579125f23e21e9f0f220850f22a"
+checksum = "7265c9301c16a8711c992c2d8da90ee77ef54b1ed51482d6dfeb00dc756b1297"
 dependencies = [
  "rustls-pki-types",
 ]

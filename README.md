@@ -126,7 +126,7 @@ Please send us the file of the start that crashed, and say roughly when it happe
 
 - [Install](docs/install.md): what each system needs, when macOS or Windows warns, updates, your data and no telemetry.
 - [Settings](docs/settings.md): what each tab holds, how Hersir looks, the tray, and the screenshot settings.
-- Features: [Board](docs/features/board.md) · [Chief](docs/features/chief.md) · [CLIs](docs/features/cli.md) · [Testing](docs/features/testing.md) · [Editor and Terminal](docs/features/editor-and-terminal.md) · [Memory](docs/features/memory.md) · [Tools](docs/features/tools.md) · [Inbox](docs/features/inbox.md) · [Screenshots](docs/features/screenshots.md)
+- Features: [Board](docs/features/board.md) · [Chief](docs/features/chief.md) · [CLIs](docs/features/cli.md) · [Testing](docs/features/testing.md) · [Editor and Terminal](docs/features/editor-and-terminal.md) · [Memory](docs/features/memory.md) · [Tools](docs/features/tools.md) · [Inbox](docs/features/inbox.md) · [Screenshots](docs/features/screenshots.md) · [Claude Desktop](docs/features/claude-desktop.md)
 - [Memory in depth](docs/memory.md): folders, properties, links, search, and how runs get notes.
 - [Agent tools in depth](docs/agent-tools.md): MCP servers, signing in, the web, the browser and the safety rules.
 - [Linux, macOS and Windows](docs/PLATFORMS.md): what differs on each system.
@@ -142,6 +142,7 @@ scripts/ui-test.sh        # UI tests in a headless compositor, never on your des
 scripts/tour-capture.sh --out <folder>   # the stills of each feature, in dark and light (default .devdata/tour/capture)
 scripts/perf.sh [scenario …]             # the benchmark: medians in .devdata/perf/<commit>.json; --compare a.json b.json
 node scripts/bundle-size.mjs             # after npm run build: each file's bytes and gzip bytes, the start files apart
+npm run mcp-host                         # after npm run build: Claude Desktop's board view in a stand-in host (GA-343), at 127.0.0.1:1431
 ```
 
 A performance card runs `scripts/perf.sh` on `main` and on its branch, on the same machine with nothing else running, and puts `scripts/perf.sh --compare` of the two in its pull request (`docs/research/performance.md` §7 says what each scenario measures). For the database alone: `cargo run --release -p gizai-core --example bench_queries -- <data dir>` on `prep_perf`'s data.

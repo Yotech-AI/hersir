@@ -7,7 +7,7 @@
 import { useState } from "react";
 import { ArrowRight, Check, CircleAlert, X } from "lucide-react";
 import { approvePendingAction, approvePendingActions, discardPendingAction, updateTask } from "../../api";
-import { foldDiff, outsideLabel } from "../../lib/pending";
+import { foldDiff, NEW_COMMANDS, outsideLabel } from "../../lib/pending";
 import { usePending } from "../../lib/usePending";
 import type { DiffLine, PendingAction, PendingPreview, Task } from "../../types";
 import { BusyButton } from "../BusyButton";
@@ -48,8 +48,14 @@ function Preview({ p }: { p: PendingPreview }) {
 /** What Approve all did: the calls it ran, and the cards whose holds it took off. */
 type AllDone = { ran: PendingAction[]; cards: string[] };
 
-/** Why these wait: the chat used a tool from outside Hersir, so Hersir didn't run the calls, and no agent starts the cards. */
-function why(outside: string, calls: number, cards: number): string {
+/** Why these wait: the chat used a tool from outside Hersir, so Hersir didn't run the calls, and no agent starts the cards.
+ *  GA-323: `commands` of the calls wait instead because they give an agent commands the Chief may only add with your OK
+ *  (their preview names them, under Needs your OK). */
+function why(outside: string, calls: number, cards: number, commands = 0): string {
+  if (commands > 0 && commands === calls && cards === 0) {
+    return calls === 1 ? "Hersir didn't run this: it gives an agent commands the Chief may only add with your OK."
+      : "Hersir didn't run these: each gives an agent commands the Chief may only add with your OK.";
+  }
   const used = `This chat used ${outside ? `${outsideLabel(outside)}, a tool` : "a tool"} from outside Hersir`;
   const held = `no agent starts ${cards === 1 ? "this card until you OK it" : "these cards until you OK them"}`;
   if (cards === 0) return `${used}, so Hersir didn't run ${calls === 1 ? "this" : "these"}.`;
@@ -74,7 +80,9 @@ export function PendingActions({ actions, cards = [], outsideTool, threadId, onE
   }, threadId ?? actions[0]?.threadId);
   const fail = (e: unknown) => onError(String(e));
   const waiting = actions.filter((a) => a.status === "pending");
-  const outside = actions[0]?.outsideTool || outsideTool || "";
+  // GA-323: a call kept for its new commands names no tool from outside Hersir
+  const outside = actions.find((a) => a.outsideTool && a.outsideTool !== NEW_COMMANDS)?.outsideTool || outsideTool || "";
+  const forCommands = actions.filter((a) => a.outsideTool === NEW_COMMANDS).length;
   // the calls first, in their order, then the cards' holds
   const approveAll = async (): Promise<AllDone> => {
     const ran = waiting.length ? await approvePendingActions(waiting.map((a) => a.id)) : [];
@@ -89,7 +97,7 @@ export function PendingActions({ actions, cards = [], outsideTool, threadId, onE
     <section className="pending-actions" aria-label="Waiting for your OK">
       <div className="pa-head">
         <span className="badge needs">Waiting for your OK</span>
-        <span className="pa-why" title={outside || undefined}>{why(outside, actions.length, cards.length)}</span>
+        <span className="pa-why" title={outside || undefined}>{why(outside, actions.length, cards.length, forCommands)}</span>
         {waiting.length + cards.length > 1 && (
           <BusyButton className="btn sm primary" pending={pending} name="all" busyLabel="Approving…" icon={<Check className="icon" />}
             title={allTitle} onClick={() => pending.act("all", approveAll, fail)}>

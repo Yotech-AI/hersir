@@ -3,7 +3,7 @@
 //! a card's changes from git, pull requests (gh, and Bitbucket's REST API), the connection to GitHub and Bitbucket (pushes over SSH or HTTPS, gh's
 //! login), prompts and process control,
 //! Gizai's own updates (the release check, a release's signature, downloading or building and installing a release), terminals (your shell in a
-//! pseudo-terminal), and the PDF copies LibreOffice makes for the Chief. Never imports Tauri.
+//! pseudo-terminal), the PDF copies LibreOffice makes for the Chief, and Hersir's server in Claude Desktop's settings. Never imports Tauri.
 pub mod behind;
 pub mod bitbucket;
 pub mod browser;
@@ -11,6 +11,7 @@ pub mod changes;
 pub mod chat_stream;
 pub mod checkout;
 pub mod claude;
+pub mod claude_desktop;
 pub mod cli;
 pub mod connection;
 pub mod copies;

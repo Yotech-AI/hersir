@@ -1,13 +1,14 @@
 //! Thin command layer: every command calls gizai-core and maps errors to strings.
-//! Write commands emit `rows-changed` so open screens refresh.
+//! Write commands send `rows-changed` through the app's one notifier (`changed`) so open screens refresh.
 //!
 //! Every command is async and does its work off the main thread, which also runs the window (GA-191): the database, files
 //! and processes on a thread that may wait (`off`), what only reads memory on the async runtime. The few left on the main
 //! thread say why.
 use crate::AppState;
+use crate::runs::Note;
 use gizai_core::model::*;
 use gizai_core::{clients, comments, docs, files, projects, tasks, team, users};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Manager, State};
 
 type R<T> = Result<T, String>;
 
@@ -15,8 +16,13 @@ fn e(err: gizai_core::Error) -> String {
     err.to_string()
 }
 
-fn changed(app: &AppHandle, table: &str) {
-    let _ = app.emit("rows-changed", serde_json::json!({ "table": table }));
+/// GA-344: through the app's one notifier (`AppState::notify`), as the tools, runs and chats tell the window, no longer
+/// straight to the window: `rows-changed` with `table`, as before. Your own change in the window, so the desktop
+/// notifications don't look at the Inbox for it, as before (`Note::RowsChangedInWindow`).
+fn changed(app: &AppHandle, table: &'static str) {
+    if let Some(st) = app.try_state::<AppState>() {
+        (st.notify)(Note::RowsChangedInWindow(table));
+    }
 }
 
 /// Runs `f` with the app's state on a thread that may wait (for SQL, the database's lock, a file or a process): never on
@@ -744,6 +750,18 @@ pub async fn usage_summary(st: State<'_, AppState>, period: String) -> R<gizai_c
     off(&st, move |st| gizai_core::usage::for_period(&st.db, &period, gizai_core::ids::now_ms()).map_err(e)).await
 }
 
+/// A project's Time tracking tab (GA-331, GA-354): per card its runs, agent time, tokens and API cost, and the UTC days for
+/// the charts, for the runs that started from `since` up to (not including) `until`, Unix ms, or for all of them without a
+/// period. An interrupted run counts at most the run time limit (Settings → Agents and runs), read as `get_settings` reads it.
+#[tauri::command]
+pub async fn project_time(st: State<'_, AppState>, id: String, since: Option<i64>, until: Option<i64>) -> R<gizai_core::usage::ProjectTime> {
+    off(&st, move |st| {
+        let minutes: u64 = gizai_core::settings::get(&st.db, "max_run_minutes").ok().flatten().unwrap_or(crate::runs::DEFAULT_MAX_RUN_MINUTES);
+        let max_run_ms = i64::try_from(minutes).unwrap_or(i64::MAX / 60_000).saturating_mul(60_000);
+        gizai_core::usage::project_time_period(&st.db, &id, max_run_ms, since, until).map_err(e)
+    }).await
+}
+
 /// The Usage page's Subscription tab: per coding CLI, the newest reading of each of its limits and the agents on it.
 #[tauri::command]
 pub async fn subscription_limits(st: State<'_, AppState>) -> R<Vec<gizai_core::limits::CliLimits>> {
@@ -1161,6 +1179,28 @@ pub async fn mcp_sign_in(app: AppHandle, st: State<'_, AppState>, id: String) ->
 pub async fn mcp_sign_out(app: AppHandle, st: State<'_, AppState>, id: String) -> R<crate::mcp_servers::ServerView> {
     let st = st.inner().clone();
     let out = blocking(move || crate::mcp_servers::sign_out(&st, &id)).await?;
+    changed(&app, "settings");
+    Ok(out)
+}
+
+// ---- Claude Desktop (Settings → MCP servers → Claude Desktop, GA-338) ----
+
+#[tauri::command]
+pub async fn claude_desktop_status(st: State<'_, AppState>) -> R<crate::claude_desktop::ClaudeDesktopStatus> {
+    off(&st, crate::claude_desktop::status).await
+}
+
+/// Called from JS with `{ addToConfig }`.
+#[tauri::command]
+pub async fn claude_desktop_connect(app: AppHandle, st: State<'_, AppState>, add_to_config: bool) -> R<crate::claude_desktop::ClaudeDesktopConnection> {
+    let out = off(&st, move |st| crate::claude_desktop::connect(st, add_to_config)).await?;
+    changed(&app, "settings");
+    Ok(out)
+}
+
+#[tauri::command]
+pub async fn claude_desktop_disconnect(app: AppHandle, st: State<'_, AppState>) -> R<crate::claude_desktop::ClaudeDesktopStatus> {
+    let out = off(&st, crate::claude_desktop::disconnect).await?;
     changed(&app, "settings");
     Ok(out)
 }

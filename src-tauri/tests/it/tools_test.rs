@@ -30,6 +30,19 @@ impl T {
     async fn ok(&self, name: &str, args: Value) -> Value {
         self.call(name, args).await.unwrap_or_else(|e| panic!("{name} failed: {e}"))
     }
+    /// GA-352: a call chat makes only with the user's Approve (a CLI that doesn't keep the agent to its allowed commands, a
+    /// looser permission mode): outside a chat it is refused, in a chat it waits, and Approve runs it as kept.
+    async fn approved(&self, name: &str, args: Value) {
+        let e = self.call(name, args.clone()).await.expect_err("outside a chat it is refused");
+        assert!(e.starts_with(&format!("{name} wasn't run: ")) && e.contains("nothing changed"), "{e}");
+        let thread = gizai_core::chat::create_thread(&self.st.db, &self.st.you_id, &self.lead, "Approve it").unwrap();
+        let e = tools::call_in(&self.st, &self.lead, Some(&thread), name, args).await.expect_err("in a chat it waits for Approve");
+        assert!(e.starts_with(&format!("{name} wasn't run: ")) && e.contains("Hersir keeps the call"), "{e}");
+        let kept = gizai_lib::pending::list(&self.st, &thread).unwrap();
+        assert_eq!(kept.len(), 1);
+        let done = gizai_lib::pending::approve(&self.st, &kept[0].action.id).await.unwrap();
+        assert_eq!(done.status, "approved", "{:?}", done.result_md);
+    }
     fn project(&self, name: &str, key: &str) -> String {
         projects::create(&self.st.db, &self.st.you_id, ProjectInput { name: name.into(), key: key.into(), ..Default::default() }).unwrap()
     }
@@ -47,7 +60,11 @@ fn the_catalog_has_unique_names_and_object_schemas() {
     for t in &cat {
         assert_eq!(t.input_schema["type"], "object", "{}", t.name);
         assert!(t.input_schema["properties"].is_object(), "{}", t.name);
-        assert!(!t.description.is_empty() && t.description.len() < 600, "{}", t.name);
+        // GA-332 ends get_task's and get_project's descriptions with a sentence on agent time, word for word as its card
+        // asks, which takes them past 600 characters: what comes before it stays under 600
+        let before_ga332 = ["agent_time: what the agents' runs", "time_tracking: its agents' minutes"].iter()
+            .fold(t.description.as_str(), |d, s| d.split(s).next().unwrap_or(d));
+        assert!(!t.description.is_empty() && before_ga332.len() < 600, "{}: {} characters before GA-332's sentence", t.name, before_ga332.len());
         let reads = t.name.starts_with("get_") || t.name.starts_with("list_") || t.name.starts_with("read_") || t.name == "check_board"
             || matches!(t.name.as_str(), "memory_list" | "memory_search" | "memory_read");
         assert_eq!(t.read_only, reads, "{}", t.name);
@@ -373,7 +390,8 @@ async fn the_chat_cannot_make_an_agent_that_skips_permissions() {
         let e = t.call("create_agent", json!({"name": "Shell Agent", "role": "backend", "allowed_tools": tools})).await.unwrap_err();
         assert!(e.contains("any command"), "{e}");
     }
-    t.ok("create_agent", json!({"name": "Backend Agent", "role": "backend", "allowed_tools": ["Bash(npm test:*)", "Bash(git commit:*)"]})).await;
+    // GA-323: entries chat gives a new agent at once
+    t.ok("create_agent", json!({"name": "Backend Agent", "role": "backend", "allowed_tools": ["Bash(git status:*)", "Bash(grep:*)"]})).await;
     let e = t.call("update_agent", json!({"agent": "Backend Agent", "permission_mode": "bypassPermissions"})).await.unwrap_err();
     assert!(e.contains("bypassPermissions"), "{e}");
     assert!(t.call("update_agent", json!({"agent": "Backend Agent", "allowed_tools": ["Bash"]})).await.is_err());
@@ -429,13 +447,14 @@ fn add_clis(t: &T, list: &[(&str, &str)]) -> std::collections::HashMap<String, S
 async fn the_team_lead_can_put_agents_on_codex_or_gemini_by_name() {
     let t = setup();
     let ids = add_clis(&t, &[("Codex", "codex"), ("Gemini", "gemini"), ("Crush", "other")]);
-    // Codex takes its own model names and efforts; Claude Code's list isn't asked
-    t.ok("create_agent", json!({"name": "Codex Agent", "role": "backend", "runs_on": "codex", "model": "gpt-5-codex", "effort": "minimal"})).await;
+    // Codex takes its own model names and efforts; Claude Code's list isn't asked. GA-352: Codex and Gemini don't keep an agent
+    // to its allowed commands, so putting one there waits for the user's Approve
+    t.approved("create_agent", json!({"name": "Codex Agent", "role": "backend", "runs_on": "codex", "model": "gpt-5-codex", "effort": "minimal"})).await;
     let m = team::agent(&t.st.db, &resolve_agent(&t, "Codex Agent")).unwrap();
     assert_eq!((m.adapter.as_deref(), m.model.as_deref(), m.effort.as_deref(), m.permission_mode.as_deref()),
                (Some(ids["Codex"].as_str()), Some("gpt-5-codex"), Some("minimal"), Some("workspace-write")));
     // by id works too
-    t.ok("create_agent", json!({"name": "Gemini Agent", "role": "qa", "runs_on": ids["Gemini"], "permission_mode": "plan"})).await;
+    t.approved("create_agent", json!({"name": "Gemini Agent", "role": "qa", "runs_on": ids["Gemini"], "permission_mode": "plan"})).await;
     assert_eq!(team::agent(&t.st.db, &resolve_agent(&t, "Gemini Agent")).unwrap().permission_mode.as_deref(), Some("plan"));
     let e = t.call("create_agent", json!({"name": "X", "role": "qa", "runs_on": "Cursor"})).await.unwrap_err();
     assert!(e.contains("no coding CLI called \"Cursor\"") && e.contains("Claude Code, Codex, Gemini, Crush"), "{e}");
@@ -455,7 +474,7 @@ async fn the_chat_cannot_unlock_codex_or_gemini_either() {
         let e = t.call("create_agent", json!({"name": "Root Agent", "role": "backend", "runs_on": cli, "permission_mode": mode})).await.unwrap_err();
         assert!(e.contains(mode) && e.contains("agent form"), "{e}");
     }
-    t.ok("create_agent", json!({"name": "Codex Agent", "role": "backend", "runs_on": "Codex"})).await;
+    t.approved("create_agent", json!({"name": "Codex Agent", "role": "backend", "runs_on": "Codex"})).await;
     let e = t.call("update_agent", json!({"agent": "Codex Agent", "permission_mode": "danger-full-access"})).await.unwrap_err();
     assert!(e.contains("danger-full-access"), "{e}");
     assert_eq!(team::agent(&t.st.db, &resolve_agent(&t, "Codex Agent")).unwrap().permission_mode.as_deref(), Some("workspace-write"));
@@ -467,15 +486,16 @@ async fn the_chat_cannot_unlock_codex_or_gemini_either() {
 async fn moving_an_agent_to_another_kind_of_cli_starts_from_that_clis_defaults() {
     let t = setup();
     let ids = add_clis(&t, &[("Codex", "codex"), ("Claude 2", "claude_code")]);
-    t.ok("create_agent", json!({"name": "Backend Agent", "role": "backend", "model": "opus", "effort": "max", "permission_mode": "dontAsk"})).await;
+    // GA-352: dontAsk isn't stricter than Claude Code's usual acceptEdits, so it waits for the user's Approve
+    t.approved("create_agent", json!({"name": "Backend Agent", "role": "backend", "model": "opus", "effort": "max", "permission_mode": "dontAsk"})).await;
     let id = resolve_agent(&t, "Backend Agent");
     // another Claude Code account keeps model, effort and mode
     t.ok("update_agent", json!({"agent": "Backend Agent", "runs_on": "Claude 2"})).await;
     let m = team::agent(&t.st.db, &id).unwrap();
     assert_eq!((m.adapter.as_deref(), m.model.as_deref(), m.effort.as_deref(), m.permission_mode.as_deref()),
                (Some(ids["Claude 2"].as_str()), Some("opus"), Some("max"), Some("dontAsk")));
-    // Codex: Claude Code's model, effort and mode don't carry over
-    t.ok("update_agent", json!({"agent": "Backend Agent", "runs_on": "Codex"})).await;
+    // Codex: Claude Code's model, effort and mode don't carry over (GA-352: the move waits for the user's Approve)
+    t.approved("update_agent", json!({"agent": "Backend Agent", "runs_on": "Codex"})).await;
     let m = team::agent(&t.st.db, &id).unwrap();
     assert_eq!((m.adapter.as_deref(), m.model.as_deref(), m.effort.as_deref(), m.permission_mode.as_deref()),
                (Some(ids["Codex"].as_str()), None, None, Some("workspace-write")));
@@ -586,7 +606,8 @@ async fn create_agent_without_a_list_gives_the_roles_allowed_commands_and_update
     t.ok("create_agent", json!({"name": "DevOps Agent", "role": "devops", "allowed_tools": []})).await;
     t.ok("create_agent", json!({"name": "Second Lead", "role": "lead"})).await;
     t.ok("create_agent", json!({"name": "Docs Agent", "role": "docs"})).await;
-    t.ok("create_agent", json!({"name": "Make Agent", "role": "backend", "allowed_tools": ["Bash(make:*)", "Bash(git commit:*)"]})).await;
+    // GA-323: a list chat gives a new agent at once (a command like Bash(make:*) waits for the user's Approve)
+    t.ok("create_agent", json!({"name": "Reader Agent", "role": "backend", "allowed_tools": ["Bash(ls:*)", "Bash(git status:*)"]})).await;
     assert_eq!(tools_of("Backend Agent"), role_tools("backend"));
     assert!(tools_of("Backend Agent").contains(&"Bash(git push:*)".to_string()));
     assert_eq!(tools_of("QA Agent"), role_tools("qa"), "the role key is cleaned first");
@@ -594,14 +615,14 @@ async fn create_agent_without_a_list_gives_the_roles_allowed_commands_and_update
     assert_eq!(tools_of("DevOps Agent"), role_tools("devops"), "an empty list is no list");
     assert_eq!(tools_of("Second Lead"), gizai_lib::runs::DEFAULT_TOOLS.map(String::from).to_vec());
     assert_eq!(tools_of("Docs Agent"), role_tools("backend"), "your own roles are builders");
-    assert_eq!(tools_of("Make Agent"), ["Bash(make:*)", "Bash(git commit:*)"]);
+    assert_eq!(tools_of("Reader Agent"), ["Bash(ls:*)", "Bash(git status:*)"]);
     // Its instructions are the role's too, unless given.
     let qa = team::agent(&t.st.db, &resolve_agent(&t, "QA Agent")).unwrap();
     assert_eq!(qa.instructions_md.as_deref(), Some(gizai_core::seed::role_template("qa").as_str()));
     // A saved list is never changed: not by another field, not by a role change.
-    t.ok("update_agent", json!({"agent": "Make Agent", "model": "sonnet"})).await;
-    t.ok("update_agent", json!({"agent": "Make Agent", "role": "qa"})).await;
-    assert_eq!(tools_of("Make Agent"), ["Bash(make:*)", "Bash(git commit:*)"]);
+    t.ok("update_agent", json!({"agent": "Reader Agent", "model": "sonnet"})).await;
+    t.ok("update_agent", json!({"agent": "Reader Agent", "role": "qa"})).await;
+    assert_eq!(tools_of("Reader Agent"), ["Bash(ls:*)", "Bash(git status:*)"]);
     // The tool says so.
     let cat = tools::catalog();
     let create = cat.iter().find(|d| d.name == "create_agent").unwrap();
@@ -614,11 +635,18 @@ async fn create_agent_without_a_list_gives_the_roles_allowed_commands_and_update
 
 const SENTENCE: &str = "isn't one rule: write each command as its own entry, like Bash(npm test:*).";
 
+/// A builder the user made in the agent form (`team::add_agent`, what the form's command calls) with these allowed
+/// commands. GA-323: the form saves any entry, while chat gives an agent a command it doesn't have only with the user's Approve.
+fn form_agent(t: &T, name: &str, tools: &[&str]) -> String {
+    let team_id = team::list(&t.st.db).unwrap()[0].id.clone();
+    team::add_agent(&t.st.db, &t.st.you_id, &team_id, AgentInput { name: name.into(), role_key: "backend".into(),
+        allowed_tools: tools.iter().map(|s| s.to_string()).collect(), ..Default::default() }).unwrap()
+}
+
 #[tokio::test]
 async fn the_chat_saves_an_allowed_command_only_as_one_rule() {
     let t = setup();
-    t.ok("create_agent", json!({"name": "Backend Agent", "role": "backend", "allowed_tools": ["Bash(git status:*)", "Bash(node:*)"]})).await;
-    let id = resolve_agent(&t, "Backend Agent");
+    let id = form_agent(&t, "Backend Agent", &["Bash(git status:*)", "Bash(node:*)"]);
     let before = team::agent(&t.st.db, &id).unwrap();
     for bad in ["Bash(ls:*) Bash(*)", "Bash(a) b", "Bash(a,b)", "Bash(a(b))", "Bash(git status:*) Bash(git push:*)"] {
         let e = t.call("create_agent", json!({"name": "Other Agent", "role": "backend", "allowed_tools": ["Bash(npm test:*)", bad]})).await.unwrap_err();
@@ -631,8 +659,8 @@ async fn the_chat_saves_an_allowed_command_only_as_one_rule() {
     let m = team::agent(&t.st.db, &id).unwrap();
     assert_eq!((&m.allowed_tools, &m.title), (&before.allowed_tools, &before.title), "nothing changed");
     assert_eq!(m.allowed_tools, ["Bash(git status:*)", "Bash(node:*)"]);
-    t.ok("update_agent", json!({"agent": "Backend Agent", "allowed_tools": ["Bash(git status:*)", "Bash(npm test:*)"]})).await;
-    assert_eq!(team::agent(&t.st.db, &id).unwrap().allowed_tools, ["Bash(git status:*)", "Bash(npm test:*)"]);
+    t.ok("update_agent", json!({"agent": "Backend Agent", "allowed_tools": ["Bash(git status:*)", "Bash(grep:*)"]})).await;
+    assert_eq!(team::agent(&t.st.db, &id).unwrap().allowed_tools, ["Bash(git status:*)", "Bash(grep:*)"]);
     // an entry without its closing parenthesis keeps the "only commands" refusal
     let e = t.call("update_agent", json!({"agent": "Backend Agent", "allowed_tools": ["Bash(git status:*"]})).await.unwrap_err();
     assert!(e.contains("takes only commands"), "{e}");
@@ -646,8 +674,7 @@ const SHELLS: [&str; 28] = ["bash", "sh", "zsh", "fish", "dash", "ksh", "csh", "
 async fn the_chat_gives_no_agent_a_shell_an_interpreter_or_a_path_and_changes_nothing() {
     let t = setup();
     let mine = ["Bash(git status:*)", "Bash(node:*)"];
-    t.ok("create_agent", json!({"name": "Backend Agent", "role": "backend", "allowed_tools": mine})).await;
-    let id = resolve_agent(&t, "Backend Agent");
+    let id = form_agent(&t, "Backend Agent", &mine);
     let before = team::agent(&t.st.db, &id).unwrap();
     let card = ["Bash(bash:*)", "Bash(sh -c:*)", "Bash(python3:*)", "Bash(env:*)", "Bash(sudo:*)", "Bash(/bin/sh:*)"];
     let listed: Vec<String> = SHELLS.iter().map(|w| format!("Bash({w}:*)")).collect();
@@ -665,22 +692,29 @@ async fn the_chat_gives_no_agent_a_shell_an_interpreter_or_a_path_and_changes_no
     assert_eq!((&m.allowed_tools, &m.title), (&before.allowed_tools, &before.title), "nothing changed");
     assert_eq!(m.allowed_tools, mine);
 
-    // its current list (which has Bash(node:*)) plus Bash(npm test:*) saves
-    t.ok("update_agent", json!({"agent": "Backend Agent", "allowed_tools": ["Bash(git status:*)", "Bash(node:*)", "Bash(npm test:*)"]})).await;
-    assert_eq!(team::agent(&t.st.db, &id).unwrap().allowed_tools, ["Bash(git status:*)", "Bash(node:*)", "Bash(npm test:*)"]);
+    // its current list (which has Bash(node:*)) plus Bash(grep:*), which chat gives at once (GA-323), saves
+    t.ok("update_agent", json!({"agent": "Backend Agent", "allowed_tools": ["Bash(git status:*)", "Bash(node:*)", "Bash(grep:*)"]})).await;
+    assert_eq!(team::agent(&t.st.db, &id).unwrap().allowed_tools, ["Bash(git status:*)", "Bash(node:*)", "Bash(grep:*)"]);
 
     // the agent form is unchanged: the user adds a shell there, and then the chat may keep it in the list
     let input = AgentInput { name: m.name.clone(), role_key: "backend".into(), adapter: m.adapter.clone().unwrap_or_default(),
                              allowed_tools: vec!["Bash(git status:*)".into(), "Bash(python3:*)".into()], ..Default::default() };
     team::update_agent(&t.st.db, &t.st.you_id, &id, input).unwrap();
-    t.ok("update_agent", json!({"agent": "Backend Agent", "allowed_tools": ["Bash(git status:*)", "Bash(python3:*)", "Bash(cargo test:*)"]})).await;
-    assert_eq!(team::agent(&t.st.db, &id).unwrap().allowed_tools, ["Bash(git status:*)", "Bash(python3:*)", "Bash(cargo test:*)"]);
+    t.ok("update_agent", json!({"agent": "Backend Agent", "allowed_tools": ["Bash(git status:*)", "Bash(python3:*)", "Bash(jq:*)"]})).await;
+    assert_eq!(team::agent(&t.st.db, &id).unwrap().allowed_tools, ["Bash(git status:*)", "Bash(python3:*)", "Bash(jq:*)"]);
     // but not another one it doesn't have
     let e = t.call("update_agent", json!({"agent": "Backend Agent", "allowed_tools": ["Bash(python3:*)", "Bash(perl:*)"]})).await.unwrap_err();
     assert!(e.starts_with("Bash(perl:*) can't be given from chat"), "{e}");
 
-    // its role's default list has it: Bash(./vendor/bin/*) is a path, and on a builder's list
-    t.ok("create_agent", json!({"name": "PHP Agent", "role": "backend", "allowed_tools": ["Bash(./vendor/bin/*)", "Bash(composer:*)"]})).await;
-    t.ok("update_agent", json!({"agent": "Backend Agent", "allowed_tools": ["Bash(git status:*)", "Bash(./vendor/bin/*)"]})).await;
-    assert_eq!(team::agent(&t.st.db, &id).unwrap().allowed_tools, ["Bash(git status:*)", "Bash(./vendor/bin/*)"]);
+    // its role's default list has it: Bash(./vendor/bin/*) is a path, and on a builder's list, so it isn't refused as a path;
+    // GA-323: but the agent doesn't have it, so the call waits for the user's Approve (outside a chat it can't wait, and
+    // nothing changes)
+    let e = t.call("create_agent", json!({"name": "PHP Agent", "role": "backend", "allowed_tools": ["Bash(./vendor/bin/*)", "Bash(composer:*)"]}))
+        .await.unwrap_err();
+    assert!(e.starts_with("create_agent wasn't run: Bash(./vendor/bin/*) and Bash(composer:*) are new for PHP Agent"), "{e}");
+    let e = t.call("update_agent", json!({"agent": "Backend Agent", "allowed_tools": ["Bash(git status:*)", "Bash(./vendor/bin/*)"]})).await
+        .unwrap_err();
+    assert!(e.starts_with("update_agent wasn't run: Bash(./vendor/bin/*) is new for Backend Agent"), "{e}");
+    assert!(!team::all_agents(&t.st.db).unwrap().iter().any(|(_, m)| m.name == "PHP Agent"));
+    assert_eq!(team::agent(&t.st.db, &id).unwrap().allowed_tools, ["Bash(git status:*)", "Bash(python3:*)", "Bash(jq:*)"]);
 }

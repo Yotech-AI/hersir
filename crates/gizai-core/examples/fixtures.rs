@@ -24,7 +24,7 @@ use gizai_core::files::{self, Evidence};
 use gizai_core::mcp_servers::{self, AgentServer, AgentTools};
 use gizai_core::model::*;
 use gizai_core::{backups, clients, clis, comments, db, docs, editor, ids, labels, memory, onboarding, projects, pulls, questions, restore, runs,
-    screenshots, seed, settings, tasks, team, tokens, users, workflow};
+    screenshots, seed, settings, tasks, team, tokens, usage, users, workflow};
 use serde::Serialize;
 use serde_json::{Map, Value, json};
 
@@ -515,6 +515,9 @@ fn main() {
     c.insert("list_comments".into(), by("taskId", per_task(&|id| val(comments::list(&db, id).unwrap()))));
     c.insert("task_activity".into(), by("taskId", per_task(&|id| val(tasks::activity(&db, id).unwrap()))));
     c.insert("list_runs".into(), by("taskId", per_task(&|id| val(runs::list_for_task(&db, id).unwrap()))));
+    // a project's Time tracking tab for all time (GA-331, GA-354), with the default run time limit of 90 minutes; the mock counts a
+    // period from the runs (list_runs)
+    c.insert("project_time".into(), by("id", all_projects.iter().map(|p| (p.id.clone(), val(usage::project_time_at(&db, &p.id, 90 * 60_000, None, None, now).unwrap())))));
     c.insert("list_screenshots".into(), by("taskId", per_task(&|id| val(screenshots::sets(&db, id).unwrap()))));
     c.insert("suggest_agent".into(), by("taskId", per_task(&|id| json!(workflow::run_agent(&db, id).unwrap().map(|(a, _)| a)))));
     let mut owners: Vec<(String, &str)> = task_ids.iter().map(|id| (id.clone(), "task")).collect();
@@ -634,6 +637,11 @@ fn main() {
                            browser.version),
         "needs": needs, "problem": null, "listed": null,
         "usedBy": agents.iter().filter(|a| a.tools.browser_on()).map(|a| a.name.clone()).collect::<Vec<_>>()}));
+    // Settings → MCP servers → Claude Desktop (GA-340, on GA-338's ClaudeDesktopStatus): not connected yet, its settings file
+    // found without the Hersir entry, and hersir-mcp next to Hersir. mock.ts answers Connect and Disconnect.
+    c.insert("claude_desktop_status".into(), json!({"connected": false, "connectedAt": null,
+        "configPath": "/home/you/.config/Claude/claude_desktop_config.json", "configHasHersir": false,
+        "shimPath": "/home/you/.local/lib/hersir/hersir-mcp"}));
     let catalog: Vec<Value> = CATALOG.iter().map(|(id, label, group, description, risk, how, note)| json!({"id": id, "label": label, "group": group,
         "description": description, "risk": risk, "how": how, "note": note, "reported": false})).collect();
     // ToolsView for Claude Code: the browser's state in the agent's last run, and its saved switches (null for a new agent).

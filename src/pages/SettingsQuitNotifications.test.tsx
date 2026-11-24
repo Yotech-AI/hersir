@@ -48,6 +48,8 @@ vi.mock("../components/CliSettings", () => ({ CliSettings: () => null }));
 vi.mock("../components/GithubSettings", () => ({ GithubSettings: () => null }));
 vi.mock("../components/BitbucketSettings", () => ({ BitbucketSettings: () => null }));
 vi.mock("../components/McpSettings", () => ({ McpSettings: () => null }));
+// GA-340: Claude Desktop keeps its own state (ClaudeDesktopSettings.test.tsx)
+vi.mock("../components/ClaudeDesktopSettings", () => ({ ClaudeDesktopSettings: () => null }));
 vi.mock("../components/OldWorktrees", () => ({ OldWorktrees: () => null }));
 
 const { SettingsPage } = await import("./SettingsPage");

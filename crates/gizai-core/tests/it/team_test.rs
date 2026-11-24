@@ -76,3 +76,40 @@ fn saving_an_allowed_command_that_isnt_one_rule_is_refused_with_the_sentence_and
         team::update_agent(&db, &s.you_id, &id, input(&refs)).unwrap_or_else(|e| panic!("{role}'s list: {e}"));
     }
 }
+
+// ---- GA-318 (GA-270 #3, CWE-88): a rule starts with a tool's name, which starts with a letter ----
+
+const NOT_A_LETTER: [&str; 6] = ["--dangerously-skip-permissions", "-x", "--permission-mode=bypassPermissions", "_Bash(ls:*)", "9Read", "-Bash(npm test:*)"];
+
+#[test]
+fn an_allowed_command_whose_tool_name_doesnt_start_with_a_letter_isnt_a_rule() {
+    for bad in NOT_A_LETTER {
+        assert!(!team::one_rule(bad), "{bad}");
+        assert!(!team::starts_with_letter(bad), "{bad}");
+        assert_eq!(team::not_one_rule(&format!(" {bad} ")),
+                   format!("{bad} isn't a rule: a rule starts with a tool's name, which starts with a letter, like Bash(npm test:*)."));
+    }
+    for ok in ["Bash(npm test:*)", "Read", "mcp__otus", "a-b_c", "Z9"] {
+        assert!(team::one_rule(ok) && team::starts_with_letter(ok), "{ok}");
+    }
+}
+
+#[test]
+fn saving_an_allowed_command_that_starts_with_a_dash_is_refused_with_the_sentence_and_nothing_changes() {
+    use gizai_core::model::AgentInput;
+    let db = Db::open_in_memory().unwrap();
+    let s = ensure_seed(&db, "Jeffrey").unwrap();
+    let input = |tools: &[&str]| AgentInput { name: "Backend Agent".into(), role_key: "backend".into(),
+                                              allowed_tools: tools.iter().map(|t| t.to_string()).collect(), ..Default::default() };
+    for bad in NOT_A_LETTER {
+        let e = team::add_agent(&db, &s.you_id, &s.team_id, input(&["Bash(git status:*)", bad])).unwrap_err().to_string();
+        assert_eq!(e, team::not_one_rule(bad), "{bad}");
+    }
+    assert!(team::all_agents(&db).unwrap().is_empty(), "a refused agent isn't made");
+    let id = team::add_agent(&db, &s.you_id, &s.team_id, input(&["Bash(git status:*)"])).unwrap();
+    for bad in NOT_A_LETTER {
+        let e = team::update_agent(&db, &s.you_id, &id, input(&["Bash(git status:*)", bad])).unwrap_err().to_string();
+        assert!(e.contains(&team::not_one_rule(bad)), "{bad}: {e}");
+    }
+    assert_eq!(team::agent(&db, &id).unwrap().allowed_tools, ["Bash(git status:*)"], "nothing changed");
+}

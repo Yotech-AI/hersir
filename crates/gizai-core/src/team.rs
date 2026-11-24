@@ -282,20 +282,30 @@ pub fn role_key(raw: &str) -> String {
     raw.trim().to_lowercase().split_whitespace().collect::<Vec<_>>().join("-")
 }
 
-/// GA-262: an allowed command is one rule: a tool name (letters, digits, `_` and `-`), optionally followed by one `( … )`
-/// with no `(`, `)` or `,` inside, and nothing after it. Claude Code reads `--allowedTools` as rules separated by spaces or
-/// commas outside parentheses, so `Bash(ls:*) Bash(*)` saved as one entry would reach it as two rules, the second any
-/// command.
+/// GA-262: an allowed command is one rule: a tool name (letters, digits, `_` and `-`, starting with a letter), optionally
+/// followed by one `( … )` with no `(`, `)` or `,` inside, and nothing after it. Claude Code reads `--allowedTools` as rules
+/// separated by spaces or commas outside parentheses, so `Bash(ls:*) Bash(*)` saved as one entry would reach it as two
+/// rules, the second any command. GA-318: a name that starts with `-` could pass for one of Claude Code's own options.
 pub fn one_rule(entry: &str) -> bool {
     let t = entry.trim();
     let (name, rest) = t.split_at(t.find('(').unwrap_or(t.len()));
-    let name_ok = !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+    let name_ok = starts_with_letter(name) && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
     name_ok && (rest.is_empty() || rest.strip_prefix('(').and_then(|r| r.strip_suffix(')')).is_some_and(|inner| !inner.contains(['(', ')', ','])))
+}
+
+/// GA-318: whether `name` starts with a letter (a-z, A-Z), as the name of a tool or an MCP server must: one that starts
+/// with `-` could reach Claude Code as one of its own options.
+pub fn starts_with_letter(name: &str) -> bool {
+    name.starts_with(|c: char| c.is_ascii_alphabetic())
 }
 
 /// Why `entry` is refused, or left out of runs, when it isn't one rule (`one_rule`).
 pub fn not_one_rule(entry: &str) -> String {
-    format!("{} isn't one rule: write each command as its own entry, like Bash(npm test:*).", entry.trim())
+    let t = entry.trim();
+    if !starts_with_letter(t) {
+        return format!("{t} isn't a rule: a rule starts with a tool's name, which starts with a letter, like Bash(npm test:*).");
+    }
+    format!("{t} isn't one rule: write each command as its own entry, like Bash(npm test:*).")
 }
 
 struct CleanAgent {
@@ -310,6 +320,13 @@ struct CleanAgent {
 fn clean_agent(db: &Db, i: &AgentInput) -> Result<CleanAgent> {
     let places = i.folders.as_ref().map(|_| crate::folders::Places::of(db));
     clean_agent_on(crate::clis::get(db, &i.adapter)?, i, places.as_ref())
+}
+
+/// GA-323: refuses settings `add_agent` and `update_agent` would refuse (a name, role, permission mode, effort, cards at once,
+/// board check, budget, allowed command), with the same error, and saves nothing: the Chief's create_agent and update_agent
+/// check them before a call waits for the user's Approve, so one that can never work is refused at once.
+pub fn check_agent(db: &Db, input: &AgentInput) -> Result<()> {
+    clean_agent(db, input).map(|_| ())
 }
 
 /// `clean_agent` for an agent on `cli`, the CLI it runs on (Settings → Coding CLIs): its kind decides the permission

@@ -246,8 +246,10 @@ pub fn check(dir: &Path, repo: &Path, default_branch: &str, main: &str, switch: 
             return Err(Refusal::InProgress(what));
         }
     }
-    // --no-optional-locks: a check that refuses doesn't even refresh the folder's index
-    let changed: Vec<String> = git(dir, &["--no-optional-locks", "status", "--porcelain", "--untracked-files=no"]).map_err(failed)?
+    // --no-optional-locks: a check that refuses doesn't even refresh the folder's index. Submodules left out
+    // (`worktree::IGNORE_SUBMODULES`, GA-350): git never looks inside one, whose own settings could start programs
+    let changed: Vec<String> = git(dir, &["--no-optional-locks", "status", "--porcelain", "--untracked-files=no",
+                                          crate::worktree::IGNORE_SUBMODULES]).map_err(failed)?
         .lines().filter(|l| l.len() > 3).map(|l| l[3..].to_string()).collect();
     if !changed.is_empty() && !stash {
         return Err(Refusal::Uncommitted(changed));

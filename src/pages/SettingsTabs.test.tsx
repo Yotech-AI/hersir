@@ -49,6 +49,8 @@ vi.mock("../components/GithubSettings", () => ({ GithubSettings: stub("GitHub") 
 vi.mock("../components/BitbucketSettings", () => ({ BitbucketSettings: stub("Bitbucket") }));
 vi.mock("../components/CliSettings", () => ({ CliSettings: () => <i>the CLI list</i> }));
 vi.mock("../components/McpSettings", () => ({ McpSettings: () => <i>the MCP server list</i> }));
+// GA-340: Settings → MCP servers → Claude Desktop keeps its own state; ClaudeDesktopSettings.test.tsx tests it
+vi.mock("../components/ClaudeDesktopSettings", () => ({ ClaudeDesktopSettings: () => <i>the Claude Desktop section</i> }));
 vi.mock("../components/OldWorktrees", () => ({ OldWorktrees: () => <i>the old worktrees</i> }));
 
 const { SettingsPage } = await import("./SettingsPage");
@@ -178,16 +180,19 @@ describe("what each tab has", () => {
     for (const s of ["the CLI list", "Runs at once", "Pause all agents"]) expect(t).toContain(s);
     expect(t.indexOf("Coding CLIs")).toBeLessThan(t.indexOf("Runs at once"));
   });
-  it("MCP servers: the server list", () => {
-    expect(sections(of("MCP servers"))).toEqual(["MCP servers"]);
-    expect(text(of("MCP servers"))).toContain("the MCP server list");
+  it("MCP servers: the server list, then Claude Desktop (GA-340) with GA-341's text", () => {
+    expect(sections(of("MCP servers"))).toEqual(["MCP servers", "Claude Desktop"]);
+    const t = text(of("MCP servers"));
+    expect(t).toContain("the MCP server list");
+    expect(t).toContain("Claude Desktop Use your Hersir board from the Claude Desktop app on this computer: Claude gets the Chief's tools and works by its rules. Hersir must be open. the Claude Desktop section");
+    expect(t.indexOf("the MCP server list")).toBeLessThan(t.indexOf("the Claude Desktop section"));
   });
   it("GitHub and Bitbucket: GitHub, then Bitbucket", () => {
     expect(sections(of("GitHub and Bitbucket"))).toEqual(["GitHub", "Bitbucket"]);
   });
   it("every section is on exactly one tab", () => {
     const all = sections(html);
-    expect(all).toEqual(["Quit", "Updates", "Editor folders", "Data", "Backups", "Font", "Text size", "Theme and density", "Background", "Notifications", "Coding CLIs", "Runs", "MCP servers", "GitHub", "Bitbucket"]);
+    expect(all).toEqual(["Quit", "Updates", "Editor folders", "Data", "Backups", "Font", "Text size", "Theme and density", "Background", "Notifications", "Coding CLIs", "Runs", "MCP servers", "Claude Desktop", "GitHub", "Bitbucket"]);
   });
 });
 

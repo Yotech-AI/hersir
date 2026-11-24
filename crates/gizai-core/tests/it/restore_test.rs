@@ -605,7 +605,7 @@ fn a_snapshot_with_an_older_schema_is_upgraded_at_the_start_with_the_upgrades_co
     let usb = chosen(&d, "usb");
     let dir = b::backups_dir(&usb);
     let m = d.snapshot(&usb, Reason::Manual);
-    // the database as the Gizai before migration 24 made it
+    // the database as the Gizai before migration 25 made it
     repack(&dir, &m.name, |c| {
         c.execute_batch(&format!("DROP TABLE docs_baselines; DROP TABLE docs_decisions; DROP TABLE docs_changes; ALTER TABLE projects DROP COLUMN docs_off; PRAGMA user_version = {};",
                                  db::SCHEMA_VERSION - 1)).unwrap();
@@ -635,7 +635,7 @@ fn a_restored_database_that_cant_be_opened_goes_to_restore_failed_and_gizai_star
     let usb = chosen(&d, "usb");
     let dir = b::backups_dir(&usb);
     let m = d.snapshot(&usb, Reason::Manual);
-    // it says the version before 22 but has 22's columns: the upgrade fails
+    // it says the version before 23 but has 23's column: the upgrade fails
     repack(&dir, &m.name, |c| c.execute_batch(&format!("PRAGMA user_version = {};", db::SCHEMA_VERSION - 1)).unwrap());
     d.attach("b.txt", b"only today");
     d.set("agents_paused", json!(false));

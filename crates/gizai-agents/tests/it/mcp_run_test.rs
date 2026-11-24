@@ -19,8 +19,26 @@ fn strings(v: &[&str]) -> Vec<String> {
     v.iter().map(|s| s.to_string()).collect()
 }
 
-/// The values after `flag`, up to the next `--` option.
+/// The values after `flag`, up to the next `--` option. GA-318: `--allowedTools` and `--disallowedTools` go as one argument,
+/// `<flag>=<rule>,<rule>,…`: their rules, split at the commas outside parentheses as Claude Code splits them.
 fn values(argv: &[String], flag: &str) -> Vec<String> {
+    if flag.ends_with("Tools") {
+        assert!(!argv.iter().any(|a| a == flag), "GA-318: {flag} as an argument of its own: {argv:?}");
+        let prefix = format!("{flag}=");
+        let Some(v) = argv.iter().find_map(|a| a.strip_prefix(prefix.as_str())) else { return vec![] };
+        let (mut out, mut rule, mut depth) = (vec![], String::new(), 0);
+        for c in v.chars() {
+            match c {
+                ',' if depth == 0 => out.push(std::mem::take(&mut rule)),
+                _ => {
+                    depth += (c == '(') as i32 - (c == ')') as i32;
+                    rule.push(c);
+                }
+            }
+        }
+        out.push(rule);
+        return out;
+    }
     let Some(at) = argv.iter().position(|a| a == flag) else { return vec![] };
     argv[at + 1..].iter().take_while(|a| !a.starts_with("--")).cloned().collect()
 }
@@ -270,7 +288,7 @@ fn a_claude_code_task_run_without_servers_gets_strict_mcp_config_and_no_config()
     let argv = cli::task_exec(&claude(), &TaskRun { prompt: "p".into(), session_id: "S-1".into(), ..Default::default() }).args;
     assert!(argv.contains(&"--strict-mcp-config".to_string()), "no MCP servers from the user's or the repo's settings: {argv:?}");
     assert!(!argv.contains(&"--mcp-config".to_string()), "{argv:?}");
-    assert!(!argv.contains(&"--disallowedTools".to_string()), "{argv:?}");
+    assert!(!argv.iter().any(|a| a.starts_with("--disallowedTools")), "{argv:?}");
 }
 
 #[test]

@@ -49,8 +49,9 @@ describe("a page's toolbar is its island's header", () => {
     expect(src).not.toMatch(/className="toolbar"/);
   });
 
-  it("a project and a client are one island without a header (no toolbar, as the notes say)", () => {
-    expect(notes).toContain("**A project: one island without a header**");
+  // GA-331: a project's island has two tabs in its header (Overview and Time tracking), still no toolbar
+  it("a project is one island with two tabs in its header and a client one without a header (no toolbar, as the notes say)", () => {
+    expect(notes).toContain("**A project: one island with two tabs in its header** (GA-331), Overview and Time tracking");
     expect(notes).toContain("**A client: one island without a header**");
     for (const path of ["src/pages/ProjectPage.tsx", "src/pages/ClientPage.tsx"]) expect([path, /className="toolbar/.test(code(path))]).toEqual([path, false]);
   });

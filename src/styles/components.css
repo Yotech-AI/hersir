@@ -496,6 +496,8 @@ button.label-pill[aria-pressed="true"] { border-color: var(--accent); color: var
 .chat-group.user > .chat-msg { align-self: stretch; }
 .chat-msg.user .bubble { width: fit-content; max-width: min(calc(560px * var(--chat-scale, 1)), 85%); margin-left: auto; padding: 9px 13px; border: 1px solid var(--line); border-radius: var(--radius-l); background: var(--raised); color: var(--text); font-size: var(--fs-chat, var(--fs)); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
 .chat-meta { font-size: var(--fs-xs); color: var(--text-3); }
+/* GA-351: "From Claude Desktop", small over a message of yours that came from Claude Desktop (sent or queued). */
+.chat-msg.user .msg-from { margin-bottom: 3px; text-align: right; font-size: var(--fs-xs); color: var(--text-3); }
 .chat-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: var(--fs-sm); color: var(--text-2); }
 .chat-head b { color: var(--text); font-weight: 600; }
 .chat-body { display: flex; flex-direction: column; gap: 8px; padding-left: 30px; }
@@ -770,6 +772,8 @@ button.label-pill[aria-pressed="true"] { border-color: var(--accent); color: var
 .pop .opt:disabled, .pop .opt[aria-disabled="true"] { opacity: .45; cursor: default; }
 .pop .opt:disabled:hover { background: none; }
 .pop .opt .kbd { margin-left: auto; }
+/* One of a choice (role menuitemradio, the Terminal page's Layout): the current one has a check on the right */
+.pop .opt > .icon.check { flex: none; width: 14px; height: 14px; margin-left: auto; color: var(--text-2); }
 .pop .pop-note { padding: 6px 8px 4px; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.45; }
 
 /* ---------- the folder picker: a popover from + on the Editor heading, like the @ picker ---------- */

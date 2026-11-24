@@ -7,7 +7,7 @@ use gizai_core::pending::{DiffLine, line_diff};
 use serde::Serialize;
 use serde_json::{Map, Value};
 
-use super::{Args, Cx, err, resolve, short};
+use super::{Args, Cx, Desktop, err, resolve, short};
 
 /// What a pending call does.
 #[derive(Debug, Clone, Default, Serialize)]
@@ -55,7 +55,7 @@ fn card(t: &gizai_core::model::Task) -> String {
 /// The pending call `tool` with `args`, as the Chief `actor` in the chat `thread` would make it.
 pub(crate) fn preview(st: &crate::AppState, actor: &str, thread: &str, tool: &str, args: &Value) -> Preview {
     let a = Args(args.as_object().cloned().unwrap_or_default());
-    let cx = Cx { st, actor, thread: Some(thread), check: None, from: None, approved: false };
+    let cx = Cx { st, actor, thread: Some(thread), check: None, from: None, approved: false, desktop: Desktop::No };
     let p = match tool {
         "memory_write" => memory_write(&cx, &a),
         "memory_append" => memory_append(&cx, &a),
@@ -75,6 +75,7 @@ pub(crate) fn preview(st: &crate::AppState, actor: &str, thread: &str, tool: &st
         "record_decision" => record_decision(&cx, &a),
         "update_task" => update_task(&cx, &a),
         "update_project" => update_project(&cx, &a),
+        "create_project" => create_project(&cx, &a),
         _ => Ok(Preview { line: format!("Call {tool}"), fields: plain_fields(&a.0), ..Default::default() }),
     };
     // A call whose own arguments are wrong still shows what it was called with, and why it fails.
@@ -116,7 +117,7 @@ pub(crate) fn note_key(st: &crate::AppState, actor: &str, thread: &str, tool: &s
         _ => return None,
     };
     let r = args.get(key)?.as_str()?.trim();
-    let cx = Cx { st, actor, thread: Some(thread), check: None, from: None, approved: false };
+    let cx = Cx { st, actor, thread: Some(thread), check: None, from: None, approved: false, desktop: Desktop::No };
     let found =if tool == "memory_write" { note_at(&cx, r) } else { note(&cx, r) };
     Some(match found {
         Some(n) => n.id,
@@ -259,13 +260,42 @@ fn agent_fields(cx: &Cx, a: &Args) -> Vec<(&'static str, &'static str, String)> 
     out
 }
 
+/// What a call of create_agent (`new_agent`) or update_agent gives an agent that chat gives only with your OK
+/// (`write::NeedsOk`), as fields: they make the call wait without a tool from outside Gizai. GA-352: a CLI that doesn't keep
+/// the agent to its allowed commands, and a permission mode that isn't stricter than its own (for a new agent, its CLI's
+/// usual one), each from and to; GA-323: the new commands.
+fn needs_your_ok(needs: &super::write::NeedsOk, new_agent: bool) -> Vec<Field> {
+    let mut out = vec![];
+    if let Some(c) = &needs.cli {
+        let on = match c.from.as_deref().filter(|_| !new_agent) {
+            Some(from) => format!("{from} → {}", c.to),
+            None => c.to.clone(),
+        };
+        out.push(field("Needs your OK", format!("Runs on: {on}, which doesn't keep the agent to its allowed commands")));
+    }
+    if let Some(m) = &needs.mode {
+        let mode = match m.from.as_deref() {
+            Some(from) if new_agent => format!("{from} (the usual one) → {}", m.to),
+            Some(from) => format!("{from} → {}", m.to),
+            None => m.to.clone(),
+        };
+        out.push(field("Needs your OK", format!("Permission mode: {mode}")));
+    }
+    if !needs.commands.is_empty() {
+        out.push(field("Needs your OK", listed(&needs.commands, needs.commands.len())));
+    }
+    out
+}
+
 fn create_agent(cx: &Cx, a: &Args) -> Result<Preview, String> {
     let name = a.req("name")?;
     let role = a.req("role")?;
     // GA-225: the team it joins, which must be named when there is more than one.
     let t = resolve::team_arg(cx, a)?;
+    let cli = super::write::runs_on(cx, a)?;
     let mut fields: Vec<Field> = team_field(cx, &t).into_iter().collect();
     fields.extend(agent_fields(cx, a).into_iter().map(|(_, label, v)| field(label, if v.is_empty() { "—".into() } else { v })));
+    fields.extend(needs_your_ok(&super::write::create_agent_needs_ok(cx, a, cli.as_ref()), true));
     Ok(Preview { line: format!("Add the agent {name} ({role})"), fields, text: a.opt("instructions_md"), ..Default::default() })
 }
 
@@ -279,7 +309,11 @@ fn agent_now(cx: &Cx, m: &gizai_core::team::Member, key: &str) -> String {
         "runs_on" => crate::clis::of_agent(cx.st, m.adapter.as_deref()).map(|c| c.name).unwrap_or_else(|_| or_none(m.adapter.clone())),
         "model" => or_none(m.model.clone()),
         "effort" => or_none(m.effort.clone()),
-        "permission_mode" => or_none(m.permission_mode.clone()),
+        // GA-352: the one it runs with (none saved: its CLI's usual one)
+        "permission_mode" => {
+            let kind = crate::clis::of_agent(cx.st, m.adapter.as_deref()).map(|c| c.kind).unwrap_or_default();
+            or_none(Some(super::write::mode_as_run(&kind, m.permission_mode.as_deref())))
+        }
         "cards_at_once" => m.max_runs.to_string(),
         "monthly_budget_usd" => m.budget_usd_micros.map(|b| format!("${}", b as f64 / 1e6)).unwrap_or_else(|| "—".into()),
         "board_check_minutes" => m.board_check_minutes.filter(|n| *n > 0).map(|n| format!("{n} minutes")).unwrap_or_else(|| "off".into()),
@@ -291,8 +325,27 @@ fn agent_now(cx: &Cx, m: &gizai_core::team::Member, key: &str) -> String {
 
 fn update_agent(cx: &Cx, a: &Args) -> Result<Preview, String> {
     let m = resolve::agent(cx, &a.req("agent")?)?;
+    let to = super::write::runs_on(cx, a)?;
+    // GA-352: each change, also the ones a move to another kind of CLI makes by itself: its model, effort and permission
+    // mode don't carry over unless given (`write::update_agent`), and the mode shows as it would run with it.
+    let after = super::write::update_agent_runs(cx, &m, a, to.as_ref());
+    let kind_now = crate::clis::of_agent(cx.st, m.adapter.as_deref()).map(|c| c.kind).unwrap_or_default();
+    let mut given = agent_fields(cx, a);
+    if after.as_ref().is_some_and(|(cli, _)| cli.kind != kind_now) {
+        for (key, label) in [("model", "Model"), ("effort", "Effort")] {
+            if !given.iter().any(|(k, _, _)| *k == key) {
+                given.push((key, label, String::new()));
+            }
+        }
+    }
+    if let Some((_, mode)) = &after {
+        given.retain(|(k, _, _)| *k != "permission_mode");
+        given.push(("permission_mode", "Permission mode", mode.clone()));
+    }
+    // in the agent form's order, its allowed commands last
+    given.sort_by_key(|(k, _, _)| AGENT_SETTINGS.iter().position(|(s, _)| s == k).unwrap_or(AGENT_SETTINGS.len()));
     let mut fields = vec![];
-    for (key, label, v) in agent_fields(cx, a) {
+    for (key, label, v) in given {
         let now = agent_now(cx, &m, key);
         let v = if v.is_empty() { "—".to_string() } else { v };
         if !now.eq_ignore_ascii_case(&v) {
@@ -303,6 +356,7 @@ fn update_agent(cx: &Cx, a: &Args) -> Result<Preview, String> {
     let current = m.instructions_md.clone().unwrap_or_default();
     let instructions = new_instructions.filter(|i| i.trim() != current.trim());
     let warning = (fields.is_empty() && instructions.is_none()).then(|| format!("Nothing of {}'s settings would change.", m.name));
+    fields.extend(needs_your_ok(&super::write::update_agent_needs_ok(cx, &m, a, to.as_ref()), false));
     if instructions.is_some() {
         fields.push(field("Instructions", "new text, below"));
     }
@@ -438,7 +492,7 @@ fn merge_pull_request(cx: &Cx, a: &Args) -> Result<Preview, String> {
 }
 
 /// Names, the first `n` of them: "GA-1, GA-2 and GA-3", or "GA-1, GA-2, GA-3 and 680 more"; "none" for none.
-fn listed(items: &[String], n: usize) -> String {
+pub(crate) fn listed(items: &[String], n: usize) -> String {
     match items.split_last() {
         None => "none".into(),
         Some(_) if items.len() > n => format!("{} and {} more", items[..n].join(", "), items.len() - n),
@@ -614,6 +668,9 @@ fn update_task(cx: &Cx, a: &Args) -> Result<Preview, String> {
     } else if let Some(h) = a.opt("hold") {
         let new = a.opt("hold_reason").map(|r| format!("{h}: {r}")).unwrap_or(h);
         fields.push(change("Hold", hold_now.unwrap_or_else(|| "none".into()), new));
+    } else if let Some(r) = a.text("hold_reason").filter(|r| r.trim() != t.hold_reason.as_deref().unwrap_or_default().trim()) {
+        // GA-319: only the reason, which waits for the user's Approve after a tool from outside Hersir
+        fields.push(change("Hold reason", or_none(t.hold_reason.clone()), or_none(Some(r))));
     }
     let (diff, text) = match (&description, &acceptance) {
         (Some(d), _) if !d.is_empty() => (Some(line_diff(&t.description_md, d)), Some(d.clone())),
@@ -642,6 +699,50 @@ fn update_project(cx: &Cx, a: &Args) -> Result<Preview, String> {
     let warning = (fields.len() == 1).then(|| format!("Nothing of {} would change.", p.name));
     Ok(Preview { line: format!("Change the project {} ({})", p.name, p.key), fields, diff: goal.as_ref().map(|(from, to)| line_diff(from, to)),
                  text: goal.map(|(_, to)| to), warning })
+}
+
+/// GA-319: a new project: its name and key, and each field the call gives (its repository, folder, main branch and goal
+/// among them), as the project would have them, with its goal below. A key that is taken, or a folder that isn't a git
+/// repository now, says approving fails.
+fn create_project(cx: &Cx, a: &Args) -> Result<Preview, String> {
+    let name = a.req("name")?;
+    let key = match a.opt("key") {
+        Some(k) => k.to_uppercase(),
+        None => gizai_core::projects::unused_key(cx.db(), &name).map_err(err)?,
+    };
+    let mut warning = gizai_core::projects::list(cx.db()).map_err(err)?.iter().any(|p| p.key.eq_ignore_ascii_case(&key))
+        .then(|| format!("A project has the key {key} already, so approving fails."));
+    let mut fields = vec![field("Name", name.clone()), field("Key", key.clone())];
+    if let Some(c) = a.opt("client") {
+        fields.push(field("Client", resolve::client(cx, &c)?.name));
+    }
+    let team = match a.opt("team") {
+        Some(t) => resolve::team(cx, &t)?,
+        None => resolve::team_of(cx, None)?,
+    };
+    fields.extend(team_field(cx, &team));
+    fields.push(field("Status", a.opt("status").unwrap_or_else(|| "active".into())));
+    if let Some(c) = a.opt("color") {
+        fields.push(field("Colour", c));
+    }
+    let repository = if a.text("repository").is_some() { "repository" } else { "github" };
+    if let Some(link) = a.opt(repository) {
+        // As the link is saved: a GitHub or Bitbucket link in its tidy form.
+        let tidy = gizai_core::repo_url::normalize(&link).ok().flatten().map(|l| l.url).unwrap_or(link);
+        fields.push(field("Repository", tidy));
+    }
+    if let Some(folder) = a.opt("repo_path") {
+        fields.push(field("Folder", super::write::checked_repo(&folder).unwrap_or_else(|_| {
+            warning.get_or_insert_with(|| format!("{folder} isn't a git repository now, so approving fails."));
+            folder.clone()
+        })));
+    }
+    fields.push(field("Main branch", a.opt("default_branch").unwrap_or_else(|| "main".into())));
+    let goal = a.opt("goal_md");
+    if goal.is_some() {
+        fields.push(field("Goal", "new text, below"));
+    }
+    Ok(Preview { line: format!("Add the project {name} ({key})"), fields, text: goal, warning, ..Default::default() })
 }
 
 /// What an approved call did, from its result: a short sentence, like "Saved as version 4."
@@ -679,6 +780,10 @@ pub(crate) fn done(tool: &str, result: &Value) -> String {
         "update_project" => match s("/done") {
             Some(moved) => format!("The project is saved, and {moved}."),
             None => "The project is saved.".into(),
+        },
+        "create_project" => match (s("/project/name"), s("/project/key")) {
+            (Some(name), Some(key)) => format!("{name} ({key}) is added."),
+            _ => "The project is added.".into(),
         },
         "merge_pull_request" => match (n("/pull_request/number"), s("/card")) {
             // "moved to Deploy", or "still in Review: …"

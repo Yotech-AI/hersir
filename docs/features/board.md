@@ -6,6 +6,7 @@ Each column on your board holds the agents that work its cards, so a card moves 
 
 - **Clients** with contacts, and **projects** with docs and files.
 - **Cards** with labels, priorities and acceptance criteria, on a board or in a list (Ctrl+B switches). What needs you collects in [the Inbox](inbox.md).
+- **A card's title** is one line of at most 200 characters, as it is the agent's task line: a longer title, or one with a line break, is refused with why, from the New task form, the card and the Chief alike.
 - **Labels** are tags for people, such as Must have and Could have: create, rename, recolour and remove them on the Team page.
 - **Archive** a card in Done: it leaves the board and every list, and keeps its ID, comments, runs and branch. The bin on the Tasks page lists archived cards, and Restore puts one back in Done. To archive many at once, use Archive all in Done's head, or tick cards and press Archive ([Many cards at once](#many-cards-at-once)).
 
@@ -92,7 +93,7 @@ Every card gets its own git worktree and branch, started from main on GitHub or 
 
 A new card takes over a finished card's worktree. A build folder over 20 GB is emptied first, and the card says so.
 
-Settings → Data lists old worktrees with their uncommitted files, and removes them. Remove anyway puts uncommitted changes in git's stash first.
+Settings → Data lists old worktrees with their uncommitted files, and removes them. Remove anyway puts uncommitted changes in git's stash first. A worktree with a nested repository in it stays, and says why: git's checks before a removal or a stash could run that repository's own settings.
 
 ## Runs
 

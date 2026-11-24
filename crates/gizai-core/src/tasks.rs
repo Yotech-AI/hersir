@@ -325,6 +325,33 @@ fn actor_kind(c: &Connection, id: &str) -> Result<Option<String>> {
     Ok(c.query_row("SELECT kind FROM actors WHERE id=?1 AND deleted_at IS NULL", [id], |r| r.get(0)).optional()?)
 }
 
+/// GA-319: the longest title a card may have, in characters. Its run prompt's `# Task` line is its title.
+pub const TITLE_MAX: usize = 200;
+
+/// GA-319: the line breaks a card's title may not have: those Unicode always breaks a line on (LF, CR, VT, FF, NEL, and
+/// the line and paragraph separators), so the title stays the one `# Task` line of its run prompt.
+fn breaks_line(c: char) -> bool {
+    matches!(c, '\n' | '\r' | '\u{0B}' | '\u{0C}' | '\u{85}' | '\u{2028}' | '\u{2029}')
+}
+
+/// GA-319: a card's title as it is saved, wherever it is saved (the forms, the chat's tools, the MCP server): trimmed,
+/// and refused, with a sentence that says why, when it is empty, has a line break or is longer than `TITLE_MAX`
+/// characters.
+pub fn check_title(title: &str) -> Result<String> {
+    let t = title.trim();
+    if t.is_empty() {
+        return Err(Error::Invalid("task title is required".into()));
+    }
+    if t.chars().any(breaks_line) {
+        return Err(Error::Invalid("A card's title is one line: take out its line breaks. Nothing was saved.".into()));
+    }
+    let n = t.chars().count();
+    if n > TITLE_MAX {
+        return Err(Error::Invalid(format!("A card's title is at most {TITLE_MAX} characters; this one has {n}. Nothing was saved.")));
+    }
+    Ok(t.to_string())
+}
+
 pub fn create(db: &Db, actor: &str, input: TaskInput) -> Result<String> {
     create_held(db, actor, input, None)
 }
@@ -355,10 +382,7 @@ pub fn create_held(db: &Db, actor: &str, input: TaskInput, hold: Option<(&str, &
 /// takes it before it waits for them. Refused as `builds_on::set_in` says (more than 20 cards, a card of another
 /// organisation), and then no card is made. `hold` may name its kind (GA-261).
 pub fn create_with(db: &Db, actor: &str, input: TaskInput, hold: Option<NewHold>, builds_on: &[String]) -> Result<String> {
-    let title = input.title.trim().to_string();
-    if title.is_empty() {
-        return Err(Error::Invalid("task title is required".into()));
-    }
+    let title = check_title(&input.title)?;
     db.write(Some(actor), |w| {
         let c = w.conn();
         let (key, client, team) = team_of_project(c, &input.project_id)?;
@@ -450,11 +474,7 @@ fn update_in(w: &Writer, actor: &str, id: &str, patch: &TaskPatch) -> Result<()>
         let mut cols: Vec<(&str, V)> = vec![];
         let opt = |s: &String| if s.trim().is_empty() { V::Null } else { V::Text(s.clone()) };
         if let Some(t) = &patch.title {
-            let t = t.trim();
-            if t.is_empty() {
-                return Err(Error::Invalid("task title is required".into()));
-            }
-            cols.push(("title", V::Text(t.to_string())));
+            cols.push(("title", V::Text(check_title(t)?)));
         }
         if let Some(d) = &patch.description_md {
             cols.push(("description_md", V::Text(d.clone())));
@@ -531,19 +551,23 @@ fn update_in(w: &Writer, actor: &str, id: &str, patch: &TaskPatch) -> Result<()>
     }
 }
 
-/// A move by hand (the board, the Chief's `move_task`). A person dragging a card on hold into To do or In progress
-/// answers the hold: it comes off (with fresh tries), so the queue or the next board check starts the card. Gates move
-/// cards with `move_in` and keep their holds.
+/// A move by hand on the board. A person dragging a card on hold into To do or In progress answers the hold: it comes off
+/// (with fresh tries), so the queue or the next board check starts the card. Gates move cards with `move_in` and keep their
+/// holds, and so does the move_task tool (`move_to_held`).
 pub fn move_to(db: &Db, actor: &str, id: &str, state_id: &str, sort_key: &str) -> Result<()> {
-    move_to_held(db, actor, id, state_id, sort_key, None)
+    db.write(Some(actor), |w| {
+        move_in(w, actor, id, state_id, Some(sort_key))?;
+        release_by_hand(w, actor, id)
+    })
 }
 
-/// `move_to`, and then on hold when `hold` (the hold and its reason, and its kind, GA-261) is given: in the same write, so
-/// no agent picks the card up first (GA-101).
+/// The move_task tool's move: the Chief's, and Claude Desktop's (GA-341), which is made as you. Unlike `move_to` it keeps
+/// a hold on the card, also when the actor is a person: a tool takes a hold off only with update_task's clear_hold, which
+/// keeps its rules (only the user takes GA-101's hold off, GA-261). Then on hold when `hold` (the hold and its reason, and
+/// its kind, GA-261) is given: in the same write, so no agent picks the card up first (GA-101).
 pub fn move_to_held(db: &Db, actor: &str, id: &str, state_id: &str, sort_key: &str, hold: Option<NewHold>) -> Result<()> {
     db.write(Some(actor), |w| {
         move_in(w, actor, id, state_id, Some(sort_key))?;
-        release_by_hand(w, actor, id)?;
         if let Some(h) = hold {
             crate::workflow::set_hold_as(w, id, h.hold, h.reason, h.kind)?;
         }

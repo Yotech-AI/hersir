@@ -645,6 +645,22 @@ export type ProjectUsage = { projectId: string; number: string; key: string; nam
 export type Usage = { since: number; until: number; total: UsageTotals; days: UsageDay[]; agents: AgentUsage[]; projects: ProjectUsage[];
   chat: UsageTotals; noProject: UsageTotals };
 
+// ---- a project's Time tracking tab (gizai-core usage.rs, GA-331, GA-354) ----
+/** One card and what its runs in the period added up to (all of them without a period). `runs`: the runs that started;
+ *  `timeMs`: the ended runs' time (an interrupted run counts at most the run time limit); `runningSince`: the start of the run
+ *  working on it now; input tokens include cache reads and writes; `costUsdMicros`: the API cost that is known, an estimate at
+ *  API prices; `unknownCostRuns`: runs with tokens but no cost. */
+export type CardTime = { taskId: string; identifier: string; title: string; column: string; archived: boolean; runs: number;
+  timeMs: number; runningSince: number | null; inputTokens: number; outputTokens: number; costUsdMicros: number; unknownCostRuns: number };
+/** One UTC day (`dayStart`, midnight UTC): what the runs that started on it added up to. */
+export type TimeDay = { dayStart: number; runs: number; timeMs: number; inputTokens: number; outputTokens: number;
+  costUsdMicros: number; unknownCostRuns: number };
+/** The tab for a period: the runs that started from `since` up to (not including) `until`, both null for all of them.
+ *  `firstRun`: when the project's first run started, whatever the period. `cards`: all time, every card of the project; in a
+ *  period, the cards with a run that started in it. `days`: all time, from the day of the first run to today; in a period,
+ *  each of its days, oldest first. */
+export type ProjectTime = { since: number | null; until: number | null; firstRun: number | null; cards: CardTime[]; days: TimeDay[] };
+
 // ---- the Usage page's Subscription tab (gizai-core limits.rs) ----
 /** One reading of a subscription limit, as the coding CLI reported it in a run or chat turn. `usedPercent`: 0 to 100 (more past the
  *  cap), null when the CLI only said the limit was reached; `status`: allowed, allowed_warning (near it) or rejected (reached);
@@ -687,7 +703,8 @@ export type PreviewField = { label: string; value: string; from?: string | null 
 /** What a pending call does, as things are now: one plain line, what it is about and what changes, the text it saves or adds,
  *  what changes against the current version (a note, an agent's instructions), and why approving fails, when Gizai can tell. */
 export type PendingPreview = { line: string; fields: PreviewField[]; text?: string | null; diff?: DiffLine[] | null; warning?: string | null };
-/** GA-102: a call of the Team Lead's that wasn't run because its answer (`runId`) used a tool from outside Gizai (`outsideTool`). It
+/** GA-102: a call of the Team Lead's that wasn't run because its answer (`runId`) used a tool from outside Gizai (`outsideTool`), or
+ *  (GA-323, `outsideTool` is `NEW_COMMANDS` of lib/pending) because it gives an agent commands the Chief may only add with your OK. It
  *  waits under that answer until you approve it (it runs exactly as called, once) or discard it. status: pending, or running while
  *  an approval runs it. */
 export type PendingAction = { id: string; threadId: string; runId?: string | null; actorId: string; tool: string; args: Record<string, unknown>;
@@ -706,15 +723,18 @@ export type FileCheck = { ok: string[]; failed: string[] };
 /** A chat the Archive found, with the newest of its messages (yours or the Team Lead's) whose text matches; none when only
  *  its title matches, or for an empty search. */
 export type ChatHit = { thread: ChatThread; message?: ChatMessage | null };
-/** kind "pending" (GA-102): what you decided on a call that waited for you, with `action` (its id), `tool`, `status` and `run`. */
-export type ChatNoteMeta = { kind: "switch" | "limit" | "pending" | string; cli?: string; cliName?: string; limit?: string; resets?: string | null; messageIds?: string[];
-  action?: string; tool?: string; status?: string; run?: string | null };
+/** kind "pending" (GA-102): what you decided on a call that waited for you, with `action` (its id), `tool`, `status` and `run`.
+ *  GA-351: a message of yours that came from Claude Desktop (its ask_chief) has no kind, only `from: "claude-desktop"`. */
+export type ChatNoteMeta = { kind?: "switch" | "limit" | "pending" | string; cli?: string; cliName?: string; limit?: string; resets?: string | null; messageIds?: string[];
+  action?: string; tool?: string; status?: string; run?: string | null; from?: string };
 /** `seq`: the last change to the text being written that `draft` holds. */
 export type ChatStatus = { threadId: string; runId: string; draft: string; tool?: string | null; seq: number };
 /** A message sent while the Team Lead answers; `held`: it waits for Send now instead of going when the answer is done. */
 export type QueuedMessage = { id: string; threadId: string; bodyMd: string; createdAt: number; updatedAt: number; held: boolean;
   /** The files added to it; they go with it. */
-  files?: FileRow[] };
+  files?: FileRow[];
+  /** GA-351: its details, which it keeps when it goes: `{from: "claude-desktop"}` for a message from Claude Desktop. */
+  meta?: ChatNoteMeta | null };
 /** A coding CLI in Runs on under the chat's text box; `problem`: why it can't run the chat. */
 export type ChatCli = { id: string; name: string; kind: CliKind; problem?: string | null };
 export type ChatEvent =
@@ -822,3 +842,20 @@ export type ToolsView = {
 /** The built-in browser in Settings → MCP servers: only its version and browser program change. */
 export type BrowserEntry = { version: string; program: string };
 export type BrowserView = BrowserEntry & { id: string; command: string; needs: BrowserNeeds; problem?: string | null; listed?: McpListed | null; usedBy: string[] };
+// Claude Desktop (GA-338's contract): Settings → MCP servers → Claude Desktop connects the Claude Desktop app to Hersir
+// through the hersir-mcp program, with a key of its own.
+export interface ClaudeDesktopStatus {
+  connected: boolean;
+  connectedAt: number | null;   // ms: when the current connection was made
+  configPath: string | null;    // Claude Desktop's settings file, when its folder exists on this computer
+  configHasHersir: boolean;     // that file has an mcpServers.hersir entry
+  shimPath: string | null;      // the hersir-mcp program; null when Hersir can't find it
+}
+export interface ClaudeDesktopConnection {
+  entry: string;                // the JSON to paste, with the key in it: shown only now
+  wroteConfig: boolean;         // Hersir added the entry to configPath
+  configPath: string | null;
+  backupPath: string | null;    // the copy of the old settings file, when Hersir wrote over one
+  configError: string | null;   // why Hersir didn't write the file, when it was asked to
+  status: ClaudeDesktopStatus;  // after connecting
+}

@@ -2,7 +2,8 @@
 //! texts and git's hunks (`card_file_diff`), and one run's commits (`run_changes`). They come from local git
 //! (`gizai_agents::changes`), in this order:
 //! 1. its worktree, uncommitted changes included, against its merge base with main as last fetched (the ref card starts
-//!    use), so the commits main got since the card started don't show;
+//!    use), so the commits main got since the card started don't show; or why Hersir doesn't run git there (GA-322: a
+//!    run changed its git folder);
 //! 2. its branch, when its worktree is gone;
 //! 3. the range saved at its merge (`save_at_merge`): its branch as its pull request had it, after a merge commit, a
 //!    squash or a rebase alike, also once its branch is gone, offline;
@@ -79,8 +80,10 @@ pub fn of_card(st: &AppState, task_id: &str) -> Result<CardChanges, String> {
     let main = Main::of(&project, &repo);
     let unreadable = |e: gizai_agents::AgentError| format!("Hersir couldn't read what {} changed: {}", task.identifier, crate::pulls::plain(e));
 
-    // 1. its worktree, as it is on disk
-    if let Some(wt) = worktree::worktree_of(&repo, &branch).ok().flatten().filter(|w| w.is_dir()) {
+    // 1. its worktree, as it is on disk, else why Hersir doesn't run git there
+    let in_worktree = card_worktree(st, &project, &task, &repo, &branch)
+        .map_err(|why| format!("Hersir couldn't read what {} changed: {why}", task.identifier))?;
+    if let Some(wt) = in_worktree {
         let tip = git_changes::commit_of(&wt, "HEAD")
             .ok_or_else(|| format!("Hersir couldn't read what {} changed: its worktree {} has no commit", task.identifier, wt.display()))?;
         let base = main.base(&repo, &tip, &branch)?;
@@ -164,7 +167,7 @@ pub fn file_of_card(st: &AppState, task_id: &str, path: &str, old_path: Option<&
         Some(_) => None,
         None => {
             let branch = task.branch.as_deref().filter(|b| !b.trim().is_empty()).unwrap_or("-");
-            let wt = worktree::worktree_of(&repo, branch).ok().flatten().filter(|w| w.is_dir())
+            let wt = card_worktree(st, &project, &task, &repo, branch).map_err(|why| format!("Hersir can't show {path}: {why}"))?
                 .ok_or_else(|| format!("{}'s worktree is gone: open its changes again", task.identifier))?;
             Some(wt)
         }
@@ -280,6 +283,22 @@ fn repo_of(task: &Task, project: &Project) -> Result<PathBuf, String> {
         return Err(format!("Hersir can't show what {} changed: {} isn't a git repository any more", task.identifier, repo.display()));
     }
     Ok(repo)
+}
+
+/// The card's worktree, for its Changes: the one git lists for `branch` when Hersir's git may read it
+/// (`worktree::safe_worktree_of`: the repository's main checkout, or a card worktree), else None. An error says why
+/// Hersir doesn't run git in it (GA-322, `worktree::checked_git_command`), such as a git config of its own that a run
+/// added; or why it doesn't in Hersir's own worktree of the card when git lists none it may read for the branch, such
+/// as when a run made its git folder point elsewhere.
+fn card_worktree(st: &AppState, project: &Project, task: &Task, repo: &Path, branch: &str) -> Result<Option<PathBuf>, String> {
+    if let Some(wt) = worktree::safe_worktree_of(repo, branch).ok().flatten().filter(|w| w.is_dir()) {
+        return worktree::checked_git_command(&wt).map(|_| Some(wt));
+    }
+    let own = st.data_dir.join("worktrees").join(&project.key).join(&task.identifier);
+    match own.is_dir().then(|| worktree::checked_git_command(&own)) {
+        Some(Err(why)) => Err(why),
+        _ => Ok(None),
+    }
 }
 
 /// "This card's branch has no changes against origin/main."

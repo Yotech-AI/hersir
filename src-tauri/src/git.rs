@@ -41,7 +41,8 @@ pub fn repo_check(path: &Path) -> RepoCheck {
         return RepoCheck { is_git: false, branch: None, dirty: false, github: None, bitbucket: None, suggest_copy: vec![] };
     }
     let branch = git(path, &["branch", "--show-current"]).filter(|b| !b.is_empty());
-    let dirty = git(path, &["status", "--porcelain"]).map(|s| !s.is_empty()).unwrap_or(false);
+    // submodules left out (GA-350): git never looks inside one, whose own settings could start programs
+    let dirty = git(path, &["status", "--porcelain", worktree::IGNORE_SUBMODULES]).map(|s| !s.is_empty()).unwrap_or(false);
     let remotes = remote_fetch_urls(path);
     let link = |provider: &str| remotes.iter()
         .find_map(|(_, url)| gizai_core::repo_url::normalize(url).ok().flatten().filter(|r| r.provider == provider).map(|r| r.url));
@@ -82,8 +83,14 @@ pub const START_FETCH_LIMIT: Duration = Duration::from_secs(60);
 /// link itself, `worktree::fetch_start`), fetched first within
 /// `fetch` (None: as last fetched); without a link, the local default branch. Card starts and the Chief's copies
 /// (`code`) both start here, so the two can't drift apart. Blocking.
+///
+/// GA-318: a link git could read as an option (`repo_url::reads_as_option`), saved before Hersir refused such links, is
+/// refused here with a sentence before any git runs: a card run, the chat's fetch and a push after a run all start here.
 pub fn start_point(project: &Project, repo: &Path, fetch: Option<Duration>) -> Result<String, AgentError> {
     let Some(url) = project.repo_url.as_deref() else { return Ok(project.default_branch.clone()) };
+    if let Err(e) = gizai_core::repo_url::refuse_option(url) {
+        return Err(AgentError::Git(format!("{e}: change {}'s link on its page (Edit)", project.name)));
+    }
     let remote = remote_for(repo, url);
     match fetch {
         Some(limit) => worktree::fetch_start(repo, remote.as_deref(), url, &project.default_branch, limit),

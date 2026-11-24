@@ -160,7 +160,9 @@ fn server_names_with_two_underscores_or_a_trailing_one_are_refused_and_their_too
     for name in ["gizai_", "gizai__notes", "gizai___x", "otus__x", "otus_", "a__b", "__otus", "Otus__Notes"] {
         let e = core_mcp::save(&t.st.db, McpServer { name: name.into(), transport: "stdio".into(), command: "/opt/x".into(), ..Default::default() })
             .expect_err(name).to_string();
-        assert!(e.contains("can't have two _ in a row or end with _") && e.contains(&format!("\"{name}\"")), "{name}: {e}");
+        // GA-318: "__otus" doesn't start with a letter, and hears that first
+        let why = if name.starts_with('_') { "starts with a letter" } else { "can't have two _ in a row or end with _" };
+        assert!(e.contains(why) && e.contains(&format!("\"{name}\"")), "{name}: {e}");
         assert!(!core_mcp::clear_in_tool_names(name), "{name}");
     }
     for name in ["notes", "my_server", "otus-os", "a_b_c", "x-_y", "gizai-notes", "otus2"] {
@@ -795,6 +797,12 @@ async fn a_board_check_gets_no_tool_from_outside_gizai_even_with_the_team_leads_
     };
     let argv = |call: &Value| -> Vec<String> { serde_json::from_value(call["argv"].clone()).unwrap() };
     let values = |argv: &[String], flag: &str| -> Vec<String> {
+        // GA-318: `--allowedTools` goes as one argument, `--allowedTools=<rule>,<rule>,…`
+        if flag.ends_with("Tools") {
+            assert!(!argv.iter().any(|a| a == flag), "GA-318: {flag} as an argument of its own: {argv:?}");
+            let prefix = format!("{flag}=");
+            return argv.iter().find_map(|a| a.strip_prefix(prefix.as_str())).map(|v| v.split(',').map(str::to_string).collect()).unwrap_or_default();
+        }
         let Some(at) = argv.iter().position(|a| a == flag) else { return vec![] };
         argv[at + 1..].iter().take_while(|a| !a.starts_with("--")).cloned().collect()
     };
@@ -999,8 +1007,9 @@ async fn after_an_outside_tool_update_task_that_changes_what_a_card_in_an_auto_c
         assert_eq!((v["task"]["hold"].as_str(), v["task"]["hold_reason"].as_str()), (Some("needs_decision"), Some(WAITING)), "{task}");
         assert!(!queued(&t, v["task"]["id"].as_str().unwrap()), "{task}");
     }
-    // other changes and the same text again: as before
-    for (task, args) in [("KADE-4", json!({"title": "Card 4, by Otus", "priority": 1, "labels": ["backend"]})),
+    // other changes and the same text again: as before (GA-319: a new title holds the card too, as ga319_approve_gaps_test
+    // checks)
+    for (task, args) in [("KADE-4", json!({"priority": 1, "labels": ["backend"]})),
                          ("KADE-5", json!({"description_md": "  Export invoices.  ", "acceptance_md": "- [ ] CSV", "assignee": "none"}))] {
         let mut a = args.clone();
         a["task"] = json!(task);

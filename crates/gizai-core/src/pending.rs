@@ -12,6 +12,13 @@ use crate::{Error, Result, ids};
 /// The tools whose newer pending call for the same note replaces the older one in a chat.
 pub const NOTE_WRITES: [&str; 2] = ["memory_write", "memory_append"];
 
+/// GA-323: the `outside_tool` of a call kept for another reason than a tool from outside Gizai: create_agent or update_agent
+/// giving an agent a command it doesn't have, one chat may not give at once (`seed::CHAT_MAY_ADD`). GA-352: or putting it on
+/// a CLI that doesn't keep it to its allowed commands (Codex, Gemini), or giving it a permission mode that isn't stricter
+/// than its own; its preview names each change under Needs your OK. No tool is called so (a tool's name has no space). The
+/// Chat page says why such a call waits (`src/lib/pending.ts`, the same text).
+pub const NEW_COMMANDS: &str = "new commands";
+
 /// One kept call.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,7 +32,8 @@ pub struct PendingAction {
     pub tool: String,
     /// Its arguments, exactly as called.
     pub args: Value,
-    /// The tool from outside Gizai that answer used first.
+    /// The tool from outside Gizai that answer used first; `NEW_COMMANDS` for a call kept because it gives an agent new
+    /// commands (GA-323).
     pub outside_tool: String,
     /// pending, running (approved, under way), approved (it ran), failed (approved, and it returned an error), discarded,
     /// or replaced (a newer call for the same note took its place).
@@ -111,6 +119,15 @@ pub fn waiting(db: &Db, thread_id: &str) -> Result<Vec<PendingAction>> {
         let mut st = c.prepare(&format!("SELECT {COLS} FROM pending_actions WHERE thread_id=?1 AND status IN ('pending', 'running') ORDER BY rowid"))?;
         Ok(st.query_map([thread_id], row)?.collect::<rusqlite::Result<Vec<_>>>()?)
     })
+}
+
+/// GA-342: how many calls of the Chief's last answer in the chat (its newest chat run there) still wait for your approval.
+/// Claude Desktop's chief_reply says `waiting for you` while there are any.
+pub fn waiting_from_last_answer(db: &Db, thread_id: &str) -> Result<i64> {
+    db.read(|c| Ok(c.query_row(
+        "SELECT count(*) FROM pending_actions WHERE thread_id=?1 AND status='pending'
+           AND run_id = (SELECT id FROM runs WHERE chat_thread_id=?1 ORDER BY created_at DESC, rowid DESC LIMIT 1)",
+        [thread_id], |r| r.get(0))?))
 }
 
 /// Why a call that no longer waits can't be approved or discarded now.

@@ -224,3 +224,23 @@ describe("the Editor's address (GA-113)", () => {
     expect(parseHash("#/usage/x")).toEqual({ page: "usage" });
   });
 });
+
+describe("a project's tabs (GA-331)", () => {
+  it("opens Overview at #/project/<id> and Time tracking at #/project/<id>/time", () => {
+    expect(parseHash("#/project/0192-p1")).toEqual({ page: "project", id: "0192-p1" });
+    expect(parseHash("#/project/0192-p1/time")).toEqual({ page: "project", id: "0192-p1", view: "time" });
+    expect(href({ page: "project", id: "0192-p1" })).toBe("#/project/0192-p1");
+    expect(href({ page: "project", id: "0192-p1", view: "time" })).toBe("#/project/0192-p1/time");
+  });
+  it("round-trips both, an id with odd characters too", () => {
+    const routes: Route[] = [{ page: "project", id: "0192-p1" }, { page: "project", id: "0192-p1", view: "time" }, { page: "project", id: "a b/c", view: "time" }];
+    for (const r of routes) expect(parseHash(href(r)), JSON.stringify(r)).toEqual(r);
+  });
+  it("opens Overview for what it doesn't know after the id, and Projects without an id", () => {
+    expect(parseHash("#/project/0192-p1/nope")).toEqual({ page: "project", id: "0192-p1" });
+    expect(parseHash("#/project/0192-p1/changes")).toEqual({ page: "project", id: "0192-p1" });
+    expect(parseHash("#/project")).toEqual(parseHash("#/project/"));
+    // the other views stay a card's
+    expect(href({ page: "project", id: "0192-p1", view: "changes" })).toBe("#/project/0192-p1");
+  });
+});

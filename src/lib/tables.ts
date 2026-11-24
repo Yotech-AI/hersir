@@ -47,6 +47,8 @@ export const READS: Readonly<Record<string, readonly string[]>> = {
   doc_versions: ["docs", "actors"],
   list_labels: ["labels", "tasks"],
   usage_summary: ["runs", "tasks", "actors", "projects", "teams"],
+  // a run's start sends "runs", its end "tasks"; a column renamed "workflow_states"
+  project_time: ["runs", "tasks", "workflow_states"],
   subscription_limits: ["subscription_limits", "settings", "actors", "team", "teams", "chat_threads"],
 };
 

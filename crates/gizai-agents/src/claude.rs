@@ -113,14 +113,21 @@ impl ClaudeArgs {
             a.push("--add-dir".into());
             a.extend(self.add_dirs.iter().cloned());
         }
-        if !self.allowed_tools.is_empty() {
-            a.push("--allowedTools".into());
-            a.extend(self.allowed_tools.iter().cloned());
-        }
-        if !self.disallowed_tools.is_empty() {
-            a.push("--disallowedTools".into());
-            a.extend(self.disallowed_tools.iter().cloned());
-        }
+        a.extend(tools_flag("--allowedTools", &self.allowed_tools));
+        a.extend(tools_flag("--disallowedTools", &self.disallowed_tools));
         a
     }
+}
+
+/// GA-318 (CWE-88): `--allowedTools` or `--disallowedTools` (`flag`) with its rules as one argument,
+/// `<flag>=<rule>,<rule>,…`, so that no rule can become an option of Claude Code's: as separate arguments after the
+/// variadic flag, a rule that starts with `-` (a tool called `--dangerously-skip-permissions`, say) would be read as one.
+/// Claude Code takes this form (read in Claude Code 2.1.325's bundle: its option parser reads `--flag=value`, its own code
+/// builds `--allowedTools=<rules joined by ,>`, and it splits every value of both flags at commas and spaces outside
+/// parentheses), so the rules come through as they did as separate values. A rule that doesn't start with a letter isn't
+/// a tool's rule and is left out (none of Gizai's does: tool names, allowed commands and MCP servers are checked on save,
+/// and runs leave out a name saved before that); none left: no flag.
+fn tools_flag(flag: &str, rules: &[String]) -> Option<String> {
+    let rules: Vec<&str> = rules.iter().map(|r| r.trim()).filter(|r| r.starts_with(|c: char| c.is_ascii_alphabetic())).collect();
+    (!rules.is_empty()).then(|| format!("{flag}={}", rules.join(",")))
 }

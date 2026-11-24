@@ -10,10 +10,10 @@ Where each setting lives, what a backup holds and how to restore one, how Hersir
 | Appearance | The font, text sizes, theme and density, and the glass behind the panels |
 | Notifications | A switch for each kind of notification |
 | Agents and runs | Coding CLIs; Runs: limits, runs at once, memory for agent runs and per run, Pause all agents, memory and Ask the Chief first; and Screenshots: what Hersir keeps of agents' screenshots, and the previews' ports |
-| MCP servers | The outside services agents can use, and the built-in browser |
+| MCP servers | The outside services agents can use, the built-in browser, and Claude Desktop |
 | GitHub and Bitbucket | gh and how pushes go, Check connection, and your Bitbucket login |
 
-Each feature's doc says which settings it uses: [Updates](install.md#updates), [Backups](#backups), [the Editor's folders](features/editor-and-terminal.md#open-a-folder), [Data](features/board.md#a-worktree-for-every-card), [Notifications](features/inbox.md#notifications), [Coding CLIs](features/cli.md), [Runs](features/board.md#when-agents-start) and [their limits](features/board.md#runs), [Screenshots](features/screenshots.md), [MCP servers](features/tools.md#mcp-servers) and [GitHub and Bitbucket](features/testing.md#review-on-github).
+Each feature's doc says which settings it uses: [Updates](install.md#updates), [Backups](#backups), [the Editor's folders](features/editor-and-terminal.md#open-a-folder), [Data](features/board.md#a-worktree-for-every-card), [Notifications](features/inbox.md#notifications), [Coding CLIs](features/cli.md), [Runs](features/board.md#when-agents-start) and [their limits](features/board.md#runs), [Screenshots](features/screenshots.md), [MCP servers](features/tools.md#mcp-servers), [Claude Desktop](features/claude-desktop.md) and [GitHub and Bitbucket](features/testing.md#review-on-github).
 
 ## Backups
 

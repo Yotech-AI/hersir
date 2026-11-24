@@ -3,13 +3,15 @@
 // which shows on hover and on the open tab. + starts another terminal in the same folder, without a picker; it is off
 // while an agent works on the card, with why as its tooltip. A double-click (or F2) renames a tab in place; × or a middle
 // click closes it, asking under the tab first while a program runs; ← and → move between tabs that have the focus.
-import { useEffect, useRef, useState } from "react";
+// GA-348: on the Terminal page, a tab whose terminal shows in another pane than the focused one has the hover fill, and
+// the page's Layout button sits right of +.
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Plus, Terminal as TerminalIcon, X } from "lucide-react";
 import type { TerminalSession } from "../../types";
 import { asksToClose, closeQuestion, folderNameOf, showsCardId, stepTerminal, tabTitle, useTerminals } from "../../lib/terminals";
 import { closeTerminal, NameInput, TabCloseAsk } from "./TerminalParts";
 
-export function TerminalTabs({ folder, active, onOpen, onNew, newOff }: {
+export function TerminalTabs({ folder, active, onOpen, onNew, newOff, paned = [], after }: {
   /** The folder (an EditorFolder id) whose terminals these are. */
   folder: string;
   /** The terminal shown under the tabs. */
@@ -18,6 +20,10 @@ export function TerminalTabs({ folder, active, onOpen, onNew, newOff }: {
   onNew: () => void;
   /** Why + can't start a terminal here now (an agent works on the card), or null. */
   newOff: string | null;
+  /** The terminals in the page's other panes (GA-348): their tabs have the hover fill. */
+  paned?: string[];
+  /** Right of + (the Terminal page's Layout button). */
+  after?: ReactNode;
 }) {
   const tabs = useTerminals().filter((s) => s.folder === folder);
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -49,7 +55,7 @@ export function TerminalTabs({ folder, active, onOpen, onNew, newOff }: {
             ? <NameInput session={s} onDone={() => { setRenaming(null); requestAnimationFrame(() => tabEl(s.id)?.focus()); }} />
             : <span className={`name${s.taskId && showsCardId(s.name, folderNameOf(s)) ? " card-id" : ""}`}>{s.name}</span>;
           return (
-            <div key={s.id} className="ed-tab term-tab" role="tab" data-term={s.id} tabIndex={on ? 0 : -1} aria-selected={on} title={tabTitle(s)}
+            <div key={s.id} className={`ed-tab term-tab${!on && paned.includes(s.id) ? " in-pane" : ""}`} role="tab" data-term={s.id} tabIndex={on ? 0 : -1} aria-selected={on} title={tabTitle(s)}
               ref={(el) => { if (el && on) el.scrollIntoView({ block: "nearest", inline: "nearest" }); }}
               onClick={() => { if (!on) onOpen(s.id); }}
               onDoubleClick={() => setRenaming(s.id)}
@@ -75,6 +81,7 @@ export function TerminalTabs({ folder, active, onOpen, onNew, newOff }: {
         })}
         <button className="btn ghost sm icon-only" aria-label={`New terminal in ${name}`} aria-disabled={newOff ? true : undefined}
           title={newOff ?? `New terminal in ${name} (Ctrl+Shift+\`)`} onClick={() => { if (!newOff) onNew(); }}><Plus className="icon" /></button>
+        {after}
       </div>
       {ask && (
         <TabCloseAsk name={ask.name} question={ask.question} at={ask.at} onCancel={() => { setAsking(null); tabEl(ask.id)?.focus(); }}

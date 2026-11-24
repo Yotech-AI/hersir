@@ -49,13 +49,32 @@ const COMPONENTS: Components = {
   img: ({ alt }) => <span className="faint">[image{alt ? `: ${alt}` : ""}]</span>,
 };
 
+/** GA-349: the links of Hersir's view in Claude Desktop's chat (src/widget), which has no Tauri: a web link opens with
+ *  `openLink` (the host's ui/open-link), and a link to a Hersir item is its text alone, as Claude Desktop can't open it. */
+const outside = new WeakMap<(url: string) => void, Components>();
+function outsideComponents(openLink: (url: string) => void): Components {
+  let c = outside.get(openLink);
+  if (!c) {
+    c = {
+      a: ({ href, children }) => (parseItemUrl(href) ? <>{children}</> : (
+        <a href={href || undefined} title={href || undefined} target="_blank" rel="noreferrer"
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (href) openLink(href); }}>{children}</a>
+      )),
+      img: COMPONENTS.img,
+    };
+    outside.set(openLink, c);
+  }
+  return c;
+}
+
 /** Renders Markdown (GFM). Raw HTML is never rendered; links are http(s)/mailto, which open in the system browser, or gizai:
  *  links to items, which show as chips and open in Gizai. Memoised on its text (GA-176): when the screen around it redraws
- *  (a streamed piece of the chat's answer, a live run's clock), the same text isn't parsed again. */
-export const MarkdownView = memo(function MarkdownView({ md }: { md: string }) {
+ *  (a streamed piece of the chat's answer, a live run's clock), the same text isn't parsed again. `openLink` (GA-349, the
+ *  view in Claude Desktop's chat): web links open with it instead, and links to items are plain text. */
+export const MarkdownView = memo(function MarkdownView({ md, openLink }: { md: string; openLink?: (url: string) => void }) {
   return (
     <div className="prose">
-      <Markdown remarkPlugins={PLUGINS} skipHtml urlTransform={viewUrl} components={COMPONENTS}>
+      <Markdown remarkPlugins={PLUGINS} skipHtml urlTransform={viewUrl} components={openLink ? outsideComponents(openLink) : COMPONENTS}>
         {md}
       </Markdown>
     </div>

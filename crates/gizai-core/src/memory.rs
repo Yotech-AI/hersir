@@ -2426,10 +2426,13 @@ pub fn set_agent_uses(db: &Db, actor: &str, agent_id: &str, on: bool) -> Result<
     })
 }
 
-/// Records which notes a run's prompt was given (`Given`), for its card's Runs tab.
+/// Records which notes a run's prompt was given (`Given`), for its card's Runs tab. GA-344: logged on the run, with how
+/// many (`feed`).
 pub fn record_given(db: &Db, run_id: &str, given: &[Given]) -> Result<()> {
     db.write(None, |w| {
-        w.conn().execute("UPDATE runs SET memory_json = ?2 WHERE id = ?1", rusqlite::params![run_id, serde_json::to_string(given)?])?;
+        if w.conn().execute("UPDATE runs SET memory_json = ?2 WHERE id = ?1", rusqlite::params![run_id, serde_json::to_string(given)?])? > 0 {
+            w.update("runs", run_id, serde_json::json!({"memory_given": given.len()}))?;
+        }
         Ok(())
     })
 }

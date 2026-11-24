@@ -110,7 +110,7 @@ async fn a_chat_turn_runs_tools_and_saves_the_conversation() {
     for f in ["--restricted", "--include-partial-messages", "--strict-mcp-config", "--session-id"] {
         assert!(argv.contains(&f.to_string()), "missing {f}: {argv:?}");
     }
-    assert_eq!(argv[argv.len() - 2..], ["--allowedTools", "mcp__gizai"]);
+    assert_eq!(argv.last().map(String::as_str), Some("--allowedTools=mcp__gizai"), "GA-318: one argument, last: {argv:?}");
     let sys = &argv[argv.iter().position(|a| a == "--append-system-prompt").unwrap() + 1];
     assert!(sys.contains("Team Lead") && sys.contains("GIZAI_RESULT"), "{sys}");
     // the UI heard about it as it happened (GA-191: the turn's last batch goes within 50 ms of its end)
@@ -498,7 +498,7 @@ async fn the_team_lead_gets_its_folders_in_chat_but_only_reads_them() {
     assert_eq!(dirs, [&real(&shared), &real(&out)], "the missing folder is left out");
     let tools = &argv[argv.iter().position(|a| a == "--tools").unwrap() + 1];
     assert_eq!(tools, "Read,Glob,Grep", "no tool that writes, so a read and change folder is read only too");
-    assert!(!argv.iter().any(|a| a == "--disallowedTools" || a.contains("Edit") || a.contains("Write(")), "{argv:?}");
+    assert!(!argv.iter().any(|a| a.starts_with("--disallowedTools") || a.contains("Edit") || a.contains("Write(")), "{argv:?}");
     let sys = &argv[argv.iter().position(|a| a == "--append-system-prompt").unwrap() + 1];
     assert!(sys.contains("## Your folders") && sys.contains("you never change files in them"), "{sys}");
     assert!(sys.contains(&format!("- {} (read)\n", real(&shared))) && sys.contains(&format!("- {} (read and change)\n", real(&out))), "{sys}");

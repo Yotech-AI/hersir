@@ -1,4 +1,4 @@
-//! Docs records in core: migration 0024 on a schema 23 database (the switches, the changelog lines, the decision records
+//! Docs records in core: migration 0025 on a schema 24 database (the switches, the changelog lines, the decision records
 //! and the baselines, all empty, after a backup); a card's changelog line from its builder (a kind Keep a Changelog
 //! names, one plain line, the newer one kept), shown with the card once it is merged; the Chief's decision records,
 //! numbered after the project's own; each project's baseline; and the sections a project switches off.
@@ -12,8 +12,8 @@ fn version(c: &Connection) -> i64 {
 }
 
 #[test]
-fn a_schema_23_database_gets_the_docs_records_empty_after_a_backup() {
-    assert_eq!(db::SCHEMA_VERSION, 24, "0024 adds the Docs records");
+fn a_schema_24_database_gets_the_docs_records_empty_after_a_backup() {
+    assert_eq!(db::SCHEMA_VERSION, 25, "0025 adds the Docs records");
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("gizai.db");
     let kade = {
@@ -21,15 +21,15 @@ fn a_schema_23_database_gets_the_docs_records_empty_after_a_backup() {
         let s = seed::ensure_seed(&db, "Jeffrey").unwrap();
         projects::create(&db, &s.you_id, ProjectInput { name: "Kade".into(), key: "KADE".into(), dev_docs: Some(true), ..Default::default() }).unwrap()
     };
-    // one step back, to the database the version before leaves (schema 23): 0024 adds one column and three tables
+    // one step back, to the database the version before leaves (schema 24): 0025 adds one column and three tables
     let c = Connection::open(&path).unwrap();
     c.execute_batch("DROP TABLE docs_baselines; DROP TABLE docs_decisions; DROP TABLE docs_changes; ALTER TABLE projects DROP COLUMN docs_off;
-                     PRAGMA user_version = 23;").unwrap();
+                     PRAGMA user_version = 24;").unwrap();
     drop(c);
 
     let db = Db::open(&path).unwrap();
     db.read(|c| {
-        assert_eq!(version(c), 24, "0024 ran");
+        assert_eq!(version(c), 25, "0025 ran");
         for table in ["docs_changes", "docs_decisions", "docs_baselines"] {
             assert_eq!(c.query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r.get::<_, i64>(0))?, 0, "{table} is there, empty");
         }
@@ -38,8 +38,8 @@ fn a_schema_23_database_gets_the_docs_records_empty_after_a_backup() {
     let p = projects::get(&db, &kade).unwrap();
     assert!(p.dev_docs && p.docs_off.is_empty(), "every section still shows");
     let snaps: Vec<_> = std::fs::read_dir(dir.path().join("backups")).unwrap().map(|e| e.unwrap().path()).collect();
-    assert!(snaps.len() == 1 && snaps[0].file_name().unwrap().to_string_lossy().starts_with("gizai-before-v24-"), "{snaps:?}");
-    assert_eq!(version(&Connection::open(&snaps[0]).unwrap()), 23, "the backup is the schema 23 database");
+    assert!(snaps.len() == 1 && snaps[0].file_name().unwrap().to_string_lossy().starts_with("gizai-before-v25-"), "{snaps:?}");
+    assert_eq!(version(&Connection::open(&snaps[0]).unwrap()), 24, "the backup is the schema 24 database");
 }
 
 struct Set { db: Db, you: String, kade: String }

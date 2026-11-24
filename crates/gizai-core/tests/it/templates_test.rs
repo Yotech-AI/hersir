@@ -912,3 +912,65 @@ fn a_template_with_an_allowed_command_that_isnt_one_rule_is_refused_and_export_l
     assert!(tools.contains(&"Bash(terraform plan:*)".to_string()) && tools.contains(&"Bash(git status:*)".to_string()), "{tools:?}");
     assert!(templates::preview(&db, &file(&f)).is_ok(), "the exported file imports");
 }
+
+// ---- GA-318 (GA-270 #3, CWE-88): a built-in tool, an allowed command or an MCP server named like an option ----
+
+#[test]
+fn a_template_with_a_tool_or_mcp_server_name_that_doesnt_start_with_a_letter_is_refused_on_preview_and_import() {
+    let (db, s) = install();
+    let skip = "--dangerously-skip-permissions";
+    let cases: Vec<(&str, Box<dyn Fn(&mut TemplateFile)>, String)> = vec![
+        ("a built-in tool", Box::new(|t: &mut TemplateFile| t.agents[0].builtin_tools = strs(&["Read", skip])),
+         format!("Builder's built-in tools: \"{skip}\" isn't the name of one of the CLI's own tools: a tool's name starts with a letter.")),
+        ("a built-in tool, padded", Box::new(|t: &mut TemplateFile| t.agents[1].builtin_tools = strs(&["  -x  "])),
+         "Checker's built-in tools: \"-x\" isn't the name of one of the CLI's own tools: a tool's name starts with a letter.".into()),
+        ("an MCP server", Box::new(|t: &mut TemplateFile| t.agents[0].mcp_servers = vec![FileServer { name: "-oProxyCommand=x".into(), tools_off: vec![] }]),
+         "Builder's MCP servers: \"-oProxyCommand=x\" isn't an MCP server's name: an MCP server's name starts with a letter.".into()),
+        ("an MCP server called like the flag", Box::new(|t: &mut TemplateFile| t.agents[0].mcp_servers = vec![FileServer { name: skip.into(), tools_off: vec![] }]),
+         format!("Builder's MCP servers: \"{skip}\" isn't an MCP server's name: an MCP server's name starts with a letter.")),
+        ("an allowed command", Box::new(|t: &mut TemplateFile| t.agents[0].allowed_tools.push(skip.into())),
+         format!("Builder's allowed commands: {}", team::not_one_rule(skip))),
+    ];
+    let before = counts(&db);
+    for (case, change, want) in cases {
+        let mut t = small("Small team");
+        change(&mut t);
+        assert_eq!(templates::preview(&db, &file(&t)).expect_err(case).to_string(), want, "{case}");
+        assert_eq!(templates::import(&db, &s.you_id, &file(&t), "Refused").expect_err(case).to_string(), want, "{case}, import");
+        assert_eq!(counts(&db), before, "{case} makes nothing");
+    }
+    // names that start with a letter still come through
+    let mut t = small("Small team");
+    t.agents[0].builtin_tools = strs(&["FancyNewTool"]);
+    let plan = templates::preview(&db, &file(&t)).unwrap();
+    assert!(!plan.agents.is_empty());
+}
+
+#[test]
+fn export_leaves_out_a_built_in_tool_or_mcp_server_whose_name_doesnt_start_with_a_letter_saved_before_the_check() {
+    let (db, s) = install();
+    let t = team::get(&db, &s.team_id).unwrap();
+    let be = member(&t, "Backend Agent").actor_id.clone();
+    let otus = mcp_servers::save(&db, McpServer { name: "otus".into(), transport: "stdio".into(), command: "/opt/otus".into(), ..Default::default() }).unwrap();
+    let odd = mcp_servers::save(&db, McpServer { name: "oddname".into(), transport: "stdio".into(), command: "/opt/odd".into(), ..Default::default() }).unwrap();
+    mcp_servers::set_agent_tools(&db, &s.you_id, &be, AgentTools { mcp: vec![
+        AgentServer { server_id: otus.id.clone(), on: true, tools_off: vec![], trusted: false },
+        AgentServer { server_id: odd.id.clone(), on: true, tools_off: vec![], trusted: false },
+    ] }).unwrap();
+    mcp_servers::set_cli_tools(&db, &s.you_id, &be, CliTools { builtin: strs(&["FancyNewTool"]), ..Default::default() }).unwrap();
+    // as saved before GA-318 (or restored from a backup): the server renamed "-oProxyCommand=x", a tool "--dangerously-skip-permissions"
+    let mut list = mcp_servers::list(&db).unwrap();
+    list.iter_mut().find(|x| x.id == odd.id).unwrap().name = "-oProxyCommand=x".into();
+    gizai_core::settings::set(&db, "mcp_servers", &list).unwrap();
+    let raw: String = db.read(|c| Ok(c.query_row("SELECT mcp_extra_json FROM agent_configs WHERE actor_id=?1", [&be], |r| r.get(0))?)).unwrap();
+    let mut v: Value = serde_json::from_str(&raw).unwrap();
+    v["cli"]["builtin"] = json!(["FancyNewTool", "--dangerously-skip-permissions"]);
+    sql(&db, "UPDATE agent_configs SET mcp_extra_json=?2 WHERE actor_id=?1", &[&be, &v.to_string()]);
+    assert!(team::agent(&db, &be).unwrap().cli_tools.builtin.contains(&"--dangerously-skip-permissions".to_string()), "saved as before GA-318");
+
+    let f = templates::export(&db, &s.team_id).unwrap();
+    let a = f.agents.iter().find(|a| a.name == "Backend Agent").unwrap();
+    assert_eq!(a.builtin_tools, ["FancyNewTool"]);
+    assert_eq!(a.mcp_servers.iter().map(|x| x.name.as_str()).collect::<Vec<_>>(), ["otus"]);
+    assert!(templates::preview(&db, &file(&f)).is_ok(), "the exported file imports");
+}

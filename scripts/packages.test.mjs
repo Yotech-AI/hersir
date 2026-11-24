@@ -1226,6 +1226,38 @@ describe.runIf(unix)("scripts/packages.sh, against a fake gh, throwaway keys and
     }
     expect(onTap(t, "Formula/hersir.rb")).toContain('  license "Apache-2.0"\n  revision 1\n');
   });
+
+  // ---------- GA-335: no AUR account yet (the AUR has paused new accounts), so RELEASING.md step 6 names the packages ----------
+
+  it("GA-335: scripts/packages.sh v9.9.9 homebrew scoop, as RELEASING.md step 6 says until there is an AUR account, publishes the tap and the bucket after one question and never clones the AUR", async () => {
+    // An AUR that can't be cloned, as without an AUR account: naming the packages never reaches it.
+    const repo = join(scratch, "no-aur-account.git");
+    const t = tap();
+    const scoop = bucket();
+    const r = await publish([TAG, "homebrew", "scoop"], { rel: release(), repo, tap: t, scoop });
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    expect(r.stderr).toBe("");
+    expect(onTap(t, "Formula/hersir.rb")).toBe(formula());
+    expect(inBucket(scoop, "bucket/hersir.json")).toBe(expectedManifest());
+    expect(r.stdout.split("Publish v9.9.9? [y/N] ").length - 1).toBe(1);
+    expect(r.stdout).not.toContain("hersir-bin");
+    expect(r.stdout).not.toContain("HERSIR_AUR_REPO");
+    expect(existsSync(repo)).toBe(false);
+    expect(r.tmpLeft).toEqual([]);
+  });
+
+  it("GA-335: no package names and an AUR that can't be cloned (no AUR account): stops at the AUR's clone, publishes nothing to the tap or the bucket, one line says why", async () => {
+    const repo = join(scratch, "no-aur-account.git");
+    const t = tap();
+    const scoop = bucket();
+    const r = await publish([TAG], { rel: release(), repo, tap: t, scoop });
+    // RELEASING.md step 6 quotes the start of this line, with the AUR's own address.
+    refused(r, undefined, undefined, new RegExp(`^Couldn't clone ${esc(repo)}, so nothing is published: `));
+    expect(r.stdout).not.toContain("Publish v9.9.9?");
+    expect(refs(t)).toBe("");
+    expect(refs(scoop)).toBe("");
+    expect(existsSync(repo)).toBe(false);
+  });
 });
 
 describe("packaging/aur/hersir-bin: the PKGBUILD and .SRCINFO", () => {
@@ -1363,14 +1395,57 @@ describe("The packages: licence, CI and docs", () => {
     expect(arch).toContain("pacman -Rns --noconfirm hersir-bin");
   });
 
-  it("install.md: Arch Linux and Omarchy install hersir-bin with yay", () => {
+  // GA-335: hersir-bin isn't on the AUR yet (the AUR has paused new accounts), so install.md no longer offers it.
+  it("install.md: Arch Linux and Omarchy: not on the AUR yet, because the AUR has paused new accounts, and the one line instead", () => {
     const install = read("docs/install.md");
-    const section = install.slice(install.indexOf("### Arch Linux and Omarchy"));
-    expect(section).toContain("```sh\nyay -S hersir-bin\n```");
-    expect(section).toContain("Your data stays in `~/.local/share/hersir`");
+    const from = install.indexOf("### Arch Linux and Omarchy: not on the AUR yet\n");
+    expect(from).toBeGreaterThan(install.indexOf("## With a package manager\n"));
+    const section = install.slice(from, install.indexOf("\n### ", from + 1));
+    expect(section).toContain("Hersir isn't on the AUR yet: the AUR has paused new accounts");
+    expect(section).toContain("[In one line](#in-one-line)");
+    // The AUR's package page doesn't exist, and yay -S hersir-bin finds nothing.
+    expect(install).not.toContain("yay -S hersir-bin");
+    expect(install).not.toContain("aur.archlinux.org");
+    expect(install).not.toContain("sudo pacman -Rns hersir-bin");
+    // The opening paragraph: for you alone, with no AUR.
+    const opening = install.split("\n\n").find((p) => p.startsWith("Hersir installs for you alone"));
+    expect(opening).toBe("Hersir installs for you alone, without sudo or administrator rights. It runs on Linux, on Macs with Apple silicon and on Windows 11.");
+    // The AUR is named in that one note only.
+    expect(install.split("\n").filter((l) => l.includes("AUR"))).toEqual([
+      "### Arch Linux and Omarchy: not on the AUR yet",
+      expect.stringMatching(/^Hersir isn't on the AUR yet: /),
+    ]);
   });
 
-  it("RELEASING.md: step 6, Publish the packages, comes right after Sign it, with scripts/packages.sh vX.Y.Z", () => {
+  it("install.md: Updates keeps the Homebrew and Scoop sentences, without the AUR one", () => {
+    const install = read("docs/install.md");
+    const from = install.indexOf("\n## Updates\n");
+    expect(from).toBeGreaterThan(0);
+    const updates = install.slice(from, install.indexOf("\n## ", from + 1));
+    expect(updates).toContain("\nA Hersir from Homebrew never updates itself: `brew update && brew upgrade hersir` updates it.\n");
+    expect(updates).toContain("\nA Hersir from Scoop doesn't either: quit it, then `scoop update; scoop update hersir` updates it ([Windows: Scoop](#windows-scoop)).\n");
+    expect(updates).not.toMatch(/AUR|yay/);
+  });
+
+  it("packaging/README.md: the hersir-bin row says it isn't published yet, as AUR registration is paused", () => {
+    const row = read("packaging/README.md").split("\n").find((l) => l.startsWith("| [`aur/hersir-bin`](aur/hersir-bin) |"));
+    expect(row).toBeDefined();
+    expect(row).toContain("not published yet: AUR registration is paused");
+    // The other rows are published.
+    expect(read("packaging/README.md").match(/not published yet/g)).toHaveLength(1);
+  });
+
+  it("PLATFORMS.md: the AUR package is built and tested in CI, but not published yet; the Homebrew formula is published without it", () => {
+    const platforms = read("docs/PLATFORMS.md");
+    const aur = platforms.split("\n").find((l) => l.startsWith("- **The AUR package.**"));
+    expect(aur).toMatch(/^- \*\*The AUR package\.\*\* Built and tested in CI, but not published yet: the AUR has paused new accounts/);
+    const homebrew = platforms.split("\n").find((l) => l.startsWith("- **The Homebrew formula.**"));
+    expect(homebrew).toBeDefined();
+    expect(homebrew).not.toContain("with the AUR package");
+    expect(homebrew).toMatch(/Only `scripts\/packages\.sh` publishes it, on Jeffrey's computer, once the release's signature checks/);
+  });
+
+  it("RELEASING.md: step 6, Publish the packages, comes right after Sign it, with scripts/packages.sh vX.Y.Z homebrew scoop until there is an AUR account", () => {
     const releasing = read("docs/RELEASING.md");
     const step5 = releasing.indexOf("5. **Sign it.**");
     const step6 = releasing.indexOf("6. **Publish the packages.**");
@@ -1379,7 +1454,18 @@ describe("The packages: licence, CI and docs", () => {
     // No other numbered step between them.
     expect(step5 + 3 + releasing.slice(step5 + 3).search(/\n\d+\. \*\*/)).toBe(step6 - 1);
     const publish = releasing.slice(step6, releasing.indexOf("\n## ", step6));
-    expect(publish).toContain("```sh\n   scripts/packages.sh vX.Y.Z\n   ```");
+    // GA-335: no AUR account yet, so the step names the packages; without names the run stops at the AUR's clone.
+    expect(publish).toContain("```sh\n   scripts/packages.sh vX.Y.Z homebrew scoop\n   ```");
+    expect(publish).not.toContain("```sh\n   scripts/packages.sh vX.Y.Z\n   ```");
+    expect(publish).toContain("Until there is an AUR account, name the packages, as here. Without package names, the run stops at the AUR's clone and publishes nothing");
+    expect(publish).toContain("hersir-bin` on the AUR, for Arch Linux and Omarchy, isn't published yet: the AUR has paused new accounts");
+    expect(publish).toContain("There is no AUR account yet: the AUR has paused new accounts");
+    // The line it quotes is packages.sh's own, with the AUR's address.
+    const quoted = publish.match(/it says `(Couldn't clone [^`]*)`/)[1];
+    expect(quoted).toBe("Couldn't clone ssh://aur@aur.archlinux.org/hersir-bin.git, so nothing is published:");
+    const script = read("scripts/packages.sh");
+    expect(script).toContain('fail "Couldn\'t clone $AUR_REPO, so nothing is published: $(why)"');
+    expect(script).toContain('AUR_REPO="${HERSIR_AUR_REPO:-ssh://aur@aur.archlinux.org/hersir-bin.git}"');
     expect(publish).toContain("ssh-keygen -Y verify -f release-signers -I hersir-release -n hersir-release");
     expect(publish).toContain("Publish vX.Y.Z? [y/N]");
   });

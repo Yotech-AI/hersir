@@ -1,8 +1,8 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useEffect, useState } from "react";
-import { FileText, ListTodo, Pencil, Plus } from "lucide-react";
+import { FileText, LayoutDashboard, ListTodo, Pencil, Plus, Timer } from "lucide-react";
 import { checkRepo, getProject, listDocs, listTeams, type RepoCheck } from "../api";
-import { href } from "../router";
+import { go, href } from "../router";
 import { useData } from "../lib/useData";
 import { pickTeam } from "../lib/team";
 import { linkLabel } from "../lib/provider";
@@ -10,14 +10,25 @@ import { relTime } from "../lib/format";
 import { useDrawer } from "../lib/drawers";
 import { FileDrop } from "../components/FileDrop";
 import { MarkdownView } from "../components/MarkdownView";
+import { ProjectTime } from "../components/ProjectTime";
+import { TimePeriodChips, useTimePeriod } from "../components/TimePeriod";
+import { Tabs, type TabDef } from "../components/Tabs";
 
-export function ProjectPage({ id }: { id: string }) {
+export type ProjectView = "overview" | "time";
+
+// GA-331: Overview is the page as it was; Time tracking, each card's agent time and tokens. #/project/<id> and
+// #/project/<id>/time, so Back and Forward go between them.
+const TABS: readonly TabDef<ProjectView>[] = [["overview", LayoutDashboard, "Overview"], ["time", Timer, "Time tracking"]];
+
+export function ProjectPage({ id, view = "overview" }: { id: string; view?: ProjectView }) {
   const { data: p, error } = useData(() => getProject(id), [id]);
   const { data: docs } = useData(() => listDocs(id), [id]);
   // GA-225: with more than one team, the project's team shows here.
   const { data: teams } = useData(() => listTeams(), [], { counts: false });
   const open = useDrawer();
   const [repo, setRepo] = useState<RepoCheck | null>(null);
+  // GA-354: the Time tracking tab's period; kept while you go to Overview and back
+  const period = useTimePeriod();
   useEffect(() => { if (p?.repoPath) checkRepo(p.repoPath).then(setRepo).catch(() => setRepo(null)); else setRepo(null); }, [p?.repoPath]);
   if (error) return <div className="error-banner">{error}</div>;
   if (!p) return null;
@@ -31,7 +42,13 @@ export function ProjectPage({ id }: { id: string }) {
   return (
     <>
       <div className="topbar"><div className="crumbs"><a href={href({ page: "projects" })}>Projects</a><span className="sep">/</span><b>{p.name}</b></div></div>
-      <div className="content">
+      {/* the island's header holds the two tabs as Island tabs, as on Usage and Settings, and on Time tracking its period's chips
+          right of them (GA-354), as the Usage page's */}
+      <div className="island-head project-head">
+        <Tabs island tabs={TABS} open={view} onOpen={(t) => go({ page: "project", id: p.id, view: t === "time" ? "time" : undefined })} label="Project" />
+        {view === "time" && <TimePeriodChips period={period} />}
+      </div>
+      {view === "time" ? <ProjectTime projectId={p.id} period={period} /> : <div className="content">
         <div className="page">
           <div className="entity-head">
             <span className="avatar xl" style={{ borderRadius: "var(--radius-l)", background: p.color ?? "var(--selected)", color: "var(--bg)", fontWeight: 800 }}>{p.key.slice(0, 2)}</span>
@@ -83,7 +100,7 @@ export function ProjectPage({ id }: { id: string }) {
             </div>
           </div>
         </div>
-      </div>
+      </div>}
     </>
   );
 }
