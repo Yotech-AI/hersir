@@ -11,6 +11,7 @@ import { useDrawer } from "../lib/drawers";
 import { FileDrop } from "../components/FileDrop";
 import { MarkdownView } from "../components/MarkdownView";
 import { ProjectTime } from "../components/ProjectTime";
+import { TimePeriodChips, useTimePeriod } from "../components/TimePeriod";
 import { Tabs, type TabDef } from "../components/Tabs";
 
 export type ProjectView = "overview" | "time";
@@ -26,6 +27,8 @@ export function ProjectPage({ id, view = "overview" }: { id: string; view?: Proj
   const { data: teams } = useData(() => listTeams(), [], { counts: false });
   const open = useDrawer();
   const [repo, setRepo] = useState<RepoCheck | null>(null);
+  // GA-354: the Time tracking tab's period; kept while you go to Overview and back
+  const period = useTimePeriod();
   useEffect(() => { if (p?.repoPath) checkRepo(p.repoPath).then(setRepo).catch(() => setRepo(null)); else setRepo(null); }, [p?.repoPath]);
   if (error) return <div className="error-banner">{error}</div>;
   if (!p) return null;
@@ -39,11 +42,13 @@ export function ProjectPage({ id, view = "overview" }: { id: string; view?: Proj
   return (
     <>
       <div className="topbar"><div className="crumbs"><a href={href({ page: "projects" })}>Projects</a><span className="sep">/</span><b>{p.name}</b></div></div>
-      {/* the island's header holds the two tabs as Island tabs, as on Usage and Settings */}
+      {/* the island's header holds the two tabs as Island tabs, as on Usage and Settings, and on Time tracking its period's chips
+          right of them (GA-354), as the Usage page's */}
       <div className="island-head project-head">
         <Tabs island tabs={TABS} open={view} onOpen={(t) => go({ page: "project", id: p.id, view: t === "time" ? "time" : undefined })} label="Project" />
+        {view === "time" && <TimePeriodChips period={period} />}
       </div>
-      {view === "time" ? <ProjectTime projectId={p.id} /> : <div className="content">
+      {view === "time" ? <ProjectTime projectId={p.id} period={period} /> : <div className="content">
         <div className="page">
           <div className="entity-head">
             <span className="avatar xl" style={{ borderRadius: "var(--radius-l)", background: p.color ?? "var(--selected)", color: "var(--bg)", fontWeight: 800 }}>{p.key.slice(0, 2)}</span>
