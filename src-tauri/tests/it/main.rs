@@ -39,6 +39,7 @@ mod folders_flow_test;
 mod ga191_perf_test;
 mod ga319_approve_gaps_test;
 mod ga323_chat_allow_list_test;
+mod ga352_chat_cli_and_mode_test;
 mod ga31_flow_test;
 mod ga49_flow_test;
 mod git_folder_flow_test;
