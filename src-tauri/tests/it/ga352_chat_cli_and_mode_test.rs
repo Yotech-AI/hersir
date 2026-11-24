@@ -230,6 +230,28 @@ async fn from_chat_dontask_and_auto_wait_and_plan_saves_at_once() {
 }
 
 #[tokio::test]
+async fn an_agent_with_no_mode_saved_counts_as_on_its_clis_usual_one() {
+    let t = setup();
+    // an agent with an empty mode saved (none chosen): it runs with acceptEdits (`gizai_agents::cli`)
+    let id = t.agent("Backend Agent").unwrap().actor_id;
+    t.st.db.write(None, |w| { w.conn().execute("UPDATE agent_configs SET permission_mode = '' WHERE actor_id = ?1", [&id])?; Ok(()) }).unwrap();
+    assert_eq!(t.agent("Backend Agent").unwrap().permission_mode.unwrap_or_default(), "");
+    let thread = t.thread("Change its mode");
+    let args = json!({"agent": "Backend Agent", "permission_mode": "dontAsk"});
+    let e = t.call(Some(&thread), "update_agent", args.clone()).await.unwrap_err();
+    assert_eq!(e, kept_for("update_agent", "it changes Backend Agent's permission mode from acceptEdits to dontAsk"));
+    let f = fields(&t.kept(&thread, "update_agent", &args));
+    assert!(f.contains(&change("Permission mode", "acceptEdits", "dontAsk")) && f.contains(&ok_field("Permission mode: acceptEdits → dontAsk")),
+            "{f:?}");
+    assert_eq!(t.agent("Backend Agent").unwrap().permission_mode.unwrap_or_default(), "", "nothing changed");
+    // something else, and its usual mode given, save at once
+    t.ok(Some(&thread), "update_agent", json!({"agent": "Backend Agent", "title": "Builder"})).await;
+    t.ok(Some(&thread), "update_agent", json!({"agent": "Backend Agent", "permission_mode": "acceptEdits"})).await;
+    assert_eq!(t.runs("Backend Agent").1, "acceptEdits");
+    assert_eq!(t.pending(&thread).len(), 1);
+}
+
+#[tokio::test]
 async fn codex_and_gemini_modes_rank_too_and_a_mode_the_cli_doesnt_have_is_refused_at_once() {
     let t = setup();
     let thread = t.thread("Tune the Codex and Gemini agents");
