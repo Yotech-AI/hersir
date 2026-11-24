@@ -389,9 +389,6 @@ async fn a_chat_token_that_answers_claude_desktop_refuses_what_claude_desktop_ma
         assert_eq!(c.refused("attach_file", json!({"path": raw, "task": "KADE-1"})).await, not_in_copies(&raw), "{raw}");
     }
     assert_eq!(dump(&s.st), before, "nothing changed");
-    // a file inside the copies is attached at once
-    let r = c.ok("attach_file", json!({"path": s.copy_spec().display().to_string(), "task": "KADE-1"})).await;
-    assert_eq!(r["file"]["name"], "spec.md", "{r}");
     // in a chat that used a tool from outside Hersir: refused at once all the same, not kept for your Approve
     app_chat::mark_outside(&s.st, &thread, "mcp__otus__search");
     let before = dump(&s.st);
@@ -401,23 +398,23 @@ async fn a_chat_token_that_answers_claude_desktop_refuses_what_claude_desktop_ma
     assert_eq!(c.refused("attach_file", json!({"path": raw, "task": "KADE-1"})).await, not_in_copies(&raw));
     assert_eq!(dump(&s.st), before, "nothing kept, nothing changed");
     assert_eq!(s.pending(), 0);
-    // while a file inside the copies waits for your Approve there, as in any marked chat (GA-102)
-    let kept = c.refused("attach_file", json!({"path": s.copy_spec().display().to_string(), "task": "KADE-1"})).await;
-    assert!(kept.starts_with("attach_file wasn't run: this chat used mcp__otus__search"), "{kept}");
-    assert_eq!(s.pending(), 1);
+    // (a call that passes these, like a file inside the copies, then goes on to the rules of any Chief's turn, which need
+    // the answer's stream: from_such_a_turn_a_file_inside_the_chiefs_copies_is_still_attached_at_once has it in a real turn)
 
-    // the same chat's token for your own message: the normal rules, the file you named is attached and start_chat runs
+    // the same chat's token without `answers`: none of Claude Desktop's answers, whatever else it may say
     let thread = chat::create_thread(&s.st.db, &s.st.you_id, &s.lead, "Typed in Hersir").unwrap();
     chat::add_message(&s.st.db, chat::NewMessage { thread_id: thread.clone(), role: "user".into(), author_id: Some(s.st.you_id.clone()),
         body_md: Some(format!("Attach {} to KADE-1", s.brief.display())), ..Default::default() }).unwrap();
     let token = tokens::mint(&s.st.db, &s.lead, json!({"chat": thread}), 60_000).unwrap();
     let mut c = Conn::open(&s.st, &token).await;
-    let r = c.ok("attach_file", json!({"path": s.brief.display().to_string(), "task": "KADE-1"})).await;
-    assert_eq!(r["file"]["name"], "brief.txt", "{r}");
-    let chats = s.chats();
-    let r = c.ok("start_chat", start_chat_args()).await;
-    assert_eq!(r["ok"], true, "{r}");
-    assert_eq!(s.chats(), chats + 1);
+    let brief = s.brief.display().to_string();
+    for (name, args, desktops) in [("start_chat", start_chat_args(), START_CHAT.to_string()),
+                                   ("update_checkout", json!({"project": "KADE"}), UPDATE_CHECKOUT.to_string()),
+                                   ("attach_file", json!({"path": brief, "task": "KADE-1"}), not_in_copies(&brief))] {
+        let r = c.call(name, args).await;
+        assert_ne!(text(&r), desktops, "{name}: {r}");
+        assert!(!text(&r).contains("Claude Desktop"), "{name}: {r}");
+    }
 }
 
 // ---- your own message gets the normal rules again ----
