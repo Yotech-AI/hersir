@@ -9,6 +9,10 @@ turn it on.
 - **Project form → Docs → Show this project under Docs.** Off by default, also for every project from before this version.
 - **On:** the project shows under Docs in the sidebar, with its colour dot, and its name opens its Docs page.
 - **Off:** the project leaves the Docs section. Its Docs page says Docs is off, with Edit project to turn it on.
+- **Sections:** with Docs on, each of the page's sections (Reference, Guides, API, Changelog, Decisions, MCP) has its
+  own switch, all on by default. One switched off is left out of the page whole (not just its tab: llms.txt and the
+  Markdown too, and with the Reference off its source files), the page says where it was switched off, and no agent is
+  asked to fill it.
 
 ## The sidebar's Docs section
 
@@ -28,6 +32,9 @@ Hersir builds what it shows from the project's linked folder and its own databas
   bar, opens the same page in your browser.
 - **Home:** the project's sections with their counts, what this build read (commit, branch, when, how long it took),
   how many declarations have a description, and any file the parser couldn't read in full.
+- **Changed in the docs**, on Home: the declarations that moved since the linked folder's last commit: now documented,
+  lost their comment, changed (their signature), new or gone. Hersir keeps each project's declarations as they were at
+  its last commit, and a new commit starts the list again.
 
 ## Reference
 
@@ -81,20 +88,30 @@ The project's own changelog, then its merged cards, newest first, with a filter 
 - **CHANGELOG.md** (or `CHANGELOG.markdown`, `changelog.md`, `docs/CHANGELOG.md`), in Keep a Changelog format: each
   `## [version] - date` is a release, Unreleased first, each `### Added` (Changed, Deprecated, Removed, Fixed,
   Security) its kind of change. A section the format doesn't name is grouped under Other, and Home names it as a problem.
-- **Merged cards:** one group a month, each with its identifier and its title.
+- **Merged cards:** one group a month, each with its identifier and the line its builder wrote (else its title, as
+  Other).
 
 - A card counts as merged once it is in a Deploy or Done column. Archived cards stay in the changelog.
 - Its month is when it reached Done. A card in a Deploy column counts from when it last changed.
-- It keeps itself up to date: when an agent's card reaches main, it shows here, with nothing to write.
+- It keeps itself up to date. A builder's run in a project with Docs on (and its Changelog on) is asked for the card's
+  line: one plain line for the people who use the project, and its kind, as a `changelog` field on its GIZAI_RESULT
+  line. Hersir keeps the newest line per card, and the card shows with it once it reaches main. QA, the Chief and DevOps
+  aren't asked.
 
 ## Decisions
 
-The project's own decision records, the highest number first, then the shared notes in Memory about its decisions.
+The project's own decision records and the Chief's, as one numbered log, the highest number first, then the shared
+notes in Memory about its decisions.
 
 - **Decision records:** `NNNN-title.md` files in `docs/decisions/` (or `docs/adr/`, `docs/decision-records/`,
   `adr/`, `decisions/`), the ADR format. Each has its number, its title (front matter, else its first heading), its
   status (proposed, accepted, rejected, superseded or deprecated, from front matter or a `Status:` line), its date, its
   `##` sections, and the files its Related section names. They aren't listed among the guides.
+- **The Chief's records:** the Chief records a decision it makes or puts forward about a project with Docs on with its
+  `record_decision` tool: a title, the decision, its context, consequences and the alternatives weighed, proposed or
+  accepted, and the card it was made for. It is numbered after the project's own records, and one that replaces an older
+  record marks it superseded. After a chat used a tool from outside Hersir, a record waits for your OK, like a Memory
+  note. A project without Docs, or with Decisions switched off, keeps its decisions in Memory.
 - **Memory notes:**
 
   - A note shows here when it is in `Decisions/`, or has `type: decision`, and its `project:` is the project's key or
@@ -151,10 +168,12 @@ The same docs as text an agent can read, next to the page: `llms.txt` and `md/`.
   refused. Only Hersir's own window may show it in a frame.
 - It is read only, and only for the projects with Docs on.
 
-## Not there yet
+## Not built
 
-What yodocs also read, and Hersir doesn't yet: what moved in the docs since the last commit, and switching
-single sections off.
+- Serving the page to other computers, with a list of the addresses allowed (yodocs' `DOCS_IPS`): waiting for Jeffrey's OK.
+- Asking a framework for routes its files don't show (yodocs' `--probes`, `php artisan route:list`): Hersir never runs a
+  project's code to read its docs.
+- An OpenAPI document in YAML: Home names it, and the API section uses the routes instead.
 
 ## Not to be confused with
 

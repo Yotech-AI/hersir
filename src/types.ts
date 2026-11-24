@@ -35,6 +35,8 @@ export type Project = {
   testRunsAtOnce?: number | null;
   /** Docs: the project is listed in the sidebar's Docs section, with its own Docs page there. Off by default. */
   devDocs?: boolean;
+  /** Docs: the sections switched off on its Docs page (reference, guides, api, changelog, decisions, mcp). Empty: all on. */
+  docsOff?: string[];
 };
 export type ProjectScreenshots = {
   on: boolean;                                                // true
@@ -59,6 +61,8 @@ export type ProjectInput = {
   testRunsAtOnce?: number | null;
   /** Docs on or off. Left out (null): kept as it is (off for a new project). */
   devDocs?: boolean | null;
+  /** The Docs page's sections to switch off; others the page doesn't know are left out. Left out (null): kept as they are. */
+  docsOff?: string[] | null;
   /** The project's team (GA-225). Left out (null): the first team for a new project, kept on an edit. Another team moves the
    *  project and all its cards there; refused while one of its cards has a run live or starting. */
   teamId?: string | null;

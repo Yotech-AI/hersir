@@ -37,13 +37,13 @@ pub fn read(repo: &Path, files: &[String]) -> Content {
     let in_folder = |f: &String| folder.is_some_and(|d| f.strip_prefix(d).is_some_and(|rest| rest.starts_with('/')));
     let prose: Vec<String> = files.iter().filter(|f| !in_folder(f)).cloned().collect();
     let mut content = Content { guides: guides::guides(repo, &prose), ..Content::default() };
-    if let Some(file) = CHANGELOGS.iter().find(|c| files.iter().any(|f| f == *c)) {
-        if let Some(text) = crate::read_text(repo, file, MAX_BYTES) {
-            let (releases, problems) = changelog(file, &text);
-            content.changelog = releases;
-            content.problems = problems;
-            content.changelog_file = Some(file.to_string());
-        }
+    if let Some(file) = CHANGELOGS.iter().find(|c| files.iter().any(|f| f == *c))
+        && let Some(text) = crate::read_text(repo, file, MAX_BYTES)
+    {
+        let (releases, problems) = changelog(file, &text);
+        content.changelog = releases;
+        content.problems = problems;
+        content.changelog_file = Some(file.to_string());
     }
     if let Some(folder) = folder {
         content.decisions = decisions(repo, files, folder);

@@ -53,7 +53,7 @@ pub fn parse(file: &str, text: &str, notes: &HashMap<String, String>) -> (Vec<Mc
             purpose: notes.get(&name.to_lowercase()).cloned().unwrap_or_default(),
         })
     }).collect();
-    servers.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    servers.sort_by_key(|s| s.name.to_lowercase());
     (servers, problems)
 }
 

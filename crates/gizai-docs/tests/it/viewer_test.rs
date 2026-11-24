@@ -42,4 +42,5 @@ fn hersirs_changes_hold() {
     assert!(!search.contains("fetch('search.json')") && search.contains("mini.addAll(documents(state.index))"));
     assert!(text("js/theme.js").contains("get('theme')"));
     assert!(!text("js/sidebar.js").contains("search.json"));
+    assert!(text("js/sections.js").contains("${bodyOf(current)}") && text("js/sections.js").contains("function fieldsOf(schema)"));
 }

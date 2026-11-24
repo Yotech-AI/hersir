@@ -30,10 +30,26 @@ export function toProjectInput(p?: Project | null): ProjectInput {
     worktreeCopy: p?.worktreeCopy ?? [], worktreeInstall: p?.worktreeInstall ?? true, worktreeSetup: p?.worktreeSetup ?? "",
     testRunsAtOnce: p?.testRunsAtOnce ?? null,
     leadMayMerge: p?.leadMayMerge ?? false,
-    devDocs: p?.devDocs ?? false,
+    devDocs: p?.devDocs ?? false, docsOff: p?.docsOff ?? [],
     screenshots: projectShotsFrom(p?.screenshots), previewCommand: p?.previewCommand ?? "", previewStartSecs: p?.previewStartSecs ?? START_SECS.default,
     teamId: p?.teamId ?? null,
   };
+}
+
+/** The sections of a project's Docs page a person can switch off, as the page orders them (gizai_core::devdocs::SECTIONS). */
+export const DOCS_SECTIONS: [string, string][] = [["reference", "Reference"], ["guides", "Guides"], ["api", "API"], ["changelog", "Changelog"],
+  ["decisions", "Decisions"], ["mcp", "MCP"]];
+
+/** The Docs page's sections, each on (checked) unless `off` names it; a change gives the new list of those off. */
+export function DocsSections({ off, onChange }: { off: string[]; onChange: (off: string[]) => void }) {
+  return (
+    <Field label="Sections" wide hint="All on by default. One switched off is left out of the page whole, and no agent is asked to fill it.">
+      {DOCS_SECTIONS.map(([key, label]) => (
+        <label key={key} className="check"><input id={`p-docs-${key}`} type="checkbox" checked={!off.includes(key)}
+          onChange={(e) => onChange(e.target.checked ? off.filter((s) => s !== key) : [...off, key])} />{label}</label>
+      ))}
+    </Field>
+  );
 }
 
 /** The copy list as typed: one path per line. */
@@ -240,6 +256,7 @@ export function ProjectDrawer({ id, onClose }: { id?: string; onClose: () => voi
           <Field label="Docs" htmlFor="p-docs" wide hint="Off by default. On: the project shows under Docs in the sidebar.">
             <label className="check"><input id="p-docs" type="checkbox" checked={v.devDocs ?? false} onChange={(e) => set("devDocs", e.target.checked)} />Show this project under Docs</label>
           </Field>
+          {v.devDocs && <DocsSections off={v.docsOff ?? []} onChange={(off) => set("docsOff", off)} />}
         </FormSection>
         <FormSection title="Budget" text="Optional. Shown on the project page.">
           <Field label="Budget (€)" htmlFor="p-eur"><input id="p-eur" className="input" type="number" min={0} value={euros} onChange={(e) => set("budgetAmountMinor", e.target.value === "" ? null : Math.round(Number(e.target.value) * 100))} /></Field>

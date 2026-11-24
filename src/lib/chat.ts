@@ -37,6 +37,7 @@ const VERBS: Record<string, [done: string, base: string]> = {
   update_checkout: ["Updated the checkout", "update the checkout"], merge_pull_request: ["Merged the pull request of", "merge the pull request of"],
   memory_list: ["Listed notes", "list notes"], memory_search: ["Searched notes for", "search notes for"], memory_read: ["Read note", "read note"],
   memory_write: ["Saved note", "save note"], memory_append: ["Added to note", "add to note"], memory_move: ["Moved note", "move note"],
+  record_decision: ["Recorded the decision", "record the decision"],
 };
 /** Claude Code's own (read-only) tools in chat. */
 const BUILTIN: Record<string, [done: string, base: string]> = {

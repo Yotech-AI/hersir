@@ -484,11 +484,12 @@ export function api(id) {
                 .join('')}</table>`
             : ''
         }
+        ${bodyOf(current)}
         <h2>Responses</h2>
         ${
           current.responses.length > 0
             ? `<table class="facts">${current.responses
-                .map((r) => `<tr><td class="mono">${esc(r.status)}</td><td>${esc(r.description)}</td></tr>`)
+                .map((r) => `<tr><td class="mono">${esc(r.status)}</td><td>${esc(r.description)}${fieldTable(fieldsOf(r.schema), true)}</td></tr>`)
                 .join('')}</table>`
             : `<p class="sm muted">This endpoint was read from the router, which declares the method and
                  the path and nothing else. Status codes and bodies live in the handler, linked on the right.</p>`
@@ -506,6 +507,49 @@ export function api(id) {
         }
       </aside>
     </div>`;
+}
+
+/*
+ * Hersir: an endpoint's request body and each response's fields, as the Figma's API page draws them (yodocs kept the
+ * schemas in the index but drew neither). A $ref is looked up in the spec's own schemas.
+ */
+function resolved(schema) {
+  let s = schema;
+  for (let n = 0; s && typeof s === 'object' && typeof s.$ref === 'string' && n < 5; n++) {
+    s = state.index.api?.schemas?.[s.$ref.split('/').pop()] ?? null;
+  }
+  return s && typeof s === 'object' ? s : null;
+}
+
+/** An object schema's fields: name, type (and format or allowed values), whether required, description. */
+function fieldsOf(schema) {
+  const s = resolved(schema);
+  if (s === null) return [];
+  if (s.type === 'array') return fieldsOf(s.items);
+  const required = Array.isArray(s.required) ? s.required : [];
+  return Object.entries(s.properties ?? {}).map(([name, raw]) => {
+    const f = resolved(raw) ?? {};
+    const ref = (x) => (typeof x?.$ref === 'string' ? x.$ref.split('/').pop() : '');
+    const type = f.type === 'array' ? `array of ${resolved(f.items)?.type ?? (ref(f.items) || 'items')}` : f.type ?? ref(raw);
+    const detail = [type, f.format, Array.isArray(f.enum) ? f.enum.join(' | ') : ''].filter(Boolean).join(' · ');
+    return { name, detail, required: required.includes(name), description: f.description ?? '' };
+  });
+}
+
+function fieldTable(rows, small = false) {
+  if (rows.length === 0) return '';
+  return `<table class="facts${small ? ' sm' : ''}">${rows
+    .map((f) => `<tr><td class="mono">${esc(f.name)} <span class="sm muted">${esc(f.detail)}</span>${f.required ? ' <span class="req">required</span>' : ''}</td>
+      <td>${esc(f.description)}</td></tr>`)
+    .join('')}</table>`;
+}
+
+/** The request body's fields, under its media type, when the spec gives a schema for it. */
+function bodyOf(endpoint) {
+  const content = endpoint.requestBody?.content;
+  const [type, media] = content && typeof content === 'object' ? Object.entries(content)[0] ?? [] : [];
+  const rows = media ? fieldsOf(media.schema) : [];
+  return rows.length > 0 ? `<h2>Body <span class="inline-code mono sm">${esc(type)}</span></h2>${fieldTable(rows)}` : '';
 }
 
 /* ---------- a section whose source exists but is empty ---------- */

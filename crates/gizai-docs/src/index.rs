@@ -704,10 +704,8 @@ fn path_params(path: &str) -> Vec<Parameter> {
             inner.strip_suffix('?').map_or((inner, true), |n| (n, false))
         } else if let Some(inner) = s.strip_prefix("[[").and_then(|s| s.strip_suffix("]]")) {
             (inner, false)
-        } else if let Some(inner) = s.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
-            (inner, true)
         } else {
-            return None;
+            (s.strip_prefix('[').and_then(|s| s.strip_suffix(']'))?, true)
         };
         Some(Parameter { name: name.trim_start_matches("...").to_string(), location: "path".into(), required, description: String::new() })
     }).collect()

@@ -72,6 +72,7 @@ pub(crate) fn preview(st: &crate::AppState, actor: &str, thread: &str, tool: &st
         "merge_pull_request" => merge_pull_request(&cx, &a),
         "archive_tasks" => archive_tasks(&cx, &a),
         "comment_on_task" => comment(&cx, &a),
+        "record_decision" => record_decision(&cx, &a),
         "update_task" => update_task(&cx, &a),
         "update_project" => update_project(&cx, &a),
         _ => Ok(Preview { line: format!("Call {tool}"), fields: plain_fields(&a.0), ..Default::default() }),
@@ -516,6 +517,23 @@ fn comment(cx: &Cx, a: &Args) -> Result<Preview, String> {
                  text: Some(a.text("body_md").unwrap_or_default()), ..Default::default() })
 }
 
+/// record_decision: the record as it would go on the project's Docs page, its decision as the text.
+fn record_decision(cx: &Cx, a: &Args) -> Result<Preview, String> {
+    let p = resolve::project(cx, &a.req("project")?)?;
+    let title = a.req("title")?;
+    let mut fields = vec![field("Project", format!("{} ({})", p.name, p.key)), field("Title", title.clone()),
+        field("Status", a.text("status").filter(|s| !s.trim().is_empty()).unwrap_or_else(|| "accepted".into()))];
+    if let Some(t) = a.text("task").filter(|t| !t.trim().is_empty()) {
+        fields.push(field("Card", t));
+    }
+    if let Some(n) = a.int("supersedes")? {
+        fields.push(field("Replaces", format!("{n:04}")));
+    }
+    let warning = (!p.dev_docs || p.docs_off.iter().any(|s| s == "decisions"))
+        .then(|| format!("{}'s Docs page doesn't keep decisions, so approving fails.", p.name));
+    Ok(Preview { line: format!("Record the decision {title} for {}", p.key), fields, text: Some(a.req("decision")?), warning, ..Default::default() })
+}
+
 /// A person's or an agent's name, by its id.
 fn actor_name(cx: &Cx, id: &str) -> String {
     gizai_core::team::agent(cx.db(), id).map(|m| m.name).ok()
@@ -652,6 +670,10 @@ pub(crate) fn done(tool: &str, result: &Value) -> String {
         "attach_file" => format!("Attached {}.", s("/file/name").unwrap_or_else(|| "the file".into())),
         "update_checkout" => "The update started: its result comes as a message in this chat.".into(),
         "comment_on_task" => "The comment is on the card.".into(),
+        "record_decision" => match n("/decision/number") {
+            Some(num) => format!("It is decision {num:04} on the Docs page."),
+            None => "Recorded.".into(),
+        },
         "archive_tasks" => archived(result),
         "update_task" => "The card is saved.".into(),
         "update_project" => match s("/done") {
