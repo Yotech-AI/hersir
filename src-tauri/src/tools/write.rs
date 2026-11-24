@@ -274,6 +274,147 @@ pub(crate) fn update_agent_new_commands(m: &team::Member, a: &Args) -> Vec<Strin
     a.list("allowed_tools").map(|l| new_commands(&runs_with(&l), &runs_with(&m.allowed_tools))).unwrap_or_default()
 }
 
+/// GA-352: whether a coding CLI of this kind keeps an agent to its allowed commands. Only Claude Code does: it gets them as
+/// its `--allowedTools` (`gizai_agents::cli::task_exec`). Codex gets no list at all: approval_policy "never" and its sandbox
+/// decide, with the network on in workspace-write. Gemini gets each entry only as the start of a command
+/// (`cli::gemini_tool`: an exact `Bash(npm test)` lets it run any `npm test …`), next to its own settings and policies. An
+/// Other CLI runs with its own permissions (from chat it can't be picked at all, `runs_on`). An unknown kind neither.
+pub(crate) fn keeps_to_the_list(kind: &str) -> bool {
+    kind == "claude_code"
+}
+
+/// GA-352: the permission modes of a CLI of `kind` in tiers, from strict to loose. The modes of one tier rank the same, so a
+/// move between them isn't a stricter one either (`mode_needs_ok`). From what each CLI does with a mode
+/// (`gizai_agents::cli`) and the agent form's words for it (`src/lib/clis.ts`):
+/// - Claude Code: plan changes nothing; manual asks for every action, which a run can't answer, so only the allowed commands
+///   run; acceptEdits edits files and runs the allowed commands; dontAsk refuses what isn't allowed (the agent form), but
+///   GA-352's card ranks it with auto, so it stands level with acceptEdits and a move either way between the two waits; auto
+///   lets Claude decide what to run, outside the list too; bypassPermissions runs anything (never from chat,
+///   `guard_agent_powers`).
+/// - Codex: read-only changes nothing; workspace-write writes the worktree and uses the network; danger-full-access runs
+///   without a sandbox (never from chat).
+/// - Gemini: plan reads only; default asks, which a run can't answer, so only the allowed commands run; auto_edit edits files
+///   and runs the allowed commands; yolo runs anything (never from chat).
+///
+/// Empty for an Other CLI, which takes no mode, and for an unknown kind.
+fn mode_tiers(kind: &str) -> &'static [&'static [&'static str]] {
+    match kind {
+        "claude_code" => &[&["plan"], &["manual"], &["acceptEdits", "dontAsk"], &["auto"], &["bypassPermissions"]],
+        "codex" => &[&["read-only"], &["workspace-write"], &["danger-full-access"]],
+        "gemini" => &[&["plan"], &["default"], &["auto_edit"], &["yolo"]],
+        _ => &[],
+    }
+}
+
+/// GA-352: how loose `mode` is on a CLI of `kind` (`mode_tiers`); None for a mode that CLI doesn't have.
+fn mode_rank(kind: &str, mode: &str) -> Option<usize> {
+    mode_tiers(kind).iter().position(|tier| tier.contains(&mode))
+}
+
+/// GA-352: the permission mode an agent on a CLI of `kind` runs with when `mode` is saved, as `team::add_agent` saves it:
+/// `mode`, else (none or empty) the CLI's usual one, the first the agent form offers (`clis::permission_modes`: acceptEdits,
+/// workspace-write, auto_edit). Empty for an Other CLI, which takes none.
+pub(crate) fn mode_as_run(kind: &str, mode: Option<&str>) -> String {
+    let modes = gizai_core::clis::permission_modes(kind);
+    match (mode.map(str::trim).filter(|m| !m.is_empty()), modes.first()) {
+        (_, None) => String::new(),
+        (Some(m), Some(_)) => m.to_string(),
+        (None, Some(usual)) => usual.to_string(),
+    }
+}
+
+/// GA-352: whether chat gives an agent on a CLI of `kind` the permission mode `to` only with the user's Approve, coming from
+/// `from` (both as it runs with them, `mode_as_run`): another mode that isn't a stricter one (`mode_tiers`). A mode Hersir
+/// doesn't rank counts as one too, unless it is the one the agent has; but one the CLI doesn't have is refused at once, before
+/// the call would wait (`team::check_agent`).
+fn mode_needs_ok(kind: &str, from: &str, to: &str) -> bool {
+    from != to && match (mode_rank(kind, from), mode_rank(kind, to)) {
+        (Some(f), Some(t)) => t >= f,
+        _ => true,
+    }
+}
+
+/// GA-352: a setting a call of create_agent or update_agent changes: its value now (None: a new agent has none) and the
+/// one the call gives, as the agent form names them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Change {
+    pub from: Option<String>,
+    pub to: String,
+}
+
+/// GA-323, GA-352: what a call of create_agent or update_agent gives an agent that chat gives only with the user's Approve;
+/// empty: it saves at once. Otherwise the whole call waits for the Approve (`Cx::keep_for_ok`), or, with no chat to wait in
+/// (Claude Desktop, a call Hersir makes itself), isn't run, and nothing changes.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct NeedsOk {
+    /// GA-323: commands it doesn't run with yet (`new_commands`).
+    pub commands: Vec<String>,
+    /// GA-352: the CLI it goes on, by name, when that CLI doesn't keep it to its allowed commands (`keeps_to_the_list`).
+    pub cli: Option<Change>,
+    /// GA-352: the permission mode it runs with now (for a new agent, or one on another kind of CLI, the one the call is
+    /// weighed against: the CLI's usual one) and the new one, when that is another mode and not a stricter one
+    /// (`mode_needs_ok`).
+    pub mode: Option<Change>,
+}
+
+impl NeedsOk {
+    pub fn is_empty(&self) -> bool {
+        self.commands.is_empty() && self.cli.is_none() && self.mode.is_none()
+    }
+}
+
+/// GA-323, GA-352: what a call of create_agent gives its new agent only with the user's Approve: commands
+/// (`create_agent_new_commands`); a CLI that doesn't keep it to its allowed commands (`cli`: the one runs_on names, None for
+/// the built-in Claude Code); and a permission mode that isn't stricter than that CLI's usual one (`mode_needs_ok`).
+pub(crate) fn create_agent_needs_ok(cx: &Cx, a: &Args, cli: Option<&gizai_core::clis::Cli>) -> NeedsOk {
+    let cli = cli.cloned().unwrap_or_else(|| gizai_core::clis::builtin(cx.db()));
+    let (usual, mode) = (mode_as_run(&cli.kind, None), mode_as_run(&cli.kind, a.opt("permission_mode").as_deref()));
+    NeedsOk {
+        commands: create_agent_new_commands(a),
+        cli: (!keeps_to_the_list(&cli.kind)).then(|| Change { from: None, to: cli.name.clone() }),
+        mode: mode_needs_ok(&cli.kind, &usual, &mode).then_some(Change { from: Some(usual), to: mode }),
+    }
+}
+
+/// GA-352: the agent `m`'s CLI now (None when it is no longer in Settings), with its id as `m` has it (empty: Claude Code).
+fn cli_now(cx: &Cx, m: &team::Member) -> (Option<gizai_core::clis::Cli>, String) {
+    let id = m.adapter.as_deref().map(str::trim).filter(|s| !s.is_empty()).unwrap_or(gizai_core::clis::CLAUDE_CODE).to_string();
+    (crate::clis::of_agent(cx.st, Some(&id)).ok(), id)
+}
+
+/// GA-352: what the agent `m` runs on and with after a call of update_agent: its CLI (`to`: the one runs_on names; None,
+/// the one it has) and its permission mode, as `update_agent` saves it. On another kind of CLI the mode it has doesn't carry
+/// over: the one given, else that CLI's usual one. None when its CLI is no longer in Settings and none is given (the call
+/// can't be saved then).
+pub(crate) fn update_agent_runs(cx: &Cx, m: &team::Member, a: &Args, to: Option<&gizai_core::clis::Cli>) -> Option<(gizai_core::clis::Cli, String)> {
+    let (now, _) = cli_now(cx, m);
+    let to = to.cloned().or_else(|| now.clone())?;
+    let moved = now.as_ref().is_none_or(|n| n.kind != to.kind);
+    let given = a.opt("permission_mode").or(if moved { None } else { m.permission_mode.clone() });
+    let mode = mode_as_run(&to.kind, given.as_deref());
+    Some((to, mode))
+}
+
+/// GA-323, GA-352: what a call of update_agent gives the agent `m` only with the user's Approve: commands
+/// (`update_agent_new_commands`); another CLI (`to`: the one runs_on names) that doesn't keep it to its allowed commands; and
+/// another permission mode, as it would run with it (`update_agent_runs`), that isn't stricter than the one it runs with now
+/// (`mode_needs_ok`). On another kind of CLI the new mode is weighed against that CLI's usual one, the one it starts from.
+pub(crate) fn update_agent_needs_ok(cx: &Cx, m: &team::Member, a: &Args, to: Option<&gizai_core::clis::Cli>) -> NeedsOk {
+    let mut out = NeedsOk { commands: update_agent_new_commands(m, a), ..Default::default() };
+    let Some((cli, mode)) = update_agent_runs(cx, m, a, to) else { return out };
+    let (now, id_now) = cli_now(cx, m);
+    let kind_now = now.as_ref().map(|c| c.kind.clone()).unwrap_or_default();
+    if cli.id != id_now && !keeps_to_the_list(&cli.kind) {
+        out.cli = Some(Change { from: Some(now.as_ref().map(|c| c.name.clone()).unwrap_or(id_now)), to: cli.name.clone() });
+    }
+    let mode_now = mode_as_run(&kind_now, m.permission_mode.as_deref());
+    let against = if cli.kind == kind_now { mode_now.clone() } else { mode_as_run(&cli.kind, None) };
+    if mode_needs_ok(&cli.kind, &against, &mode) {
+        out.mode = Some(Change { from: Some(mode_now).filter(|m| !m.is_empty()), to: mode });
+    }
+    out
+}
+
 /// A repository path from chat must be a git repository (it has a .git folder or file), and never `/`, your
 /// home folder or a folder above it: agents work there and the Chief may read it.
 pub(crate) fn checked_repo(raw: &str) -> Result<String, String> {
@@ -816,8 +957,9 @@ fn agent_result(cx: &Cx, id: &str, what: &str) -> Result<Value, String> {
 }
 
 /// The coding CLI from `runs_on` (its name or id), as its id; None when not given. An Other CLI runs with its own
-/// permissions (whatever its arguments allow), so only you can pick one, in the agent form.
-fn runs_on(cx: &Cx<'_>, a: &Args) -> Result<Option<gizai_core::clis::Cli>, String> {
+/// permissions (whatever its arguments allow), so only you can pick one, in the agent form. GA-352: Codex and Gemini, which
+/// don't keep an agent to its allowed commands either, wait for your Approve instead (`keeps_to_the_list`).
+pub(crate) fn runs_on(cx: &Cx<'_>, a: &Args) -> Result<Option<gizai_core::clis::Cli>, String> {
     let Some(want) = a.opt("runs_on") else { return Ok(None) };
     let all = gizai_core::clis::list(cx.db()).map_err(err)?;
     let Some(c) = all.iter().find(|c| c.id == want.trim() || c.name.eq_ignore_ascii_case(want.trim())) else {
@@ -855,6 +997,8 @@ pub(crate) async fn create_agent(cx: &Cx<'_>, a: &Args) -> Result<Value, String>
     let (name, role) = (a.req("name")?, a.req("role")?);
     // No list given: its role's, as the agent form starts it.
     let allowed_tools = a.list("allowed_tools").filter(|l| !l.is_empty()).unwrap_or_else(|| gizai_core::seed::role_tools(&team::role_key(&role)));
+    // GA-323, GA-352: what it gives the new agent only with the user's Approve.
+    let needs = create_agent_needs_ok(cx, a, cli.as_ref());
     let input = AgentInput {
         name: name.clone(), role_key: role, title: a.opt("title"), adapter: cli.map(|c| c.id).unwrap_or_default(), model: a.opt("model"),
         instructions_md: a.opt("instructions_md"), permission_mode: a.opt("permission_mode").unwrap_or_default(),
@@ -863,12 +1007,13 @@ pub(crate) async fn create_agent(cx: &Cx<'_>, a: &Args) -> Result<Value, String>
         max_runs: a.int("cards_at_once")?, board_check_minutes: a.int("board_check_minutes")?, folders: None, use_memory: None,
         shares_memory_with: shares,
     };
-    // GA-323: a command chat doesn't give at once waits for the user's Approve, the whole call with it; checked after the
-    // rest, so a call that can never work is refused at once instead.
-    let new = create_agent_new_commands(a);
-    if !new.is_empty() && !cx.approved {
+    // GA-323: a command chat doesn't give at once waits for the user's Approve, the whole call with it. GA-352: so does a CLI
+    // that doesn't keep the agent to its allowed commands (Codex, Gemini), and a permission mode that isn't stricter than its
+    // CLI's usual one (on Claude Code dontAsk and auto). Checked after the rest, so a call that can never work is refused at
+    // once instead.
+    if !needs.is_empty() && !cx.approved {
         team::check_agent(cx.db(), &input).map_err(err)?;
-        return Err(cx.keep_commands("create_agent", a, name.trim(), &new));
+        return Err(cx.keep_for_ok("create_agent", a, name.trim(), &needs));
     }
     let id = team::add_agent(cx.db(), cx.actor, &team_id, input).map_err(err)?;
     agent_result(cx, &id, "created")
@@ -888,6 +1033,8 @@ pub(crate) async fn update_agent(cx: &Cx<'_>, a: &Args) -> Result<Value, String>
     let kind_now = crate::clis::of_agent(cx.st, m.adapter.as_deref()).map(|c| c.kind).unwrap_or_default();
     let new_cli = runs_on(cx, a)?;
     let moved = new_cli.as_ref().is_some_and(|c| c.kind != kind_now);
+    // GA-323, GA-352: what it gives the agent only with the user's Approve.
+    let needs = update_agent_needs_ok(cx, &m, a, new_cli.as_ref());
     let model = if moved { a.opt("model") } else { keep(a, "model", &m.model) };
     let effort = if moved { a.opt("effort") } else { keep(a, "effort", &m.effort) };
     let permission_mode = a.opt("permission_mode").or(if moved { None } else { m.permission_mode.clone() }).unwrap_or_default();
@@ -908,12 +1055,13 @@ pub(crate) async fn update_agent(cx: &Cx<'_>, a: &Args) -> Result<Value, String>
         board_check_minutes: a.int("board_check_minutes")?, folders: None, use_memory: None, shares_memory_with: shares,
     };
     // GA-323: a command the agent doesn't run with yet, and that chat doesn't give at once, waits for the user's Approve, the
-    // whole call with it (its role's list no longer counts: a narrowed agent gets nothing back from chat by itself); checked
-    // after the rest, so a call that can never work is refused at once instead.
-    let new = update_agent_new_commands(&m, a);
-    if !new.is_empty() && !cx.approved {
+    // whole call with it (its role's list no longer counts: a narrowed agent gets nothing back from chat by itself). GA-352:
+    // so does a move to another CLI that doesn't keep it to its allowed commands (Codex, Gemini), and a permission mode that
+    // isn't stricter than the one it runs with now. Checked after the rest, so a call that can never work is refused at once
+    // instead.
+    if !needs.is_empty() && !cx.approved {
         team::check_agent(cx.db(), &input).map_err(err)?;
-        return Err(cx.keep_commands("update_agent", a, &m.name, &new));
+        return Err(cx.keep_for_ok("update_agent", a, &m.name, &needs));
     }
     team::update_agent(cx.db(), cx.actor, &m.actor_id, input).map_err(err)?;
     crate::runs::resume_pull(cx.st, &m.actor_id);
