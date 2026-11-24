@@ -160,25 +160,22 @@ export type TimeBar = { start: number; end: number; runs: number; timeMs: number
   costUsdMicros: number; unknownCostRuns: number; future: boolean };
 
 /** The bars of the charts at `now`: the days grouped by `barUnit(days.length)`, oldest first, the time of the runs working now
- *  (`running`, each card's `runningSince`) in the bar they started in. */
+ *  (`running`, each card's `runningSince`) in the bar they started in. A bar covers only the days it has: a period that starts on
+ *  a Thursday has a first week from that Thursday. */
 export function timeBars(days: readonly TimeDay[], running: readonly number[], now: number): { unit: BarUnit; bars: TimeBar[] } {
   const unit = barUnit(days.length);
-  const startOf = (ms: number) => (unit === "day" ? utcDay(ms) : unit === "week" ? utcMonday(ms) : utcMonthStart(ms));
-  const endOf = (start: number) => {
-    if (unit === "day") return start + DAY;
-    if (unit === "week") return start + 7 * DAY;
-    const d = new Date(start);
-    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
-  };
+  const group = (ms: number) => (unit === "day" ? utcDay(ms) : unit === "week" ? utcMonday(ms) : utcMonthStart(ms));
   const bars: TimeBar[] = [];
+  let last: number | null = null;
   for (const d of days) {
-    const start = startOf(d.dayStart);
     let b = bars[bars.length - 1];
-    if (!b || b.start !== start) {
-      b = { start, end: endOf(start), runs: 0, timeMs: 0, inputTokens: 0, outputTokens: 0, costUsdMicros: 0, unknownCostRuns: 0,
-        future: start > now };
+    if (!b || last !== group(d.dayStart)) {
+      last = group(d.dayStart);
+      b = { start: d.dayStart, end: d.dayStart + DAY, runs: 0, timeMs: 0, inputTokens: 0, outputTokens: 0, costUsdMicros: 0, unknownCostRuns: 0,
+        future: d.dayStart > now };
       bars.push(b);
     }
+    b.end = d.dayStart + DAY;
     b.runs += d.runs;
     b.timeMs += d.timeMs;
     b.inputTokens += d.inputTokens;
@@ -193,12 +190,12 @@ export function timeBars(days: readonly TimeDay[], running: readonly number[], n
   return { unit, bars };
 }
 
-/** A bar's name: "24 Nov" for a day, "Week of 23 Nov" for a week, "Nov 2026" for a month; with the year when the chart
- *  (`spansYears`) isn't in one year. */
-export function barLabel(b: Pick<TimeBar, "start">, unit: BarUnit, years: boolean): string {
+/** A bar's name in its tip: "24 Nov" for a day (with the year when the chart isn't in one year, `spansYears`), its days for a
+ *  week ("23 – 29 Nov 2026"), "Nov 2026" for a month. */
+export function barLabel(b: Pick<TimeBar, "start" | "end">, unit: BarUnit, years: boolean): string {
   if (unit === "month") return MONTH_YEAR.format(b.start);
-  const day = (years ? DAY_MONTH_YEAR : DAY_MONTH).format(b.start);
-  return unit === "week" ? `Week of ${day}` : day;
+  if (unit === "week") return rangeWords(b.start, b.end);
+  return (years ? DAY_MONTH_YEAR : DAY_MONTH).format(b.start);
 }
 
 /** Under a chart: its first, middle and last bar's day, or the one or two it has. */

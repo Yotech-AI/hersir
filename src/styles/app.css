@@ -670,6 +670,7 @@ a.member:hover { border-color: var(--line-2); }
 .time-tools .chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
 .time-tools .chip { flex: none; }
 .time-head { display: flex; flex-direction: column; gap: 12px; padding: 10px 24px 20px; }
+.time-head .time-stats { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
 .time-head .usage-charts { margin-top: 0; }
 .time-head .usage-metric { margin-top: 6px; }
 .time-period { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px 12px; min-height: 28px; color: var(--text-2); font-size: var(--fs-sm); }

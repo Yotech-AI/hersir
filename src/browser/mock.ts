@@ -394,6 +394,7 @@ export async function answer(cmd: string, args: Row): Promise<unknown> {
   if (cmd === "screenshot_bytes") return picture(String(args.fileId));
   if (cmd === "list_tasks") return tasks(args.filter as Row | undefined);
   if (cmd === "item_id") return itemId(String(args.kind), String(args.key));
+  if (cmd === "project_time") return projectTime(args);
   // the folder in Settings: none once Backups is turned off
   if (cmd === "list_backups" && args.folder == null && backups() && !backups()!.folder) return [];
   if (cmd === "list_backups" && !inSettings(args.folder)) return structuredClone(usb());
@@ -408,6 +409,48 @@ function tasks(filter: Row | undefined) {
   if (!all) return empty("list_tasks", "list_tasks");
   return structuredClone(all.filter((t) => (!filter?.projectId || t.projectId === filter.projectId)
     && (!filter?.openOnly || !["done", "cancelled"].includes(String(t.stateCategory)))));
+}
+
+const DAY = 86_400_000;
+
+/** project_time (GA-354), as gizai-core counts it, from the fixtures' runs (list_runs) of the project's cards (its fixture):
+ *  the runs that started from `since` up to `until`, or all of them, each on the UTC day it started; an interrupted run at
+ *  most the default run time limit, 90 minutes. In a period only the cards with a run in it, and every day of it; for all
+ *  time every card, and the days from the first run to today. */
+function projectTime(args: Row): unknown {
+  const f = fixture("project_time", args);
+  if (!f.found) return empty("project_time", f.why);
+  const since = typeof args.since === "number" ? args.since : null, until = typeof args.until === "number" ? args.until : null;
+  const period = since != null && until != null;
+  const utcDay = (ms: number) => ms - (((ms % DAY) + DAY) % DAY);
+  type Sums = { runs: number; timeMs: number; inputTokens: number; outputTokens: number; costUsdMicros: number; unknownCostRuns: number };
+  const zero = (): Sums => ({ runs: 0, timeMs: 0, inputTokens: 0, outputTokens: 0, costUsdMicros: 0, unknownCostRuns: 0 });
+  const byDay = new Map<number, Sums>();
+  let firstRun: number | null = null;
+  const cards = ((f.value as { cards?: Row[] }).cards ?? []).map((c) => {
+    const card = { ...c, ...zero(), runningSince: null as number | null };
+    const runs = fixture("list_runs", { taskId: c.taskId });
+    for (const r of (runs.found ? runs.value : []) as Row[]) {
+      const start = typeof r.startedAt === "number" ? r.startedAt : null;
+      if (start == null) continue;
+      firstRun = firstRun == null ? start : Math.min(firstRun, start);
+      if (period && (start < since || start >= until)) continue;
+      const end = typeof r.endedAt === "number" ? r.endedAt : null;
+      const span = end == null ? 0 : Math.max(0, end - start);
+      const input = Number(r.inputTokens ?? 0), output = Number(r.outputTokens ?? 0), cost = Number(r.costUsdMicros ?? 0);
+      const add: Sums = { runs: 1, timeMs: r.error === "interrupted" ? Math.min(span, 90 * 60_000) : span, inputTokens: input, outputTokens: output,
+        costUsdMicros: cost, unknownCostRuns: cost === 0 && input + output > 0 ? 1 : 0 };
+      const day = byDay.get(utcDay(start)) ?? zero();
+      for (const k of Object.keys(add) as (keyof Sums)[]) { card[k] += add[k]; day[k] += add[k]; }
+      byDay.set(utcDay(start), day);
+      if (end == null) card.runningSince = card.runningSince == null ? start : Math.min(card.runningSince, start);
+    }
+    return card;
+  });
+  const [from, to] = period ? [since, until] : firstRun == null ? [0, 0] : [utcDay(firstRun), utcDay(Date.now()) + DAY];
+  const days = [];
+  for (let d = from; d < to; d += DAY) days.push({ dayStart: d, ...(byDay.get(d) ?? zero()) });
+  return { since: period ? since : null, until: period ? until : null, firstRun, cards: period ? cards.filter((c) => c.runs > 0) : cards, days };
 }
 
 /** item_id, as the backend: a card's id by its id or identifier, a project's by its id or key (case ignored); any other kind
