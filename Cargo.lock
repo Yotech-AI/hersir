@@ -1734,7 +1734,7 @@ dependencies = [
 
 [[package]]
 name = "gizai"
-version = "0.20.0"
+version = "0.20.1"
 dependencies = [
  "gizai-agents",
  "gizai-core",
@@ -1760,7 +1760,7 @@ dependencies = [
 
 [[package]]
 name = "gizai-agents"
-version = "0.20.0"
+version = "0.20.1"
 dependencies = [
  "flate2",
  "getrandom 0.4.3",
@@ -1782,7 +1782,7 @@ dependencies = [
 
 [[package]]
 name = "gizai-core"
-version = "0.20.0"
+version = "0.20.1"
 dependencies = [
  "calamine",
  "cfb",
@@ -1806,7 +1806,7 @@ dependencies = [
 
 [[package]]
 name = "gizai-mcp"
-version = "0.20.0"
+version = "0.20.1"
 dependencies = [
  "serde_json",
  "tempfile",
