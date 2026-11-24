@@ -588,6 +588,9 @@ struct Plan {
 struct NewTurn {
     ids: Vec<String>,
     text: String,
+    /// GA-351: one of them came from Claude Desktop (`ChatMessage::from_desktop`), as they were saved or sent from the queue:
+    /// the turn has Claude Desktop's limits (`turn`).
+    desktop: bool,
 }
 
 const ANSWERING: &str = "The Chief is still answering in this chat: wait for it, or press Stop";
@@ -780,7 +783,8 @@ async fn send_marked(st: &AppState, thread_id: Option<String>, text: String, cli
     };
     (st.notify)(Note::ChatChanged);
     let message_id = msg.id.clone();
-    let done = start_chain(st, &thread_id, plan, NewTurn { ids: vec![msg.id], text }, bin_override);
+    let desktop = msg.from_desktop();
+    let done = start_chain(st, &thread_id, plan, NewTurn { ids: vec![msg.id], text, desktop }, bin_override);
     Ok(Sent { thread_id, message_id, done })
 }
 
@@ -966,7 +970,8 @@ fn sent(st: &AppState, thread_id: &str, msgs: Vec<ChatMessage>) -> NewTurn {
     (st.notify)(Note::RowsChanged("chat_messages"));
     st.chat.changed.notify_waiters();
     let text = joined_text(&msgs);
-    NewTurn { ids: msgs.into_iter().map(|m| m.id).collect(), text }
+    let desktop = msgs.iter().any(ChatMessage::from_desktop);
+    NewTurn { ids: msgs.into_iter().map(|m| m.id).collect(), text, desktop }
 }
 
 /// The text a turn sends for messages that go together (`chat::joined`); a message of files only says so (its files
@@ -1017,7 +1022,8 @@ pub async fn answer_on(st: &AppState, thread_id: &str, cli: &str, note_id: &str,
     switch_note(st, &thread, &plan, true);
     (st.notify)(Note::ChatChanged);
     let text = joined_text(&msgs);
-    Ok(start_chain(st, thread_id, plan, NewTurn { ids: msgs.into_iter().map(|m| m.id).collect(), text }, bin_override))
+    let desktop = msgs.iter().any(ChatMessage::from_desktop);
+    Ok(start_chain(st, thread_id, plan, NewTurn { ids: msgs.into_iter().map(|m| m.id).collect(), text, desktop }, bin_override))
 }
 
 /// A turn, and while each answer is done and messages were queued meanwhile, the next turn with them. Ends with the
@@ -1112,14 +1118,15 @@ async fn turn(st: &AppState, thread_id: &str, plan: &Plan, new: &NewTurn) -> Tur
     let (own, earlier): (Vec<ChatMessage>, Vec<ChatMessage>) = chat::messages(&st.db, thread_id).unwrap_or_default().into_iter()
         .filter(|m| m.role != "system" || heard(m)).partition(|m| new.ids.contains(&m.id));
     // GA-351: an answer to a message from Claude Desktop (ask_chief), also one that goes with messages you typed, has Claude
-    // Desktop's limits (`tools::Desktop::Answering`): its token says so. Your next message alone gets the normal rules again.
-    let answers_desktop = own.iter().any(ChatMessage::from_desktop);
+    // Desktop's limits (`tools::Desktop::Answering`): its token says so. As the messages were saved or sent (`new.desktop`),
+    // so a chat that can't be read now doesn't lose the mark. Your next message alone gets the normal rules again.
+    let answers_desktop = new.desktop || own.iter().any(ChatMessage::from_desktop);
     let history = earlier.iter().any(|m| m.role == "user" || m.role == "agent");
     // The files of this turn's messages: the Chief reads its copies of them, and the message names them.
     let files: Vec<FileRow> = own.iter().flat_map(|m| m.files.clone()).collect();
     let copies = lead_copies(st, files.clone()).await;
     let text = with_files(&new.text, &files_text(st, &files, &copies));
-    let new = &NewTurn { ids: new.ids.clone(), text };
+    let new = &NewTurn { ids: new.ids.clone(), text, desktop: answers_desktop };
     // A session lives in one CLI's account (its CLAUDE_CONFIG_DIR): another one can't resume it, so it doesn't try.
     let resumable = thread.session_id.is_some() && thread.session_cli.as_deref().is_none_or(|c| c == plan.cli.id);
     // The Chief's copies of the code, refreshed (at most 10 s): the prompt starts with the line that says where
