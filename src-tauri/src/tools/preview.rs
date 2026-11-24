@@ -259,10 +259,31 @@ fn agent_fields(cx: &Cx, a: &Args) -> Vec<(&'static str, &'static str, String)> 
     out
 }
 
-/// GA-323: the commands of a call of create_agent or update_agent that chat gives an agent only with your OK
-/// (`write::new_commands`), as a field, when it has any: they make the call wait without a tool from outside Gizai.
-fn needs_your_ok(new: &[String]) -> Option<Field> {
-    (!new.is_empty()).then(|| field("Needs your OK", listed(new, new.len())))
+/// What a call of create_agent (`new_agent`) or update_agent gives an agent that chat gives only with your OK
+/// (`write::NeedsOk`), as fields: they make the call wait without a tool from outside Gizai. GA-352: a CLI that doesn't keep
+/// the agent to its allowed commands, and a permission mode that isn't stricter than its own (for a new agent, its CLI's
+/// usual one), each from and to; GA-323: the new commands.
+fn needs_your_ok(needs: &super::write::NeedsOk, new_agent: bool) -> Vec<Field> {
+    let mut out = vec![];
+    if let Some(c) = &needs.cli {
+        let on = match c.from.as_deref().filter(|_| !new_agent) {
+            Some(from) => format!("{from} → {}", c.to),
+            None => c.to.clone(),
+        };
+        out.push(field("Needs your OK", format!("Runs on: {on}, which doesn't keep the agent to its allowed commands")));
+    }
+    if let Some(m) = &needs.mode {
+        let mode = match m.from.as_deref() {
+            Some(from) if new_agent => format!("{from} (the usual one) → {}", m.to),
+            Some(from) => format!("{from} → {}", m.to),
+            None => m.to.clone(),
+        };
+        out.push(field("Needs your OK", format!("Permission mode: {mode}")));
+    }
+    if !needs.commands.is_empty() {
+        out.push(field("Needs your OK", listed(&needs.commands, needs.commands.len())));
+    }
+    out
 }
 
 fn create_agent(cx: &Cx, a: &Args) -> Result<Preview, String> {
@@ -270,9 +291,10 @@ fn create_agent(cx: &Cx, a: &Args) -> Result<Preview, String> {
     let role = a.req("role")?;
     // GA-225: the team it joins, which must be named when there is more than one.
     let t = resolve::team_arg(cx, a)?;
+    let cli = super::write::runs_on(cx, a)?;
     let mut fields: Vec<Field> = team_field(cx, &t).into_iter().collect();
     fields.extend(agent_fields(cx, a).into_iter().map(|(_, label, v)| field(label, if v.is_empty() { "—".into() } else { v })));
-    fields.extend(needs_your_ok(&super::write::create_agent_new_commands(a)));
+    fields.extend(needs_your_ok(&super::write::create_agent_needs_ok(cx, a, cli.as_ref()), true));
     Ok(Preview { line: format!("Add the agent {name} ({role})"), fields, text: a.opt("instructions_md"), ..Default::default() })
 }
 
@@ -286,7 +308,11 @@ fn agent_now(cx: &Cx, m: &gizai_core::team::Member, key: &str) -> String {
         "runs_on" => crate::clis::of_agent(cx.st, m.adapter.as_deref()).map(|c| c.name).unwrap_or_else(|_| or_none(m.adapter.clone())),
         "model" => or_none(m.model.clone()),
         "effort" => or_none(m.effort.clone()),
-        "permission_mode" => or_none(m.permission_mode.clone()),
+        // GA-352: the one it runs with (none saved: its CLI's usual one)
+        "permission_mode" => {
+            let kind = crate::clis::of_agent(cx.st, m.adapter.as_deref()).map(|c| c.kind).unwrap_or_default();
+            or_none(Some(super::write::mode_as_run(&kind, m.permission_mode.as_deref())))
+        }
         "cards_at_once" => m.max_runs.to_string(),
         "monthly_budget_usd" => m.budget_usd_micros.map(|b| format!("${}", b as f64 / 1e6)).unwrap_or_else(|| "—".into()),
         "board_check_minutes" => m.board_check_minutes.filter(|n| *n > 0).map(|n| format!("{n} minutes")).unwrap_or_else(|| "off".into()),
@@ -298,8 +324,27 @@ fn agent_now(cx: &Cx, m: &gizai_core::team::Member, key: &str) -> String {
 
 fn update_agent(cx: &Cx, a: &Args) -> Result<Preview, String> {
     let m = resolve::agent(cx, &a.req("agent")?)?;
+    let to = super::write::runs_on(cx, a)?;
+    // GA-352: each change, also the ones a move to another kind of CLI makes by itself: its model, effort and permission
+    // mode don't carry over unless given (`write::update_agent`), and the mode shows as it would run with it.
+    let after = super::write::update_agent_runs(cx, &m, a, to.as_ref());
+    let kind_now = crate::clis::of_agent(cx.st, m.adapter.as_deref()).map(|c| c.kind).unwrap_or_default();
+    let mut given = agent_fields(cx, a);
+    if after.as_ref().is_some_and(|(cli, _)| cli.kind != kind_now) {
+        for (key, label) in [("model", "Model"), ("effort", "Effort")] {
+            if !given.iter().any(|(k, _, _)| *k == key) {
+                given.push((key, label, String::new()));
+            }
+        }
+    }
+    if let Some((_, mode)) = &after {
+        given.retain(|(k, _, _)| *k != "permission_mode");
+        given.push(("permission_mode", "Permission mode", mode.clone()));
+    }
+    // in the agent form's order, its allowed commands last
+    given.sort_by_key(|(k, _, _)| AGENT_SETTINGS.iter().position(|(s, _)| s == k).unwrap_or(AGENT_SETTINGS.len()));
     let mut fields = vec![];
-    for (key, label, v) in agent_fields(cx, a) {
+    for (key, label, v) in given {
         let now = agent_now(cx, &m, key);
         let v = if v.is_empty() { "—".to_string() } else { v };
         if !now.eq_ignore_ascii_case(&v) {
@@ -310,7 +355,7 @@ fn update_agent(cx: &Cx, a: &Args) -> Result<Preview, String> {
     let current = m.instructions_md.clone().unwrap_or_default();
     let instructions = new_instructions.filter(|i| i.trim() != current.trim());
     let warning = (fields.is_empty() && instructions.is_none()).then(|| format!("Nothing of {}'s settings would change.", m.name));
-    fields.extend(needs_your_ok(&super::write::update_agent_new_commands(&m, a)));
+    fields.extend(needs_your_ok(&super::write::update_agent_needs_ok(cx, &m, a, to.as_ref()), false));
     if instructions.is_some() {
         fields.push(field("Instructions", "new text, below"));
     }

@@ -329,6 +329,55 @@ fn not_run_for_commands(name: &str, who: &str, entries: &[String], kept: Result<
     }
 }
 
+/// GA-352: why create_agent or update_agent (`name`) wasn't run: it gives `who` what chat gives an agent only with the
+/// user's OK (`write::NeedsOk`), each named: a CLI that doesn't keep it to its allowed commands (from and to), a permission
+/// mode that isn't stricter than the one it has (from and to; for a new agent, its CLI's usual one), and new commands. It
+/// waits for the user's click (`kept`), or, when Gizai couldn't keep it (`Err`), nothing changed and the user makes the
+/// change in the agent form. New commands alone: GA-323's sentences, word for word (`not_run_for_commands`).
+fn not_run_for_ok(name: &str, who: &str, needs: &write::NeedsOk, kept: Result<(), String>) -> String {
+    let entries = &needs.commands;
+    if needs.cli.is_none() && needs.mode.is_none() {
+        return not_run_for_commands(name, who, entries, kept);
+    }
+    let new_agent = name == "create_agent";
+    let mut what: Vec<String> = vec![];
+    if let Some(c) = &needs.cli {
+        what.push(match c.from.as_deref().filter(|_| !new_agent) {
+            Some(from) => format!("it moves {who} from {from} to {}, which doesn't keep an agent to its allowed commands", c.to),
+            None => format!("it puts {who} on {}, which doesn't keep an agent to its allowed commands", c.to),
+        });
+    }
+    if let Some(m) = &needs.mode {
+        what.push(match m.from.as_deref() {
+            Some(from) if new_agent => format!("it gives {who} the permission mode {}, where the usual one is {from}", m.to),
+            Some(from) => format!("it changes {who}'s permission mode from {from} to {}", m.to),
+            None => format!("it gives {who} the permission mode {}", m.to),
+        });
+    }
+    let list = preview::listed(entries, entries.len());
+    if !entries.is_empty() {
+        what.push(format!("{list} {} new for {who}", if entries.len() == 1 { "is" } else { "are" }));
+    }
+    let commands_rule = if entries.is_empty() { "" } else {
+        ", and a command it doesn't have at once only when it is one of Hersir's default list that runs no other command and writes no file"
+    };
+    let why = format!("{name} wasn't run: {}. From chat, an agent gets a CLI that doesn't keep it to its allowed commands, or a permission mode \
+                       that isn't stricter than the one it has, only with the user's OK{commands_rule}.", what.join("; "));
+    let names = if entries.is_empty() { "each change, from and to".to_string() } else { format!("each change, from and to, and {list}") };
+    match kept {
+        Ok(()) => format!("{why} Hersir keeps the call for the user to approve with one click. Tell them in a sentence what it does, and \
+                           name {names}."),
+        Err(e) => {
+            let places: Vec<String> = [(needs.cli.is_some(), "Agent → Runs on"), (needs.mode.is_some(), "Permissions → Permission mode"),
+                                       (!entries.is_empty(), "Permissions → Allowed commands")]
+                .into_iter().filter(|(on, _)| *on).map(|(_, p)| p.to_string()).collect();
+            let change = if places.len() == 1 { "the change" } else { "these changes" };
+            format!("{why} Hersir couldn't keep the call for the user to approve ({e}), so nothing changed. Tell the user, so they can make \
+                     {change} themselves in the agent form ({}).", preview::listed(&places, places.len()))
+        }
+    }
+}
+
 /// Why a tool that acts is refused after a tool from outside Gizai in the chat (GA-261: for the rest of the chat).
 pub(crate) fn refused_after(name: &str, tool: &str) -> String {
     format!("{name} is refused in this chat: it used {tool}, a tool from outside Hersir, and what that returned could be trying to \
@@ -490,16 +539,18 @@ impl Cx<'_> {
         not_run(name, tool, kept)
     }
 
-    /// GA-323: keeps the call `name` (create_agent or update_agent) for the user's Approve, as it gives the agent `who` the
-    /// commands `entries`, which chat doesn't give at once (`write::new_commands`): pending as a call after a tool from
-    /// outside Gizai is (`pending::keep`), marked `NEW_COMMANDS` instead of a tool. What the call returns, for the Chief.
-    pub fn keep_commands(&self, name: &str, a: &Args, who: &str, entries: &[String]) -> String {
+    /// GA-323: keeps the call `name` (create_agent or update_agent) for the user's Approve, as it gives the agent `who` what
+    /// chat doesn't give at once (`needs`): commands (`write::new_commands`), and GA-352 a CLI that doesn't keep it to its
+    /// allowed commands or a permission mode that isn't stricter than its own. Pending as a call after a tool from outside
+    /// Gizai is (`pending::keep`), marked `NEW_COMMANDS` instead of a tool. With no chat to keep it in (Claude Desktop, a call
+    /// Hersir makes itself) it isn't run, and nothing changes. What the call returns, for the Chief.
+    pub fn keep_for_ok(&self, name: &str, a: &Args, who: &str, needs: &write::NeedsOk) -> String {
         let kept = match self.thread {
             Some(t) => crate::pending::keep(self.st, self.actor, t, self.from.map(|s| s.run), name, &a.0, gizai_core::pending::NEW_COMMANDS)
                 .map(|_| ()),
             None => Err("there is no chat to keep it in".into()),
         };
-        not_run_for_commands(name, who, entries, kept)
+        not_run_for_ok(name, who, needs, kept)
     }
     pub fn db(&self) -> &gizai_core::db::Db {
         &self.st.db
@@ -636,12 +687,12 @@ const CLIENT_FIELDS: [(&str, &str, &str); 14] = [
 
 const AGENT_FIELDS: [(&str, &str, &str); 11] = [
     ("board_check_minutes", "integer", "Only for the agent with Chat on (the Chief): check the board every this many minutes (5–1440); 0 = off"),
-    ("runs_on", "string", "The coding CLI it runs on, by name as Settings → Coding CLIs lists them (Claude Code, Codex, Gemini, a second account, …). Omit: Claude Code for a new agent, unchanged on update"),
+    ("runs_on", "string", "The coding CLI it runs on, by name as Settings → Coding CLIs lists them (Claude Code, Codex, Gemini, a second account, …). Omit: Claude Code for a new agent, unchanged on update. Codex and Gemini don't keep an agent to its allowed commands: putting an agent on one waits for the user's Approve, the whole call with it"),
     ("model", "string", "On Claude Code, a model it offers: an alias (default, opus, sonnet, haiku, fable) or its full id (claude-opus-5-5). On Codex or Gemini, that CLI's model name. Empty = the CLI's default"),
     ("effort", "string", "How hard the model thinks. Claude Code: low, medium, high, xhigh or max. Codex: minimal, low, medium, high or xhigh. Gemini takes none. Empty = the CLI's default; higher costs more"),
     ("instructions_md", "string", "Instructions sent with every run (Markdown). Omit on create to use the role's template; it must end by asking for the GIZAI_RESULT line"),
     ("cards_at_once", "integer", "How many cards it works on at the same time, each in its own git worktree (1–10, default 1)"),
-    ("permission_mode", "string", "Permission mode for task runs, in its CLI's terms. Claude Code: acceptEdits (the usual), dontAsk, auto, plan or manual. Codex: workspace-write (the usual) or read-only. Gemini: auto_edit (the usual), plan or default"),
+    ("permission_mode", "string", "Permission mode for task runs, in its CLI's terms. Claude Code: acceptEdits (the usual), dontAsk, auto, plan or manual. Codex: workspace-write (the usual) or read-only. Gemini: auto_edit (the usual), plan or default. Strict to loose: Claude Code plan, manual, acceptEdits and dontAsk, auto; Codex read-only, workspace-write; Gemini plan, default, auto_edit. Another mode that isn't stricter than the one the agent runs with (for a new agent, its CLI's usual one) waits for the user's Approve, the whole call with it"),
     ("allowed_tools", "string[]", "Commands it may run without asking, each its own entry as Bash(…), like Bash(npm test:*). Never a shell, an interpreter or a path, like Bash(bash:*), Bash(python3:*) or Bash(/bin/sh:*), unless the agent has it already or its role's list has it: only the user adds those. A command the agent doesn't have yet waits for the user's Approve, the whole call with it, unless it is one of Bash(git status:*), Bash(git add:*), Bash(ls:*), Bash(cat:*), Bash(head:*), Bash(tail:*), Bash(wc:*), Bash(cut:*), Bash(diff:*), Bash(grep:*), Bash(jq:*), Bash(pwd:*), Bash(which:*) and Bash(sleep:*). Omit on create for its role's list (builders: Hersir's default list plus git push, pull and fetch; QA also gh pr; DevOps its release commands), saved at once; an empty list on update = Hersir's default list"),
     ("monthly_budget_usd", "number", "Monthly spending cap in dollars; empty = no cap"),
     ("title", "string", "Job title shown on the team page"),
