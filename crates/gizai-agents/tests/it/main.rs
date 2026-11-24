@@ -31,6 +31,7 @@ mod mcp_oauth_test;
 mod mcp_run_test;
 mod memory_result_test;
 mod models_test;
+mod nested_repo_test;
 mod os_test;
 mod package_test;
 mod parse_test;

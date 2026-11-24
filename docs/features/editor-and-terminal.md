@@ -98,6 +98,7 @@ Every card has three tabs at the top: Card, Changes and Screenshots ([Screenshot
 
 - **Changes** lists the files the card changed under their folders on the left, and shows every file's diff on the right, one below the other.
 - The changes come from the card's worktree, uncommitted files included, since its branch left main.
+- A submodule is left out, with the changes inside it and a new commit of it: Hersir's git never looks inside one, whose own settings could start programs ([Agent tools](../agent-tools.md#a-nested-repository-in-a-worktree-ga-350)).
 - In the Runs tab, a run that committed has **Show changes**: only what that run committed.
 - Keys: n and p for the next and previous file, Alt+↓ and Alt+↑ for the next and previous change, [ folds the list, and Esc goes back to Card.
 

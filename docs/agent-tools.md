@@ -186,6 +186,16 @@ Read-only runs write nothing, and Full access runs without a sandbox, as before.
 - **Before every run and after it**, whatever the CLI, Hersir checks the worktree's git folder (`worktree::git_folder_problem`): `commondir` says `../..`, there is no `config.worktree`, and the worktree's `.git` points at that folder. Otherwise the card goes on hold, blocked, with a sentence that says what changed and how to set it right, and Hersir pushes nothing after that run.
 - **Open in VS Code, Zed or PhpStorm and a new terminal** refuse such a worktree with the same sentence: your editor's git and a shell's prompt find the git folder through those files.
 
+### A nested repository in a worktree (GA-350)
+
+A run can commit a folder with a `.git` of its own, a nested repository, which git keeps as a submodule (a gitlink). To see whether it changed, git runs a `git status` inside it, with that repository's own settings: a clean filter in its config would run as you, outside any sandbox, when you open the card's Changes or when its worktree is cleaned up. The pinned `GIT_DIR` above doesn't stop it, as git gives a submodule its own. So:
+
+- **Every `git status` and `git diff` Hersir runs** in a card's worktree or a project's checkout passes `--ignore-submodules=all` (`worktree::IGNORE_SUBMODULES`), on the command line: that wins over an `ignore` setting in the worktree's `.gitmodules`, which a run can write, and `diff.ignoreSubmodules` in the git config doesn't. So the card's Changes view, the Editor, the project form, Update and every count of uncommitted files leave a submodule out: the changes inside it, and a new commit of it too. In a project with real submodules everything else shows as before.
+- **Commit…** on a person's card leaves submodules out of its `git add --all` (git add looks inside each one and has no option to skip them), and commits only when something is staged: with nothing to commit, git commit prints a git status.
+- **Removing a card's worktree** (after its merge, or in Settings → Data) keeps one with a nested repository, a submodule whose folder has a `.git`, and says so. git's check before it removes a worktree is a git status there; git refuses such a worktree before that today, but Hersir doesn't leave it to git. **Remove anyway** doesn't put such a worktree's changes in git's stash (git stash looks inside it too), and a new card doesn't take it over. Look at what is in it, then remove it yourself: `git worktree remove --force` skips that git status.
+
+Hersir finds a nested repository in the worktree's index (`git ls-files --stage`) and by a look for a `.git` in the folder, never with git inside it.
+
 ### Gemini and a `.gemini` folder
 
 Checked with Gemini CLI 0.65.0:

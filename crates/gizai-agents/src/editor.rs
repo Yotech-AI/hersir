@@ -820,11 +820,13 @@ fn in_ignored_folder(dir: &Path, parts: &[&str]) -> bool {
 type Changes = (Option<String>, Vec<(String, GitMark)>);
 
 /// What git status says about the folder `dir`, or its folder `sub` ("" for all of it): the branch, and each changed
-/// file, untracked ones one by one. None outside a repository.
+/// file, untracked ones one by one. None outside a repository. Submodules are left out (`worktree::IGNORE_SUBMODULES`,
+/// GA-350): git never looks inside one, whose own settings could start programs.
 fn changes(dir: &Path, sub: &str) -> Option<Changes> {
     let prefix = prefix(dir)?;
     let spec = if sub.is_empty() { "." } else { sub };
-    match git(dir, &["status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all", "--", spec], None) {
+    let args = ["status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all", worktree::IGNORE_SUBMODULES, "--", spec];
+    match git(dir, &args, None) {
         Ok((true, out, _)) => Some(parse_status(&out, &prefix)),
         _ => None,
     }
