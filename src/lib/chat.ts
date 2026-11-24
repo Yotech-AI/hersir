@@ -1,8 +1,14 @@
 // What the Chat page shows for tool calls and how it groups messages. Pure, so it is tested.
 import { href, type Page } from "../router";
-import type { ChatMessage } from "../types";
+import type { ChatMessage, ChatNoteMeta } from "../types";
 
 const PREFIX = "mcp__gizai__";
+
+/** GA-351: the small line over a message of yours that came from Claude Desktop (its ask_chief), sent or queued. */
+export const FROM_CLAUDE_DESKTOP = "From Claude Desktop";
+
+/** GA-351: whether a message's meta says it came from Claude Desktop: `{from: "claude-desktop"}` (`gizai_core::chat::desktop_meta`). */
+export const fromClaudeDesktop = (meta?: ChatNoteMeta | null): boolean => meta?.from === "claude-desktop";
 
 /** "mcp__gizai__create_task" → "create_task"; other tools keep their name. */
 export function toolName(raw: string): string {

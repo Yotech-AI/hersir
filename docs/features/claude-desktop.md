@@ -65,9 +65,10 @@ Some things only you do, and only in Hersir, also when Claude has the Chief's to
 
 Claude can hand a message to Hersir's own Chief, which answers with its memory, its copies of the code and the board. Ask Claude something like "Ask the Chief in Hersir which cards are stuck".
 
-- **Your message, in Hersir's chat.** The message is yours, as if you typed it in Hersir's chat: it starts the Chief's answer, or waits in the chat's queue while the Chief answers. It goes to the chat **From Claude Desktop** in Hersir, made the first time and the same one after that, also after you rename it. You can carry on with it in Hersir.
+- **Your message, in Hersir's chat.** The message is yours, as if you typed it in Hersir's chat: it starts the Chief's answer, or waits in the chat's queue while the Chief answers. A small "From Claude Desktop" line over it says where it came from. It goes to the chat **From Claude Desktop** in Hersir, made the first time and the same one after that, also after you rename it. You can carry on with it in Hersir.
 - **The answer.** Claude waits for the Chief's answer and gives it in its chat. The Chief can take longer than Claude waits for one tool, so Claude asks again until it is done. Claude sees whether the Chief is working, has answered, or waits for you: calls of its answer wait for your Approve, or your message waits for Send now in Hersir.
 - **The Chief's changes** run at once, unless the Chief itself uses a tool from outside Hersir in that chat: then they wait for your Approve in Hersir's chat, as always.
+- **Claude's limits come along.** What Claude can't do itself, the Chief doesn't do for it: its answer to a message from Claude Desktop has Claude's limits. `start_chat` and `update_checkout` answer as they do for Claude, and `attach_file` takes only a file inside the Chief's copies of the projects' code. A path in a message from Claude Desktop never counts as one you named, also in a later answer. The Chief's answer to a message you type in Hersir has its normal rules again; one that goes together with a message from Claude Desktop keeps Claude's limits.
 - **Long texts** over 8,000 characters are cut, with "…(cut: read the rest in Hersir)".
 - **Costs.** Each message uses Claude twice: once in Claude Desktop, and once for the Chief's answer in Hersir, on the Chief's Claude Code account.
 

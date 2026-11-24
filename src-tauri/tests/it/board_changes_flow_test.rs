@@ -18,7 +18,7 @@ use serde_json::json;
 /// The tools as a token's scope gives them: Claude Desktop's (`client`), or another's.
 fn tools_for(st: &AppState, client: Option<&str>, question: Option<&str>) -> GizaiTools {
     GizaiTools { st: st.clone(), actor: st.you_id.clone(), thread: None, check: None, run: None, question: question.map(String::from),
-                 client: client.map(String::from) }
+                 client: client.map(String::from), answers: None }
 }
 
 fn desktop(st: &AppState) -> GizaiTools {

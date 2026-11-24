@@ -8,8 +8,8 @@ import { LinkedText, MarkdownView } from "../MarkdownView";
 import { Avatar } from "../Avatar";
 import { fileExt } from "../../lib/files";
 import { formatBytes, relTime } from "../../lib/format";
-import { toolCard, type Group } from "../../lib/chat";
-import type { ChatMessage, FileRow } from "../../types";
+import { FROM_CLAUDE_DESKTOP, fromClaudeDesktop, toolCard, type Group } from "../../lib/chat";
+import type { ChatMessage, ChatNoteMeta, FileRow } from "../../types";
 import { AnswerRow } from "./AnswerRow";
 
 /** The files added to a message you sent (or queued): each opens with the system's app. */
@@ -33,10 +33,12 @@ export function MessageFiles({ files }: { files?: FileRow[] | null }) {
   );
 }
 
-/** Your message: its text with item chips, and its files. */
-export function UserBubble({ text, files }: { text: string; files?: FileRow[] | null }) {
+/** Your message: its text with item chips, and its files. GA-351: one that came from Claude Desktop (its ask_chief, `meta`) has a
+ *  small line over it that says so, sent or queued. */
+export function UserBubble({ text, files, meta }: { text: string; files?: FileRow[] | null; meta?: ChatNoteMeta | null }) {
   return (
     <>
+      {fromClaudeDesktop(meta) && <div className="msg-from">{FROM_CLAUDE_DESKTOP}</div>}
       {text.trim() && <div className="bubble"><LinkedText text={text} /></div>}
       <MessageFiles files={files} />
     </>
@@ -99,7 +101,7 @@ export const MessageGroup = memo(function MessageGroup({ g, agentRole, live, not
   if (g.side === "user") {
     return (
       <div className="chat-group user">
-        {g.items.map((m) => <div key={m.id} className="chat-msg user"><UserBubble text={m.bodyMd ?? ""} files={m.files} /></div>)}
+        {g.items.map((m) => <div key={m.id} className="chat-msg user"><UserBubble text={m.bodyMd ?? ""} files={m.files} meta={m.meta} /></div>)}
         <div className="chat-meta">{relTime(g.items[g.items.length - 1].createdAt)}</div>
       </div>
     );
