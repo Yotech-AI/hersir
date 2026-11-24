@@ -61,10 +61,62 @@ pub const NO_HOOKS: [&str; 4] = ["-c", "core.hooksPath=/dev/null", "-c", "core.f
 
 /// git in the folder `dir` (a project's repository or a card's worktree), the one way Hersir starts it there: with
 /// `NO_HOOKS`, run in `dir` (`-C`). The caller adds the command and its arguments.
+///
+/// In a card's worktree (one in a folder of `card_folder`) git gets its folders from the project's repository
+/// (`card_git`, GA-322): `GIT_DIR`, `GIT_COMMON_DIR` and `GIT_WORK_TREE`. So it reads neither the worktree's `.git` file
+/// nor the `commondir` file in the worktree's own git folder, which an agent can write: Codex's sandbox may write that
+/// folder for its commits, and a `commondir` pointing at a folder of the agent's own would give git its settings from
+/// there, such as a filter that `git diff` and `git status` run, as you. When that repository doesn't vouch for the
+/// worktree (`card_git` says why), git refuses at once, before it reads any repository's settings: `GIT_DIR` points at
+/// a folder that can't be there. Hersir's own calls here (`git`, `stash_all`, a push) then give `card_git`'s reason.
 pub fn git_command(dir: &Path) -> std::process::Command {
+    command_in(dir).0
+}
+
+/// `git_command`, or why Hersir doesn't run git in `dir` (a card worktree its project's repository doesn't vouch for,
+/// `card_git`), in words for after "Couldn't …: ", for a caller that shows why.
+pub fn checked_git_command(dir: &Path) -> Result<std::process::Command, String> {
+    match command_in(dir) {
+        (_, Some(why)) => Err(why),
+        (cmd, None) => Ok(cmd),
+    }
+}
+
+/// `git_command`, and why Hersir doesn't run git in `dir` when it doesn't (in words for after "Couldn't …: ").
+fn command_in(dir: &Path) -> (std::process::Command, Option<String>) {
     let mut cmd = crate::os::command("git");
     cmd.args(NO_HOOKS).arg("-C").arg(dir);
-    cmd
+    let Some((wt, repo)) = card_of(dir) else { return (cmd, None) };
+    match card_git(&repo, &wt) {
+        Ok(g) => {
+            cmd.env("GIT_DIR", for_git(&g.git_dir)).env("GIT_COMMON_DIR", for_git(&g.common_dir))
+                .env("GIT_WORK_TREE", for_git(&g.work_tree));
+            (cmd, None)
+        }
+        Err(why) => {
+            cmd.env("GIT_DIR", nowhere()).env_remove("GIT_COMMON_DIR").env_remove("GIT_WORK_TREE");
+            (cmd, Some(format!("Hersir doesn't run git in {}: {why}", wt.display())))
+        }
+    }
+}
+
+/// `p` as git takes a path: on Windows a path Windows was given whole (`\\?\C:\…`, `\\?\UNC\server\share\…`, what
+/// `canonicalize` gives there) as the usual kind, so git can compare it with the folder it runs in; elsewhere as it is.
+fn for_git(p: &Path) -> PathBuf {
+    if !cfg!(windows) {
+        return p.to_path_buf();
+    }
+    let s = p.to_string_lossy();
+    match s.strip_prefix(r"\\?\UNC\") {
+        Some(unc) => PathBuf::from(format!(r"\\{unc}")),
+        None => PathBuf::from(s.strip_prefix(r"\\?\").unwrap_or(&s)),
+    }
+}
+
+/// A git folder that can't be there, for a git that must not start (`command_in`): a folder inside `/dev/null` on Linux
+/// and macOS, a name Windows doesn't allow on Windows.
+fn nowhere() -> PathBuf {
+    if cfg!(windows) { std::env::temp_dir().join("<no git folder>") } else { PathBuf::from("/dev/null/no-git-folder") }
 }
 
 /// `NO_HOOKS` as (key, value) pairs, for the git another program of Hersir's starts (gh: `connection::git_env`).
@@ -72,8 +124,180 @@ pub fn no_hooks_settings() -> Vec<(String, String)> {
     NO_HOOKS.iter().filter_map(|s| s.split_once('=')).map(|(k, v)| (k.to_string(), v.to_string())).collect()
 }
 
+/// The folders card worktrees go in (`<data>/worktrees/<KEY>`, as they are on disk), each with the main checkout of its
+/// project's repository (`card_folder`).
+static CARD_FOLDERS: Mutex<Vec<(PathBuf, PathBuf)>> = Mutex::new(Vec::new());
+
+/// GA-322: the worktrees in `base_dir` (`<data>/worktrees/<KEY>`) are card worktrees of the repository whose main
+/// checkout is `repo`. From now on Hersir's git in one of them gets its git folders from that repository
+/// (`git_command`). Hersir says so for each project when it starts, and at each card's start (`ensure_on`,
+/// `reuse_on`); a later call for the same folder replaces the repository.
+pub fn card_folder(base_dir: &Path, repo: &Path) {
+    let base = on_disk(base_dir).unwrap_or_else(|| base_dir.to_path_buf());
+    let mut list = CARD_FOLDERS.lock().unwrap_or_else(|e| e.into_inner());
+    list.retain(|(b, _)| *b != base);
+    list.push((base, repo.to_path_buf()));
+}
+
+/// The card worktree `dir` is (or is in), as it is on disk, with its project's repository: when `dir` is inside one of
+/// `card_folder`'s folders, the folder of it right below that one.
+fn card_of(dir: &Path) -> Option<(PathBuf, PathBuf)> {
+    let list = CARD_FOLDERS.lock().unwrap_or_else(|e| e.into_inner());
+    if list.is_empty() {
+        return None;
+    }
+    let real = on_disk(dir)?;
+    list.iter().rev().find_map(|(base, repo)| {
+        let first = real.strip_prefix(base).ok()?.components().next()?;
+        Some((base.join(first), repo.clone()))
+    })
+}
+
+/// The git folders Hersir's git uses in a card's worktree (`card_git`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct CardGit {
+    /// `GIT_DIR`: the worktree's own folder in the repository's git folder (`<common>/worktrees/<name>`).
+    pub git_dir: PathBuf,
+    /// `GIT_COMMON_DIR`: the repository's shared git folder.
+    pub common_dir: PathBuf,
+    /// `GIT_WORK_TREE`: the worktree, as it is on disk.
+    pub work_tree: PathBuf,
+}
+
+/// The repositories' shared git folders, by their main checkout (`common_dir`).
+static COMMON_DIRS: Mutex<BTreeMap<PathBuf, PathBuf>> = Mutex::new(BTreeMap::new());
+
+/// The shared git folder of the repository whose main checkout is `repo`, as it is on disk: what
+/// `git rev-parse --git-common-dir` says there (the repository's own git config, not a worktree's). Kept once known.
+fn common_dir(repo: &Path) -> Result<PathBuf, String> {
+    if let Some(c) = COMMON_DIRS.lock().unwrap_or_else(|e| e.into_inner()).get(repo) {
+        return Ok(c.clone());
+    }
+    // not `git_command`: `repo` is a main checkout, and one inside a card folder mustn't ask for its own folders
+    let out = crate::os::command("git").args(NO_HOOKS).arg("-C").arg(repo)
+        .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
+        .env_remove("GIT_DIR").env_remove("GIT_COMMON_DIR").env_remove("GIT_WORK_TREE").output()
+        .map_err(|e| format!("can't run git: {e}"))?;
+    let said = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if !out.status.success() || said.is_empty() {
+        return Err(format!("{} isn't a git repository", repo.display()));
+    }
+    let common = PathBuf::from(said).canonicalize().map_err(|e| format!("can't read the git folder of {}: {e}", repo.display()))?;
+    COMMON_DIRS.lock().unwrap_or_else(|e| e.into_inner()).insert(repo.to_path_buf(), common.clone());
+    Ok(common)
+}
+
+/// The git folders of the worktree at `wt` (its top folder) in the repository whose main checkout is `repo`, from that
+/// repository alone (GA-322): its shared git folder (`common_dir`), and the one folder in its `worktrees/` whose
+/// `gitdir` file points at `wt/.git`. The worktree's `.git` file and the `commondir` file don't count: an agent can
+/// write both. An error says why not, in words for after "…: ": no folder there points at `wt` (or more than one
+/// does), or the worktree's folder has a git config of its own (`config.worktree`, which git reads in a repository with
+/// `extensions.worktreeConfig`, so Hersir's git would too).
+pub fn card_git(repo: &Path, wt: &Path) -> Result<CardGit, String> {
+    let g = find_card_git(repo, wt)?;
+    if own_config(&g.git_dir) {
+        return Err(format!("its git folder has a git config of its own ({}), whose settings can start programs",
+                           g.git_dir.join("config.worktree").display()));
+    }
+    Ok(g)
+}
+
+/// `card_git` without its look at `config.worktree`.
+fn find_card_git(repo: &Path, wt: &Path) -> Result<CardGit, String> {
+    let common = common_dir(repo)?;
+    let work_tree = wt.canonicalize().map_err(|e| format!("it isn't there ({e})"))?;
+    let entries = std::fs::read_dir(common.join("worktrees"))
+        .map_err(|_| format!("it isn't a worktree of {}", repo.display()))?;
+    let mut found: Vec<PathBuf> = entries.flatten().map(|e| e.path()).filter(|d| points_at(d, &work_tree)).collect();
+    let git_dir = match found.len() {
+        0 => return Err(format!("no folder in {} points at it, so it isn't a worktree of {} any more (or its git folder's gitdir \
+                                 file was changed)", common.join("worktrees").display(), repo.display())),
+        1 => found.remove(0),
+        _ => return Err(format!("more than one folder in {} points at it ({})", common.join("worktrees").display(),
+                                found.iter().map(|d| d.display().to_string()).collect::<Vec<_>>().join(", "))),
+    };
+    Ok(CardGit { git_dir, common_dir: common, work_tree })
+}
+
+/// Whether the worktree's folder `git_dir` in a repository's git folder has a git config of its own (`config.worktree`,
+/// a file or anything else by that name).
+fn own_config(git_dir: &Path) -> bool {
+    std::fs::symlink_metadata(git_dir.join("config.worktree")).is_ok()
+}
+
+/// Whether the `gitdir` file of `admin` (a folder in a repository's `worktrees/`) points at `work_tree/.git`: git
+/// writes the worktree's path as it is on disk, or one relative to `admin` (`worktree.useRelativePaths`). The `.git`
+/// in it isn't followed: the worktree's own folder must be `work_tree`.
+fn points_at(admin: &Path, work_tree: &Path) -> bool {
+    let Ok(text) = std::fs::read_to_string(admin.join("gitdir")) else { return false };
+    let written = PathBuf::from(text.trim_end_matches(['\n', '\r']));
+    let path = if written.is_absolute() { written } else { admin.join(written) };
+    path.file_name().is_some_and(|n| n == ".git") && path.parent().and_then(|p| p.canonicalize().ok()).as_deref() == Some(work_tree)
+}
+
+/// GA-322: what is wrong with the git folder of the card worktree `wt` of the repository whose main checkout is `repo`,
+/// in a sentence or two for the card's hold; None when nothing is. Checked before a run starts and once it has ended
+/// (Codex's sandbox may write the worktree's own folder in the repository's git folder, for its commits):
+/// - that folder is still the worktree's (`card_git`: its `gitdir` points at the worktree), with no `config.worktree`;
+/// - its `commondir` says `../..`, the repository's git folder: anything else makes git read its settings, and the
+///   programs they start, from another folder;
+/// - the worktree's `.git` points at that folder.
+///
+/// Hersir's own git doesn't read the last two (`git_command`), but yours does: in a terminal, your editor or another
+/// program.
+pub fn git_folder_problem(repo: &Path, wt: &Path) -> Option<String> {
+    let g = match find_card_git(repo, wt) {
+        Ok(g) => g,
+        Err(why) => return Some(format!("Hersir doesn't run git in this card's worktree {}: {why}. Remove the worktree, or set it right \
+                                         with git worktree repair in {}, then take the hold off.", wt.display(), repo.display())),
+    };
+    if own_config(&g.git_dir) {
+        return Some(format!("The card's worktree has a git config of its own now ({}), whose settings can start programs, so Hersir \
+                             doesn't run git there; don't run git there yourself either. Delete that file, or remove the worktree, \
+                             then take the hold off.", g.git_dir.join("config.worktree").display()));
+    }
+    let commondir = g.git_dir.join("commondir");
+    if std::fs::read_to_string(&commondir).ok().as_deref().map(str::trim) != Some("../..") {
+        return Some(format!("{} no longer says ../.., so git in this card's worktree would read its settings, and the programs they \
+                             start, from another folder. Hersir's git doesn't follow it; don't run git there yourself: write ../.. \
+                             back into that file, or remove the worktree, then take the hold off.", commondir.display()));
+    }
+    if !gitfile_points_at(&g.work_tree, &g.git_dir) {
+        return Some(format!("{} no longer points at {}, so git in this card's worktree would use another git folder. Hersir's git \
+                             doesn't follow it; don't run git there yourself: run git worktree repair in {}, or remove the \
+                             worktree, then take the hold off.", g.work_tree.join(".git").display(), g.git_dir.display(),
+                            repo.display()));
+    }
+    None
+}
+
+/// `git_folder_problem` for the folder `dir` when it is (or is in) a card worktree (`card_folder`), before Hersir starts
+/// a program of yours there that runs git itself, such as your editor or a terminal's shell. None for any other folder.
+pub fn card_problem(dir: &Path) -> Option<String> {
+    let (wt, repo) = card_of(dir)?;
+    git_folder_problem(&repo, &wt)
+}
+
+/// Whether the `.git` file of the worktree at `work_tree` says `gitdir: <git_dir>` (absolute, or relative to the
+/// worktree), and is a file, not a folder or a link.
+fn gitfile_points_at(work_tree: &Path, git_dir: &Path) -> bool {
+    let file = work_tree.join(".git");
+    if !std::fs::symlink_metadata(&file).is_ok_and(|m| m.is_file()) {
+        return false;
+    }
+    let Ok(text) = std::fs::read_to_string(&file) else { return false };
+    let Some(written) = text.lines().next().and_then(|l| l.strip_prefix("gitdir:")).map(str::trim) else { return false };
+    let written = PathBuf::from(written);
+    let path = if written.is_absolute() { written } else { work_tree.join(written) };
+    path.canonicalize().ok().zip(git_dir.canonicalize().ok()).is_some_and(|(a, b)| a == b)
+}
+
 pub(crate) fn git(repo: &Path, args: &[&str]) -> Result<String, AgentError> {
-    let out = git_command(repo).args(args).output()
+    let (mut cmd, refused) = command_in(repo);
+    if let Some(why) = refused {
+        return Err(AgentError::Git(why));
+    }
+    let out = cmd.args(args).output()
         .map_err(|e| AgentError::Git(format!("can't run git: {e}")))?;
     if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).trim_end().to_string())
@@ -150,8 +374,10 @@ pub fn ensure(repo: &Path, base_dir: &Path, identifier: &str, title: &str, defau
 }
 
 /// The card's worktree at `base_dir/<identifier>` on `branch` (`card_branch`): reused when it already exists, else
-/// created (on the existing branch if there is one, or a new branch off `default_branch`).
+/// created (on the existing branch if there is one, or a new branch off `default_branch`). From now on Hersir's git in
+/// `base_dir`'s worktrees gets its git folders from `repo` (`card_folder`).
 pub fn ensure_on(repo: &Path, base_dir: &Path, identifier: &str, branch: &str, default_branch: &str) -> Result<Worktree, AgentError> {
+    card_folder(base_dir, repo);
     match git(repo, &["rev-parse", "--is-inside-work-tree"]) {
         Ok(s) if s == "true" => {}
         _ => return Err(AgentError::NotGitRepo(repo.to_path_buf())),
@@ -196,6 +422,7 @@ pub fn reuse(repo: &Path, from: &Path, base_dir: &Path, identifier: &str, title:
 
 /// `reuse` onto `branch` (`card_branch`: the card's own branch, else a new one).
 pub fn reuse_on(repo: &Path, from: &Path, base_dir: &Path, identifier: &str, branch: &str, start: &str, keep: &[String]) -> Result<Worktree, AgentError> {
+    card_folder(base_dir, repo);
     let path = base_dir.join(identifier);
     let branch = branch.to_string();
     // the list up to the branch switch under one hold, so two starts can't take over the same worktree
@@ -601,11 +828,22 @@ pub fn start_ref(remote: Option<&str>, branch: &str) -> String {
     }
 }
 
+/// GA-318 (CWE-88): an address (a remote's name, or a project's link) git would read as an option: one that starts with
+/// "-". Gizai never starts git with one (this says why, in words for after "Couldn't …: "), and puts `--end-of-options`
+/// before every address it gives git, so that git reads it as an address whatever it is.
+fn option_refusal(to: &str) -> Option<String> {
+    to.starts_with('-').then(|| format!("{to} starts with \"-\", which git reads as an option"))
+}
+
 /// Fetches `branch` of the project's repository and returns the ref to start from (`start_ref`): through `remote` when
 /// the repository has one for it, else from `url`. Never asks for a password, and gives up after `limit`. An address on
-/// Bitbucket's old SSH host goes to its new one (`fetch_config`).
+/// Bitbucket's old SSH host goes to its new one (`fetch_config`). An address that starts with "-" is refused before git
+/// starts (`option_refusal`).
 pub fn fetch_start(repo: &Path, remote: Option<&str>, url: &str, branch: &str, limit: Duration) -> Result<String, AgentError> {
     let from = remote.unwrap_or(url);
+    if let Some(why) = option_refusal(from) {
+        return Err(AgentError::Git(format!("Couldn't fetch {branch}: {why}")));
+    }
     let start = start_ref(remote, branch);
     let spec = format!("+refs/heads/{branch}:{start}");
     let config = fetch_config(repo, from);
@@ -613,7 +851,7 @@ pub fn fetch_start(repo: &Path, remote: Option<&str>, url: &str, branch: &str, l
     // a run starting at the same moment may hold the ref's lock: one retry. Not after no answer at all: a second try
     // would only wait as long again
     for attempt in 0..2 {
-        match quiet(repo, &config, &["fetch", "--quiet", "--no-tags", from, &spec], limit) {
+        match quiet(repo, &config, &["fetch", "--quiet", "--no-tags", "--end-of-options", from, &spec], limit) {
             Ok(_) => return Ok(start),
             Err(e @ Failure::NoAnswer(_)) => {
                 last = e.last_line();
@@ -630,7 +868,11 @@ pub fn fetch_start(repo: &Path, remote: Option<&str>, url: &str, branch: &str, l
 /// password, and gives up after `limit`. None when it has none (an empty repository). An error is git's last line.
 /// Bitbucket's old SSH host is asked at its new one (`fetch_config`).
 pub fn remote_head(repo: &Path, remote: &str, limit: Duration) -> Result<Option<String>, String> {
-    let out = quiet(repo, &fetch_config(repo, remote), &["ls-remote", "--symref", remote, "HEAD"], limit).map_err(Failure::last_line)?;
+    if let Some(why) = option_refusal(remote) {
+        return Err(why);
+    }
+    let args = ["ls-remote", "--symref", "--end-of-options", remote, "HEAD"];
+    let out = quiet(repo, &fetch_config(repo, remote), &args, limit).map_err(Failure::last_line)?;
     // ref: refs/heads/main<TAB>HEAD
     Ok(out.lines().find_map(|l| l.strip_prefix("ref: refs/heads/")?.strip_suffix("\tHEAD")).map(str::to_string))
 }
@@ -698,8 +940,11 @@ pub fn push_branch(repo: &Path, to: &str, branch: &str) -> Result<(), AgentError
 /// remote changes). Never forces and never asks for anything; gives up after two minutes. A failure says what to
 /// check, in plain words.
 pub fn push_branch_over(repo: &Path, to: &str, branch: &str, over: &PushOver) -> Result<(), AgentError> {
+    if let Some(why) = option_refusal(to) {
+        return Err(AgentError::Git(format!("Couldn't push {branch}: {why}")));
+    }
     let spec = format!("refs/heads/{branch}:refs/heads/{branch}");
-    quiet(repo, &push_config(repo, to, over), &["push", "--quiet", to, &spec], PUSH_LIMIT)
+    quiet(repo, &push_config(repo, to, over), &["push", "--quiet", "--end-of-options", to, &spec], PUSH_LIMIT)
         .map(|_| ())
         .map_err(|e| AgentError::Git(format!("Couldn't push {branch} to {to}: {}", e.problem(over))))
 }
@@ -720,6 +965,9 @@ pub enum Pushed {
 /// same way the push goes); when that copy has commits this repository hasn't seen, the push itself says whether it can
 /// go, and it can't: it never forces.
 pub fn push_new_commits(repo: &Path, to: &str, branch: &str, base: &str, over: &PushOver) -> Result<Pushed, AgentError> {
+    if let Some(why) = option_refusal(to) {
+        return Err(AgentError::Git(format!("Couldn't push {branch}: {why}")));
+    }
     let ours = rev_parse(repo, &format!("refs/heads/{branch}"))
         .map_err(|_| AgentError::Git(format!("Couldn't push {branch}: it isn't in {} any more", repo.display())))?;
     // what `to` has for sure; without the base (gone since it was fetched) every commit counts
@@ -728,7 +976,7 @@ pub fn push_new_commits(repo: &Path, to: &str, branch: &str, base: &str, over: &
         return Ok(Pushed::Nothing);
     }
     let head = format!("refs/heads/{branch}");
-    let listed = quiet(repo, &push_config(repo, to, over), &["ls-remote", "--quiet", to, &head], PUSH_LIMIT)
+    let listed = quiet(repo, &push_config(repo, to, over), &["ls-remote", "--quiet", "--end-of-options", to, &head], PUSH_LIMIT)
         .map_err(|e| AgentError::Git(format!("Couldn't push {branch} to {to}: {}", e.problem(over))))?;
     let copy = listed.lines().filter_map(|l| l.split_once('\t')).find(|(_, r)| r.trim() == head).map(|(sha, _)| sha.trim().to_string());
     match copy {
@@ -751,7 +999,10 @@ pub fn push_new_commits(repo: &Path, to: &str, branch: &str, base: &str, over: &
 /// does), so a private repository answers too; it never asks for anything, and gives up after `limit`. git's own traffic
 /// doesn't count against GitHub's API limit.
 pub fn ls_remote(repo: &Path, to: &str, refs: &[String], over: &PushOver, limit: Duration) -> Result<Vec<(String, String)>, AgentError> {
-    let mut args = vec!["ls-remote", "--quiet", to];
+    if let Some(why) = option_refusal(to) {
+        return Err(AgentError::Git(format!("Couldn't ask the repository for its branches: {why}")));
+    }
+    let mut args = vec!["ls-remote", "--quiet", "--end-of-options", to];
     args.extend(refs.iter().map(String::as_str));
     let listed = quiet(repo, &push_config(repo, to, over), &args, limit)
         .map_err(|e| AgentError::Git(format!("Couldn't ask {to} for its branches: {}", e.problem(over))))?;
@@ -840,7 +1091,10 @@ fn new_commits(repo: &Path, ours: &str, theirs: &[String]) -> Result<u32, AgentE
 /// repository's latest commit to a new branch. It reaches GitHub (or Bitbucket) and needs write access, but sends
 /// nothing and runs no hooks.
 pub fn can_push(repo: &Path, to: &str, over: &PushOver, limit: Duration) -> Result<(), Problem> {
-    let args = ["push", "--dry-run", "--quiet", "--no-verify", to, "HEAD:refs/heads/gizai-connection-check"];
+    if let Some(why) = option_refusal(to) {
+        return Err(Problem::new(format!("Hersir doesn't push to it: {why}"), "Change the project's repository link on its page (Edit)."));
+    }
+    let args = ["push", "--dry-run", "--quiet", "--no-verify", "--end-of-options", to, "HEAD:refs/heads/gizai-connection-check"];
     quiet(repo, &push_config(repo, to, over), &args, limit).map(|_| ()).map_err(|e| e.problem(over))
 }
 
@@ -873,14 +1127,14 @@ fn push_addresses(repo: &Path, to: &str) -> Vec<String> {
 /// `pushInsteadOf` too), or the address after the `insteadOf` rules (`git ls-remote --get-url`). Nothing is sent. None
 /// when git can't say.
 pub fn push_url(repo: &Path, to: &str, over: &PushOver) -> Option<String> {
-    // (a remote's name and a project's link never start with "-")
-    if to.starts_with('-') {
+    // (a remote's name and a project's link never start with "-": `option_refusal`)
+    if option_refusal(to).is_some() {
         return None;
     }
     let args: Vec<&str> = if remote_urls(repo).iter().any(|(name, _)| name == to) {
-        vec!["remote", "get-url", "--push", to]
+        vec!["remote", "get-url", "--push", "--end-of-options", to]
     } else {
-        vec!["ls-remote", "--get-url", to]
+        vec!["ls-remote", "--get-url", "--end-of-options", to]
     };
     let out = quiet(repo, &push_config(repo, to, over), &args, Duration::from_secs(10)).ok()?;
     out.lines().map(str::trim).find(|l| !l.is_empty()).map(String::from)
@@ -902,6 +1156,20 @@ pub fn worktree_of(repo: &Path, branch: &str) -> Result<Option<PathBuf>, AgentEr
     Ok(worktrees(repo)?.into_iter().find(|(_, b)| b.as_deref() == Some(branch)).map(|(p, _)| p))
 }
 
+/// `worktree_of`, when Hersir's git may read that worktree (GA-322): `repo` itself (its main checkout), or the card
+/// worktree of `repo` that the folder is in (its top folder, `card_folder`), where Hersir's git takes its git folders
+/// from the repository. None for any other folder: git lists a linked worktree where the `gitdir` file in its own folder
+/// in the repository's git folder says, and a run may write that file (Codex's sandbox does, for its commits), so the
+/// folder could be one of the agent's own, whose git settings start programs. Never the path as git lists it: a link
+/// there could point elsewhere by the time git runs. On Windows a plain path (`for_git`), for `git -C`.
+pub fn safe_worktree_of(repo: &Path, branch: &str) -> Result<Option<PathBuf>, AgentError> {
+    let Some(wt) = worktree_of(repo, branch)? else { return Ok(None) };
+    Ok(match card_of(&wt) {
+        Some((card, of)) => same(&of, repo).then(|| for_git(&card)),
+        None => same(&wt, repo).then(|| repo.to_path_buf()),
+    })
+}
+
 /// Removes a worktree, never by force: git refuses one with uncommitted changes or untracked files, and says so. Its
 /// `.gizai-tmp` goes with it: `info/exclude` makes it ignored, not untracked (`exclude_temp`).
 pub fn remove_worktree(repo: &Path, path: &Path) -> Result<(), AgentError> {
@@ -918,7 +1186,8 @@ pub fn delete_branch(repo: &Path, branch: &str) -> Result<(), AgentError> {
 pub struct Removal {
     /// The worktree it removed.
     pub removed: Option<PathBuf>,
-    /// The worktree it left in place, and why: it isn't one of Gizai's, or git refused (uncommitted changes).
+    /// The worktree it left in place, and why: it isn't one of Gizai's, its git folder was changed, or git refused
+    /// (uncommitted changes).
     pub kept: Option<(PathBuf, String)>,
     /// Whether it deleted the branch.
     pub branch_deleted: bool,
@@ -951,6 +1220,8 @@ impl Removal {
 /// - The worktree is the one that has `branch` checked out. Only one inside `worktrees_dir` (Gizai's own folder) is
 ///   removed, and never by force: git keeps one with uncommitted changes or untracked files. One whose folder is
 ///   already gone only leaves git's list. Its runs' temp folder in `temp_base()` goes with it (`remove_run_temp`).
+///   One whose git folder a run changed stays (`git_folder_problem`, GA-322): git's check for uncommitted changes there
+///   would read its settings from where the run pointed it.
 /// - The branch goes only when no worktree has it checked out any more (a kept worktree keeps it). `git branch -D`
 ///   also deletes commits that aren't merged anywhere, so the caller decides whether that is fine.
 pub fn remove_card_worktree(repo: &Path, worktrees_dir: &Path, branch: &str, delete_branch: bool) -> Removal {
@@ -965,6 +1236,12 @@ pub fn remove_card_worktree_with(repo: &Path, worktrees_dir: &Path, temp_base: &
         Ok(None) => false,
         Ok(Some(wt)) if !inside(&wt, worktrees_dir) => {
             out.kept = Some((wt, "it isn't one of Hersir's worktrees".into()));
+            true
+        }
+        // GA-322: git's own look for uncommitted changes before it removes one (a git status in it) follows the worktree's
+        // .git file and its git folder's commondir, which a run may have changed (`git_folder_problem`)
+        Ok(Some(wt)) if wt.exists() && git_folder_problem(repo, &wt).is_some() => {
+            out.kept = Some((wt, "its git folder was changed, so Hersir doesn't run git there".into()));
             true
         }
         Ok(Some(wt)) => {
@@ -1101,7 +1378,11 @@ pub fn parse_status(out: &str) -> Vec<UncommittedFile> {
 /// repository's, shared by all its worktrees: `git stash list` in the main checkout shows it too. With nothing to stash
 /// it does nothing. An error says why, in plain words where Gizai knows them.
 pub fn stash_all(dir: &Path, message: &str) -> Result<(), AgentError> {
-    let out = git_command(dir).args(["stash", "push", "--include-untracked", "-m", message])
+    let (mut cmd, refused) = command_in(dir);
+    if let Some(why) = refused {
+        return Err(AgentError::Git(why));
+    }
+    let out = cmd.args(["stash", "push", "--include-untracked", "-m", message])
         .stdin(std::process::Stdio::null()).env("GIT_TERMINAL_PROMPT", "0").output()
         .map_err(|e| AgentError::Git(format!("can't run git: {e}")))?;
     if out.status.success() {
@@ -1150,7 +1431,10 @@ impl Failure {
 /// git without prompts, ended after `limit`: no terminal and no askpass program, ssh in batch mode (unless you set your
 /// own ssh command), no hooks (`git_command`), and `config` as `-c` settings for this one command.
 fn quiet(repo: &Path, config: &[String], args: &[&str], limit: Duration) -> Result<String, Failure> {
-    let mut cmd = git_command(repo);
+    let (mut cmd, refused) = command_in(repo);
+    if let Some(why) = refused {
+        return Err(Failure::CantRun(why));
+    }
     for c in config {
         cmd.arg("-c").arg(c);
     }

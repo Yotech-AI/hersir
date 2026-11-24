@@ -4,7 +4,7 @@ Hersir's packages for package managers, made from the ready-made builds of its r
 
 | Folder | Package | Install | Published to |
 |---|---|---|---|
-| [`aur/hersir-bin`](aur/hersir-bin) | `hersir-bin` on the AUR, for Arch Linux and Omarchy | `yay -S hersir-bin` | `ssh://aur@aur.archlinux.org/hersir-bin.git` |
+| [`aur/hersir-bin`](aur/hersir-bin) | `hersir-bin` on the AUR, for Arch Linux and Omarchy | `yay -S hersir-bin` | not published yet: AUR registration is paused; it will go to `ssh://aur@aur.archlinux.org/hersir-bin.git` |
 | [`homebrew`](homebrew) | the formula `hersir` in the Homebrew tap `yotech-ai/tap`, for Macs with Apple silicon | `brew install yotech-ai/tap/hersir` | `https://github.com/Yotech-AI/homebrew-tap.git`, its `main` |
 | [`scoop`](scoop) | `hersir` in the Scoop bucket `Yotech-AI/scoop-bucket`, for Windows | `scoop bucket add hersir https://github.com/Yotech-AI/scoop-bucket`, then `scoop install hersir/hersir` | `https://github.com/Yotech-AI/scoop-bucket.git` (`main`) |
 

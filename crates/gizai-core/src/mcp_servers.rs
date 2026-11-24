@@ -269,9 +269,9 @@ pub fn get(db: &Db, id: &str) -> Result<McpServer> {
     list(db)?.into_iter().find(|s| s.id == id).ok_or_else(|| Error::NotFound(format!("MCP server {id}")))
 }
 
-/// Letters, digits, `-` and `_`, at most 64.
+/// Letters, digits, `-` and `_`, at most 64, starting with a letter (GA-318: `team::starts_with_letter`).
 pub fn valid_name(n: &str) -> bool {
-    !n.is_empty() && n.len() <= 64 && n.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    crate::team::starts_with_letter(n) && n.len() <= 64 && n.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
 /// Whether Claude Code can tell where the name ends in its tool names, `mcp__<name>__<tool>`: it splits them at each `__`,
@@ -283,6 +283,9 @@ pub fn clear_in_tool_names(n: &str) -> bool {
 /// Whether `name` is free for a new server (or for the one with `own_id`), and if not, why, in plain words.
 pub fn name_problem(servers: &[McpServer], name: &str, own_id: &str) -> Option<String> {
     let name = name.trim();
+    if !name.is_empty() && !crate::team::starts_with_letter(name) {
+        return Some(format!("an MCP server's name starts with a letter, not \"{name}\""));
+    }
     if !valid_name(name) {
         return Some(format!("an MCP server's name takes letters, digits, - and _ (at most 64), not \"{name}\""));
     }
@@ -499,6 +502,13 @@ pub fn valid_tool_name(n: &str) -> bool {
     !n.is_empty() && n.len() <= 64 && !n.starts_with("mcp__") && n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
+/// GA-318: the name of a CLI's own tool, which a run gives Claude Code as it is in `--allowedTools`: a plain tool name
+/// (`valid_tool_name`) that starts with a letter, as every CLI's own tools do. One that starts with `-` could reach Claude
+/// Code as one of its own options. (An MCP server's tools go as `mcp__<server>__<tool>`, so `valid_tool_name` is theirs.)
+pub fn valid_builtin_name(n: &str) -> bool {
+    crate::team::starts_with_letter(n) && valid_tool_name(n)
+}
+
 /// Saves the agent's CLI tools (agent form → Tools → Web and Built-in tools; never the Chief). Domains and names are
 /// cleaned; one that can't be used is refused with why.
 pub fn set_cli_tools(db: &Db, actor: &str, agent_id: &str, tools: CliTools) -> Result<CliTools> {
@@ -511,7 +521,10 @@ pub fn set_cli_tools(db: &Db, actor: &str, agent_id: &str, tools: CliTools) -> R
         }
     }
     for raw in tools.builtin.iter().map(|t| t.trim()).filter(|t| !t.is_empty()) {
-        if !valid_tool_name(raw) {
+        if !crate::team::starts_with_letter(raw) {
+            return Err(Error::Invalid(format!("\"{raw}\" isn't the name of one of the CLI's own tools: a tool's name starts with a letter")));
+        }
+        if !valid_builtin_name(raw) {
             return Err(Error::Invalid(format!("\"{raw}\" isn't the name of one of the CLI's own tools")));
         }
         if !clean.builtin.iter().any(|t| t == raw) {
@@ -572,10 +585,11 @@ pub fn asked_tools(db: &Db) -> Result<BTreeMap<String, SeenTools>> {
     Ok(settings::get(db, ASKED_KEY)?.unwrap_or_default())
 }
 
-/// Built-in tool names from a CLI's list: MCP servers' tools (`mcp__…`) left out, each once, in its order.
+/// Built-in tool names from a CLI's list: MCP servers' tools (`mcp__…`) and names that don't start with a letter
+/// (`valid_builtin_name`) left out, each once, in its order.
 pub fn builtin_names(tools: &[String]) -> Vec<String> {
     let mut out: Vec<String> = vec![];
-    for t in tools.iter().map(|t| t.trim()).filter(|t| valid_tool_name(t)) {
+    for t in tools.iter().map(|t| t.trim()).filter(|t| valid_builtin_name(t)) {
         if !out.iter().any(|o| o == t) {
             out.push(t.to_string());
         }

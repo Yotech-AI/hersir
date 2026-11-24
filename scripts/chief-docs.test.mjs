@@ -31,6 +31,10 @@ const HISTORICAL = ["docs/HANDOFF-2026-10-07.md", "docs/MORNING-2026-10-07.md", 
 const OLD_FOLDER = /Team Lead\/|\(Team Lead( \d+)?\)/g;
 // GA-258's own code names, which say chief: the backup made before the move and the setting that marks it done.
 const GA258_NAMES = /gizai-before-chief-folder|lead_folder_chief/;
+// GA-341: Claude Desktop's tool get_chief_brief is a code name that says chief, by the card's own choice.
+const GA341_NAMES = /^`get_chief_brief`$/;
+// GA-342: so are Claude Desktop's ask_chief and chief_reply, by that card's own choice.
+const GA342_NAMES = /^`(ask_chief|chief_reply)`$/;
 
 // The code in a Markdown file: each line of its code blocks, and its `code` spans. A ```markdown block is a sample
 // for people (RELEASING.md's release notes), so it is prose, not code.
@@ -128,7 +132,7 @@ describe("what stays", () => {
 
   it("no code name in the docs became Chief: their code spans and code blocks don't say it", () => {
     // but the Memory folder's paths (`Chief/Notes`, `[[Chief/Notes]]`, `path:"Chief"`) and GA-258's own names
-    const memoryPath = (c) => /^`(\[\[)?Chief\/|^`path:"Chief"`$/.test(c) || GA258_NAMES.test(c);
+    const memoryPath = (c) => /^`(\[\[)?Chief\/|^`path:"Chief"`$/.test(c) || GA258_NAMES.test(c) || GA341_NAMES.test(c) || GA342_NAMES.test(c);
     const left = DOCS.filter((doc) => doc.endsWith(".md")).flatMap((doc) => codeParts(read(doc)).filter((c) => /chief/i.test(c) && !memoryPath(c)).map((c) => `${doc}: ${c}`));
     expect(left).toEqual([]);
   });

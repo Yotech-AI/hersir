@@ -2,12 +2,17 @@
 //! and appends to `changes` (the activity feed, audit log and future sync oplog). Reads of a database file go through a
 //! few read-only connections of their own (`READERS`), so they go on while a write runs (WAL lets one writer and many
 //! readers work at the same time, each on its own connection).
+//!
+//! GA-344: every write goes through `Db::write`, whoever makes it (a tool, a Tauri command, a run or gizai-core itself),
+//! so the change counter is kept here: the `seq` of the newest row in `changes` (`Db::change_seq`). `feed` reads the cards
+//! that changed after a counter.
 use crate::{ids, Result};
 use rusqlite::{Connection, OpenFlags, Transaction, TransactionBehavior};
 use rusqlite_migration::{M, Migrations};
+use std::cell::Cell;
 use std::path::{Path, PathBuf};
 use std::sync::{Condvar, Mutex, MutexGuard};
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicI64, AtomicU32, Ordering};
 
 pub const SCHEMA_VERSION: i64 = 22;
 
@@ -23,6 +28,9 @@ pub struct Db {
     conn: Mutex<Connection>,
     device_id: String,
     counter: AtomicU32,
+    /// GA-344: the change counter (`change_seq`): the `seq` of the newest row in `changes`, read when the database opens
+    /// and moved on by each write that commits a change.
+    seq: AtomicI64,
     /// The folder the database file is in (Gizai's data folder); None in memory.
     dir: Option<PathBuf>,
 }
@@ -283,7 +291,15 @@ impl Db {
                 id
             }
         };
-        Ok(Db { conn: Mutex::new(conn), readers: None, device_id, counter: AtomicU32::new(0), dir: None })
+        let seq: i64 = conn.query_row("SELECT COALESCE(max(seq), 0) FROM changes", [], |r| r.get(0))?;
+        Ok(Db { conn: Mutex::new(conn), readers: None, device_id, counter: AtomicU32::new(0), seq: AtomicI64::new(seq), dir: None })
+    }
+
+    /// GA-344: the change counter: the `seq` of the newest change this database has (0 for none). Every write that logs a
+    /// change (`Writer::insert`, `update`, `delete`) moves it on when it commits, whoever made the write; a write that
+    /// logs nothing leaves it where it is. It only grows while Gizai runs; a restored backup may start it lower.
+    pub fn change_seq(&self) -> i64 {
+        self.seq.load(Ordering::SeqCst)
     }
 
     /// Reads with `f`. On a database file it runs on one of the read-only connections, beside a write that is under way
@@ -313,16 +329,27 @@ impl Db {
 
     pub fn write<T>(&self, actor: Option<&str>, f: impl FnOnce(&mut Writer) -> Result<T>) -> Result<T> {
         let mut conn = lock(&self.conn);
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let mut w = Writer {
-            tx,
-            actor: actor.map(str::to_string),
-            run_id: None,
-            device_id: &self.device_id,
-            counter: &self.counter,
+        let (out, logged) = {
+            let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let mut w = Writer {
+                tx,
+                actor: actor.map(str::to_string),
+                run_id: None,
+                device_id: &self.device_id,
+                counter: &self.counter,
+                logged: Cell::new(false),
+            };
+            let out = f(&mut w)?;
+            let logged = w.logged.get();
+            w.tx.commit()?;
+            (out, logged)
         };
-        let out = f(&mut w)?;
-        w.tx.commit()?;
+        // GA-344: the counter moves on once the write is in, so a read after this sees every change up to it. From the
+        // table, not the rows the write added: a savepoint the write rolled back (`tasks::each`) took its changes with it,
+        // and their `seq` goes to the next change.
+        if logged && let Ok(seq) = conn.query_row("SELECT COALESCE(max(seq), 0) FROM changes", [], |r| r.get::<_, i64>(0)) {
+            self.seq.fetch_max(seq, Ordering::SeqCst);
+        }
         Ok(out)
     }
 }
@@ -333,6 +360,8 @@ pub struct Writer<'a> {
     run_id: Option<String>,
     device_id: &'a str,
     counter: &'a AtomicU32,
+    /// GA-344: this write logged a change, so the change counter moves on when it commits (`Db::change_seq`).
+    logged: Cell<bool>,
 }
 
 impl Writer<'_> {
@@ -373,6 +402,7 @@ impl Writer<'_> {
                 diff.map(|d| d.to_string()), SCHEMA_VERSION
             ],
         )?;
+        self.logged.set(true);
         Ok(())
     }
 }

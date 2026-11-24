@@ -38,8 +38,26 @@ fn args_of(kind: Kind, w: WebTools) -> Vec<String> {
                                           web: w, ..Default::default() }).args
 }
 
-/// The values after `flag`, up to the next `--` option.
+/// The values after `flag`, up to the next `--` option. GA-318: `--allowedTools` and `--disallowedTools` go as one argument,
+/// `<flag>=<rule>,<rule>,…`: their rules, split at the commas outside parentheses as Claude Code splits them.
 fn values(argv: &[String], flag: &str) -> Vec<String> {
+    if flag.ends_with("Tools") {
+        assert!(!argv.iter().any(|a| a == flag), "GA-318: {flag} as an argument of its own: {argv:?}");
+        let prefix = format!("{flag}=");
+        let Some(v) = argv.iter().find_map(|a| a.strip_prefix(prefix.as_str())) else { return vec![] };
+        let (mut out, mut rule, mut depth) = (vec![], String::new(), 0);
+        for c in v.chars() {
+            match c {
+                ',' if depth == 0 => out.push(std::mem::take(&mut rule)),
+                _ => {
+                    depth += (c == '(') as i32 - (c == ')') as i32;
+                    rule.push(c);
+                }
+            }
+        }
+        out.push(rule);
+        return out;
+    }
     let Some(at) = argv.iter().position(|a| a == flag) else { return vec![] };
     argv[at + 1..].iter().take_while(|a| !a.starts_with("--")).cloned().collect()
 }
@@ -150,13 +168,14 @@ fn a_claude_code_run_with_slash_commands_and_skills_off_has_the_same_command_lin
     for resume in [false, true] {
         let a = slash_args(Kind::ClaudeCode, false, resume);
         let start = if resume { "--resume" } else { "--session-id" };
-        // the command line a task run had before GA-93, word for word
+        // the command line a task run had before GA-93, word for word (GA-318: the allowed tools as one argument)
         let before = ["-p", "--output-format", "stream-json", "--verbose", start, "S-1", "--permission-mode", "acceptEdits", "--setting-sources", "user",
-                      "--strict-mcp-config", "--settings", r#"{"disableAllHooks":true}"#, "--disable-slash-commands", "--allowedTools", "Bash(git status:*)"];
+                      "--strict-mcp-config", "--settings", r#"{"disableAllHooks":true}"#, "--disable-slash-commands", "--allowedTools=Bash(git status:*)"];
         assert_eq!(a, before, "resume {resume}");
         // on, it differs only in those three
         let on = slash_args(Kind::ClaudeCode, true, resume);
-        let mut back: Vec<String> = on.into_iter().filter(|x| x != "SlashCommand" && x != "Skill").collect();
+        assert!(on.contains(&"--allowedTools=Bash(git status:*),SlashCommand,Skill".to_string()), "resume {resume}: {on:?}");
+        let mut back: Vec<String> = on.into_iter().map(|x| x.replace(",SlashCommand,Skill", "")).collect();
         let at = back.iter().position(|x| x == "--settings").unwrap() + 2;
         back.insert(at, "--disable-slash-commands".into());
         assert_eq!(back, a, "resume {resume}");

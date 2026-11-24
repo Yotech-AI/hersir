@@ -46,7 +46,7 @@ Once a chat used a tool from outside Hersir (an MCP server, the web, the browser
 
 A tool the Chief doesn't have marks nothing. A chat answer has Read, Glob and Grep, web search and fetching pages while Web is on, and the tools of the MCP servers and the browser it gets (agent form → Tools). When the Chief calls any other tool, like Bash, Edit or a tool of a server it doesn't have, Claude Code refuses the call without running it ("No such tool available"), so nothing came in from outside: the chat isn't marked and says nothing about it.
 
-The Chief's calls that wait start or continue runs, change agents or columns, attach a file, update a linked folder, save to memory, merge a pull request, archive cards, comment on a card, change a card's description, acceptance criteria, assignee or the cards it builds on (in a column that isn't Auto; in an Auto column the card waits on hold instead, [below](#cards-that-wait-for-your-ok)), or change a project's repository, folder, main branch or goal. A change to a project's name, colour, status, client or Test runs at once applies at once, and so does restoring archived cards, which only undoes an archive. Each call that waits shows under the answer that tried it:
+The Chief's calls that wait start or continue runs, change agents or columns, attach a file, update a linked folder, save to memory, merge a pull request, archive cards, comment on a card, change a card's title, description, acceptance criteria, assignee or the cards it builds on (in a column that isn't Auto; in an Auto column the card waits on hold instead, [below](#cards-that-wait-for-your-ok)), give a card's hold a new reason, change a project's repository, folder, main branch or goal, or add a project with any of those. A change to a project's name, colour, status, client or Test runs at once applies at once, and so do a new project without them and restoring archived cards, which only undoes an archive. A chat the Chief starts from a marked chat, or a waiting chat it writes in from there, is marked too, as its message could carry what the outside tool returned: it says "The Chief wrote here from a chat that used `<tool>`, a tool from outside Hersir: from now on, what the Chief does here waits for your Approve." Each call that waits shows under the answer that tried it:
 
 - with a line about what it does and a preview: a note's new text and what changes, the card and agent, the settings that change, the file and where it goes, the comment's text, each field of a card or project that changes, old and new, and the cards an archive takes, like "Archive 683 cards in Done" (one card: "Archive GA-12"), with the ones it would skip and why;
 - with **Approve** and **Discard**, and **Approve all** when there are several.
@@ -68,7 +68,7 @@ A source on Ask still marks the chat when the Chief uses it, also after one on A
 
 ### Cards that wait for your OK
 
-In a marked chat, a card the Chief puts in an Auto column (its agents pick it up by themselves), or whose description, acceptance criteria, assignee or cards it builds on it changes there, is saved on hold: "Waiting for your OK: the Chief put this card here after using `<tool>`, a tool from outside Hersir. Check it, then take it off hold." No agent starts it.
+In a marked chat, a card the Chief puts in an Auto column (its agents pick it up by themselves), or whose title, description, acceptance criteria, assignee or cards it builds on it changes there, is saved on hold: "Waiting for your OK: the Chief put this card here after using `<tool>`, a tool from outside Hersir. Check it, then take it off hold." No agent starts it.
 
 Under the Chief's answer, **Waiting for your OK** lists the cards that answer put on that hold, while they are on it: the card (a click opens it beside the chat), its column and **OK**, which takes the hold off as Clear hold on the card does, so its column's agents can start it. **Approve all** shows when two or more things wait there: it runs the answer's waiting calls, then takes its cards' holds off. A card whose hold went (taken off on the card, moved by hand, another hold) leaves the list at once. It stays out when another chat puts it on that hold again later: then it shows under that chat's answer. The Chief tells you so too: the tool's result says you can OK the card under its answer or on the card, and that it shouldn't try to take the hold off itself.
 
@@ -105,6 +105,16 @@ Ask the Chief in a chat, like "Archive Done", and it archives the cards in Done,
 - `restore_tasks` takes `tasks`, the archived cards' identifiers, and puts them back at the bottom of their Done column, as they were. A card that isn't archived is skipped: "GA-12 isn't archived".
 - `list_tasks` with `archived: true` lists the archived cards, and `get_task` finds one by its identifier.
 - A board check never archives or restores cards: it asks you in a chat instead. In a chat that used a tool from outside Hersir, an archive waits for your Approve ([Approve with one click](#approve-with-one-click)); a restore runs at once.
+
+## How long cards took
+
+The Chief estimates a new card from how long similar cards really took: the agents' time and tokens, counted as on the project's Time tracking tab (GA-331). Each start, Continue and nudge is a run. A run counts from its start to its end, up to now while it works; a run cut off when Hersir closed counts at most the run time limit (Settings → Agents and runs). The Chief's chats and board checks have no card, so they count nowhere.
+
+- `get_task` gives the card `agent_time`, over all its runs: `{"runs": 4, "minutes": 95, "working_now": false, "input_tokens": 12345678, "output_tokens": 234567}`. Each of its latest 5 runs has `minutes` (null for a run that never started) and `tokens` (input and output).
+- `list_tasks` gives every card `agent_minutes` and `tokens` (0 for a card without runs), also with `archived: true`.
+- `get_project` gives `time_tracking`: `cards_with_runs`, and the runs, agent minutes and tokens over all its cards, archived ones too. Its `done_cards` counts the cards in Done that had runs, with the median and 90th percentile of their agent minutes (null when there are none).
+
+Minutes are whole minutes, rounded. Input tokens include the cache.
 
 ## The board check
 

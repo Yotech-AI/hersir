@@ -135,6 +135,100 @@ fn claude_allowed_commands_become_gemini_shell_tools() {
     assert_eq!(cli::gemini_tool("Edit"), None);
 }
 
+/// The value the last of `env`'s lines for `key` gives it (the one the CLI gets), None when no line sets it.
+fn env_value<'a>(env: &'a [(String, String)], key: &str) -> Option<&'a str> {
+    env.iter().rev().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
+}
+
+/// GA-322 (GA-270 #9): what a Gemini run gets in its environment, so Gemini sets nothing from the worktree's `.env`: it
+/// only sets a variable that isn't set yet (checked in Gemini CLI 0.65.0's loadEnvironment), and an empty one is set.
+#[test]
+fn a_gemini_run_starts_with_bash_env_env_and_the_base_urls_empty_and_its_own_system_settings() {
+    let unset = |k: &str| std::env::var_os(k).is_none();
+    let e = cli::task_exec(&spec(Kind::Gemini, ""), &TaskRun { gemini_settings: Some("/data/runs/r1.gemini.json".into()), ..run() });
+    assert_eq!(env_value(&e.env, "CODEX_HOME"), Some("/home/u/.codex-2"), "the CLI's own lines first: {:?}", e.env);
+    assert_eq!(env_value(&e.env, "BASH_ENV"), Some(""), "{:?}", e.env);
+    assert_eq!(env_value(&e.env, "ENV"), Some(""), "{:?}", e.env);
+    for url in ["GOOGLE_GEMINI_BASE_URL", "GOOGLE_VERTEX_BASE_URL"] {
+        if unset(url) {
+            assert_eq!(env_value(&e.env, url), Some(""), "{url}: {:?}", e.env);
+        } else {
+            assert_eq!(env_value(&e.env, url), None, "{url} set in Hersir's own environment is left as it is");
+        }
+    }
+    assert_eq!(env_value(&e.env, "GEMINI_CLI_SYSTEM_SETTINGS_PATH"), Some("/data/runs/r1.gemini.json"));
+    if unset("GEMINI_CLI_SYSTEM_DEFAULTS_PATH") && unset("GEMINI_CLI_SYSTEM_SETTINGS_PATH") && cfg!(target_os = "linux") {
+        assert_eq!(env_value(&e.env, "GEMINI_CLI_SYSTEM_DEFAULTS_PATH"), Some("/etc/gemini-cli/system-defaults.json"),
+                   "your system defaults stay where Gemini looks for them, not next to the run's file");
+    }
+    assert!(e.args.iter().all(|a| a != "--ignore-env"), "Gemini 0.65 refuses --ignore-env: {:?}", e.args);
+
+    // the CLI's own lines win: its BASH_ENV and base URL stay, and its system settings' folder keeps the defaults
+    let mut s = spec(Kind::Gemini, "");
+    s.env = vec![("BASH_ENV".into(), "/home/u/.bash_env".into()), ("GOOGLE_GEMINI_BASE_URL".into(), "https://proxy.example".into()),
+                 ("GEMINI_CLI_SYSTEM_SETTINGS_PATH".into(), "/opt/gemini/settings.json".into())];
+    let e = cli::task_exec(&s, &TaskRun { gemini_settings: Some("/data/runs/r2.gemini.json".into()), ..run() });
+    assert_eq!(e.env.iter().filter(|(k, _)| k == "BASH_ENV").count(), 1, "{:?}", e.env);
+    assert_eq!(env_value(&e.env, "BASH_ENV"), Some("/home/u/.bash_env"));
+    assert_eq!(env_value(&e.env, "ENV"), Some(""));
+    assert_eq!(env_value(&e.env, "GOOGLE_GEMINI_BASE_URL"), Some("https://proxy.example"));
+    assert_eq!(env_value(&e.env, "GEMINI_CLI_SYSTEM_SETTINGS_PATH"), Some("/data/runs/r2.gemini.json"), "the run's own file comes last");
+    if unset("GEMINI_CLI_SYSTEM_DEFAULTS_PATH") {
+        // GA-337: compared as paths, since Path::join puts a \ on Windows (/opt/gemini\system-defaults.json is the same
+        // file there); another folder or another file name still differs
+        assert_eq!(env_value(&e.env, "GEMINI_CLI_SYSTEM_DEFAULTS_PATH").map(std::path::Path::new),
+                   Some(std::path::Path::new("/opt/gemini/system-defaults.json")), "next to the CLI's own settings: {:?}", e.env);
+    }
+
+    // without a settings file of its own (no run sets none, but the exec doesn't make one up)
+    let e = cli::task_exec(&spec(Kind::Gemini, ""), &run());
+    assert_eq!(env_value(&e.env, "BASH_ENV"), Some(""));
+    assert_eq!(env_value(&e.env, "GEMINI_CLI_SYSTEM_SETTINGS_PATH"), None);
+
+    // Claude Code, Codex and another CLI get none of these (their exact environments: the tests above)
+    for kind in [Kind::ClaudeCode, Kind::Codex, Kind::Other] {
+        let e = cli::task_exec(&spec(kind, ""), &TaskRun { gemini_settings: Some("/x.json".into()), ..run() });
+        for key in ["BASH_ENV", "ENV", "GOOGLE_GEMINI_BASE_URL", "GEMINI_CLI_SYSTEM_SETTINGS_PATH"] {
+            assert_eq!(env_value(&e.env, key), None, "{kind:?} {key}");
+        }
+    }
+}
+
+/// GA-322: a Gemini run's own system settings file is yours (`GEMINI_CLI_SYSTEM_SETTINGS_PATH` here) with
+/// `advanced.ignoreLocalEnv` on, read the way Gemini reads it (JSON with comments).
+#[test]
+fn a_gemini_runs_own_system_settings_are_yours_with_ignore_local_env_on() {
+    let tmp = tempfile::tempdir().unwrap();
+    let file = tmp.path().join("settings.json");
+    let at = |p: &std::path::Path| vec![("GEMINI_CLI_SYSTEM_SETTINGS_PATH".to_string(), p.display().to_string())];
+    let parse = |text: String| serde_json::from_str::<serde_json::Value>(&text).unwrap();
+    std::fs::write(&file, r#"// your system settings
+{
+  "general": {"vimMode": true}, /* a block comment */
+  "advanced": {"excludedEnvVars": ["DEBUG"], "ignoreLocalEnv": false},
+  "proxy": "http://proxy.example//a/*b*/"
+}"#).unwrap();
+    let v = parse(cli::gemini_settings(&at(&file)).unwrap());
+    assert_eq!(v, serde_json::json!({"general": {"vimMode": true}, "advanced": {"excludedEnvVars": ["DEBUG"], "ignoreLocalEnv": true},
+                                     "proxy": "http://proxy.example//a/*b*/"}), "comments go, strings stay whole");
+
+    // none: just the one setting
+    let none = tmp.path().join("missing.json");
+    assert_eq!(parse(cli::gemini_settings(&at(&none)).unwrap()), serde_json::json!({"advanced": {"ignoreLocalEnv": true}}));
+    // an `advanced` that isn't an object is replaced
+    std::fs::write(&file, r#"{"advanced": 5, "ui": {"theme": "x"}}"#).unwrap();
+    assert_eq!(parse(cli::gemini_settings(&at(&file)).unwrap()), serde_json::json!({"advanced": {"ignoreLocalEnv": true}, "ui": {"theme": "x"}}));
+
+    // settings Gemini would refuse: the run doesn't start, with why
+    std::fs::write(&file, "{ not json").unwrap();
+    let e = cli::gemini_settings(&at(&file)).unwrap_err();
+    assert!(e.contains(&file.display().to_string()) && e.contains("aren't valid JSON"), "{e}");
+    std::fs::write(&file, "[1, 2]").unwrap();
+    assert!(cli::gemini_settings(&at(&file)).unwrap_err().contains("aren't a JSON object"));
+    let e = cli::gemini_settings(&at(tmp.path())).unwrap_err();
+    assert!(e.starts_with("Hersir can't read Gemini's system settings"), "a folder by that name: {e}");
+}
+
 #[test]
 fn other_cli_arguments_follow_the_template() {
     // {prompt} as an argument: nothing on stdin
@@ -327,9 +421,13 @@ fn every_cli_gets_the_runs_temp_folder_as_tmpdir_tmp_and_temp_after_its_own_envi
     for kind in [Kind::ClaudeCode, Kind::Codex, Kind::Gemini, Kind::Other] {
         let mut s = spec(kind, "");
         s.env.push(("TMPDIR".into(), "/tmp".into()));
-        // GA-85: Claude Code also gets its own memory off, after the CLI's own lines; the others nothing more
+        // GA-85: Claude Code also gets its own memory off, after the CLI's own lines; GA-322: Gemini gets BASH_ENV and ENV
+        // empty, and the base URLs empty unless Hersir's own environment sets them; the others nothing more
+        let gemini = ["BASH_ENV", "ENV", "GOOGLE_GEMINI_BASE_URL", "GOOGLE_VERTEX_BASE_URL"].into_iter()
+            .filter(|k| k.ends_with("ENV") || std::env::var_os(k).is_none()).map(|k| (k.to_string(), String::new()));
         let own: Vec<(String, String)> = s.env.iter().cloned()
-            .chain((kind == Kind::ClaudeCode).then(|| ("CLAUDE_CODE_DISABLE_AUTO_MEMORY".to_string(), "1".to_string()))).collect();
+            .chain((kind == Kind::ClaudeCode).then(|| ("CLAUDE_CODE_DISABLE_AUTO_MEMORY".to_string(), "1".to_string())))
+            .chain(gemini.filter(|_| kind == Kind::Gemini)).collect();
         let e = cli::task_exec(&s, &TaskRun { temp_dir: Some(temp.into()), ..run() });
         assert_eq!(&e.env[..own.len()], &own[..], "{kind:?}: the CLI's own lines stay");
         assert_eq!(&e.env[own.len()..], &want[..], "{kind:?}");

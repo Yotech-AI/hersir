@@ -77,8 +77,26 @@ fn read(path: &Path) -> String {
     std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
 }
 
-/// The values after `flag`, up to the next `--` option.
+/// The values after `flag`, up to the next `--` option. GA-318: `--allowedTools` and `--disallowedTools` go as one argument,
+/// `<flag>=<rule>,<rule>,…`: their rules, split at the commas outside parentheses as Claude Code splits them.
 fn values(argv: &[String], flag: &str) -> Vec<String> {
+    if flag.ends_with("Tools") {
+        assert!(!argv.iter().any(|a| a == flag), "GA-318: {flag} as an argument of its own: {argv:?}");
+        let prefix = format!("{flag}=");
+        let Some(v) = argv.iter().find_map(|a| a.strip_prefix(prefix.as_str())) else { return vec![] };
+        let (mut out, mut rule, mut depth) = (vec![], String::new(), 0);
+        for c in v.chars() {
+            match c {
+                ',' if depth == 0 => out.push(std::mem::take(&mut rule)),
+                _ => {
+                    depth += (c == '(') as i32 - (c == ')') as i32;
+                    rule.push(c);
+                }
+            }
+        }
+        out.push(rule);
+        return out;
+    }
     let Some(at) = argv.iter().position(|a| a == flag) else { return vec![] };
     argv[at + 1..].iter().take_while(|a| !a.starts_with("--")).cloned().collect()
 }
@@ -691,9 +709,9 @@ async fn the_team_leads_allowed_tools_take_only_commands_and_anything_else_chang
     // any command is still refused with its own reason
     let e = call("update_agent", json!({"agent": "Backend Agent", "allowed_tools": ["Bash"]})).await.unwrap_err();
     assert!(e.contains("can't be allowed to run any command"), "{e}");
-    // commands only: saved
-    call("update_agent", json!({"agent": "Backend Agent", "allowed_tools": ["Bash(git status:*)", " Bash(npm test:*) "]})).await.unwrap();
-    assert!(gizai_core::team::agent(&st.db, &t.backend).unwrap().allowed_tools.iter().any(|a| a.contains("npm test")));
+    // commands only: saved (GA-323: ones chat gives an agent at once; a new one like Bash(npm test:*) waits for the user's Approve)
+    call("update_agent", json!({"agent": "Backend Agent", "allowed_tools": ["Bash(git status:*)", " Bash(grep:*) "]})).await.unwrap();
+    assert_eq!(gizai_core::team::agent(&st.db, &t.backend).unwrap().allowed_tools, ["Bash(git status:*)", "Bash(grep:*)"]);
     // no list: the role's, which is commands only, so a run leaves nothing of it out
     call("create_agent", json!({"name": "Web QA", "role": "qa"})).await.unwrap();
     for role in ["lead", "backend", "frontend", "qa", "devops", "design"] {

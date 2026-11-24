@@ -48,9 +48,13 @@ struct Hand {
 }
 
 impl Hand {
-    /// The project's link to push to (GitHub, Bitbucket or another git URL), if it has one.
-    fn link(&self) -> Option<RepoUrl> {
-        self.project.repo_url.as_deref().and_then(|u| repo_url::normalize(u).ok().flatten())
+    /// The project's link to push to (GitHub, Bitbucket or another git URL), if it has one. Err: a link git would read as
+    /// an option, saved before Hersir refused those (GA-318), with the sentence a card start refuses it with
+    /// (`git::start_point`), so Push and Hand over say why instead of acting as if there were no link.
+    fn link(&self) -> R<Option<RepoUrl>> {
+        let Some(u) = self.project.repo_url.as_deref() else { return Ok(None) };
+        repo_url::refuse_option(u).map_err(|e| format!("{e}: change {}'s link on its page (Edit)", self.project.name))?;
+        Ok(repo_url::normalize(u).ok().flatten())
     }
 
     /// The main branch the card started from, as last fetched (`git::start_point`).
@@ -152,7 +156,8 @@ fn card_now(st: &AppState, task_id: &str) -> R<HandCard> {
     let gone = || format!("{}'s worktree isn't there any more: open it in the editor again to make it", h.task.identifier);
     let shown = gizai_core::folders::on_disk(&h.wt).ok_or_else(gone)?;
     let folder = crate::editor::folder(st, &shown.display().to_string())?.id;
-    let unpushed = match h.link() {
+    // (a refused link counts as none here: Push and Hand over say why)
+    let unpushed = match h.link().ok().flatten() {
         // the remote's copy of the branch as a push through your remote for the link last left it
         Some(link) => {
             let pushed = crate::git::remote_for(&h.repo, &link.url).map(|r| format!("refs/remotes/{r}/{}", h.branch));
@@ -184,7 +189,7 @@ pub async fn push(st: &AppState, task_id: &str) -> R<String> {
     off(st, move |st| {
         let h = hand_of(st, &id, true)?;
         let _busy = Busy::of(&h)?;
-        let link = h.link().ok_or_else(|| {
+        let link = h.link()?.ok_or_else(|| {
             format!("{} has no GitHub, Bitbucket or git link to push to: add one to {} first (project page → Edit)", h.task.identifier, h.project.name)
         })?;
         let pushed = crate::runs::push_card(st, &h.project, &h.repo, &link, &h.branch)?;
@@ -227,7 +232,7 @@ fn over_now(st: &AppState, task_id: &str) -> R<String> {
         return Err(format!("{} has {}: commit {} before you hand it over", h.task.identifier, changes_word(left),
                            if left == 1 { "it" } else { "them" }));
     }
-    if let Some(link) = h.link() {
+    if let Some(link) = h.link()? {
         crate::runs::push_card(st, &h.project, &h.repo, &link, &h.branch)?;
     }
     let comment = handed_over(&crate::runs::actor_name(st, &st.you_id), &own_commits(&h));

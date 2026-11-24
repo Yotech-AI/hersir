@@ -67,6 +67,7 @@ Each terminal has a row in the sidebar, with what runs in it on the right, or "e
 - find (Ctrl+Shift+F);
 - Rename (F2 or a double-click);
 - Show in Editor.
+- **Layout** (right of +): the folder's terminals side by side, 2, 3 or 4 in a row, or 2 × 2. It starts the terminals it needs in the folder; a click in a terminal, or on its tab, picks the one you type in. Fewer panes close nothing: the others stay open as tabs.
 
 ### Closing a terminal
 

@@ -38,16 +38,23 @@ const TAG_OBJECT = "9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d";
 const SUBJECT = "Release 9.9.9";
 const PASSPHRASE = "throwaway passphrase for QA";
 
+// Release builds' runs (GA-320): FAKE_RUNS is what GitHub lists for gh run list --json, newest first, and a run's
+// artifacts are in $RUN_ARTIFACTS/<its id>/. RUN is the one successful run of the commit a fake release has by default.
+const RUN = 4242;
+const NEWER = 4343;
+
 // gh, as a stand-in: writes its arguments, each in [], to $RAN and answers from the fake release in $RELEASE (a folder
-// with its assets) and the FAKE_ variables, through jq as gh's own --jq. Anything else is GitHub's 404.
+// with its assets), its runs' artifacts in $RUN_ARTIFACTS and the FAKE_ variables, through jq as gh's own --jq. Anything
+// else is GitHub's 404.
 const GH = `#!/bin/sh
 { printf 'gh'; for a in "$@"; do printf ' [%s]' "$a"; done; echo; } >> "$RAN"
-jq_expr="" dir="" pattern="" clobber="" prev=""
+jq_expr="" dir="" pattern="" clobber="" name="" prev=""
 for a in "$@"; do
   case "$prev" in
     --jq) jq_expr="$a" ;;
     --dir) dir="$a" ;;
     --pattern) pattern="$a" ;;
+    --name) name="$a" ;;
   esac
   [ "$a" = --clobber ] && clobber=1
   prev="$a"
@@ -69,6 +76,12 @@ case "$1 $2" in
     if [ -e "$RELEASE/$name" ] && [ -z "$clobber" ]; then echo "asset under the same name already exists: [$name]" >&2; exit 1; fi
     [ -n "\${FAKE_UPLOAD_LOST:-}" ] || cp "$4" "$RELEASE/$name" ;;
   "workflow run") exit 0 ;;
+  "run list")
+    [ -z "\${FAKE_RUNS_FAIL:-}" ] || { echo "HTTP 502: Bad Gateway" >&2; exit 1; }
+    answer "$FAKE_RUNS" ;;
+  "run download")
+    [ -f "$RUN_ARTIFACTS/$3/$name" ] || { echo "no valid artifacts found to download" >&2; exit 1; }
+    cp "$RUN_ARTIFACTS/$3/$name" "$dir/$name" ;;
   "api $api/git/ref/tags/$FAKE_TAG")
     if [ -n "\${FAKE_TAG_OBJECT:-}" ]; then answer "{\\"object\\":{\\"type\\":\\"tag\\",\\"sha\\":\\"$FAKE_TAG_OBJECT\\"}}"; else commit "$FAKE_COMMIT"; fi ;;
   "api $api/git/tags/\${FAKE_TAG_OBJECT:-none}") commit "$FAKE_COMMIT" ;;
@@ -115,18 +128,31 @@ describe.runIf(unix)("scripts/sign-release.sh, against a fake gh and throwaway k
   afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
   // A fake release v9.9.9 in a folder of its own: the three archives and SHA256SUMS, as Release builds uploads them,
-  // without the ones in `without`, with `sig` as hersir-9.9.9.sig when given, and `sums` instead of SHA256SUMS.
-  function release({ without = [], sig, sums } = {}) {
+  // without the ones in `without`, with `sig` as hersir-9.9.9.sig when given, and `sums` instead of SHA256SUMS. `what`
+  // is what its archives hold, and the archives in `tamper` change after SHA256SUMS is written. Release builds run RUN
+  // keeps `runSums` as its SHA256SUMS artifact (by default the release's SHA256SUMS; null: none, as after it expired),
+  // next to the release's folder, in <folder>-runs/RUN.
+  const build = (a, what = "the build") => `${what} in ${a}\n`;
+  const sumsOf = (what) => ARCHIVES.map((a) => `${sha256(build(a, what))}  ${a}\n`).join("");
+  function release({ without = [], sig, sums, what, tamper = [], runSums } = {}) {
     const dir = mkdtempSync(join(scratch, "release-"));
-    const lines = ARCHIVES.map((a) => {
-      const data = `the build in ${a}\n`;
-      if (!without.includes(a)) writeFileSync(join(dir, a), data);
-      return `${sha256(data)}  ${a}\n`;
-    });
-    if (!without.includes("SHA256SUMS")) writeFileSync(join(dir, "SHA256SUMS"), sums ?? lines.join(""));
+    for (const a of ARCHIVES) {
+      const data = build(a, what);
+      if (!without.includes(a)) writeFileSync(join(dir, a), tamper.includes(a) ? `${data}changed after SHA256SUMS\n` : data);
+    }
+    const written = sums ?? sumsOf(what);
+    if (!without.includes("SHA256SUMS")) writeFileSync(join(dir, "SHA256SUMS"), written);
     if (sig !== undefined) writeFileSync(join(dir, SIG), sig);
+    if (runSums !== null) artifact(dir, RUN, runSums ?? written);
     return dir;
   }
+  // The SHA256SUMS artifact of the Release builds run `id`, for the release in `rel`.
+  function artifact(rel, id, sums) {
+    mkdirSync(join(`${rel}-runs`, String(id)), { recursive: true });
+    writeFileSync(join(`${rel}-runs`, String(id), "SHA256SUMS"), sums);
+  }
+  // A run of Release builds as gh run list --json lists it: by default RUN, made by the release, done and green.
+  const ghRun = (o = {}) => ({ databaseId: RUN, headSha: COMMIT, event: "release", status: "completed", conclusion: "success", ...o });
 
   // Runs scripts/sign-release.sh with `args`, in a session of its own (no terminal), `input` on stdin, and only these
   // variables: what gh ran, ssh-keygen's calls, stdout, stderr, and what it left in its TMPDIR.
@@ -149,6 +175,8 @@ describe.runIf(unix)("scripts/sign-release.sh, against a fake gh and throwaway k
         FAKE_GH: gh,
         RAN: ran,
         RELEASE: rel ?? join(run, "no-release"),
+        RUN_ARTIFACTS: rel ? `${rel}-runs` : join(run, "no-runs"),
+        FAKE_RUNS: JSON.stringify([ghRun()]),
         FAKE_TAG: TAG,
         FAKE_COMMIT: COMMIT,
         FAKE_PRODUCTION: COMMIT,
@@ -209,9 +237,11 @@ describe.runIf(unix)("scripts/sign-release.sh, against a fake gh and throwaway k
 
     // What it shows, in this order, before it asks.
     const shown = [
+      "Downloading the archives of v9.9.9, to check them against SHA256SUMS.",
       "  Version     v9.9.9",
       `  Commit      ${COMMIT} ${SUBJECT}`,
       "  Production  its latest commit is this one",
+      `  Builds      Release builds run ${RUN} made SHA256SUMS for this commit, and the archives match it`,
       ...sums.trimEnd().split("\n").map((l, i) => (i === 0 ? `  SHA256SUMS  ${l}` : `              ${l}`)),
       "Sign v9.9.9? [y/N] ",
     ];
@@ -222,6 +252,22 @@ describe.runIf(unix)("scripts/sign-release.sh, against a fake gh and throwaway k
       at = next + line.length;
     }
     expect(r.stdout.slice(at)).toMatch(/^Signed v9\.9\.9: the release has hersir-9\.9\.9\.sig/);
+
+    // GA-320: before anything is shown, the Release builds runs of the commit, that run's SHA256SUMS artifact and each
+    // archive of the release, in that order, and all before the signature.
+    expect(r.gh).toContain(
+      `gh [run] [list] [--workflow] [release-builds.yml] [--repo] [Yotech-AI/hersir] [--commit] [${COMMIT}] [--limit] [100] [--json] [databaseId,headSha,event,status,conclusion] [--jq] [.[] | select(.headSha == "${COMMIT}" and (.event == "release" or .event == "workflow_dispatch")) | "\\(.databaseId) \\(.status) \\(.conclusion)"]`,
+    );
+    const at_ = (prefix) => r.gh.findIndex((l) => l.startsWith(prefix));
+    expect(r.gh.filter((l) => l.startsWith("gh [run] [download]"))).toEqual([
+      expect.stringMatching(new RegExp(`^gh \\[run\\] \\[download\\] \\[${RUN}\\] \\[--repo\\] \\[Yotech-AI/hersir\\] \\[--name\\] \\[SHA256SUMS\\] \\[--dir\\] \\[.*/run\\]$`)),
+    ]);
+    const archiveDownloads = r.gh.filter((l) => l.startsWith("gh [release] [download]") && !l.includes("[SHA256SUMS]"));
+    expect(archiveDownloads.map((l) => l.match(/\[--pattern\] \[([^\]]+)\]/)[1])).toEqual(ARCHIVES);
+    expect(at_("gh [api] [repos/Yotech-AI/hersir/git/ref/heads/production]")).toBeLessThan(at_("gh [run] [list]"));
+    expect(at_("gh [run] [list]")).toBeLessThan(at_("gh [run] [download]"));
+    expect(at_("gh [run] [download]")).toBeLessThan(r.gh.indexOf(archiveDownloads[0]));
+    expect(r.gh.indexOf(archiveDownloads[2])).toBeLessThan(at_("gh [release] [upload]"));
 
     // Signed with the key, in its namespace, never through ssh-agent; checked, uploaded, listed, then One-line install.
     expect(signs(r)).toEqual([expect.stringMatching(/^ssh-keygen \[-Y\] \[sign\] \[-f\] \[.*\/keys\/release\] \[-n\] \[hersir-release\] \[.*\/hersir-9\.9\.9\]$/)]);
@@ -265,13 +311,13 @@ describe.runIf(unix)("scripts/sign-release.sh, against a fake gh and throwaway k
     expect(verify(sig, message(COMMIT, sums), join(ROOT, "release-signers")).status).not.toBe(0);
   });
 
-  it("says when production's latest commit isn't the tag's, and still signs the tag's commit after y", async () => {
+  // GA-320: before, it only said so and signed after y; now it stops before it shows anything or downloads a build.
+  it("production's latest commit isn't the tag's: nothing is shown, signed or uploaded, one line says why", async () => {
     const rel = release();
     const r = await sign([TAG], { rel, env: { FAKE_PRODUCTION: ELSEWHERE } });
-    expect(r.status, r.stdout + r.stderr).toBe(0);
-    expect(r.stdout).toContain(`  Production  its latest commit is ${ELSEWHERE}, not this one`);
-    expect(r.stdout).not.toContain("its latest commit is this one");
-    expect(verify(join(rel, SIG), message(COMMIT, readFileSync(join(rel, "SHA256SUMS")))).status).toBe(0);
+    refused(r, rel, new RegExp(`^The tag v9\\.9\\.9 is on ${COMMIT}, not on production's latest commit \\(${ELSEWHERE}\\), so it isn't signed\\.\\n$`));
+    expect(r.stdout).toBe("");
+    expect(r.gh.filter((l) => l.startsWith("gh [run]") || l.startsWith("gh [release] [download]"))).toEqual([]);
   });
 
   it("an annotated tag: signs the commit it points to, not the tag object", async () => {
@@ -300,6 +346,127 @@ describe.runIf(unix)("scripts/sign-release.sh, against a fake gh and throwaway k
     expect(r.stdout).toContain("  Replaces    the release's hersir-9.9.9.sig (--again)");
     expect(uploads(r)[0]).toMatch(/^gh \[release\] \[upload\] \[v9\.9\.9\] \[.*\/hersir-9\.9\.9\.sig\] \[--repo\] \[Yotech-AI\/hersir\] \[--clobber\]$/);
     expect(verify(join(rel, SIG), message(COMMIT, readFileSync(join(rel, "SHA256SUMS")))).status).toBe(0);
+    // GA-320: --again makes the same checks as a first signature.
+    expect(r.stdout).toContain(`  Builds      Release builds run ${RUN} made SHA256SUMS for this commit, and the archives match it`);
+    expect(r.gh.filter((l) => l.startsWith("gh [run] [list]"))).toHaveLength(1);
+    expect(r.gh.filter((l) => l.startsWith(`gh [run] [download] [${RUN}]`))).toHaveLength(1);
+    expect(r.gh.filter((l) => l.startsWith("gh [release] [download]")).length).toBe(1 + ARCHIVES.length);
+  });
+
+  // GA-320 (GA-270 #8): only the builds a Release builds run of production's latest commit made are signed.
+  describe("the Release builds run, its SHA256SUMS and the archives (GA-320)", () => {
+    const old = "an old signature\n";
+    // Refused, and nothing was shown to sign. With --again, the release's old .sig stays as it was.
+    function stopped(r, rel, why, again) {
+      refused(r, again ? undefined : rel, why);
+      expect(r.stdout).not.toContain("Sign v9.9.9?");
+      expect(r.stdout).not.toContain("  Builds  ");
+      if (again) expect(readFileSync(join(rel, SIG), "utf8")).toBe(old);
+    }
+    const noRun = /^No Release builds run of 4f0c2a9e1b7d3c5a6e8f0b1d2c3e4f5a6b7c8d9e, the commit of v9\.9\.9, succeeded, so v9\.9\.9 isn't signed: gh workflow run release-builds\.yml -f tag=v9\.9\.9 --ref v9\.9\.9 builds it on that commit\.\n$/;
+    const notTheRuns = new RegExp(`^The SHA256SUMS of v9\\.9\\.9 isn't the one Release builds run ${RUN} made for ${COMMIT}, so v9\\.9\\.9 isn't signed\\.\\n$`);
+    const noMatch = (a) => new RegExp(`^The release's ${a.replaceAll(".", "\\.")} doesn't match its sum in SHA256SUMS, so v9\\.9\\.9 isn't signed\\.\\n$`);
+
+    for (const again of [false, true]) {
+      const args = again ? [TAG, "--again"] : [TAG];
+      const title = again ? "--again: " : "";
+      const signed = again ? { sig: old } : {};
+
+      it.each([
+        ["GitHub lists no run of it", []],
+        ["its only run failed", [ghRun({ conclusion: "failure" })]],
+        ["its only run was cancelled", [ghRun({ conclusion: "cancelled" })]],
+        ["the only green run is a pull request's", [ghRun({ event: "pull_request" })]],
+        ["the only green run is a push's", [ghRun({ event: "push" })]],
+        ["the only green run is of another commit (a run by hand from main)", [ghRun({ event: "workflow_dispatch", headSha: ELSEWHERE })]],
+      ])(`${title}no successful Release builds run has the commit, as %s: nothing is signed or uploaded, one line says why`, async (_, runs) => {
+        const rel = release(signed);
+        const r = await sign(args, { rel, env: { FAKE_RUNS: JSON.stringify(runs) } });
+        stopped(r, rel, noRun, again);
+        expect(r.gh.filter((l) => l.startsWith("gh [run] [download]"))).toEqual([]);
+        expect(r.gh.filter((l) => l.startsWith("gh [release] [download]") && !l.includes("[SHA256SUMS]"))).toEqual([]);
+      });
+
+      it.each([
+        ["archives and a SHA256SUMS that match each other, but not the run's", { what: "a swapped build", runSums: sumsOf() }],
+        ["the run's SHA256SUMS with one more byte", { runSums: `${sumsOf()}\n` }],
+        ["one checksum of the run's that differs", { runSums: sumsOf().replace(/^./, (c) => (c === "0" ? "1" : "0")) }],
+      ])(`${title}the release's SHA256SUMS isn't the run's, with %s: nothing is signed or uploaded, one line says why`, async (_, o) => {
+        const rel = release({ ...signed, ...o });
+        const r = await sign(args, { rel });
+        stopped(r, rel, notTheRuns, again);
+        expect(r.gh.filter((l) => l.startsWith(`gh [run] [download] [${RUN}]`))).toHaveLength(1);
+        expect(r.gh.filter((l) => l.startsWith("gh [release] [download]") && !l.includes("[SHA256SUMS]"))).toEqual([]);
+      });
+
+      it.each(ARCHIVES)(`${title}%s doesn't match its sum, though SHA256SUMS is the run's: nothing is signed or uploaded, one line says why`, async (a) => {
+        const rel = release({ ...signed, tamper: [a] });
+        const r = await sign(args, { rel });
+        stopped(r, rel, noMatch(a), again);
+        expect(r.stdout).toBe("Downloading the archives of v9.9.9, to check them against SHA256SUMS.\n");
+      });
+
+      it(`${title}the commit isn't production's latest: nothing is signed or uploaded, one line says why`, async () => {
+        const rel = release(signed);
+        const r = await sign(args, { rel, env: { FAKE_PRODUCTION: ELSEWHERE } });
+        stopped(r, rel, /^The tag v9\.9\.9 is on 4f0c2a9e1b7d3c5a6e8f0b1d2c3e4f5a6b7c8d9e, not on production's latest commit \(0123456789abcdef0123456789abcdef01234567\), so it isn't signed\.\n$/, again);
+      });
+    }
+
+    it("a Release builds run of the commit still going, by the release or by hand: nothing is signed, one line says which", async () => {
+      for (const [event, status] of [["release", "in_progress"], ["workflow_dispatch", "queued"]]) {
+        const rel = release();
+        const runs = [ghRun({ databaseId: NEWER, event, status, conclusion: "" }), ghRun()];
+        const r = await sign([TAG], { rel, env: { FAKE_RUNS: JSON.stringify(runs) } });
+        stopped(r, rel, new RegExp(`^Release builds run ${NEWER} of ${COMMIT}, the commit of v9\\.9\\.9, is still going: sign v9\\.9\\.9 once it is done \\(gh run watch ${NEWER} --repo Yotech-AI/hersir\\)\\.\\n$`));
+      }
+    });
+
+    it("a pull request's run of the commit still going doesn't count: the release's own green run is signed", async () => {
+      const rel = release();
+      const runs = [ghRun({ databaseId: NEWER, event: "pull_request", status: "in_progress", conclusion: "" }), ghRun()];
+      const r = await sign([TAG], { rel, env: { FAKE_RUNS: JSON.stringify(runs) } });
+      expect(r.status, r.stdout + r.stderr).toBe(0);
+      expect(r.gh.filter((l) => l.startsWith("gh [run] [download]"))).toEqual([expect.stringMatching(new RegExp(`^gh \\[run\\] \\[download\\] \\[${RUN}\\]`))]);
+    });
+
+    it("the newest green run counts: a later run by hand on the tag replaces the release's builds, and its SHA256SUMS is signed", async () => {
+      const rel = release({ what: "the newer build", runSums: sumsOf("the first build") });
+      artifact(rel, NEWER, sumsOf("the newer build"));
+      const runs = [ghRun({ databaseId: NEWER, event: "workflow_dispatch" }), ghRun()];
+      const r = await sign([TAG], { rel, env: { FAKE_RUNS: JSON.stringify(runs) } });
+      expect(r.status, r.stdout + r.stderr).toBe(0);
+      expect(r.stdout).toContain(`  Builds      Release builds run ${NEWER} made SHA256SUMS for this commit, and the archives match it`);
+      expect(verify(join(rel, SIG), message(COMMIT, sumsOf("the newer build"))).status).toBe(0);
+
+      // The other way round: the release still holds the older run's builds, so they aren't the newest run's.
+      const stale = release({ what: "the first build" });
+      artifact(stale, NEWER, sumsOf("the newer build"));
+      const s = await sign([TAG], { rel: stale, env: { FAKE_RUNS: JSON.stringify(runs) } });
+      stopped(s, stale, new RegExp(`^The SHA256SUMS of v9\\.9\\.9 isn't the one Release builds run ${NEWER} made`));
+    });
+
+    it("a newer run that failed doesn't count: the older green run's SHA256SUMS is the one compared", async () => {
+      const rel = release();
+      const runs = [ghRun({ databaseId: NEWER, event: "workflow_dispatch", conclusion: "failure" }), ghRun()];
+      const r = await sign([TAG], { rel, env: { FAKE_RUNS: JSON.stringify(runs) } });
+      expect(r.status, r.stdout + r.stderr).toBe(0);
+      expect(r.stdout).toContain(`  Builds      Release builds run ${RUN} made`);
+    });
+
+    it.each([
+      ["gh can't list the runs", { FAKE_RUNS_FAIL: "1" }, /^Couldn't read the Release builds runs of 4f0c2a9e1b7d3c5a6e8f0b1d2c3e4f5a6b7c8d9e: HTTP 502: Bad Gateway\n$/],
+      ["GitHub lists a run in another shape", { FAKE_RUNS: JSON.stringify([ghRun({ status: "In Progress" })]) }, /^Couldn't read the Release builds runs of .*: GitHub gave something else\.\n$/],
+    ])("%s: nothing is signed or uploaded, one line says why", async (_, env, why) => {
+      const rel = release();
+      stopped(await sign([TAG], { rel, env }), rel, why);
+    });
+
+    it("the run has no SHA256SUMS artifact any more (expired): nothing is signed or uploaded, one line says why", async () => {
+      const rel = release({ runSums: null });
+      const r = await sign([TAG], { rel });
+      stopped(r, rel, new RegExp(`^Couldn't download the SHA256SUMS of Release builds run ${RUN}: no valid artifacts found to download\\n$`));
+    });
   });
 
   it.each(ARCHIVES.concat("SHA256SUMS"))("a release without %s: nothing is signed or uploaded, one line says why", async (missing) => {
@@ -498,6 +665,29 @@ describe("The release signature: the docs", () => {
     expect(sign).toContain("Until then no Hersir offers or installs the release.");
     expect(sign).toContain("the line `hersir vX.Y.Z <commit>` and a newline");
     expect(sign).toContain("[`release-signers`](../release-signers)");
+  });
+
+  it("RELEASING.md's Sign it step says what the script checks before it signs, that --again checks the same, and step 4 re-runs on the tag (GA-320)", () => {
+    const step4 = releasing.indexOf("4. **Check it:**");
+    const step5 = releasing.indexOf("5. **Sign it.**");
+    const sign = releasing.slice(step5, releasing.indexOf("\n## ", step5));
+    expect(sign).toContain("It signs only the builds Release builds made for `production`'s latest commit");
+    expect(sign).toContain("when one fails it stops with one line that says why and signs nothing");
+    expect(sign).toContain("- The tag's commit is `production`'s latest commit.");
+    expect(sign).toContain("- A run of Release builds whose `headSha` is that commit, started by the release or by hand, succeeded, and no such run is still going.");
+    expect(sign).toContain("a pull request's run doesn't count");
+    expect(sign).toContain("is the release's `SHA256SUMS`, byte for byte.");
+    expect(sign).toContain("- Each of the release's three archives, downloaded, matches its line of that `SHA256SUMS`, with `sha256sum -c`");
+    expect(sign).toContain("`--again` checks the same.");
+    expect(sign).not.toMatch(/whether that is `production`'s latest commit/);
+    // A run by hand must be on the tag, or step 5 won't sign its builds.
+    const check = releasing.slice(step4, step5);
+    expect(check).toContain("`gh workflow run release-builds.yml -f tag=vX.Y.Z --ref vX.Y.Z`");
+    expect(check).not.toMatch(/`gh workflow run release-builds\.yml -f tag=vX\.Y\.Z`/);
+    // The script's own help says the same.
+    const script = read("scripts/sign-release.sh");
+    expect(script).toContain("It signs only production's latest commit, and only the builds a successful Release builds run of that commit made:");
+    expect(script).toContain("docs/RELEASING.md, step 5, says when to run it and what it checks.");
   });
 
   it("RELEASING.md's Never: the keys stay on Jeffrey's computer, never in ssh-agent, and a lost key means the spare", () => {

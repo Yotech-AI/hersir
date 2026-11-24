@@ -210,6 +210,11 @@ export const askCliTools = (cliId: string) => invoke<string[]>("ask_cli_tools", 
 export const browserEntry = () => invoke<T.BrowserView>("browser_entry");
 export const saveBrowserEntry = (entry: T.BrowserEntry) => invoke<T.BrowserView>("save_browser_entry", { entry });
 export const listBrowserTools = () => invoke<T.BrowserView>("list_browser_tools");
+/** Settings → MCP servers → Claude Desktop (GA-338): its status; Connect makes a new key (the old one ends) and, with
+ *  addToConfig, adds the entry to Claude Desktop's settings; Disconnect ends the key. */
+export const claudeDesktopStatus = () => invoke<T.ClaudeDesktopStatus>("claude_desktop_status");
+export const claudeDesktopConnect = (addToConfig: boolean) => invoke<T.ClaudeDesktopConnection>("claude_desktop_connect", { addToConfig });
+export const claudeDesktopDisconnect = () => invoke<T.ClaudeDesktopStatus>("claude_desktop_disconnect");
 
 /** Settings → Coding CLIs. */
 export const listClis = () => invoke<T.CliStatus[]>("list_clis");
@@ -221,6 +226,8 @@ export const agentRuns = (id: string, limit = 20) => invoke<T.Run[]>("agent_runs
 export const agentNextTask = (id: string) => invoke<string | null>("agent_next_task", { id });
 /** The Usage page: tokens and API cost of all runs and chat turns in the period, in total, per day, per agent and per project. */
 export const usageSummary = (period: T.UsagePeriod) => invoke<T.Usage>("usage_summary", { period });
+/** A project's Time tracking tab: per card, its runs, agent time and tokens over all of its runs (GA-331). */
+export const projectTime = (id: string) => invoke<T.CardTime[]>("project_time", { id });
 /** The Usage page's Subscription tab: per coding CLI, the newest reading of each of its limits and the agents on it. */
 export const subscriptionLimits = () => invoke<T.CliLimits[]>("subscription_limits");
 export const roleTemplate = (role: string) => invoke<string>("role_template", { role });

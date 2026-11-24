@@ -18,6 +18,7 @@ vi.mock("./useChat", () => ({
 }));
 
 const { PendingActions } = await import("./PendingActions");
+const { NEW_COMMANDS } = await import("../../lib/pending");
 const { ChatThread } = await import("./ChatThread");
 
 const preview = (o: Partial<PendingPreview>): PendingPreview => ({ line: "Do it", fields: [], ...o });
@@ -111,6 +112,43 @@ describe("several calls under one answer", () => {
 
   it("names a web tool in words", () => {
     expect(render([action("a1", { outsideTool: "WebFetch" })])).toContain("This chat used fetching a web page, a tool from outside Hersir");
+  });
+});
+
+// GA-323: a create_agent or update_agent the Chief made in any chat waits when it gives an agent commands chat doesn't
+// give at once; Hersir marks it `new commands` instead of a tool from outside Hersir, and its preview names them.
+describe("a call that gives an agent new commands", () => {
+  const commands = (id: string, o: Partial<PendingAction> = {}) => action(id, { tool: "update_agent", outsideTool: NEW_COMMANDS, preview: preview({
+    line: "Change Backend Agent's settings",
+    fields: [{ label: "Allowed commands", value: "Bash(ls:*), Bash(awk:*)", from: "Bash(ls:*)" }, { label: "Needs your OK", value: "Bash(awk:*)" }],
+  }), ...o });
+
+  it("says why it waits, without a tool from outside Hersir, and shows the commands it needs your OK for", () => {
+    const h = render([commands("a1")]);
+    expect(h).toContain("Waiting for your OK</span>");
+    expect(h).toContain('<span class="pa-why">Hersir didn&#x27;t run this: it gives an agent commands the Chief may only add with your OK.</span>');
+    expect(h).not.toContain("outside Hersir");
+    expect(h).not.toContain("new commands");
+    expect(h).toMatch(/<dt>Needs your OK<\/dt><dd>Bash\(awk:\*\)<\/dd>/);
+    expect(count(h, ">Approve</button>")).toBe(1);
+    expect(count(h, ">Discard</button>")).toBe(1);
+  });
+
+  it("says each of several waits for that, with Approve all", () => {
+    const h = render([commands("a1"), commands("a2", { tool: "create_agent", preview: preview({ line: "Add the agent Ops Agent (devops)" }) })]);
+    expect(h).toContain("Hersir didn&#x27;t run these: each gives an agent commands the Chief may only add with your OK.");
+    expect(count(h, ">Approve all</button>")).toBe(1);
+  });
+
+  it("names the tool from outside Hersir when another call under the answer waits for that", () => {
+    const h = render([commands("a1"), action("a2", { outsideTool: "WebFetch" })]);
+    expect(h).toContain("This chat used fetching a web page, a tool from outside Hersir, so Hersir didn&#x27;t run these.");
+    expect(h).toContain('title="WebFetch"');
+    expect(h).not.toContain("new commands");
+  });
+
+  it("uses gizai-core's text for the mark", () => {
+    expect(NEW_COMMANDS).toBe("new commands");
   });
 });
 

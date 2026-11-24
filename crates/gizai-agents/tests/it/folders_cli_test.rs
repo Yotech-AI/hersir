@@ -16,8 +16,26 @@ fn run() -> TaskRun {
               folders: vec![folder("/srv/shared", false), folder("/srv/out", true), folder("/home/u/My docs", false)], ..Default::default() }
 }
 
-/// The values after the variadic option `flag`, up to the next option.
+/// The values after the variadic option `flag`, up to the next option. GA-318: `--allowedTools` and `--disallowedTools` go as
+/// one argument, `<flag>=<rule>,<rule>,…`: their rules, split at the commas outside parentheses as Claude Code splits them.
 fn values(args: &[String], flag: &str) -> Vec<String> {
+    if flag.ends_with("Tools") {
+        assert!(!args.iter().any(|a| a == flag), "GA-318: {flag} as an argument of its own: {args:?}");
+        let prefix = format!("{flag}=");
+        let v = args.iter().find_map(|a| a.strip_prefix(prefix.as_str())).unwrap_or_else(|| panic!("{flag} missing in {args:?}"));
+        let (mut out, mut rule, mut depth) = (vec![], String::new(), 0);
+        for c in v.chars() {
+            match c {
+                ',' if depth == 0 => out.push(std::mem::take(&mut rule)),
+                _ => {
+                    depth += (c == '(') as i32 - (c == ')') as i32;
+                    rule.push(c);
+                }
+            }
+        }
+        out.push(rule);
+        return out;
+    }
     let at = args.iter().position(|a| a == flag).unwrap_or_else(|| panic!("{flag} missing in {args:?}"));
     args[at + 1..].iter().take_while(|a| !a.starts_with("--")).cloned().collect()
 }
@@ -43,10 +61,10 @@ fn claude_codes_deny_rules_take_no_slash_at_the_end_twice() {
 #[test]
 fn without_folders_claude_code_runs_as_before() {
     let e = cli::task_exec(&spec(Kind::ClaudeCode), &TaskRun { folders: vec![], ..run() });
-    assert!(!e.args.iter().any(|a| a == "--add-dir" || a == "--disallowedTools"), "{:?}", e.args);
+    assert!(!e.args.iter().any(|a| a == "--add-dir" || a.starts_with("--disallowedTools")), "{:?}", e.args);
     let only_change = cli::task_exec(&spec(Kind::ClaudeCode), &TaskRun { folders: vec![folder("/srv/out", true)], ..run() });
     assert_eq!(values(&only_change.args, "--add-dir"), ["/srv/out"]);
-    assert!(!only_change.args.iter().any(|a| a == "--disallowedTools"), "no read folder, no deny rule");
+    assert!(!only_change.args.iter().any(|a| a.starts_with("--disallowedTools")), "no read folder, no deny rule");
 }
 
 #[test]
@@ -133,7 +151,7 @@ fn claude_code_gets_the_runs_temp_folder_as_its_last_add_dir_without_a_deny_rule
     // without folders of its own: the temp folder alone, and no deny rule
     let e = cli::task_exec(&spec(Kind::ClaudeCode), &TaskRun { folders: vec![], ..with_temp() });
     assert_eq!(values(&e.args, "--add-dir"), [TEMP]);
-    assert!(!e.args.iter().any(|a| a == "--disallowedTools"), "{:?}", e.args);
+    assert!(!e.args.iter().any(|a| a.starts_with("--disallowedTools")), "{:?}", e.args);
 }
 
 #[test]

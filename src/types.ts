@@ -637,6 +637,13 @@ export type ProjectUsage = { projectId: string; number: string; key: string; nam
 export type Usage = { since: number; until: number; total: UsageTotals; days: UsageDay[]; agents: AgentUsage[]; projects: ProjectUsage[];
   chat: UsageTotals; noProject: UsageTotals };
 
+// ---- a project's Time tracking tab (gizai-core usage.rs, GA-331) ----
+/** One card and what all of its runs added up to. `runs`: the runs that started; `timeMs`: the ended runs' time (an interrupted run
+ *  counts at most the run time limit); `runningSince`: the start of the run working on it now; input tokens include cache reads
+ *  and writes. */
+export type CardTime = { taskId: string; identifier: string; title: string; column: string; archived: boolean; runs: number;
+  timeMs: number; runningSince: number | null; inputTokens: number; outputTokens: number };
+
 // ---- the Usage page's Subscription tab (gizai-core limits.rs) ----
 /** One reading of a subscription limit, as the coding CLI reported it in a run or chat turn. `usedPercent`: 0 to 100 (more past the
  *  cap), null when the CLI only said the limit was reached; `status`: allowed, allowed_warning (near it) or rejected (reached);
@@ -679,7 +686,8 @@ export type PreviewField = { label: string; value: string; from?: string | null 
 /** What a pending call does, as things are now: one plain line, what it is about and what changes, the text it saves or adds,
  *  what changes against the current version (a note, an agent's instructions), and why approving fails, when Gizai can tell. */
 export type PendingPreview = { line: string; fields: PreviewField[]; text?: string | null; diff?: DiffLine[] | null; warning?: string | null };
-/** GA-102: a call of the Team Lead's that wasn't run because its answer (`runId`) used a tool from outside Gizai (`outsideTool`). It
+/** GA-102: a call of the Team Lead's that wasn't run because its answer (`runId`) used a tool from outside Gizai (`outsideTool`), or
+ *  (GA-323, `outsideTool` is `NEW_COMMANDS` of lib/pending) because it gives an agent commands the Chief may only add with your OK. It
  *  waits under that answer until you approve it (it runs exactly as called, once) or discard it. status: pending, or running while
  *  an approval runs it. */
 export type PendingAction = { id: string; threadId: string; runId?: string | null; actorId: string; tool: string; args: Record<string, unknown>;
@@ -814,3 +822,20 @@ export type ToolsView = {
 /** The built-in browser in Settings → MCP servers: only its version and browser program change. */
 export type BrowserEntry = { version: string; program: string };
 export type BrowserView = BrowserEntry & { id: string; command: string; needs: BrowserNeeds; problem?: string | null; listed?: McpListed | null; usedBy: string[] };
+// Claude Desktop (GA-338's contract): Settings → MCP servers → Claude Desktop connects the Claude Desktop app to Hersir
+// through the hersir-mcp program, with a key of its own.
+export interface ClaudeDesktopStatus {
+  connected: boolean;
+  connectedAt: number | null;   // ms: when the current connection was made
+  configPath: string | null;    // Claude Desktop's settings file, when its folder exists on this computer
+  configHasHersir: boolean;     // that file has an mcpServers.hersir entry
+  shimPath: string | null;      // the hersir-mcp program; null when Hersir can't find it
+}
+export interface ClaudeDesktopConnection {
+  entry: string;                // the JSON to paste, with the key in it: shown only now
+  wroteConfig: boolean;         // Hersir added the entry to configPath
+  configPath: string | null;
+  backupPath: string | null;    // the copy of the old settings file, when Hersir wrote over one
+  configError: string | null;   // why Hersir didn't write the file, when it was asked to
+  status: ClaudeDesktopStatus;  // after connecting
+}

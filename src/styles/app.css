@@ -637,6 +637,17 @@ a.member:hover { border-color: var(--line-2); }
 .ma-trust-label { color: var(--text-2); }
 .ma-trust .warn { font-size: var(--fs-xs); color: var(--warning); }
 .ma-trust-web { margin-top: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
+/* GA-340: Settings → MCP servers → Claude Desktop (ClaudeDesktopSettings): Connect, its answer, and the entry to paste. */
+.cd { gap: 10px; color: var(--text); font-size: var(--fs-sm); line-height: 1.5; }
+.cd .cd-line { display: flex; align-items: flex-start; gap: 8px; }
+.cd .cd-line .icon { flex: none; margin-top: 2px; }
+.cd .cd-line.ok .icon { color: var(--success); }
+.cd .cd-check { display: grid; gap: 4px; justify-items: start; }
+.cd .cd-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.cd .cd-result { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--raised); overflow-wrap: anywhere; }
+.cd .cd-entry { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: start; gap: 6px; }
+.cd .cd-entry pre { justify-self: stretch; min-width: 0; max-height: 260px; margin: 0; padding: 8px 10px; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--bg); color: var(--text); font-size: var(--fs-xs); line-height: 1.5; white-space: pre; user-select: text; }
 .ct-head { display: flex; justify-content: flex-end; }
 .ct-group { display: grid; gap: 6px; margin-top: 6px; }
 .ct-label { color: var(--text-3); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.04em; }
@@ -646,6 +657,13 @@ a.member:hover { border-color: var(--line-2); }
    chips and UTC days on the others (design/islands-settings: Usage). */
 .usage-tools { flex: 1; justify-content: flex-end; min-width: 0; padding: 0 6px 0 12px; }
 .usage-tools > .faint { font-size: var(--fs-sm); }
+/* a project's Time tracking tab (GA-331): a working card's teal dot before its time; the footer's sums stay on one line */
+.card-time { display: inline-flex; align-items: center; gap: 7px; }
+.tablefoot > .card-time-sums { flex: none; white-space: nowrap; }
+/* its list: a fixed layout, so the numbers keep their widths and the Card column takes what is left, its title cut */
+.card-times { display: contents; }
+.card-times table.grid { table-layout: fixed; }
+.card-times .grid td { max-width: none; }
 .usage-page { gap: 18px; padding-top: 16px; }
 .usage-page .usage-metric { margin-top: 10px; }
 .usage-unknown { text-decoration: underline dotted var(--text-3); text-underline-offset: 3px; cursor: help; }

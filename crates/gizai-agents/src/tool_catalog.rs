@@ -199,9 +199,13 @@ pub fn switchable(kind: Kind, id: &str) -> bool {
     }
 }
 
-/// A built-in tool name: letters, digits, `_` and `-` (MCP tools are switched per server).
+/// A built-in tool name: letters, digits, `_` and `-`, starting with a letter (MCP tools are switched per server). GA-318:
+/// a run gives these to Claude Code as they are, and one that starts with `-` could pass for one of its own options, so a
+/// name like that (saved before this was checked) is never switchable, and never in a run. The same rule as
+/// `gizai_core::mcp_servers::valid_builtin_name` (this crate doesn't use gizai-core).
 pub fn valid_name(n: &str) -> bool {
-    !n.is_empty() && n.len() <= 64 && !n.starts_with("mcp__") && n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    n.starts_with(|c: char| c.is_ascii_alphabetic()) && n.len() <= 64 && !n.starts_with("mcp__")
+        && n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
 /// Whether an entry of an agent's allowed commands (Claude Code style: `Bash(git status:*)`, `WebFetch(domain:docs.rs)`)

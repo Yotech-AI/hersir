@@ -1,8 +1,9 @@
 //! Pending actions (GA-102): what a chat answer couldn't do after a tool from outside Gizai (`tools::NOT_AFTER_OUTSIDE`)
-//! waits under that answer until you approve it with one click or discard it. Approve runs exactly the stored call, as the
-//! Chief in its chat, with every other rule still in force (`tools::call_approved`), and only once; Discard runs
-//! nothing. Either way a note of Gizai's in the chat says what happened, and the Chief hears it at the start of its
-//! next answer there (`for_turn`). A decision doesn't start an answer, so once nothing waits and the Chief isn't
+//! waits under that answer until you approve it with one click or discard it; GA-323: so does a create_agent or
+//! update_agent that gives an agent a command chat doesn't give at once (`tools::Cx::keep_commands`), in any chat.
+//! Approve runs exactly the stored call, as the Chief in its chat, with every other rule still in force
+//! (`tools::call_approved`), and only once; Discard runs nothing. Either way a note of Gizai's in the chat says what
+//! happened, and the Chief hears it at the start of its next answer there (`for_turn`). A decision doesn't start an answer, so once nothing waits and the Chief isn't
 //! answering, a last note says its answer is done (GA-154, `ANSWER_DONE`). Only you decide: the UI's commands come here,
 //! and no tool of the Chief's lists, approves or discards a pending action. A board check never makes one: it uses no
 //! tool from outside Gizai.
@@ -183,8 +184,10 @@ pub fn for_turn(st: &AppState, thread_id: &str) -> ForTurn {
         let said = a.result_md.clone().unwrap_or_else(|| format!("{} {}", a.status, a.tool));
         format!("- {} (your {} call)", said.trim_end_matches('.'), a.tool)
     }).collect();
+    // GA-323: a call kept for the new commands it gives an agent waited for no tool from outside Gizai.
+    let after = if decided.iter().all(|a| a.outside_tool != core::NEW_COMMANDS) { " after a tool from outside Hersir" } else { "" };
     ForTurn {
-        line: format!("[Hersir: {you} decided on calls of yours that waited for their approval after a tool from outside Hersir:\n{}]", lines.join("\n")),
+        line: format!("[Hersir: {you} decided on calls of yours that waited for their approval{after}:\n{}]", lines.join("\n")),
         ids: decided.into_iter().map(|a| a.id).collect(),
     }
 }
