@@ -706,15 +706,18 @@ export type FileCheck = { ok: string[]; failed: string[] };
 /** A chat the Archive found, with the newest of its messages (yours or the Team Lead's) whose text matches; none when only
  *  its title matches, or for an empty search. */
 export type ChatHit = { thread: ChatThread; message?: ChatMessage | null };
-/** kind "pending" (GA-102): what you decided on a call that waited for you, with `action` (its id), `tool`, `status` and `run`. */
-export type ChatNoteMeta = { kind: "switch" | "limit" | "pending" | string; cli?: string; cliName?: string; limit?: string; resets?: string | null; messageIds?: string[];
-  action?: string; tool?: string; status?: string; run?: string | null };
+/** kind "pending" (GA-102): what you decided on a call that waited for you, with `action` (its id), `tool`, `status` and `run`.
+ *  GA-351: a message of yours that came from Claude Desktop (its ask_chief) has no kind, only `from: "claude-desktop"`. */
+export type ChatNoteMeta = { kind?: "switch" | "limit" | "pending" | string; cli?: string; cliName?: string; limit?: string; resets?: string | null; messageIds?: string[];
+  action?: string; tool?: string; status?: string; run?: string | null; from?: string };
 /** `seq`: the last change to the text being written that `draft` holds. */
 export type ChatStatus = { threadId: string; runId: string; draft: string; tool?: string | null; seq: number };
 /** A message sent while the Team Lead answers; `held`: it waits for Send now instead of going when the answer is done. */
 export type QueuedMessage = { id: string; threadId: string; bodyMd: string; createdAt: number; updatedAt: number; held: boolean;
   /** The files added to it; they go with it. */
-  files?: FileRow[] };
+  files?: FileRow[];
+  /** GA-351: its details, which it keeps when it goes: `{from: "claude-desktop"}` for a message from Claude Desktop. */
+  meta?: ChatNoteMeta | null };
 /** A coding CLI in Runs on under the chat's text box; `problem`: why it can't run the chat. */
 export type ChatCli = { id: string; name: string; kind: CliKind; problem?: string | null };
 export type ChatEvent =
