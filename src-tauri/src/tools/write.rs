@@ -1133,16 +1133,7 @@ pub(crate) fn write_doc(cx: &Cx, a: &Args) -> Result<Value, String> {
 }
 
 pub(crate) async fn attach_file(cx: &Cx<'_>, a: &Args) -> Result<Value, String> {
-    let raw = a.req("path")?;
-    // `~/…`, and on Windows `~\…` too
-    let path = match raw.strip_prefix("~/").or_else(|| raw.strip_prefix("~\\").filter(|_| cfg!(windows))) {
-        Some(rest) => std::path::PathBuf::from(gizai_core::clis::home()).join(rest),
-        None => std::path::PathBuf::from(&raw),
-    };
-    if !path.is_absolute() {
-        return Err(format!("{raw} is not an absolute path"));
-    }
-    allowed_attachment(cx, &raw, &path)?;
+    let path = attachable(cx, a)?;
     let (owner_type, owner_id, l) = if let Some(r) = a.opt("task") {
         let t = resolve::task(cx, &r)?;
         ("task", t.id.clone(), link("task", &t.id, &format!("{} {}", t.identifier, short(&t.title, 60))))
@@ -1163,11 +1154,29 @@ pub(crate) async fn attach_file(cx: &Cx<'_>, a: &Args) -> Result<Value, String> 
     Ok(json!({"ok": true, "file": {"id": f.id, "name": f.name, "size_bytes": f.size_bytes}, "link": l}))
 }
 
+/// The file attach_file names (`path`: absolute, or `~/…` from your home folder) when the Chief may attach it
+/// (`allowed_attachment`); else why not, and nothing is attached. GA-351: also asked before a call from the Chief's turn
+/// that answers Claude Desktop could be kept for your Approve (`tools::call_scoped`).
+pub(crate) fn attachable(cx: &Cx, a: &Args) -> Result<std::path::PathBuf, String> {
+    let raw = a.req("path")?;
+    // `~/…`, and on Windows `~\…` too
+    let path = match raw.strip_prefix("~/").or_else(|| raw.strip_prefix("~\\").filter(|_| cfg!(windows))) {
+        Some(rest) => std::path::PathBuf::from(gizai_core::clis::home()).join(rest),
+        None => std::path::PathBuf::from(&raw),
+    };
+    if !path.is_absolute() {
+        return Err(format!("{raw} is not an absolute path"));
+    }
+    allowed_attachment(cx, &raw, &path)?;
+    Ok(path)
+}
+
 /// Spec §8: the Chief attaches only a file the user named in this chat, one the user added to a message in this chat
 /// (its copy in the Chief's folder, `chat::lead_file_path`), or one inside its copies of the projects' code (`code`),
 /// never something it found elsewhere on the disk (keys, credentials). The copies hold only tracked files, so a
 /// repository's .env isn't among them. GA-341: Claude Desktop has no chat in Hersir to name or add a file in, so only the
-/// copies.
+/// copies. GA-351: the same for the Chief's turn that answers a message from Claude Desktop (`Desktop::Answering`), and a
+/// path in a message from Claude Desktop is never one the user named, in any turn.
 fn allowed_attachment(cx: &Cx, raw: &str, path: &std::path::Path) -> Result<(), String> {
     let real = path.canonicalize().map_err(|_| format!("can't read {raw}"))?;
     let in_copy = crate::code::dirs(cx.st).iter()
@@ -1176,13 +1185,14 @@ fn allowed_attachment(cx: &Cx, raw: &str, path: &std::path::Path) -> Result<(), 
     if in_copy {
         return Ok(());
     }
-    if cx.desktop {
+    if cx.desktop.limits() {
         return Err(format!("From Claude Desktop, attach_file takes only a file inside the Chief's copies of the projects' code; {raw} isn't \
                             one. Nothing was attached: the user can attach it themselves in Hersir."));
     }
     let named = cx.thread.is_some_and(|t| {
         gizai_core::chat::messages(cx.db(), t).unwrap_or_default().iter()
-            .filter(|m| m.role == "user")
+            // Saved as the user's, a message from Claude Desktop (ask_chief) still isn't one they typed (GA-351).
+            .filter(|m| m.role == "user" && !m.from_desktop())
             .filter_map(|m| m.body_md.as_deref())
             .any(|b| b.contains(raw) || b.contains(&*real.to_string_lossy()) || b.contains(&*path.to_string_lossy()))
     });

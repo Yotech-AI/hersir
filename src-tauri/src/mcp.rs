@@ -226,9 +226,12 @@ where
     // GA-338: Claude Desktop's lasting token says `{"client": "claude-desktop"}`; GA-341: it gets the Chief's tools with the
     // Chief's rules (`GizaiTools::desktop`).
     let client = grant.scope.get("client").and_then(|v| v.as_str()).map(str::to_string);
+    // GA-351: a Chief's turn that answers a message from Claude Desktop says `{"answers": "claude-desktop"}`: its calls get
+    // Claude Desktop's limits (`GizaiTools::answers`).
+    let answers = grant.scope.get(crate::tools::ANSWERS).and_then(|v| v.as_str()).map(str::to_string);
     let lasting = client.is_some();
     let db = st.db.clone();
-    let tools = GizaiTools { st, actor: grant.actor_id, thread, check, run, question, client };
+    let tools = GizaiTools { st, actor: grant.actor_id, thread, check, run, question, client, answers };
     if lasting {
         // GA-338: Claude Desktop keeps its connection while it runs, for days, and Disconnect revokes its token meanwhile:
         // the token is checked again before each message, and once it is revoked the connection ends, refused as a new
