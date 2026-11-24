@@ -30,8 +30,11 @@ const BIG_FILE: u64 = 512 << 20;
 /// Where the ranges of merged cards are kept: `refs/gizai/merged/<identifier>/base` and `/head`.
 pub const MERGED_REFS: &str = "refs/gizai/merged";
 /// The diff options every count and hunk is made with: no external diff program and no text conversion, so they are
-/// git's own counts of the files as they are, whatever the user's git config says.
-const PLAIN: [&str; 3] = ["--no-color", "--no-ext-diff", "--no-textconv"];
+/// git's own counts of the files as they are, whatever the user's git config says. And no submodule
+/// (`worktree::IGNORE_SUBMODULES`, GA-350): git never looks inside one, a nested repository a run committed included,
+/// whose own settings could start programs; a diff with your `diff.submodule=diff` would run its diff programs too. So a
+/// card's changes leave a submodule out: the changes inside it, and a new commit of it.
+const PLAIN: [&str; 4] = ["--no-color", "--no-ext-diff", "--no-textconv", crate::worktree::IGNORE_SUBMODULES];
 
 /// Where a card's changes come from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -278,7 +281,7 @@ pub fn between(repo: &Path, from: &str, to: &str) -> Result<Vec<FileChange>, Age
 
 /// The changes of the worktree at `wt` since commit `from` (its merge base with main): its commits and what isn't
 /// committed yet, the files git doesn't track yet (and doesn't ignore) as added. Each file with changes that aren't
-/// committed yet says so.
+/// committed yet says so. Submodules are left out (`PLAIN`): git never looks inside one.
 pub fn of_worktree(wt: &Path, from: &str) -> Result<Vec<FileChange>, AgentError> {
     check_id(from)?;
     let mut args = vec!["diff", "--raw", "--numstat", "-z", "-M"];
@@ -286,7 +289,8 @@ pub fn of_worktree(wt: &Path, from: &str) -> Result<Vec<FileChange>, AgentError>
     args.extend([from, "--"]);
     let mut files = parse_diff(&git_text(wt, &args)?);
     // what differs from the worktree's own latest commit isn't committed yet
-    let touched: HashSet<String> = git_text(wt, &["diff", "--name-only", "-z", "--no-renames", "--no-ext-diff", "HEAD", "--"])?
+    let touched: HashSet<String> = git_text(wt, &["diff", "--name-only", "-z", "--no-renames", "--no-ext-diff",
+                                                  crate::worktree::IGNORE_SUBMODULES, "HEAD", "--"])?
         .split('\0').filter(|p| !p.is_empty()).map(String::from).collect();
     for f in &mut files {
         f.uncommitted = touched.contains(&f.path) || f.old_path.as_ref().is_some_and(|o| touched.contains(o));
