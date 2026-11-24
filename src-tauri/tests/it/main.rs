@@ -25,6 +25,7 @@ mod chief_archive_test;
 mod chief_card_time_test;
 mod chief_flow_test;
 mod chief_folder_flow_test;
+mod claude_desktop_answer_limits_test;
 mod claude_desktop_ask_chief_test;
 mod claude_desktop_board_view_test;
 mod claude_desktop_chief_test;
