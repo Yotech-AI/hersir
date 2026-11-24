@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { getCoreRowModel, getSortedRowModel, useReactTable, type ColumnDef, type SortingState } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
@@ -16,7 +16,7 @@ export type Col<T> = {
 
 type Item<T> = { type: "group"; name: string; count: number } | { type: "row"; row: T };
 
-export function DataTable<T>({ rows, columns, rowId, onRowClick, groupBy, groupOrder, groupIcon, initialCollapsed, keyboardNav, empty, footer, initialSort }: {
+export function DataTable<T>({ rows, columns, rowId, onRowClick, groupBy, groupOrder, groupIcon, initialCollapsed, keyboardNav, empty, footer, initialSort, head }: {
   rows: T[];
   columns: Col<T>[];
   rowId: (row: T) => string;
@@ -30,6 +30,9 @@ export function DataTable<T>({ rows, columns, rowId, onRowClick, groupBy, groupO
   empty?: ReactNode;
   footer?: ReactNode;
   initialSort?: SortingState;
+  /** Above the table (or the empty state), in the same scroller: it scrolls away with the rows (a project's Time tracking tab,
+   *  GA-354). */
+  head?: ReactNode;
 }) {
   const [sorting, setSorting] = useState<SortingState>(initialSort ?? []);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set(initialCollapsed ?? []));
@@ -74,11 +77,26 @@ export function DataTable<T>({ rows, columns, rowId, onRowClick, groupBy, groupO
   }, [sorted, groupBy, groupOrder, collapsed]);
 
   const scroller = useRef<HTMLDivElement>(null);
+  // the head's height: the rows start that far down the scroller (the virtualizer's scrollMargin)
+  const headBox = useRef<HTMLDivElement>(null);
+  const [headH, setHeadH] = useState(0);
+  const hasHead = head != null && head !== false;
+  useLayoutEffect(() => {
+    const el = headBox.current;
+    if (!el) { setHeadH(0); return; }
+    const measure = () => setHeadH(el.offsetHeight);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const seen = new ResizeObserver(measure);
+    seen.observe(el);
+    return () => seen.disconnect();
+  }, [hasHead]);
   const rowH = 34;
-  const virt = useVirtualizer({ count: items.length, getScrollElement: () => scroller.current, estimateSize: () => rowH, overscan: 14 });
+  const virt = useVirtualizer({ count: items.length, getScrollElement: () => scroller.current, estimateSize: () => rowH, overscan: 14, scrollMargin: headH });
   const vItems = virt.getVirtualItems();
-  const padTop = vItems.length ? vItems[0].start : 0;
-  const padBottom = vItems.length ? virt.getTotalSize() - vItems[vItems.length - 1].end : 0;
+  // an item's start and end count the scrollMargin, the total size doesn't
+  const padTop = vItems.length ? vItems[0].start - headH : 0;
+  const padBottom = vItems.length ? virt.getTotalSize() - (vItems[vItems.length - 1].end - headH) : 0;
 
   const live = useRef({ items, focusId, onRowClick, rowId, virt });
   live.current = { items, focusId, onRowClick, rowId, virt };
@@ -109,6 +127,7 @@ export function DataTable<T>({ rows, columns, rowId, onRowClick, groupBy, groupO
   return (
     <>
       <div className="content" ref={scroller}>
+        {hasHead && <div className="table-head" ref={headBox}>{head}</div>}
         {rows.length === 0 && empty ? (
           <div className="page-pad">{empty}</div>
         ) : (

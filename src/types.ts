@@ -637,12 +637,21 @@ export type ProjectUsage = { projectId: string; number: string; key: string; nam
 export type Usage = { since: number; until: number; total: UsageTotals; days: UsageDay[]; agents: AgentUsage[]; projects: ProjectUsage[];
   chat: UsageTotals; noProject: UsageTotals };
 
-// ---- a project's Time tracking tab (gizai-core usage.rs, GA-331) ----
-/** One card and what all of its runs added up to. `runs`: the runs that started; `timeMs`: the ended runs' time (an interrupted run
- *  counts at most the run time limit); `runningSince`: the start of the run working on it now; input tokens include cache reads
- *  and writes. */
+// ---- a project's Time tracking tab (gizai-core usage.rs, GA-331, GA-354) ----
+/** One card and what its runs in the period added up to (all of them without a period). `runs`: the runs that started;
+ *  `timeMs`: the ended runs' time (an interrupted run counts at most the run time limit); `runningSince`: the start of the run
+ *  working on it now; input tokens include cache reads and writes; `costUsdMicros`: the API cost that is known, an estimate at
+ *  API prices; `unknownCostRuns`: runs with tokens but no cost. */
 export type CardTime = { taskId: string; identifier: string; title: string; column: string; archived: boolean; runs: number;
-  timeMs: number; runningSince: number | null; inputTokens: number; outputTokens: number };
+  timeMs: number; runningSince: number | null; inputTokens: number; outputTokens: number; costUsdMicros: number; unknownCostRuns: number };
+/** One UTC day (`dayStart`, midnight UTC): what the runs that started on it added up to. */
+export type TimeDay = { dayStart: number; runs: number; timeMs: number; inputTokens: number; outputTokens: number;
+  costUsdMicros: number; unknownCostRuns: number };
+/** The tab for a period: the runs that started from `since` up to (not including) `until`, both null for all of them.
+ *  `firstRun`: when the project's first run started, whatever the period. `cards`: all time, every card of the project; in a
+ *  period, the cards with a run that started in it. `days`: all time, from the day of the first run to today; in a period,
+ *  each of its days, oldest first. */
+export type ProjectTime = { since: number | null; until: number | null; firstRun: number | null; cards: CardTime[]; days: TimeDay[] };
 
 // ---- the Usage page's Subscription tab (gizai-core limits.rs) ----
 /** One reading of a subscription limit, as the coding CLI reported it in a run or chat turn. `usedPercent`: 0 to 100 (more past the
