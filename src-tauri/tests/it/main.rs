@@ -36,6 +36,7 @@ mod claude_desktop_flow_test;
 mod claude_desktop_views_test;
 mod claude_memory_switch_test;
 mod cli_run_flow_test;
+mod cloud_flow_test;
 mod commands_off_main_thread_test;
 mod editor_flow_test;
 mod folders_flow_test;

@@ -7,6 +7,8 @@ pub mod chat;
 // Claude Desktop's chat reads your Hersir board: its lasting token and the entry for its settings (GA-338).
 pub mod claude_desktop;
 pub mod clis;
+// Hersir Cloud: signing in, the keys, Cloud Backup and Restore from Hersir Cloud (GA-359).
+pub mod cloud;
 pub mod code;
 pub mod devdocs;
 pub mod docs_server;
@@ -110,6 +112,9 @@ pub struct AppState {
     pub backups: Arc<backups::Backups>,
     /// The restore that runs now, or the last one since Gizai started (see `restore`).
     pub restores: Arc<restore::Restores>,
+    /// Hersir Cloud: the sign-in that waits, the cloud backup or download that runs, and the plan and key as seen last
+    /// (see `cloud`).
+    pub cloud: Arc<cloud::Cloud>,
     /// LibreOffice, which makes the PDF copies of Pages, Keynote, Numbers, .doc and .ppt files for the Chief (GA-311, see
     /// `readable`): its profile folder of Hersir's own, `<data>/libreoffice`, and its limit. Tests may set a fake program.
     pub libreoffice: Arc<gizai_agents::libreoffice::LibreOffice>,
@@ -330,6 +335,13 @@ fn open_data(dir: PathBuf, notify: Arc<dyn Fn(runs::Note) + Send + Sync>, defaul
     let (db, restored) = gizai_core::restore::open(&dir).map_err(|e| e.to_string())?;
     if let Some(r) = &restored {
         eprintln!("gizai: {}", r.message);
+        // GA-359: restored from the first screen (Restore from Hersir Cloud), the data has its own team, so the first
+        // start's onboarding, which this computer's settings kept waiting, no longer waits.
+        if r.ok
+            && let Err(e) = gizai_core::onboarding::skip(&db)
+        {
+            eprintln!("gizai: skipping the onboarding after the restore failed: {e}");
+        }
     }
     timed.part("the database");
     let seed = if default_agents {
@@ -422,7 +434,8 @@ fn open_data(dir: PathBuf, notify: Arc<dyn Fn(runs::Note) + Send + Sync>, defaul
                   github: Arc::new(github::Logins::default()), updates: Arc::new(update::Updates::default()), _lock: Arc::new(lock), notify,
                   desktop: notifications::Desktop::silent(), inbox: Arc::new(notifications::Watch::default()),
                   terminals: Arc::new(gizai_agents::terminal::Terminals::default()), streams: Arc::new(stream::Streams::default()),
-                  backups: Arc::new(backups::Backups::default()), restores: Arc::new(restore::Restores::default()), libreoffice };
+                  backups: Arc::new(backups::Backups::default()), restores: Arc::new(restore::Restores::default()),
+                  cloud: Arc::new(cloud::Cloud::default()), libreoffice };
     // GA-102: the Chief's calls that wait for your approval stay waiting; one approved while Gizai closed counts as
     // failed, so it never runs twice, and its chat says so.
     pending::at_start(&st);
@@ -491,6 +504,7 @@ fn ui_notifier(app: AppHandle) -> Arc<dyn Fn(runs::Note) + Send + Sync> {
             runs::Note::TerminalsChanged(list) => app.emit("terminals-changed", list),
             runs::Note::BackupsChanged(status) => app.emit("backups-changed", status),
             runs::Note::RestoreChanged(status) => app.emit("restore-changed", status),
+            runs::Note::CloudChanged(status) => app.emit("cloud-changed", status),
         };
     })
 }
@@ -602,6 +616,9 @@ pub fn test_state(dir: &std::path::Path) -> AppState {
         st.keychain = Arc::new(gizai_agents::secrets::MemoryKeychain::default());
         st.tokens = Arc::new(gizai_agents::oauth::TokenStore::new(st.keychain.clone()));
     }
+    // Never the real Hersir Cloud in tests (GA-359): an address on this computer where nothing answers, until a test points
+    // it at the fake one (`cloud::Cloud::set_config`).
+    st.cloud.set_config(cloud::Config { server: "http://127.0.0.1:9".into(), client_id: cloud::CLIENT_ID.into(), entitlement_key: None });
     // No LibreOffice in tests, wherever it is installed (GA-311): a test that wants it sets `program` (Find for the real
     // one, At for a fake), and may set a shorter `limit`.
     st.libreoffice = Arc::new(gizai_agents::libreoffice::LibreOffice {
@@ -829,6 +846,27 @@ pub fn run() {
                     }
                 });
             }
+            // Cloud Backup (GA-359), on the same ticks: 2 minutes after start, then every hour by the wall clock, the plan
+            // is asked for again, and a daily cloud backup is made when the last one is a day old and something changed.
+            // Headless test and screenshot runs leave Hersir Cloud alone.
+            if !test_run {
+                let st = state.clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(backups::FIRST_CHECK_AFTER).await;
+                    let mut last = None;
+                    let mut tick = tokio::time::interval(backups::TICK);
+                    loop {
+                        tick.tick().await;
+                        let now = gizai_core::ids::now_ms();
+                        if !backups::check_due(last, now) {
+                            continue;
+                        }
+                        last = Some(now);
+                        let st = st.clone();
+                        let _ = tokio::task::spawn_blocking(move || cloud::hourly(&st, now)).await;
+                    }
+                });
+            }
             // Once a minute the agents take cards that had to wait (the run limit was full, Gizai just started), and the
             // Chief checks the board when its interval has passed; only new findings start it. The cards start on
             // their own (GA-191): the board check doesn't wait for a card's fetch and install.
@@ -895,6 +933,10 @@ pub fn run() {
             commands::backup_status, commands::save_backup_settings, commands::list_backups, commands::back_up_now,
             commands::start_restore, commands::restore_status, commands::cancel_restore, commands::restart_to_restore,
             commands::dismiss_restore_result,
+            cloud::cloud_status, cloud::cloud_sign_in, cloud::cloud_cancel_sign_in, cloud::cloud_sign_out, cloud::cloud_make_key,
+            cloud::cloud_confirm_recovery, cloud::cloud_enter_recovery, cloud::cloud_new_recovery, cloud::cloud_save_settings,
+            cloud::cloud_back_up_now, cloud::cloud_list_backups, cloud::cloud_start_restore, cloud::cloud_computers,
+            cloud::cloud_remove_computer, cloud::cloud_open_account,
             editor::editor_folders, editor::editor_list, editor::editor_read, editor::editor_write, editor::editor_create,
             editor::editor_rename, editor::editor_delete, editor::editor_files, editor::editor_search, editor::editor_git,
             editor::editor_versions, editor::editor_apps, editor::open_in_app, editor::editor_main, editor::editor_fetch,
