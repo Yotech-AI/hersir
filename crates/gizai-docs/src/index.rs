@@ -392,11 +392,9 @@ pub fn build(input: Input) -> Index {
         groups.push(routes);
         probes.push("routes".to_string());
     }
-    let mut problems: Vec<Problem> = input.reference.partial.iter().map(|file| Problem {
-        file: file.clone(),
-        message: "has syntax the parser can't read, so its declarations may be incomplete".into(),
-        line: None,
-    }).collect();
+    let mut problems: Vec<Problem> = input.reference.partial.iter().map(|file| (file, PARTIAL))
+        .chain(input.reference.cut_off.iter().map(|file| (file, CUT_OFF)))
+        .map(|(file, message)| Problem { file: file.clone(), message: message.into(), line: None }).collect();
     problems.extend(input.problems);
     let mcp_tools = crate::mcp::tools(&input.reference, &entries);
     let mut index = Index {
@@ -438,6 +436,10 @@ pub fn build(input: Input) -> Index {
 
 /// Where a project switches a section off, as the page names it.
 pub const SWITCH: &str = "Edit project → Docs";
+/// The Reference's problems: a file with syntax its grammar can't read, and one Hersir stopped reading at its limit
+/// (`crate::FILE_TIME`, `crate::MATCH_LIMIT`).
+const PARTIAL: &str = "has syntax the parser can't read, so its declarations may be incomplete";
+const CUT_OFF: &str = "took too long to read, so its declarations may be incomplete";
 
 /// Leaves the switched-off sections out of `index` whole, not just hidden: whatever the page can reach is in the index.
 /// With the Reference off, the MCP tools and the endpoints its routes make stay, without their links to the code.
@@ -448,8 +450,7 @@ fn switch_off(index: &mut Index, off: &[String]) {
                 index.entries.clear();
                 index.groups.clear();
                 index.kinds.clear();
-                let partial = "has syntax the parser can't read, so its declarations may be incomplete";
-                index.problems.retain(|p| p.message != partial);
+                index.problems.retain(|p| p.message != PARTIAL && p.message != CUT_OFF);
                 index.stats = Stats { files: 0, entries: 0, described: 0, problems: index.problems.len(), ..index.stats.clone() };
                 index.mcp_tools.iter_mut().for_each(|t| t.entry.clear());
             }
@@ -731,18 +732,13 @@ fn guide(g: &guides::Guide, order: usize) -> IndexGuide {
     }
 }
 
-/// One of the project's files for an entry's Source: only a file git tracks that the Reference reads, not a link, at
-/// most `MAX_BYTES`.
+/// One of the project's files for an entry's Source: only a file git tracks that the Reference reads, a plain file and
+/// not a link (`crate::read_whole`), at most `MAX_BYTES`.
 pub fn source(repo: &Path, files: &[String], path: &str) -> Option<SourceFile> {
     if !files.iter().any(|f| f == path) || crate::lang_of(path).is_none() || crate::skipped(path) {
         return None;
     }
-    let full = repo.join(path);
-    let meta = std::fs::symlink_metadata(&full).ok()?;
-    if !meta.is_file() || meta.len() > crate::MAX_BYTES {
-        return None;
-    }
-    let text = std::fs::read_to_string(&full).ok()?;
+    let text = crate::read_whole(repo, path, crate::MAX_BYTES)?;
     Some(SourceFile { path: path.to_string(), lines: text.split('\n').map(str::to_string).collect() })
 }
 

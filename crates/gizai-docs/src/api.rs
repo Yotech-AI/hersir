@@ -26,9 +26,11 @@ pub struct Route {
 const HTTP: [&str; 7] = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 const SCRIPTS: [&str; 5] = ["ts", "tsx", "js", "jsx", "mjs"];
 
-/// The routes in `files` (relative to `repo`, as git lists them): Next.js's, then Laravel's, each in file order.
+/// The routes in `files` (relative to `repo`, as git lists them): Next.js's, then Laravel's, each in file order. Each
+/// route file is read the safe way (`crate::read_text`, GA-362): a plain file only, never through a link, at most
+/// `MAX_BYTES` of it.
 pub fn api(repo: &Path, files: &[String]) -> Vec<Route> {
-    let read = |f: &str| std::fs::read_to_string(repo.join(f)).ok();
+    let read = |f: &str| crate::read_text(repo, f, crate::MAX_BYTES as usize);
     let mut out = next_routes(files, &read);
     for f in files.iter().filter(|f| laravel_file(f)) {
         if let Some(text) = read(f) {

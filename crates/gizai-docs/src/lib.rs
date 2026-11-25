@@ -3,7 +3,9 @@
 //! model, controller or migration…), the comment right above it and its text. TypeScript, TSX, JavaScript, PHP, Dart,
 //! Kotlin, and the script blocks of Vue and Svelte files (read as TSX). Dart's and Kotlin's queries are new: the grammars
 //! yodocs read named their nodes differently.
-//! The caller lists the files (git's tracked files) and this reads them from disk: it starts no program.
+//! The caller lists the files (git's tracked files) and this reads them from disk: it starts no program. Every file is
+//! read the one safe way (`open_plain`): a plain file only, never through a link, never waiting on a FIFO, and never
+//! more than a limit.
 pub mod agents;
 pub mod api;
 pub mod content;
@@ -13,12 +15,18 @@ pub mod markdown;
 pub mod mcp;
 pub mod openapi;
 
+use std::cell::Cell;
 use std::collections::HashMap;
-use std::path::Path;
+use std::fs::File;
+use std::io::Read;
+use std::ops::ControlFlow;
+use std::path::{Component, Path};
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use streaming_iterator::StreamingIterator;
-use tree_sitter::{Language, Node, Parser, Query, QueryCursor};
+use tree_sitter::{Language, Node, ParseOptions, ParseState, Parser, Query, QueryCursor, QueryCursorOptions, QueryCursorState};
 
 /// One declaration, as Docs → Reference lists it.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -40,8 +48,9 @@ pub struct Entry {
     pub text: String,
 }
 
-/// What Docs → Reference shows: the declarations by file and line, how many files were read and which, and the files
-/// with syntax their grammar can't read, whose declarations may be incomplete.
+/// What Docs → Reference shows: the declarations by file and line, how many files were read and which, the files with
+/// syntax their grammar can't read, and the files Hersir stopped reading at `FILE_TIME` or `MATCH_LIMIT`: the
+/// declarations of both may be incomplete.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Reference {
@@ -49,12 +58,20 @@ pub struct Reference {
     pub files: usize,
     pub read: Vec<String>,
     pub partial: Vec<String>,
+    pub cut_off: Vec<String>,
 }
 
 /// A file bigger than this is left out: generated or bundled code, not something written by hand.
 pub const MAX_BYTES: u64 = 512 * 1024;
 /// At most this many files are read.
 pub const MAX_FILES: usize = 5000;
+/// How long one file's parse and query may take together (GA-362): then Hersir stops and keeps the declarations found so
+/// far. A file can be written to make tree-sitter slow (156 KB of nested `[` took 15 s), and the Docs page waits for
+/// every file. A file of 512 KB written by hand takes well under a tenth of this.
+pub const FILE_TIME: Duration = Duration::from_secs(1);
+/// At most this many matches in progress at once in a file's query (tree-sitter's match limit, GA-362). Past it the
+/// oldest is dropped, so the file's declarations may be incomplete and it counts as cut off.
+pub const MATCH_LIMIT: u32 = 256;
 /// An entry's text stops after this many lines.
 pub const TEXT_LINES: usize = 200;
 /// Members, imports and PHP's namespace and use lines are left out: they are inside the classes listed, or not something
@@ -75,15 +92,79 @@ enum Lang {
     Component,
 }
 
-/// A file git tracks in `repo`, as text: at most `max` bytes of it, not through a link (which could reach a file
-/// outside the project), None when it isn't a plain file.
-pub(crate) fn read_text(repo: &Path, path: &str, max: usize) -> Option<String> {
-    let full = repo.join(path);
-    if !std::fs::symlink_metadata(&full).ok()?.is_file() {
+/// A file git tracks in `repo` (`path` relative to it, as git lists it), opened for reading when it is a plain file,
+/// with its size; None for anything else (GA-362). Never through a link: a tracked link could point at `/dev/zero`, which
+/// never ends, or at a file outside the project (`O_NOFOLLOW`; on Windows the link itself is opened, a reparse point,
+/// and isn't a plain file). Without waiting: opening a FIFO waits for a writer, for good (`O_NONBLOCK`, cleared again
+/// once the file is known to be plain). And checked on the open file, so nothing can be swapped in after the check.
+fn open_plain(repo: &Path, path: &str) -> Option<(File, u64)> {
+    // relative and inside the folder: no `..`, no root or drive
+    if path.is_empty() || !Path::new(path).components().all(|c| matches!(c, Component::Normal(_))) {
         return None;
     }
-    let bytes = std::fs::read(&full).ok()?;
-    Some(String::from_utf8_lossy(&bytes[..bytes.len().min(max)]).into_owned())
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        // FILE_FLAG_OPEN_REPARSE_POINT: a link or junction is opened itself, not what it points at
+        const OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+        options.custom_flags(OPEN_REPARSE_POINT);
+    }
+    let file = options.open(repo.join(path)).ok()?;
+    let meta = file.metadata().ok()?;
+    if !meta.is_file() {
+        return None;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::fd::AsRawFd;
+        // a plain file reads as usual from here: some file systems would honour O_NONBLOCK on a read
+        let fd = file.as_raw_fd();
+        // SAFETY: fcntl on a descriptor this function owns (`file`), with flags only
+        let cleared = unsafe {
+            let flags = libc::fcntl(fd, libc::F_GETFL);
+            flags >= 0 && libc::fcntl(fd, libc::F_SETFL, flags & !libc::O_NONBLOCK) >= 0
+        };
+        if !cleared {
+            return None;
+        }
+    }
+    Some((file, meta.len()))
+}
+
+/// At most `limit` bytes of an open file (`take`): a file that grows while it is read stops there all the same.
+fn read_upto(file: File, limit: u64, size: u64) -> Option<Vec<u8>> {
+    let mut bytes = Vec::with_capacity(usize::try_from(size.min(limit)).unwrap_or(0));
+    file.take(limit).read_to_end(&mut bytes).ok()?;
+    Some(bytes)
+}
+
+/// A file git tracks in `repo`, as text (`open_plain`): at most `max` bytes of it, None when it isn't a plain file.
+pub(crate) fn read_text(repo: &Path, path: &str, max: usize) -> Option<String> {
+    let (file, size) = open_plain(repo, path)?;
+    let bytes = read_upto(file, max as u64, size)?;
+    Some(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+/// A file git tracks in `repo`, whole and as UTF-8 (`open_plain`): None when it isn't a plain file, is bigger than `max`
+/// bytes (left out, not cut short) or isn't UTF-8.
+pub(crate) fn read_whole(repo: &Path, path: &str, max: u64) -> Option<String> {
+    let (file, size) = open_plain(repo, path)?;
+    if size > max {
+        return None;
+    }
+    // one byte more than allowed tells a file that grew past `max` since it was opened
+    let bytes = read_upto(file, max + 1, size)?;
+    if bytes.len() as u64 > max {
+        return None;
+    }
+    String::from_utf8(bytes).ok()
 }
 
 pub(crate) fn lang_of(path: &str) -> Option<Lang> {
@@ -128,50 +209,137 @@ fn grammar(lang: Lang) -> Grammar {
     Grammar { language, query }
 }
 
+/// How a file's read ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Outcome {
+    Whole,
+    /// The grammar met syntax it can't read.
+    Partial,
+    /// Stopped at `FILE_TIME`, or past `MATCH_LIMIT`.
+    CutOff,
+}
+
+/// What a view of the Reference keeps for the next view of the same repository (`reference_kept`, GA-362): each file's
+/// declarations and how its read ended, by its path, with a hash of the text they came from. The next view reads every
+/// file again but parses only the ones whose text changed: a new commit, or an edit not committed yet. So a file that
+/// runs into `FILE_TIME` costs that time once, not at every view.
+#[derive(Debug, Default)]
+pub struct Kept {
+    files: HashMap<String, KeptFile>,
+}
+
+#[derive(Debug)]
+struct KeptFile {
+    hash: [u8; 32],
+    entries: Vec<Entry>,
+    outcome: Outcome,
+}
+
+impl Kept {
+    /// How many files it keeps.
+    pub fn len(&self) -> usize {
+        self.files.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.files.is_empty()
+    }
+}
+
 /// The declarations in `files` (paths relative to `repo`, as git lists them), in file order and by line within a file.
-/// Files in installed, built or generated folders, minified or declaration files, files over `MAX_BYTES` and files that
-/// aren't UTF-8 are left out; at most `MAX_FILES` files are read.
+/// Files in installed, built or generated folders, minified or declaration files, files over `MAX_BYTES`, files that
+/// aren't UTF-8 and anything that isn't a plain file (`read_whole`) are left out; at most `MAX_FILES` files are read,
+/// each for at most `FILE_TIME`.
 pub fn reference(repo: &Path, files: &[String]) -> Reference {
+    reference_kept(repo, files, &mut Kept::default())
+}
+
+/// `reference`, reusing what the last view of this repository kept (`kept`) for every file whose text is the same, and
+/// keeping this view's for the next one.
+pub fn reference_kept(repo: &Path, files: &[String], kept: &mut Kept) -> Reference {
     let mut grammars: HashMap<Lang, Grammar> = HashMap::new();
     let mut out = Reference::default();
+    let mut now: HashMap<String, KeptFile> = HashMap::new();
     let wanted = files.iter().filter_map(|p| lang_of(p).map(|l| (p, l))).filter(|(p, _)| !skipped(p)).take(MAX_FILES);
     for (path, lang) in wanted {
-        let full = repo.join(path);
-        // symlink_metadata: a link git tracks is the link, and reading through it could reach a file outside the project
-        if std::fs::symlink_metadata(&full).map_or(true, |m| !m.is_file() || m.len() > MAX_BYTES) {
-            continue;
-        }
-        let Ok(text) = std::fs::read_to_string(&full) else { continue };
-        let g = grammars.entry(lang).or_insert_with(|| grammar(lang));
+        let Some(text) = read_whole(repo, path, MAX_BYTES) else { continue };
         out.files += 1;
         out.read.push(path.clone());
-        let complete = if lang == Lang::Component {
-            out.entries.push(component_entry(path, &text));
-            script_blocks(&text).into_iter().all(|(offset, block)| read(g, lang, path, block, &text, offset, &mut out.entries))
-        } else {
-            read(g, lang, path, &text, &text, 0, &mut out.entries)
+        let hash: [u8; 32] = Sha256::digest(text.as_bytes()).into();
+        let file = match kept.files.remove(path) {
+            Some(file) if file.hash == hash => file,
+            _ => {
+                let g = grammars.entry(lang).or_insert_with(|| grammar(lang));
+                let mut entries = vec![];
+                let outcome = read_file(g, lang, path, &text, &mut entries);
+                KeptFile { hash, entries, outcome }
+            }
         };
-        if !complete {
-            out.partial.push(path.clone());
+        out.entries.extend(file.entries.iter().cloned());
+        match file.outcome {
+            Outcome::Whole => {}
+            Outcome::Partial => out.partial.push(path.clone()),
+            Outcome::CutOff => out.cut_off.push(path.clone()),
         }
+        now.insert(path.clone(), file);
     }
+    // only this view's files: one deleted or no longer read isn't kept
+    kept.files = now;
     out
 }
 
-/// Reads the declarations in `text` (all of a file, or a script block `offset` lines into it) into `out`. False when the
-/// grammar met syntax it can't read. `file`: the whole file, for the kinds that depend on what it imports.
-fn read(g: &Grammar, lang: Lang, path: &str, text: &str, file: &str, offset: usize, out: &mut Vec<Entry>) -> bool {
+/// Reads one file's declarations into `out`, within `FILE_TIME`: a .vue or .svelte file's script blocks one after the
+/// other, until one isn't read whole.
+fn read_file(g: &Grammar, lang: Lang, path: &str, text: &str, out: &mut Vec<Entry>) -> Outcome {
+    let until = Instant::now() + FILE_TIME;
+    if lang != Lang::Component {
+        return read(g, lang, path, text, text, 0, until, out);
+    }
+    out.push(component_entry(path, text));
+    for (offset, block) in script_blocks(text) {
+        let outcome = read(g, lang, path, block, text, offset, until, out);
+        if outcome != Outcome::Whole {
+            return outcome;
+        }
+    }
+    Outcome::Whole
+}
+
+/// Reads the declarations in `text` (all of a file, or a script block `offset` lines into it) into `out`, until `until`:
+/// the parse, the query and the work on each match stop there, keeping what was found (CutOff), as they do past
+/// `MATCH_LIMIT`. Partial when the grammar met syntax it can't read. `file`: the whole file, for the kinds that depend on
+/// what it imports.
+#[allow(clippy::too_many_arguments)]
+fn read(g: &Grammar, lang: Lang, path: &str, text: &str, file: &str, offset: usize, until: Instant, out: &mut Vec<Entry>) -> Outcome {
     let mut parser = Parser::new();
     if parser.set_language(&g.language).is_err() {
-        return false;
+        return Outcome::Partial;
     }
-    let Some(tree) = parser.parse(text, None) else { return false };
+    let stopped = Cell::new(false);
+    let late = || {
+        if Instant::now() >= until {
+            stopped.set(true);
+        }
+        stopped.get()
+    };
+    let bytes = text.as_bytes();
+    let mut parsing = |_: &ParseState| if late() { ControlFlow::Break(()) } else { ControlFlow::Continue(()) };
+    let tree = parser.parse_with_options(&mut |at: usize, _| bytes.get(at..).unwrap_or_default(), None,
+        Some(ParseOptions::new().progress_callback(&mut parsing)));
+    let Some(tree) = tree else { return if stopped.get() { Outcome::CutOff } else { Outcome::Partial } };
     let lines: Vec<&str> = text.split('\n').collect();
     let names = g.query.capture_names();
     let mut cursor = QueryCursor::new();
-    let mut matches = cursor.matches(&g.query, tree.root_node(), text.as_bytes());
+    cursor.set_match_limit(MATCH_LIMIT);
+    let mut querying = |_: &QueryCursorState| if late() { ControlFlow::Break(()) } else { ControlFlow::Continue(()) };
+    let mut matches = cursor.matches_with_options(&g.query, tree.root_node(), bytes,
+        QueryCursorOptions::new().progress_callback(&mut querying));
     let mut found = vec![];
     while let Some(m) = matches.next() {
+        // the work on one match can be long too (the comment above it, what it extends), so the time counts here as well
+        if late() {
+            break;
+        }
         let Some(sym) = m.captures().iter().find(|c| names[c.index as usize].starts_with("sym.")) else { continue };
         let kind = &names[sym.index as usize]["sym.".len()..];
         if LEFT_OUT.contains(&kind) {
@@ -193,10 +361,17 @@ fn read(g: &Grammar, lang: Lang, path: &str, text: &str, file: &str, offset: usi
             text: first_lines(body, TEXT_LINES),
         });
     }
+    drop(matches);
     found.sort_by_key(|e| e.line);
     found.dedup_by(|a, b| a.line == b.line && a.name == b.name);
     out.append(&mut found);
-    !tree.root_node().has_error()
+    if stopped.get() || cursor.did_exceed_match_limit() {
+        Outcome::CutOff
+    } else if tree.root_node().has_error() {
+        Outcome::Partial
+    } else {
+        Outcome::Whole
+    }
 }
 
 /// A .vue or .svelte file is a component named after the file, whatever its script declares.

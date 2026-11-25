@@ -1810,10 +1810,12 @@ dependencies = [
 name = "gizai-docs"
 version = "0.20.1"
 dependencies = [
+ "libc",
  "pulldown-cmark",
  "regex",
  "serde",
  "serde_json",
+ "sha2",
  "streaming-iterator",
  "tempfile",
  "tree-sitter",
