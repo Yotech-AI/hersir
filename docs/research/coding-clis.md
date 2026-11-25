@@ -155,3 +155,82 @@ A profile also says whether its CLI splits a command line on `&&`, `;`, `|` and 
 The chat turn is the most Claude Code-bound part of Hersir **[V]** (`src-tauri/src/chat.rs:1509`–`:1540`): `--restricted` and `--tools Read,Glob,Grep` (built-in tools cut down), `--permission-prompts none`, `--append-system-prompt`, `--include-partial-messages` for the text as it is written, the `gizai` MCP server through the `hersir-mcp` shim with a token per turn, and the GA-271/GA-289 logic that decides whether a tool result came from a trusted source (`Trusted::of`, `TurnTools::of`). `chat_problem` (`crates/gizai-core/src/clis.rs:155`) and `team.rs:353` refuse the chat on any other kind.
 
 **Recommendation [I]:** keep the Chief on Claude Code in this work. "Any coding CLI" is about the agents that build; the Chief is one per company and already has Runs on for a second Claude Code account. A later card can move the chat to a profile once two things are checked on a real CLI: that its built-in tools can be cut down to read-only ones per run (OpenCode can, with a per-run agent whose `permission` denies edit and bash, §3.1.1), and that it streams text. ACP (§3.1.13) gives both streaming and MCP servers per session, so if Hersir gets an ACP client (option C, §4), the chat on an ACP agent is the natural later card. Open question 5.
+
+## 5. The design
+
+### 5.1 Screens
+
+Two screens change; both keep the app's own pieces: the `.cli-list` rows and the `.cli-edit` form of `src/components/CliSettings.tsx`, `badge outline` (as `AgentCliTools.tsx:23`), `btn ghost sm`, `input`, `select`, `textarea mono`, `hint`, `warn` and `faint` (`src/styles/components.css`, `tokens.css`) **[V]**. No new component is needed **[I]**.
+
+**Settings → Coding CLIs.** The Kind list gets the shipped profiles between Gemini and Other, and the profiles you added after a divider. Picking a profile fills Program from its `programs`, and the Environment hint from `account_env` and `sign_in`. Each row shows whether the profile is checked, and in one line what Hersir can and can't do with the CLI (the `can` list of `list_clis`, below):
+
+```
+Coding CLIs
+ Codex        · Codex                 codex exec --json                     [Edit] [Remove]
+ OpenCode     · OpenCode  [checked with 1.19]   opencode run --format json  [Edit] [Remove]
+              Run panel, Continue, MCP servers, allowed commands · not: subscription limits
+ My CLI       · my-cli    [not checked by Hersir]  my-cli exec --json       [Edit] [Remove]
+              Run panel, usage · not: Continue, MCP servers, allowed commands
+ [Add CLI] [Find installed CLIs] [Add a profile]
+
+ Add a profile ─────────────────────────────────────────────────────────────────────────────
+ | { "profile": 1, "id": "my-cli", … }                                                     |
+ Paste a CLI profile (JSON). Hersir checks it, and shows what it can do before you save it.
+ ✓ my-cli: Run panel, usage, cost · not: Continue, MCP servers, allowed commands   [Cancel] [Save profile]
+```
+
+**Agent form → Runs on, Permissions, Folders, Tools** (`src/components/AgentForm.tsx`). The permission modes, their texts, the risky ones, the efforts and the folders note come from `list_clis` (now `src/lib/clis.ts:9`–`:49` per kind). A profile CLI without allowed commands shows its modes with "Hersir can't keep this CLI to a list of commands", as Codex's sandbox modes are shown now; a profile you added shows "not checked by Hersir" next to Allowed commands. MCP servers and the browser are on only when the CLI `can.mcp` (now `mcp_not_on`, `crates/gizai-core/src/mcp_servers.rs:433`).
+
+### 5.3 Data
+
+- `clis` setting: `Cli` (`crates/gizai-core/src/clis.rs:23`, `src/types.ts:167`) gets `profile: String`, set when `kind` is `"profile"`; `KINDS` gets `"profile"`. Existing CLIs keep their kind: nothing to migrate. An **Other** CLI whose program is `opencode` keeps running as now; Settings offers "Use the OpenCode profile" on its row **[I]**.
+- `cli_profiles` setting: the profiles you added, each as the JSON you saved. Shipped profiles aren't stored.
+- A run's log header names the profile and carries its `events` rules (§3.3); the per-run config file sits next to the log (`<data dir>/runs/<run>.<id>.json`, 0600) and goes when the run ends, like the MCP config now (`runs.rs:1343`).
+
+### 5.4 Commands and types (the contract)
+
+Backend → frontend, word for word (Rust in `src-tauri/src/clis.rs` and `commands.rs`, TypeScript in `src/types.ts` and `src/api.ts`):
+
+```ts
+export type CliKind = "claude_code" | "codex" | "gemini" | "profile" | "other";
+export type Cli = { id: string; name: string; kind: CliKind; command: string; env: string[]; args: string; profile: string };
+export type CliMode = { id: string; label: string; text: string; risky: boolean; tier: number };
+export type CliCan = { runPanel: boolean; resume: boolean; mcp: boolean; allowedCommands: boolean; readOnlyFolders: boolean;
+  refusals: boolean; usage: boolean; cost: boolean; limits: boolean; webSearch: boolean; webFetch: boolean; chat: boolean };
+export type CliCaps = { modes: CliMode[]; efforts: string[]; foldersNote: string; can: CliCan;
+  /** Why not, per key of `can` that is false, in plain words. */ why: Partial<Record<keyof CliCan, string>> };
+export type CliProfileInfo = { id: string; name: string; shipped: boolean; checkedWith: string | null; programs: string[];
+  signIn: string | null; accountEnv: string | null; caps: CliCaps };
+export type CliStatus = Cli & { path?: string | null; problem?: string | null; caps: CliCaps;
+  /** The installed version when the profile names `version_args`; a warning when its major version differs. */
+  version?: string | null; versionWarning?: string | null };
+
+export const listCliProfiles = () => invoke<T.CliProfileInfo[]>("list_cli_profiles");
+/** Checks and saves one profile you added; Err in plain words. Same id as a shipped profile: refused. */
+export const addCliProfile = (json: string) => invoke<T.CliProfileInfo>("add_cli_profile", { json });
+/** Refused while a CLI in Settings uses it. */
+export const removeCliProfile = (id: string) => invoke<T.CliProfileInfo[]>("remove_cli_profile", { id });
+```
+
+`list_clis`, `save_clis` and `find_clis` keep their names; `CliStatus` gains `caps` (for every kind: Claude Code, Codex and Gemini fill it from today's constants), so the front end drops its per-kind tables **[I]**.
+
+### 5.5 Security and privacy
+
+- **A profile can't run code inside Hersir** (no scripts, no expressions; §3.3). It does pick the program and its arguments, as Other's Arguments do now: only you add one, and shipped ones are reviewed and tested **[I]**.
+- **Secrets** go only in the per-run config file (0600, removed at the end), filled from your keychain by `mcp_servers::for_run` as now; never in a profile, the run log or its header **[V]** (`mcp_run.rs:27`, `runs.rs:1340`).
+- **A repository's own settings** never start a program outside the agent's allowed commands (`docs/features/tools.md:128`) **[V]**: each profile names the files that would (for OpenCode §3.1.1) as `guards`, and the card goes on hold "blocked" when the worktree has one, as for `.gemini` now **[I]**.
+- **Allowed commands** are only claimed (`keeps_to_the_list`) for a shipped profile whose check proved that a chained or substituted command (`git status && rm -rf x`, `$(…)`) is refused; otherwise the Chief's changes to the agent wait for Approve (GA-352) **[I]**.
+- **No new network traffic**: profiles come with releases (§3.3).
+- **The sandbox** for every CLI stays GA-265; a profile can name the CLI's own sandbox flags in a permission mode, as Codex's modes do now.
+
+### 5.6 Tests
+
+- The engine: unit tests per emit with fixture lines; each shipped profile has a fixture of its CLI's real output (recorded once by the builder, with the version), and a test that it gives the expected events, usage and result **[I]**.
+- The proof of the vocabulary: test-only profiles for Codex and Gemini give the same events as `Codex::line` and `Gemini::line` on the fixtures in `cli_test.rs:285` and `:333` **[I]**.
+- The command line and the per-run config: like `cli_test.rs:62`–`:146` now (arguments, environment, temp folder, git settings, optional groups, `each`), plus the MCP entries and permission rules in the config.
+- A run flow with a fake CLI script (as `tests/fake-cli.sh` and `src-tauri/tests/it/cli_run_flow_test.rs`): start, Continue with the session, the guard that holds a card **[V]** (these files exist). Tests never start a real CLI (`CLAUDE.md`) **[V]**.
+- A manual check by the builder against the real CLI, written in the pull request and in a code comment, as `prompt.rs:426` does for Claude Code 2.1.289 **[V]**: an allowed command runs, another is refused, a chain with a refused part is refused, the run resumes, the MCP server answers.
+
+### 5.7 Left out
+
+The Chief's chat (§3.4); subscription limits for profile CLIs (no CLI but Claude Code and Codex reports them, §3.1); the sandbox (GA-265); Hersir as an MCP server for other AI apps (GA-347); downloading profiles; moving Claude Code, Codex or Gemini to profiles.
