@@ -12,7 +12,6 @@ pub mod index;
 pub mod markdown;
 pub mod mcp;
 pub mod openapi;
-pub mod viewer;
 
 use std::collections::HashMap;
 use std::path::Path;

@@ -46,7 +46,7 @@ fn entries_get_ids_signatures_and_what_they_extend() {
 }
 
 #[test]
-fn every_section_is_in_the_index_in_the_shape_the_viewer_reads() {
+fn every_section_is_in_the_index_in_the_shape_the_docs_page_reads() {
     let routes = vec![
         Route { method: "GET".into(), path: "/invoices".into(), handler: "App\\Http\\Controllers\\InvoiceController@index".into(), file: "routes/web.php".into(), line: 3 },
         Route { method: "POST".into(), path: "/api/leads".into(), handler: String::new(), file: "src/app/api/leads/route.ts".into(), line: 1 },

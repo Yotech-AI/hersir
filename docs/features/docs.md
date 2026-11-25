@@ -1,8 +1,8 @@
 # Docs
 
 Each project can have a Docs page of its own, in the sidebar's Docs section below Agents: its code reference, guides,
-routes, changelog, decisions and commits, drawn as the Yodocs Figma draws them. Docs is off for every project until you
-turn it on.
+routes, changelog, decisions and commits, laid out as the Yodocs Figma lays them out, in Hersir's own type and colours.
+Docs is off for every project until you turn it on.
 
 ## Turning it on
 
@@ -22,11 +22,13 @@ turn it on.
 
 ## The page
 
-The page is yodocs' own viewer, which draws the Yodocs Figma: Inter and IBM Plex Mono, its own colours, light and dark.
-Hersir builds what it shows from the project's linked folder and its own database, each time the page opens.
+The page follows the Yodocs Figma's layout in Hersir's design: Atkinson Hyperlegible Next and Mono, Hersir's colours,
+dark first and light. Hersir builds what it shows from the project's linked folder and its own database, each time the
+page opens.
 
 - **Top bar:** Home, Guides, Reference, API, Changelog, Decisions and MCP. A section with nothing in it is dimmed and
-  says what would fill it. Search (⌘K, Ctrl+K or /) looks through all of them. The chip with the commit id opens the
+  says what would fill it. Search (/, and ⌘K or Ctrl+K in a browser: in Hersir ⌘K is the command palette) looks through
+  all of them. The chip with the commit id opens the
   commit list.
 - **In the app** the page fills the Docs page, in Hersir's own theme. **Open in browser**, at the end of Hersir's top
   bar, opens the same page in your browser.
@@ -165,7 +167,7 @@ The same docs as text an agent can read, next to the page: `llms.txt` and `md/`.
   uploaded and nothing is hosted elsewhere. It keeps serving until Hersir quits. Its address on its own lists the
   projects with Docs on.
 - Only this computer gets it. A request from another computer, or from a page that reaches it under another name, is
-  refused. Only Hersir's own window may show it in a frame.
+  refused. Nothing may show it in a frame.
 - It is read only, and only for the projects with Docs on.
 
 ## Not built

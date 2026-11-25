@@ -56,7 +56,21 @@ const preview = (port: number) => ({ host: "127.0.0.1", port: Number(process.env
 // src/widget, into one HTML file in src-tauri/mcp-app, which Hersir embeds (src-tauri/build.rs). `vite --mode mcp-host`
 // (npm run mcp-host) serves the stand-in host page for development and QA (mcp-host.html, src/widget-host/), at the
 // preview port (1431 without one); neither build has it.
+// `vite build --mode docs-web` (in npm run build) makes a project's Docs page for a browser, docs.html and src/docs, into one
+// HTML file in src-tauri/docs-web, which Hersir embeds (src-tauri/build.rs) and its docs server serves.
 export default defineConfig(({ mode }) => {
+  if (mode === "docs-web") {
+    return {
+      plugins: [react(), viteSingleFile()],
+      clearScreen: false,
+      // one file, so the docs server's Content-Security-Policy allows its one script by hash; no modulepreload polyfill,
+      // which fetches
+      build: {
+        target: "es2022", outDir: "src-tauri/docs-web", emptyOutDir: false, chunkSizeWarningLimit: 2000, modulePreload: false,
+        rolldownOptions: { input: "docs.html" },
+      },
+    };
+  }
   if (mode === "mcp-app") {
     return {
       plugins: [react(), viteSingleFile()],

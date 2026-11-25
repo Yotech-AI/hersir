@@ -28,12 +28,12 @@ describe("Docs pages", () => {
     expect(href({ page: "devdocs", id: "p1" })).toBe("#/devdocs/p1");
     expect(parseHash("#/devdocs")).toEqual({ page: "projects" });
   });
-  it("opens a tab of a project's Docs, and ignores a tab it doesn't know", () => {
-    for (const view of ["reference", "guides", "api", "changelog", "decisions", "commits"] as const) {
-      expect(parseHash(`#/devdocs/p1/${view}`)).toEqual({ page: "devdocs", id: "p1", view });
-      expect(href({ page: "devdocs", id: "p1", view })).toBe(`#/devdocs/p1/${view}`);
-    }
-    expect(parseHash("#/devdocs/p1/nope")).toEqual({ page: "devdocs", id: "p1" });
+  it("keeps the Docs page's own address after the project's id, query and all", () => {
+    const docs = "reference/app%2FUser.php%23User@L5?kind=class,method&folder=app";
+    expect(parseHash(`#/devdocs/p1/${docs}`)).toEqual({ page: "devdocs", id: "p1", docs });
+    expect(href({ page: "devdocs", id: "p1", docs })).toBe(`#/devdocs/p1/${docs}`);
+    expect(parseHash("#/devdocs/p1/decisions/0001")).toEqual({ page: "devdocs", id: "p1", docs: "decisions/0001" });
+    expect(parseHash("#/devdocs/p1/")).toEqual({ page: "devdocs", id: "p1" });
   });
 });
 

@@ -71,6 +71,36 @@ pub fn index_of(st: &AppState, project: &Project) -> Result<Index, String> {
     Ok(index)
 }
 
+/// The project with id `id`, while its Docs is on: the Docs page reads nothing of a project with Docs off.
+fn docs_project(st: &AppState, id: &str) -> Result<Project, String> {
+    let project = gizai_core::projects::get(&st.db, id).map_err(|e| e.to_string())?;
+    if project.dev_docs { Ok(project) } else { Err(format!("Docs is off for {}.", project.name)) }
+}
+
+/// The Docs page in Hersir's window (src/docs): the project's index, as the docs server gives a browser index.json.
+#[tauri::command]
+pub async fn docs_index(st: tauri::State<'_, AppState>, project_id: String) -> Result<Index, String> {
+    let st = st.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || index_of(&st, &docs_project(&st, &project_id)?)).await.map_err(|e| e.to_string())?
+}
+
+/// A file's lines for the Docs page in Hersir's window; none for a file the Reference doesn't read.
+#[tauri::command]
+pub async fn docs_source(st: tauri::State<'_, AppState>, project_id: String, path: String) -> Result<SourceFile, String> {
+    let st = st.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let project = docs_project(&st, &project_id)?;
+        Ok(source_of(&project, &path).unwrap_or(SourceFile { path, lines: vec![] }))
+    }).await.map_err(|e| e.to_string())?
+}
+
+/// A commit's changed lines for the Docs page in Hersir's window.
+#[tauri::command]
+pub async fn docs_commit(st: tauri::State<'_, AppState>, project_id: String, hash: String) -> Result<CommitPatches, String> {
+    let st = st.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || patches_of(&docs_project(&st, &project_id)?, &hash)).await.map_err(|e| e.to_string())?
+}
+
 /// One file of the project for an entry's Source: a file the Reference reads, else None.
 pub fn source_of(project: &Project, path: &str) -> Option<SourceFile> {
     let repo = crate::changes::linked_repo(project).ok()?;

@@ -1,17 +1,17 @@
-//! The docs pages: Hersir serves each project's docs page at http://127.0.0.1:<port>/p/<project id>/, for this
-//! computer only. The page is yodocs' viewer (`gizai_docs::viewer`), which draws the Yodocs Figma from the project's
-//! `index.json` (`devdocs::index_of`), and fetches a file's source (`source/<path>.json`) and a commit's changed lines
-//! (`commits/<hash>.json`) when it shows them; `llms.txt` and `md/…` are the same docs for agents. The app shows the same page in a frame, and Open in browser opens it in
-//! a browser. Only projects with Docs on are served, and only to GET. A request whose Host isn't 127.0.0.1 or
-//! localhost at this port (a page elsewhere pointing a name of its own at it) gets a 403. One request per connection:
-//! it is one person's browser on this computer.
+//! The docs pages in a browser: Hersir serves each project's docs page at http://127.0.0.1:<port>/p/<project id>/, for
+//! this computer only (Open in browser on a project's Docs page). The page is src/docs built into one HTML file (`PAGE`,
+//! `vite build --mode docs-web`), the same page Hersir's window shows; it reads the project's `index.json`
+//! (`devdocs::index_of`), a file's source (`source/<path>.json`) and a commit's changed lines (`commits/<hash>.json`) from
+//! here, and `llms.txt` and `md/…` are the same docs for agents. Only projects with Docs on are served, and only to GET. A
+//! request whose Host isn't 127.0.0.1 or localhost at this port (a page elsewhere pointing a name of its own at it) gets a
+//! 403. One request per connection: it is one person's browser on this computer.
 use std::net::TcpListener as StdListener;
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 
 use gizai_core::model::Project;
 use gizai_core::projects;
 use gizai_docs::markdown::escape;
-use gizai_docs::viewer;
+use sha2::{Digest, Sha256};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
@@ -20,11 +20,32 @@ use crate::AppState;
 /// The ports tried, in order: the first free one serves.
 pub const PORTS: std::ops::RangeInclusive<u16> = 4380..=4399;
 const MAX_HEAD: usize = 16 * 1024;
-/// The page's code runs only from here and calls only here. Only Hersir's own window may show it in a frame: on macOS
-/// and Linux, on Windows, and in the dev build.
-const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; \
-font-src 'self'; connect-src 'self'; frame-ancestors tauri://localhost http://tauri.localhost https://tauri.localhost \
-http://localhost:1420; base-uri 'none'; form-action 'none'";
+/// The Docs page, one file with its script, styles and fonts inside (build.rs; a page that says so when it wasn't built).
+pub const PAGE: &str = include_str!(concat!(env!("OUT_DIR"), "/docs.html"));
+
+/// The scripts written inside `html` (a `<script>` without a src), as the browser hashes them.
+pub fn inline_scripts(html: &str) -> Vec<&str> {
+    let mut out = vec![];
+    let mut rest = html;
+    while let Some(start) = rest.find("<script") {
+        let tag = &rest[start..];
+        let (Some(open_end), Some(close)) = (tag.find('>'), tag.find("</script>")) else { break };
+        if open_end < close && !tag[..open_end].contains(" src=") {
+            out.push(&tag[open_end + 1..close]);
+        }
+        rest = &tag[close + "</script>".len()..];
+    }
+    out
+}
+
+/// What may run and load: the page's own inline script, by its hash, and calls back to here; nothing may frame it.
+pub static CSP: LazyLock<String> = LazyLock::new(|| {
+    let scripts: String = inline_scripts(PAGE).iter()
+        .map(|s| format!(" 'sha256-{}'", gizai_agents::bitbucket::base64(&Sha256::digest(s.as_bytes()))))
+        .collect();
+    format!("default-src 'self'; script-src 'self'{scripts}; style-src 'self' 'unsafe-inline'; img-src 'self' data:; \
+             font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
+});
 
 /// The port Hersir's docs server listens on, once started.
 static PORT: Mutex<Option<u16>> = Mutex::new(None);
@@ -111,17 +132,12 @@ async fn handle(mut stream: TcpStream, st: AppState, port: u16) -> std::io::Resu
 }
 
 /// What a GET of `path` gets: the list of projects with Docs on at `/`; a project's page, index, sources and commits
-/// under `/p/<id>/`; the page's styles and fonts anywhere else.
+/// under `/p/<id>/`; nothing anywhere else.
 pub fn route(st: &AppState, path: &str) -> Reply {
     if path == "/" {
         return projects_page(st);
     }
-    let Some(rest) = path.strip_prefix("/p/") else {
-        return match path.strip_prefix('/').filter(|f| *f != "index.html").and_then(viewer::file) {
-            Some((bytes, mime)) => Reply::Ok(mime, bytes.to_vec()),
-            None => not_found(),
-        };
-    };
+    let Some(rest) = path.strip_prefix("/p/") else { return not_found() };
     let Some((id, file)) = rest.split_once('/') else { return Reply::Moved(format!("/p/{rest}/")) };
     let project = match projects::get(&st.db, id) {
         Ok(p) => p,
@@ -135,7 +151,7 @@ pub fn route(st: &AppState, path: &str) -> Reply {
         Err(e) => Reply::Refused(500, e.to_string()),
     };
     if file.is_empty() {
-        return route_file("index.html");
+        return Reply::Ok("text/html; charset=utf-8", PAGE.as_bytes().to_vec());
     }
     if file == "index.json" {
         return match crate::devdocs::index_of(st, &project) {
@@ -167,21 +183,14 @@ pub fn route(st: &AppState, path: &str) -> Reply {
             Err(why) => Reply::Refused(404, why),
         };
     }
-    route_file(file)
-}
-
-fn route_file(file: &str) -> Reply {
-    match viewer::file(file) {
-        Some((bytes, mime)) => Reply::Ok(mime, bytes.to_vec()),
-        None => not_found(),
-    }
+    not_found()
 }
 
 fn not_found() -> Reply {
     Reply::Refused(404, "Not found.".into())
 }
 
-/// The projects with Docs on, each linking to its page, in the page's own look.
+/// The projects with Docs on, each linking to its page: a plain list in the system's font and theme.
 fn projects_page(st: &AppState) -> Reply {
     let all = match projects::list(&st.db) {
         Ok(all) => all,
@@ -189,12 +198,12 @@ fn projects_page(st: &AppState) -> Reply {
     };
     let on: Vec<&Project> = all.iter().filter(|p| p.dev_docs).collect();
     let list = if on.is_empty() {
-        "<p class=\"muted\">No project has Docs on. Turn it on in Hersir: a project's Edit, under Docs.</p>".to_string()
+        "<p>No project has Docs on. Turn it on in Hersir: a project's Edit, under Docs.</p>".to_string()
     } else {
         let rows: String = on.iter()
-            .map(|p| format!("<a class=\"row-item\" href=\"p/{}/\"><span class=\"name\">{}</span></a>", escape(&p.id), escape(&p.name)))
+            .map(|p| format!("<li><a href=\"p/{}/\">{}</a></li>", escape(&p.id), escape(&p.name)))
             .collect();
-        format!("<div class=\"rows\">{rows}</div>")
+        format!("<ul>{rows}</ul>")
     };
     let page = format!("<!doctype html>
 <html lang=\"en\">
@@ -203,13 +212,11 @@ fn projects_page(st: &AppState) -> Reply {
     <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
     <meta name=\"robots\" content=\"noindex, nofollow\" />
     <title>Docs · Hersir</title>
-    <link rel=\"stylesheet\" href=\"fonts.css\" />
-    <link rel=\"stylesheet\" href=\"tokens.css\" />
-    <link rel=\"stylesheet\" href=\"app.css\" />
-    <script src=\"js/theme.js\"></script>
+    <style>:root {{ color-scheme: dark light; font-family: system-ui, sans-serif; }} body {{ max-width: 640px; margin: 48px auto; padding: 0 16px; }}
+      a {{ color: #7b9bff; }} li {{ margin: 6px 0; }}</style>
   </head>
   <body>
-    <div class=\"empty\"><h2>Docs</h2><p class=\"muted\">The projects with Docs on in Hersir, on this computer.</p>{list}</div>
+    <h1>Docs</h1><p>The projects with Docs on in Hersir, on this computer.</p>{list}
   </body>
 </html>
 ");
@@ -252,9 +259,9 @@ async fn respond(stream: &mut TcpStream, reply: Reply) -> std::io::Result<()> {
     };
     let location = location.map(|l| format!("Location: {l}\r\n")).unwrap_or_default();
     let head = format!(
-        "HTTP/1.1 {code} {reason}\r\nContent-Type: {mime}\r\nContent-Length: {}\r\n{location}Content-Security-Policy: {CSP}\r\n\
+        "HTTP/1.1 {code} {reason}\r\nContent-Type: {mime}\r\nContent-Length: {}\r\n{location}Content-Security-Policy: {}\r\n\
 X-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
-        body.len()
+        body.len(), *CSP
     );
     stream.write_all(head.as_bytes()).await?;
     stream.write_all(&body).await?;

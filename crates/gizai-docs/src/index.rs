@@ -1,4 +1,4 @@
-//! A project's docs index: yodocs' `index.json`, schema 1 (yodocs src/schema.ts), which the docs page (`viewer.rs`)
+//! A project's docs index: yodocs' `index.json`, schema 1 (yodocs src/schema.ts), which the Docs page (src/docs)
 //! reads and nothing else. Built from what Hersir reads in the project's files (Reference, API routes, guides) and what
 //! it keeps itself (the changelog, decisions, commits). Every section is there, empty when the project has nothing for
 //! it, so the page can say which file to add.
@@ -13,7 +13,7 @@ use crate::api::Route;
 use crate::markdown::{self, Heading};
 use crate::{guides, Reference};
 
-/// The index's shape, as yodocs' viewer reads it.
+/// The index's shape, as the Docs page (src/docs/types.ts) reads it.
 pub const SCHEMA: u32 = 1;
 
 #[derive(Debug, Clone, Serialize)]

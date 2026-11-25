@@ -9,14 +9,11 @@ export type Page = (typeof PAGES)[number];
 // The Editor (GA-113): #/editor is the Editor with no folder open, #/editor/<folder> a folder (an EditorFolder id, its
 // path, encoded as one part).
 // The Terminal page (GA-135): #/terminal starts a new terminal, #/terminal/<id> is one open terminal.
-/** The sections of a project's Docs page, as its own top bar orders them: #/devdocs/<project id>/<tab>; without one, its Home. */
-export const DOCS_TABS = ["guides", "reference", "api", "changelog", "decisions", "mcp", "commits"] as const;
-export type DocsTab = (typeof DOCS_TABS)[number];
 /** `scope`: on the Memory page only, which notes it shows (`memoryScope`); `view` "graph": its graph (GA-69).
  *  On a task, `view` "changes" is its Changes tab, and `run` one run's changes there (GA-112); "screenshots" its
- *  Screenshots tab, and `run` one run's set there (GA-185). On a project, `view` "time" is its Time tracking tab (GA-331); on a
- *  project's Docs page, `view` is its tab. */
-export type Route = { page: Page; id?: string; scope?: string; view?: "graph" | "changes" | "screenshots" | "time" | DocsTab; run?: string };
+ *  Screenshots tab, and `run` one run's set there (GA-185). On a project, `view` "time" is its Time tracking tab (GA-331).
+ *  On a project's Docs page, `docs` is the page's own address after #/devdocs/<project id>/ (src/docs/route.ts). */
+export type Route = { page: Page; id?: string; scope?: string; view?: "graph" | "changes" | "screenshots" | "time"; run?: string; docs?: string };
 // Settings' tabs (GA-42): #/settings/<tab> opens one; #/settings, or a tab it doesn't know, opens General.
 export const SETTINGS_TABS = ["general", "appearance", "notifications", "agents", "mcp", "github"] as const;
 export type SettingsTab = (typeof SETTINGS_TABS)[number];
@@ -55,8 +52,9 @@ export function parseHash(hash: string): Route {
   if (page === "editor") return parts[1] ? { page, id: decodeURIComponent(parts.slice(1).join("/")) } : { page };
   if (page === "terminal") return parts[1] ? { page, id: decodeURIComponent(parts[1]) } : { page };
   if (page === "devdocs" && parts[1]) {
-    const tab = DOCS_TABS.find((t) => t === parts[2]);
-    return { page, id: decodeURIComponent(parts[1]), ...(tab ? { view: tab } : {}) };
+    // the rest as written: the Docs page reads its own sections, items and filters from it
+    const docs = hash.replace(/^#\/?/, "").split("/").slice(2).join("/");
+    return { page, id: decodeURIComponent(parts[1]), ...(docs ? { docs } : {}) };
   }
   if ((PAGES_WITH_ID as readonly string[]).includes(page) && parts[1]) return { page, id: decodeURIComponent(parts[1]) };
   const LIST_OF: Record<string, Page> = { task: "tasks", project: "projects", client: "clients", doc: "projects", devdocs: "projects", team: "team", agent: "team", chat: "chat" };
@@ -76,7 +74,7 @@ export function href(r: Route): string {
     return `#/task/${encodeURIComponent(r.id)}/screenshots${r.run ? "/" + encodeURIComponent(r.run) : ""}`;
   }
   if (r.page === "project" && r.id && r.view === "time") return `#/project/${encodeURIComponent(r.id)}/time`;
-  if (r.page === "devdocs" && r.id && r.view) return `#/devdocs/${encodeURIComponent(r.id)}/${r.view}`;
+  if (r.page === "devdocs" && r.id && r.docs) return `#/devdocs/${encodeURIComponent(r.id)}/${r.docs}`;
   return `#/${r.page}${r.id ? "/" + encodeURIComponent(r.id) : ""}`;
 }
 

@@ -320,8 +320,8 @@ fn refused(status: u16, body: &str, repo: Option<&str>) -> String {
     }
 }
 
-/// Standard base64 with padding (RFC 4648 §4).
-fn base64(bytes: &[u8]) -> String {
+/// Standard base64 with padding (RFC 4648 §4). The docs server writes its page script's hash with it too.
+pub fn base64(bytes: &[u8]) -> String {
     const ABC: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {

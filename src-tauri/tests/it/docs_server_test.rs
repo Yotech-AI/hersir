@@ -1,5 +1,5 @@
 //! The docs pages (`docs_server`): for this computer only and only to GET; the list of projects with Docs on; a
-//! project's page (yodocs' viewer), its index (yodocs' index.json) from its linked folder, a file's source only for a
+//! project's page (src/docs built into one file, its one script allowed by its hash and nothing framing it), its index (yodocs' index.json) from its linked folder, a file's source only for a
 //! file the Reference reads, a commit's changed lines; Docs off refused, an unknown project not found; a project
 //! without a repository still indexed, with a problem that says how to link one.
 use std::path::Path;
@@ -65,9 +65,10 @@ async fn for_this_computer_only_and_only_to_get() {
     let (code, head, body) = send(port, "GET", "/", &host).await;
     assert_eq!(code, 200);
     assert!(body.contains("<title>Docs · Hersir</title>"), "{body}");
-    assert!(head.contains("Content-Security-Policy: default-src 'self'; script-src 'self';"), "{head}");
-    assert!(head.contains("frame-ancestors tauri://localhost http://tauri.localhost https://tauri.localhost"), "only Hersir's window may frame it: {head}");
-    assert_eq!(send(port, "GET", "/fonts.css", &format!("localhost:{port}")).await.0, 200);
+    assert!(head.contains("Content-Security-Policy: default-src 'self'; script-src 'self'"), "{head}");
+    assert!(head.contains("frame-ancestors 'none'"), "nothing frames it: {head}");
+    assert_eq!(send(port, "GET", "/", &format!("localhost:{port}")).await.0, 200);
+    assert_eq!(send(port, "GET", "/fonts.css", &host).await.0, 404, "the page brings its own styles and fonts");
     assert_eq!(send(port, "GET", "/", &format!("evil.example:{port}")).await.0, 403, "another host name");
     assert_eq!(send(port, "GET", "/", "127.0.0.1").await.0, 403, "without this port");
     assert_eq!(send(port, "POST", "/", &host).await.0, 405);
@@ -98,8 +99,8 @@ fn a_projects_page_index_sources_and_commits() {
     assert_eq!(route(&st, &format!("/p/{id}")), Reply::Moved(format!("/p/{id}/")));
     let (mime, page) = ok(route(&st, &format!("/p/{id}/")));
     assert_eq!(mime, "text/html; charset=utf-8");
-    assert!(page.contains(r#"<div id="shell">"#), "yodocs' viewer: {page}");
-    assert_eq!(ok(route(&st, &format!("/p/{id}/js/main.js"))).0, "text/javascript; charset=utf-8");
+    assert_eq!(page, docs_server::PAGE, "the one built page");
+    assert_eq!(route(&st, &format!("/p/{id}/js/main.js")), Reply::Refused(404, "Not found.".into()), "no files of its own");
 
     let index = json(route(&st, &format!("/p/{id}/index.json")));
     assert_eq!(index["schema"], 1);
@@ -143,7 +144,7 @@ fn only_projects_with_docs_on() {
     let off = project(&st, "Kiosk", "KIOSK", false, None);
 
     let (_, list) = ok(route(&st, "/"));
-    assert!(list.contains(&format!(r#"<a class="row-item" href="p/{on}/"><span class="name">Pearl</span></a>"#)), "{list}");
+    assert!(list.contains(&format!(r#"<li><a href="p/{on}/">Pearl</a></li>"#)), "{list}");
     assert!(!list.contains("Kiosk"));
     assert_eq!(route(&st, &format!("/p/{off}/")), Reply::Refused(403, "Docs is off for Kiosk.".into()));
     assert_eq!(route(&st, &format!("/p/{off}/index.json")), Reply::Refused(403, "Docs is off for Kiosk.".into()));
@@ -202,4 +203,16 @@ fn what_moved_since_the_last_commit_the_chiefs_records_and_switched_off_sections
     assert_eq!((off["guides"].as_array().map(Vec::len), off["decisions"].as_array().map(Vec::len)), (Some(0), Some(0)));
     assert_eq!(off["switchedOff"].as_array().unwrap().iter().map(|o| o["section"].as_str().unwrap()).collect::<Vec<_>>(), ["guides", "decisions"]);
     assert!(off["entries"].as_array().is_some_and(|e| !e.is_empty()), "the rest stays");
+}
+
+#[test]
+fn the_pages_own_script_runs_by_its_hash_and_no_other() {
+    use sha2::{Digest, Sha256};
+    let page = r#"<html><head><script type="module" crossorigin>console.log(1)</script><script src="x.js"></script></head></html>"#;
+    assert_eq!(docs_server::inline_scripts(page), vec!["console.log(1)"], "the inline one, not the one with a src");
+    for script in docs_server::inline_scripts(docs_server::PAGE) {
+        let hash = gizai_agents::bitbucket::base64(&Sha256::digest(script.as_bytes()));
+        assert!(docs_server::CSP.contains(&format!("'sha256-{hash}'")), "{}", *docs_server::CSP);
+    }
+    assert!(docs_server::CSP.contains("frame-ancestors 'none'"));
 }

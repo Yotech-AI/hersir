@@ -944,5 +944,5 @@ span.mem-tag { cursor: default; }
 /* A project's Docs page: Open in browser at the end of the top bar, and the page itself (yodocs' viewer, served by
    Hersir) filling the rest */
 .docs-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
-.content.docs-frame { display: flex; overflow: hidden; }
-.docs-frame iframe { flex: 1; min-width: 0; border: 0; }
+.content.docs-page { display: flex; flex-direction: column; overflow: hidden; }
+.docs-page > .dd-shell { flex: 1; }

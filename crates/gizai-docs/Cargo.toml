@@ -1,6 +1,6 @@
 [package]
 name = "gizai-docs"
-description = "Hersir docs: a project's docs page (yodocs' viewer) and its index, read from its files with tree-sitter (no Tauri)"
+description = "Hersir docs: a project's docs index, read from its files with tree-sitter (no Tauri)"
 edition.workspace = true
 license.workspace = true
 version.workspace = true

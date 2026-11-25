@@ -11,6 +11,7 @@ import "./styles/app.css";
 import "./styles/changes.css";
 import "./styles/screenshots.css";
 import "./styles/terminal.css";
+import "./styles/docs.css";
 import "./styles/appearance.css";
 
 // The font, text sizes, theme and density (Settings → Appearance), before anything is drawn.

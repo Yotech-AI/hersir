@@ -1,7 +1,7 @@
 import { lazy, startTransition, Suspense, useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { TriangleAlert, X } from "lucide-react";
 import { appInfo, exitApp, getDoc, getTask, getTeam, listRuns, saveDoc, updateTask, listClients, listProjects, listTasks, selftestReport, tourStill, tourSteps } from "./api";
-import { DOCS_TABS, href, useRoute, type Route } from "./router";
+import { href, useRoute, type Route } from "./router";
 import type { AppInfo } from "./types";
 import { Sidebar } from "./components/Sidebar";
 import { SidebarToolbar } from "./components/SidebarToolbar";
@@ -299,7 +299,7 @@ export default function App({ onboarding = false }: { onboarding?: boolean }) {
               : route.page === "terminal" ? <TerminalPage id={route.id} youId={info?.you_id ?? ""} />
               : route.page === "projects" ? <ProjectsPage />
               : route.page === "project" && route.id ? <ProjectPage key={route.id} id={route.id} view={route.view === "time" ? "time" : "overview"} />
-              : route.page === "devdocs" && route.id ? <DocsPage key={route.id} id={route.id} tab={DOCS_TABS.find((t) => t === route.view)} />
+              : route.page === "devdocs" && route.id ? <DocsPage key={route.id} id={route.id} docs={route.docs} />
               : <Placeholder route={route} info={info} />}
           </Suspense>
         </div></main>
