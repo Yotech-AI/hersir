@@ -52,13 +52,17 @@ pub struct ClaudeArgs {
 
 impl ClaudeArgs {
     /// The program to start: the arguments below, the environment, and the prompt on stdin. The memory switch comes after
-    /// the account's own lines, so none of them turns Claude Code's memory back on.
+    /// the account's own lines, so none of them turns Claude Code's memory back on. GA-266: it keeps Claude Code's own
+    /// keys of Gizai's environment, and its MCP config goes once its init line is in.
     pub fn exec(&self) -> crate::process::Exec {
         let mut env = self.env.clone();
         if self.disable_auto_memory {
             env.push((AUTO_MEMORY_OFF.into(), "1".into()));
         }
-        crate::process::Exec { bin: self.bin.clone(), args: self.argv(), env, stdin: self.prompt.clone(), slice: None }
+        crate::process::Exec {
+            bin: self.bin.clone(), args: self.argv(), env, stdin: self.prompt.clone(), slice: None,
+            kind: Some(crate::cli::Kind::ClaudeCode), mcp_config: self.mcp_config.clone(),
+        }
     }
 
     /// Arguments after the binary. The prompt is not among them: it goes in on stdin (`claude -p` reads it

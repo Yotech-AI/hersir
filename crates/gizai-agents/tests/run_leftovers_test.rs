@@ -151,7 +151,7 @@ mod linux {
             Ends::Stop => ("FAKE_HANG", 120),
             Ends::TimeLimit => ("FAKE_HANG", 2),
         };
-        let exec = Exec { bin, args: vec!["-p".into()], env: vec![], stdin: stdin.into(), slice: slice.cloned() };
+        let exec = Exec { bin, args: vec!["-p".into()], env: vec![], stdin: stdin.into(), slice: slice.cloned(), ..Exec::default() };
         let caps = Caps { max_time: Duration::from_secs(max_time), max_tool_calls: 80, after_result: AFTER_RESULT };
         let mut h = spawn_exec::<RunEvent, _>(&exec, tmp, &tmp.join("r.jsonl"), caps, ClaudeLines).unwrap();
         let pid = pid_in(&left, "sleep");
@@ -232,7 +232,7 @@ mod linux {
     async fn a_run_that_leaves_nothing_hears_of_no_leftover() {
         let tmp = tempfile::tempdir().unwrap();
         let Some(s) = own_slice(tmp.path(), 2 * GB) else { return };
-        let exec = Exec { bin: cli(tmp.path(), ""), args: vec!["-p".into()], env: vec![], stdin: "p".into(), slice: Some(s.0.clone()) };
+        let exec = Exec { bin: cli(tmp.path(), ""), args: vec!["-p".into()], env: vec![], stdin: "p".into(), slice: Some(s.0.clone()), ..Exec::default() };
         let mut h = spawn_exec::<RunEvent, _>(&exec, tmp.path(), &tmp.path().join("r.jsonl"),
                                               Caps { max_time: Duration::from_secs(60), max_tool_calls: 80, after_result: AFTER_RESULT }, ClaudeLines).unwrap();
         let t0 = Instant::now();
@@ -257,7 +257,7 @@ mod linux {
         // the other run: at work, and it left a child in a session of its own too
         let other_left = two.join("left");
         let exec = Exec { bin: cli(&two, &setsid_sleep(&other_left)), args: vec!["-p".into()], env: vec![], stdin: "FAKE_HANG".into(),
-                          slice: Some(s.0.clone()) };
+                          slice: Some(s.0.clone()), ..Exec::default() };
         let mut other = spawn_exec::<RunEvent, _>(&exec, &two, &two.join("r.jsonl"),
                                                   Caps { max_time: Duration::from_secs(120), max_tool_calls: 80, after_result: AFTER_RESULT }, ClaudeLines).unwrap();
         let other_child = pid_in(&other_left, "sleep");
@@ -359,7 +359,7 @@ mod linux {
         let Some(s) = own_slice(tmp.path(), GB) else { return };
         let left = tmp.path().join("left");
         let bin = cli(tmp.path(), &format!("{}\npython3 -c \"b = b'x' * (2 << 30)\"\necho \"build: $?\" >&2", setsid_sleep(&left)));
-        let exec = Exec { bin, args: vec!["-p".into()], env: vec![], stdin: "p".into(), slice: Some(s.0.clone()) };
+        let exec = Exec { bin, args: vec!["-p".into()], env: vec![], stdin: "p".into(), slice: Some(s.0.clone()), ..Exec::default() };
         let mut h = spawn_exec::<RunEvent, _>(&exec, tmp.path(), &tmp.path().join("r.jsonl"),
                                               Caps { max_time: Duration::from_secs(120), max_tool_calls: 80, after_result: AFTER_RESULT }, ClaudeLines).unwrap();
         let mut evs = vec![];

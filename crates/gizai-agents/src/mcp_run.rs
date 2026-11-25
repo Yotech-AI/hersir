@@ -89,7 +89,8 @@ pub fn plain_tool_name(n: &str) -> bool {
 /// What Settings and the agent form say about a tool whose name isn't a plain tool name (`plain_tool_name`).
 pub const LEFT_OUT: &str = "left out: its name isn't a plain tool name";
 
-/// Writes the config for the run's process only to read (0600). The caller deletes it when the run ends.
+/// Writes the config for the run's process only to read (0600). GA-266: the run's start deletes it once Claude Code's
+/// init line is in (`process::Exec::mcp_config`), and the caller makes sure it is gone when the run ends.
 /// Windows has no modes: the file is in your own profile (Gizai's data folder), whose inherited ACL lets only you,
 /// SYSTEM and Administrators read it.
 pub fn write_config(path: &Path, config: &Value) -> std::io::Result<()> {

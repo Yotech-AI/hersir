@@ -1587,7 +1587,9 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
             note_run(&st2, &rid, &crate::run_memory::ended_note(&st2, ended_together, None));
         }
         // The run's process group has ended, whatever way (finished, Stop, a limit): its throwaway files go, its MCP
-        // config (with its servers' secrets) first, and a Gemini run's own settings file (GA-322).
+        // config (with its servers' secrets) first, and a Gemini run's own settings file (GA-322). GA-266: the MCP config
+        // went at the init line already, or when Claude Code ended without one (`process::spawn_exec`); this is the
+        // last check.
         for p in run_config.iter().chain(&run_settings) {
             let _ = std::fs::remove_file(p);
         }

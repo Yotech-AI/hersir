@@ -29,7 +29,9 @@ use crate::stream::RunEvent;
 pub struct Exec {
     pub bin: PathBuf,
     pub args: Vec<String>,
-    /// Set on top of Gizai's own environment (another account's config folder, a PATH).
+    /// Set on top of Gizai's own environment (another account's config folder, a PATH): the CLI's lines in Settings →
+    /// Coding CLIs, and what Hersir sets for the run. GA-266: of Gizai's own environment the program doesn't get the
+    /// variables with a secret's name, except its CLI's own (`run_env::left_out`, by `kind`) and those set here.
     pub env: Vec<(String, String)>,
     /// Written to stdin, which is then closed. Linux caps one argument at 128 KiB, so prompts go here when the CLI
     /// reads them there.
@@ -37,6 +39,30 @@ pub struct Exec {
     /// Linux: the slice of Gizai's agent runs (GA-202) to start it in, in a scope of its own (`Slice::command`), so the
     /// memory limit for agent runs covers it and what it starts. None: outside it, as before.
     pub slice: Option<Slice>,
+    /// GA-266: the CLI it starts, which decides the keys of Gizai's environment it keeps (`run_env::own`). None: it
+    /// keeps none (only what `env` sets).
+    pub kind: Option<cli::Kind>,
+    /// GA-266: the run's MCP config file (`--mcp-config`), with its servers' secrets and a chat turn's token. Claude
+    /// Code reads it as it starts, so it is deleted once the CLI's init line is in (`StreamEvent::is_init`), and in any
+    /// case when the run ends or doesn't start.
+    pub mcp_config: Option<PathBuf>,
+}
+
+/// GA-266: a file the CLI reads only as it starts (its MCP config), deleted by `delete`, else when this is dropped.
+struct ReadAtStart(Option<PathBuf>);
+
+impl ReadAtStart {
+    fn delete(&mut self) {
+        if let Some(p) = self.0.take() {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+}
+
+impl Drop for ReadAtStart {
+    fn drop(&mut self) {
+        self.delete();
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -82,6 +108,12 @@ impl StopHandle {
             s.kill();
         }
     }
+
+    /// The run's process tree: its process group, on Windows its job (GA-266: a chat turn's token works only for
+    /// processes in it, `Tree::contains`). On Windows a clone keeps the job open: drop it once the run has ended.
+    pub fn tree(&self) -> Tree {
+        self.tree.clone()
+    }
 }
 
 /// The marker for a process Linux ended in a run at a memory limit, followed by how many it ended in that run so far:
@@ -123,6 +155,9 @@ pub trait StreamEvent: Clone + Send + 'static {
     /// while something the run started still runs in the background. From then on `Caps::after_result` counts; a tool
     /// call after it means the agent went on.
     fn is_result(&self) -> bool;
+    /// The CLI's init line (GA-266): Claude Code's `system`/`init`, which lists its MCP servers once it has started them
+    /// (Codex's `thread.started`). By then the CLI has read its MCP config.
+    fn is_init(&self) -> bool;
     /// Gizai's own markers: `cap_exceeded:tools`, `cap_exceeded:time`, `exit:<code>`, `ended_after_result` when Gizai
     /// ended a CLI that stayed quiet for `Caps::after_result` once the agent was done (`ENDED_AFTER_RESULT`),
     /// `oom_kill:<n>` when Linux ended a process in the run at the memory limit for agent runs (the n-th in this run,
@@ -137,6 +172,7 @@ impl StreamEvent for RunEvent {
     fn is_result(&self) -> bool {
         matches!(self, RunEvent::Result { .. }) || matches!(self, RunEvent::Text { text } if crate::outcome::parse(text).is_some())
     }
+    fn is_init(&self) -> bool { matches!(self, RunEvent::Init { .. }) }
     fn other(raw: String) -> Self { RunEvent::Other { raw_type: raw } }
 }
 
@@ -146,6 +182,7 @@ impl StreamEvent for ChatEvent {
     fn is_result(&self) -> bool {
         matches!(self, ChatEvent::Result { .. }) || matches!(self, ChatEvent::Text { text } if crate::outcome::parse(text).is_some())
     }
+    fn is_init(&self) -> bool { matches!(self, ChatEvent::Init { .. }) }
     fn other(raw: String) -> Self { ChatEvent::Other { raw_type: raw } }
 }
 
@@ -307,9 +344,12 @@ pub fn spawn<E: StreamEvent>(args: &ClaudeArgs, cwd: &Path, log_path: &Path, cap
 /// Any CLI, its output read by `parser`. Must be called inside a Tokio runtime. With `exec.slice` it starts in a scope
 /// of its own in that slice (with the slice's limit per run, if it has one), the events get an `OOM_KILL` marker each
 /// time Linux ends a process in it at a limit, and at its end what it left in its scope ends too, each process with a
-/// `LEFTOVER` marker.
+/// `LEFTOVER` marker. GA-266: it gets Gizai's environment without the variables with a secret's name, but for its
+/// CLI's own and those `exec.env` sets (`run_env::left_out`); its MCP config (`exec.mcp_config`) is deleted once its
+/// init line is in, and in any case when it has ended, or now when it can't be started.
 pub fn spawn_exec<E: StreamEvent, P: LineParser<E>>(exec: &Exec, cwd: &Path, log_path: &Path, caps: Caps, mut parser: P)
     -> Result<RunHandle<E>, AgentError> {
+    let config = Arc::new(std::sync::Mutex::new(ReadAtStart(exec.mcp_config.clone())));
     let stderr = std::fs::File::create(log_path.with_extension("stderr.log"))?;
     let mut log = std::fs::OpenOptions::new().create(true).append(true).open(log_path)?;
     // found on the PATH the CLI gets; a CLI that can't be found starts as before, so it fails the usual way
@@ -319,6 +359,9 @@ pub fn spawn_exec<E: StreamEvent, P: LineParser<E>>(exec: &Exec, cwd: &Path, log
         Some(((c, scope), s)) => (tokio::process::Command::from(c), Some(s), Some(scope)),
         None => (os::tokio_command(&exec.bin), None, None),
     };
+    for name in crate::run_env::left_out_now(exec.kind, &exec.env) {
+        cmd.env_remove(name);
+    }
     cmd.args(&exec.args)
         .envs(exec.env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
         .current_dir(cwd)
@@ -356,6 +399,7 @@ pub fn spawn_exec<E: StreamEvent, P: LineParser<E>>(exec: &Exec, cwd: &Path, log
     let mut reader = {
         let tx = tx.clone();
         let stop = stop.clone();
+        let config = config.clone();
         tokio::spawn(async move {
             let mut lines = BufReader::new(stdout).lines();
             let mut calls = 0u32;
@@ -364,6 +408,10 @@ pub fn spawn_exec<E: StreamEvent, P: LineParser<E>>(exec: &Exec, cwd: &Path, log
             while let Ok(Some(line)) = lines.next_line().await {
                 let _ = writeln!(log, "{line}");
                 let evs = parser.line(&line);
+                // GA-266: the CLI has read its MCP config by its init line, so it goes before the run hears of that line.
+                if evs.iter().any(E::is_init) && let Ok(mut c) = config.lock() {
+                    c.delete();
+                }
                 calls += evs.iter().filter(|e| E::is_tool_call(e)).count() as u32;
                 let was = done;
                 done = done_after(done, &evs);
@@ -425,6 +473,10 @@ pub fn spawn_exec<E: StreamEvent, P: LineParser<E>>(exec: &Exec, cwd: &Path, log
                     end_group(&tree, &mut child).await
                 }
             };
+            // GA-266: the CLI has ended: its MCP config goes now if its init line never came.
+            if let Ok(mut c) = config.lock() {
+                c.delete();
+            }
             // The last look at the run's scope, while what the run left in it may still be there.
             let watched = watch.map(|w| tokio::task::spawn_blocking(move || w.finish()));
             timer.abort();

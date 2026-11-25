@@ -234,7 +234,7 @@ async fn a_run_gets_the_servers_switched_on_in_its_own_0600_mcp_config_with_thei
 }
 
 #[tokio::test]
-async fn the_runs_mcp_config_is_there_for_its_owner_only_while_the_run_lives_and_gone_after_a_stop() {
+async fn the_runs_mcp_config_is_for_its_owner_only_and_gone_once_the_init_line_is_in_while_the_run_lives_and_after_a_stop() {
     let t = run_setup(false);
     let st = &t.st;
     let otus = add_command(st, "otus", "otus-mcp", &[], &[("OTUS_TOKEN", Some(OTUS_SECRET))]);
@@ -247,12 +247,18 @@ async fn the_runs_mcp_config_is_there_for_its_owner_only_while_the_run_lives_and
         assert!(t0.elapsed() < Duration::from_secs(15), "the fake never started");
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    use std::os::unix::fs::PermissionsExt;
-    let meta = std::fs::metadata(&path).expect("the config is there while the run lives");
-    assert_eq!(meta.permissions().mode() & 0o777, 0o600);
-    assert!(read(&path).contains(OTUS_SECRET));
-    // the only file Gizai keeps that holds the secret is this config (the fake's own copy is outside Gizai's folder)
-    assert_eq!(files_holding(&st.data_dir, OTUS_SECRET, &[]), [path.clone()]);
+    // the fake read it as it started, before its init line: only its owner could read it, and it held the secret
+    assert_eq!(read(&t.out.join("mcp.path")), path.display().to_string());
+    assert_eq!(read(&t.out.join("mcp.mode")).trim(), "600", "only its owner reads it");
+    assert!(read(&t.out.join("mcp.json")).contains(OTUS_SECRET));
+    // GA-266: once the init line is in, the config goes while the run still lives (it hangs until Stop), and no file of
+    // Gizai's holds the secret any more (the fake's own copy is outside Gizai's folder)
+    let t0 = std::time::Instant::now();
+    while path.exists() {
+        assert!(t0.elapsed() < Duration::from_secs(15), "the config is still there after the init line");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(files_holding(&st.data_dir, OTUS_SECRET, &[]).is_empty(), "{:?}", files_holding(&st.data_dir, OTUS_SECRET, &[]));
     gizai_lib::runs::stop(st, &run_id);
     let s = tokio::time::timeout(Duration::from_secs(20), done).await.expect("the run ended").unwrap();
     assert_eq!(s.status, "cancelled", "{:?}", s.error);

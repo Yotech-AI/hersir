@@ -47,6 +47,7 @@ mod redact_test;
 mod release_sig_test;
 mod release_update_test;
 mod repo_settings_test;
+mod run_secrets_test;
 mod run_temp_test;
 mod screenshots_collect_test;
 mod terminal_test;

@@ -7,6 +7,12 @@
 //! holds the name Gizai refuses to start the tools rather than share it; its DACL allows the user running Gizai (their
 //! SID) and no one else, with nothing inherited; remote clients are refused; and each client's process must run as that
 //! same user.
+//!
+//! GA-266: the user's other programs are the user's agents too, and any of them could read a turn's token (the
+//! shim's environment, the turn's MCP config). So a token whose scope names a run (a chat answer, a board check, the
+//! Chief's look at a question) works only for a process in that run's own tree (`Turns`): its Claude Code and what that
+//! starts, the shim among them. See `gizai_agents::os::Tree::contains` for what each system lets Gizai check.
+use std::collections::HashMap;
 #[cfg(unix)]
 use std::os::unix::fs::{FileTypeExt, PermissionsExt};
 #[cfg(windows)]
@@ -14,7 +20,10 @@ use std::os::windows::io::AsRawHandle;
 use std::path::{Path, PathBuf};
 #[cfg(windows)]
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
+
+use gizai_agents::os::Tree;
 
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 #[cfg(windows)]
@@ -181,9 +190,12 @@ async fn connection(st: AppState, stream: UnixStream) {
     // Only processes of the same user (the directory is 0700 too).
     // SAFETY: getuid has no preconditions.
     let me = unsafe { libc::getuid() };
-    let same_user = stream.peer_cred().map(|c| c.uid() == me).unwrap_or(false);
+    let cred = stream.peer_cred().ok();
+    let same_user = cred.is_some_and(|c| c.uid() == me);
+    // GA-266: the process that connected, as the kernel has it (SO_PEERCRED on Linux, LOCAL_PEEREPID on macOS)
+    let peer = cred.and_then(|c| c.pid()).and_then(|p| u32::try_from(p).ok());
     let (r, w) = stream.into_split();
-    serve_turn(st, r, w, same_user).await
+    serve_turn(st, r, w, same_user, peer).await
 }
 
 #[cfg(windows)]
@@ -192,13 +204,80 @@ async fn pipe_connection(st: AppState, pipe: NamedPipeServer, me: Arc<gizai_mcp:
     // SAFETY: the handle is open while `pipe` lives.
     let client = unsafe { gizai_mcp::pipe::client_user(pipe.as_raw_handle()) };
     let same_user = client.is_ok_and(|u| u == *me);
+    // GA-266: the process that opened the pipe (GetNamedPipeClientProcessId)
+    // SAFETY: the handle is open while `pipe` lives.
+    let peer = unsafe { gizai_mcp::pipe::client_pid(pipe.as_raw_handle()) }.ok();
     let (r, w) = tokio::io::split(pipe);
-    serve_turn(st, r, w, same_user).await
+    serve_turn(st, r, w, same_user, peer).await
+}
+
+/// GA-266: the process trees of the turns whose token is out, by the run its scope names (`{"run": …}`): a chat answer,
+/// a board check, the Chief's look at a question. A turn is expected (`expect_turn`) before its token goes out, gets
+/// its tree once its Claude Code runs (`bind_turn`), and is gone when it has ended (`end_turn`). A token whose run isn't
+/// here works for no one.
+#[derive(Default)]
+pub struct Turns {
+    /// Run → its tree; None while its Claude Code is starting.
+    trees: Mutex<HashMap<String, Option<Tree>>>,
+    /// Wakes the connections waiting for a tree (`admits`).
+    changed: tokio::sync::Notify,
+}
+
+/// How long a connection waits for its turn's tree: Claude Code starts the shim only after Gizai started Claude Code, so
+/// this is only ever a moment.
+const TREE_WAIT: Duration = Duration::from_secs(10);
+
+impl Turns {
+    fn set(&self, run: &str, tree: Option<Tree>) {
+        self.trees.lock().unwrap().insert(run.to_string(), tree);
+        self.changed.notify_waiters();
+    }
+
+    /// Whether the process `peer` (None: the system didn't say) may use the token of `run`'s turn: it is in that turn's
+    /// tree. Waits while the turn's Claude Code is still starting.
+    async fn admits(&self, run: &str, peer: Option<u32>) -> bool {
+        let Some(pid) = peer else { return false };
+        let until = tokio::time::Instant::now() + TREE_WAIT;
+        loop {
+            let changed = self.changed.notified();
+            tokio::pin!(changed);
+            // from here on a change wakes it, also one made before it waits
+            changed.as_mut().enable();
+            let tree = match self.trees.lock().unwrap().get(run) {
+                None => return false,
+                Some(t) => t.clone(),
+            };
+            if let Some(tree) = tree {
+                return tree.contains(pid);
+            }
+            if tokio::time::timeout_at(until, changed).await.is_err() {
+                return false;
+            }
+        }
+    }
+}
+
+/// GA-266: the turn of `run` is about to give its token out: from now on the token works only for a process in the
+/// turn's tree, which `bind_turn` gives once its Claude Code runs; until then a connection with it waits.
+pub fn expect_turn(st: &AppState, run: &str) {
+    st.chat.turns.set(run, None);
+}
+
+/// GA-266: the turn of `run` runs in `tree` (its Claude Code's: `StopHandle::tree`).
+pub fn bind_turn(st: &AppState, run: &str, tree: Tree) {
+    st.chat.turns.set(run, Some(tree));
+}
+
+/// GA-266: the turn of `run` has ended, or never started: its token works for no one any more (it is revoked as well).
+/// On Windows this lets go of the turn's job.
+pub fn end_turn(st: &AppState, run: &str) {
+    st.chat.turns.trees.lock().unwrap().remove(run);
+    st.chat.turns.changed.notify_waiters();
 }
 
 /// One connection, the same on every system: the hello line with the turn's token, then the tools as its agent (or, for
-/// Claude Desktop's lasting token, as you: GA-338).
-async fn serve_turn<R, W>(st: AppState, r: R, w: W, same_user: bool)
+/// Claude Desktop's lasting token, as you: GA-338). `peer`: the process at the other end, when the system says.
+async fn serve_turn<R, W>(st: AppState, r: R, w: W, same_user: bool, peer: Option<u32>)
 where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
@@ -222,6 +301,10 @@ where
     let thread = grant.scope.get("chat").and_then(|v| v.as_str()).map(str::to_string);
     let check = grant.scope.get("check").and_then(|v| v.as_str()).map(str::to_string);
     let run = grant.scope.get("run").and_then(|v| v.as_str()).map(str::to_string);
+    // GA-266: a turn's token only from that turn's own processes (its Claude Code started the shim at the other end)
+    if let Some(r) = &run && !st.chat.turns.admits(r, peer).await {
+        return refuse(w, NOT_ITS_TURN).await;
+    }
     let question = grant.scope.get("question").and_then(|v| v.as_str()).map(str::to_string);
     // GA-338: Claude Desktop's lasting token says `{"client": "claude-desktop"}`; GA-341: it gets the Chief's tools with the
     // Chief's rules (`GizaiTools::desktop`).
@@ -248,3 +331,7 @@ where
 
 /// Why a token is refused: revoked, expired or never made.
 const NOT_VALID: &str = "this token is not valid: the chat turn has ended or it was never issued";
+
+/// GA-266: why a turn's valid token is refused: the process that sent it isn't one of the turn's own, or the turn has
+/// ended.
+const NOT_ITS_TURN: &str = "this token works only for the turn it was made for: the program that sent it isn't part of that turn, or the turn has ended";
