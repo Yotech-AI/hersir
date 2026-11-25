@@ -2,7 +2,15 @@
 
 Research by the R&D Agent, 25 Nov 2026, on `main` at `945076a2`. Each claim is marked **[V]** when it was verified in Hersir's code or in a primary source (named next to it), or **[I]** when it is my judgement. Every web source was read on 2026-11-25; the list is in §8.
 
-*(The summary, the CLI survey and the plan follow below; this commit has the project map and Hersir's needs first.)*
+## 1. Summary
+
+- **Most current coding CLIs can run headless with JSON events**, and most also speak the **Agent Client Protocol** (ACP: 46 agents in its registry). Aider and Crush print no JSON and stay "Other" (plain text) **[V]** (§3.1).
+- **OpenCode is now version 2** (`@opencode/cli` 2.4.1, MIT). Its `run --format json` gives text, tool calls, tokens and cost; Hersir can choose its session id; its permission rules can keep an agent to a list of commands; an `ask` is rejected headless, never a hang. It has no sandbox, no subscription limits, no refusal event, and no longer signs in with a Claude plan **[V]** (§3.1.1).
+- **Three things in Hersir today:** an OpenCode 2 run as Other works in `$PWD`, which Hersir doesn't set to the worktree; Find installed CLIs adds Cursor with `--force` (any command not denied) and Crush with `run` (approves everything) **[V]**/**[I]** (§3.1.1, §3.1.5, §3.1.10). Card 0 fixes them.
+- **Recommendation: CLI profiles (option B).** A profile is JSON: how to start the CLI, a mapping from its JSON lines to Hersir's `RunEvent`s, how to resume, where MCP servers and permission rules go in a per-run config, and which files in a worktree hold a card. The engines, the folder and secret handling and Claude Code, Codex and Gemini stay code (§3.3, §4).
+- **OpenCode first** on a shipped profile (§5.2), then MCP servers, then Qwen Code, Kilo and Copilot CLI. **ACP** comes next as a second protocol of the same profiles (§4 C). The Chief stays on Claude Code (§3.4).
+- **One thing to check first:** OpenCode 2 documents no way to give a run its own config outside the worktree (V1 had `OPENCODE_CONFIG`); card 2 checks the source before building.
+- **Plan:** nine cards in six features (§6); eight open questions for Jefsev (§7).
 
 ## 2. The project now
 
@@ -688,6 +696,27 @@ What it builds: `src/lib/clis.ts`'s per-kind tables (`PERMISSIONS`, `FOLDERS_NOT
 ## 8. Sources
 
 Every source was read on **2026-11-25**. Versions and dates of npm packages come from `npm view <package> version time.modified license`, run on 2026-11-25 (opencode-ai 1.19.6, @openai/codex 0.172.0, @google/gemini-cli 0.71.1, @qwen-code/qwen-code 0.28.4, @github/copilot 1.0.116, @sourcegraph/amp, @charmland/crush 0.102.0, droid 1.20.0, @agentclientprotocol/sdk 2.12.0, acpx 0.22.0).
+
+**OpenCode** (repository https://github.com/anomalyco/opencode, branch `dev`; github.com/sst/opencode leads there)
+- [S1] `npm view @opencode/cli` (2.4.1, MIT, `optionalDependencies` per system) and `npm view opencode-ai` (1.19.6); https://api.github.com/repos/anomalyco/opencode and its README
+- [S2] https://api.github.com/repos/anomalyco/opencode/releases (v2.4.1, 2026-11-23)
+- [S3] https://opencode.ai/docs/migrate-v1/
+- [S4] https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/cli/src/run/run.ts and https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/cli/src/commands/commands.ts
+- [S5] https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/cli/src/run/noninteractive.ts
+- [S6] https://opencode.ai/docs/cli/
+- [S7] https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/cli/src/session-target.ts
+- [S8] https://opencode.ai/docs/troubleshooting/
+- [S9] https://opencode.ai/docs/mcp-servers/
+- [S10] https://opencode.ai/docs/config/
+- [S11] https://opencode.ai/v1/docs/cli/ (V1's variables) and https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/core/src/flag.ts
+- [S12] https://opencode.ai/docs/acp/
+- [S13] https://opencode.ai/docs/providers/
+- [S14] https://opencode.ai/docs/permissions/
+- [S15] https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/cli/src/commands/handlers/run.ts
+- [S16] https://api.github.com/repos/anomalyco/opencode/git/trees/dev:packages/core?recursive=1 (`credential/sql.ts`, the legacy-credentials migration)
+- [S17] https://opencode.ai/changelog/v1.3.0.md
+- [S18] https://opencode.ai/docs/plugins/
+- [S19] https://opencode.ai/docs/server/ and https://opencode.ai/docs/build/client/
 
 **Codex**
 - [S20] https://github.com/openai/codex/releases/latest and https://raw.githubusercontent.com/openai/codex/main/README.md
