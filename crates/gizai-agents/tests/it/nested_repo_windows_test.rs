@@ -1,8 +1,9 @@
-//! GA-361, Windows: git tidies a path it is given before it matches it, and on Windows reads `\` in it as `/`. The
-//! index can hold a gitlink whose name has a `\` (a run can write one there), which Windows finds as the folder with `/`,
-//! and git add's `:(exclude,literal)` of that name would then leave out another name than the index's. Commit… asks git
-//! first, with `git ls-files` and the same pathspec, and refuses such a checkout before any git add. A submodule with a
-//! plain name is still left out of the commit (nested_repo_test.rs, Unix only, has GA-350's tests).
+//! GA-361, Windows: git tidies a path it is given before it matches it, and on Windows reads `\` in it as `/`. A gitlink
+//! whose name in the index had a `\` would be found by Windows as the folder with `/`, and git add's
+//! `:(exclude,literal)` of that name would leave out another name than the index's. git for Windows doesn't take such a
+//! name into the index (git update-index ignores it, as CI showed); should it ever, Commit… asks git first, with
+//! `git ls-files` and the same pathspec, and refuses before any git add. A submodule with a plain name is still left out
+//! of the commit (nested_repo_test.rs, Unix only, has GA-350's tests).
 #![cfg(windows)]
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -74,11 +75,18 @@ fn git_refusal<T: std::fmt::Debug>(r: Result<T, AgentError>) -> String {
 }
 
 #[test]
-fn a_submodule_whose_name_in_the_index_has_a_backslash_is_refused_by_commit_before_any_git_add() {
+fn a_submodule_whose_name_in_the_index_has_a_backslash_never_gets_past_commit() {
     let tmp = real_tempdir();
     let wt = card(tmp.path());
     let id = nested_repository(&wt.join("a").join("b"));
     index_info(&wt, &format!("160000 {id}\ta\\b"));
+    if worktree::gitlinks(&wt).unwrap().is_empty() {
+        // git for Windows ignored the name: no gitlink at all is in the index
+        let index = git(&wt, &["ls-files", "--stage"]);
+        assert!(!index.lines().any(|l| l.starts_with("160000 ")), "{index}");
+        return;
+    }
+    // should git ever take it: staged by the run, and committed
     git(&wt, &["commit", "-q", "-m", "a gitlink with a backslash in its name"]);
     assert_eq!(worktree::gitlinks(&wt).unwrap(), [r"a\b"], "the index holds the name with its backslash");
     assert_eq!(worktree::nested_repositories(&wt).unwrap(), [r"a\b"], "Windows finds its folder a/b");
