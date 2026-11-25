@@ -575,6 +575,116 @@ export const removeCliProfile = (id: string) => invoke<T.CliProfileInfo[]>("remo
 
 The Chief's chat (§3.4); subscription limits for profile CLIs (no CLI but Claude Code and Codex reports them, §3.1); the sandbox (GA-265); Hersir as an MCP server for other AI apps (GA-347); downloading profiles; moving Claude Code, Codex or Gemini to profiles.
 
+## 6. Proposed cards
+
+Grouped by feature, in order; OpenCode is the first CLI on the new profiles. Each card is one pull request.
+
+### Feature 0: what today's Other CLIs really allow (any time, independent)
+
+**Card 0. Every run starts in its worktree, and Settings says when an Other CLI runs every command** · backend · To do · builds on nothing
+
+What it builds: `PWD` set to the run's working folder for every CLI (`process.rs` / `cli::task_exec`); Find installed CLIs adds Cursor Agent without `--force` and with `--trust` (`src-tauri/src/clis.rs:108`); a `warning` on `CliStatus` for an Other CLI whose arguments run every command (Cursor `--force`/`--yolo`, Crush `run`, Cline without `--auto-approve false`), shown in Settings and the agent form.
+
+- [ ] Every kind's run gets `PWD=<its working folder>` after its own environment lines; a test per kind, like `cli_test.rs:417`.
+- [ ] Find installed CLIs adds Cursor Agent with `-p --trust --output-format text --model {model} {prompt}`; a CLI you saved before keeps its arguments.
+- [ ] Settings → Coding CLIs and the agent form show "This CLI runs every command without asking: …" for Cursor with `--force` or `--yolo`, and for Crush's `run`.
+- [ ] `docs/features/cli.md` says so, with the reason (Cursor's and Crush's own docs, §3.1.5, §3.1.10).
+
+### Feature 1: OpenCode on a CLI profile
+
+**Card 1. CLI profiles: the format and its engines, proven on Codex and Gemini** · backend · To do · builds on nothing
+
+What it builds: §3.3 in `crates/gizai-agents` (a `profile` module): the profile types and their check, the argument renderer, the per-run config writer, the event engine, the allowed-command styles, and the run log header. No CLI uses it yet; nothing changes for the four kinds of today.
+
+- [ ] `profile::check(json) -> Result<Profile, String>` refuses unknown keys, unknown placeholders and emits, a `start` without the prompt, in plain words.
+- [ ] Arguments are rendered as an array: placeholders, optional groups (`["-m", "{model}"]` left out without a model), `each` over the folders; the prompt on stdin, as an argument or in a file.
+- [ ] The event engine gives `Init`, `Text` (deltas joined by id), `ToolUse` once per tool id, `ToolResult`, `Refused`, and one `Result` with the usage summed, also from `finish(exit_code)` when the output ends without one.
+- [ ] Test-only profiles for Codex and Gemini give the same events as `Codex::line` and `Gemini::line` on the fixtures of `cli_test.rs:285` and `:333`.
+- [ ] Allowed-command styles `claude_rule`, `prefix_glob`, `shell_call`, `gemini_shell` (reusing `gemini_tool`), with GA-262's entries that aren't one rule left out.
+- [ ] The per-run config file is written 0600 next to the run log and removed when the run ends, after Stop and limits too; it is never in the log.
+- [ ] A profile run's log header carries the profile id and its event rules; `parse_log` reads such a log the way it ran.
+- [ ] All existing tests pass unchanged.
+
+**Card 2. OpenCode 2 runs on its shipped profile** · backend · To do · builds on card 1
+
+What it builds: `crates/gizai-agents/profiles/opencode.json` (§5.2), `kind: "profile"` with `profile` on `Cli` (`gizai-core/src/clis.rs`, `src/types.ts`), the profile branch of a task run (`runs.rs`, `cli::task_exec`, `prompt::rules_section`, `tool_catalog`, `limits::after_run`), Find installed CLIs, and `caps` on `list_clis` for every kind (§5.4, word for word).
+
+- [ ] **First**, checked in OpenCode 2.x's source and a real run, and written in the PR: how a `run --standalone` takes a config file that is neither in the worktree nor in your own folders (`OPENCODE_CONFIG` or what replaced it). If there is no such way, the card stops and asks (needs_decision).
+- [ ] A fixture of a real `opencode run --standalone --format json` (text, a completed and a failed tool call, `step_finish`, an error) is in the tests, with its version as the profile's `checked_with`.
+- [ ] A run starts `opencode run --standalone --format json --session <id>` with the prompt on stdin, `PWD` the worktree, the model as `provider/model#variant`; Continue, the nudge and Ask the Chief first resume the same session.
+- [ ] The modes Read only, Allowed commands and Any command write the rules of §5.2 in that order; the agent's folders (read ones read only), the temp folder and the Web switches follow the agent form.
+- [ ] A worktree with `opencode.json`, `opencode.jsonc` or `.opencode` holds the card "blocked" with the profile's message, at every start and Continue.
+- [ ] "How this run works" for OpenCode lists the allowed commands and says a refused call shows as a failed tool call.
+- [ ] Find installed CLIs offers OpenCode on its profile when `opencode --version` is 2.x; a 1.x is offered as today's Other, with "update to OpenCode 2 for the profile".
+- [ ] `list_clis` returns `caps` for every CLI (Claude Code, Codex and Gemini from today's constants); the Chief's mode tiers (GA-352) come from the profile.
+- [ ] Checked by hand with a real OpenCode 2 and written in the PR and a code comment: an allowed command runs; another is refused; `git status && rm -rf x` and `$(…)` are refused; an edit in a read folder is refused; Continue resumes. `keeps_to_the_list` is true for OpenCode only when all of these held.
+- [ ] `docs/features/cli.md`, `docs/features/tools.md` and `docs/agent-tools.md` describe OpenCode.
+
+**Card 3. Settings and the agent form take each CLI's modes and notes from `caps`, and offer OpenCode** · frontend · To do · builds on card 2's contract (can be built at the same time as card 2, against §5.4)
+
+What it builds: `src/lib/clis.ts`'s per-kind tables (`PERMISSIONS`, `FOLDERS_NOTE`, `EFFORTS_BY_KIND`, `RISKY`) replaced by `CliStatus.caps`; the Kind list and rows of `CliSettings.tsx` (§5.1); `AgentForm.tsx` and `AgentTools.tsx` reading `caps`.
+
+- [ ] The Kind list is Claude Code, Codex, Gemini, the shipped profiles (OpenCode), Other; picking OpenCode fills the program and shows the sign-in line and the `OPENCODE_DB` hint.
+- [ ] A profile CLI's row shows "checked with <version>" (or the version warning) and its "can / can't" line.
+- [ ] The agent form's permission modes, texts, risky warnings, efforts and folders note come from `caps`; MCP servers and the browser are off with `caps.why.mcp` when `caps.can.mcp` is false.
+- [ ] Claude Code, Codex, Gemini and Other show the same texts as before (tests against the old tables' strings).
+
+### Feature 2: MCP servers on profile CLIs
+
+**Card 4. The agent's MCP servers and the browser on OpenCode** · backend · To do · builds on card 2
+
+- [ ] The run's servers (agent form → Tools) go in the run's config at the profile's `mcp.at`, stdio with its environment and HTTP with its headers, secrets from the keychain only in that 0600 file.
+- [ ] None of your own or the repository's OpenCode servers runs in the run (by the way card 2's check found; else each `<server>_*` denied), and the run log says which were kept out.
+- [ ] A tool switched off is denied by `<server>_<tool>`; the others are allowed.
+- [ ] The browser (Chrome DevTools MCP) works in an OpenCode run, checked by hand; `mcp_not_on` reads `caps`.
+- [ ] `docs/agent-tools.md` updated.
+
+### Feature 3: your own profiles (after open question 3)
+
+**Card 5. Profiles you add: check, keep and remove them** · backend · To do · builds on card 2
+
+- [ ] `list_cli_profiles`, `add_cli_profile(json)`, `remove_cli_profile(id)` as §5.4; kept in the `cli_profiles` setting.
+- [ ] A profile with a shipped id, or one that doesn't pass `profile::check`, is refused in plain words; removing one a CLI uses is refused, naming the CLI.
+- [ ] An added profile is "not checked by Hersir": `keeps_to_the_list` false, so the Chief's changes to its agents wait for Approve.
+
+**Card 6. Settings → Add a profile** · frontend · **Design** · builds on card 5
+
+- [ ] Design: the Add a profile panel of §5.1 (paste or pick a JSON file, what it can do before saving, "not checked by Hersir"), in the `cli-edit` form's style.
+- [ ] Built: paste or pick, the check's error in place, save, remove; added profiles in the Kind list after a divider.
+
+### Feature 4: more CLIs on profiles (after card 2; each from a real run)
+
+**Card 7. Shipped profiles for Qwen Code, Kilo and GitHub Copilot CLI** · backend · To do · builds on cards 2 and 4
+
+- [ ] Qwen Code: Claude Code's stream-json shape with `permission_denials` as Refused (§3.1.4); its permission rules and settings path checked by hand.
+- [ ] Kilo: OpenCode's profile with Kilo's names, if its `run --format json` matches OpenCode's (checked).
+- [ ] Copilot CLI: a fixture of a real `copilot -p … --output-format json` run first; `--session-id`, `--additional-mcp-config`, `--allow-tool 'shell(…)'` (style `shell_call`), `COPILOT_HOME`.
+- [ ] Each with its fixture, its `checked_with`, its guards, and the hand check of card 2.
+
+### Feature 5: an ACP client (after open question 1)
+
+**Card 8. ACP agents on a profile with `"protocol": "acp"`** · backend · To do · builds on card 2
+
+- [ ] A run keeps the agent's stdin open (`process.rs`) and speaks ACP v1 with the `agent-client-protocol` crate: `initialize`, `session/new` with the worktree, the run's MCP servers and folders, `session/prompt`, `session/load` or `session/resume` for Continue.
+- [ ] `session/update` becomes `RunEvent`s; `usage_update`'s cost is kept; a refused `session/request_permission` is a `Refused` with Hersir's reason.
+- [ ] Permission requests are answered from the agent's allowed commands for the agents whose `rawInput` shape is checked; anything else is rejected.
+- [ ] A first ACP agent (Goose, Kimi Code or Kiro, by open question 6) on a shipped profile, checked by hand.
+
+**At the same time:** card 0 with anything; cards 2 and 3 (on §5.4's contract); cards 4 and 5 after card 2; card 7 after card 4. Card 8 waits for open question 1.
+
+**Later, not in this plan:** Gemini's `--allowed-tools` is deprecated in favour of a policy file (`--policy`, §3.1.3), so Hersir's Gemini runs should move to a per-run policy file before it goes; and Codex's `declined` command status could show as Refused (§3.1.2). Each is one small backend card.
+
+## 7. Open questions
+
+1. **Profiles now, ACP later?** Recommendation: yes. Build option B (cards 1–4) now and an ACP client (card 8) once you want an agent that only fits ACP (Kiro, Kimi Code, Auggie, Mistral Vibe, Cline).
+2. **OpenCode 2 only?** OpenCode 1 (`opencode-ai`) is the old line, and the two install the same `opencode` command. Recommendation: the profile is for 2.x; a 1.x keeps running as Other, and Settings says to update.
+3. **May you add your own profiles (cards 5–6)?** Recommendation: yes, after OpenCode, marked "not checked by Hersir", so agents on them never count as kept to their allowed commands.
+4. **Today's Cursor and Crush entries run every command** (Cursor's `--force`, Crush's `run`): fix them now with card 0? Recommendation: yes, card 0 first or alongside card 1.
+5. **The Chief on another CLI?** Recommendation: no, not in this work (§3.4).
+6. **Which CLIs after OpenCode?** Recommendation: Qwen Code, Kilo and Copilot CLI on profiles (card 7); then ACP for Kiro, Kimi Code, Auggie or Mistral Vibe. Aider and Crush stay Other: they print no JSON. Amp runs tools without asking by default and has no local sandbox: only with its permission rules checked.
+7. **OpenCode and Claude:** OpenCode removed Claude Pro/Max sign-in in March 2026, so an OpenCode agent reaches Claude only with an API key (paid per token); ChatGPT and Copilot plans still sign in. Fine for the first CLI? Recommendation: yes; Settings' sign-in line says so.
+8. **Subscription limits beyond Claude Code and Codex:** only Copilot CLI reports its plan's quota. Recommendation: leave limits out of the profiles for now ("Hersir can't read its limits yet").
+
 ## 8. Sources
 
 Every source was read on **2026-11-25**. Versions and dates of npm packages come from `npm view <package> version time.modified license`, run on 2026-11-25 (opencode-ai 1.19.6, @openai/codex 0.172.0, @google/gemini-cli 0.71.1, @qwen-code/qwen-code 0.28.4, @github/copilot 1.0.116, @sourcegraph/amp, @charmland/crush 0.102.0, droid 1.20.0, @agentclientprotocol/sdk 2.12.0, acpx 0.22.0).
