@@ -93,7 +93,7 @@ Every card gets its own git worktree and branch, started from main on GitHub or 
 
 A new card takes over a finished card's worktree. A build folder over 20 GB is emptied first, and the card says so.
 
-Settings → Data lists old worktrees with their uncommitted files, and removes them. Remove anyway puts uncommitted changes in git's stash first. A worktree with a nested repository in it stays, and says why: git's checks before a removal or a stash could run that repository's own settings.
+Settings → Data lists old worktrees with their uncommitted files, and removes them. Remove anyway puts uncommitted changes in git's stash first. A worktree with a nested repository in it stays, and says why: git's checks before a removal or a stash could run that repository's own settings. So does one with a submodule whose folder name isn't valid UTF-8.
 
 ## Runs
 
