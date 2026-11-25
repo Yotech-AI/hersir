@@ -1,7 +1,8 @@
 // A project's Docs page in a browser (docs.html), built into one HTML file by `vite build --mode docs-web`: every script,
-// style and font inside it. Hersir embeds that file and its docs server serves it at /p/<project id>/, with the project's
-// index.json, source/<path>.json and commits/<hash>.json next to it (src-tauri/src/docs_server.rs). Its theme: the one
-// Hersir's window sent (?theme=), else the one picked here last, else the system's.
+// style and font inside it. Hersir embeds that file and its docs server serves it at /t/<key>/p/<project id>/, with the
+// project's index.json, source/<path>.json and commits/<hash>.json next to it (src-tauri/src/docs_server.rs): every
+// address here is relative, so it keeps the key, new at each start. Its theme: the one Hersir's window sent (?theme=),
+// else the one picked here last, else the system's.
 import React, { useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { loadFonts } from "../widget/fonts";

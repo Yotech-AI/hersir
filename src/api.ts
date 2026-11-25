@@ -270,7 +270,8 @@ export const cardFileDiff = (taskId: string, path: string, oldPath: string | nul
 /** The changes one run committed: from the commit it started at to the one it ended at. */
 export const runChanges = (runId: string) => invoke<T.CardChanges>("run_changes", { runId });
 /** A project's docs page (the Docs section) in a browser: starts Hersir's docs server the first time (127.0.0.1 only) and
- *  gives its address, like http://127.0.0.1:4380. The page is at <address>/p/<project id>/. */
+ *  gives its address with its key, new at each start, like http://127.0.0.1:4380/t/<key>. The page is at
+ *  <address>/p/<project id>/; without the key every address is a 404. */
 export const docsServe = () => invoke<string>("docs_serve");
 /** The Docs page in this window: a project's docs index, a file's lines, a commit's changed lines (src/docs). */
 export const docsIndex = (projectId: string) => invoke<DocsIndex>("docs_index", { projectId });

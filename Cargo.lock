@@ -1736,6 +1736,7 @@ dependencies = [
 name = "gizai"
 version = "0.20.1"
 dependencies = [
+ "getrandom 0.4.3",
  "gizai-agents",
  "gizai-core",
  "gizai-docs",
