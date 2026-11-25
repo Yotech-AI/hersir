@@ -161,6 +161,9 @@ pub struct ChatManager {
     /// GA-342: wakes the calls waiting in `wait_until` (Claude Desktop's chief_reply): a message was saved in a chat, or a
     /// chat stopped answering.
     changed: tokio::sync::Notify,
+    /// GA-266: the process trees of the answers, board checks and looks at questions whose token is out (see
+    /// `mcp::Turns`).
+    pub(crate) turns: crate::mcp::Turns,
 }
 
 /// A use of one of Gizai's tools that an answer's stream showed.
@@ -1494,6 +1497,8 @@ async fn attempt_once(st: &AppState, thread: &ChatThread, plan: &Plan, prompt: &
         Ok(t) => t,
         Err(e) => { let _ = core_runs::finish_chat(&st.db, &run_id, "failed", 0, 0, 0, Some(&e.to_string())); return fail(&run_id, e.to_string()); }
     };
+    // GA-266: before the token goes out: it works only for this turn's own processes
+    crate::mcp::expect_turn(st, &run_id);
     let config_path = chat_dir.join(format!("{run_id}.mcp.json"));
     // The Chief's own MCP servers (agent form → Tools) next to Gizai's; one it can't use is left out, and the chat says why.
     let (servers, left_out) = {
@@ -1512,6 +1517,7 @@ async fn attempt_once(st: &AppState, thread: &ChatThread, plan: &Plan, prompt: &
     let (mcp_allowed, mcp_refused) = gizai_agents::mcp_run::permissions(&servers);
     let cleanup = |token: &str| {
         let _ = tokens::revoke(&st.db, token);
+        crate::mcp::end_turn(st, &run_id);
         let _ = std::fs::remove_file(&config_path);
     };
     if let Err(e) = write_private(&config_path, &config.to_string()) {
@@ -1550,6 +1556,7 @@ async fn attempt_once(st: &AppState, thread: &ChatThread, plan: &Plan, prompt: &
             return fail(&run_id, e.to_string());
         }
     };
+    crate::mcp::bind_turn(st, &run_id, handle.stop.tree());
     let _ = core_runs::set_running(&st.db, &run_id, handle.pid);
     let stopped_early = st.chat.stopped.lock().unwrap().contains(&thread.id);
     set_live(st, &thread.id, |l| { l.run_id = run_id.clone(); l.stop = Some(handle.stop.clone()); l.tool = None; });
@@ -1797,6 +1804,8 @@ async fn check_once(st: &AppState, agent: &Member, prompt: &str, saw: &[gizai_co
         Ok(t) => t,
         Err(e) => return end("failed", Totals::default(), Some(e.to_string()), None),
     };
+    // GA-266: before the token goes out: it works only for this check's own processes
+    crate::mcp::expect_turn(st, &run_id);
     let config_path = chat_dir.join(format!("{run_id}.mcp.json"));
     // Only Gizai's server (not the Chief's own MCP servers or its web tools) and Read, Glob and Grep: a check uses no
     // tool from outside Gizai, so nothing marks it the way a chat answer is (`mark_outside`, `tools::NOT_AFTER_OUTSIDE`).
@@ -1804,6 +1813,7 @@ async fn check_once(st: &AppState, agent: &Member, prompt: &str, saw: &[gizai_co
         "env": shim_env(st, &token)}}});
     let cleanup = |token: &str| {
         let _ = tokens::revoke(&st.db, token);
+        crate::mcp::end_turn(st, &run_id);
         let _ = std::fs::remove_file(&config_path);
     };
     if let Err(e) = write_private(&config_path, &config.to_string()) {
@@ -1834,6 +1844,7 @@ async fn check_once(st: &AppState, agent: &Member, prompt: &str, saw: &[gizai_co
             return end("failed", Totals::default(), Some(e.to_string()), None);
         }
     };
+    crate::mcp::bind_turn(st, &run_id, handle.stop.tree());
     let _ = core_runs::set_running(&st.db, &run_id, handle.pid);
     *st.chat.check.lock().unwrap() = Some(handle.stop.clone());
     // Quitting began while it started: it stops with the rest.
@@ -2007,11 +2018,14 @@ async fn question_process(st: &AppState, agent: &Member, asked_run_id: &str, pro
         Ok(t) => t,
         Err(e) => return failed(e.to_string()),
     };
+    // GA-266: before the token goes out: it works only for this run's own processes
+    crate::mcp::expect_turn(st, run_id);
     let config_path = st.data_dir.join("chat").join(format!("{run_id}.mcp.json"));
     let config = json!({"mcpServers": {"gizai": {"type": "stdio", "command": shim.display().to_string(), "args": [],
         "env": shim_env(st, &token)}}});
     let cleanup = |token: &str| {
         let _ = tokens::revoke(&st.db, token);
+        crate::mcp::end_turn(st, run_id);
         let _ = std::fs::remove_file(&config_path);
     };
     if let Err(e) = write_private(&config_path, &config.to_string()) {
@@ -2041,6 +2055,7 @@ async fn question_process(st: &AppState, agent: &Member, asked_run_id: &str, pro
             return failed(e.to_string());
         }
     };
+    crate::mcp::bind_turn(st, run_id, handle.stop.tree());
     let _ = core_runs::set_running(&st.db, run_id, handle.pid);
     if let Some(slot) = st.chat.questions.lock().unwrap().get_mut(run_id) {
         *slot = Some(handle.stop.clone());
