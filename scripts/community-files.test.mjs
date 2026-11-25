@@ -659,7 +659,8 @@ describe("the installers' messages say Hersir (GA-234)", () => {
     // Hersir's own crates: third_party/ holds other people's crates with their own descriptions (GA-264)
     const tomls = git("ls-files", "Cargo.toml", "*/Cargo.toml").stdout.split("\n").filter((t) => t && !t.startsWith("third_party/"));
     const descriptions = tomls.flatMap((t) => [...read(t).matchAll(/^description = "(.*)"$/gm)].map((m) => m[1]));
-    expect(descriptions).toHaveLength(5);
+    // gizai-core, gizai-agents, gizai-docs, gizai-mcp, gizai-cloud-client (GA-358) and the app
+    expect(descriptions).toHaveLength(6);
     for (const d of descriptions) expect(d).toMatch(/^Hersir[: ]/);
     expect(descriptions.filter((d) => OLD.test(d))).toEqual([]);
     expect(read("browser.html")).toContain("<title>Hersir (browser mode)</title>");
