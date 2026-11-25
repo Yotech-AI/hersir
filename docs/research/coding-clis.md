@@ -10,7 +10,7 @@ Research by the R&D Agent, 25 Nov 2026, on `main` at `945076a2`. Each claim is m
 - **Recommendation: CLI profiles (option B).** A profile is JSON: how to start the CLI, a mapping from its JSON lines to Hersir's `RunEvent`s, how to resume, where MCP servers and permission rules go in a per-run config, and which files in a worktree hold a card. The engines, the folder and secret handling and Claude Code, Codex and Gemini stay code (§3.3, §4).
 - **OpenCode first** on a shipped profile (§5.2), then MCP servers, then Qwen Code, Kilo and Copilot CLI. **ACP** comes next as a second protocol of the same profiles (§4 C). The Chief stays on Claude Code (§3.4).
 - **OpenCode 2 can be kept to an agent's allowed commands:** a run gets its own config folder (`OPENCODE_CONFIG_DIR`) and leaves the worktree's settings out (`OPENCODE_DISABLE_PROJECT_CONFIG`), and its scanner refuses a chained command unless every part is allowed. These variables are in OpenCode's source, not its docs: card 2 checks them in a real run first.
-- **Plan:** nine cards in six features (§6); eight open questions for Jefsev (§7).
+- **Plan:** nine cards in six features (§6); nine open questions for Jefsev (§7).
 
 ## 2. The project now
 
@@ -46,13 +46,13 @@ Hersir is a desktop app (Tauri 2, a React/TypeScript UI, Rust crates, local SQLi
 - `crates/gizai-core/src/clis.rs` (the saved `Cli`, `KINDS`), `crates/gizai-core/src/limits.rs`.
 - `src-tauri/src/clis.rs` (`KNOWN`, `spec`), `src-tauri/src/runs.rs` (the start of a task run), `src-tauri/src/limits.rs`.
 - `src/components/CliSettings.tsx`, `src/lib/clis.ts`, `src/components/AgentForm.tsx` (Runs on, Permissions, Tools).
-- Not the Chief's chat (`chat.rs`, `chat_stream.rs`) in the first cards: see §3.2.
+- Not the Chief's chat (`chat.rs`, `chat_stream.rs`) in the first cards: see §3.4.
 
 ## 3. The feature
 
 ### 3.1 The CLIs
 
-Each CLI below has the points of the card, in this order: **headless** (how it runs and takes the prompt), **output** (structured events), **resume**, **MCP**, **model**, **permissions**, **folders**, **sign-in**, **sandbox**, **repository config** (what it loads from the worktree), **ACP** (the Agent Client Protocol, §3.1.13), **limits**, and **licence and systems**. Sources are numbered as in §8; each was read on 2026-11-25. Pages were read through a fetch tool that summarises a page before quoting it, so **[V]** means a primary source said it, and a flag name was copied from the source **[I]**/**[V]** as marked.
+Each CLI below has the points of the card, in this order: **headless** (how it runs and takes the prompt), **output** (structured events), **resume**, **MCP**, **model**, **permissions**, **folders**, **sign-in**, **sandbox**, **repository config** (what it loads from the worktree), **ACP** (the Agent Client Protocol, §3.1.13), **limits**, and **licence and systems**. Sources are numbered as in §8; each was read on 2026-11-25. Pages were read through a fetch tool that summarises a page before quoting it: **[V]** means a primary source said it (as that tool quoted it), and each builder card checks the flags it uses against the real CLI.
 
 **Overview.** "JSON events" means JSONL on stdout that a profile can map; "caller's id" means Hersir can choose the session id; "per run" means MCP servers can be given for one run without touching your files or the worktree; "list" means shell commands can be allowed by prefix and the rest refused.
 
@@ -79,7 +79,7 @@ Each CLI below has the points of the card, in this order: **headless** (how it r
 
 - **Headless:** `opencode run [message..]`; when stdin isn't a terminal it is read and put after the message, and with no message the prompt is stdin alone (so Hersir can keep the prompt on stdin, closed after it, as now). An empty prompt fails with exit code 1. It exits when done: "admitting → running → settling → … done(exit code)" **[V]** [S4, S5]. It never waits for a keyboard: a permission `ask` is rejected (below), a question is cancelled with a message to the model, any other input request fails the run **[V]** [S5].
   - **By default `run` hands the run to a shared background service** (one per user account) that owns sessions, config, permissions and tool execution; `--standalone` starts a private server for the run **[V]** [S6]. With `--standalone` that server inherits the run's environment (`services/standalone.ts`: `extendEnv: true`); without it, a shared service started earlier is reused as it is, with its own environment and config (`services/server-connection.ts`) **[V]** [S11b]. So Hersir must pass `--standalone`.
-  - **It works in `$PWD`, not in the folder it is started in:** `const root = process.env.PWD ?? process.cwd()` **[V]** [S4]. Hersir's runner sets the working folder but passes its own `PWD` on (`process.rs:322`–`:324` sets only the CLI's environment) **[V]**, so **an OpenCode 2 run as Other today works in the folder Hersir was started from, not in the worktree** whenever Hersir's environment has a `PWD` **[I]**. Every run should get `PWD` set to its worktree (card 1).
+  - **It works in `$PWD`, not in the folder it is started in:** `const root = process.env.PWD ?? process.cwd()` **[V]** [S4]. Hersir's runner sets the working folder but passes its own `PWD` on (`process.rs:322`–`:324` sets only the CLI's environment) **[V]**, so **an OpenCode 2 run as Other today works in the folder Hersir was started from, not in the worktree** whenever Hersir's environment has a `PWD` **[I]**. Every run should get `PWD` set to its worktree (card 0).
 - **Output:** `--format json`, JSONL; every line is `{type, timestamp, sessionID, …}` **[V]** [S5]:
   - `text` and `reasoning`: `part {id, messageID, type, text, time}`, where `text` is **only the new piece** (`part.text.slice(previous.length)`), so pieces are joined by `part.id`;
   - `tool_use`: `part {id, tool, state}`, only at the end of a call: `{status: "completed", input, output, title, metadata}` or `{status: "error", input, error}`;
@@ -108,7 +108,7 @@ Each CLI below has the points of the card, in this order: **headless** (how it r
 #### 3.1.2 Codex (OpenAI): already in Hersir
 
 - **Headless:** `codex exec`; the prompt as an argument, or on stdin with `-` or no prompt (stdin and an argument together: stdin is appended as a `<stdin>` block). Progress goes to stderr **[V]** [S20, S21].
-- **Output:** `--json`, JSONL: `thread.started{thread_id}`, `turn.started`, `item.started|updated|completed{item}` with item types `agent_message`, `reasoning`, `command_execution{command, aggregated_output, exit_code, status: in_progress|completed|failed|declined}`, `file_change`, `mcp_tool_call`, `web_search`, `todo_list`, `collab_tool_call`, `error`; `turn.completed{usage: input_tokens, cached_input_tokens, cache_write_input_tokens, output_tokens, reasoning_output_tokens}`, `turn.failed`, `error`. No cost **[V]** [S22]. Hersir's parser (`cli.rs:687`) reads all of these but `declined` and `cached_input_tokens`: a `declined` command shows as a failed result, not as Refused **[V]**/**[I]**.
+- **Output:** `--json`, JSONL: `thread.started{thread_id}`, `turn.started`, `item.started|updated|completed{item}` with item types `agent_message`, `reasoning`, `command_execution{command, aggregated_output, exit_code, status: in_progress|completed|failed|declined}`, `file_change`, `mcp_tool_call`, `web_search`, `todo_list`, `collab_tool_call`, `error`; `turn.completed{usage: input_tokens, cached_input_tokens, cache_write_input_tokens, output_tokens, reasoning_output_tokens}`, `turn.failed`, `error`. No cost **[V]** [S22]. Hersir's parser (`cli.rs:687`) reads these, but marks a command failed only for `status: "failed"` or a non-zero exit code (`cli.rs:745`) **[V]**, so a `declined` command (likely without an exit code) shows as a tool result without an error, not as Refused **[I]**.
 - **Resume:** `codex exec resume <id> [-]`; the id is `thread.started.thread_id` **[V]** [S21].
 - **MCP:** `[mcp_servers.<id>]` in `config.toml` (stdio `command, args, env, cwd`; HTTP `url, http_headers, bearer_token_env_var`; `enabled_tools`, `disabled_tools`, `required`, per-tool `approval_mode`); `--ignore-user-config` skips `$CODEX_HOME/config.toml`; a project's `.codex/config.toml` loads only when trusted **[V]** [S23]. Per run with `-c mcp_servers.<id>.…` **[I]**.
 - **Model:** `-m`; `model_reasoning_effort` (`low…xhigh|max|ultra` by model) **[V]** [S23].
@@ -317,7 +317,7 @@ A CLI in Settings then has a **profile** instead of one of the four fixed kinds:
 | `id`, `name`, `programs`, `checked_with`, `version_args` | The profile's id; the name Settings shows; the program names Find installed CLIs looks for; the CLI version it was checked with; how to read the installed version (Settings warns when it differs in its major version). | Settings, Find installed CLIs |
 | `sign_in`, `account_env` | One line on how to sign the CLI in (Hersir never does it); the variable that moves its logins to another folder, for a second account. | Settings → Environment hint |
 | `start` | The arguments of a new run and of a resumed one, as an **array** (never a shell string); how the prompt goes in (`stdin`, `arg`, or `file`, which Hersir writes in the run's log folder); environment variables. Placeholders: `{prompt}`, `{prompt_file}`, `{model}`, `{effort}`, `{session}`, `{worktree}`, `{temp_dir}`, `{run_config}` (the per-run config file's path), `{run_config_dir}` (the per-run folder it is in, for a CLI that takes a config folder), `{run_config_json}` (its text: only for a config without secrets, as a variable reaches every command the agent runs). An inner array is an **optional group**, left out when a placeholder in it is empty (`["-m", "{model}"]`); `{"each": "folders_rw", "args": ["--add-dir", "{path}"]}` repeats per folder. | Task runs, model, effort, folders |
-| `run_config` | A per-run config file in the CLI's own format (JSON or TOML), which Hersir writes (0600, in the run's log folder, removed when the run ends, as `mcp_run::write_config` does now) from the profile's `base` object plus what Hersir fills in: MCP servers, permission rules, folders. | MCP servers, allowed commands, folders |
+| `run_config` | A per-run config file in the CLI's own format (JSON first; TOML later, §4 B), with its `file` name when the CLI reads a config folder, which Hersir writes (0600, in a 0700 folder of the run next to its log, removed when the run ends, as `mcp_run::write_config` does now) from the profile's `base` object plus what Hersir fills in: MCP servers, permission rules, folders. | MCP servers, allowed commands, folders |
 | `session` | `"id": "caller"` (Hersir chooses a UUID and passes `{session}`) or `"reported"` with the JSON pointer of the event that names it. Without `resume` args the CLI can't continue. | Continue, the nudge, Ask the Chief first |
 | `events` | How each output line becomes a `RunEvent` (below). `"format": "text"` keeps today's plain-text reading. | Run panel, outcome line, usage, refusals |
 | `mcp` | Where in `run_config` the servers go, and a template for a `stdio` entry and an `http` entry in the CLI's own words; how a server's tools are allowed or refused; how the user's own servers are kept out (`strict`). | MCP servers, the browser |
@@ -336,7 +336,7 @@ The `events` section is a list of rules, tried in order on each JSON line. A rul
 
 ```json
 { "match": { "/type": "tool_use", "/part/state/status": "completed" },
-  "emit": "tool", "id": "/part/callID", "name": "/part/tool", "input": "/part/state/input",
+  "emit": "tool", "id": "/part/id", "name": "/part/tool", "input": "/part/state/input",
   "output": "/part/state/output", "error": false }
 ```
 
@@ -366,7 +366,7 @@ Hersir keeps an agent's allowed commands as Claude Code rules (`Bash(git status:
 | Style | `Bash(git status:*)` becomes | For |
 |---|---|---|
 | `claude_rule` | `Bash(git status:*)` | CLIs that copied Claude Code's rules |
-| `prefix_glob` | `git status *` (and `git status`) | OpenCode's `permission.bash` (§3.1.1) |
+| `prefix_glob` | `git status *` (which in OpenCode also matches a bare `git status`) | OpenCode's `permissions` rules for the `shell` action (§3.1.1), Kilo |
 | `shell_call` | `shell(git status:*)` (the profile gives the tool name) | Copilot-like `--allow-tool` |
 | `gemini_shell` | `run_shell_command(git status)` | Gemini, Qwen Code (`cli.rs:270`) |
 
@@ -379,7 +379,7 @@ A profile also says whether its CLI splits a command line on `&&`, `;`, `|` and 
 - **Everything that guards your data**: the checks on the agent's folders (never `/`, your home folder, Hersir's data or folders with keys), the run's temp folder and `TMPDIR`, the git settings of the agent's own push, the MCP entries with secrets from your keychain (they go only in the per-run file, never in a profile), the guard checks (`guards` only names the files).
 - **What one CLI needs that no other does**: Gemini's `.env` handling (GA-322, `cli.rs:287`), Codex's writable git folders (GA-263, `cli.rs:243`), reading Codex's subscription limits from its session log and Claude Code's `rate_limit_event` (`limits.rs:44`). So **Claude Code, Codex and Gemini stay code adapters**; moving them to profiles would win nothing and risk their security fixes **[I]**.
 - **The Chief's chat** (§3.4).
-- **An ACP client**, if Hersir takes option C (§4): the protocol is code; an ACP agent's profile is then only `start`, `guards` and `account_env`.
+- **An ACP client**, if Hersir takes option C (§4): the protocol is code; an ACP agent's profile is then only `start`, `permissions` (the agent's own mode and rules), `guards` and `account_env`.
 - **What the front end knows per kind today** (`src/lib/clis.ts`: `PERMISSIONS`, `FOLDERS_NOTE`, `EFFORTS_BY_KIND`, `RISKY`) moves to the backend: `list_clis` sends each CLI's modes, efforts and notes, built from its kind or its profile, so a profile needs no front-end change **[I]**.
 
 #### Shipped and added profiles
@@ -392,7 +392,7 @@ A profile also says whether its CLI splits a command line on `&&`, `;`, `|` and 
 
 The chat turn is the most Claude Code-bound part of Hersir **[V]** (`src-tauri/src/chat.rs:1509`–`:1540`): `--restricted` and `--tools Read,Glob,Grep` (built-in tools cut down), `--permission-prompts none`, `--append-system-prompt`, `--include-partial-messages` for the text as it is written, the `gizai` MCP server through the `hersir-mcp` shim with a token per turn, and the GA-271/GA-289 logic that decides whether a tool result came from a trusted source (`Trusted::of`, `TurnTools::of`). `chat_problem` (`crates/gizai-core/src/clis.rs:155`) and `team.rs:353` refuse the chat on any other kind.
 
-**Recommendation [I]:** keep the Chief on Claude Code in this work. "Any coding CLI" is about the agents that build; the Chief is one per company and already has Runs on for a second Claude Code account. A later card can move the chat to a profile once two things are checked on a real CLI: that its built-in tools can be cut down to read-only ones per run (OpenCode can, with a per-run agent whose `permission` denies edit and bash, §3.1.1), and that it streams text. ACP (§3.1.13) gives both streaming and MCP servers per session, so if Hersir gets an ACP client (option C, §4), the chat on an ACP agent is the natural later card. Open question 5.
+**Recommendation [I]:** keep the Chief on Claude Code in this work. "Any coding CLI" is about the agents that build; the Chief is one per company and already has Runs on for a second Claude Code account. A later card can move the chat to a profile once two things are checked on a real CLI: that its built-in tools can be cut down to read-only ones per run (OpenCode can, with run rules that deny `edit` and `shell`, §3.1.1), and that it streams text. ACP (§3.1.13) gives both streaming and MCP servers per session, so if Hersir gets an ACP client (option C, §4), the chat on an ACP agent is the natural later card. Open question 5.
 
 ## 4. Options
 
@@ -409,7 +409,7 @@ One more `Kind` per CLI (`Kind::OpenCode`, `Kind::Cursor`, …), each with its c
 
 The design of §3.3: a profile engine in `gizai-agents`, the per-kind knowledge moved behind `list_clis`, and OpenCode as the first shipped profile.
 
-- **Takes:** the profile types, the template renderer, the event engine and the `run_config` writer (about 1,000 to 1,500 lines of Rust with tests **[I]**); `list_clis` with `caps`; Settings and the agent form reading `caps`; the OpenCode profile. Libraries: none new (`serde`, `serde_json` with `Value::pointer`, `toml` if a profile writes TOML; all already in the workspace **[V]** `cargo tree` not needed: `cli.rs` and `codex_args` use them).
+- **Takes:** the profile types, the template renderer, the event engine and the `run_config` writer (about 1,000 to 1,500 lines of Rust with tests **[I]**); `list_clis` with `caps`; Settings and the agent form reading `caps`; the OpenCode profile. Libraries: none new for OpenCode: `serde` and `serde_json` (with `Value::pointer`) are already workspace dependencies (`Cargo.toml:17`–`:18`) **[V]**. Hersir has no `toml` crate **[V]** (none in the `Cargo.toml` files; `codex_args` writes TOML strings by hand, `cli.rs:214`), so `run_config` starts with JSON only; a CLI with a TOML config (Kimi Code, Mistral Vibe) would add the `toml` crate later **[I]**.
 - **Good:** a new CLI with JSON output is a JSON file and its fixture; you can add one yourself; most current CLIs print JSONL (§3.1 overview): OpenCode, Cursor, Copilot, Amp, Goose, Droid, Qwen Code, Kimi, Auggie.
 - **Risks:** a CLI whose output the vocabulary can't express needs a new emit (code) or stays Other; a CLI that changes its events breaks the profile until the next release (Settings warns on a new major version); a profile you add can claim more than its CLI keeps (it shows "not checked by Hersir", and the Chief's changes wait for Approve).
 - **Size:** L for the engine and OpenCode (two cards), then S per shipped profile.
@@ -419,7 +419,7 @@ The design of §3.3: a profile engine in `gizai-agents`, the per-kind knowledge 
 Hersir talks ACP (§3.1.13) to the agent: `session/new` with the worktree, the run's MCP servers, the agent's folders and the run's rules as an appended system prompt; `session/prompt` with the card; `session/update` as `RunEvent`s; `session/request_permission` answered by Hersir; `session/load` or `session/resume` for Continue. A profile for an ACP agent is then only `start`, `permissions` (the agent's own mode and rules) and `guards`.
 
 - **Takes:** the `agent-client-protocol` crate (5.6.1, Apache-2.0, Zed and JetBrains, released 25 Nov 2026 **[V]** [S64]); a runner that keeps stdin open and answers requests (today's closes it, `process.rs:332`); the mapping from `session/update` to `RunEvent`; answering permission requests from the agent's allowed commands, which needs each agent's `rawInput` shape **[I]**.
-- **Good:** one client covers 13 native agents and three through adapters **[V]** [S74]; MCP servers, extra folders, resume and a system prompt without per-CLI files; a refused request is Hersir's own, so the Run panel lists it with Hersir's reason.
+- **Good:** one client covers the 13 native agents and 3 adapters of §3.1.13 (46 agents in the registry) **[V]** [S74]; MCP servers, extra folders, resume and a system prompt without per-CLI files; a refused request is Hersir's own, so the Run panel lists it with Hersir's reason.
 - **Risks:** an agent asks only for what its own mode makes it ask, so Hersir still sets each agent's permissions in its own terms; tokens per turn aren't stable in ACP yet (only context size and a running cost) **[V]** [S70, S71]; v2 is in preview and changes `session/load`, modes and permissions **[V]** [S63]; Claude Code and Codex need an extra npm adapter each; several agents mark their ACP mode preview (Copilot) **[V]** [S75].
 - **Size:** L (two cards), then S per agent.
 
@@ -438,7 +438,7 @@ Two screens change; both keep the app's own pieces: the `.cli-list` rows and the
 ```
 Coding CLIs
  Codex        · Codex                 codex exec --json                     [Edit] [Remove]
- OpenCode     · OpenCode  [checked with 1.19]   opencode run --format json  [Edit] [Remove]
+ OpenCode     · OpenCode  [checked with 2.4]    opencode run --format json  [Edit] [Remove]
               Run panel, Continue, MCP servers, allowed commands · not: subscription limits
  My CLI       · my-cli    [not checked by Hersir]  my-cli exec --json       [Edit] [Remove]
               Run panel, usage · not: Continue, MCP servers, allowed commands
@@ -569,7 +569,7 @@ export const removeCliProfile = (id: string) => invoke<T.CliProfileInfo[]>("remo
 
 - **A profile can't run code inside Hersir** (no scripts, no expressions; §3.3). It does pick the program and its arguments, as Other's Arguments do now: only you add one, and shipped ones are reviewed and tested **[I]**.
 - **Secrets** go only in the per-run config file (0600, removed at the end), filled from your keychain by `mcp_servers::for_run` as now; never in a profile, the run log or its header **[V]** (`mcp_run.rs:27`, `runs.rs:1340`).
-- **A repository's own settings** never start a program outside the agent's allowed commands (`docs/features/tools.md:128`) **[V]**: each profile names the files that would (for OpenCode §3.1.1) as `guards`, and the card goes on hold "blocked" when the worktree has one, as for `.gemini` now **[I]**.
+- **A repository's own settings** never start a program outside the agent's allowed commands (`docs/features/tools.md:128`) **[V]**: a profile either turns the CLI's project config off (OpenCode: `OPENCODE_DISABLE_PROJECT_CONFIG`, §3.1.1) or names the files in its `guards`, and the card goes on hold "blocked" when the worktree has one, as for `.gemini` now **[I]**. Your own global plugins and hooks stay out of runs too (OpenCode: the run's own config folder), as Claude Code runs go without your hooks (`cli.rs:192`) **[V]**/**[I]**.
 - **Allowed commands** are only claimed (`keeps_to_the_list`) for a shipped profile whose check proved that a chained or substituted command (`git status && rm -rf x`, `$(…)`) is refused; otherwise the Chief's changes to the agent wait for Approve (GA-352) **[I]**.
 - **No new network traffic**: profiles come with releases (§3.3).
 - **The sandbox** for every CLI stays GA-265; a profile can name the CLI's own sandbox flags in a permission mode, as Codex's modes do now.
