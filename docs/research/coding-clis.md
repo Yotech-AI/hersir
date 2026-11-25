@@ -42,6 +42,72 @@ Hersir is a desktop app (Tauri 2, a React/TypeScript UI, Rust crates, local SQLi
 
 ## 3. The feature
 
+### 3.1 The CLIs
+
+Each CLI below has the points of the card, in this order: **headless** (how it runs and takes the prompt), **output** (structured events), **resume**, **MCP**, **model**, **permissions**, **folders**, **sign-in**, **sandbox**, **repository config** (what it loads from the worktree), **ACP** (the Agent Client Protocol, §3.1.13), **limits**, and **licence and systems**. Sources are numbered as in §8; each was read on 2026-11-25. Pages were read through a fetch tool that summarises a page before quoting it, so **[V]** means a primary source said it, and a flag name was copied from the source **[I]**/**[V]** as marked.
+
+#### 3.1.2 Codex (OpenAI): already in Hersir
+
+- **Headless:** `codex exec`; the prompt as an argument, or on stdin with `-` or no prompt (stdin and an argument together: stdin is appended as a `<stdin>` block). Progress goes to stderr **[V]** [S20, S21].
+- **Output:** `--json`, JSONL: `thread.started{thread_id}`, `turn.started`, `item.started|updated|completed{item}` with item types `agent_message`, `reasoning`, `command_execution{command, aggregated_output, exit_code, status: in_progress|completed|failed|declined}`, `file_change`, `mcp_tool_call`, `web_search`, `todo_list`, `collab_tool_call`, `error`; `turn.completed{usage: input_tokens, cached_input_tokens, cache_write_input_tokens, output_tokens, reasoning_output_tokens}`, `turn.failed`, `error`. No cost **[V]** [S22]. Hersir's parser (`cli.rs:687`) reads all of these but `declined` and `cached_input_tokens`: a `declined` command shows as a failed result, not as Refused **[V]**/**[I]**.
+- **Resume:** `codex exec resume <id> [-]`; the id is `thread.started.thread_id` **[V]** [S21].
+- **MCP:** `[mcp_servers.<id>]` in `config.toml` (stdio `command, args, env, cwd`; HTTP `url, http_headers, bearer_token_env_var`; `enabled_tools`, `disabled_tools`, `required`, per-tool `approval_mode`); `--ignore-user-config` skips `$CODEX_HOME/config.toml`; a project's `.codex/config.toml` loads only when trusted **[V]** [S23]. Per run with `-c mcp_servers.<id>.…` **[I]**.
+- **Model:** `-m`; `model_reasoning_effort` (`low…xhigh|max|ultra` by model) **[V]** [S23].
+- **Permissions:** `--sandbox read-only|workspace-write|danger-full-access` (`exec` defaults to read-only); `approval_policy` `on-request|never|granular`; `--full-auto` is gone (Hersir doesn't use it, `cli.rs:234`); `--dangerously-bypass-approvals-and-sandbox`; command rules are execpolicy `.rules` files, `--ignore-rules` skips them **[V]** [S21, S23, S24]. What `exec` does when a command needs approval with `never` is not documented **[V]** (checked [S24]).
+- **Folders:** `-C`, `--add-dir`, `sandbox_workspace_write.writable_roots`; `.git`, `.codex`, `.agents`, `.aws` inside writable roots stay read only **[V]** [S21, S24].
+- **Sign-in:** ChatGPT login, `codex login --with-api-key`, device code; `CODEX_API_KEY` per run; credentials in `$CODEX_HOME/auth.json` or the keyring (`cli_auth_credentials_store`); `CODEX_HOME` moves it all **[V]** [S25].
+- **Sandbox:** Seatbelt (macOS), bubblewrap + seccomp (Linux), MXC (Windows) **[V]** [S24].
+- **Repository config:** `AGENTS.md`; `.codex/config.toml` only when trusted; hooks behind `features.hooks` **[V]** [S23].
+- **ACP:** through the adapter `codex-acp` (now `agentclientprotocol/codex-acp`, Apache-2.0), built on Codex's app server **[V]** [S26].
+- **Limits:** `RateLimitSnapshot` is in Codex's protocol but not in `exec --json` **[V]** [S27, S22]; Hersir reads them from the session log (`limits.rs:51`) **[V]**.
+- **Licence and systems:** Apache-2.0; 0.172.0 (npm, 25 Nov 2026); Linux, macOS, Windows (native) **[V]** [S20, npm].
+
+#### 3.1.3 Gemini CLI (Google): already in Hersir
+
+- **Headless:** `gemini -p "<prompt>"` (appended to stdin); exit codes 0, 1, 42 (input), 53 (turn limit) **[V]** [S30].
+- **Output:** `-o stream-json`: `init{session_id, model}`, `message{role, content, delta?}`, `tool_use{tool_name, tool_id, parameters}`, `tool_result{tool_id, status, output?, error?}`, `error{severity, message}`, `result{status, stats{input_tokens, output_tokens, cached, …}}`. No cost **[V]** [S31]. Hersir's parser reads these (`cli.rs:786`) **[V]**.
+- **Resume:** `--session-id <id>` (chosen by the caller) and `--resume <id>` **[V]** [S32], as Hersir uses them (`cli.rs:426`).
+- **MCP:** `mcpServers` in settings (`command, args, env, cwd`, `url`, `httpUrl`, `headers`, `includeTools`, `excludeTools`); `--allowed-mcp-server-names`; `GEMINI_CLI_SYSTEM_SETTINGS_PATH` overrides all settings files **[V]** [S33].
+- **Permissions:** `--approval-mode default|auto_edit|yolo|plan`. **`--allowed-tools` is deprecated** in favour of the policy engine: TOML `[[rule]]` with `toolName`, `commandPrefix`, `commandRegex`, `decision = allow|deny|ask_user`, `allowRedirection`, `allowCommandSubstitution`, loaded with `--policy <file>`. **Headless, `ask_user` counts as deny** (no hang). In an untrusted folder the mode is forced to `default`; `--skip-trust` trusts it for the session **[V]** [S32, S34]. Hersir uses `--allowed-tools` (`cli.rs:428`): a follow-up card should move to a per-run `--policy` file **[I]**.
+- **Folders:** `--include-directories` (at most 5); no read-only folders **[V]** [S33].
+- **Sign-in:** Google login, `GEMINI_API_KEY`, Vertex; `GEMINI_CLI_HOME` moves `~/.gemini` **[V]** [S35, S33]. The sign-in page says Gemini CLI was **replaced by Antigravity CLI on 18 June 2026 for free-tier and Google One users** **[V]** [S35].
+- **Sandbox:** Seatbelt, Docker/Podman, gVisor, LXC, Windows native **[V]** [S36].
+- **Repository config:** `GEMINI.md`, `.gemini/settings.json`, `.gemini/.env`, hooks, extensions **[V]** [S33]; Hersir's guards (`cli.rs:276`–`:360`).
+- **ACP:** native `--acp` (`--experimental-acp` deprecated) **[V]** [S32].
+- **Limits:** tokens only, no quota in the output **[V]** [S31].
+- **Licence and systems:** Apache-2.0; 0.71.1 (npm, 24 Nov 2026); Linux, macOS, Windows **[V]** [S30, npm].
+
+#### 3.1.4 Qwen Code (Alibaba, a Gemini CLI fork)
+
+- **Headless:** `qwen -p "<prompt>"` or the prompt on stdin; budgets `--max-session-turns`, `--max-wall-time`, `--max-tool-calls` **[V]** [S40].
+- **Output:** `-o stream-json` in **Claude Code's shape**: `system{subtype, session_id, model, tools, mcp_servers, permission_mode}`, `assistant{message{content[text|thinking|tool_use]}}`, `user{message{content[tool_result{is_error}]}}`, `result{subtype, is_error, num_turns, result, usage{input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens}, permission_denials[{tool_name, tool_use_id, tool_input}]}`. No cost **[V]** [S41]. Hersir's Claude Code reader (`stream.rs:83`) would read it nearly as is **[I]**.
+- **Resume:** `--resume <id>`, `--continue`; the id is reported in `session_id` **[V]** [S40].
+- **MCP:** settings like Gemini's (`QWEN_CODE_SYSTEM_SETTINGS_PATH`) **[V]** [S42]; the `mcpServers` fields not read (the page was cut) **[I]**.
+- **Model:** `-m`; effort is the setting `model.reasoningEffort` **[V]** [S42].
+- **Permissions:** `--approval-mode plan|default|auto-edit|auto|yolo`; refusals in `result.permission_denials` **[V]** [S40, S41]; the rule syntax not read **[I]**.
+- **Folders:** `--include-directories` **[V]** [S42].
+- **Sign-in:** Qwen OAuth needs a paid plan and a browser; API keys (`DASHSCOPE_API_KEY`, `OPENAI_API_KEY`, …) in `~/.qwen/settings.json` or `.env` **[V]** [S43]; no variable to move `~/.qwen` documented **[V]** (checked [S42], [S43]).
+- **Repository config:** `.qwen/settings.json`, `.qwen/skills/`, `.qwen/.env` **[V]** [S42].
+- **ACP:** `qwen serve` (HTTP + SSE, experimental) **[V]** [S44]; a stdio `--acp` flag not seen **[I]**.
+- **Licence and systems:** Apache-2.0; 0.28.4 (npm, 22 Nov 2026); Node 22+, Linux, macOS, Windows **[V]** [S44, npm].
+
+#### 3.1.13 The Agent Client Protocol (ACP): one protocol for many agents
+
+ACP is to coding agents what LSP is to language servers: a client (an editor, or Hersir) starts the agent as a subprocess and talks JSON-RPC 2.0 with it over stdio **[V]** [S60, S61].
+
+- **Who and what:** governed by Zed and JetBrains for now, with a foundation as the stated goal; every repository Apache-2.0 **[V]** [S62]. Protocol v1 is stable; v2 became a preview on 20 Nov 2026, and "v1-only agents and clients will be common for some time" **[V]** [S63]. Rust crate `agent-client-protocol` 5.6.1 (25 Nov 2026, Apache-2.0, features `process` and `stdio`) **[V]** [S64]; TypeScript SDK `@agentclientprotocol/sdk` 2.12.0 **[V]** (npm).
+- **Transport:** newline-delimited JSON on the agent's stdout and stdin; the agent "MUST NOT write anything to its stdout that is not a valid ACP message" **[V]** [S65]. So the process stays open for the whole run, and Hersir writes to its stdin during the run: today's runner closes stdin after the prompt (`process.rs:332`) **[V]**.
+- **A run:** `initialize` (capabilities: `loadSession`, `mcpCapabilities.http`, `sessionCapabilities.additionalDirectories`, `…systemPrompt`, `…resume`) → `session/new {cwd, mcpServers, additionalDirectories?, systemPrompt?}` (the **agent** chooses the session id) → `session/prompt {sessionId, prompt}` → `session/update` notifications → a `stopReason` (`end_turn`, `max_tokens`, `max_turn_requests`, `refusal`, `cancelled`) **[V]** [S66, S67, S68].
+- **Events:** `agent_message_chunk`, `agent_thought_chunk`, `tool_call {toolCallId, title, kind: read|edit|delete|move|search|execute|think|fetch|other, status, rawInput}`, `tool_call_update {status: in_progress|completed|failed, content, rawOutput}`, `plan`, `usage_update {used, size, cost?}` (context size and a running cost, stable since 5 Jun 2026), and more **[V]** [S68, S69, S70]. Tokens per turn are only a draft (`unstable_end_turn_token_usage`) **[V]** [S71].
+- **Resume:** `session/load` (replays the history) or `session/resume` (doesn't), each when the agent offers it **[V]** [S67].
+- **MCP servers:** in `session/new`: stdio `{name, command, args, env}` always; `http` with headers when the agent offers it. No files to write **[V]** [S67].
+- **Permissions:** the agent **may** ask with `session/request_permission {toolCall, options: allow_once|allow_always|reject_once|reject_always}`, and the client answers. The spec doesn't say which tools must ask; an agent in a loose mode, or with its own allow rules, never asks **[V]** [S69]. So Hersir can refuse what reaches it, but it can't make an agent ask; and `rawInput` (the command) has each agent's own shape **[I]**. Client-side `terminal/*` and `fs/*` exist, but agents don't have to use them, and v2 drops them **[V]** [S72].
+- **What ACP doesn't give:** subscription limits ("a future RFD"), tokens per turn (draft), an allowed-commands list or sandbox policy, read-only folders, a turn or budget cap; sign-in is the agent's own **[V]** [S70, S72]/**[I]**.
+- **Who speaks it:** the registry (`https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json`, 46 agents, each with `cmd`, `args`, `env` per platform) **[V]** [S73, S74]. Natively: Gemini (`--acp`), OpenCode (`opencode acp`), Goose (`goose acp`), Qwen Code (`--acp`), Kimi Code (`kimi acp`), Auggie (`--acp`), GitHub Copilot CLI (`--acp`, public preview), Cursor (`cursor-agent acp`), Kiro (`kiro-cli acp`), Cline (`--acp`), Factory Droid (`droid exec --output-format acp-daemon`), Junie, Mistral Vibe (`vibe-acp`). Through adapters: Claude Code (`@agentclientprotocol/claude-agent-acp`), Codex (`@agentclientprotocol/codex-acp`), Amp (a third-party `amp-acp`) **[V]** [S74, S75].
+- **Headless clients exist:** `acpx` ("Headless CLI client for the Agent Client Protocol", MIT) **[V]** (npm); others seen only in search results **[I]**.
+
+**What it means for Hersir [I]:** ACP is the one interface most current CLIs share, and it covers the Run panel, resume, MCP servers, extra folders and an appended system prompt the same way for all of them. It doesn't cover usage tokens, limits or allowed commands, and an ACP agent's permissions still have to be set in its own terms (its mode, its config) before Hersir's answers to `request_permission` mean anything. So ACP replaces the `events`, `session`, `mcp` and `folders` sections of a profile, not its `permissions` and `guards`.
+
 ### 3.2 What Hersir needs from a CLI, per feature
 
 "Must" means Hersir can't run an agent on the CLI without it; every other row has a fallback, which already exists for Other CLIs today.
