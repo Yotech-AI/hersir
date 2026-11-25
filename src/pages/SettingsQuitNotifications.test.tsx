@@ -51,6 +51,8 @@ vi.mock("../components/McpSettings", () => ({ McpSettings: () => null }));
 // GA-340: Claude Desktop keeps its own state (ClaudeDesktopSettings.test.tsx)
 vi.mock("../components/ClaudeDesktopSettings", () => ({ ClaudeDesktopSettings: () => null }));
 vi.mock("../components/OldWorktrees", () => ({ OldWorktrees: () => null }));
+// GA-360: Settings → Hersir Cloud keeps its own state (CloudSettings.test.tsx)
+vi.mock("../components/CloudSettings", () => ({ CloudSettings: () => null }));
 
 const { SettingsPage } = await import("./SettingsPage");
 const { QuitSettings } = await import("../components/QuitSettings");

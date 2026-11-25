@@ -74,12 +74,12 @@ describe("chat archive (GA-46)", () => {
 });
 
 describe("Settings tabs (GA-42)", () => {
-  it("opens a tab from #/settings/<tab>, for each of the six tabs", () => {
-    for (const tab of ["general", "appearance", "notifications", "agents", "mcp", "github"])
+  it("opens a tab from #/settings/<tab>, for each of the seven tabs (GA-360 added Hersir Cloud, #/settings/cloud)", () => {
+    for (const tab of ["general", "appearance", "notifications", "agents", "mcp", "github", "cloud"])
       expect(parseHash(`#/settings/${tab}`)).toEqual({ page: "settings", id: tab });
   });
   it("lists the tabs in the order Settings shows them", () => {
-    expect(SETTINGS_TABS).toEqual(["general", "appearance", "notifications", "agents", "mcp", "github"]);
+    expect(SETTINGS_TABS).toEqual(["general", "appearance", "notifications", "agents", "mcp", "github", "cloud"]);
   });
   it("opens General (no tab) for #/settings, and for a tab it doesn't know", () => {
     expect(parseHash("#/settings")).toEqual({ page: "settings" });
@@ -90,6 +90,8 @@ describe("Settings tabs (GA-42)", () => {
   it("round-trips a tab through href, the link a page or notice uses", () => {
     expect(href({ page: "settings", id: "appearance" })).toBe("#/settings/appearance");
     expect(parseHash(href({ page: "settings", id: "github" }))).toEqual({ page: "settings", id: "github" });
+    expect(href({ page: "settings", id: "cloud" })).toBe("#/settings/cloud");
+    expect(parseHash(href({ page: "settings", id: "cloud" }))).toEqual({ page: "settings", id: "cloud" });
     expect(parseHash(href({ page: "settings" }))).toEqual({ page: "settings" });
   });
   it("leaves the other pages with an id as they were", () => {

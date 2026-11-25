@@ -118,14 +118,22 @@ const h = vi.hoisted(() => ({
   /** What the fake api answers, by function name; one without an answer never settles. */
   api: {} as Record<string, (...a: unknown[]) => unknown>,
   opened: [] as string[],
+  /** GA-360: who listens to cloud-changed and restore-changed. */
+  heard: { cloud: [] as ((s: unknown) => void)[], restore: [] as ((s: unknown) => void)[] },
 }));
 vi.mock("../api", () => Object.fromEntries(["appInfo", "listUsers", "getTeam", "findClis", "listClis", "saveClis", "scanClaudeCodeMcp", "listMcpServers",
-  "importMcpServers", "finishOnboarding", "skipOnboarding"].map((name) => [name, (...a: unknown[]) => {
+  "importMcpServers", "finishOnboarding", "skipOnboarding",
+  // GA-360: Restore from Hersir Cloud on the first screen, then GA-218's restore
+  "cloudStatus", "onCloudChanged", "cloudSignIn", "cloudCancelSignIn", "cloudEnterRecovery", "cloudListBackups", "cloudStartRestore",
+  "restoreStatus", "onRestoreChanged", "cancelRestore", "restartToRestore"].map((name) => [name, (...a: unknown[]) => {
   h.calls.push([name, a]);
   const f = h.api[name];
   return f ? Promise.resolve().then(() => f(...a)) : new Promise(() => {});
 }])));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: (url: string) => { h.opened.push(url); return Promise.resolve(); } }));
+// GA-360: Restart now (UpdateNotice's RestartButton) asks first while agents work; none do on the first screen
+vi.mock("../lib/useLiveRuns", () => ({ useLiveRuns: () => [] }));
+vi.mock("../components/chat/useChat", () => ({ useChatLive: () => [] }));
 
 const { createRoot } = await import("react-dom/client");
 const { createElement } = await import("react");
@@ -289,7 +297,8 @@ describe("when the onboarding opens (GA-164: on a new install, step 1)", () => {
     const check = (title: string) => {
       const island = byClass("onb-island")[0];
       expect(byClass("onb-island")).toHaveLength(1);
-      expect(island.childNodes.map((n) => n.attrs.get("class"))).toEqual(["onb-scroll", "onb-actions"]);
+      // GA-360 (GA-317's frame 4): step 1 has the Restore from Hersir Cloud strip at the island's foot, under the actions
+      expect(island.childNodes.map((n) => n.attrs.get("class"))).toEqual(title === "Welcome to Hersir" ? ["onb-scroll", "onb-actions", "onb-cloud"] : ["onb-scroll", "onb-actions"]);
       expect(island.childNodes[0].childNodes.map((n) => [n.nodeName, n.attrs.get("class")])).toEqual([["MAIN", "onb-body"]]);
       expect(heading().startsWith(title)).toBe(true);
       expect(island.contains(container.all().find((n) => n.nodeName === "H1")!)).toBe(true);
@@ -708,5 +717,183 @@ describe("with the keyboard alone", () => {
     await enter(focused(), on("You're all set"));
     await enter(focused(), () => done.mock.calls.length > 0);
     expect(done.mock.calls).toEqual([[{ page: "chat", id: "thread-1" }, undefined]]);
+  });
+});
+
+// ---- GA-360 QA: Restore from Hersir Cloud on the first screen (GA-317's frame 4, design/hersir-cloud.md) ----
+// A strip at the island's foot on step 1 opens the three steps in the island in place of step 1: Sign in (cloud_sign_in),
+// Your recovery code (cloud_enter_recovery on a computer whose key is "needed"), Pick a backup (cloud_list_backups, newest
+// first with the computer that made each); Restore asks, cloud_start_restore downloads it, then GA-218's restore (its
+// steps from restore-changed) and Restart now (restart_to_restore). The fake Hersir Cloud answers as GA-359's contract says.
+const CODE = "HC-7K2Q-M4VB-9TXD-2HWN-PL6R-Q8YC";
+const WRONG_CODE = "That recovery code doesn't open this account's backups.";
+type Cloud = { signedIn: boolean; email: string | null; signingIn: boolean; plan: unknown; key: "missing" | "here" | "needed"; recoveryMadeAt: number | null;
+  backup: { on: boolean; every: "daily" | "manual"; onQuit: boolean; running: { step: string; done: number; total: number } | null; last: null; next: null; lastError: null } };
+let cloud: Cloud;
+const MB = 1024 ** 2;
+const cloudBackup = (name: string, hoursAgo: number, device: string, reason: string) => ({
+  name, madeAt: Date.now() - hoursAgo * 3_600_000, device: { id: device.toLowerCase(), name: device, this: false }, reason, bytes: 38 * MB, restorable: true, problem: null });
+const CLOUD_LIST = [
+  cloudBackup("hc-manual-old", 70, "work-laptop", "manual"),
+  cloudBackup("hc-daily-new", 1, "PC", "daily"),
+  cloudBackup("hc-quit-mid", 30, "PC", "quit"),
+];
+const noRestore = { state: "none", folder: null, snapshot: null, step: null, error: null, savedToday: null, result: null };
+let signIn: { resolve: () => void; reject: (e: string) => void } | null;
+beforeEach(() => {
+  cloud = { signedIn: false, email: null, signingIn: false, plan: null, key: "missing", recoveryMadeAt: null,
+    backup: { on: false, every: "daily", onQuit: false, running: null, last: null, next: null, lastError: null } };
+  signIn = null;
+  h.heard = { cloud: [], restore: [] };
+  Object.assign(h.api, {
+    cloudStatus: () => structuredClone(cloud),
+    onCloudChanged: (cb: (s: unknown) => void) => { h.heard.cloud.push(cb); return () => {}; },
+    // waits for the browser until the test says how the sign-in went
+    cloudSignIn: () => new Promise((resolve, reject) => {
+      cloud.signingIn = true;
+      signIn = {
+        resolve: () => { Object.assign(cloud, { signedIn: true, signingIn: false, email: "you@example.com", key: "needed" }); resolve(structuredClone(cloud)); },
+        reject: (e) => { cloud.signingIn = false; reject(e); },
+      };
+    }),
+    cloudCancelSignIn: () => { signIn?.reject("The sign-in was cancelled."); },
+    cloudEnterRecovery: (code: unknown) => {
+      if (code !== CODE) throw WRONG_CODE;
+      cloud.key = "here";
+      return structuredClone(cloud);
+    },
+    cloudListBackups: () => structuredClone(CLOUD_LIST),
+    cloudStartRestore: () => structuredClone(noRestore),
+    restoreStatus: () => structuredClone(noRestore),
+    onRestoreChanged: (cb: (s: unknown) => void) => { h.heard.restore.push(cb); return () => {}; },
+    cancelRestore: () => structuredClone(noRestore),
+    restartToRestore: () => undefined,
+  });
+});
+const sendCloud = async () => { await act(async () => { for (const cb of h.heard.cloud) cb(structuredClone(cloud)); }); await tick(); };
+const sendRestore = async (s: unknown) => { await act(async () => { for (const cb of h.heard.restore) cb(structuredClone(s)); }); await tick(); };
+const cloudSteps = () => byClass("cloud-step").map((li) => `${["on", "done", "later"].find((c) => byClass(c).includes(li))}: ${text(byClass("title", li)[0])}`);
+const stepBody = (n: number) => text(byClass("body", byClass("cloud-step")[n - 1])[0]);
+const askBox = () => container.all().find((n) => n.attrs.get("role") === "alertdialog") ?? null;
+const askButton = (name: string) => askBox()!.all().find((n) => n.nodeName === "BUTTON" && text(n) === name) ?? null;
+
+describe("Restore from Hersir Cloud on the first screen (GA-360)", () => {
+  it("is a strip at the island's foot on step 1 only, with the design's line and button, and reads Hersir Cloud only once opened", async () => {
+    await open();
+    const strip = byClass("onb-cloud");
+    expect(strip).toHaveLength(1);
+    expect(text(strip[0])).toBe("Moving from another computer? Your data comes back from your backup in Hersir Cloud.Restore from Hersir Cloud");
+    expect(strip[0].all().find((n) => n.nodeName === "BUTTON")?.attrs.get("class")).toBe("btn sm");
+    expect(calls("cloudStatus")).toEqual([]);
+    await toClis();
+    expect(byClass("onb-cloud")).toEqual([]);
+    await click(button("Back"), on("Welcome to Hersir"));
+    expect(byClass("onb-cloud")).toHaveLength(1);
+    expect(calls("cloudStatus")).toEqual([]);
+  });
+
+  it("opens the three steps in the island in place of step 1, and Back comes back to step 1", async () => {
+    await open();
+    await click(button("Restore from Hersir Cloud"), () => cloudSteps().length === 3);
+    expect(heading()).toBe("Restore from Hersir Cloud");
+    expect(focused()?.nodeName).toBe("H1");
+    expect(text()).toContain("Your data from a backup in Hersir Cloud. It replaces what is on this computer, which Hersir saves first.");
+    expect(calls("cloudStatus")).toHaveLength(1);
+    // signed out: step 1 on accent, step 2's field off, step 3 later with its hint
+    expect(cloudSteps()).toEqual(["on: Sign in", "later: Your recovery code", "later: Pick a backup"]);
+    expect(stepBody(1)).toBe("Sign inSign inOpens your browser: your password, then your authenticator's code.");
+    expect(off(byId("onb-cloud-code"))).toBe(true);
+    expect(byId("onb-cloud-code")?.attrs.get("placeholder")).toBe("HC-____-____-____-____-____-____");
+    expect(byClass("onb-cloud")).toEqual([]);
+    expect(byClass("onb-actions")[0].childNodes.map((n) => text(n))).toEqual(["Back"]);
+    await click(button("Back"), on("Welcome to Hersir"));
+    expect(eyebrow()).toBe("Step 1 of 4");
+    expect(byClass("cloud-step")).toEqual([]);
+    expect(byId("onb-you")?.value).toBe("Jefsev");
+  });
+
+  it("goes through sign in, the recovery code and a backup to Restart now", async () => {
+    await open();
+    await click(button("Restore from Hersir Cloud"), () => cloudSteps().length === 3);
+    // 1. Sign in: the browser opens; the step waits with Cancel
+    await click(button("Sign in"), () => stepBody(1).includes("Waiting for you to sign in in your browser…"));
+    expect(calls("cloudSignIn")).toHaveLength(1);
+    expect(button("Cancel")).not.toBeNull();
+    await act(async () => { signIn!.resolve(); });
+    await until(() => cloudSteps()[0] === "done: Sign in");
+    expect(stepBody(1)).toContain("Signed in as you@example.com");
+    // 2. Your recovery code: a wrong one shows the refusal as it is and stays on the step
+    expect(cloudSteps()).toEqual(["done: Sign in", "on: Your recovery code", "later: Pick a backup"]);
+    expect(stepBody(3)).toBe("Pick a backupYour backups show once the code is right.");
+    expect(off(byId("onb-cloud-code"))).toBe(false);
+    await type(byId("onb-cloud-code"), "HC-0000-0000-0000-0000-0000-0000");
+    await click(button("Check"), () => alert() !== null);
+    expect(alert()).toBe(WRONG_CODE);
+    expect(cloudSteps()[1]).toBe("on: Your recovery code");
+    expect(calls("cloudListBackups")).toEqual([]);
+    // Enter checks the code, and doesn't go to the onboarding's Next
+    await type(byId("onb-cloud-code"), `  ${CODE} `);
+    expect(alert()).toBeNull();
+    await enter(byId("onb-cloud-code")!, () => cloudSteps()[1] === "done: Your recovery code");
+    expect(calls("cloudEnterRecovery")).toEqual([["HC-0000-0000-0000-0000-0000-0000"], [CODE]]);
+    expect(heading()).toBe("Restore from Hersir Cloud");
+    expect(stepBody(2)).toContain("Accepted.");
+    // 3. Pick a backup: newest first, each with the computer that made it
+    await until(() => byClass("backup-list").length === 1);
+    expect(cloudSteps()).toEqual(["done: Sign in", "done: Your recovery code", "on: Pick a backup"]);
+    const rows = byClass("backup-list")[0].childNodes;
+    expect(rows.map((li) => text(byClass("bk-what", li)[0]))).toEqual(["Daily · PC", "On quit · PC", "By hand · work-laptop"]);
+    expect(rows.map((li) => text(byClass("bk-size", li)[0]))).toEqual(["38 MB", "38 MB", "38 MB"]);
+    expect(stepBody(3)).toContain("Hersir restarts to finish, as a restore from a folder does.");
+    // Restore asks first, as for a folder's backup; Cancel leaves it
+    const restoreOf = (i: number) => rows[i].all().find((n) => n.nodeName === "BUTTON" && text(n) === "Restore")!;
+    await click(restoreOf(0), () => askBox() !== null);
+    expect(text(askBox()!)).toContain("Restore this backup?");
+    expect(text(askBox()!)).toContain("Daily, today ");
+    expect(text(askBox()!)).toContain(", from PC. Hersir first saves today's data as a backup. After a restart, Hersir shows your data as it was then");
+    await click(askButton("Cancel"), () => askBox() === null);
+    expect(calls("cloudStartRestore")).toEqual([]);
+    await click(restoreOf(0), () => askBox() !== null);
+    await click(askButton("Restore"), () => askBox() === null);
+    expect(calls("cloudStartRestore")).toEqual([["hc-daily-new"]]);
+    // the download, then GA-218's restore, then Restart now
+    cloud.backup.running = { step: "downloading", done: 640 * MB, total: 1200 * MB };
+    await sendCloud();
+    expect(text()).toContain("Downloading: 640 of 1,200 MB…");
+    expect(button("Cancel restore")).not.toBeNull();
+    cloud.backup.running = { step: "checking", done: 0, total: 0 };
+    await sendCloud();
+    expect(text()).toContain("Checking the backup…");
+    cloud.backup.running = null;
+    await sendCloud();
+    await sendRestore({ ...noRestore, state: "staging", step: "Copying files (3 of 14)" });
+    expect(text()).toContain("Copying files (3 of 14)…");
+    const snapshot = { name: "hc-daily-new", reason: "daily", madeAt: CLOUD_LIST[1]!.madeAt, deviceId: "pc", deviceName: "PC", thisComputer: false, appVersion: "0.21.0",
+      schemaVersion: 41, dbBytes: 1, filesCount: 0, filesBytes: 0, filesMissing: 0, restorable: true, problem: null };
+    await sendRestore({ ...noRestore, state: "ready", snapshot, savedToday: "gizai-before-restore-x" });
+    expect(text()).toContain("Restore ready: today ");
+    expect(button("Cancel restore")).not.toBeNull();
+    await click(button("Restart now"), () => calls("restartToRestore").length === 1);
+    expect(calls("restartToRestore")).toEqual([[]]);
+    expect(done).not.toHaveBeenCalled();
+  });
+
+  it("Cancel stops the sign-in without an error, and Sign in shows again", async () => {
+    await open();
+    await click(button("Restore from Hersir Cloud"), () => cloudSteps().length === 3);
+    await click(button("Sign in"), () => button("Cancel") !== null);
+    await click(button("Cancel"), () => button("Sign in") !== null);
+    expect(calls("cloudCancelSignIn")).toHaveLength(1);
+    expect(text()).not.toContain("The sign-in was cancelled.");
+    expect(cloudSteps()).toEqual(["on: Sign in", "later: Your recovery code", "later: Pick a backup"]);
+  });
+
+  it("shows a sign-in's refusal under step 1 as it is", async () => {
+    await open();
+    await click(button("Restore from Hersir Cloud"), () => cloudSteps().length === 3);
+    await click(button("Sign in"), () => button("Cancel") !== null);
+    await act(async () => { signIn!.reject("Hersir Cloud couldn't be reached."); });
+    await until(() => stepBody(1).includes("Hersir Cloud couldn't be reached."));
+    expect(stepBody(1)).toBe("Sign inSign inOpens your browser: your password, then your authenticator's code.Hersir Cloud couldn't be reached.");
   });
 });
