@@ -91,6 +91,51 @@ Each CLI below has the points of the card, in this order: **headless** (how it r
 - **ACP:** `qwen serve` (HTTP + SSE, experimental) **[V]** [S44]; a stdio `--acp` flag not seen **[I]**.
 - **Licence and systems:** Apache-2.0; 0.28.4 (npm, 22 Nov 2026); Node 22+, Linux, macOS, Windows **[V]** [S44, npm].
 
+#### 3.1.5 Cursor CLI (`agent`, was `cursor-agent`)
+
+- **Headless:** `agent -p "<prompt>" --output-format stream-json`; the prompt is an argument (stdin not documented); `--trust` trusts the workspace, headless only. Print mode "can't stop to ask you": what needs approval is rejected, no hang; it writes files in the workspace even without `--force` **[V]** [S80, S81, S82].
+- **Output:** `stream-json` (NDJSON): `system/init {session_id, model, cwd, permissionMode}`, `assistant {message.content}`, `tool_call {subtype: started|completed, call_id, tool_call: {readToolCall|writeToolCall|function…}, result}`, `result {subtype, is_error, result, session_id, usage}`; `--stream-partial-output` for deltas. Claude Code's shape for `system`, `assistant` and `result`, Cursor's own for tool calls. No cost **[V]** [S81, S83].
+- **Resume:** `--resume <chatId>`; `agent create-chat` returns a new id beforehand; `session_id` in every event **[V]** [S82, S81].
+- **MCP:** `.cursor/mcp.json` (project) and `~/.cursor/mcp.json`; **no per-run flag** for the local CLI; `--approve-mcps` approves all servers headless; per-tool rules `Mcp(server:tool)` **[V]** [S84, S82, S85].
+- **Model:** `--model <slug>` (effort is part of the slug), `--mode plan|ask` **[V]** [S82, S83].
+- **Permissions:** `~/.cursor/cli-config.json` and `<project>/.cursor/cli.json`: `permissions.allow` / `deny` with `Shell(git:*)`, `Read(glob)`, `Write(glob)`, `Mcp(server:tool)`, `WebFetch(domain)`; deny wins. **`-f/--force` (alias `--yolo`): "Force allow commands unless explicitly denied"** **[V]** [S85, S82]. **Hersir's Find installed CLIs offers Cursor Agent as Other with `-p --force …` (`src-tauri/src/clis.rs:108`) **[V]**: an agent on it may run any command that isn't denied. The agent form should say so today **[I]**.**
+- **Folders:** `--workspace <path>`, `--add-dir <path>`; read-only paths in `sandbox.json` (`additionalReadonlyPaths`) **[V]** [S82, S86].
+- **Sign-in:** `agent login`, or `CURSOR_API_KEY` / `--api-key`; credentials in the keyring (Linux since 19 Nov 2026) or an owner-only file; no variable to move the config folder documented **[V]** [S87, S83].
+- **Sandbox:** yes, `--sandbox enabled|disabled`, `sandbox.json` with `workspace_readwrite|workspace_readonly`, network allow lists **[V]** [S86].
+- **Repository config:** `.cursor/cli.json`, `.cursor/mcp.json`, `.cursor/sandbox.json`, `AGENTS.md`, hooks; no switch to turn them off **[V]** [S82, S83].
+- **ACP:** native, `agent acp` (`session/load`, `session/request_permission`; MCP servers from `mcp.json`, not from `session/new`) **[V]** [S88].
+- **Limits:** token `usage` in the result; no cost **[V]** [S83].
+- **Licence and systems:** proprietary; v2026.11.19; Linux, macOS, Windows (native and WSL); installs with a script into `~/.local/bin` and updates itself **[V]** [S80, S83].
+
+#### 3.1.6 GitHub Copilot CLI
+
+- **Headless:** `copilot -p "<prompt>"` or the prompt on stdin; exits when done; `--no-ask-user`. "Without any permission options, requests that need approval are denied" **[V]** [S90, S91].
+- **Output:** `--output-format json` (JSONL); the CLI's event schema is **not documented**; the Copilot SDK's events (`assistant.message_delta`, `assistant.message`, `tool.execution_start {toolCallId, toolName, arguments}`, `tool.execution_complete {success, result, error}`, `assistant.usage {inputTokens, outputTokens, cost, cacheReadTokens, quotaSnapshots}`, `permission.completed`) are most likely the same **[V]** [S92]/**[I]**. A fixture from a real run is needed before a profile **[I]**.
+- **Resume:** `--session-id <uuid>` makes a new session with **the caller's id**; `--resume=<id>` **[V]** [S90].
+- **MCP:** `~/.copilot/mcp-config.json`; **`--additional-mcp-config=<json>` for this session only**, highest priority; entries `local|stdio|http|sse` with `headers` and a required `tools` allow list; workspace MCP is off in prompt mode; `--disable-mcp-server <name>` **[V]** [S90].
+- **Model:** `--model`, `--effort low|medium|high|xhigh|max` **[V]** [S90].
+- **Permissions:** `--allow-tool 'shell(git:*)'` (matches `git push`, not `gitea`), `--deny-tool`, `--allow-all-tools`, `--allow-all`/`--yolo`; deny wins even over `--allow-all` **[V]** [S90]. Refusals: `permission.completed {result.kind: "denied-by-rules"}` in the SDK **[V]** [S92]; in the CLI's JSONL **[I]**.
+- **Folders:** current folder, `--add-dir`; no read-only folders **[V]** [S90].
+- **Sign-in:** `/login`, or `COPILOT_GITHUB_TOKEN` > `GH_TOKEN` > `GITHUB_TOKEN`; the keychain; **`COPILOT_HOME`** moves `~/.copilot` **[V]** [S90, S93]. Needs a Copilot subscription **[V]** [S94].
+- **Sandbox:** yes, an OS shell sandbox (`--sandbox`; Seatbelt on macOS, Windows sandbox) **[V]** [S90, S93].
+- **Repository config:** `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md` (off with `--no-custom-instructions`); repository hooks and extensions are off in prompt mode **[V]** [S90].
+- **ACP:** native, `copilot --acp` (public preview) **[V]** [S90, S75].
+- **Limits:** `assistant.usage.quotaSnapshots` and `totalPremiumRequests` (SDK) **[V]** [S92]: the only CLI besides Claude Code and Codex that reports its plan's quota **[I]**.
+- **Licence and systems:** proprietary (GitHub's terms); 1.0.116 of 25 Nov 2026; native binaries for Linux, macOS, Windows **[V]** (npm).
+
+#### 3.1.7 Amp (Sourcegraph)
+
+- **Headless:** `amp -x "<prompt>"` or the prompt on stdin; prints its final message and exits **[V]** [S95].
+- **Output:** `--stream-json` (with `-x`), which "tries to be compatible with Claude Code's format": `system/init {session_id, tools, mcp_servers}` (no model), `assistant {message.content[text|tool_use]}`, `user {tool_result{is_error}}`, `result {subtype, is_error, num_turns, session_id, result, usage, permission_denials}`. No cost **[V]** [S96].
+- **Resume:** `amp threads continue <thread> -x "…" --stream-json`; the thread id is `session_id` **[V]** [S96].
+- **MCP:** `amp.mcpServers` in settings; **`--mcp-config`** per run, highest precedence; `--settings-file <path>` replaces your settings file **[V]** [S95, S97, S98].
+- **Model:** chosen by Amp (modes), `--fast` **[V]** [S95, S99].
+- **Permissions:** **since 6 May 2026 Amp runs tools without asking** (`--dangerously-allow-all` is the default); the old rules come back as a plugin when `amp.permissions` is set, in `amp -x` too; refusals in `result.permission_denials` **[V]** [S99a, S96]. The rule syntax isn't on the current pages **[I]**.
+- **Folders:** current folder only **[V]** [S97]. **Sign-in:** `amp login` or `AMP_API_KEY` **[V]** [S95].
+- **Sandbox:** none locally **[V]** [S95]. **Repository config:** `.amp/settings.json`, `AGENTS.md`, skills **[V]** [S97].
+- **ACP:** none from Sourcegraph; a third-party `amp-acp` **[V]** [S74].
+- **Licence and systems:** proprietary; several releases a day; Linux, macOS, Windows through WSL **[V]** (npm, [S95]).
+
 #### 3.1.8 Aider
 
 - **Headless:** `aider --message "<prompt>"` or `--message-file <file>`, with `--yes-always`; it answers, then exits. Stdin isn't a prompt source **[V]** [S100, S101].
@@ -273,6 +318,39 @@ A profile also says whether its CLI splits a command line on `&&`, `;`, `|` and 
 The chat turn is the most Claude Code-bound part of Hersir **[V]** (`src-tauri/src/chat.rs:1509`–`:1540`): `--restricted` and `--tools Read,Glob,Grep` (built-in tools cut down), `--permission-prompts none`, `--append-system-prompt`, `--include-partial-messages` for the text as it is written, the `gizai` MCP server through the `hersir-mcp` shim with a token per turn, and the GA-271/GA-289 logic that decides whether a tool result came from a trusted source (`Trusted::of`, `TurnTools::of`). `chat_problem` (`crates/gizai-core/src/clis.rs:155`) and `team.rs:353` refuse the chat on any other kind.
 
 **Recommendation [I]:** keep the Chief on Claude Code in this work. "Any coding CLI" is about the agents that build; the Chief is one per company and already has Runs on for a second Claude Code account. A later card can move the chat to a profile once two things are checked on a real CLI: that its built-in tools can be cut down to read-only ones per run (OpenCode can, with a per-run agent whose `permission` denies edit and bash, §3.1.1), and that it streams text. ACP (§3.1.13) gives both streaming and MCP servers per session, so if Hersir gets an ACP client (option C, §4), the chat on an ACP agent is the natural later card. Open question 5.
+
+## 4. Options
+
+### A. A code adapter per CLI
+
+One more `Kind` per CLI (`Kind::OpenCode`, `Kind::Cursor`, …), each with its command line and parser in `cli.rs`, its notes in `tool_catalog.rs`, `prompt.rs`, `mcp_servers.rs`, `limits.rs`, and its modes and texts in `src/lib/clis.ts`, as Codex and Gemini were added.
+
+- **Takes:** per CLI about what Gemini took: its part of `cli.rs` (`gemini_args`, `gemini_env`, `Gemini` parser: about 300 lines), plus its notes in five files and the front end, and tests **[V]** (`cli.rs:276`–`:440`, `:786`–`:862`). No library.
+- **Good:** each CLI exactly right, including its security quirks; nothing new to learn.
+- **Risks:** every CLI and every change of a CLI's flags or events needs a Hersir release; the per-kind knowledge stays spread over the backend and `src/lib/clis.ts`; a user can't add a CLI beyond Other's plain text.
+- **Size:** M per CLI (one card each).
+
+### B. CLI profiles: data for the command line and a mapping for the events (recommended)
+
+The design of §3.3: a profile engine in `gizai-agents`, the per-kind knowledge moved behind `list_clis`, and OpenCode as the first shipped profile.
+
+- **Takes:** the profile types, the template renderer, the event engine and the `run_config` writer (about 1,000 to 1,500 lines of Rust with tests **[I]**); `list_clis` with `caps`; Settings and the agent form reading `caps`; the OpenCode profile. Libraries: none new (`serde`, `serde_json` with `Value::pointer`, `toml` if a profile writes TOML; all already in the workspace **[V]** `cargo tree` not needed: `cli.rs` and `codex_args` use them).
+- **Good:** a new CLI with JSON output is a JSON file and its fixture; you can add one yourself; most current CLIs print JSONL (§3.1 overview): OpenCode, Cursor, Copilot, Amp, Goose, Droid, Qwen Code, Kimi, Auggie.
+- **Risks:** a CLI whose output the vocabulary can't express needs a new emit (code) or stays Other; a CLI that changes its events breaks the profile until the next release (Settings warns on a new major version); a profile you add can claim more than its CLI keeps (it shows "not checked by Hersir", and the Chief's changes wait for Approve).
+- **Size:** L for the engine and OpenCode (two cards), then S per shipped profile.
+
+### C. An ACP client: one protocol for every agent that speaks it
+
+Hersir talks ACP (§3.1.13) to the agent: `session/new` with the worktree, the run's MCP servers, the agent's folders and the run's rules as an appended system prompt; `session/prompt` with the card; `session/update` as `RunEvent`s; `session/request_permission` answered by Hersir; `session/load` or `session/resume` for Continue. A profile for an ACP agent is then only `start`, `permissions` (the agent's own mode and rules) and `guards`.
+
+- **Takes:** the `agent-client-protocol` crate (5.6.1, Apache-2.0, Zed and JetBrains, released 25 Nov 2026 **[V]** [S64]); a runner that keeps stdin open and answers requests (today's closes it, `process.rs:332`); the mapping from `session/update` to `RunEvent`; answering permission requests from the agent's allowed commands, which needs each agent's `rawInput` shape **[I]**.
+- **Good:** one client covers 13 native agents and three through adapters **[V]** [S74]; MCP servers, extra folders, resume and a system prompt without per-CLI files; a refused request is Hersir's own, so the Run panel lists it with Hersir's reason.
+- **Risks:** an agent asks only for what its own mode makes it ask, so Hersir still sets each agent's permissions in its own terms; tokens per turn aren't stable in ACP yet (only context size and a running cost) **[V]** [S70, S71]; v2 is in preview and changes `session/load`, modes and permissions **[V]** [S63]; Claude Code and Codex need an extra npm adapter each; several agents mark their ACP mode preview (Copilot) **[V]** [S75].
+- **Size:** L (two cards), then S per agent.
+
+### Recommendation
+
+**B now, with OpenCode first; C as the next feature, as a second protocol of the same profiles** **[I]**. B fits how Hersir already runs a CLI (one process per run, the prompt on stdin, JSONL on stdout), gives OpenCode every Hersir feature but subscription limits, and needs no new library. C is worth it once two or three ACP-only agents are wanted (Kiro, Cline, Junie, Auggie), and the profile format leaves room for it: `"protocol": "jsonl" | "text" | "acp"`. Open question 1.
 
 ## 5. The design
 
