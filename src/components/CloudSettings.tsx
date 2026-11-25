@@ -8,6 +8,7 @@
 //   and Cloud Backup (Back up, Last backup with Back up now and its step, the backups with Restore), with a failure, a full
 //   quota and a lapsed plan.
 // The controls save at once, as Settings → General → Backups does; a refusal shows its sentence under its field, as it is.
+// Settings keeps every tab mounted: the backups and computers are read, and the recovery code made, once the tab is shown.
 import { useEffect, useRef, useState } from "react";
 import { CircleX, DatabaseBackup, ExternalLink, KeyRound, LoaderCircle, LogIn, LogOut, Monitor, Trash2, TriangleAlert } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -29,8 +30,12 @@ type Errs = Partial<Record<"account" | "key" | "code" | "newCode" | "every" | "n
 /** What the ask asks: a new recovery code, removing a computer, or restoring a backup. */
 type Asking = { kind: "new-code" } | { kind: "remove"; computer: CloudComputer } | { kind: "restore"; backup: CloudBackup };
 
-export function CloudSettings() {
+/** `shown`: the tab is open (Settings keeps the others mounted); what talks to Hersir Cloud waits for it. */
+export function CloudSettings({ shown = true }: { shown?: boolean } = {}) {
   const { status: s, error: loadErr, answer } = useCloud();
+  // the tab has been open: from then on its lists stay read
+  const [seen, setSeen] = useState(shown);
+  useEffect(() => { if (shown) setSeen(true); }, [shown]);
   const restore = useRestore();
   const [errs, setErrs] = useState<Errs>({});
   const [busy, setBusy] = useState<string | null>(null);
@@ -48,6 +53,8 @@ export function CloudSettings() {
   // Restore from Hersir Cloud's own Sign in was pressed: its steps stay open after the sign-in, until the tab is left
   const [restoring, setRestoring] = useState(false);
   const making = useRef(false);
+  // Try again after the recovery code couldn't be made
+  const [makeTry, setMakeTry] = useState(0);
   const cancelled = useRef(false);
   const alive = useRef(true);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
@@ -58,20 +65,20 @@ export function CloudSettings() {
 
   // The account's first computer, signed in: its key and recovery code, made once and shown until the last group is typed.
   useEffect(() => {
-    if (!signedIn || key !== "missing" || code !== null || making.current) return;
+    if (!seen || !signedIn || key !== "missing" || code !== null || making.current) return;
     making.current = true;
     setErr("key", null);
     cloudMakeKey().then((r) => { if (alive.current) setCode(r.recoveryCode); })
       .catch((e) => { if (alive.current) setErr("key", String(e)); })
       .finally(() => { making.current = false; });
-  }, [signedIn, key, code]);
+  }, [seen, signedIn, key, code, makeTry]);
   // Signed out, or the code was typed back: the code isn't kept
   useEffect(() => { if (!signedIn || key !== "missing") { setCode(null); setTyped(""); } }, [signedIn, key]);
   useEffect(() => { if (!signedIn) { setNewCode(null); setNewTyped(""); setEntered(""); } }, [signedIn]);
 
   // The backups and the computers, once this computer has the key: read again when a backup ends or fails
   const keyHere = signedIn && key === "here";
-  const listKey = keyHere && s ? JSON.stringify([s.backup.last?.name ?? null, s.backup.lastError?.at ?? null, !!s.backup.running]) : null;
+  const listKey = seen && keyHere && s ? JSON.stringify([s.backup.last?.name ?? null, s.backup.lastError?.at ?? null, !!s.backup.running]) : null;
   useEffect(() => {
     if (listKey === null) { setList(null); return; }
     let live = true;
@@ -80,10 +87,11 @@ export function CloudSettings() {
   }, [listKey]);
   useEffect(() => {
     if (!signedIn) { setComputers(null); return; }
+    if (!seen) return;
     let live = true;
     cloudComputers().then((l) => { if (live) { setComputers(l ?? []); setErr("computers", null); } }).catch((e) => { if (live) setErr("computers", String(e)); });
     return () => { live = false; };
-  }, [signedIn, key]);
+  }, [seen, signedIn, key]);
 
   if (!s) {
     return loadErr ? (
@@ -210,7 +218,12 @@ export function CloudSettings() {
             <div className="cloud-needs"><KeyRound className="icon" /><h4>{SAVE_CODE_TITLE}</h4><span className="badge needs">Needs you</span></div>
             <p className="cloud-warning">{SAVE_CODE_TEXT}</p>
             {code ? <CodeBox code={code} email={s.email} />
-              : errs.key ? <span className="error" role="alert">{errs.key}</span>
+              : errs.key ? (
+                <div className="bk-actions">
+                  <span className="error" role="alert">{errs.key}</span>
+                  <button type="button" className="btn sm" onClick={() => setMakeTry((n) => n + 1)}>Try again</button>
+                </div>
+              )
               : <span className="gh-line bk-step" role="status"><LoaderCircle className="icon spin" /><span>Making your recovery code…</span></span>}
           </div>
           {code && (

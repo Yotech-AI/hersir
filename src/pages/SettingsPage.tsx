@@ -159,7 +159,7 @@ export function SettingsPage({ tab }: { tab?: string } = {}) {
         </div>
         {/* Hersir Cloud (GA-360): its controls save at once; Save settings is for the other tabs */}
         <div {...panel("cloud")}>
-          <CloudSettings />
+          <CloudSettings shown={open === "cloud"} />
         </div>
       </div></div>
     </>
