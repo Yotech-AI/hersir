@@ -198,14 +198,15 @@ fn cli_exec(cli: &CliSpec, run: &TaskRun) -> Exec {
             mcp_config: run.mcp_config.clone(),
             ..Default::default()
         }.exec(),
-        Kind::Codex => Exec { bin: cli.bin.clone(), args: codex_args(run), env: cli.env.clone(), stdin: run.prompt.clone(), slice: None },
+        Kind::Codex => Exec { bin: cli.bin.clone(), args: codex_args(run), env: cli.env.clone(), stdin: run.prompt.clone(), kind: Some(cli.kind), ..Exec::default() },
         Kind::Gemini => Exec {
             bin: cli.bin.clone(), args: gemini_args(run), env: cli.env.iter().cloned().chain(gemini_env(cli, run)).collect(),
-            stdin: run.prompt.clone(), slice: None,
+            stdin: run.prompt.clone(), kind: Some(cli.kind), ..Exec::default()
         },
         Kind::Other => {
             let (args, on_stdin) = other_args(&cli.args, &run.prompt, run.model.as_deref());
-            Exec { bin: cli.bin.clone(), args, env: cli.env.clone(), stdin: if on_stdin { run.prompt.clone() } else { String::new() }, slice: None }
+            Exec { bin: cli.bin.clone(), args, env: cli.env.clone(), stdin: if on_stdin { run.prompt.clone() } else { String::new() }, kind: Some(cli.kind),
+                   ..Exec::default() }
         }
     }
 }

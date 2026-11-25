@@ -189,6 +189,8 @@ pub enum End {
 
 /// A program Gizai started with everything it starts in turn, checked on and ended as one (`spawn_tree`).
 /// - Linux and macOS: the process group the program leads. Signals only ever go to that group, never to pid 0 or 1.
+///   An agent's CLI (`spawn_tree_tokio`) leads a session of its own too (GA-266), so no process outside it can join
+///   its group (see `contains`).
 /// - Windows: a Job Object. Every process the program starts is in it too and can't leave it, and the job ends what
 ///   still runs in it when its last handle closes (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`): when the last clone of the
 ///   `Tree` drops, or when Gizai exits or crashes, so nothing outlives Gizai. Keep a clone for as long as the program is
@@ -245,6 +247,33 @@ impl Tree {
         #[cfg(windows)]
         return self.job.active() > 0;
     }
+
+    /// GA-266: whether the process `pid` is in the tree now: the program or something it started (Hersir's MCP shim
+    /// that a chat turn's Claude Code starts, say). What each system lets Hersir check, and why no process outside the
+    /// tree can pass:
+    /// - Linux and macOS: the process group `pid` is in (getpgid), which must be the tree's. A process can move itself
+    ///   only into a group of its own session (setpgid), and an agent's CLI leads a session of its own
+    ///   (`spawn_tree_tokio`), so only what it starts is ever in its group. What it starts in a session or group of its
+    ///   own (`setsid`, Claude Code's Bash tool) isn't. The check is on the pid as it is now: a process that ended and
+    ///   whose pid went to another process counts as that other one.
+    /// - Windows: whether `pid`'s process is in the tree's Job Object (IsProcessInJob). Everything the program starts
+    ///   is in the job and can't break away from it, and no other process can be put in it: only Hersir holds a handle
+    ///   to the job, which isn't inherited.
+    ///
+    /// Never true for pid 0 or 1, or for a process that is gone.
+    pub fn contains(&self, pid: u32) -> bool {
+        if pid <= 1 {
+            return false;
+        }
+        #[cfg(unix)]
+        {
+            let (Ok(p), Ok(g)) = (libc::pid_t::try_from(pid), libc::pid_t::try_from(self.group)) else { return false };
+            // SAFETY: getpgid only reads; it fails (-1) for a process that is gone.
+            g > 1 && unsafe { libc::getpgid(p) } == g
+        }
+        #[cfg(windows)]
+        return self.job.holds(pid);
+    }
 }
 
 /// Starts `cmd` as a `Tree` of its own: it and everything it starts. `low`: at low CPU priority, which what it starts
@@ -293,11 +322,21 @@ pub fn spawn_tree(cmd: &mut Command, low: bool) -> io::Result<(std::process::Chi
     }
 }
 
-/// `spawn_tree` for Tokio, at normal priority. Must be called inside a Tokio runtime.
+/// `spawn_tree` for Tokio, at normal priority: an agent's CLI (`process::spawn_exec`), and Claude Code asked for its
+/// tools (`tool_catalog::ask_claude`). Must be called inside a Tokio runtime.
+///
+/// Linux and macOS: the program leads a session of its own (setsid), and so its own process group, as with
+/// `spawn_tree`. In Gizai's session any process (another run's, a preview's) could move itself into that group
+/// (setpgid), and then pass for one of the run's own (`Tree::contains`, GA-266); from another session it can't. A run
+/// has no controlling terminal either way: Gizai itself has none when your desktop starts it.
 pub fn spawn_tree_tokio(cmd: &mut tokio::process::Command) -> io::Result<(tokio::process::Child, Tree)> {
     #[cfg(unix)]
     {
-        cmd.process_group(0);
+        // SAFETY: setsid(2) is a plain syscall, safe to make between fork and exec. It fails only for a process that
+        // already leads a group, which the child Gizai just forked doesn't.
+        unsafe {
+            cmd.pre_exec(|| if libc::setsid() == -1 { Err(io::Error::last_os_error()) } else { Ok(()) });
+        }
         let child = cmd.spawn()?;
         // None only for a child that has been waited for
         let group = child.id().unwrap_or(0);
@@ -417,6 +456,25 @@ impl Job {
         // SAFETY: a plain call with a valid handle and a buffer of the size given.
         let ok = unsafe { QueryInformationJobObject(self.0, JobObjectBasicAccountingInformation, (&raw mut info).cast(), size, std::ptr::null_mut()) };
         if ok == 0 { 0 } else { info.ActiveProcesses }
+    }
+
+    /// GA-266: whether the process `pid` runs in the job (or in a job inside it). False when Windows doesn't say: a
+    /// process that is gone, or that Hersir may not look at.
+    fn holds(&self, pid: u32) -> bool {
+        use windows_sys::Win32::Foundation::CloseHandle;
+        use windows_sys::Win32::System::JobObjects::IsProcessInJob;
+        use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+        // SAFETY: plain calls with valid handles and a valid pointer; the process handle opened here is closed here.
+        unsafe {
+            let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if process.is_null() {
+                return false;
+            }
+            let mut inside = 0;
+            let ok = IsProcessInJob(process, self.0, &mut inside) != 0;
+            CloseHandle(process);
+            ok && inside != 0
+        }
     }
 
     /// Ends every process in the job.

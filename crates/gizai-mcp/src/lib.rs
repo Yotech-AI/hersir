@@ -460,12 +460,22 @@ pub mod pipe {
     /// # Safety
     /// `pipe` is an open handle (one that is not a pipe only makes the call fail).
     pub unsafe fn client_user(pipe: HANDLE) -> io::Result<User> {
+        // SAFETY: `pipe` is open (the caller's promise).
+        User::of_process(unsafe { client_pid(pipe) }?)
+    }
+
+    /// The id of the client's process at the other end of a pipe instance Gizai serves (`pipe`: the server's handle):
+    /// the process that opened the pipe.
+    ///
+    /// # Safety
+    /// `pipe` is an open handle (one that is not a pipe only makes the call fail).
+    pub unsafe fn client_pid(pipe: HANDLE) -> io::Result<u32> {
         let mut pid = 0u32;
         // SAFETY: `pipe` is open (the caller's promise).
         if unsafe { GetNamedPipeClientProcessId(pipe, &mut pid) } == 0 {
             return Err(io::Error::last_os_error());
         }
-        User::of_process(pid)
+        Ok(pid)
     }
 
     /// The user running the server of a pipe the shim opened (`pipe`: the client's handle).

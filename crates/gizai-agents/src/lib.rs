@@ -33,6 +33,7 @@ pub mod process;
 pub mod prompt;
 pub mod redact;
 pub mod release_sig;
+pub mod run_env;
 pub mod run_memory;
 pub mod screenshots;
 pub mod secrets;
