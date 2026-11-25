@@ -188,6 +188,22 @@ Each CLI below has the points of the card, in this order: **headless** (how it r
 - **ACP:** native (`droid exec --output-format acp`) **[V]** [S135].
 - **Licence and systems:** proprietary (npm `UNLICENSED`); v1.20.0 of 25 Nov 2026; Linux, macOS, Windows **[V]** (npm, [S132]).
 
+#### 3.1.12 Other current CLIs, in short
+
+Seven more are current and used (versions from npm, PyPI or their changelog, all read 2026-11-25). None copies Claude Code's stream-json, and all seven speak ACP **[V]** [S140–S146]/**[I]**.
+
+| CLI (maker, licence, version) | Headless and prompt | Output | Resume | MCP per run | Approval when nobody can answer | Sign-in, second account | ACP |
+|---|---|---|---|---|---|---|---|
+| **Kilo CLI** (Kilo Code, MIT, 7.8.32, 20 Nov 2026), **a fork of OpenCode** that takes the same config | `kilo run [message]`, argument | `--format json` (events not documented; OpenCode's **[I]**) | `-s <id>`, `-c`, `--fork` | `KILO_CONFIG_CONTENT` **[I]** | **rejected, and the run exits 1**, unless `--auto`; rules `"bash": {"git *": "allow"}` | `kilo auth`; XDG folders **[I]** | `kilo acp` |
+| **Cline CLI** (Cline, Apache-2.0, 3.0.75, 21 Nov 2026) | `cline "<prompt>"` or stdin | `--json` NDJSON, its own (`agent_event`, `run_result {usage, text}`) | `--id <id>` | `CLINE_MCP_SETTINGS_PATH` | **`--auto-approve` defaults to true** (everything runs); no command list | `cline auth`; `CLINE_DIR` | `--acp` |
+| **Grok Build** (xAI, Apache-2.0, version not published) | `grok -p "<prompt>"` | `--output-format streaming-json` (not documented) | `-s <uuid>`, **chosen by the caller** | not documented | `--allow`, `--deny`, `--always-approve`; takes Claude Code's flag names (`--allowedTools`, `--append-system-prompt`) | browser, `XAI_API_KEY` | `grok agent stdio` |
+| **Kimi Code** (Moonshot AI, MIT, 2.8.0, 25 Nov 2026; replaces the archived Kimi CLI) | `kimi -p "<prompt>"` | `--output-format stream-json` (OpenAI-like messages, no usage) | `-S <id>`, reported | `KIMI_CODE_HOME` (the whole home) | `--yolo`, `--auto`; `[[permission.rules]]` `Bash(rm -rf*)` | OAuth or key; `KIMI_CODE_HOME` | `kimi acp` |
+| **Auggie** (Augment Code, proprietary, 1.2.3, 25 Nov 2026) | `auggie --print "<prompt>"`, stdin, `@file` | `--mode json` (fields not documented), `--show-cost` | `-c`, `--session <file>` | **`--mcp-config <json-or-path>`** | `--permission bash:ask-user` per run | `auggie auth login`; `--augment-cache-dir` | `--acp` |
+| **Mistral Vibe** (Mistral, Apache-2.0, 3.1.5, 24 Nov 2026) | `vibe -p "<prompt>"`, stdin, `--prompt-file` | `--output streaming` (NDJSON) and `export.json` with tokens and **cost** | `--resume <id>`, reported | `VIBE_HOME`, `VIBE_<KEY>` | **denied, and the agent is told**; `--enabled-tools`; `outside_workdir = "deny"` | account or key in `~/.vibe/.env`; `VIBE_HOME` | `vibe-acp` |
+| **Kiro CLI** (AWS, closed, 3.6.0, 24 Nov 2026; was Amazon Q Developer CLI) | `kiro-cli chat --no-interactive "<prompt>"` or stdin | `--output-format stream-json` (only errors documented) | `--resume-id <id>` | per agent (`--agent`) **[I]** | `--trust-tools <list>`, `--trust-all-tools`; denied otherwise | browser or device login, `KIRO_API_KEY`; `KIRO_HOME` | `kiro-cli acp` |
+
+**Dropped:** the Python Kimi CLI (archived), Roo Code (archived May 2026), Plandex (no push since Oct 2025), iFlow CLI (no push since Mar 2026), the community "Grok CLI" (overtaken by Grok Build), Amazon Q Developer CLI (now Kiro) **[V]** [S147]. **Not checked further:** Continue's `cn`, Warp, OpenHands CLI, Letta Code, Qoder CLI, JetBrains Junie, and the **Pi coding agent** (`--mode json`, `--mode rpc`, ACP through `pi-acp`), which looks worth a later look **[I]** [S147, S75].
+
 #### 3.1.13 The Agent Client Protocol (ACP): one protocol for many agents
 
 ACP is to coding agents what LSP is to language servers: a client (an editor, or Hersir) starts the agent as a subprocess and talks JSON-RPC 2.0 with it over stdio **[V]** [S60, S61].
@@ -509,3 +525,39 @@ Every source was read on **2026-11-25**. Versions and dates of npm packages come
 - [S133] https://docs.factory.com/cli/configuration/settings
 - [S134] https://docs.factory.com/cli/configuration/mcp
 - [S135] https://docs.factory.com/integrations/zed
+
+**Cursor CLI**
+- [S80] https://cursor.com/docs/cli/installation
+- [S81] https://cursor.com/docs/cli/reference/output-format and https://cursor.com/docs/cli/headless
+- [S82] https://cursor.com/docs/cli/reference/parameters
+- [S83] https://cursor.com/docs/cli/changelog
+- [S84] https://cursor.com/docs/cli/mcp and https://cursor.com/docs/context/mcp
+- [S85] https://cursor.com/docs/cli/reference/permissions
+- [S86] https://cursor.com/docs/reference/sandbox
+- [S87] https://cursor.com/docs/cli/reference/authentication
+- [S88] https://cursor.com/docs/cli/acp
+
+**GitHub Copilot CLI**
+- [S90] https://raw.githubusercontent.com/github/docs/main/content/copilot/reference/copilot-cli-reference/cli-command-reference.md
+- [S91] https://raw.githubusercontent.com/github/docs/main/content/copilot/reference/copilot-cli-reference/cli-programmatic-reference.md
+- [S92] https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/streaming-events
+- [S93] https://raw.githubusercontent.com/github/copilot-cli/main/changelog.md
+- [S94] https://github.com/github/copilot-cli
+
+**Amp**
+- [S95] https://ampcode.com/docs/cli and https://ampcode.com/docs/cli/execute-mode
+- [S96] https://ampcode.com/docs/cli/streaming-json
+- [S97] https://ampcode.com/docs/cli/settings
+- [S98] https://ampcode.com/docs/customize/mcp
+- [S99] https://ampcode.com/manual
+- [S99a] https://ampcode.com/news/neo
+
+**Other CLIs**
+- [S140] Kilo: https://kilo.ai/docs/cli, https://kilo.ai/docs/code-with-ai/platforms/cli-reference, https://api.github.com/repos/Kilo-Org/kilocode/releases?per_page=5
+- [S141] Cline: https://docs.cline.bot/cline-cli/cli-reference, https://registry.npmjs.org/cline
+- [S142] Grok Build: https://github.com/xai-org/grok-build, https://docs.x.ai/build/overview, https://docs.x.ai/build/cli/reference, https://docs.x.ai/build/cli/headless-scripting
+- [S143] Kimi Code: https://github.com/MoonshotAI/kimi-code, https://moonshotai.github.io/kimi-code/en/reference/kimi-command, https://moonshotai.github.io/kimi-code/en/configuration/config-files, https://moonshotai.github.io/kimi-code/en/guides/getting-started
+- [S144] Auggie: https://docs.augmentcode.com/cli/reference, https://registry.npmjs.org/-/v1/search?text=@augmentcode/auggie&size=3
+- [S145] Mistral Vibe: https://github.com/mistralai/mistral-vibe, https://github.com/mistralai/mistral-vibe/blob/main/docs/programmatic-mode.md, https://docs.mistral.ai/vibe/code/cli/configuration, https://pypi.org/pypi/mistral-vibe/json
+- [S146] Kiro: https://kiro.dev/docs/reference/cli-commands/, https://kiro.dev/docs/cli/headless/, https://kiro.dev/changelog/cli/
+- [S147] Activity and stars: the GitHub search API (`api.github.com/search/repositories?q=repo:…`) for the dropped and unchecked candidates; npm registry search for monthly downloads
