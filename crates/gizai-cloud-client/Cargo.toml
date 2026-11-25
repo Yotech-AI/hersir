@@ -34,3 +34,5 @@ base64 = "0.22"
 [dev-dependencies]
 tempfile = { workspace = true }
 rusqlite = { workspace = true }
+# Signing in against the fake Hersir Cloud the way the app does (oauth.rs).
+gizai-agents = { path = "../gizai-agents" }

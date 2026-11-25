@@ -1836,6 +1836,7 @@ dependencies = [
  "ed25519-dalek",
  "fastcdc",
  "getrandom 0.4.3",
+ "gizai-agents",
  "gizai-core",
  "hkdf",
  "hmac",
