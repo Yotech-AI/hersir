@@ -91,6 +91,58 @@ Each CLI below has the points of the card, in this order: **headless** (how it r
 - **ACP:** `qwen serve` (HTTP + SSE, experimental) **[V]** [S44]; a stdio `--acp` flag not seen **[I]**.
 - **Licence and systems:** Apache-2.0; 0.28.4 (npm, 22 Nov 2026); Node 22+, Linux, macOS, Windows **[V]** [S44, npm].
 
+#### 3.1.8 Aider
+
+- **Headless:** `aider --message "<prompt>"` or `--message-file <file>`, with `--yes-always`; it answers, then exits. Stdin isn't a prompt source **[V]** [S100, S101].
+- **Output:** **no JSON** at all; plain text (`--no-pretty`, `--no-stream`) **[V]** [S100, S102].
+- **Resume:** no session ids; `--restore-chat-history` with a `--chat-history-file` per card **[V]** [S100].
+- **MCP:** none **[V]** (absent from [S100], [S103]).
+- **Model:** `--model`, `--reasoning-effort`, `--thinking-tokens` **[V]** [S100].
+- **Permissions:** only `--yes-always`; a prompt that needs an explicit yes is answered "n" (`io.py`), so the shell commands it suggests are refused **[V]** [S102]/**[I]**. No allow list; it auto-commits unless `--no-auto-commits` **[V]** [S100].
+- **Folders:** `--file`, `--read <file>` (read only) **[V]** [S100].
+- **Sign-in:** API keys only (`--api-key provider=KEY`, env vars, `.env`) **[V]** [S100].
+- **Sandbox:** none **[I]**. **Repository config:** `.aider.conf.yml`, `.env`, `.aiderignore` **[V]** [S100]. **ACP:** none **[V]** [S103].
+- **Licence and systems:** Apache-2.0, Python 3.10–3.12; **0.86.2 of 12 Feb 2026, one release in 15 months**: barely maintained **[V]** [S104]/**[I]**.
+
+#### 3.1.9 Goose (now under the Agentic AI Foundation)
+
+- **Headless:** `goose run -t "<text>"`, `-i <file>`, `-i -` (stdin), or `--recipe`; exits when done; `--max-turns` **[V]** [S110, S111].
+- **Output:** `--output-format stream-json`: JSONL `{"type": "message", "message": {…}}`, `notification`, `error`, `complete {total_tokens, input_tokens, output_tokens, cache_read_input_tokens, cache_write_input_tokens, cost_usd}`. No session id or model in it; tool calls sit inside `message.content` (field names not verified) **[V]** [S112]/**[I]**.
+- **Resume:** the caller names the session: `goose run -n <name> -t …`, then `goose run -n <name> -r` **[V]** [S111].
+- **MCP ("extensions"):** per run `--with-extension "ENV=v cmd args"` (stdio), `--with-streamable-http-extension <url>` (no headers on the flag); `extensions:` in `config.yaml` (stdio, streamable HTTP with `headers`; no SSE) **[V]** [S110, S113].
+- **Model:** `--provider`, `--model` **[V]** [S110].
+- **Permissions:** `GOOSE_MODE` `auto` (default), `approve`, `smart_approve`. Headless: in `approve`/`smart_approve` a tool that needs approval cancels the run with an error; in any other mode it is **allowed** ("auto-allowing") **[V]** [S112]. No shell allow list documented **[V]** [S114].
+- **Folders:** the working folder only **[I]**. **Sign-in:** API keys in env vars, the keyring or `secrets.yaml`; `GOOSE_PATH_ROOT` moves all config and data **[V]** [S114, S113].
+- **Sandbox:** none (only `--container` for extensions) **[V]** [S110]. **Repository config:** `.goosehints`, `AGENTS.md` (`CONTEXT_FILE_NAMES`) **[V]** [S114].
+- **ACP:** native, `goose acp` (stdio) **[V]** [S110].
+- **Licence and systems:** Apache-2.0; v1.61.0 of 25 Nov 2026; repo moved to `aaif-goose/goose`; Linux, macOS, Windows **[V]** [S115].
+
+#### 3.1.10 Crush (Charm)
+
+- **Headless:** `crush run [prompt…]`; stdin is put before the arguments; exits when done **[V]** [S120].
+- **Output:** **no JSON**: plain text to stdout **[V]** [S120].
+- **Resume:** `--session <id>` or `--continue`; `run` doesn't print the id **[V]** [S120]/**[I]**.
+- **MCP:** in `crushrc` (now a Bash-like file) or the old JSON config (`type stdio|http|sse`, `headers`, `disabled_tools`); no per-run flag **[V]** [S121, S122].
+- **Model:** `-m provider/model`, `--reasoning-effort` **[V]** [S120].
+- **Permissions:** **`crush run` approves every permission request of its session** (v0.102.0) **[V]** [S120, S123]. Lists exist in the config (`allowed_tools`, `allowed_commands`, `blocked_commands`) **[V]** [S122]. **Hersir's Find installed CLIs offers Crush as Other with `run --quiet` (`src-tauri/src/clis.rs:109`) **[V]**, so an agent on it runs any command: the agent form should say so today **[I]**.**
+- **Folders:** `--cwd`, `--data-dir` **[V]** [S124]. **Sign-in:** provider env vars, `crush login`; `CRUSH_GLOBAL_CONFIG`, `CRUSH_GLOBAL_DATA` move its files **[V]** [S121].
+- **Sandbox:** none **[V]** [S121]. **Repository config:** `.crushrc`, `crushrc`, many context files (`CLAUDE.md`, `GEMINI.md`, `AGENTS.md`, `.cursor/rules/`, …), skills folders **[V]** [S121, S122].
+- **ACP:** not in the official repository **[V]** [S121].
+- **Licence and systems:** **FSL-1.1-MIT** (source-available, MIT later); v0.102.0 of 19 Nov 2026; Linux, macOS, Windows, BSDs **[V]** (npm, [S121]).
+
+#### 3.1.11 Factory Droid
+
+- **Headless:** `droid exec [prompt]`, `-f <file>` or stdin; read-only by default; an action beyond its autonomy level "stops at that action, prints an error to stderr, and exits non-zero" **[V]** [S130].
+- **Output:** `-o json` (one object `{type: "result", subtype, is_error, result, session_id, num_turns, usage{input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens}, factory_credits}`), `stream-json` (`system`, `message`, `tool_call`, `tool_result`, `completion`), `stream-jsonrpc`, `acp` **[V]** [S130, S131]. Cost in Factory credits, not dollars **[V]**.
+- **Resume:** `droid exec -s <session-id>`; `--fork <id>`; the id is in the output **[V]** [S130, S132]. Sessions sync to Factory's web app by default (`cloudSessionSync`) **[V]** [S133].
+- **MCP:** `~/.factory/mcp.json` and the project's `.factory/mcp.json`; no per-run flag and no way to ignore them documented **[V]** [S134].
+- **Model:** `-m`, `-r <effort>` **[V]** [S132].
+- **Permissions:** `--auto low|medium|high`, `--skip-permissions-unsafe`; `permissionRules` (allow, ask, block) in settings **[V]** [S130, S133].
+- **Folders:** `--cwd`; no extra folders documented **[V]** [S132]. **Sign-in:** `FACTORY_API_KEY`; no variable to move `~/.factory` documented **[V]** [S130, S132].
+- **Sandbox:** a `sandbox` settings object (`filesystem`, `network`) **[V]** [S133]. **Repository config:** `.factory/settings.json`, `.factory/mcp.json`, `AGENTS.md` **[V]** [S133].
+- **ACP:** native (`droid exec --output-format acp`) **[V]** [S135].
+- **Licence and systems:** proprietary (npm `UNLICENSED`); v1.20.0 of 25 Nov 2026; Linux, macOS, Windows **[V]** (npm, [S132]).
+
 #### 3.1.13 The Agent Client Protocol (ACP): one protocol for many agents
 
 ACP is to coding agents what LSP is to language servers: a client (an editor, or Hersir) starts the agent as a subprocess and talks JSON-RPC 2.0 with it over stdio **[V]** [S60, S61].
