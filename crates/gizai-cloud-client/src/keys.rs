@@ -286,6 +286,21 @@ impl RecoveryCode {
         Zeroizing::new(chars[24..].to_string())
     }
 
+    /// Whether `typed` is the code's last group, read as `parse` reads a code: any case, spaces and dashes ignored, O as
+    /// 0, I and L as 1.
+    pub fn last_group_matches(&self, typed: &str) -> bool {
+        let typed: Zeroizing<String> = Zeroizing::new(
+            typed.chars().filter(|c| !c.is_whitespace() && !is_dash(*c))
+                .map(|c| match c.to_ascii_uppercase() {
+                    'O' => '0',
+                    'I' | 'L' => '1',
+                    c => c,
+                })
+                .collect(),
+        );
+        same(typed.as_bytes(), self.last_group().as_bytes())
+    }
+
     /// Reads a typed recovery code: any case, spaces and dashes ignored, with or without `HC` in front; O is read as 0,
     /// and I and L as 1. `Error::NotARecoveryCode` for the wrong length or another character, and
     /// `Error::RecoveryCodeCheck` when the check character doesn't match (a character typed wrong).
@@ -297,9 +312,10 @@ impl RecoveryCode {
             chars.drain(..CODE_PREFIX.len());
         }
         if chars.len() != CODE_CHARS {
+            // counted after HC, when it is typed with it
+            let typed = if chars.len() > CODE_CHARS && chars.starts_with(&['H', 'C']) { chars.len() - CODE_PREFIX.len() } else { chars.len() };
             return Err(Error::NotARecoveryCode(format!(
-                "A recovery code has {CODE_CHARS} characters after {CODE_PREFIX}-, and this has {}.",
-                chars.len()
+                "A recovery code has {CODE_CHARS} characters after {CODE_PREFIX}-, and this has {typed}."
             )));
         }
         let mut values = Zeroizing::new(Vec::with_capacity(CODE_CHARS));
