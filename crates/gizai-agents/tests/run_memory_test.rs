@@ -304,7 +304,7 @@ async fn a_cli_started_in_the_slice_runs_there_and_its_events_say_when_linux_end
     // written by a child, so this process never holds the script open for writing (ETXTBSY in other tests' children)
     assert!(std::process::Command::new("sh").args(["-c", "printf '%s' \"$1\" > \"$2\" && chmod +x \"$2\"", "sh", &script])
         .arg(&cli).status().unwrap().success());
-    let exec = Exec { bin: cli, args: vec!["-p".into()], env: vec![], stdin: "p".into(), slice: Some(s.0.clone()) };
+    let exec = Exec { bin: cli, args: vec!["-p".into()], env: vec![], stdin: "p".into(), slice: Some(s.0.clone()), ..Exec::default() };
     let log = tmp.path().join("r.jsonl");
     let mut h = spawn_exec::<RunEvent, _>(&exec, tmp.path(), &log, Caps { max_time: Duration::from_secs(120), max_tool_calls: 80, after_result: AFTER_RESULT }, ClaudeLines).unwrap();
     let mut evs = vec![];
@@ -539,7 +539,7 @@ async fn a_cli_with_a_limit_per_run_runs_in_a_scope_with_it_and_its_events_say_l
                          record_scope(&tmp.path().join("scope")));
     assert!(std::process::Command::new("sh").args(["-c", "printf '%s' \"$1\" > \"$2\" && chmod +x \"$2\"", "sh", &script])
         .arg(&cli).status().unwrap().success());
-    let exec = Exec { bin: cli, args: vec!["-p".into()], env: vec![], stdin: "p".into(), slice: Some(per_run) };
+    let exec = Exec { bin: cli, args: vec!["-p".into()], env: vec![], stdin: "p".into(), slice: Some(per_run), ..Exec::default() };
     let log = tmp.path().join("r.jsonl");
     let mut h = spawn_exec::<RunEvent, _>(&exec, tmp.path(), &log, Caps { max_time: Duration::from_secs(120), max_tool_calls: 80, after_result: AFTER_RESULT }, ClaudeLines).unwrap();
     let mut evs = vec![];

@@ -551,7 +551,14 @@ mod socket {
     async fn a_token_whose_scope_is_empty_or_names_no_chat_check_or_question_changes_nothing_with_any_tool_that_isnt_read_only() {
         let s = served();
         let you = s.t.st.you_id.clone();
-        for (who, scope) in [(you.clone(), json!({})), (s.lead.clone(), json!({})), (you.clone(), json!({"run": "R1"})),
+        // GA-266: a token whose scope names a run works only for that run's own processes, and for no one while Hersir
+        // knows no such turn: it gets no tool at all
+        let run_only = tokens::mint(&s.t.st.db, &you, json!({"run": "R1"}), 60_000).unwrap();
+        let before = dump(&s.t.st);
+        let r = Conn::open(&s.t.st, &run_only).await.next().await.expect("an answer");
+        assert!(r["error"].as_str().is_some_and(|e| e.contains("works only for the turn it was made for")), "{r}");
+        assert_eq!(dump(&s.t.st), before);
+        for (who, scope) in [(you.clone(), json!({})), (s.lead.clone(), json!({})),
                              (you.clone(), json!({"client": "something-else"}))] {
             let token = tokens::mint(&s.t.st.db, &who, scope.clone(), 60_000).unwrap();
             let mut c = Conn::open(&s.t.st, &token).await;
