@@ -66,6 +66,84 @@ Hersir is a desktop app (Tauri 2, a React/TypeScript UI, Rust crates, local SQLi
 | **A second account** | A variable that moves its config/credentials folder. | `CLAUDE_CONFIG_DIR`, `CODEX_HOME`. | One account only. |
 | **The Chief's chat, board check and look at a question** | Streaming text while it writes, Hersir's `gizai` MCP server, built-in tools cut down to read-only ones, no permission prompts, an appended system prompt, a session resumed per turn. | Claude Code only (§2.2). | Stays on Claude Code. §3.4 says why and what a later card could do. |
 
+### 3.3 A CLI profile
+
+A **profile** is a JSON document that tells Hersir how to start one coding CLI, how to read what it writes, and which of Hersir's features it can take. Profiles **shipped with Hersir** are checked by the team against a real version of the CLI and compiled into the app; profiles **you add** in Settings → Coding CLIs are yours and are marked "not checked by Hersir" **[I]**.
+
+A CLI in Settings then has a **profile** instead of one of the four fixed kinds: `{"kind": "profile", "profile": "opencode", …}`. Claude Code, Codex and Gemini stay the code they are now (see "What stays code" below); `other` stays as it is.
+
+#### The sections of a profile
+
+| Section | What it says | Hersir feature it serves |
+|---|---|---|
+| `id`, `name`, `programs`, `checked_with`, `version_args` | The profile's id; the name Settings shows; the program names Find installed CLIs looks for; the CLI version it was checked with; how to read the installed version (Settings warns when it differs in its major version). | Settings, Find installed CLIs |
+| `sign_in`, `account_env` | One line on how to sign the CLI in (Hersir never does it); the variable that moves its logins to another folder, for a second account. | Settings → Environment hint |
+| `start` | The arguments of a new run and of a resumed one, as an **array** (never a shell string); how the prompt goes in (`stdin`, `arg`, or `file`, which Hersir writes in the run's log folder); environment variables. Placeholders: `{prompt}`, `{prompt_file}`, `{model}`, `{effort}`, `{session}`, `{worktree}`, `{temp_dir}`, `{run_config}` (the per-run config file's path), `{run_config_json}` (its text). An inner array is an **optional group**, left out when a placeholder in it is empty (`["-m", "{model}"]`); `{"each": "folders_rw", "args": ["--add-dir", "{path}"]}` repeats per folder. | Task runs, model, effort, folders |
+| `run_config` | A per-run config file in the CLI's own format (JSON or TOML), which Hersir writes (0600, in the run's log folder, removed when the run ends, as `mcp_run::write_config` does now) from the profile's `base` object plus what Hersir fills in: MCP servers, permission rules, folders. | MCP servers, allowed commands, folders |
+| `session` | `"id": "caller"` (Hersir chooses a UUID and passes `{session}`) or `"reported"` with the JSON pointer of the event that names it. Without `resume` args the CLI can't continue. | Continue, the nudge, Ask the Chief first |
+| `events` | How each output line becomes a `RunEvent` (below). `"format": "text"` keeps today's plain-text reading. | Run panel, outcome line, usage, refusals |
+| `mcp` | Where in `run_config` the servers go, and a template for a `stdio` entry and an `http` entry in the CLI's own words; how a server's tools are allowed or refused; how the user's own servers are kept out (`strict`). | MCP servers, the browser |
+| `permissions` | The permission modes the agent form offers (id, label, the text that explains it, risky or not, the `run_config` or arguments each sets); for the mode with a commands list, where the allowed commands go and in which **style** (below); the rule that refuses every other command. | Allowed commands, Permissions |
+| `folders` | How extra folders are given: read and change, and read only (or "can't"). | Folders, the run's temp folder |
+| `web` | The arguments or `run_config` that switch web search and fetching pages on and off; or "can't". | Web switches |
+| `guards` | Files or folders in the worktree that hold the card "blocked" before the run (as `.gemini/` now, `cli.rs:278`), with the message; variables set empty unless the CLI's own lines set them (as `BASH_ENV`, `ENV` for Gemini, `cli.rs:302`). | A repository's own settings (GA-263, GA-322) |
+| `rules` | The words "How this run works" uses for this CLI: its write tool's name, and whether a refused call is reported. | The prompt's rules (`prompt.rs:454`) |
+| `tools` | The CLI's built-in tools for the agent form's catalog (name, what it does, read only or not). Optional. | Tools per agent (`tool_catalog.rs`) |
+
+A section left out means "this CLI can't", and Hersir does what §3.2 says for that feature: the agent form and the run log say so, as they do for Other CLIs now **[I]**.
+
+#### Reading the events: a mapping, not a script
+
+The `events` section is a list of rules, tried in order on each JSON line. A rule matches on JSON pointers (serde_json's `Value::pointer`, which `cli.rs` already uses) and says which `RunEvent` to emit with which fields:
+
+```json
+{ "match": { "/type": "tool_use", "/part/state/status": "completed" },
+  "emit": "tool", "id": "/part/callID", "name": "/part/tool", "input": "/part/state/input",
+  "output": "/part/state/output", "error": false }
+```
+
+The emits are a fixed list, each built on what the three parsers in `cli.rs` already do:
+
+| Emit | Becomes | Like today's |
+|---|---|---|
+| `init` (`session`, `model`) | `RunEvent::Init`, once | Codex `thread.started`, Gemini `init` |
+| `text` (`text`, `delta: true\|false`) | `RunEvent::Text`; deltas are joined until the next other event; the text after the last tool call is kept as the final message | Gemini `message` (deltas), Codex `agent_message` |
+| `tool` (`id`, `name`, `input`, and when done `output`, `error`) | `RunEvent::ToolUse` once per id (so the tool-call cap counts each call once), then `RunEvent::ToolResult` when it has an output | Codex `item.started` / `item.completed` |
+| `usage` (`input`, `output`, more pointers to add up, `cost`, `sum: true` to add over lines) | Kept until the result | Codex `turn.completed`, Gemini `result.stats` |
+| `refused` (`tool`, `input`, `reason`) | `RunEvent::Refused` | Claude Code `permission_denied` |
+| `error` (`message`) | Kept; becomes the result when the output ends without one | Codex and Gemini `error` |
+| `result` (`text` or the final message, `error`) | `RunEvent::Result` with the usage kept | Codex `turn.completed`, Gemini `result` |
+| `ignore` | nothing | |
+
+A line no rule matches is `Other {raw_type}` and a line that isn't JSON is `Other {invalid}`, as now (`cli.rs:717`). When the output ends without a `result`, the engine gives one from the last error (failed) or the final message (done), as `Codex::finish` and `Gemini::finish` do now. There is no scripting language and no regular expression in a profile: a profile can't run code inside Hersir **[I]**.
+
+A test can prove the vocabulary is enough without moving anything: profiles written for Codex and Gemini (in the tests only) must give the same events as `Codex::line` and `Gemini::line` on the fixture lines in `crates/gizai-agents/tests/it/cli_test.rs:285` and `:333` **[I]**.
+
+A run log of a profile CLI starts with `{"type":"gizai_cli","kind":"profile","profile":"opencode","events":[…]}`: the header carries the event rules themselves, so a finished run's log reads again the way it ran even after the profile changes (today the header names only the kind, `cli.rs:496`) **[I]**.
+
+#### Allowed commands: a few named styles
+
+Hersir keeps an agent's allowed commands as Claude Code rules (`Bash(git status:*)`, `docs/features/tools.md`). A profile names the style its CLI takes, and Hersir translates with code it tests:
+
+| Style | `Bash(git status:*)` becomes | For |
+|---|---|---|
+| `claude_rule` | `Bash(git status:*)` | CLIs that copied Claude Code's rules |
+| `prefix_glob` | `git status *` (and `git status`) | OpenCode's `permission.bash` (§3.1.1) |
+| `shell_call` | `shell(git status:*)` (the profile gives the tool name) | Copilot-like `--allow-tool` |
+| `gemini_shell` | `run_shell_command(git status)` | Gemini, Qwen Code (`cli.rs:270`) |
+
+A profile also says whether its CLI splits a command line on `&&`, `;`, `|` and `$(…)` before matching (so `git status && rm -rf x` is refused). Hersir can't check that from a profile: the shipped profile's check does, and a profile you add says "not checked by Hersir" next to its Allowed commands **[I]**.
+
+#### What stays code
+
+- **Running a CLI**: the process tree, the time and tool-call caps, the memory slice, ending a CLI that stays quiet after its result, closing stdin (`process.rs`). The outcome line (`outcome.rs`).
+- **The engines**: the template renderer (arguments as an array, optional groups, `each`), the event engine above, the `run_config` writer, and the allowed-commands styles. They are the only things that read a profile.
+- **Everything that guards your data**: the checks on the agent's folders (never `/`, your home folder, Hersir's data or folders with keys), the run's temp folder and `TMPDIR`, the git settings of the agent's own push, the MCP entries with secrets from your keychain (they go only in the per-run file, never in a profile), the guard checks (`guards` only names the files).
+- **What one CLI needs that no other does**: Gemini's `.env` handling (GA-322, `cli.rs:287`), Codex's writable git folders (GA-263, `cli.rs:243`), reading Codex's subscription limits from its session log and Claude Code's `rate_limit_event` (`limits.rs:44`). So **Claude Code, Codex and Gemini stay code adapters**; moving them to profiles would win nothing and risk their security fixes **[I]**.
+- **The Chief's chat** (§3.4).
+- **An ACP client**, if Hersir takes option C (§4): the protocol is code; an ACP agent's profile is then only `start`, `guards` and `account_env`.
+- **What the front end knows per kind today** (`src/lib/clis.ts`: `PERMISSIONS`, `FOLDERS_NOTE`, `EFFORTS_BY_KIND`, `RISKY`) moves to the backend: `list_clis` sends each CLI's modes, efforts and notes, built from its kind or its profile, so a profile needs no front-end change **[I]**.
+
 ### 3.4 The Chief's chat stays on Claude Code (for now)
 
 The chat turn is the most Claude Code-bound part of Hersir **[V]** (`src-tauri/src/chat.rs:1509`–`:1540`): `--restricted` and `--tools Read,Glob,Grep` (built-in tools cut down), `--permission-prompts none`, `--append-system-prompt`, `--include-partial-messages` for the text as it is written, the `gizai` MCP server through the `hersir-mcp` shim with a token per turn, and the GA-271/GA-289 logic that decides whether a tool result came from a trusted source (`Trusted::of`, `TurnTools::of`). `chat_problem` (`crates/gizai-core/src/clis.rs:155`) and `team.rs:353` refuse the chat on any other kind.
