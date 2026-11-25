@@ -18,11 +18,11 @@ use std::path::{Path, PathBuf};
 use gizai_core::backups::{FORMAT_VERSION, MANIFEST_FORMAT, MARKER, MARKER_JSON, Manifest};
 use sha2::{Digest, Sha256};
 
-use crate::api::{Api, retried};
+use crate::api::{Api, DownloadUrl, retried};
 use crate::backup::{CloudManifest, Progress, Step};
 use crate::chunks::{ChunkKeys, ZSTD_LEVEL, is_object_id, short};
 use crate::keys::AccountKey;
-use crate::util::{clean, is_hex};
+use crate::util::{clean, is_hex, now_ms};
 use crate::{Error, Result};
 
 /// The folder in a restore's folder that holds the objects downloaded so far.
@@ -113,7 +113,7 @@ pub fn restore(api: &Api, key: &AccountKey, name: &str, manifest_id: &str, dir: 
         for id in batch {
             let url = urls.iter().find(|u| u.id.eq_ignore_ascii_case(id))
                 .ok_or_else(|| Error::Damaged(format!("Hersir Cloud gave no download for object {}", short(id))))?;
-            let object = retried(TRIES, || api.get_object(url))?;
+            let object = download(api, url)?;
             fetched.objects += 1;
             fetched.bytes += object.len() as u64;
             keep(&cache, id, &object)?;
@@ -236,12 +236,38 @@ fn fetch(api: &Api, keys: &ChunkKeys, cache: &Path, id: &str, fetched: &mut Fetc
     let urls = retried(TRIES, || api.download_urls(&[id.to_string()]))?;
     let url = urls.iter().find(|u| u.id.eq_ignore_ascii_case(id))
         .ok_or_else(|| Error::Damaged(format!("Hersir Cloud gave no download for object {}", short(id))))?;
-    let object = retried(TRIES, || api.get_object(url))?;
+    let object = download(api, url)?;
     fetched.objects += 1;
     fetched.bytes += object.len() as u64;
     let chunk = keys.open(id, &object)?;
     keep(cache, id, &object)?;
     Ok(chunk)
+}
+
+/// One object from its presigned URL, trying again when it fails on the way, with a new URL when this one has run out
+/// (or is about to) or R2 refused it.
+fn download(api: &Api, url: &DownloadUrl) -> Result<Vec<u8>> {
+    let mut url = url.clone();
+    let mut left = TRIES;
+    loop {
+        if url.expires_at - 10_000 < now_ms() {
+            let fresh = retried(TRIES, || api.download_urls(std::slice::from_ref(&url.id)))?;
+            url = fresh.into_iter().find(|u| u.id.eq_ignore_ascii_case(&url.id))
+                .ok_or_else(|| Error::Damaged(format!("Hersir Cloud gave no download for object {}", short(&url.id))))?;
+        }
+        match api.get_object(&url) {
+            Ok(object) => return Ok(object),
+            Err(e @ (Error::Network(_) | Error::Storage(_))) if left > 1 => {
+                left -= 1;
+                // a refused download may be a URL that ran out: the next try asks for a new one
+                if matches!(e, Error::Storage(_)) {
+                    url.expires_at = 0;
+                }
+                std::thread::sleep(std::time::Duration::from_secs(1));
+            }
+            Err(e) => return Err(e),
+        }
+    }
 }
 
 /// Keeps a downloaded object in the folder's downloads: through a `.part` file, so only whole ones are there.
