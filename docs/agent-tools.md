@@ -198,6 +198,11 @@ Hersir finds a nested repository in the worktree's index (`git ls-files --stage`
 
 A folder name on Linux can hold bytes that aren't valid UTF-8, and Hersir can't name such a folder in git add's pathspec or look for its `.git` (GA-357). So a worktree whose index has a submodule with such a name, whether its folder is there or not, is refused by Commit…, Remove anyway's stash, the removal and a new card's take-over, each with "it has a submodule whose folder name isn't valid UTF-8, whose own settings git could run". A file with such a name is no problem.
 
+git doesn't always read a path it is given as the index holds it (GA-361). git on macOS turns it into NFC, Unicode's composed form, so `cafe` followed by a combining accent, U+0301, becomes `café`, while macOS finds the folder under either name. And git tidies a path everywhere: `./lib` is `lib`, and on Windows `\` is `/`. A run can write such a name into the worktree's index, and git add's pathspec would then miss that submodule. So:
+
+- A worktree whose index has a submodule whose name isn't in NFC is refused by the same four, on every system, each with "it has a submodule whose folder name git could read two ways, whose own settings git could run".
+- **Commit…** first asks git which entries its pathspec leaves in, with `git ls-files`, which reads the index only and reads a pathspec as git add does. With a submodule among them it refuses with that sentence, and runs no git add.
+
 ### Gemini and a `.gemini` folder
 
 Checked with Gemini CLI 0.65.0:
