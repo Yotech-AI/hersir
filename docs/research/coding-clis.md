@@ -352,3 +352,82 @@ export const removeCliProfile = (id: string) => invoke<T.CliProfileInfo[]>("remo
 ### 5.7 Left out
 
 The Chief's chat (§3.4); subscription limits for profile CLIs (no CLI but Claude Code and Codex reports them, §3.1); the sandbox (GA-265); Hersir as an MCP server for other AI apps (GA-347); downloading profiles; moving Claude Code, Codex or Gemini to profiles.
+
+## 8. Sources
+
+Every source was read on **2026-11-25**. Versions and dates of npm packages come from `npm view <package> version time.modified license`, run on 2026-11-25 (opencode-ai 1.19.6, @openai/codex 0.172.0, @google/gemini-cli 0.71.1, @qwen-code/qwen-code 0.28.4, @github/copilot 1.0.116, @sourcegraph/amp, @charmland/crush 0.102.0, droid 1.20.0, @agentclientprotocol/sdk 2.12.0, acpx 0.22.0).
+
+**Codex**
+- [S20] https://github.com/openai/codex/releases/latest and https://raw.githubusercontent.com/openai/codex/main/README.md
+- [S21] https://learn.chatgpt.com/docs/non-interactive-mode (from developers.openai.com/codex/noninteractive) and https://raw.githubusercontent.com/openai/codex/main/codex-rs/exec/src/cli.rs
+- [S22] https://raw.githubusercontent.com/openai/codex/main/codex-rs/exec/src/exec_events.rs
+- [S23] https://learn.chatgpt.com/docs/config-file/config-reference
+- [S24] https://learn.chatgpt.com/docs/agent-approvals-security
+- [S25] https://learn.chatgpt.com/docs/auth
+- [S26] https://github.com/agentclientprotocol/codex-acp (and the archived github.com/zed-industries/codex-acp)
+- [S27] https://raw.githubusercontent.com/openai/codex/main/codex-rs/protocol/src/protocol.rs
+
+**Gemini CLI**
+- [S30] https://raw.githubusercontent.com/google-gemini/gemini-cli/main/docs/cli/headless.md and https://github.com/google-gemini/gemini-cli/releases/latest
+- [S31] https://raw.githubusercontent.com/google-gemini/gemini-cli/main/packages/core/src/output/types.ts
+- [S32] https://raw.githubusercontent.com/google-gemini/gemini-cli/main/packages/cli/src/config/config.ts and https://raw.githubusercontent.com/google-gemini/gemini-cli/main/docs/cli/cli-reference.md
+- [S33] https://raw.githubusercontent.com/google-gemini/gemini-cli/main/docs/reference/configuration.md
+- [S34] https://raw.githubusercontent.com/google-gemini/gemini-cli/main/docs/reference/policy-engine.md
+- [S35] https://geminicli.com/docs/get-started/authentication/
+- [S36] https://raw.githubusercontent.com/google-gemini/gemini-cli/main/docs/cli/sandbox.md
+
+**Qwen Code**
+- [S40] https://raw.githubusercontent.com/QwenLM/qwen-code/main/docs/users/features/headless.md
+- [S41] https://raw.githubusercontent.com/QwenLM/qwen-code/main/packages/cli/src/nonInteractive/types.ts
+- [S42] https://raw.githubusercontent.com/QwenLM/qwen-code/main/docs/users/configuration/settings.md (the first 200 of 452 kB)
+- [S43] https://raw.githubusercontent.com/QwenLM/qwen-code/main/docs/users/configuration/auth.md
+- [S44] https://github.com/QwenLM/qwen-code and https://github.com/QwenLM/qwen-code/releases/latest
+
+**The Agent Client Protocol**
+- [S60] https://agentclientprotocol.com/overview/introduction
+- [S61] https://agentclientprotocol.com/protocol/overview and https://agentclientprotocol.com/llms.txt
+- [S62] https://agentclientprotocol.com/community/governance.md
+- [S63] https://agentclientprotocol.com/announcements/acp-v2-preview.md and https://agentclientprotocol.com/protocol/v2/migration.md
+- [S64] https://crates.io/api/v1/crates/agent-client-protocol and https://agentclientprotocol.com/libraries/rust.md
+- [S65] https://agentclientprotocol.com/protocol/v1/transports.md
+- [S66] https://agentclientprotocol.com/protocol/v1/initialization.md and https://agentclientprotocol.com/protocol/v1/authentication.md
+- [S67] https://agentclientprotocol.com/protocol/v1/session-setup.md and https://agentclientprotocol.com/protocol/v1/session-list.md
+- [S68] https://agentclientprotocol.com/protocol/v1/prompt-turn.md, https://agentclientprotocol.com/protocol/v1/session-modes.md and https://agentclientprotocol.com/protocol/v1/session-config-options.md
+- [S69] https://agentclientprotocol.com/protocol/v1/tool-calls.md and https://agentclientprotocol.com/rfds/v2/permission-requests.md
+- [S70] https://agentclientprotocol.com/rfds/session-usage.md and https://agentclientprotocol.com/announcements/session-usage-stabilized.md
+- [S71] https://agentclientprotocol.com/rfds/end-turn-token-usage.md
+- [S72] https://agentclientprotocol.com/protocol/v1/terminals.md, https://agentclientprotocol.com/protocol/v1/file-system.md and https://agentclientprotocol.com/rfds/v2/client-filesystem-terminal-capabilities.md
+- [S73] https://agentclientprotocol.com/get-started/registry.md
+- [S74] https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json
+- [S75] https://agentclientprotocol.com/get-started/agents.md and https://zed.dev/docs/ai/external-agents
+- [S76] https://github.com/agentclientprotocol/claude-agent-acp (`src/new-session-meta.ts`, `src/permissions/modes.ts`, `src/acp-client.ts`)
+
+**Aider**
+- [S100] https://aider.chat/docs/config/options.html
+- [S101] https://aider.chat/docs/scripting.html
+- [S102] https://raw.githubusercontent.com/Aider-AI/aider/main/aider/io.py
+- [S103] https://github.com/Aider-AI/aider
+- [S104] https://pypi.org/project/aider-chat/
+
+**Goose**
+- [S110] https://goose-docs.ai/docs/guides/goose-cli-commands
+- [S111] https://goose-docs.ai/docs/guides/running-tasks
+- [S112] https://raw.githubusercontent.com/aaif-goose/goose/main/crates/goose-cli/src/session/mod.rs
+- [S113] https://goose-docs.ai/docs/guides/config-files
+- [S114] https://goose-docs.ai/docs/guides/environment-variables
+- [S115] https://github.com/aaif-goose/goose and https://github.com/aaif-goose/goose/releases
+
+**Crush**
+- [S120] https://raw.githubusercontent.com/charmbracelet/crush/main/internal/cmd/run.go
+- [S121] https://github.com/charmbracelet/crush (README)
+- [S122] https://raw.githubusercontent.com/charmbracelet/crush/main/internal/config/config.go
+- [S123] https://github.com/charmbracelet/crush/releases
+- [S124] https://raw.githubusercontent.com/charmbracelet/crush/main/internal/cmd/root.go
+
+**Factory Droid**
+- [S130] https://docs.factory.com/cli/droid-exec/overview (from docs.factory.ai)
+- [S131] https://docs.factory.com/guides/building/droid-exec-tutorial
+- [S132] https://docs.factory.com/reference/cli-reference
+- [S133] https://docs.factory.com/cli/configuration/settings
+- [S134] https://docs.factory.com/cli/configuration/mcp
+- [S135] https://docs.factory.com/integrations/zed
