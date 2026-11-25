@@ -590,11 +590,14 @@ fn plan(st: &AppState, account: &str) -> Option<CloudPlan> {
 }
 
 /// `GET /me/entitlements`, checked with Hersir Cloud's key before the plan is filled; one that doesn't check leaves no
-/// plan. Without the key (not set yet) nothing is asked.
+/// plan. Without the key (`ENTITLEMENT_KEY` not set yet) it is asked all the same (a removed computer hears so), and no
+/// plan is shown.
 fn refresh_plan(st: &AppState, s: &Session) -> Result<(), String> {
-    let Some(key) = s.cfg.entitlement_key else { return Ok(()) };
     let signed = s.api.entitlement().map_err(|e| failed(st, s, e))?;
-    let checked = entitlement::check(&signed, &key, &s.account.id);
+    let checked = match &s.cfg.entitlement_key {
+        Some(key) => entitlement::check(&signed, key, &s.account.id),
+        None => Err(CloudError::Entitlement("Hersir Cloud's entitlement key isn't built into this Hersir yet".into())),
+    };
     let plan = checked.as_ref().ok().map(|e| CloudPlan {
         name: e.plan.clone(),
         status: e.status.clone(),
@@ -612,7 +615,10 @@ fn refresh_plan(st: &AppState, s: &Session) -> Result<(), String> {
         changed(st);
     }
     checked.map(drop).map_err(|e| {
-        eprintln!("gizai: Hersir Cloud's plan isn't shown: {e}");
+        // without the key every refresh would say so
+        if s.cfg.entitlement_key.is_some() {
+            eprintln!("gizai: Hersir Cloud's plan isn't shown: {e}");
+        }
         e.to_string()
     })
 }
@@ -831,9 +837,9 @@ fn platform_name(p: &str) -> String {
 /// its token, the account key and its own keys go from the keychain, and the account from its settings.
 pub fn sign_out(st: &AppState) -> Result<CloudStatus, String> {
     let cfg = st.cloud.config();
-    if let Some(a) = account_setting(st) {
-        if a.server == cfg.server
-            && let Ok(Some(t)) = read_token(st, &a.id)
+    // an account on another Hersir Cloud (a debug build's) is left as it is
+    if let Some(a) = account(st, &cfg) {
+        if let Ok(Some(t)) = read_token(st, &a.id)
             && let Ok(api) = Api::new(&cfg.server, &t.token)
             && let Err(e) = api.remove_device("me", false)
         {

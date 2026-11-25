@@ -143,7 +143,7 @@ The database is decompressed into `<data folder>/restore/gizai.db.part` for the 
 
 ### 2. Today's data is saved
 
-A snapshot of today's data with reason `before-restore`, made as any snapshot is: in the backups folder set in Settings, or, when none is set (or it can't be written now), in the folder restored from. It waits at most 5 minutes for a snapshot that runs already. When neither can be written, the restore stops: `Hersir can't save today's data first: <why>. Choose a backups folder in Settings → General → Backups.`
+A snapshot of today's data with reason `before-restore`, made as any snapshot is: in the backups folder set in Settings, or, when none is set (or it can't be written now), in the folder restored from. A restore from Hersir Cloud uses the data folder's own `backups/` in place of the folder restored from, because its download (`restore/cloud/`) goes with the restore. It waits at most 5 minutes for a snapshot that runs already. When neither can be written, the restore stops: `Hersir can't save today's data first: <why>. Choose a backups folder in Settings → General → Backups.` With Cloud Backup on, today's data also goes to Hersir Cloud as a `before-restore` backup; when that fails, the restore goes on.
 
 ### 3. Staging
 
@@ -184,6 +184,7 @@ When the restored database's `is_self` device isn't this computer's, every row g
 | desktop notifications | every `notify_*` key: `notify_hold`, `notify_waiting`, `notify_lead_asks`, `notify_lead_answered` |
 | backups | `backup_folder`, `backup_every`, `backup_on_quit`, `backup_keep`, `backup_last_error` (the last error belongs to this computer's folder) |
 | restores | `last_restore`, `restore_result` |
+| Hersir Cloud | `cloud_account` (the account and its server), `cloud_backup` (Cloud Backup's On, Every and On quit), `cloud_last_backup`, `cloud_last_error` |
 
 Sync will send the shared settings only. A new setting must go on one side: one that is only true on one computer (a path, a program, a port) goes in `scope`'s list.
 
@@ -298,6 +299,16 @@ A 429, a server error (5xx) or a network failure is waited out (the server's `Re
 2. **Checking**: each object is opened and checked (above), and the chunks are put back together: the database into `snapshots/<name>.db.zst` (zstd level 3, one frame that records its size, as format 1 writes it) and each stored blob into `files/<sha256[..2]>/<sha256>`, each through a `.part` file. The database's and each blob's SHA-256 and size must be the manifest's. The progress counts their bytes.
 
 The folder is then a format-1 backups folder: `gizai-backups.json`, `snapshots/<name>.json` (format 1's manifest, without `chunks`, and with `db.bytes` the size of the `.db.zst` written) beside its database, and `files/`. `.cloud-objects/` goes. GA-218's restore takes it from there as it is: `gizai_core::restore::check` with the folder and the name, then today's data saved, staging, and the swap at the next start.
+
+### In the app
+
+`src-tauri/src/cloud.rs` (GA-359) uses the crate:
+
+- **Signing in**: `oauth::discover("<server>/api")`, `begin` with Hersir's desktop client id (no registration), `finish`, then `POST /devices` with this computer's device id, its name, platform, version, `kind: "desktop"` and new public keys. The token is renewed in its last 30 days. A 401 `removed` or `signed_out` signs the computer out and keeps the server's message as Cloud Backup's last error; `removed` and Sign out also forget the account key and the computer's keys.
+- **The keychain** (service `hersir`): `cloud/<account>/token`, `cloud/<account>/key` and `cloud/<account>/device`. The recovery code is never stored: the first computer keeps it in memory until its last group is typed back, then only the account key sealed by it goes to Hersir Cloud (`PUT /keys`).
+- **When it backs up**: daily, when the last cloud backup is a day old and the newest `changes` row is another one; on Quit Hersir completely with On quit on (after the local snapshot, within the same 5 minutes); Back up now; and before a restore. A lapsed plan, no plan or a full Hersir Cloud makes none. The database is copied page for page into the data folder's `backups/` (`.cloud-<name>.db`), which goes once the backup ends.
+- **Restore from Hersir Cloud** downloads into `<data folder>/restore/cloud/`, then it is GA-218's restore of that folder. Cancelling the restore stops the download. A restore applied at the start also ends the first start's onboarding: the restored data has its own team.
+- **Debug builds** read `HERSIR_CLOUD_URL`, `HERSIR_CLOUD_CLIENT_ID` and `HERSIR_CLOUD_ENTITLEMENT_KEY` (point them at the fake below); release builds use `https://cloud.hersir.dev`, the desktop client id and the entitlement key built in.
 
 ### The fake Hersir Cloud
 

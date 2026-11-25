@@ -295,7 +295,16 @@ fn step(st: &AppState, s: Step, said: &mut Option<Instant>) -> gizai_core::Resul
 fn save_today(st: &AppState, chosen: &Path, cloud: bool) -> Result<Saved, String> {
     let until = Instant::now() + SAVE_WAIT;
     let mut folders: Vec<PathBuf> = backups_core::settings(&st.db).folder.map(PathBuf::from).into_iter().collect();
-    let fallback = if cloud { st.data_dir.join("backups") } else { chosen.to_path_buf() };
+    let fallback = if cloud {
+        // a new install may have no backups/ yet (the first screen's Restore from Hersir Cloud)
+        let own = st.data_dir.join("backups");
+        if let Err(e) = std::fs::create_dir_all(&own) {
+            eprintln!("gizai: {} can't be made: {e}", own.display());
+        }
+        own
+    } else {
+        chosen.to_path_buf()
+    };
     if !folders.iter().any(|f| backups_core::backups_dir(f) == backups_core::backups_dir(&fallback)) {
         folders.push(fallback);
     }
