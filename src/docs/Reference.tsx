@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { filtered, filesUnder, folderRow, isOff, moved, MOVED_LABEL, plural, snippet, when } from "./derive";
 import { fresh } from "./route";
 import type { Entry, SourceFile } from "./types";
-import { AgentLink, CodeBlock, CopyButton, Empty, KindBadge, MethodBadge, PathCrumbs, RailLinks, useDocs, useLoad } from "./ui";
+import { AgentLink, CodeBlock, CopyButton, Empty, KindBadge, MethodBadge, PathCrumbs, Prose, RailLinks, useDocs, useLoad } from "./ui";
 
 const PER_PAGE = 100;
 const MAX_SHOWN_LINES = 500;
@@ -136,7 +136,7 @@ function RecentChanges() {
       <h2>Recent changes <a className="sm" href={link(fresh("changelog"))}>All changes <ArrowRight className="icon sm" /></a></h2>
       <div className="dd-rows">
         {recent.map((c, n) => (
-          <div key={n} className="dd-row"><KindBadge kind={c.type} /><span className="grow" dangerouslySetInnerHTML={{ __html: c.html }} /><span className="sm muted">{c.version}</span></div>
+          <div key={n} className="dd-row"><KindBadge kind={c.type} /><Prose className="grow" html={c.html} /><span className="sm muted">{c.version}</span></div>
         ))}
       </div>
     </>

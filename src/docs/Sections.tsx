@@ -123,7 +123,8 @@ export function Changelog() {
             <h2>{r.version} {r.unreleased ? <span className="dd-status proposed">unreleased</span> : <span className="sm muted">{r.date}</span>}
               {r.compareUrl && <a className="sm" href={r.compareUrl} onClick={(ev) => { ev.preventDefault(); host.openExternal(r.compareUrl); }}>Compare <ExternalLink className="icon sm" /></a>}</h2>
             <div className="dd-rows">
-              {changes.map((c, n) => <div key={n} className="dd-row"><KindBadge kind={c.type} /><span className="grow" dangerouslySetInnerHTML={{ __html: c.html }} /></div>)}
+              {/* through Prose: a link in a change opens outside, never in Hersir's window (GA-362) */}
+              {changes.map((c, n) => <div key={n} className="dd-row"><KindBadge kind={c.type} /><Prose className="grow" html={c.html} /></div>)}
             </div>
           </section>
         );
