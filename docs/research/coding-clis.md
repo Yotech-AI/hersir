@@ -46,6 +46,25 @@ Hersir is a desktop app (Tauri 2, a React/TypeScript UI, Rust crates, local SQLi
 
 Each CLI below has the points of the card, in this order: **headless** (how it runs and takes the prompt), **output** (structured events), **resume**, **MCP**, **model**, **permissions**, **folders**, **sign-in**, **sandbox**, **repository config** (what it loads from the worktree), **ACP** (the Agent Client Protocol, §3.1.13), **limits**, and **licence and systems**. Sources are numbered as in §8; each was read on 2026-11-25. Pages were read through a fetch tool that summarises a page before quoting it, so **[V]** means a primary source said it, and a flag name was copied from the source **[I]**/**[V]** as marked.
 
+**Overview.** "JSON events" means JSONL on stdout that a profile can map; "caller's id" means Hersir can choose the session id; "per run" means MCP servers can be given for one run without touching your files or the worktree; "list" means shell commands can be allowed by prefix and the rest refused.
+
+| CLI | Prompt | JSON events | Resume | MCP per run | Command list (headless: what needs approval) | ACP | Licence · systems | Fit |
+|---|---|---|---|---|---|---|---|---|
+| Claude Code | stdin | yes (stream-json) | caller's id | `--mcp-config` | yes (refused, reported) | adapter | proprietary · all | code (now) |
+| **OpenCode 2** | stdin or arg | yes, no final event | **caller's id** | config (per-run way to check) | yes, `permissions` (rejected, not reported) | native | MIT · all | **profile** |
+| Codex | stdin | yes | reported id | `-c` | no: its sandbox | adapter | Apache-2.0 · all | code (now) |
+| Gemini | stdin | yes | caller's id | settings file | yes, policy (denied) | native | Apache-2.0 · all | code (now) |
+| Qwen Code | stdin | yes, Claude's shape | reported id | settings file | not read (denials reported) | native | Apache-2.0 · all | profile |
+| Cursor | arg | yes, Claude-like | `create-chat` | no (project file) | yes, `Shell(git:*)` in a config file (rejected) | native | proprietary · all | profile, no MCP |
+| Copilot CLI | stdin or arg | yes, not documented | caller's id | `--additional-mcp-config` | yes, `--allow-tool 'shell(git:*)'` (denied) | native (preview) | proprietary · all | profile, after a fixture |
+| Amp | stdin or arg | yes, Claude's shape | reported id | `--mcp-config` | plugin rules (no asks by default) | adapter | proprietary · Linux, macOS, WSL | profile, careful |
+| Goose | stdin, file | yes, no id | caller's name | `--with-extension` | no (auto-allowed or cancelled) | native | Apache-2.0 · all | profile, no list |
+| Droid | stdin, arg, file | yes | reported id | no | `permissionRules` (stops, exit ≠ 0) | native | proprietary · all | profile, no MCP |
+| Kilo | arg | yes (OpenCode's) | reported id | `KILO_CONFIG_CONTENT` **[I]** | yes (rejected, exit 1) | native | MIT · all | OpenCode's profile |
+| Kimi Code, Auggie, Vibe, Kiro, Grok, Cline | mostly arg | own formats, partly undocumented | mostly reported | Auggie only | varies | native | mixed | ACP (option C) |
+| Aider | arg, file | **no** | history file | **no MCP** | no (`--yes-always` says no to commands) | no | Apache-2.0 · all | Other (text) |
+| Crush | stdin + arg | **no** | `--session` | config file | **no: `run` approves everything** | no | FSL-1.1-MIT · all | Other (text) |
+
 #### 3.1.1 OpenCode (Anomaly, was SST): the first one
 
 **OpenCode now has two lines.** Version 2 is current: npm `@opencode/cli` 2.4.1 (23 Nov 2026), docs at opencode.ai/docs. Version 1 is npm `opencode-ai` 1.19.6 (17 Nov 2026), docs moved to opencode.ai/v1/docs, and its `run.ts` is gone from the default branch. Both install a program called `opencode`, and V2's installer replaces V1 **[V]** [S1, S2, S3]. Everything below is **V2** unless it says V1; a profile should require 2.x and say so for a 1.x (open question 2).
@@ -421,6 +440,86 @@ Coding CLIs
 ```
 
 **Agent form → Runs on, Permissions, Folders, Tools** (`src/components/AgentForm.tsx`). The permission modes, their texts, the risky ones, the efforts and the folders note come from `list_clis` (now `src/lib/clis.ts:9`–`:49` per kind). A profile CLI without allowed commands shows its modes with "Hersir can't keep this CLI to a list of commands", as Codex's sandbox modes are shown now; a profile you added shows "not checked by Hersir" next to Allowed commands. MCP servers and the browser are on only when the CLI `can.mcp` (now `mcp_not_on`, `crates/gizai-core/src/mcp_servers.rs:433`).
+
+### 5.2 The OpenCode profile
+
+The shipped profile, as the first card would write it (the event pointers from OpenCode 2's `noninteractive.ts` [S5]; the `tokens` fields and the config variable to be confirmed against a real 2.x run, see §6 card 2) **[I]**:
+
+```json
+{
+  "profile": 1,
+  "id": "opencode",
+  "name": "OpenCode",
+  "programs": ["opencode"],
+  "version_args": ["--version"],
+  "checked_with": "2.4.1",
+  "sign_in": "Sign OpenCode in once in a terminal: opencode auth login",
+  "account_env": "OPENCODE_DB",
+  "start": {
+    "args": ["run", "--standalone", "--format", "json", "--session", "{session}", ["-m", "{model}"]],
+    "resume": ["run", "--standalone", "--format", "json", "--session", "{session}", ["-m", "{model}"]],
+    "prompt": "stdin",
+    "env": { "PWD": "{worktree}", "OPENCODE_CONFIG": "{run_config}" }
+  },
+  "session": { "id": "caller" },
+  "run_config": { "format": "json", "base": { "share": "disabled", "autoupdate": false } },
+  "events": {
+    "format": "jsonl",
+    "rules": [
+      { "match": { "/type": "text" }, "emit": "text", "id": "/part/id", "text": "/part/text", "delta": true },
+      { "match": { "/type": "tool_use", "/part/state/status": "completed" }, "emit": "tool",
+        "id": "/part/id", "name": "/part/tool", "input": "/part/state/input", "output": "/part/state/output", "error": false },
+      { "match": { "/type": "tool_use", "/part/state/status": "error" }, "emit": "tool",
+        "id": "/part/id", "name": "/part/tool", "input": "/part/state/input", "output": "/part/state/error", "error": true },
+      { "match": { "/type": "step_finish" }, "emit": "usage", "sum": true,
+        "input": ["/part/tokens/input", "/part/tokens/cache/read", "/part/tokens/cache/write"],
+        "output": ["/part/tokens/output", "/part/tokens/reasoning"], "cost": "/part/cost" },
+      { "match": { "/type": "error" }, "emit": "error", "message": "/error/message" },
+      { "match": { "/type": "reasoning" }, "emit": "ignore" },
+      { "match": { "/type": "step_start" }, "emit": "ignore" }
+    ],
+    "end": "exit_code"
+  },
+  "mcp": {
+    "at": "/mcp/servers",
+    "stdio": { "type": "local", "command": ["{command}", "{args…}"], "environment": "{env}" },
+    "http": { "type": "remote", "url": "{url}", "headers": "{headers}", "oauth": false },
+    "tool_name": "{server}_{tool}"
+  },
+  "permissions": {
+    "at": "/permissions",
+    "rule": { "action": "{action}", "resource": "{resource}", "effect": "{effect}" },
+    "commands": { "style": "prefix_glob", "action": "shell" },
+    "modes": [
+      { "id": "read_only", "label": "Read only", "tier": 0, "risky": false, "commands": false, "edits": false,
+        "text": "Reads and plans only; changes nothing." },
+      { "id": "list", "label": "Allowed commands", "tier": 2, "risky": false, "commands": true, "edits": true,
+        "text": "Edits files in the worktree and its folders; runs only the commands allowed below. Recommended." },
+      { "id": "any", "label": "Any command", "tier": 4, "risky": true, "args": ["--auto"],
+        "text": "Runs anything without asking; OpenCode has no sandbox. Only for a sandboxed machine." }
+    ]
+  },
+  "folders": { "read_only": "rules" },
+  "web": { "search": "websearch", "fetch": "webfetch" },
+  "guards": {
+    "hold_if_worktree_has": ["opencode.json", "opencode.jsonc", ".opencode"],
+    "message": "This repository has OpenCode settings (opencode.json or .opencode), which can load plugins that run code outside the agent's allowed commands: remove them from the branch, or run the card on another CLI.",
+    "empty_env": ["BASH_ENV", "ENV"]
+  },
+  "rules": { "write_tool": "write", "refusals_reported": false }
+}
+```
+
+The permission rules Hersir writes in the run's config for the `list` mode, in this order (OpenCode takes the **last** rule that matches, [S14]) **[I]**:
+
+1. `{"action": "*", "resource": "*", "effect": "deny"}`: nothing that isn't allowed below, also no `ask` (which `run` would reject anyway).
+2. `read`, `glob`, `grep`: `allow` on `*`; `edit`: `allow` on `*` (the worktree).
+3. `external_directory`: `allow` on each of the agent's folders and the run's temp folder (`<path>/*`); a read folder also gets `edit` `deny` on `<path>/*`.
+4. `shell`: one `allow` per allowed command, `Bash(git status:*)` → `git status *` (style `prefix_glob`).
+5. `webfetch`, `websearch`: `allow` when the agent's Web switches are on.
+6. MCP: `<server>_*` `allow` for each of the run's servers, then `deny` for each tool switched off.
+
+`subagent`, `skill` and `question` stay denied until a check shows how a subagent's permissions follow its parent's **[I]**.
 
 ### 5.3 Data
 
