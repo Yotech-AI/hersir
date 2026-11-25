@@ -1,0 +1,38 @@
+[package]
+name = "gizai-cloud-client"
+description = "Hersir Cloud's client: Cloud Backup's keys, chunks, entitlement check, backup and restore, and a fake Hersir Cloud for tests (no Tauri)"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+# Format 1's manifest (docs/backup-format.md): a cloud snapshot's manifest is format 1's with its chunks added, and a
+# restore writes a format-1 folder that gizai_core::restore takes as it is.
+gizai-core = { path = "../gizai-core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+sha2 = { workspace = true }
+getrandom = { workspace = true }
+zstd = { workspace = true }
+# HTTP, as gizai-agents' oauth.rs does it.
+ureq = { version = "3", default-features = false, features = ["rustls", "json"] }
+# The keys (docs/backup-format.md, For Hersir Cloud): HKDF and HMAC with SHA-256, XChaCha20-Poly1305 for objects and the
+# sealed account key, Ed25519 (the entitlement's signature, a computer's signing key) and X25519 (a computer's box key).
+# 0.10 of chacha20poly1305: the RustCrypto generation (digest 0.10, cipher 0.4) the lock has already. Nonces come from
+# getrandom, not from its own feature.
+hkdf = "0.12"
+hmac = "0.12"
+chacha20poly1305 = { version = "0.10", default-features = false, features = ["alloc"] }
+ed25519-dalek = "2"
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+# A blob over 4 MiB is cut by content (FastCDC 2020).
+fastcdc = "5"
+zeroize = "1"
+base64 = "0.22"
+
+[dev-dependencies]
+tempfile = { workspace = true }
+rusqlite = { workspace = true }
+# Signing in against the fake Hersir Cloud the way the app does (oauth.rs).
+gizai-agents = { path = "../gizai-agents" }
