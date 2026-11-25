@@ -1,6 +1,7 @@
 //! Docs: a builder's run on a project whose Docs page keeps a changelog is asked for the card's line (the Docs section
 //! of its prompt), and the line on its result keeps the card's place in the changelog; QA, the Chief and DevOps aren't
 //! asked, nor anyone while Docs is off or its Changelog switched off.
+#![cfg(unix)]
 use std::path::{Path, PathBuf};
 
 use gizai_core::clis::Cli;
