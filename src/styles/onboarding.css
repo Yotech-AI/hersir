@@ -123,3 +123,8 @@ button.onb-step:disabled { cursor: default; }
 /* the actions at the island's foot, 24px from its bottom edge, above a line */
 .onb-actions { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 12px; width: var(--onb-w); margin: 0 auto 24px;
   padding-top: 16px; border-top: 1px solid var(--line); }
+/* Restore from Hersir Cloud (GA-360, GA-317's frame 4): a strip at the island's foot, under step 1's actions, on raised with
+   a line border */
+.onb-cloud { display: flex; flex: none; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin: -12px 12px 12px;
+  padding: 8px 8px 8px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--raised); color: var(--text-2); font-size: var(--fs-sm); }
+.onb-cloud .btn { flex: none; }
