@@ -26,6 +26,7 @@ fn reference() -> Reference {
         read: vec!["app/Models/Invoice.php".into(), "app/Http/Controllers/InvoiceController.php".into(),
                    "src/app/api/leads/route.ts".into(), "app/helpers.php".into()],
         partial: vec!["app/helpers.php".into()],
+        cut_off: vec![],
     }
 }
 

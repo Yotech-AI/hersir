@@ -45,8 +45,13 @@ fn json(reply: Reply) -> serde_json::Value {
 
 /// The status, head and body of one request.
 async fn send(port: u16, method: &str, path: &str, host: &str) -> (u16, String, String) {
+    send_raw(port, format!("{method} {path} HTTP/1.1\r\nHost: {host}\r\n\r\n").as_bytes()).await
+}
+
+/// The status, head and body of a request written as `raw`.
+async fn send_raw(port: u16, raw: &[u8]) -> (u16, String, String) {
     let mut s = tokio::net::TcpStream::connect(("127.0.0.1", port)).await.unwrap();
-    s.write_all(format!("{method} {path} HTTP/1.1\r\nHost: {host}\r\n\r\n").as_bytes()).await.unwrap();
+    s.write_all(raw).await.unwrap();
     let mut out = String::new();
     s.read_to_string(&mut out).await.unwrap();
     let code = out.split(' ').nth(1).and_then(|c| c.parse().ok()).unwrap_or(0);
@@ -54,29 +59,180 @@ async fn send(port: u16, method: &str, path: &str, host: &str) -> (u16, String, 
     (code, head.to_string(), body.to_string())
 }
 
+/// The docs server for `st` on a free port, and its port.
+async fn serving(st: gizai_lib::AppState) -> u16 {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(docs_server::serve(listener, st));
+    port
+}
+
+/// `path` behind this start's key: `/t/<key><path>`.
+fn keyed(path: &str) -> String {
+    format!("/t/{}{path}", docs_server::token().unwrap())
+}
+
+// GA-362: every address carries the key, so the paths here do too (`keyed`)
 #[tokio::test]
 async fn for_this_computer_only_and_only_to_get() {
     let tmp = tempfile::tempdir().unwrap();
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let port = listener.local_addr().unwrap().port();
-    tokio::spawn(docs_server::serve(listener, gizai_lib::test_state(tmp.path())));
+    let port = serving(gizai_lib::test_state(tmp.path())).await;
     let host = format!("127.0.0.1:{port}");
 
-    let (code, head, body) = send(port, "GET", "/", &host).await;
+    let (code, head, body) = send(port, "GET", &keyed("/"), &host).await;
     assert_eq!(code, 200);
     assert!(body.contains("<title>Docs · Hersir</title>"), "{body}");
     assert!(head.contains("Content-Security-Policy: default-src 'self'; script-src 'self'"), "{head}");
     assert!(head.contains("frame-ancestors 'none'"), "nothing frames it: {head}");
-    assert_eq!(send(port, "GET", "/", &format!("localhost:{port}")).await.0, 200);
-    assert_eq!(send(port, "GET", "/fonts.css", &host).await.0, 404, "the page brings its own styles and fonts");
-    assert_eq!(send(port, "GET", "/", &format!("evil.example:{port}")).await.0, 403, "another host name");
-    assert_eq!(send(port, "GET", "/", "127.0.0.1").await.0, 403, "without this port");
-    assert_eq!(send(port, "POST", "/", &host).await.0, 405);
-    assert_eq!(send(port, "GET", "/index.html", &host).await.0, 404, "the page is a project's only");
-    assert_eq!(send(port, "GET", "/p/%zz/", &host).await.0, 400);
-    let (code, head, _) = send(port, "GET", "/p/abc", &host).await;
+    assert_eq!(send(port, "GET", &keyed("/"), &format!("localhost:{port}")).await.0, 200);
+    assert_eq!(send(port, "GET", &keyed("/fonts.css"), &host).await.0, 404, "the page brings its own styles and fonts");
+    assert_eq!(send(port, "GET", &keyed("/"), &format!("evil.example:{port}")).await.0, 403, "another host name");
+    assert_eq!(send(port, "GET", &keyed("/"), "127.0.0.1").await.0, 403, "without this port");
+    assert_eq!(send(port, "POST", &keyed("/"), &host).await.0, 405);
+    assert_eq!(send(port, "GET", &keyed("/index.html"), &host).await.0, 404, "the page is a project's only");
+    assert_eq!(send(port, "GET", &keyed("/p/%zz/"), &host).await.0, 400);
+    let (code, head, _) = send(port, "GET", &keyed("/p/abc"), &host).await;
     assert_eq!(code, 301);
-    assert!(head.contains("Location: /p/abc/"), "{head}");
+    assert!(head.contains(&format!("Location: {}", keyed("/p/abc/"))), "{head}");
+}
+
+/// GA-362 QA: a repository with a file and a commit, linked to a project with Docs on; its id.
+fn pearl(st: &gizai_lib::AppState, root: &Path) -> String {
+    let repo = root.join("pearl");
+    std::fs::create_dir(&repo).unwrap();
+    git(&repo, &["init", "-q", "-b", "main"]);
+    write(&repo, "src/invoice.ts", "/** An invoice. */\nexport class Invoice {\n}\n");
+    git(&repo, &["add", "-A"]);
+    git(&repo, &["commit", "-q", "-m", "Add invoices"]);
+    project(st, "Pearl", "PEARL", true, Some(&repo))
+}
+
+#[test]
+fn the_key_is_64_hex_characters_from_the_systems_random_source_the_same_until_hersir_quits() {
+    let key = docs_server::token().unwrap();
+    assert_eq!(key.len(), 64, "32 bytes: {key}");
+    assert!(key.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)), "lower-case hex: {key}");
+    assert_ne!(key, "0".repeat(64));
+    assert_eq!(docs_server::token().unwrap(), key, "one key for this start");
+}
+
+#[test]
+fn only_the_whole_key_opens_the_way_compared_whole() {
+    let key = "0123456789abcdef";
+    assert_eq!(docs_server::behind_key("/t/0123456789abcdef/p/abc/", key), Some("/p/abc/"));
+    assert_eq!(docs_server::behind_key("/t/0123456789abcdef/", key), Some("/"));
+    assert_eq!(docs_server::behind_key("/t/0123456789abcdef", key), Some(""));
+    for wrong in ["/", "/p/abc/", "/t/", "/t", "/t//p/abc/", "/t/0123456789abcde/p/abc/", "/t/0123456789abcdef0/p/abc/",
+                  "/t/1123456789abcdef/p/abc/", "/t/0123456789abcdee/p/abc/", "/t/0123456789ABCDEF/p/abc/", "/T/0123456789abcdef/p/abc/",
+                  "/x/t/0123456789abcdef/p/abc/", "t/0123456789abcdef/p/abc/", "/t/0123456789abcdef?/p/abc/", ""] {
+        assert_eq!(docs_server::behind_key(wrong, key), None, "{wrong:?}");
+    }
+}
+
+#[tokio::test]
+async fn without_the_key_every_docs_address_is_not_found_and_with_it_every_page_works() {
+    let tmp = tempfile::tempdir().unwrap();
+    let st = gizai_lib::test_state(tmp.path());
+    let id = pearl(&st, tmp.path());
+    let port = serving(st.clone()).await;
+    let host = format!("127.0.0.1:{port}");
+    let key = docs_server::token().unwrap();
+    let flipped = format!("{}{}", &key[..63], if key.ends_with('0') { '1' } else { '0' });
+
+    let pages = ["/".to_string(), format!("/p/{id}"), format!("/p/{id}/"), format!("/p/{id}/index.json"), format!("/p/{id}/llms.txt"),
+        format!("/p/{id}/md/reference/src/invoice.ts/Invoice.md"), format!("/p/{id}/source/src/invoice.ts.json")];
+    for page in &pages {
+        for without in [page.clone(), format!("/t{page}"), format!("/t/{flipped}{page}"), format!("/t/{}{page}", &key[..63]),
+                        format!("/t/{key}0{page}"), format!("/t/{}{page}", key.to_uppercase()), format!("/t//{key}{page}"),
+                        format!("/x/t/{key}{page}"), format!("/t/{page}")] {
+            let (code, head, body) = send(port, "GET", &without, &host).await;
+            assert_eq!((code, body.as_str()), (404, "Not found."), "{without}");
+            assert!(!head.contains("Location"), "no way on from {without}: {head}");
+        }
+    }
+    // with it: the list of projects, a project's page, its index, a file's source and the docs for agents
+    let (code, _, list) = send(port, "GET", &keyed("/"), &host).await;
+    assert_eq!(code, 200);
+    assert!(list.contains(&format!(r#"<a href="p/{id}/">Pearl</a>"#)), "relative, so it keeps the key: {list}");
+    let (code, head, _) = send(port, "GET", &keyed(""), &host).await;
+    assert_eq!(code, 301, "the key without its last /");
+    assert!(head.contains(&format!("Location: /t/{key}/\r\n")) || head.ends_with(&format!("Location: /t/{key}/")), "{head}");
+    let (code, head, _) = send(port, "GET", &keyed(&format!("/p/{id}")), &host).await;
+    assert_eq!(code, 301);
+    assert!(head.contains(&format!("Location: /t/{key}/p/{id}/")), "{head}");
+    let (code, _, page) = send(port, "GET", &keyed(&format!("/p/{id}/")), &host).await;
+    assert_eq!((code, page.as_str()), (200, docs_server::PAGE));
+    let (code, _, index) = send(port, "GET", &keyed(&format!("/p/{id}/index.json")), &host).await;
+    assert_eq!(code, 200);
+    assert!(index.contains("src/invoice.ts#Invoice"), "{index}");
+    let (code, _, llms) = send(port, "GET", &keyed(&format!("/p/{id}/llms.txt")), &host).await;
+    assert_eq!(code, 200);
+    assert!(llms.starts_with("# Pearl dev docs\n"), "{llms}");
+    assert!(!llms.contains("http://") && !llms.contains("/p/"), "its links are relative to it, so they keep the key: {llms}");
+    let (code, _, md) = send(port, "GET", &keyed(&format!("/p/{id}/md/reference/src/invoice.ts/Invoice.md")), &host).await;
+    assert_eq!(code, 200);
+    assert!(md.contains("export class Invoice"), "{md}");
+    let (code, _, source) = send(port, "GET", &keyed(&format!("/p/{id}/source/src/invoice.ts.json")), &host).await;
+    assert_eq!(code, 200);
+    assert!(source.contains("export class Invoice {"), "{source}");
+}
+
+#[tokio::test]
+async fn a_request_a_page_on_another_site_made_is_refused() {
+    let tmp = tempfile::tempdir().unwrap();
+    let st = gizai_lib::test_state(tmp.path());
+    let id = pearl(&st, tmp.path());
+    let port = serving(st).await;
+    let index = keyed(&format!("/p/{id}/index.json"));
+    let with = |site: &str| format!("GET {index} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nSec-Fetch-Site: {site}\r\nSec-Fetch-Mode: cors\r\n\r\n");
+    for site in ["cross-site", "Cross-Site", " cross-site "] {
+        let (code, _, body) = send_raw(port, with(site).as_bytes()).await;
+        assert_eq!(code, 403, "{site:?}: {body}");
+        assert!(!body.contains("Invoice"), "{body}");
+    }
+    let lower = format!("GET {index} HTTP/1.1\r\nhost: 127.0.0.1:{port}\r\nsec-fetch-site: cross-site\r\n\r\n");
+    assert_eq!(send_raw(port, lower.as_bytes()).await.0, 403, "a field's name in any case");
+    for site in ["same-origin", "none"] {
+        assert_eq!(send_raw(port, with(site).as_bytes()).await.0, 200, "{site}: the page's own reads, an address typed or opened");
+    }
+}
+
+#[tokio::test]
+async fn a_line_break_or_other_control_character_in_an_address_gets_400_and_adds_no_header() {
+    let tmp = tempfile::tempdir().unwrap();
+    let port = serving(gizai_lib::test_state(tmp.path())).await;
+    let host = format!("127.0.0.1:{port}");
+    let key = docs_server::token().unwrap();
+    let injected = [
+        keyed("/p/abc%0d%0aSet-Cookie:%20a=1"), keyed("/p/abc%0d%0aSet-Cookie:%20a=1/"), keyed("/p/abc%0D%0ASet-Cookie:%20a=1"),
+        keyed("/p/abc%0aSet-Cookie:%20a=1"), keyed("/p/abc%0dSet-Cookie:%20a=1"), keyed("%0d%0aSet-Cookie:%20a=1"),
+        format!("/t/{key}%0d%0aSet-Cookie:%20a=1/p/abc"), "/p/abc%0d%0aSet-Cookie:%20a=1".to_string(),
+        keyed("/p/abc%00"), keyed("/p/a%09b"), keyed("/p/a%7fb"), keyed("/p/a%c2%85b"),
+    ];
+    for target in &injected {
+        let (code, head, _) = send(port, "GET", target, &host).await;
+        assert_eq!(code, 400, "{target}: {head}");
+        assert!(!head.to_lowercase().contains("set-cookie") && !head.contains("Location"), "{target}: {head}");
+    }
+    // not %-encoded: a bare line feed, a tab or a byte past ASCII in the address itself
+    for raw in [format!("GET {} HTTP/1.1\r\nHost: {host}\r\n\r\n", keyed("/p/abc\nSet-Cookie: a=1")),
+                format!("GET {} HTTP/1.1\r\nHost: {host}\r\n\r\n", keyed("/p/a\tb")),
+                format!("GET {} HTTP/1.1\r\nHost: {host}\r\n\r\n", keyed("/p/abé"))] {
+        let (code, head, _) = send_raw(port, raw.as_bytes()).await;
+        assert_eq!(code, 400, "{raw:?}: {head}");
+        assert!(!head.to_lowercase().contains("set-cookie") && !head.contains("Location"), "{raw:?}: {head}");
+    }
+    // a redirect's Location is the address as sent, never a decoded one, and leaves the query behind
+    let (code, head, _) = send(port, "GET", &keyed("/p/a%20b"), &host).await;
+    assert_eq!(code, 301);
+    assert!(head.contains(&format!("Location: /t/{key}/p/a%20b/")), "{head}");
+    let (code, head, _) = send(port, "GET", &keyed("/p/abc?x=%0d%0aSet-Cookie:%20a=1"), &host).await;
+    assert_eq!(code, 301, "{head}");
+    assert!(head.contains(&format!("Location: /t/{key}/p/abc/")) && !head.to_lowercase().contains("set-cookie"), "{head}");
+    // every header line of every answer is one line
+    for line in head.split("\r\n") {
+        assert!(!line.contains('\n') && !line.contains('\r'), "{line:?}");
+    }
 }
 
 #[test]
@@ -215,4 +371,37 @@ fn the_pages_own_script_runs_by_its_hash_and_no_other() {
         assert!(docs_server::CSP.contains(&format!("'sha256-{hash}'")), "{}", *docs_server::CSP);
     }
     assert!(docs_server::CSP.contains("frame-ancestors 'none'"));
+}
+
+/// GA-362 QA: 156 KB of nested `[` doesn't stall the index: the file is cut off at its limit and Home names it, and the
+/// next view of the same repository takes it from what the last one kept (`devdocs`'s KEPT) instead of parsing it again.
+#[test]
+fn a_slow_file_is_cut_off_and_named_and_the_next_index_takes_it_from_what_was_kept() {
+    use std::time::{Duration, Instant};
+    let tmp = tempfile::tempdir().unwrap();
+    let st = gizai_lib::test_state(tmp.path());
+    let repo = tmp.path().join("slow");
+    std::fs::create_dir(&repo).unwrap();
+    git(&repo, &["init", "-q", "-b", "main"]);
+    write(&repo, "src/slow.ts", &format!("export const nested = {};\n", "[".repeat(156 * 1024)));
+    write(&repo, "src/fine.ts", "export function fine() {}\n");
+    git(&repo, &["add", "-A"]);
+    git(&repo, &["commit", "-q", "-m", "Slow"]);
+    let id = project(&st, "Slow", "SLOW", true, Some(&repo));
+    let index = || {
+        let started = Instant::now();
+        let index = json(route(&st, &format!("/p/{id}/index.json")));
+        (index, started.elapsed())
+    };
+    let cut_off = |index: &serde_json::Value| index["problems"].as_array().unwrap().iter()
+        .any(|p| p["file"] == "src/slow.ts" && p["message"] == "took too long to read, so its declarations may be incomplete");
+
+    let (first, took) = index();
+    assert!(cut_off(&first), "named on Home: {}", first["problems"]);
+    assert!(took < gizai_docs::FILE_TIME * 10, "not stalled: {took:?}");
+    assert!(first["entries"].as_array().unwrap().iter().any(|e| e["id"] == "src/fine.ts#fine"), "the rest is read as usual");
+    let (second, again) = index();
+    assert!(cut_off(&second), "{}", second["problems"]);
+    assert_eq!(second["entries"], first["entries"]);
+    assert!(again + Duration::from_millis(500) < took, "the next view from what was kept: {again:?}, the first {took:?}");
 }

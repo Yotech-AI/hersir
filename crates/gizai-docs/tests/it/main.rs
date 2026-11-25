@@ -9,3 +9,4 @@ mod markdown_test;
 mod mcp_test;
 mod openapi_test;
 mod reference_test;
+mod safe_read_test;

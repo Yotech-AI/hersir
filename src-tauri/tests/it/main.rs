@@ -62,6 +62,7 @@ mod mcp_socket_test;
 mod memory_flow_test;
 mod memory_groups_flow_test;
 mod memory_per_project_flow_test;
+mod navigation_test;
 mod nested_repo_flow_test;
 mod notifications_test;
 mod nudge_flow_test;

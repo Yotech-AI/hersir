@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactElement, ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Project } from "../types";
+import type { DocsHost } from "../docs/types";
 
 const state = vi.hoisted(() => ({
   project: null as unknown, serve: null as unknown, open: vi.fn(), opened: [] as string[], refuse: null as string | null,
@@ -111,6 +112,39 @@ describe("Open in browser", () => {
     click("Open in browser");
     await settle();
     expect(state.sets).toEqual([null, "No browser to open"]);
+  });
+});
+
+// GA-362 QA: the docs server's address carries its key (/t/<key>), new at each start: Open in browser and the links for
+// agents keep it, as every address without it is a 404.
+describe("the docs server's key", () => {
+  const KEY = "0f".repeat(32);
+  /** The elements of `type` in an element tree. */
+  function find(n: ReactNode, type: unknown, found: ReactElement<{ host?: DocsHost; children?: ReactNode }>[] = []) {
+    if (!n || typeof n !== "object") return found;
+    if (Array.isArray(n)) { n.forEach((c: ReactNode) => find(c, type, found)); return found; }
+    const el = n as ReactElement<{ host?: DocsHost; children?: ReactNode }>;
+    if (el.type === type) found.push(el);
+    find(el.props?.children, type, found);
+    return found;
+  }
+
+  it("is kept in the address Open in browser opens", async () => {
+    state.serve = `http://127.0.0.1:4380/t/${KEY}`;
+    click("Open in browser", "decisions/0001");
+    await settle();
+    expect(state.opened).toEqual([`http://127.0.0.1:4380/t/${KEY}/p/kade/#/decisions/0001`]);
+  });
+
+  it("is kept in the links for agents (llms.txt, md/…)", async () => {
+    state.serve = `http://127.0.0.1:4380/t/${KEY}`;
+    const { DocsView } = await import("../docs/DocsView");
+    state.direct = true;
+    let host: DocsHost | undefined;
+    try { host = find(DocsPage({ id: "kade" }), DocsView)[0]?.props.host; }
+    finally { state.direct = false; }
+    expect(host?.agentsUrl("llms.txt")).toBe(`http://127.0.0.1:4380/t/${KEY}/p/kade/llms.txt`);
+    expect(host?.agentsUrl("md/reference/app/User.php/User.md")).toBe(`http://127.0.0.1:4380/t/${KEY}/p/kade/md/reference/app/User.php/User.md`);
   });
 });
 
