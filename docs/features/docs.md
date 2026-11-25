@@ -48,8 +48,12 @@ it, and its source with line numbers.
 - It reads the files git tracks in the project's linked folder, as they are on disk: TypeScript, TSX, JavaScript, PHP,
   Dart, Kotlin, and the script blocks of Vue and Svelte files.
 - Left out: folders of installed, built or generated code (vendor, node_modules, dist, build, .next, out, coverage,
-  storage, public, .nuxt), minified and declaration files (.min.js, .d.ts), links, files over 512 KB, files that aren't
-  UTF-8, and any file past the first 5,000.
+  storage, public, .nuxt), minified and declaration files (.min.js, .d.ts), links, FIFOs and anything else that isn't
+  a plain file, files over 512 KB, files that aren't UTF-8, and any file past the first 5,000.
+- Hersir spends at most a second on a file. A file that takes longer (one written to slow the parser down) keeps what
+  was found by then, and Home names it as one that took too long to read.
+- Hersir keeps what it found in each file until it quits: the next time the page opens, it reads again only the files
+  whose text changed, committed or not. So a slow file costs its second once.
 - A function named like a type that renders JSX is a component, and `useSomething` is a hook. A PHP class gets its
   Laravel kind from what it extends or implements, by the last part of the name (`Model`, `Controller`,
   `Migration`…), middleware from its handle method, an exception from its name. In Dart, a class extending a Flutter
@@ -92,6 +96,8 @@ The project's own changelog, then its merged cards, newest first, with a filter 
   Security) its kind of change. A section the format doesn't name is grouped under Other, and Home names it as a problem.
 - **Merged cards:** one group a month, each with its identifier and the line its builder wrote (else its title, as
   Other).
+- A link in a change opens in your browser, never in Hersir's window. Hersir's window stays on Hersir's own pages
+  whatever link is clicked.
 
 - A card counts as merged once it is in a Deploy or Done column. Archived cards stay in the changelog.
 - Its month is when it reached Done. A card in a Deploy column counts from when it last changed.
@@ -143,6 +149,8 @@ an abstract `FactoryTool`, which extends Laravel's `Tool`, is a tool too.
 
 The newest 50 commits on main, newest first: each with its short id, its first line, who made it and when, and the files
 it changed. A code file the Reference reads opens to its changed lines, at most 400 a file; other files are only named.
+Git starts no program of the repository's to show them: no text conversion or external diff its git config names, and
+no look inside a submodule.
 
 - Main is main as last fetched, as a card's changes measure from it: origin/main for a project linked to GitHub or
   Bitbucket, else the local main branch. Hersir doesn't fetch for it.
@@ -163,11 +171,14 @@ The same docs as text an agent can read, next to the page: `llms.txt` and `md/`.
 
 **Open in browser** opens the same page in your browser.
 
-- Hersir serves the page itself, at `http://127.0.0.1:4380/p/<project id>/`, or the next free port up to 4399. Nothing is
-  uploaded and nothing is hosted elsewhere. It keeps serving until Hersir quits. Its address on its own lists the
-  projects with Docs on.
-- Only this computer gets it. A request from another computer, or from a page that reaches it under another name, is
-  refused. Nothing may show it in a frame.
+- Hersir serves the page itself, at `http://127.0.0.1:4380/t/<key>/p/<project id>/`, or the next free port up to 4399.
+  Nothing is uploaded and nothing is hosted elsewhere. It keeps serving until Hersir quits. Its address with the key on
+  its own (`/t/<key>/`) lists the projects with Docs on.
+- The key is new each time Hersir starts. Open in browser and the links for agents carry it; any address without it
+  answers Not found, so another program or another user on this computer can't read the docs. An address you kept from
+  an earlier start stops working: open the page from Hersir again.
+- Only this computer gets it. A request from another computer, from a page that reaches it under another name, or from
+  a page on another site, is refused. Nothing may show it in a frame.
 - It is read only, and only for the projects with Docs on.
 
 ## Not built
