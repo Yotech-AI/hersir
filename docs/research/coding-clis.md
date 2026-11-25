@@ -83,7 +83,7 @@ A CLI in Settings then has a **profile** instead of one of the four fixed kinds:
 | `session` | `"id": "caller"` (Hersir chooses a UUID and passes `{session}`) or `"reported"` with the JSON pointer of the event that names it. Without `resume` args the CLI can't continue. | Continue, the nudge, Ask the Chief first |
 | `events` | How each output line becomes a `RunEvent` (below). `"format": "text"` keeps today's plain-text reading. | Run panel, outcome line, usage, refusals |
 | `mcp` | Where in `run_config` the servers go, and a template for a `stdio` entry and an `http` entry in the CLI's own words; how a server's tools are allowed or refused; how the user's own servers are kept out (`strict`). | MCP servers, the browser |
-| `permissions` | The permission modes the agent form offers (id, label, the text that explains it, risky or not, the `run_config` or arguments each sets); for the mode with a commands list, where the allowed commands go and in which **style** (below); the rule that refuses every other command. | Allowed commands, Permissions |
+| `permissions` | The permission modes the agent form offers (id, label, the text that explains it, risky or not, its **tier** from strict to loose for the Chief's GA-352 checks, `tools/write.rs:286`, and the `run_config` or arguments each sets); for the mode with a commands list, where the allowed commands go and in which **style** (below); the rule that refuses every other command. Whether the CLI keeps an agent to its list (`keeps_to_the_list`, `tools/write.rs:282`, now Claude Code only) is true only for a shipped profile whose check proved it. | Allowed commands, Permissions, the Chief's Approve |
 | `folders` | How extra folders are given: read and change, and read only (or "can't"). | Folders, the run's temp folder |
 | `web` | The arguments or `run_config` that switch web search and fetching pages on and off; or "can't". | Web switches |
 | `guards` | Files or folders in the worktree that hold the card "blocked" before the run (as `.gemini/` now, `cli.rs:278`), with the message; variables set empty unless the CLI's own lines set them (as `BASH_ENV`, `ENV` for Gemini, `cli.rs:302`). | A repository's own settings (GA-263, GA-322) |
@@ -143,6 +143,12 @@ A profile also says whether its CLI splits a command line on `&&`, `;`, `|` and 
 - **The Chief's chat** (§3.4).
 - **An ACP client**, if Hersir takes option C (§4): the protocol is code; an ACP agent's profile is then only `start`, `guards` and `account_env`.
 - **What the front end knows per kind today** (`src/lib/clis.ts`: `PERMISSIONS`, `FOLDERS_NOTE`, `EFFORTS_BY_KIND`, `RISKY`) moves to the backend: `list_clis` sends each CLI's modes, efforts and notes, built from its kind or its profile, so a profile needs no front-end change **[I]**.
+
+#### Shipped and added profiles
+
+- **Shipped:** `crates/gizai-agents/profiles/<id>.json`, compiled in with `include_str!`, each with the CLI version it was checked with and a fixture of that version's real output in the tests. A new CLI or a changed format comes with a Hersir release, and Hersir doesn't download profiles from anywhere **[I]**: Hersir sends nothing about you (`docs/features/cli.md:18`) **[V]**, and a profile is trusted input (it picks the program and its arguments).
+- **Added by you:** Settings → Coding CLIs → Add a profile (paste or pick a JSON file). Hersir checks it against the format (unknown keys, a placeholder that doesn't exist, an emit that doesn't exist, a `start` without the prompt) and says in plain words what is wrong; it keeps it in a `cli_profiles` setting. It shows "not checked by Hersir", and its `keeps_to_the_list` is always false, so the Chief's changes to an agent on it wait for your Approve (GA-352) **[I]**.
+- A profile you add with the id of a shipped one is refused: copy it under a new id (open question 3).
 
 ### 3.4 The Chief's chat stays on Claude Code (for now)
 
