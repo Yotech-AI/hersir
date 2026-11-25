@@ -971,11 +971,16 @@ pub fn log_name_status(dir: &Path, rev: &str, limit: usize) -> Result<String, Ag
 }
 
 /// One commit's changes against its first parent, as `git show -p` prints them (`gizai_docs::index::patches` reads it).
+/// The Docs page shows them for any commit of a client's repository, so git starts no program of that repository's
+/// (GA-362), as `changes::PLAIN` does: no external diff (`--no-ext-diff`), no text conversion (`--no-textconv`: a
+/// textconv driver in the repository's git config never runs when a commit is opened), and no look inside a submodule
+/// (`IGNORE_SUBMODULES`).
 pub fn show_patch(dir: &Path, commit: &str) -> Result<String, AgentError> {
     if commit.len() < 4 || commit.len() > 40 || !commit.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err(AgentError::Git(format!("{commit:?} isn't a commit id")));
     }
-    git(dir, &["-c", "core.quotepath=off", "show", "--first-parent", "-m", "--no-color", "--unified=3", "--format=", commit, "--"])
+    git(dir, &["-c", "core.quotepath=off", "show", "--first-parent", "-m", "--no-color", "--no-ext-diff", "--no-textconv",
+        IGNORE_SUBMODULES, "--unified=3", "--format=", commit, "--"])
 }
 
 /// How long a push may take.
