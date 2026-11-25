@@ -171,6 +171,20 @@ pub struct PreviewDown {
     pub tail: String,
 }
 
+/// The Docs section of a builder's run in a project whose Docs page keeps a changelog: the line to add to its result.
+pub const CHANGELOG_SECTION: &str = "## Docs\n\n\
+This project keeps a changelog on its Docs page in Hersir. When the card's work is done, add a `changelog` to your \
+GIZAI_RESULT line: one line for the people who use the project, in plain words (what changed for them, not how), and its \
+kind as Keep a Changelog names it: Added, Changed, Deprecated, Removed, Fixed or Security. For example:\n\n\
+`\"changelog\": {\"type\": \"Added\", \"text\": \"Invoices export as CSV from the invoice list.\"}`\n\n\
+It shows on the Docs page once the card is merged.\n";
+
+/// `prompt` with the Docs section (`CHANGELOG_SECTION`) after the task, before "How this run works"; unchanged when
+/// `on` is false.
+pub fn with_changelog(prompt: &str, on: bool) -> String {
+    if on { format!("{}\n\n{}", prompt.trim_end(), CHANGELOG_SECTION) } else { prompt.to_string() }
+}
+
 /// `prompt` with the Screenshots section (`screenshots_section`) after the task, before "How this run works"
 /// (`with_rules`); unchanged without one.
 pub fn with_screenshots(prompt: &str, shots: Option<&Screenshots>) -> String {

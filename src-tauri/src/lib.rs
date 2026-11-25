@@ -8,6 +8,8 @@ pub mod chat;
 pub mod claude_desktop;
 pub mod clis;
 pub mod code;
+pub mod devdocs;
+pub mod docs_server;
 mod commands;
 pub mod editor;
 pub mod folders;
@@ -883,6 +885,7 @@ pub fn run() {
             commands::pending_actions, commands::approve_pending_action, commands::approve_pending_actions, commands::discard_pending_action,
             commands::open_pull_request, commands::check_pull_request, commands::detect_gh,
             changes::card_changes, changes::card_file_diff, changes::run_changes,
+            docs_server::docs_serve, devdocs::docs_index, devdocs::docs_source, devdocs::docs_commit,
             screenshots::list_screenshots, screenshots::screenshot_bytes,
             commands::github_status, commands::github_check, commands::github_login, commands::github_login_wait, commands::github_login_cancel,
             commands::bitbucket_status, commands::bitbucket_save_login, commands::bitbucket_remove_login, commands::bitbucket_check,

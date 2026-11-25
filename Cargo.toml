@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/gizai-core", "crates/gizai-agents", "crates/gizai-mcp", "src-tauri"]
+members = ["crates/gizai-core", "crates/gizai-agents", "crates/gizai-docs", "crates/gizai-mcp", "src-tauri"]
 # A patched copy of a dependency, not a crate of Hersir's (see [patch.crates-io]): cargo test --workspace skips its tests.
 exclude = ["third_party/rusqlite_migration"]
 

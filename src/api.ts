@@ -7,6 +7,7 @@ import { shared } from "./lib/share";
 // Tauri's own invoke and listen, counted in a perf run only (GA-188, lib/perf.ts)
 import { invoke as tauriInvoke, listen } from "./lib/perf";
 import type * as T from "./types";
+import type { CommitPatches as DocsCommitPatches, Index as DocsIndex, SourceFile as DocsSourceFile } from "./docs/types";
 
 // Every call: in a screen's data hook, a read another hook has on its way with the same arguments is shared (GA-190).
 const invoke = <R>(cmd: string, args?: Record<string, unknown>): Promise<R> => shared(cmd, args, () => tauriInvoke<R>(cmd, args));
@@ -268,6 +269,13 @@ export const cardFileDiff = (taskId: string, path: string, oldPath: string | nul
   invoke<T.FileDiff>("card_file_diff", { taskId, path, oldPath, from, to });
 /** The changes one run committed: from the commit it started at to the one it ended at. */
 export const runChanges = (runId: string) => invoke<T.CardChanges>("run_changes", { runId });
+/** A project's docs page (the Docs section) in a browser: starts Hersir's docs server the first time (127.0.0.1 only) and
+ *  gives its address, like http://127.0.0.1:4380. The page is at <address>/p/<project id>/. */
+export const docsServe = () => invoke<string>("docs_serve");
+/** The Docs page in this window: a project's docs index, a file's lines, a commit's changed lines (src/docs). */
+export const docsIndex = (projectId: string) => invoke<DocsIndex>("docs_index", { projectId });
+export const docsSource = (projectId: string, path: string) => invoke<DocsSourceFile>("docs_source", { projectId, path });
+export const docsCommit = (projectId: string, hash: string) => invoke<DocsCommitPatches>("docs_commit", { projectId, hash });
 
 // ---- Screenshots (GA-182, contract CS) ----
 /** The card's screenshot sets, newest run first: every run of the card that got the Screenshots section, also one that

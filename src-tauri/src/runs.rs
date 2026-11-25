@@ -1393,12 +1393,14 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
     if let Some(n) = shots.as_mut().and_then(|s| s.note.take()) {
         notes.push(n);
     }
-    let base_prompt = prompt::with_rules(&prompt::with_screenshots(&match &resume {
+    // Docs: a builder's run in a project whose Docs page keeps a changelog is asked for the card's line
+    let changelog = project.dev_docs && !project.docs_off.iter().any(|s| s == "changelog") && !["lead", "qa", "devops"].contains(&role.as_str());
+    let base_prompt = prompt::with_rules(&prompt::with_changelog(&prompt::with_screenshots(&match &resume {
         Some(Resume { nudge: true, .. }) => prompt::nudge_prompt(Some(limits)),
         Some(Resume { answer: Some(a), .. }) => prompt::answered_prompt_with(a, note.as_ref(), Some(limits)),
         Some(r) => prompt::continue_prompt_with(&r.reason, note.as_ref(), Some(limits)),
         None => prompt::with_memory(&prompt::build_from(&ctx, &instructions, fetched_from(&project)), &memory.text),
-    }, shots.as_ref().map(|s| &s.section)), &rules);
+    }, shots.as_ref().map(|s| &s.section)), changelog), &rules);
     // GA-322: a Gemini run reads its own system settings file, yours with the worktree's .env off
     // (`agent_cli::gemini_settings`), so it doesn't load the .env's variables; it goes when the run ends. Without it the
     // run doesn't start: Gemini would refuse system settings that can't be read, too.
@@ -1763,6 +1765,8 @@ async fn finish_run(st: &AppState, run_id: &str, task_id: &str, dir: &Path, ran:
     let parsed = outcome::parse(&text);
     // Memory (GA-19): what the agent wants kept for its next runs, saved below once the run has ended.
     let learned = outcome::learned(&text);
+    // Docs: the card's changelog line, from the agent that built it
+    let changelog = outcome::changelog(&text);
     // "Run this for me" (GA-31): the commands a `needs_decision` asks you to run, kept with its verdict below.
     let run_for_me: Vec<String> = parsed.as_ref().filter(|o| o.outcome == "needs_decision").map(|o| o.run_for_me.clone()).unwrap_or_default();
     let verdict: Option<Outcome> = parsed.map(|o| Outcome { outcome: o.outcome, summary: o.summary, issues: o.issues });
@@ -1819,6 +1823,12 @@ async fn finish_run(st: &AppState, run_id: &str, task_id: &str, dir: &Path, ran:
         for text in crate::memory::save_learned(st, run_id, &agent, &card, &learned) {
             note_run(st, run_id, &text);
         }
+    }
+    if status == "succeeded" && verdict.as_ref().is_some_and(|v| v.outcome == "ready_for_testing")
+        && let Some((kind, line)) = &changelog
+        && let Err(e) = gizai_core::devdocs::set_change(&st.db, Some(&agent), task_id, kind, line)
+    {
+        note_run(st, run_id, &format!("The card's changelog line wasn't kept: {e}"));
     }
     let mut moved = false;
     let mut nudge = None;

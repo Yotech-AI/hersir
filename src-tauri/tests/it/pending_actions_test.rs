@@ -62,7 +62,7 @@ fn setup() -> T {
     let lead = team::add_agent(&st.db, &st.you_id, &team_id, AgentInput {
         name: "Team Lead".into(), role_key: "lead".into(), chat_enabled: Some(true), ..Default::default() }).unwrap();
     let backend = team::add_agent(&st.db, &st.you_id, &team_id, AgentInput { name: "Backend Agent".into(), role_key: "backend".into(), ..Default::default() }).unwrap();
-    projects::create(&st.db, &st.you_id, ProjectInput { name: "Kade portal".into(), key: "KADE".into(), ..Default::default() }).unwrap();
+    projects::create(&st.db, &st.you_id, ProjectInput { name: "Kade portal".into(), key: "KADE".into(), dev_docs: Some(true), ..Default::default() }).unwrap();
     let project = projects::list(&st.db).unwrap().into_iter().find(|p| p.key == "KADE").unwrap().id;
     gizai_core::tasks::create(&st.db, &st.you_id, TaskInput { project_id: project, title: "Export".into(), ..Default::default() }).unwrap();
     T { st, lead, backend, dir }
@@ -436,7 +436,7 @@ async fn every_tool_in_the_list_waits_with_a_readable_preview_and_approve_all_ru
     let f = t.dir.path().join("brief.txt");
     std::fs::write(&f, "the brief").unwrap();
     let thread = t.marked(&format!("Look up the release notes in Otus and attach {} to KADE-1", f.display()));
-    let calls: [(&str, Value); 15] = [
+    let calls: [(&str, Value); 16] = [
         ("start_agent_run", json!({"task": "KADE-1", "agent": "Backend Agent"})),
         ("continue_agent_run", json!({"task": "KADE-1", "note": "Use JSON."})),
         ("create_agent", json!({"name": "Otus Agent", "role": "backend", "model": "opus"})),
@@ -454,6 +454,8 @@ async fn every_tool_in_the_list_waits_with_a_readable_preview_and_approve_all_ru
         ("archive_tasks", json!({"all_done": true})),
         // GA-261
         ("comment_on_task", json!({"task": "KADE-1", "body_md": "Otus says: Fridays."})),
+        // a decision record on the project's Docs page
+        ("record_decision", json!({"project": "KADE", "title": "Release on Fridays", "decision": "Releases go out on Fridays.", "task": "KADE-1"})),
     ];
     assert_eq!(calls.iter().map(|(n, _)| *n).collect::<Vec<_>>(), tools::NOT_AFTER_OUTSIDE, "every tool in the list");
     let mut ids = vec![];
@@ -461,7 +463,7 @@ async fn every_tool_in_the_list_waits_with_a_readable_preview_and_approve_all_ru
         ids.push(t.keep(&thread, name, args.clone()).await);
     }
     assert_eq!(t.waiting(&thread), ids, "all kept, in the order tried");
-    assert_eq!(t.inbox_item(&thread).unwrap().notice.body, "15 actions to approve or discard");
+    assert_eq!(t.inbox_item(&thread).unwrap().notice.body, "16 actions to approve or discard");
     // each preview: a plain line (not the fallback) and what it is about
     let v: Vec<Value> = ids.iter().map(|id| t.view(&thread, id)).collect();
     let lines: Vec<&str> = v.iter().map(|x| x["preview"]["line"].as_str().unwrap()).collect();
@@ -470,6 +472,7 @@ async fn every_tool_in_the_list_waits_with_a_readable_preview_and_approve_all_ru
         "Pause Backend Agent", "Add the column Otus after Review", "Change the column Testing", "Attach brief.txt to KADE-1 Export",
         "Update KADE's linked folder to main as last fetched", "Make the note Lessons/Otus", "Add to the note Chief/Notes",
         "Move the note Agents/Backend Agent/Cargo to Lessons/Cargo", "Merge KADE-1's pull request", "Archive 0 cards in Done", "Comment on KADE-1",
+        "Record the decision Release on Fridays for KADE",
     ]);
     for (x, (name, _)) in v.iter().zip(&calls) {
         assert!(!fields(x).is_empty(), "{name}: {x}");
@@ -503,6 +506,9 @@ async fn every_tool_in_the_list_waits_with_a_readable_preview_and_approve_all_ru
     assert_eq!((field(&f13, "Column").2.as_str(), field(&f13, "Cards").2.as_str()), ("Done", "none"));
     assert_eq!(v[13]["preview"]["warning"], "Done has no cards now, so approving archives nothing.");
     assert_eq!((field(&fields(&v[14]), "Card").2.as_str(), v[14]["preview"]["text"].as_str()), ("KADE-1 Export", Some("Otus says: Fridays.")));
+    let f15 = fields(&v[15]);
+    assert_eq!((field(&f15, "Project").2.as_str(), field(&f15, "Status").2.as_str(), field(&f15, "Card").2.as_str()), ("Kade portal (KADE)", "accepted", "KADE-1"));
+    assert_eq!(v[15]["preview"]["text"], "Releases go out on Fridays.");
     // nothing ran yet
     assert!(gizai_core::runs::list_for_agent(&t.st.db, &t.backend, 10).unwrap().is_empty());
     assert!(!team::all_agents(&t.st.db).unwrap().iter().any(|(_, m)| m.name == "Otus Agent"));
@@ -512,15 +518,15 @@ async fn every_tool_in_the_list_waits_with_a_readable_preview_and_approve_all_ru
         pending::discard(&t.st, &ids[i]).unwrap();
     }
     let usual_checkout = t.call(Some(&t.thread("Update KADE")), "update_checkout", json!({"project": "KADE"})).await.unwrap_err();
-    let rest: Vec<String> = ids[2..12].to_vec();
+    let rest: Vec<String> = ids[2..12].iter().chain(&ids[15..]).cloned().collect();
     let done = pending::approve_all(&t.st, &rest).await.unwrap();
     assert_eq!(done.iter().map(|a| a.id.clone()).collect::<Vec<_>>(), rest, "one after the other, in the order given");
     let status: Vec<&str> = done.iter().map(|a| a.status.as_str()).collect();
-    assert_eq!(status, ["approved", "approved", "approved", "approved", "approved", "approved", "failed", "approved", "approved", "approved"],
+    assert_eq!(status, ["approved", "approved", "approved", "approved", "approved", "approved", "failed", "approved", "approved", "approved", "approved"],
                "{done:?}");
     // what each did, said in the chat
     let said: Vec<String> = done.iter().map(|a| a.result_md.clone().unwrap()).collect();
-    for (s, (x, _)) in said.iter().zip(v[2..12].iter().zip(&calls[2..12])) {
+    for (s, (x, _)) in said.iter().zip(v[2..12].iter().chain(&v[15..]).zip(calls[2..12].iter().chain(&calls[15..]))) {
         assert!(s.starts_with(&format!("Approved: {}. ", lower_first(x["preview"]["line"].as_str().unwrap()))), "{s}");
     }
     assert_eq!(said[0], "Approved: add the agent Otus Agent (backend). Otus Agent is on the team.");
@@ -532,6 +538,7 @@ async fn every_tool_in_the_list_waits_with_a_readable_preview_and_approve_all_ru
     assert_eq!(said[7], "Approved: make the note Lessons/Otus. Saved as version 1.");
     assert_eq!(said[8], "Approved: add to the note Chief/Notes. Saved as version 2.");
     assert_eq!(said[9], "Approved: move the note Agents/Backend Agent/Cargo to Lessons/Cargo. It is at Lessons/Cargo now.");
+    assert_eq!(said[10], "Approved: record the decision Release on Fridays for KADE. It is decision 0001 on the Docs page.");
     let notes: Vec<String> = t.notes(&thread).into_iter().map(|n| n.0).collect();
     assert_eq!(notes[..5], ["Discarded: start Backend Agent on KADE-1.", "Discarded: continue the run on KADE-1.", "Discarded: merge KADE-1's pull request.",
                             "Discarded: archive 0 cards in Done.", "Discarded: comment on KADE-1."]);

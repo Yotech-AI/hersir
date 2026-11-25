@@ -19,7 +19,7 @@ fn previous_version(path: &std::path::Path) {
         include_str!("../../migrations/0020_test_runs_at_once.sql"), include_str!("../../migrations/0021_builds_on.sql"),
         include_str!("../../migrations/0022_outside_marks.sql"),
     ];
-    assert_eq!(all.len() as i64, db::SCHEMA_VERSION - 1, "one schema step back");
+    assert_eq!(all.len() as i64, db::SCHEMA_VERSION - 3, "three schema steps back (0022, and 0023 and 0024 after it)");
     let mut c = rusqlite::Connection::open(path).unwrap();
     Migrations::new(all.iter().map(|sql| M::up(sql)).collect()).to_latest(&mut c).unwrap();
     c.execute_batch("INSERT INTO orgs (id, created_at, updated_at, name, key) VALUES ('org', 1, 1, 'Yotech', 'YT');

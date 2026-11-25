@@ -65,13 +65,13 @@ describe("the notice chat_pins", () => {
 });
 
 describe("no schema change for the pins", () => {
-  // The schema is at 23 since GA-351's 0023_queued_meta.sql (a queued message from Claude Desktop keeps its mark); the pins
-  // add no migration of their own.
-  it("keeps SCHEMA_VERSION at 23 with GA-351's migration last, and no migration for the pins", () => {
-    expect(dbRs).toMatch(/pub const SCHEMA_VERSION: i64 = 23;/);
+  // The schema is at 25 since 0025_docs_records.sql (Docs records), after 0024_dev_docs.sql (a project's Docs switch) and
+  // GA-351's 0023_queued_meta.sql; the pins add no migration of their own.
+  it("keeps SCHEMA_VERSION at 25 with the Docs records migration last, and no migration for the pins", () => {
+    expect(dbRs).toMatch(/pub const SCHEMA_VERSION: i64 = 25;/);
     const names = Object.keys(migrations).map((p) => p.split("/").pop()).sort();
-    expect(names).toHaveLength(23);
-    expect(names.at(-1)).toBe("0023_queued_meta.sql");
+    expect(names).toHaveLength(25);
+    expect(names.at(-1)).toBe("0025_docs_records.sql");
     for (const sql of Object.values(migrations)) expect(String(sql)).not.toContain("chat_pins");
   });
 });

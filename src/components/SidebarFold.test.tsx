@@ -105,14 +105,14 @@ function tree(): ReactElement<Props>[] {
   walk(Sidebar(props));
   return all;
 }
-type Section = "editor" | "agents" | "memory";
+type Section = "editor" | "agents" | "docs" | "memory";
 const caret = (section: Section) => {
   const found = tree().filter((el) => el.type === "button" && el.props["aria-controls"] === `side-${section}`);
   expect(found).toHaveLength(1);
   return found[0]!.props as { onClick: () => void };
 };
 const heading = (section: Section) => {
-  const name = section === "agents" ? "Agents" : section === "editor" ? "Editor" : "Memory";
+  const name = section === "agents" ? "Agents" : section === "editor" ? "Editor" : section === "docs" ? "Docs" : "Memory";
   const found = tree().filter((el) => el.type === "span" && el.props.className === "fold" && [el.props.children].flat().includes(name));
   expect(found).toHaveLength(1);
   return found[0]!.props as { onClick: () => void };
@@ -120,7 +120,7 @@ const heading = (section: Section) => {
 
 /** A section of the rendered sidebar, from its heading to the next section. */
 function section(page: string, name: string): string {
-  const labelled = name === "Memory" || name === "Editor";
+  const labelled = name === "Memory" || name === "Editor" || name === "Docs";
   const start = page.indexOf(`<div class="nav-section"${labelled ? ` aria-label="${name}"` : ""}><div class="nav-label">${name === "Agents" || labelled ? '<span class="fold">' : ""}${name}`);
   expect(start, `the ${name} section`).toBeGreaterThan(-1);
   const end = page.indexOf('<div class="nav-section"', start + 1);
@@ -149,21 +149,21 @@ describe("the carets on Agents and Memory (GA-90)", () => {
     expect(page).toContain('<div class="nav-list" id="side-agents" hidden=""></div>');
     expect(page).toContain('<div class="nav-list" id="side-memory" hidden=""></div>');
   });
-  it("are only on Terminal (GA-136), Editor (GA-113), Agents and Memory: Work, Projects and Company have none", () => {
+  it("are only on Terminal (GA-136), Editor (GA-113), Agents, Docs and Memory: Work, Projects and Company have none", () => {
     const page = html();
     // GA-291: Close sidebar has aria-expanded too (it controls the whole sidebar, #sidebar); the carets are the rest
-    expect(page.match(/aria-expanded=/g)).toHaveLength(5);
+    expect(page.match(/aria-expanded=/g)).toHaveLength(6);
     expect(page.match(/aria-expanded="true" aria-controls="sidebar"/g)).toHaveLength(1);
-    expect(page.match(/aria-expanded="(true|false)" aria-controls="side-/g)).toHaveLength(4);
-    expect(page.match(/lucide-chevron-(down|up)/g)).toHaveLength(4);
-    expect([...page.matchAll(/aria-controls="side-(\w+)"/g)].map((m) => m[1])).toEqual(["terminal", "editor", "agents", "memory"]);
+    expect(page.match(/aria-expanded="(true|false)" aria-controls="side-/g)).toHaveLength(5);
+    expect(page.match(/lucide-chevron-(down|up)/g)).toHaveLength(5);
+    expect([...page.matchAll(/aria-controls="side-(\w+)"/g)].map((m) => m[1])).toEqual(["terminal", "editor", "agents", "docs", "memory"]);
     expect(head(page, "Work")).toBe('<div class="nav-section"><div class="nav-label">Work</div>');
     expect(page).toContain('<div class="nav-label">Company</div>');
   });
   it("are buttons, so Tab reaches them and Enter or Space clicks them", () => {
     const page = html();
     expect(page).not.toMatch(/tabindex="-1"/);
-    expect(tree().filter((el) => el.type === "button" && String(el.props["aria-controls"] ?? "").startsWith("side-")).map((el) => typeof el.props.onClick)).toEqual(["function", "function", "function", "function"]);
+    expect(tree().filter((el) => el.type === "button" && String(el.props["aria-controls"] ?? "").startsWith("side-")).map((el) => typeof el.props.onClick)).toEqual(["function", "function", "function", "function", "function"]);
   });
 });
 
@@ -457,5 +457,41 @@ describe("the Editor section (GA-113)", () => {
     const again = reload();
     expect(head(again, "Editor")).toContain('aria-expanded="true"');
     expect(head(again, "Agents")).toContain('aria-expanded="false"');
+  });
+});
+
+describe("the Docs section", () => {
+  /** Kade portal and Shop, with Docs on for the ones named. */
+  const withDocs = (...on: string[]) => {
+    state.data.projects = [project("kade", "Kade portal", "var(--c-yellow)"), project("shop", "Shop", "var(--c-blue)")]
+      .map((p) => ({ ...p, devDocs: on.includes(p.id) }));
+  };
+  it("sits right below Agents, before Memory, and folds with its caret like them", () => {
+    withDocs("kade");
+    const page = reload();
+    expect(page.indexOf('aria-label="Docs"')).toBeGreaterThan(page.indexOf('<span class="fold">Agents'));
+    expect(page.indexOf('aria-label="Docs"')).toBeLessThan(page.indexOf('aria-label="Memory"'));
+    expect(head(page, "Docs")).toMatch(/<span class="fold">Docs<\/span><button aria-expanded="true" aria-controls="side-docs" aria-label="Fold Docs" title="Fold Docs">/);
+    caret("docs").onClick();
+    const folded = section(html(), "Docs");
+    expect(folded).toContain('<div class="nav-list" id="side-docs" hidden=""></div>');
+    expect(folded).not.toContain("Kade portal");
+  });
+  it("lists only the projects with Docs on, each linking to its Docs page", () => {
+    withDocs("kade");
+    const docs = section(html(), "Docs");
+    expect(docs).toMatch(/<a class="nav-item" href="#\/devdocs\/kade"><span class="dot" style="background:var\(--c-yellow\)"><\/span><span>Kade portal<\/span><\/a>/);
+    expect(docs).not.toContain("Shop");
+  });
+  it("marks the project whose Docs page is open", () => {
+    withDocs("kade", "shop");
+    slot = 0;
+    const docs = section(renderToStaticMarkup(<Sidebar {...props} route={{ page: "devdocs", id: "shop" }} />), "Docs");
+    expect(docs).toContain('<a class="nav-item on" href="#/devdocs/shop">');
+    expect(docs).toContain('<a class="nav-item" href="#/devdocs/kade">');
+  });
+  it("says No project has Docs on, with a link to Projects, while none has it on", () => {
+    withDocs();
+    expect(section(html(), "Docs")).toContain('<a class="nav-item" href="#/projects"><span class="faint">No project has Docs on</span></a>');
   });
 });

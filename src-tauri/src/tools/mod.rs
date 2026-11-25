@@ -274,14 +274,15 @@ const NOT_IN_A_CHECK: [&str; 8] = ["attach_file", "create_agent", "update_agent"
 /// run but kept under the answer for the user to approve with one click or discard (GA-102, `pending`). Memory's writes
 /// too: a note goes into every answer, board check and run after it. A board check uses no tool from outside Gizai
 /// (`chat::check_once`), so it never makes a pending action. Merging a pull request too (GA-86); a board check may merge.
-/// Archiving cards too (GA-307): restore_tasks, which only undoes an archive, runs at once.
+/// Archiving cards too (GA-307): restore_tasks, which only undoes an archive, runs at once. A decision record too: agents
+/// read a project's Docs page as they read Memory.
 /// Comments too (GA-261): an agent hears them, also in a Continue you approve. A card such a chat puts where an agent would
 /// start it, or changes there, waits on hold for the user's OK instead (GA-101, `Cx::outside`); some calls of
 /// `KEPT_SOMETIMES` are kept too. GA-319: start_chat runs, but the chat its message goes to is marked with the same tool,
 /// so what the Chief does there waits for the user's Approve too (`write::start_chat`).
-pub const NOT_AFTER_OUTSIDE: [&str; 15] = ["start_agent_run", "continue_agent_run", "create_agent", "update_agent", "set_agent_status", "add_column",
+pub const NOT_AFTER_OUTSIDE: [&str; 16] = ["start_agent_run", "continue_agent_run", "create_agent", "update_agent", "set_agent_status", "add_column",
     "set_column", "attach_file", "update_checkout", "memory_write", "memory_append", "memory_move", "merge_pull_request", "archive_tasks",
-    "comment_on_task"];
+    "comment_on_task", "record_decision"];
 
 /// GA-261: the tools that keep some of their calls for the user's Approve after a tool from outside Gizai in the chat, as
 /// `NOT_AFTER_OUTSIDE` keeps all of theirs (`Cx::keep`): `update_project` one that changes a project's repository, folder,
@@ -479,6 +480,7 @@ async fn call_scoped(st: &AppState, actor: &str, thread: Option<&str>, check: Op
         "stop_agent_run" => write::stop_run(&cx, &a),
         "create_doc" => write::create_doc(&cx, &a),
         "write_doc" => write::write_doc(&cx, &a),
+        "record_decision" => write::record_decision(&cx, &a),
         "memory_list" => memory::list(&cx, &a),
         "memory_search" => memory::search(&cx, &a),
         "memory_read" => memory::read(&cx, &a),
@@ -814,6 +816,15 @@ pub fn catalog() -> Vec<ToolDef> {
              &[TASK, ("agent", "string", "Agent name; omit to use the assigned agent or the column's first agent")], &["task"]),
         tool("stop_agent_run", "Stops the agent working on a task right now.", &[TASK], &["task"]),
         tool("create_doc", "Adds a doc to a project, optionally with its first text.", &[PROJECT, ("title", "string", "Doc title"), ("body_md", "string", "Text (Markdown)")], &["project", "title"]),
+        tool("record_decision", "Records a decision about a project with Docs on, numbered after its own decision records, on its Docs page \
+(Decisions): the title, the decision, its context, consequences and the alternatives weighed. Accepted unless proposed. One that \
+replaces an older record names its number in supersedes. For decisions made or put forward, not for every answer.",
+             &[("project", "string", "The project's key or name"), ("title", "string", "A short title, like \"Use Postgres, not MySQL\""),
+               ("decision", "string", "What was decided (Markdown)"), ("context", "string", "What led to it (Markdown)"),
+               ("consequences", "string", "What follows from it (Markdown)"), ("alternatives", "string", "The options weighed, and why not (Markdown)"),
+               ("status", "enum:accepted|proposed", "accepted (the default), or proposed"), TASK,
+               ("related_files", "string[]", "Repository paths it concerns"), ("supersedes", "integer", "The number of the record it replaces")],
+             &["project", "title", "decision"]),
         tool("write_doc", "Saves new text for a doc as a new version (the whole text, not a diff).",
              &[("doc", "string", "The doc's title or id"), ("body_md", "string", "The complete new text (Markdown)"), ("project", "string", "Project key or name, when titles repeat")], &["doc", "body_md"]),
         tool("memory_list", "The notes in Hersir's Memory, by path (folder and title), with version and size. Shared folders: Clients/, Projects/, Standards/, Workflows/, Deployments/, Dependencies/, Decisions/, Lessons/. Each agent has its own folder (Agents/<name>/), and you have Chief/.",

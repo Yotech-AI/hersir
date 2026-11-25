@@ -1259,6 +1259,44 @@ pub(crate) fn stop_run(cx: &Cx, a: &Args) -> Result<Value, String> {
 
 // ---- docs, files, people ----
 
+/// record_decision: a numbered decision record on a project's Docs page, after the project's own records. Only for a
+/// project with Docs on and its Decisions shown: elsewhere the decision belongs in Memory.
+pub(crate) fn record_decision(cx: &Cx, a: &Args) -> Result<Value, String> {
+    let project = resolve::project(cx, &a.req("project")?)?;
+    if !project.dev_docs || project.docs_off.iter().any(|s| s == "decisions") {
+        return Err(format!("{}'s Docs page doesn't keep decisions (Edit project → Docs): save the decision in Memory instead, \
+                            in Decisions/ with project: {}.", project.name, project.key));
+    }
+    let task_id = match a.text("task").filter(|t| !t.trim().is_empty()) {
+        Some(t) => Some(resolve::task(cx, &t)?.id),
+        None => None,
+    };
+    let input = gizai_core::devdocs::DecisionInput {
+        title: a.req("title")?,
+        decision: a.req("decision")?,
+        context: a.text("context").unwrap_or_default(),
+        consequences: a.text("consequences").unwrap_or_default(),
+        alternatives: a.text("alternatives").unwrap_or_default(),
+        status: a.text("status"),
+        related_files: a.list("related_files").unwrap_or_default(),
+        task_id,
+        supersedes: a.int("supersedes")?,
+    };
+    let by = crate::runs::actor_name(cx.st, cx.actor);
+    let record = gizai_core::devdocs::record_decision(cx.db(), cx.actor, &by, &project.id, own_records(&project), input).map_err(err)?;
+    Ok(json!({ "decision": record, "shows": format!("{}'s Docs page, Decisions {:04}", project.name, record.number) }))
+}
+
+/// The highest number among the project's own decision records (docs/decisions and the like, as its Docs page reads
+/// them), which Hersir's follow; 0 without any.
+fn own_records(project: &Project) -> i64 {
+    let Ok(repo) = crate::changes::linked_repo(project) else { return 0 };
+    let Ok(files) = gizai_agents::worktree::tracked_files(&repo) else { return 0 };
+    let Some(folder) = gizai_docs::content::decisions_folder(&files) else { return 0 };
+    files.iter().filter_map(|f| f.strip_prefix(folder)?.strip_prefix('/')).filter(|name| !name.contains('/'))
+        .filter_map(|name| name.split(['-', '_']).next()?.parse::<i64>().ok()).max().unwrap_or(0)
+}
+
 pub(crate) fn create_doc(cx: &Cx, a: &Args) -> Result<Value, String> {
     let p = resolve::project(cx, &a.req("project")?)?;
     let title = a.req("title")?;

@@ -1,0 +1,4 @@
+# A project's Docs page for a browser, one HTML file that npm run build makes (vite build --mode docs-web) and build.rs
+# embeds in Hersir. Build output: never committed. The folder stays in git so that cargo sees the file come and change.
+*
+!.gitignore

@@ -115,9 +115,10 @@ fn a_schema_22_database_keeps_its_queued_messages_as_typed_by_you() {
         let q = chat::enqueue(&db, &you, &thread, "Waiting since 0.20.0").unwrap();
         (thread, q.id)
     };
-    // one step back: the database 0.20.0 leaves (schema 22), without the column
+    // three steps back: the database 0.20.0 leaves (schema 22), without the column (and without Docs' 0024 and 0025 after it)
     let c = Connection::open(&path).unwrap();
-    c.execute_batch("ALTER TABLE chat_queue DROP COLUMN meta_json; PRAGMA user_version = 22;").unwrap();
+    c.execute_batch("DROP TABLE docs_baselines; DROP TABLE docs_decisions; DROP TABLE docs_changes; ALTER TABLE projects DROP COLUMN docs_off; \
+        ALTER TABLE projects DROP COLUMN dev_docs; ALTER TABLE chat_queue DROP COLUMN meta_json; PRAGMA user_version = 22;").unwrap();
     drop(c);
     let db = Db::open(&path).unwrap();
     let version: i64 = db.read(|c| Ok(c.query_row("PRAGMA user_version", [], |r| r.get(0))?)).unwrap();

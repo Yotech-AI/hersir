@@ -186,7 +186,7 @@ fn a_broken_setting_reads_as_no_pins() {
 
 #[test]
 fn pins_survive_a_restart_and_are_in_a_snapshot_without_a_schema_change() {
-    assert_eq!(db::SCHEMA_VERSION, 23, "the pins need no schema change: 23 is GA-351's 0023_queued_meta.sql");
+    assert_eq!(db::SCHEMA_VERSION, 25, "the pins need no schema change: 25 is 0025_docs_records.sql");
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("gizai.db");
     let ids = {

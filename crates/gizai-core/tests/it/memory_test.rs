@@ -100,12 +100,12 @@ fn migration_0014_keeps_existing_docs_as_they_were_and_a_projects_doc_list_never
     // 0014, and GA-86's 0015 (Team Lead may merge), GA-96's 0016 (agents share a memory folder), GA-102's 0017 (pending
     // actions), GA-180's 0018 (indexes), GA-182's 0019 (screenshots), GA-212's 0020 (Test runs at once) and GA-228's 0021
     // (Builds on) after it in the same step
-    assert_eq!(db::SCHEMA_VERSION, 23, "and GA-261's 0022, and GA-351's 0023");
+    assert_eq!(db::SCHEMA_VERSION, 25, "and GA-261's 0022, and GA-351's 0023, and Docs' 0024 and 0025");
     let (v, broken): (i64, i64) = db.read(|c| Ok((c.query_row("PRAGMA user_version", [], |r| r.get(0))?,
         c.query_row("SELECT count(*) FROM pragma_foreign_key_check", [], |r| r.get(0))?))).unwrap();
-    assert_eq!((v, broken), (23, 0), "schema 23, foreign keys intact");
+    assert_eq!((v, broken), (25, 0), "schema 25, foreign keys intact");
     let snaps: Vec<String> = std::fs::read_dir(dir.path().join("backups")).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
-    assert!(snaps.len() == 1 && snaps[0].starts_with("gizai-before-v23-"), "{snaps:?}");
+    assert!(snaps.len() == 1 && snaps[0].starts_with("gizai-before-v25-"), "{snaps:?}");
 
     // the old doc is unchanged: a doc of kind doc, no path, scope or owner, its text and versions as they were
     let row: (String, Option<String>, Option<String>, Option<String>, String, i64, i64) = db.read(|c| Ok(c.query_row(

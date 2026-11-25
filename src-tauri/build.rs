@@ -7,25 +7,30 @@ fn main() {
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("linux") {
         println!("cargo:rustc-link-arg-bin=hersir=-Wl,--export-dynamic-symbol=gtk_clipboard_request_targets");
     }
-    mcp_app();
+    // GA-343: the board's view for Claude Desktop (src/tools/apps.rs), from src/widget (`vite build --mode mcp-app`).
+    built("mcp-app", "mcp-app.html", "Claude Desktop's board view", NOT_BUILT);
+    // A project's Docs page for a browser (src/docs_server.rs), from src/docs (`vite build --mode docs-web`).
+    built("docs-web", "docs.html", "the Docs page for a browser", DOCS_NOT_BUILT);
     tauri_build::build()
 }
 
-/// GA-343: the board's view for Claude Desktop (src/tools/apps.rs), one HTML file that `npm run build` makes from
-/// src/widget into mcp-app/ (`vite build --mode mcp-app`), copied to OUT_DIR for `include_str!`. Without that build
-/// (cargo alone), a page that says so, and a warning. The folder is in git (its .gitignore keeps the file out), so cargo
-/// sees the file come and change.
-fn mcp_app() {
-    println!("cargo:rerun-if-changed=mcp-app");
-    let built = Path::new("mcp-app").join("mcp-app.html");
-    let html = std::fs::read_to_string(&built).unwrap_or_else(|_| {
-        println!("cargo:warning=mcp-app/mcp-app.html is missing: Claude Desktop's board view is a stand-in page. npm run build makes it.");
-        NOT_BUILT.to_string()
+/// One HTML file that `npm run build` makes into `dir`, copied to OUT_DIR for `include_str!`. Without that build (cargo
+/// alone), `stand_in`, a page that says so, and a warning. The folder is in git (its .gitignore keeps the file out), so
+/// cargo sees the file come and change.
+fn built(dir: &str, file: &str, what: &str, stand_in: &str) {
+    println!("cargo:rerun-if-changed={dir}");
+    let html = std::fs::read_to_string(Path::new(dir).join(file)).unwrap_or_else(|_| {
+        println!("cargo:warning={dir}/{file} is missing: {what} is a stand-in page. npm run build makes it.");
+        stand_in.to_string()
     });
-    let out = Path::new(&std::env::var("OUT_DIR").expect("cargo sets OUT_DIR")).join("mcp-app.html");
+    let out = Path::new(&std::env::var("OUT_DIR").expect("cargo sets OUT_DIR")).join(file);
     std::fs::write(out, html).expect("OUT_DIR is writable");
 }
 
 /// The view when it wasn't built.
 const NOT_BUILT: &str = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Hersir board</title></head>\
 <body><p>This Hersir was built without its board view for Claude Desktop: npm run build makes it.</p></body></html>\n";
+
+/// The Docs page when it wasn't built.
+const DOCS_NOT_BUILT: &str = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Docs</title></head>\
+<body><p>This Hersir was built without its Docs page for a browser: npm run build makes it.</p></body></html>\n";
