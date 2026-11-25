@@ -10,8 +10,9 @@ license = "Apache-2.0"
 version = "0.20.1"
 
 [workspace.dependencies]
-# 0.41 at least: its bundled SQLite (libsqlite3-sys 0.39, SQLite 3.54) has the fix for RUSTSEC-2026-0459.
-rusqlite = { version = "0.41", features = ["bundled", "serde_json"] }
+# 0.41 at least: its bundled SQLite (libsqlite3-sys 0.39, SQLite 3.54) has the fix for RUSTSEC-2026-0459. `backup`:
+# SQLite's online backup API, the page-for-page copy a cloud backup cuts into chunks (GA-359, docs/backup-format.md).
+rusqlite = { version = "0.41", features = ["bundled", "serde_json", "backup"] }
 rusqlite_migration = "2"
 uuid = { version = "1", features = ["v7"] }
 serde = { version = "1", features = ["derive"] }

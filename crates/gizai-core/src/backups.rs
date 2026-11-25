@@ -704,6 +704,125 @@ pub fn make(data_dir: &Path, device_id: &str, chosen: &Path, reason: Reason, kee
     Ok(Made { dir, manifest, copied, found, pruned })
 }
 
+// ---- a page-for-page copy, for Hersir Cloud (GA-359) ----
+
+/// A page-for-page copy of the database (`copy_pages`), and what a cloud backup's manifest says about it.
+#[derive(Debug, Clone)]
+pub struct PageCopy {
+    /// The copy: one file in journal mode DELETE, nothing beside it. The caller removes it (`remove_copy`).
+    pub path: PathBuf,
+    /// When the database was copied (ms).
+    pub made_at: i64,
+    /// This computer: its `devices` row.
+    pub device: Device,
+    /// The copy's `PRAGMA user_version`.
+    pub schema_version: i64,
+    /// The copy's newest `changes` row; None when it has none.
+    pub last_change: Option<LastChange>,
+    /// Every blob the copy names, once, by hash (lowercase), with the size its `files` rows give (None for an
+    /// artifact's).
+    pub files: Vec<(String, Option<i64>)>,
+}
+
+/// Copies the database in `data_dir` (its `gizai.db`) to `dest` page for page, with SQLite's online backup API: unlike
+/// `VACUUM INTO`, each page keeps its number, so a page that didn't change stays in the same 256 KiB chunk of a cloud
+/// backup (docs/backup-format.md, For Hersir Cloud). Consistent while Gizai writes: the pages are read in one read
+/// transaction. `device_id` is this computer's (`Db::device_id`). `progress` hears the pages copied and the pages in all,
+/// before and after; an error from it stops the copy. Then the copy is one file (journal mode DELETE), and what its
+/// manifest needs is read from it. On an error nothing is left at `dest`. Blocks: run it off the main thread.
+pub fn copy_pages(data_dir: &Path, device_id: &str, dest: &Path, progress: &mut dyn FnMut(u64, u64) -> Result<()>) -> Result<PageCopy> {
+    let src_path = data_dir.join("gizai.db");
+    if !src_path.is_file() {
+        return Err(Error::Invalid(format!("no Hersir data in {}", data_dir.display())));
+    }
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    remove_copy(dest);
+    let out = copy_pages_to(&src_path, device_id, dest, progress);
+    if out.is_err() {
+        remove_copy(dest);
+    }
+    out
+}
+
+fn copy_pages_to(src_path: &Path, device_id: &str, dest: &Path, progress: &mut dyn FnMut(u64, u64) -> Result<()>) -> Result<PageCopy> {
+    let src = Connection::open(src_path)?;
+    src.busy_timeout(Duration::from_secs(10))?;
+    let device_name: String = src
+        .query_row("SELECT name FROM devices WHERE id = ?1", [device_id], |r| r.get(0))
+        .optional()?
+        .ok_or_else(|| Error::Invalid(format!("this computer ({device_id}) has no row in the database's devices")))?;
+    let made_at = ids::now_ms();
+    {
+        let mut to = Connection::open(dest)?;
+        let copy = rusqlite::backup::Backup::new(&src, &mut to)?;
+        // All pages in one step, so in one read transaction: steps of a few pages would start over each time Gizai writes
+        // in between, and might never end while agents work.
+        let mut tries = 0;
+        loop {
+            let p = copy.progress();
+            progress((p.pagecount - p.remaining).max(0) as u64, p.pagecount.max(0) as u64)?;
+            match copy.step(-1)? {
+                rusqlite::backup::StepResult::Done => break,
+                rusqlite::backup::StepResult::More => {}
+                // a write holds the database for a moment: wait, and try again a while
+                _ if tries < 100 => {
+                    tries += 1;
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+                _ => return Err(Error::Invalid("the database stayed busy, so it couldn't be copied for the backup".into())),
+            }
+        }
+        let p = copy.progress();
+        progress(p.pagecount.max(0) as u64, p.pagecount.max(0) as u64)?;
+    }
+    drop(src);
+    // The source's header says WAL: the copy becomes one file, as a restore needs (only page 1 changes).
+    let c = Connection::open(dest)?;
+    c.pragma_update(None, "journal_mode", "DELETE")?;
+    let schema_version: i64 = c.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+    let last_change = c
+        .query_row("SELECT seq, id, hlc FROM changes ORDER BY seq DESC LIMIT 1", [], |r| {
+            Ok(LastChange { seq: r.get(0)?, id: r.get(1)?, hlc: r.get(2)? })
+        })
+        .optional()?;
+    let files = named_blobs(&c)?.into_iter().collect();
+    drop(c);
+    for end in ["-wal", "-shm", "-journal"] {
+        let _ = fs::remove_file(with_end(dest, end));
+    }
+    Ok(PageCopy {
+        path: dest.to_path_buf(),
+        made_at,
+        device: Device { id: device_id.to_string(), name: device_name },
+        schema_version,
+        last_change,
+        files,
+    })
+}
+
+/// Removes a page-for-page copy (`copy_pages`) and what SQLite may have left beside it.
+pub fn remove_copy(path: &Path) {
+    for end in ["", "-wal", "-shm", "-journal"] {
+        let _ = fs::remove_file(with_end(path, end));
+    }
+}
+
+/// The id of the newest `changes` row in `db`; None when it has none. A cloud backup is due only when it moved on.
+pub fn newest_change_id(db: &Db) -> Option<String> {
+    db.read(|c| Ok(c.query_row("SELECT id FROM changes ORDER BY seq DESC LIMIT 1", [], |r| r.get::<_, String>(0)).optional()?))
+        .ok()
+        .flatten()
+}
+
+/// `<path><end>`: a database's `-wal`, `-shm` or `-journal`.
+fn with_end(path: &Path, end: &str) -> PathBuf {
+    let mut name = path.as_os_str().to_os_string();
+    name.push(end);
+    PathBuf::from(name)
+}
+
 /// What a snapshot has written and not finished (`parts`: removed when it fails, also by a panic), and its temporary
 /// copy (`temp`: removed either way).
 #[derive(Default)]
