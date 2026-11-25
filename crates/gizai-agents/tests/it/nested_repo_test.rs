@@ -616,3 +616,338 @@ fn a_submodule_with_a_valid_non_ascii_name_is_left_alone_as_before() {
     assert!(!probe.exists(), "a refusal ran the filter");
     control(&wt, &probe);
 }
+
+// GA-361 (GA-357's check, a possible High on macOS): a submodule whose folder name git could read two ways. git on macOS
+// turns a path it is given into NFC (core.precomposeunicode, on there by default), so Commit…'s
+// `:(exclude,literal)cafe` + U+0301 became one of `café` in NFC and missed the gitlink the index holds in NFD, while
+// macOS finds its folder under either name: git add looked inside it and ran its clean filter. Now Hersir refuses a
+// gitlink whose path isn't in NFC, on every system, word for word, as it refuses GA-357's; and Commit… first asks git
+// (`git ls-files` with git add's own pathspec) whether a submodule stays in, and refuses then too.
+
+/// The card's sentence, word for word.
+const TWO_WAYS: &str = "it has a submodule whose folder name git could read two ways, whose own settings git could run";
+
+/// `café` as the card writes it in NFD: `cafe` and U+0301, a combining acute accent.
+const CAFE_NFD: &str = "cafe\u{301}";
+/// The same name in NFC, as git on macOS reads a path it is given: `caf` and U+00E9.
+const CAFE_NFC: &str = "caf\u{e9}";
+
+/// Whether `bytes` hold `part`.
+fn has(bytes: &[u8], part: &[u8]) -> bool {
+    bytes.windows(part.len()).any(|w| w == part)
+}
+
+/// A repository of its own at `nested` with n.txt and a .gitattributes that sends every file through filter x, committed
+/// there, and not added to the checkout around it; its commit's id.
+fn nested_repository(nested: &Path) -> String {
+    std::fs::create_dir_all(nested).unwrap();
+    git(nested, &["init", "-q", "-b", "main"]);
+    std::fs::write(nested.join("n.txt"), "one\n").unwrap();
+    std::fs::write(nested.join(".gitattributes"), "* filter=x\n").unwrap();
+    git(nested, &["add", "n.txt", ".gitattributes"]);
+    git(nested, &["commit", "-q", "-m", "nested"]);
+    git(nested, &["rev-parse", "HEAD"])
+}
+
+/// What `plant_nested` does after its commit: gives the repository at `nested` a clean filter x that touches `probe`,
+/// and changes n.txt, so a git status inside it runs the filter.
+fn arm(nested: &Path, probe: &Path) {
+    let config = std::fs::read_to_string(nested.join(".git/config")).unwrap();
+    std::fs::write(nested.join(".git/config"),
+                   format!("{config}[filter \"x\"]\n\tclean = touch {} && cat\n\tsmudge = cat\n", probe.display())).unwrap();
+    std::fs::write(nested.join("n.txt"), "two\n").unwrap();
+}
+
+/// `all_four_refuse`, with `sentence` in place of GA-357's: Commit…, the stash of Remove anyway, the worktree's removal
+/// and its take-over by a new card each refuse KADE-1's worktree `wt` with it, and change nothing.
+fn all_four_refuse_with(tmp: &Path, repo: &Path, wt: &Path, sentence: &str) {
+    let (head, tree) = (git(wt, &["rev-parse", "HEAD"]), index_tree(wt));
+    let base = tmp.join("data/worktrees");
+
+    assert_eq!(git_refusal(worktree::commit_all(wt, "The card's own work")), format!("Hersir doesn't commit there: {sentence}"));
+    let shown = worktree::commit_all(wt, "The card's own work").unwrap_err().to_string();
+    assert!(shown.contains(&format!("Hersir doesn't commit there: {sentence}")), "{shown}");
+    assert_eq!(git(wt, &["rev-parse", "HEAD"]), head, "nothing was committed");
+    assert_eq!(index_tree(wt), tree, "nothing was staged");
+
+    assert_eq!(git_refusal(worktree::stash_all(wt, "KADE-1 leftover")), format!("Hersir doesn't stash there: {sentence}"));
+    assert!(git(repo, &["stash", "list"]).is_empty(), "nothing was stashed");
+    assert_eq!(index_tree(wt), tree);
+
+    let r = worktree::remove_card_worktree_with(repo, &base, &tmp.join("run-temp"), BRANCH, true);
+    assert_eq!(r.removed, None, "{r:?}");
+    assert_eq!(r.kept, Some((wt.to_path_buf(), sentence.to_string())), "{r:?}");
+    assert!(!r.branch_deleted, "{r:?}");
+    assert_eq!(r.phrases(BRANCH), [format!("kept its worktree {} ({sentence})", wt.display())]);
+    assert_eq!(worktree::remove_card_worktree(repo, &base, BRANCH, false).kept, Some((wt.to_path_buf(), sentence.to_string())));
+    assert!(wt.is_dir());
+    assert_eq!(git(repo, &["rev-parse", &format!("refs/heads/{BRANCH}")]), head, "the branch stays");
+
+    let err = git_refusal(worktree::reuse_on(repo, wt, &base.join("KADE"), "KADE-2", "hersir/kade-2-next", "main", &[]));
+    assert_eq!(err, format!("{}: {sentence}", wt.display()));
+    let err = git_refusal(worktree::reuse(repo, wt, &base.join("KADE"), "KADE-2", "Next", "main", &[]));
+    assert_eq!(err, format!("{}: {sentence}", wt.display()));
+    assert!(wt.is_dir() && !base.join("KADE/KADE-2").exists());
+    assert_eq!(git(wt, &["rev-parse", "--abbrev-ref", "HEAD"]), BRANCH, "the worktree is still on its card's branch");
+    assert!(git(repo, &["branch", "--list", "hersir/kade-2*"]).is_empty(), "no branch for the new card");
+    assert_eq!(git(wt, &["rev-parse", "HEAD"]), head);
+}
+
+#[test]
+fn the_two_ways_sentence_is_the_cards_word_for_word() {
+    assert_eq!(worktree::TWO_WAY_SUBMODULE, TWO_WAYS);
+    assert_eq!(CAFE_NFD.as_bytes(), b"cafe\xcc\x81");
+    assert_eq!(CAFE_NFC.as_bytes(), b"caf\xc3\xa9");
+}
+
+/// A gitlink in NFD in the index alone, with no folder on disk: refused by the four, staged or committed, among
+/// gitlinks whose names are in NFC, and in a merge conflict. On every Unix: the name is only in git's index.
+#[test]
+fn a_submodule_whose_folder_name_isnt_in_nfc_is_refused_when_it_is_in_the_index_only() {
+    let tmp = real_tempdir();
+    let (repo, wt) = card(tmp.path());
+    let lib = repo_at(&tmp.path().join("lib"));
+    let (id, blob) = (git(&lib, &["rev-parse", "HEAD"]), git(&wt, &["rev-parse", "HEAD:a.txt"]));
+
+    // staged only
+    index_info(&wt, &[entry("160000", &id, CAFE_NFD.as_bytes())]);
+    assert!(has(&git_out(&wt, &["ls-files", "--stage", "-z"]).stdout, b"\tcafe\xcc\x81\0"), "the index holds the NFD bytes");
+    assert_eq!(git_refusal(worktree::gitlinks(&wt)), TWO_WAYS);
+    assert_eq!(git_refusal(worktree::nested_repositories(&wt)), TWO_WAYS);
+    all_four_refuse_with(tmp.path(), &repo, &wt, TWO_WAYS);
+
+    // committed by the run, beside the same name in NFC and other gitlinks and files: still refused
+    index_info(&wt, &[entry("160000", &id, b"a-lib"), entry("160000", &id, CAFE_NFC.as_bytes()), entry("160000", &id, b"zz/lib"),
+                      entry("100644", &blob, b"zz/a.txt")]);
+    git(&wt, &["commit", "-q", "-m", "submodules the run committed"]);
+    assert_eq!(git_refusal(worktree::gitlinks(&wt)), TWO_WAYS);
+    all_four_refuse_with(tmp.path(), &repo, &wt, TWO_WAYS);
+    std::fs::write(wt.join("a.txt"), "two\n").unwrap();
+    all_four_refuse_with(tmp.path(), &repo, &wt, TWO_WAYS);
+    git(&wt, &["checkout", "-q", "a.txt"]);
+
+    // without it, the name in NFC is a gitlink as any other
+    let gone = |name: &[u8]| entry("0", "0000000000000000000000000000000000000000", name);
+    index_info(&wt, &[gone(CAFE_NFD.as_bytes())]);
+    git(&wt, &["commit", "-q", "-m", "without it"]);
+    assert_eq!(worktree::gitlinks(&wt).unwrap(), ["a-lib", CAFE_NFC, "zz/lib"]);
+
+    // other names that aren't in NFC, anywhere in the path: an accent in a parent folder, the Angstrom sign (NFC: Å),
+    // Hangul letters written apart (NFC: 가), and U+0958 (NFC writes it as two characters)
+    for name in [format!("vendor/{CAFE_NFD}/lib"), "\u{212b}ngstrom".to_string(), "\u{1100}\u{1161}".to_string(), "\u{958}".to_string()] {
+        index_info(&wt, &[entry("160000", &id, name.as_bytes())]);
+        assert_eq!(git_refusal(worktree::gitlinks(&wt)), TWO_WAYS, "{name:?}");
+        assert_eq!(git_refusal(worktree::commit_all(&wt, "The card's own work")), format!("Hersir doesn't commit there: {TWO_WAYS}"),
+                   "{name:?}");
+        index_info(&wt, &[gone(name.as_bytes())]);
+    }
+    // names that are in NFC, also when they hold a combining mark NFC keeps apart (U+0915 U+093C), are left alone
+    index_info(&wt, &[entry("160000", &id, "\u{915}\u{93c}".as_bytes()), entry("160000", &id, "\u{ac00}".as_bytes())]);
+    assert_eq!(worktree::gitlinks(&wt).unwrap(), ["a-lib", CAFE_NFC, "zz/lib", "\u{915}\u{93c}", "\u{ac00}"]);
+
+    // and the NFD name in a merge conflict (two stages of one path)
+    index_info(&wt, &[entry("160000", &format!("{id} 2"), CAFE_NFD.as_bytes()), entry("160000", &format!("{id} 3"), CAFE_NFD.as_bytes())]);
+    let stages = git_out(&wt, &["ls-files", "--stage", "-z"]).stdout;
+    assert_eq!(stages.split(|&b| b == 0).filter(|e| e.starts_with(b"160000 ") && e.ends_with(b"\tcafe\xcc\x81")).count(), 2,
+               "two stages of it");
+    assert_eq!(git_refusal(worktree::gitlinks(&wt)), TWO_WAYS);
+}
+
+/// GA-361's case on Linux, with the folder on disk under its NFD name and a nested repository in it whose clean filter
+/// touches a probe: the four refuse, and no filter runs. Linux's git reads the name as given, so GA-350's exclusion did
+/// leave it out there: on Linux the refusal fails closed, as on every system.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_submodule_whose_folder_name_isnt_in_nfc_is_refused_by_commit_stash_removal_and_move_and_runs_no_filter() {
+    let tmp = real_tempdir();
+    let (repo, wt) = card(tmp.path());
+    let probe = tmp.path().join("probe-ran");
+    let nested = wt.join(CAFE_NFD);
+    nested_repository(&nested);
+    git(&wt, &["add", CAFE_NFD]);
+    git(&wt, &["commit", "-q", "-m", "a nested repository whose folder name is in NFD"]);
+    let index = git_out(&wt, &["ls-files", "--stage", "-z"]).stdout;
+    assert!(has(&index, b"160000 ") && has(&index, b"\tcafe\xcc\x81\0"), "a gitlink in NFD: {}", String::from_utf8_lossy(&index));
+    arm(&nested, &probe);
+
+    assert_eq!(git_refusal(worktree::gitlinks(&wt)), TWO_WAYS);
+    assert_eq!(git_refusal(worktree::nested_repositories(&wt)), TWO_WAYS);
+    // what runs before Remove anyway's stash and in the card's views leaves the gitlink out, whatever its name
+    assert_eq!(worktree::uncommitted(&wt).unwrap(), 0);
+    assert!(worktree::uncommitted_files(&wt).unwrap().is_empty());
+    assert_eq!(editor::status(&wt).uncommitted, 0);
+    assert!(!probe.exists(), "Hersir's status ran the nested repository's filter");
+
+    all_four_refuse_with(tmp.path(), &repo, &wt, TWO_WAYS);
+    assert!(!probe.exists(), "a refusal ran the nested repository's filter");
+
+    // with the card's own changes too
+    std::fs::write(wt.join("a.txt"), "two\n").unwrap();
+    std::fs::write(wt.join("b.txt"), "b\n").unwrap();
+    assert_eq!(worktree::uncommitted(&wt).unwrap(), 2);
+    all_four_refuse_with(tmp.path(), &repo, &wt, TWO_WAYS);
+    assert_eq!(std::fs::read_to_string(wt.join("a.txt")).unwrap(), "two\n", "the card's change stays");
+    assert!(wt.join("b.txt").is_file());
+    assert_eq!(std::fs::read_to_string(nested.join("n.txt")).unwrap(), "two\n", "and the change inside it");
+    assert!(!probe.exists(), "a refusal ran the nested repository's filter");
+
+    // the probe is real: plain git status there runs the filter
+    control(&wt, &probe);
+    // and on Linux, what Commit… ran before GA-361 left it out: git reads the NFD name as given here
+    std::fs::remove_file(&probe).unwrap();
+    git(&wt, &["add", "--all", "--", ".", &format!(":(exclude,literal){CAFE_NFD}")]);
+    assert!(!probe.exists(), "Linux's git add didn't leave out the gitlink in NFD");
+}
+
+/// A file (or link) whose name isn't in NFC doesn't matter: the gitlinks come back as before.
+#[test]
+fn a_file_whose_name_isnt_in_nfc_doesnt_matter() {
+    let tmp = real_tempdir();
+    let (_repo, wt) = card(tmp.path());
+    let lib = repo_at(&tmp.path().join("lib"));
+    let (id, blob) = (git(&lib, &["rev-parse", "HEAD"]), git(&wt, &["rev-parse", "HEAD:a.txt"]));
+    index_info(&wt, &[entry("100644", &blob, format!("{CAFE_NFD}.txt").as_bytes()), entry("120000", &blob, format!("link-{CAFE_NFD}").as_bytes()),
+                      entry("160000", &id, b"vendor/lib")]);
+    assert_eq!(worktree::gitlinks(&wt).unwrap(), ["vendor/lib"]);
+    assert!(worktree::nested_repositories(&wt).unwrap().is_empty(), "vendor/lib holds no repository");
+}
+
+/// On disk too (Linux): Commit… commits a file whose name is in NFD, under that name, beside a nested repository, whose
+/// filter never runs.
+#[cfg(target_os = "linux")]
+#[test]
+fn commit_all_commits_a_file_whose_name_is_in_nfd_beside_a_nested_repository() {
+    let tmp = real_tempdir();
+    let (_repo, wt) = card(tmp.path());
+    let probe = tmp.path().join("probe-ran");
+    plant_nested(&wt, "nested", &probe);
+    std::fs::write(wt.join(format!("{CAFE_NFD}.txt")), "nfd\n").unwrap();
+    std::fs::write(wt.join("a.txt"), "two\n").unwrap();
+    worktree::commit_all(&wt, "The card's own work").unwrap();
+    let names = git_out(&wt, &["diff-tree", "--no-commit-id", "--name-only", "-z", "-r", "HEAD"]).stdout;
+    assert_eq!(names, b"a.txt\0cafe\xcc\x81.txt\0", "{}", String::from_utf8_lossy(&names));
+    assert_eq!(worktree::uncommitted(&wt).unwrap(), 0);
+    assert!(!probe.exists(), "Commit… ran the filter");
+    control(&wt, &probe);
+}
+
+/// A submodule whose name is `café` in NFC is left alone as before, on every Unix (macOS's git reads that name as
+/// given): Commit… commits the card's own files without it, and the stash refuses it as a nested repository.
+#[test]
+fn a_submodule_whose_folder_name_is_cafe_in_nfc_is_left_out_of_commit_as_before() {
+    let tmp = real_tempdir();
+    let (repo, wt) = card(tmp.path());
+    let probe = tmp.path().join("probe-ran");
+    plant_nested(&wt, CAFE_NFC, &probe);
+    let link = git(&wt, &["rev-parse", &format!("HEAD:{CAFE_NFC}")]);
+    assert!(has(&git_out(&wt, &["ls-files", "--stage", "-z"]).stdout, b"\tcaf\xc3\xa9\0"), "the index holds it in NFC");
+    assert_eq!(worktree::gitlinks(&wt).unwrap(), [CAFE_NFC]);
+    assert_eq!(worktree::nested_repositories(&wt).unwrap(), [CAFE_NFC]);
+
+    std::fs::write(wt.join("a.txt"), "two\n").unwrap();
+    worktree::commit_all(&wt, "The card's own work").unwrap();
+    assert_eq!(git(&wt, &["diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"]), "a.txt");
+    assert_eq!(git(&wt, &["rev-parse", &format!("HEAD:{CAFE_NFC}")]), link, "the submodule's commit didn't change");
+    assert_eq!(worktree::uncommitted(&wt).unwrap(), 0);
+    assert!(!probe.exists(), "Commit… ran the filter");
+    let why = git_refusal(worktree::stash_all(&wt, "KADE-1 leftover"));
+    assert_eq!(why, format!("Hersir doesn't stash there: it has a nested repository in {CAFE_NFC}, whose settings git's stash would run"));
+    assert!(git(&repo, &["stash", "list"]).is_empty());
+    control(&wt, &probe);
+}
+
+/// The card's setup on macOS: a gitlink the index holds as `cafe` + U+0301 (NFD), written with git update-index
+/// --index-info, beside a folder `café` (NFC) that holds a nested repository whose clean filter touches the probe it
+/// gives back; macOS finds that folder under either name. The card's own a.txt has changed, so Commit… gets to its git add.
+#[cfg(target_os = "macos")]
+fn nfd_gitlink_beside_a_nested_repository(tmp: &Path) -> (PathBuf, PathBuf, PathBuf) {
+    let (repo, wt) = card(tmp);
+    let probe = tmp.join("probe-ran");
+    let nested = wt.join(CAFE_NFC);
+    let id = nested_repository(&nested);
+    index_info(&wt, &[entry("160000", &id, CAFE_NFD.as_bytes())]);
+    git(&wt, &["commit", "-q", "-m", "a nested repository, as a gitlink in NFD"]);
+    let index = git_out(&wt, &["ls-files", "--stage", "-z"]).stdout;
+    assert!(has(&index, b"160000 ") && has(&index, b"\tcafe\xcc\x81\0") && !has(&index, b"caf\xc3\xa9"),
+            "the index holds the gitlink in NFD alone: {}", String::from_utf8_lossy(&index));
+    assert!(wt.join(CAFE_NFD).join(".git").is_dir(), "macOS finds the folder café under its NFD name too");
+    arm(&nested, &probe);
+    std::fs::write(wt.join("a.txt"), "two\n").unwrap();
+    (repo, wt, probe)
+}
+
+/// GA-361's test (the card's steps 1 and 3), on macOS: Commit… refuses with the card's sentence and never runs the
+/// nested repository's filter; neither do the stash, the removal and the move.
+#[cfg(target_os = "macos")]
+#[test]
+fn on_macos_a_gitlink_stored_in_nfd_beside_a_nested_repository_is_refused_by_commit_and_runs_no_filter() {
+    let tmp = real_tempdir();
+    let (repo, wt, probe) = nfd_gitlink_beside_a_nested_repository(tmp.path());
+    let (head, tree) = (git(&wt, &["rev-parse", "HEAD"]), index_tree(&wt));
+
+    assert_eq!(git_refusal(worktree::gitlinks(&wt)), TWO_WAYS);
+    assert_eq!(git_refusal(worktree::commit_all(&wt, "The card's own work")), format!("Hersir doesn't commit there: {TWO_WAYS}"));
+    assert!(!probe.exists(), "Commit… ran the nested repository's filter");
+    assert_eq!(git(&wt, &["rev-parse", "HEAD"]), head, "nothing was committed");
+    assert_eq!(index_tree(&wt), tree, "nothing was staged");
+
+    all_four_refuse_with(tmp.path(), &repo, &wt, TWO_WAYS);
+    assert!(!probe.exists(), "a refusal ran the nested repository's filter");
+    assert_eq!(std::fs::read_to_string(wt.join("a.txt")).unwrap(), "two\n", "the card's change stays");
+
+    // the probe is real: plain git status there looks inside the folder by the gitlink's NFD name and runs the filter
+    control(&wt, &probe);
+}
+
+/// Whether the case was real before GA-361, on macOS (the card's step 1): what Commit… ran then, git add --all with
+/// GA-350's pathspec, which leaves out the gitlink by the name the index holds, runs the nested repository's filter,
+/// because git reads that exclusion in NFC. Its own test, so that the result shows apart from the fix's.
+#[cfg(target_os = "macos")]
+#[test]
+fn on_macos_commits_git_add_before_ga_361_missed_a_gitlink_stored_in_nfd_and_ran_its_filter() {
+    let tmp = real_tempdir();
+    let (_repo, wt, probe) = nfd_gitlink_beside_a_nested_repository(tmp.path());
+    let exclusion = format!(":(exclude,literal){CAFE_NFD}");
+    assert!(!probe.exists());
+    git(&wt, &["add", "--all", "--", ".", &exclusion]);
+    assert!(probe.exists(), "git add with GA-350's pathspec didn't run the filter: the case wasn't real on this macOS");
+    // why: git ls-files, which reads a pathspec as git add does, keeps the gitlink in
+    let left_in = git(&wt, &["ls-files", "--stage", "--", ".", &exclusion]);
+    assert!(left_in.lines().any(|l| l.starts_with("160000 ")), "{left_in}");
+}
+
+/// GA-361's second guard, on macOS: a name in NFC that macOS's git might still read as another one (its own tables
+/// are older than Unicode's), such as क and a nukta (U+0915 U+093C), which NFC keeps apart while U+0958 is the same
+/// letter in one. However git reads it, Commit… either commits the card's own file without the submodule, or refuses
+/// with the card's sentence; it never runs the nested repository's filter.
+#[cfg(target_os = "macos")]
+#[test]
+fn on_macos_a_submodule_whose_name_is_in_nfc_never_runs_its_filter_however_git_reads_it() {
+    let tmp = real_tempdir();
+    let (_repo, wt) = card(tmp.path());
+    let probe = tmp.path().join("probe-ran");
+    let name = "\u{915}\u{93c}";
+    let nested = wt.join(name);
+    let id = nested_repository(&nested);
+    index_info(&wt, &[entry("160000", &id, name.as_bytes())]);
+    git(&wt, &["commit", "-q", "-m", "a nested repository whose name NFC keeps as two characters"]);
+    arm(&nested, &probe);
+    std::fs::write(wt.join("a.txt"), "two\n").unwrap();
+    assert_eq!(worktree::gitlinks(&wt).unwrap(), [name]);
+    let head = git(&wt, &["rev-parse", "HEAD"]);
+
+    match worktree::commit_all(&wt, "The card's own work") {
+        Ok(_) => {
+            assert_eq!(git(&wt, &["diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"]), "a.txt");
+            assert!(has(&git_out(&wt, &["ls-tree", "-z", "HEAD"]).stdout, format!("160000 commit {id}\t{name}\0").as_bytes()),
+                    "the submodule stays as it was");
+        }
+        Err(AgentError::Git(m)) => {
+            assert_eq!(m, format!("Hersir doesn't commit there: {TWO_WAYS}"));
+            assert_eq!(git(&wt, &["rev-parse", "HEAD"]), head, "nothing was committed");
+        }
+        Err(e) => panic!("{e:?}"),
+    }
+    assert!(!probe.exists(), "Commit… ran the nested repository's filter");
+    control(&wt, &probe);
+}
