@@ -9,7 +9,7 @@ Research by the R&D Agent, 25 Nov 2026, on `main` at `945076a2`. Each claim is m
 - **Three things in Hersir today:** an OpenCode 2 run as Other works in `$PWD`, which Hersir doesn't set to the worktree; Find installed CLIs adds Cursor with `--force` (any command not denied) and Crush with `run` (approves everything) **[V]**/**[I]** (§3.1.1, §3.1.5, §3.1.10). Card 0 fixes them.
 - **Recommendation: CLI profiles (option B).** A profile is JSON: how to start the CLI, a mapping from its JSON lines to Hersir's `RunEvent`s, how to resume, where MCP servers and permission rules go in a per-run config, and which files in a worktree hold a card. The engines, the folder and secret handling and Claude Code, Codex and Gemini stay code (§3.3, §4).
 - **OpenCode first** on a shipped profile (§5.2), then MCP servers, then Qwen Code, Kilo and Copilot CLI. **ACP** comes next as a second protocol of the same profiles (§4 C). The Chief stays on Claude Code (§3.4).
-- **One thing to check first:** OpenCode 2 documents no way to give a run its own config outside the worktree (V1 had `OPENCODE_CONFIG`); card 2 checks the source before building.
+- **OpenCode 2 can be kept to an agent's allowed commands:** a run gets its own config folder (`OPENCODE_CONFIG_DIR`) and leaves the worktree's settings out (`OPENCODE_DISABLE_PROJECT_CONFIG`), and its scanner refuses a chained command unless every part is allowed. These variables are in OpenCode's source, not its docs: card 2 checks them in a real run first.
 - **Plan:** nine cards in six features (§6); eight open questions for Jefsev (§7).
 
 ## 2. The project now
@@ -59,7 +59,7 @@ Each CLI below has the points of the card, in this order: **headless** (how it r
 | CLI | Prompt | JSON events | Resume | MCP per run | Command list (headless: what needs approval) | ACP | Licence · systems | Fit |
 |---|---|---|---|---|---|---|---|---|
 | Claude Code | stdin | yes (stream-json) | caller's id | `--mcp-config` | yes (refused, reported) | adapter | proprietary · all | code (now) |
-| **OpenCode 2** | stdin or arg | yes, no final event | **caller's id** | config (per-run way to check) | yes, `permissions` (rejected, not reported) | native | MIT · all | **profile** |
+| **OpenCode 2** | stdin or arg | yes, no final event | **caller's id** | its own config folder (`OPENCODE_CONFIG_DIR`) | yes, `permissions`, every part of a chain (rejected, not reported) | native | MIT · all | **profile** |
 | Codex | stdin | yes | reported id | `-c` | no: its sandbox | adapter | Apache-2.0 · all | code (now) |
 | Gemini | stdin | yes | caller's id | settings file | yes, policy (denied) | native | Apache-2.0 · all | code (now) |
 | Qwen Code | stdin | yes, Claude's shape | reported id | settings file | not read (denials reported) | native | Apache-2.0 · all | profile |
@@ -78,29 +78,32 @@ Each CLI below has the points of the card, in this order: **headless** (how it r
 **OpenCode now has two lines.** Version 2 is current: npm `@opencode/cli` 2.4.1 (23 Nov 2026), docs at opencode.ai/docs. Version 1 is npm `opencode-ai` 1.19.6 (17 Nov 2026), docs moved to opencode.ai/v1/docs, and its `run.ts` is gone from the default branch. Both install a program called `opencode`, and V2's installer replaces V1 **[V]** [S1, S2, S3]. Everything below is **V2** unless it says V1; a profile should require 2.x and say so for a 1.x (open question 2).
 
 - **Headless:** `opencode run [message..]`; when stdin isn't a terminal it is read and put after the message, and with no message the prompt is stdin alone (so Hersir can keep the prompt on stdin, closed after it, as now). An empty prompt fails with exit code 1. It exits when done: "admitting → running → settling → … done(exit code)" **[V]** [S4, S5]. It never waits for a keyboard: a permission `ask` is rejected (below), a question is cancelled with a message to the model, any other input request fails the run **[V]** [S5].
-  - **By default `run` hands the run to a shared background service** (one per user account) that owns sessions, config, permissions and tool execution; `--standalone` starts a private server for the run **[V]** [S6]. Hersir must pass `--standalone`, or the run's environment and config may not be the ones that apply **[I]** (follow-up below).
+  - **By default `run` hands the run to a shared background service** (one per user account) that owns sessions, config, permissions and tool execution; `--standalone` starts a private server for the run **[V]** [S6]. With `--standalone` that server inherits the run's environment (`services/standalone.ts`: `extendEnv: true`); without it, a shared service started earlier is reused as it is, with its own environment and config (`services/server-connection.ts`) **[V]** [S11b]. So Hersir must pass `--standalone`.
   - **It works in `$PWD`, not in the folder it is started in:** `const root = process.env.PWD ?? process.cwd()` **[V]** [S4]. Hersir's runner sets the working folder but passes its own `PWD` on (`process.rs:322`–`:324` sets only the CLI's environment) **[V]**, so **an OpenCode 2 run as Other today works in the folder Hersir was started from, not in the worktree** whenever Hersir's environment has a `PWD` **[I]**. Every run should get `PWD` set to its worktree (card 1).
 - **Output:** `--format json`, JSONL; every line is `{type, timestamp, sessionID, …}` **[V]** [S5]:
   - `text` and `reasoning`: `part {id, messageID, type, text, time}`, where `text` is **only the new piece** (`part.text.slice(previous.length)`), so pieces are joined by `part.id`;
   - `tool_use`: `part {id, tool, state}`, only at the end of a call: `{status: "completed", input, output, title, metadata}` or `{status: "error", input, error}`;
-  - `step_start`, and `step_finish`: `part {reason, cost, tokens}`; the shape of `tokens` in V2 isn't in that file (V1: `{input, output, reasoning, cache: {read, write}}`) **[V]**/**[I]**;
+  - `step_start`, and `step_finish`: `part {reason, cost, tokens}`, with `tokens` = `{input, output, reasoning, cache: {read, write}}` and `cost` a `Money.USD` (`packages/schema/src/token-usage.ts`, `session-message.ts`), per step, so the run's total is their sum **[V]** [S5, S11c];
   - `error {error: {type, message}}`, `retry`, `background_wait`;
   - **no final event**: the run ends with the process and its exit code **[V]** [S5]. The profile engine's `finish` needs the exit code (the runner has it, `process.rs:444`) **[V]**.
 - **Resume:** `--session/-s <id>` continues that session **or creates one with exactly that id**, so Hersir can choose it as it does for Claude Code and Gemini; `sessionID` is on every line too. `-c` picks the newest session in the folder; `--fork` **[V]** [S7]. Sessions live in SQLite (`~/.local/share/opencode/opencode.db`, moved with `OPENCODE_DB`) **[V]** [S8].
-- **MCP:** `mcp.servers.<name>`: local `{type: "local", command: [...], environment, cwd, disabled, timeout}`, remote `{type: "remote", url, headers, oauth: false | {…}}`; a server's tools are `<server>_<tool>` in the permission rules (globs: `context7_*`) **[V]** [S9]. Config is merged from the system folder, every `opencode.json(c)` from the working folder **up to the root**, `.opencode/`, and `~/.config/opencode/` **[V]** [S10]. **V1 had `OPENCODE_CONFIG`, `OPENCODE_CONFIG_CONTENT`, `OPENCODE_PERMISSION` and `OPENCODE_DISABLE_PROJECT_CONFIG`; V2's docs name none of them**, and `packages/core/src/flag.ts` reads no variable **[V]** [S11, S6]. Through ACP, a server the client passes replaces a configured one with the same name **[V]** [S12].
+- **MCP:** `mcp.servers.<name>`: local `{type: "local", command: [...], environment, cwd, disabled, timeout}`, remote `{type: "remote", url, headers, oauth: false | {…}}`; a server's tools are `<server>_<tool>` in the permission rules (globs: `context7_*`) **[V]** [S9]. Config is merged from the system folder, every `opencode.json(c)` from the working folder **up to the root**, `.opencode/`, and `~/.config/opencode/` **[V]** [S10]. **V2's docs name no variable for a config, but its server reads them** (`packages/cli/src/server-process.ts`): `OPENCODE_CONFIG` (a file), `OPENCODE_CONFIG_CONTENT` (inline JSON), `OPENCODE_CONFIG_DIR` (which in V2 **replaces** the global folder `~/.config/opencode`, `packages/util/src/global.ts`), `OPENCODE_DISABLE_PROJECT_CONFIG` (no `opencode.json(c)`, `.opencode`, `.claude` or `.agents` from the working folder up, `packages/core/src/config/discovery.ts`) and `OPENCODE_DISABLE_CLAUDE_CODE`; V1's `OPENCODE_PERMISSION` is gone **[V]** [S11, S11a]. Through ACP, a server the client passes replaces a configured one with the same name **[V]** [S12].
 - **Model:** `-m provider/model#variant` (the variant is the effort); `--agent <id>` **[V]** [S4, S13].
-- **Permissions:** one ordered list `permissions: [{action, resource, effect: allow|ask|deny}]`, **the last match wins**; actions `read`, `edit`, `glob`, `grep`, `shell`, `subagent`, `skill`, `webfetch`, `websearch`, `external_directory`, `<server>_<tool>`. **The base policy allows `*`** (it asks only for reading `.env` files), so Hersir has to write the rules. A shell rule's resource is a command as OpenCode's scanner splits the line, and `git status *` also matches `git status`. `policies` can only deny **[V]** [S14].
+- **Permissions:** one ordered list `permissions: [{action, resource, effect: allow|ask|deny}]`, **the last match wins**; actions `read`, `edit`, `glob`, `grep`, `shell`, `subagent`, `skill`, `webfetch`, `websearch`, `external_directory`, `<server>_<tool>`. **The base policy allows `*`** (it asks only for reading `.env` files), so Hersir has to write the rules. `git status *` also matches `git status`. `policies` can only deny **[V]** [S14].
+  - **Chained commands:** OpenCode's own scanner (`packages/core/src/shell/scan.ts`, hand-written) makes one resource per command of the line: `&&`, `||`, `;`, `|`, groups, and the inside of `$(…)` and backticks; **every resource must be allowed**, and one deny refuses the call (`permission/policy.ts`). A line it can't read (`eval` with an expansion, an unclosed quote, over 64 KiB) is refused when any `shell` deny rule exists (`UnverifiableError`) **[V]** [S11d]. So `git status && rm -rf x` is refused under Hersir's rules **[I]** (card 2 checks it by hand).
+  - `external_directory` covers file tools and a command's folder and `cd` targets, not a command's path arguments or redirects: not a sandbox for commands **[V]** [S11d].
+  - A request nobody can answer in an unattended session is denied: "Permission … needs approval, and nobody is present to give it" (`packages/core/src/permission.ts`) **[V]** [S11d].
   - In `run`, an `ask` is **rejected** with "This non-interactive run cannot ask the user for permission, so the request was rejected. Continue without this action." and a warning `permission requested: <action> (<resources>); auto-rejecting`; `--auto` (also `--yolo`, `--dangerously-skip-permissions`) answers "once", and `deny` rules still hold **[V]** [S5, S15]. There is **no permission event** in the JSON: a refusal shows as a `tool_use` with `status: "error"` **[I]**.
 - **Folders:** no `--dir` in V2 (`PWD`, above); folders outside the project go through `external_directory` (allowed by default) before `read` and `edit`; a read-only folder is `read` allowed and `edit` denied on its path **[V]** [S14]/**[I]**.
 - **Sign-in:** `opencode auth login|list|logout|switch`; credentials in the database, not a file **[V]** [S6, S16]. **Claude Pro/Max sign-in was removed in v1.3.0** (22 Mar 2026), so OpenCode reaches Claude with an API key only; ChatGPT Plus/Pro sign-in, GitHub Copilot and OpenCode's own plans remain **[V]** [S17, S13]. A second account: `OPENCODE_DB` **[V]** [S8].
 - **Sandbox:** none **[V]** (not on [S6], [S10], [S14]).
-- **Repository config:** `opencode.json(c)` and `.opencode/` (agents, commands, skills, **plugins: `.ts`/`.js` files in `.opencode/plugins/` load and run without asking**), `AGENTS.md` (then `CLAUDE.md`); **V2 documents no switch to turn project config off** **[V]** [S18, S6]. So the OpenCode profile's `guards` hold the card when the worktree has `opencode.json`, `opencode.jsonc` or `.opencode` **[I]**.
+- **Repository config:** `opencode.json(c)` and `.opencode/` (agents, commands, skills, **plugins: `.ts`/`.js` files in `.opencode/plugins/` load and run without asking**), `AGENTS.md` (then `CLAUDE.md`) **[V]** [S18, S6]. The docs name no switch, but `OPENCODE_DISABLE_PROJECT_CONFIG` turns all of it off in the source **[V]** [S11a]. Plugins in your own `~/.config/opencode/plugins` run in every run too, unless the global folder is replaced (`OPENCODE_CONFIG_DIR`) or `plugins: ["-*"]` removes them (two built-ins stay) **[V]** [S18, S11a]. So the profile sets `OPENCODE_DISABLE_PROJECT_CONFIG=1` and its own config folder; a hold like `.gemini`'s is needed only if card 2's hand check finds a worktree file that still loads **[I]**.
 - **ACP:** `opencode acp`: `session/new|load|resume|fork|list`, `mcpServers` stdio and HTTP with headers, `additionalDirectories`, `session/request_permission`, `set_config_option` for model, effort and mode **[V]** [S12].
 - **Server:** `opencode serve` with an HTTP API (`/api/session/{id}/prompt`, `/permission/{requestID}/reply`, an event log) and `@opencode/client` **[V]** [S19]; more moving parts than `run` or ACP **[I]**.
-- **Limits:** none in the output; cost and tokens per step **[V]** [S5].
+- **Limits:** none in the output; cost and tokens per step **[V]** [S5]. The source has a `packages/core/src/usage-limits.ts` (not read) **[V]** [S11d]: a later card may find plan limits there.
 - **Licence and systems:** MIT; native builds for Linux (glibc, musl), macOS and Windows, x64 and arm64 **[V]** [S1].
 
-**What OpenCode gives Hersir [I]:** every feature but subscription limits and a reported refusal. The one open point is how a V2 run takes a config that is neither in the worktree nor in your own folders (for its permission rules and MCP servers): V1's variables aren't documented for V2. The first OpenCode card checks this in OpenCode's source before anything else (§6).
+**What OpenCode gives Hersir [I]:** every feature but subscription limits and a reported refusal (a refused call is a failed tool call). A run gets its own config folder (`OPENCODE_CONFIG_DIR`, the per-run folder of §3.3) with Hersir's permission rules and MCP servers, and the worktree's OpenCode files stay out (`OPENCODE_DISABLE_PROJECT_CONFIG`). The variables are in OpenCode's source, not its docs, so card 2 checks them in a real run first, and the profile's `checked_with` pins the version. The cost: your own settings in `~/.config/opencode` (custom providers, model options, your plugins and MCP servers) don't apply to agents' runs; your sign-ins do, as they live in OpenCode's database (open question 9).
 
 #### 3.1.2 Codex (OpenAI): already in Hersir
 
@@ -313,7 +316,7 @@ A CLI in Settings then has a **profile** instead of one of the four fixed kinds:
 |---|---|---|
 | `id`, `name`, `programs`, `checked_with`, `version_args` | The profile's id; the name Settings shows; the program names Find installed CLIs looks for; the CLI version it was checked with; how to read the installed version (Settings warns when it differs in its major version). | Settings, Find installed CLIs |
 | `sign_in`, `account_env` | One line on how to sign the CLI in (Hersir never does it); the variable that moves its logins to another folder, for a second account. | Settings → Environment hint |
-| `start` | The arguments of a new run and of a resumed one, as an **array** (never a shell string); how the prompt goes in (`stdin`, `arg`, or `file`, which Hersir writes in the run's log folder); environment variables. Placeholders: `{prompt}`, `{prompt_file}`, `{model}`, `{effort}`, `{session}`, `{worktree}`, `{temp_dir}`, `{run_config}` (the per-run config file's path), `{run_config_json}` (its text). An inner array is an **optional group**, left out when a placeholder in it is empty (`["-m", "{model}"]`); `{"each": "folders_rw", "args": ["--add-dir", "{path}"]}` repeats per folder. | Task runs, model, effort, folders |
+| `start` | The arguments of a new run and of a resumed one, as an **array** (never a shell string); how the prompt goes in (`stdin`, `arg`, or `file`, which Hersir writes in the run's log folder); environment variables. Placeholders: `{prompt}`, `{prompt_file}`, `{model}`, `{effort}`, `{session}`, `{worktree}`, `{temp_dir}`, `{run_config}` (the per-run config file's path), `{run_config_dir}` (the per-run folder it is in, for a CLI that takes a config folder), `{run_config_json}` (its text: only for a config without secrets, as a variable reaches every command the agent runs). An inner array is an **optional group**, left out when a placeholder in it is empty (`["-m", "{model}"]`); `{"each": "folders_rw", "args": ["--add-dir", "{path}"]}` repeats per folder. | Task runs, model, effort, folders |
 | `run_config` | A per-run config file in the CLI's own format (JSON or TOML), which Hersir writes (0600, in the run's log folder, removed when the run ends, as `mcp_run::write_config` does now) from the profile's `base` object plus what Hersir fills in: MCP servers, permission rules, folders. | MCP servers, allowed commands, folders |
 | `session` | `"id": "caller"` (Hersir chooses a UUID and passes `{session}`) or `"reported"` with the JSON pointer of the event that names it. Without `resume` args the CLI can't continue. | Continue, the nudge, Ask the Chief first |
 | `events` | How each output line becomes a `RunEvent` (below). `"format": "text"` keeps today's plain-text reading. | Run panel, outcome line, usage, refusals |
@@ -451,7 +454,7 @@ Coding CLIs
 
 ### 5.2 The OpenCode profile
 
-The shipped profile, as the first card would write it (the event pointers from OpenCode 2's `noninteractive.ts` [S5]; the `tokens` fields and the config variable to be confirmed against a real 2.x run, see §6 card 2) **[I]**:
+The shipped profile, as card 2 would write it: the event pointers from OpenCode 2's `noninteractive.ts` and `token-usage.ts` [S5, S11c], the variables from `server-process.ts` [S11a], all to be confirmed against a real 2.x run **[I]**:
 
 ```json
 {
@@ -467,10 +470,12 @@ The shipped profile, as the first card would write it (the event pointers from O
     "args": ["run", "--standalone", "--format", "json", "--session", "{session}", ["-m", "{model}"]],
     "resume": ["run", "--standalone", "--format", "json", "--session", "{session}", ["-m", "{model}"]],
     "prompt": "stdin",
-    "env": { "PWD": "{worktree}", "OPENCODE_CONFIG": "{run_config}" }
+    "env": { "PWD": "{worktree}", "OPENCODE_CONFIG_DIR": "{run_config_dir}",
+             "OPENCODE_DISABLE_PROJECT_CONFIG": "1", "OPENCODE_DISABLE_CLAUDE_CODE": "1" }
   },
   "session": { "id": "caller" },
-  "run_config": { "format": "json", "base": { "share": "disabled", "autoupdate": false } },
+  "run_config": { "format": "json", "file": "opencode.json",
+                  "base": { "share": "disabled", "autoupdate": false, "plugins": ["-*"] } },
   "events": {
     "format": "jsonl",
     "rules": [
@@ -509,11 +514,7 @@ The shipped profile, as the first card would write it (the event pointers from O
   },
   "folders": { "read_only": "rules" },
   "web": { "search": "websearch", "fetch": "webfetch" },
-  "guards": {
-    "hold_if_worktree_has": ["opencode.json", "opencode.jsonc", ".opencode"],
-    "message": "This repository has OpenCode settings (opencode.json or .opencode), which can load plugins that run code outside the agent's allowed commands: remove them from the branch, or run the card on another CLI.",
-    "empty_env": ["BASH_ENV", "ENV"]
-  },
+  "guards": { "empty_env": ["BASH_ENV", "ENV"] },
   "rules": { "write_tool": "write", "refusals_reported": false }
 }
 ```
@@ -527,7 +528,9 @@ The permission rules Hersir writes in the run's config for the `list` mode, in t
 5. `webfetch`, `websearch`: `allow` when the agent's Web switches are on.
 6. MCP: `<server>_*` `allow` for each of the run's servers, then `deny` for each tool switched off.
 
-`subagent`, `skill` and `question` stay denied until a check shows how a subagent's permissions follow its parent's **[I]**.
+`subagent`, `skill` and `question` stay denied until a check shows how a subagent's permissions follow its parent's **[I]**. Because the run's config folder replaces `~/.config/opencode`, none of your own permission rules, plugins or MCP servers mixes in; the hand check confirms that OpenCode's base policy (allow `*`) comes before the run's rules and not after **[I]**.
+
+Without a profile change, a worktree whose own `opencode.json` or `.opencode` would still load (if a later OpenCode drops `OPENCODE_DISABLE_PROJECT_CONFIG`) is caught by the hand check of each new `checked_with`; the profile can then add `"hold_if_worktree_has": ["opencode.json", "opencode.jsonc", ".opencode"]` to its `guards`, as `.gemini` holds a Gemini card now **[I]**.
 
 ### 5.3 Data
 
@@ -617,11 +620,11 @@ What it builds: §3.3 in `crates/gizai-agents` (a `profile` module): the profile
 
 What it builds: `crates/gizai-agents/profiles/opencode.json` (§5.2), `kind: "profile"` with `profile` on `Cli` (`gizai-core/src/clis.rs`, `src/types.ts`), the profile branch of a task run (`runs.rs`, `cli::task_exec`, `prompt::rules_section`, `tool_catalog`, `limits::after_run`), Find installed CLIs, and `caps` on `list_clis` for every kind (§5.4, word for word).
 
-- [ ] **First**, checked in OpenCode 2.x's source and a real run, and written in the PR: how a `run --standalone` takes a config file that is neither in the worktree nor in your own folders (`OPENCODE_CONFIG` or what replaced it). If there is no such way, the card stops and asks (needs_decision).
+- [ ] **First**, checked with a real `opencode run --standalone` (2.x) and written in the PR: `OPENCODE_CONFIG_DIR` replaces `~/.config/opencode` (your plugins, MCP servers and rules don't load), `OPENCODE_DISABLE_PROJECT_CONFIG=1` keeps a worktree's `opencode.json` and `.opencode/plugins` out, your sign-in still works, and the run's permission rules come after OpenCode's base policy. If one of these doesn't hold, the card stops and asks (needs_decision).
 - [ ] A fixture of a real `opencode run --standalone --format json` (text, a completed and a failed tool call, `step_finish`, an error) is in the tests, with its version as the profile's `checked_with`.
 - [ ] A run starts `opencode run --standalone --format json --session <id>` with the prompt on stdin, `PWD` the worktree, the model as `provider/model#variant`; Continue, the nudge and Ask the Chief first resume the same session.
 - [ ] The modes Read only, Allowed commands and Any command write the rules of §5.2 in that order; the agent's folders (read ones read only), the temp folder and the Web switches follow the agent form.
-- [ ] A worktree with `opencode.json`, `opencode.jsonc` or `.opencode` holds the card "blocked" with the profile's message, at every start and Continue.
+- [ ] A run starts with `OPENCODE_CONFIG_DIR` set to its own folder (0700, the config 0600, removed when the run ends), `OPENCODE_DISABLE_PROJECT_CONFIG=1`, `OPENCODE_DISABLE_CLAUDE_CODE=1`, `BASH_ENV` and `ENV` empty; a test with a worktree holding `opencode.json` and `.opencode/plugins/x.ts` shows the command line and environment (the hand check shows they don't load).
 - [ ] "How this run works" for OpenCode lists the allowed commands and says a refused call shows as a failed tool call.
 - [ ] Find installed CLIs offers OpenCode on its profile when `opencode --version` is 2.x; a 1.x is offered as today's Other, with "update to OpenCode 2 for the profile".
 - [ ] `list_clis` returns `caps` for every CLI (Claude Code, Codex and Gemini from today's constants); the Chief's mode tiers (GA-352) come from the profile.
@@ -642,7 +645,7 @@ What it builds: `src/lib/clis.ts`'s per-kind tables (`PERMISSIONS`, `FOLDERS_NOT
 **Card 4. The agent's MCP servers and the browser on OpenCode** · backend · To do · builds on card 2
 
 - [ ] The run's servers (agent form → Tools) go in the run's config at the profile's `mcp.at`, stdio with its environment and HTTP with its headers, secrets from the keychain only in that 0600 file.
-- [ ] None of your own or the repository's OpenCode servers runs in the run (by the way card 2's check found; else each `<server>_*` denied), and the run log says which were kept out.
+- [ ] None of your own or the repository's OpenCode servers runs in the run (the run's own config folder and `OPENCODE_DISABLE_PROJECT_CONFIG`, as card 2 checked), shown by a hand check with a server in `~/.config/opencode` and one in the worktree's `opencode.json`.
 - [ ] A tool switched off is denied by `<server>_<tool>`; the others are allowed.
 - [ ] The browser (Chrome DevTools MCP) works in an OpenCode run, checked by hand; `mcp_not_on` reads `caps`.
 - [ ] `docs/agent-tools.md` updated.
@@ -692,6 +695,7 @@ What it builds: `src/lib/clis.ts`'s per-kind tables (`PERMISSIONS`, `FOLDERS_NOT
 6. **Which CLIs after OpenCode?** Recommendation: Qwen Code, Kilo and Copilot CLI on profiles (card 7); then ACP for Kiro, Kimi Code, Auggie or Mistral Vibe. Aider and Crush stay Other: they print no JSON. Amp runs tools without asking by default and has no local sandbox: only with its permission rules checked.
 7. **OpenCode and Claude:** OpenCode removed Claude Pro/Max sign-in in March 2026, so an OpenCode agent reaches Claude only with an API key (paid per token); ChatGPT and Copilot plans still sign in. Fine for the first CLI? Recommendation: yes; Settings' sign-in line says so.
 8. **Subscription limits beyond Claude Code and Codex:** only Copilot CLI reports its plan's quota. Recommendation: leave limits out of the profiles for now ("Hersir can't read its limits yet").
+9. **Your own OpenCode settings in agents' runs:** a run's own config folder keeps your plugins, MCP servers and rules out, but also your custom providers and model options in `~/.config/opencode` (sign-ins stay). Recommendation: start that way (safe, like Claude Code runs without your hooks); if you use a custom provider, a later card copies only your `providers` into the run's config.
 
 ## 8. Sources
 
@@ -709,6 +713,10 @@ Every source was read on **2026-11-25**. Versions and dates of npm packages come
 - [S9] https://opencode.ai/docs/mcp-servers/
 - [S10] https://opencode.ai/docs/config/
 - [S11] https://opencode.ai/v1/docs/cli/ (V1's variables) and https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/core/src/flag.ts
+- [S11a] https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/cli/src/server-process.ts, https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/util/src/global.ts, https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/core/src/config.ts and https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/core/src/config/discovery.ts
+- [S11b] https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/cli/src/services/standalone.ts and https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/cli/src/services/server-connection.ts
+- [S11c] https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/schema/src/token-usage.ts and https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/schema/src/session-message.ts
+- [S11d] https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/core/src/shell/scan.ts, `shell/parse.ts`, `shell/permissions.ts`, `permission/policy.ts` and `permission.ts` (same folder)
 - [S12] https://opencode.ai/docs/acp/
 - [S13] https://opencode.ai/docs/providers/
 - [S14] https://opencode.ai/docs/permissions/
