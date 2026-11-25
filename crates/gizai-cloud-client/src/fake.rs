@@ -29,7 +29,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use crate::api::{Account, Device, KeyRecord, Snapshot};
+use crate::api::{Account, Device, KeyRecord, SignedEntitlement, Snapshot};
 use crate::chunks::MAX_OBJECT;
 use crate::util::{b64, hex, now_ms, random, unb64, unpct};
 
@@ -288,6 +288,12 @@ impl FakeCloud {
     /// The entitlement key's public half in base64, as `php artisan hersir:entitlement-key` shows it.
     pub fn entitlement_key_b64(&self) -> String {
         b64(&self.entitlement_key())
+    }
+
+    /// `payload` signed with the fake's entitlement key, as `GET /me/entitlements` gives one: to test a payload the fake
+    /// wouldn't make (another version, another account).
+    pub fn sign_entitlement(&self, payload: &str) -> SignedEntitlement {
+        SignedEntitlement { payload: payload.to_string(), sig: b64(&self.shared.signing.sign(payload.as_bytes()).to_bytes()) }
     }
 
     /// The first account.
