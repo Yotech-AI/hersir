@@ -1,6 +1,6 @@
 # Backups: format 1
 
-Hersir backs up your data as snapshots in a backups folder (GA-216). This page describes that folder as format 1: its layout, a snapshot's name, the manifest field by field, and how a snapshot is made and removed. Hersir Cloud will write its backups in the same format (see [For Hersir Cloud](#for-hersir-cloud)), so one restore reads both. The restore is GA-218's (see [Restore](#restore)). The code is `gizai_core::backups` and `gizai_core::restore`, and the app's side is `src-tauri/src/backups.rs` and `src-tauri/src/restore.rs`.
+Hersir backs up your data as snapshots in a backups folder (GA-216). This page describes that folder as format 1: its layout, a snapshot's name, the manifest field by field, and how a snapshot is made and removed. Hersir Cloud's backups keep format 1's manifest, and a cloud restore writes a format-1 folder (see [For Hersir Cloud](#for-hersir-cloud)), so one restore reads both. The restore is GA-218's (see [Restore](#restore)). The code is `gizai_core::backups` and `gizai_core::restore`, and the app's side is `src-tauri/src/backups.rs` and `src-tauri/src/restore.rs`.
 
 A snapshot holds only the database and the stored files it names (attachments and screenshots). Nothing from the OS keychain, a worktree, the logs (`runs/`, `chat/`), the Chief's code copies or `update/` goes into it. Snapshots are not encrypted: whoever can open the folder can read them, and a synced folder gets the data as it is.
 
@@ -143,7 +143,7 @@ The database is decompressed into `<data folder>/restore/gizai.db.part` for the 
 
 ### 2. Today's data is saved
 
-A snapshot of today's data with reason `before-restore`, made as any snapshot is: in the backups folder set in Settings, or, when none is set (or it can't be written now), in the folder restored from. It waits at most 5 minutes for a snapshot that runs already. When neither can be written, the restore stops: `Hersir can't save today's data first: <why>. Choose a backups folder in Settings → General → Backups.`
+A snapshot of today's data with reason `before-restore`, made as any snapshot is: in the backups folder set in Settings, or, when none is set (or it can't be written now), in the folder restored from. A restore from Hersir Cloud uses the data folder's own `backups/` in place of the folder restored from, because its download (`restore/cloud/`) goes with the restore. It waits at most 5 minutes for a snapshot that runs already. When neither can be written, the restore stops: `Hersir can't save today's data first: <why>. Choose a backups folder in Settings → General → Backups.` With Cloud Backup on, today's data also goes to Hersir Cloud as a `before-restore` backup; when that fails, the restore goes on.
 
 ### 3. Staging
 
@@ -184,6 +184,7 @@ When the restored database's `is_self` device isn't this computer's, every row g
 | desktop notifications | every `notify_*` key: `notify_hold`, `notify_waiting`, `notify_lead_asks`, `notify_lead_answered` |
 | backups | `backup_folder`, `backup_every`, `backup_on_quit`, `backup_keep`, `backup_last_error` (the last error belongs to this computer's folder) |
 | restores | `last_restore`, `restore_result` |
+| Hersir Cloud | `cloud_account` (the account and its server), `cloud_backup` (Cloud Backup's On, Every and On quit), `cloud_last_backup`, `cloud_last_error` |
 
 Sync will send the shared settings only. A new setting must go on one side: one that is only true on one computer (a path, a program, a port) goes in `scope`'s list.
 
@@ -197,7 +198,124 @@ Sync will send the shared settings only. A new setting must go on one side: one 
 
 ## For Hersir Cloud
 
-- A cloud snapshot is the daily snapshot of the hosted copy, plus the files. It is written in this format, so the same restore reads it.
+Cloud Backup (GA-358, `crates/gizai-cloud-client`) keeps format 1's manifest and restore, and changes only how the bytes travel and sit in the cloud. The computer cuts the database and its blobs into chunks, compresses and encrypts each one, names each by a keyed hash, and uploads only the chunks Hersir Cloud doesn't have, straight to Cloudflare R2 with presigned URLs. The server never sees a key or a byte of content: only object ids, sizes, times and the snapshot list. A cloud restore downloads a snapshot into a format-1 folder, and from there it is [the restore](#restore) above. The server's side is `PROTOCOL.md` in `Yotech-AI/hersir-cloud`; this section is what the computers (and later the PWA) write and read.
+
+All sizes are in bytes, `‖` joins byte strings, and base64 is the standard alphabet with padding.
+
+### The keys
+
+| Key | What it is |
+|---|---|
+| Account key | 32 random bytes, made by the account's first computer. Each signed-in computer keeps it in its keychain; the server only ever has it sealed by the recovery code. It has an epoch, 0 to 255: the first account key is epoch 1, and the epoch is the byte after `HC1` in every object. |
+| Data key | HKDF-SHA256 of the account key, no salt, info `hersir-cloud/data-key/1`, 32 bytes: objects are encrypted with it. |
+| Id key | HKDF-SHA256 of the account key, no salt, info `hersir-cloud/id-key/1`, 32 bytes: objects are named with it. |
+| Key id | HKDF-SHA256 of the account key, no salt, info `hersir-cloud/key-id/1`, 16 bytes, as 32 lowercase hex characters: the `key_id` the server keeps, to tell a recovery code that opens the account key from one that doesn't. |
+| Code key | HKDF-SHA256 of the recovery code's 16 bytes, no salt, info `hersir-cloud/recovery-code/1`, 32 bytes: it seals the account key. |
+| This computer's keys | An Ed25519 signing key (a 32-byte seed) and an X25519 key (a 32-byte secret), made by each computer and kept in its keychain. Their public halves go to `POST /devices` as `sign_pub` and `box_pub`. |
+
+"No salt" is HKDF's empty salt (RFC 5869: 32 zero bytes). The info strings are ASCII, without a trailing zero.
+
+### The recovery code
+
+- **What it is**: 128 random bits. It is never stored on a computer: it is shown once, for paper or a password manager.
+- **Its characters**: Crockford's base32, `0123456789ABCDEFGHJKMNPQRSTVWXYZ` (no I, L, O or U). The 16 bytes are read as one string of bits, the first byte's highest bit first, 5 bits per character: 25 characters, then a 26th holding the last 3 bits, shifted up (its 2 lowest bits are 0). A 27th character, the check character, follows.
+- **The check character**: Luhn mod 32 over the 26 characters' values (their places in the alphabet). From the right, every second value, starting with the last, is doubled, and a doubled value of 32 or more counts as its two base-32 digits added (`v / 32 + v % 32`). The values are added up, and the check character's value is `(32 − sum mod 32) mod 32`. Any one wrong character changes it, and most swaps of two neighbours do.
+- **How it is shown**: `HC-`, then the 27 characters in groups of four, the last group three, joined by dashes: `HC-0VKQ-MC92-T820-TGCY-YGZ3-FGPE-4WV`. The last group holds the check character; setup asks to type it back.
+- **How it is read back**: any case; spaces and dashes (also Unicode's hyphens and dashes) are ignored; `HC` in front may be left out. O is read as 0, and I and L as 1. Then it must be 27 characters of the alphabet, its check character must match, and the 26th character's 2 lowest bits must be 0; otherwise the code was mistyped, and nothing is tried with it.
+- **A new recovery code** seals the same account key again (below) and replaces `sealed_by_code` on the server (`PUT /keys` with `if_epoch` the key's epoch). From then on the old code opens nothing. Nothing is encrypted again.
+
+### `sealed_by_code`
+
+The account key sealed by the recovery code, which `PUT /keys` stores (as base64) and `GET /keys` gives back. 77 bytes:
+
+```
+"HCR1" (4) ‖ epoch (1) ‖ nonce (24) ‖ XChaCha20-Poly1305(code key, nonce, account key (32)) ‖ tag (16)
+associated data: "HCR1" ‖ epoch ‖ the key id's 16 bytes
+```
+
+The nonce is random. To open it, a computer takes `key_id` and `sealed_by_code` from `GET /keys`, the code key from the code typed, and the key id's 16 bytes from `key_id`: a wrong code fails the tag, and the opened account key's own key id must be `key_id`. Either failure is "That recovery code doesn't open this account's backups."
+
+### Chunks
+
+- **The database**: a page-for-page copy, made with SQLite's backup API (not `VACUUM INTO`, which renumbers pages), so a page that didn't change stays in the same chunk. It is cut into chunks of 256 KiB (262,144 bytes), the last one shorter.
+- **A blob** (an attachment or screenshot that format 1's `files` names): up to 4 MiB (4,194,304 bytes) it is one chunk. A bigger one is cut by content with FastCDC 2020 (the `fastcdc` crate's `v2020`, normalization level 1, its own gear table without a seed): at least 512 KiB, about 1 MiB, at most 2 MiB. A blob up to 4 MiB whose object would be over the limit below (zstd can't shrink it, and it is within about a KiB of 4 MiB) is cut by content too. An empty blob has no chunks.
+- **A chunk's id**: HMAC-SHA256(id key, the chunk's bytes), as 64 lowercase hex characters. Never the plain SHA-256: that would tell the server which known files someone has. The same chunk has the same id in every snapshot and on every computer of the account, which is all deduplication needs.
+
+### An object's bytes
+
+Each chunk is one object in R2, at most 4,194,368 bytes (4 MiB and 64):
+
+```
+"HC1" (3) ‖ epoch (1) ‖ nonce (24) ‖ XChaCha20-Poly1305(data key, nonce, zstd(chunk)) ‖ tag (16)
+associated data: the chunk's id, its 64 lowercase hex characters as ASCII
+```
+
+- zstd at level 3, one frame per chunk, which records the chunk's size.
+- The nonce is random, so the same chunk sealed twice gives two different objects. Only its id is the same, and the server keeps one.
+- Opening one: `HC1`, the epoch of a key this computer has, the tag with the id it was asked for as associated data, zstd (at most 4 MiB), and then the chunk's HMAC must be that id. Anything else is refused: the object was changed, made with another key, or isn't the one asked for.
+
+### The manifest
+
+A cloud snapshot's manifest is format 1's [manifest](#the-manifest), with the ordered chunk ids added. It is compact JSON in UTF-8, sealed and uploaded as an object like the others: its id is the HMAC of its JSON bytes, and that is the snapshot's `manifest_id`.
+
+```json
+{
+  "format": "gizai-backup",
+  "format_version": 1,
+  "name": "gizai-daily-20261125-110000-000-9c1a07",
+  "reason": "daily",
+  "made_at": 1795633200000,
+  "app_version": "0.21.0",
+  "schema_version": 23,
+  "device": { "id": "<devices.id>", "name": "<devices.name>" },
+  "db": { "path": "snapshots/<name>.db.zst", "compression": "zstd", "bytes": 0, "sha256": "<sha256 of the database>", "db_bytes": 2473984 },
+  "last_change": { "seq": 0, "id": "<changes.id>", "hlc": "<changes.hlc>" },
+  "files": [ { "sha256": "<64 lowercase hex>", "bytes": 10000 } ],
+  "files_missing": [],
+  "chunks": {
+    "db": [ "<id>", "…" ],
+    "files": { "<sha256>": [ "<id>", "…" ] }
+  }
+}
+```
+
+- Format 1's fields mean what they mean in a backups folder, with one difference: `db.bytes` is 0, as the database isn't one compressed file in the cloud.
+- `chunks.db`: the database's chunks in order; put together, they are the database, `db.db_bytes` long, with `db.sha256`.
+- `chunks.files`: each stored blob's chunks in order, by its `sha256`; put together, they are the blob. A blob in `files_missing` has none, and isn't restored, so format 1's restore refuses that snapshot, as it does in a backups folder.
+
+### A backup
+
+1. **Chunking**: the database copy and each blob are cut into chunks and named. A blob that isn't in the data folder, or no longer matches its hash, goes into `files_missing`, as in a backups folder.
+2. **Uploading**: the manifest is sealed. `POST /objects/missing` with every chunk id once and the manifest's says which objects the account doesn't have; only those are sealed and uploaded, in batches of at most 256 objects and 32 MiB (`POST /objects/upload`, then a `PUT` of each to its presigned URL with its `headers`). An object stored already gets no URL and is passed over. A second backup of a database that didn't change uploads only its manifest.
+3. **Registering**: `POST /snapshots` with format 1's `name` (letters, digits and dashes), `made_at`, `device_id`, `reason` (`daily`, `manual`, `quit` or `before-restore`), `schema_version` and `app_version`, the `manifest_id`, every chunk id once and the manifest's as `object_ids`, and `bytes`: the database's size and the stored blobs' together. On 422 `missing_objects` those objects are uploaded again and the snapshot registered again, up to three times.
+
+A 429, a server error (5xx) or a network failure is waited out (the server's `Retry-After`, at most 2 minutes) and tried again, up to five times; any other error stops the backup. Each step reports its progress as (step, done, total): `chunking` counts the bytes read, `uploading` the chunks' bytes, `registering` 0 then 1 of 1.
+
+### A restore
+
+`restore` downloads a snapshot (its `name` and `manifest_id`, from `GET /snapshots`) into a folder, for example `<data folder>/restore/cloud/`:
+
+1. **Downloading**: the manifest, opened and checked (its `name` must be the snapshot's, and its `format_version` at most this Hersir's), then every object it names, once each, into `.cloud-objects/` inside the folder. A restore into the same folder after an interruption doesn't download those again. The progress counts objects.
+2. **Checking**: each object is opened and checked (above), and the chunks are put back together: the database into `snapshots/<name>.db.zst` (zstd level 3, one frame that records its size, as format 1 writes it) and each stored blob into `files/<sha256[..2]>/<sha256>`, each through a `.part` file. The database's and each blob's SHA-256 and size must be the manifest's. The progress counts their bytes.
+
+The folder is then a format-1 backups folder: `gizai-backups.json`, `snapshots/<name>.json` (format 1's manifest, without `chunks`, and with `db.bytes` the size of the `.db.zst` written) beside its database, and `files/`. `.cloud-objects/` goes. GA-218's restore takes it from there as it is: `gizai_core::restore::check` with the folder and the name, then today's data saved, staging, and the swap at the next start.
+
+### In the app
+
+`src-tauri/src/cloud.rs` (GA-359) uses the crate:
+
+- **Signing in**: `oauth::discover("<server>/api")`, `begin` with Hersir's desktop client id (no registration), `finish`, then `POST /devices` with this computer's device id, its name, platform, version, `kind: "desktop"` and new public keys. The token is renewed in its last 30 days. A 401 `removed` or `signed_out` signs the computer out and keeps the server's message as Cloud Backup's last error; `removed` and Sign out also forget the account key and the computer's keys.
+- **The keychain** (service `hersir`): `cloud/<account>/token`, `cloud/<account>/key` and `cloud/<account>/device`. The recovery code is never stored: the first computer keeps it in memory until its last group is typed back, then only the account key sealed by it goes to Hersir Cloud (`PUT /keys`).
+- **When it backs up**: daily, when the last cloud backup is a day old and the newest `changes` row is another one; on Quit Hersir completely with On quit on (after the local snapshot, within the same 5 minutes); Back up now; and before a restore. A lapsed plan, no plan or a full Hersir Cloud makes none. The database is copied page for page into the data folder's `backups/` (`.cloud-<name>.db`), which goes once the backup ends.
+- **Restore from Hersir Cloud** downloads into `<data folder>/restore/cloud/`, then it is GA-218's restore of that folder. Cancelling the restore stops the download. A restore applied at the start also ends the first start's onboarding: the restored data has its own team.
+- **Debug builds** read `HERSIR_CLOUD_URL`, `HERSIR_CLOUD_CLIENT_ID` and `HERSIR_CLOUD_ENTITLEMENT_KEY` (point them at the fake below); release builds use `https://cloud.hersir.dev`, the desktop client id and the entitlement key built in.
+
+### The fake Hersir Cloud
+
+`gizai_cloud_client::fake::FakeCloud` answers on 127.0.0.1 as the server does, in memory: the device, entitlement, key, object and snapshot calls with their errors, presigned URLs that point to itself, its own entitlement key pair, and the OAuth calls Hersir's sign-in makes (`/oauth/authorize` sends the browser straight back with a code). Tests use it and can ask any call to fail once; `cargo run -p gizai-cloud-client --example fake-cloud [port]` runs one on its own and prints its address and entitlement key (`HERSIR_FAKE_CLOUD_SEED`, the base64 of a 32-byte seed, keeps the key the same between runs).
+
+### For a sync, later
+
 - `last_change` is where a sync continues: the device that restores a snapshot has every change up to it, and asks for the ones after it.
 - `files` is what a sync uploads, by hash: a file the cloud has already isn't sent again, as a backups folder stores each file once.
 - A device that restores keeps its own id (see [the device rule](#the-device-rule)), and `last_restore` says which snapshot its data starts from: a sync asks for the changes after that snapshot's `last_change`.

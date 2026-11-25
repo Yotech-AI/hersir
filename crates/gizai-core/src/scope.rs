@@ -49,6 +49,12 @@ pub const THIS_COMPUTER: &[&str] = &[
     // its restores (GA-218)
     LAST_RESTORE,
     RESTORE_RESULT,
+    // its Hersir Cloud account and Cloud Backup (GA-359): the account it signed in to (its token and keys are in the
+    // keychain), Cloud Backup's switches, its last cloud backup and the last one that failed
+    "cloud_account",
+    "cloud_backup",
+    "cloud_last_backup",
+    "cloud_last_error",
 ];
 
 /// Every app-wide setting whose key starts with one of these is this computer's too: the desktop notifications' switches.

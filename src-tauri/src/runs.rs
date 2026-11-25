@@ -64,6 +64,9 @@ pub enum Note {
     /// A restore started, took a step, was ready, failed or was cancelled, or its result was dismissed (see `restore`):
     /// the `restore-changed` event, with the status.
     RestoreChanged(gizai_core::restore::RestoreStatus),
+    /// Hersir Cloud's account, plan or key changed, a cloud backup or a restore's download started, took a step or
+    /// ended, or Cloud Backup's settings changed (see `cloud`): the `cloud-changed` event, with the status.
+    CloudChanged(crate::cloud::CloudStatus),
 }
 
 #[derive(Debug, Clone, Serialize)]
