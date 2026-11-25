@@ -168,3 +168,104 @@ async fn a_run_that_commits_a_nested_repository_with_a_clean_filter_never_gets_i
     git(&wt, &["status", "--porcelain"]);
     assert!(probe.exists(), "plain git status didn't run the nested repository's filter, so this probe proves nothing");
 }
+
+/// GA-357's sentence, word for word.
+const NOT_UTF8: &str = "it has a submodule whose folder name isn't valid UTF-8, whose own settings git could run";
+
+/// GA-357 (GA-353 #1, CWE-78): a card done by hand (Open in editor) whose worktree gets a submodule whose folder name
+/// isn't valid UTF-8 (`sub` and the byte 0xFF). Commit… in the card bar and Settings → Data's Remove and Remove anyway
+/// say the sentence where you read it, and nothing is committed, stashed or removed. On Linux its folder is there, a
+/// repository whose clean filter touches a probe that never runs; on macOS (APFS can't hold such a name) the gitlink is
+/// in the index only.
+#[tokio::test]
+async fn a_submodule_whose_folder_name_isnt_utf8_is_refused_with_the_sentence_by_commit_and_settings_data() {
+    use std::os::unix::ffi::OsStrExt;
+    let tmp = tempfile::tempdir().unwrap();
+    let tmp = tmp.path().canonicalize().unwrap();
+    let st = gizai_lib::test_state(&tmp);
+    gizai_core::settings::set(&st.db, "claude_bin", &concat!(env!("CARGO_MANIFEST_DIR"), "/../crates/gizai-agents/tests/fake-claude.sh").to_string()).unwrap();
+    let (_bare, local) = github(&tmp);
+    let task = gizai_lib::test_task(&st, local.to_str().unwrap(), "backend");
+    let p = gizai_core::projects::list(&st.db).unwrap().into_iter().find(|p| p.key == "KADE").unwrap();
+    gizai_core::projects::update(&st.db, &st.you_id, &p.id, gizai_core::model::ProjectInput { name: p.name.clone(), key: p.key.clone(),
+        repo_path: p.repo_path.clone(), repo_url: Some(LINK.into()), default_branch: Some("main".into()), ..Default::default() }).unwrap();
+    gizai_core::tasks::update(&st.db, &st.you_id, &task, gizai_core::model::TaskPatch { assignee_id: Some(st.you_id.clone()),
+        ..Default::default() }).unwrap();
+    let hand = gizai_lib::hand::start(&st, &task).await.unwrap();
+    let wt = st.data_dir.join("worktrees/KADE/KADE-1");
+    assert!(wt.join(".git").exists());
+    let branch = hand.branch;
+    let probe = tmp.join("probe-ran");
+    let name = std::ffi::OsStr::from_bytes(b"sub\xff");
+
+    // the run's commit of the submodule
+    #[cfg(target_os = "linux")]
+    {
+        let nested = wt.join(name);
+        std::fs::create_dir(&nested).unwrap();
+        git(&nested, &["init", "-q", "-b", "main"]);
+        std::fs::write(nested.join("n.txt"), "one\n").unwrap();
+        std::fs::write(nested.join(".gitattributes"), "* filter=x\n").unwrap();
+        git(&nested, &["add", "n.txt", ".gitattributes"]);
+        git(&nested, &["commit", "-q", "-m", "nested"]);
+        let o = Command::new("git").args(["-c", "advice.addEmbeddedRepo=false", "add", "--"]).arg(name).current_dir(&wt).output().unwrap();
+        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+        let config = std::fs::read_to_string(nested.join(".git/config")).unwrap();
+        std::fs::write(nested.join(".git/config"),
+                       format!("{config}[filter \"x\"]\n\tclean = touch {} && cat\n\tsmudge = cat\n", probe.display())).unwrap();
+        std::fs::write(nested.join("n.txt"), "two\n").unwrap();
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        use std::io::Write;
+        let id = git(&local, &["rev-parse", "main"]);
+        let mut child = Command::new("git").args(["update-index", "--add", "-z", "--index-info"]).current_dir(&wt)
+            .stdin(std::process::Stdio::piped()).spawn().unwrap();
+        let mut entry = format!("160000 {id}\t").into_bytes();
+        entry.extend_from_slice(name.as_bytes());
+        entry.push(0);
+        child.stdin.take().unwrap().write_all(&entry).unwrap();
+        assert!(child.wait().unwrap().success(), "git update-index failed");
+    }
+    git(&wt, &["commit", "-q", "-m", "a submodule whose folder name isn't UTF-8"]);
+    let head = git(&wt, &["rev-parse", "HEAD"]);
+
+    // Commit… in the card bar, with the card's own change
+    std::fs::write(wt.join("a.txt"), "the card's change\n").unwrap();
+    assert_eq!(gizai_lib::hand::commit(&st, &task, "Mine").await.unwrap_err(), format!("Hersir doesn't commit there: {NOT_UTF8}"));
+    assert_eq!(git(&wt, &["rev-parse", "HEAD"]), head, "nothing was committed");
+    assert!(!probe.exists(), "Commit… ran the submodule's filter");
+
+    // Settings → Data: Remove anyway's stash refuses, and the worktree and its change stay
+    finish(&st, &task);
+    let listed = gizai_lib::worktrees::list(&st).unwrap();
+    let w = listed.iter().find(|w| w.task_id == task).expect("Settings → Data lists the worktree");
+    assert!(w.uncommitted > 0, "{w:?}");
+    let r = gizai_lib::worktrees::remove_anyway(&st, &task).unwrap();
+    assert!(!r.removed, "{r:?}");
+    assert!(r.note.starts_with("kept its worktree: git couldn't put its uncommitted "), "{}", r.note);
+    assert!(r.note.ends_with(&format!(" in the stash, so nothing was removed (Hersir doesn't stash there: {NOT_UTF8})")), "{}", r.note);
+    assert!(git(&local, &["stash", "list"]).is_empty(), "nothing went into git's stash");
+    assert_eq!(std::fs::read_to_string(wt.join("a.txt")).unwrap(), "the card's change\n");
+
+    // with nothing uncommitted: Remove and Remove anyway keep it at the removal, with the sentence as is
+    git(&wt, &["checkout", "-q", "--", "a.txt"]);
+    let kept = format!("kept its worktree {} ({NOT_UTF8})", wt.display());
+    let r = gizai_lib::worktrees::remove_anyway(&st, &task).unwrap();
+    assert_eq!((r.removed, r.note.as_str()), (false, kept.as_str()));
+    let r = gizai_lib::worktrees::remove(&st, std::slice::from_ref(&task)).unwrap();
+    assert_eq!((r[0].removed, r[0].note.as_str()), (false, kept.as_str()));
+    // after a merge: the same removal, with the branch to go
+    let removal = gizai_agents::worktree::remove_card_worktree_with(&local, &st.data_dir.join("worktrees"), &st.temp_base, &branch, true);
+    assert_eq!(removal.phrases(&branch), [kept.clone()]);
+    assert!(wt.is_dir() && has_branch(&local, &branch));
+    assert!(!probe.exists(), "Settings → Data ran the submodule's filter");
+
+    // on Linux the probe is real: plain git status in that worktree looks inside the submodule and runs its filter
+    #[cfg(target_os = "linux")]
+    {
+        git(&wt, &["status", "--porcelain"]);
+        assert!(probe.exists(), "plain git status didn't run the submodule's filter, so this probe proves nothing");
+    }
+    gizai_lib::runs::stop_all(&st, std::time::Duration::from_secs(10)).await;
+}

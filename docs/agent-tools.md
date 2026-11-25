@@ -196,6 +196,8 @@ A run can commit a folder with a `.git` of its own, a nested repository, which g
 
 Hersir finds a nested repository in the worktree's index (`git ls-files --stage`) and by a look for a `.git` in the folder, never with git inside it.
 
+A folder name on Linux can hold bytes that aren't valid UTF-8, and Hersir can't name such a folder in git add's pathspec or look for its `.git` (GA-357). So a worktree whose index has a submodule with such a name, whether its folder is there or not, is refused by Commit…, Remove anyway's stash, the removal and a new card's take-over, each with "it has a submodule whose folder name isn't valid UTF-8, whose own settings git could run". A file with such a name is no problem.
+
 ### Gemini and a `.gemini` folder
 
 Checked with Gemini CLI 0.65.0:
