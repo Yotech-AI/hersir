@@ -28,6 +28,8 @@ pub const BATCH: usize = 1000;
 const API_LIMIT: Duration = Duration::from_secs(30);
 /// …and one object's upload or download to R2 (at most 4 MiB).
 const OBJECT_LIMIT: Duration = Duration::from_secs(5 * 60);
+/// `POST /snapshots`, which reads the size of each object uploaded for it on R2 first.
+const REGISTER_LIMIT: Duration = Duration::from_secs(10 * 60);
 /// The most of an API answer Hersir reads (a list of 100,000 snapshots' worth is far below it).
 const ANSWER_LIMIT: u64 = 64 << 20;
 
@@ -399,6 +401,9 @@ impl Api {
         let accept = "application/json";
         let sent = match (method, body) {
             ("GET", _) => self.agent.get(&url).header("Authorization", bearer.as_str()).header("Accept", accept).call(),
+            // registering a snapshot reads each new object's size on R2 first: it may take a while
+            ("POST", Some(b)) if path == "/snapshots" => self.agent.post(&url).header("Authorization", bearer.as_str()).header("Accept", accept)
+                .config().timeout_global(Some(REGISTER_LIMIT)).build().send_json(b),
             ("POST", Some(b)) => self.agent.post(&url).header("Authorization", bearer.as_str()).header("Accept", accept).send_json(b),
             ("POST", None) => self.agent.post(&url).header("Authorization", bearer.as_str()).header("Accept", accept).send_empty(),
             ("PUT", Some(b)) => self.agent.put(&url).header("Authorization", bearer.as_str()).header("Accept", accept).send_json(b),
