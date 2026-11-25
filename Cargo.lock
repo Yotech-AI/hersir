@@ -1782,6 +1782,7 @@ name = "gizai"
 version = "0.20.1"
 dependencies = [
  "gizai-agents",
+ "gizai-cloud-client",
  "gizai-core",
  "gizai-docs",
  "gizai-mcp",

@@ -95,17 +95,60 @@ fn entry(st: &AppState, chosen: &Path, name: &str) -> Option<BackupEntry> {
     backups_core::list(chosen, st.db.device_id()).ok()?.into_iter().find(|e| e.name == name)
 }
 
+/// A restore from Hersir Cloud's download (`cloud::start_restore`, GA-359): on the restore's own thread, before the checks,
+/// it brings the snapshot into a format-1 folder (`<data>/restore/cloud/`) and gives that folder; an error stops the
+/// restore. A cancelled restore makes it stop (`cancelled`).
+pub type Fetch = Box<dyn FnOnce(&AppState) -> Result<PathBuf, String> + Send>;
+
+/// Where a restore's snapshot is: in a chosen folder, or in Hersir Cloud.
+enum Origin {
+    Folder(PathBuf),
+    Cloud(Fetch),
+}
+
+/// The step while a backup from Hersir Cloud is downloaded (its counts go out in `cloud-changed`).
+pub const DOWNLOADING_STEP: &str = "Downloading the backup from Hersir Cloud";
+
 /// Starts restoring snapshot `name` from chosen folder `folder` (read as `backups::backups_dir` says; empty: the folder
 /// in Settings) on a thread of its own, and returns the status at once, with it checking. Refused while a backup or
 /// another restore runs. A restore that is ready already goes: this one takes its place. Each step, and how it ends
 /// (ready, or failed with why), goes out in `restore-changed`.
 pub fn start(st: &AppState, folder: &str, name: &str) -> Result<RestoreStatus, String> {
-    if st.backups.running().is_some() {
-        return Err("A backup is running: restore once it is done".into());
-    }
     let chosen = match folder.trim() {
         "" => backups_core::settings(&st.db).folder.map(PathBuf::from).unwrap_or_default(),
         f => PathBuf::from(f),
+    };
+    begin(st, Origin::Folder(chosen), name)
+}
+
+/// Starts restoring snapshot `name` from Hersir Cloud (GA-359): `fetch` downloads it into `<data>/restore/cloud/` first,
+/// on the restore's thread (state checking, step DOWNLOADING_STEP), then it is `start`'s restore of that folder, as it is.
+/// Today's data is saved first in the backups folder in Settings, or else in the data folder's own `backups/` (the
+/// download goes with the restore), and to Hersir Cloud too with Cloud Backup on.
+pub fn start_cloud(st: &AppState, name: &str, fetch: Fetch) -> Result<RestoreStatus, String> {
+    begin(st, Origin::Cloud(fetch), name)
+}
+
+/// Whether a restore runs now: its download, checks, saving today's data or staging.
+pub fn running(st: &AppState) -> bool {
+    lock(&st.restores.now).running()
+}
+
+/// Whether the restore that runs was cancelled: Hersir Cloud's download stops at its next object.
+pub fn cancelled(st: &AppState) -> bool {
+    st.restores.cancel.load(Ordering::SeqCst)
+}
+
+fn begin(st: &AppState, from: Origin, name: &str) -> Result<RestoreStatus, String> {
+    if st.backups.running().is_some() || st.cloud.running().is_some() {
+        return Err("A backup is running: restore once it is done".into());
+    }
+    let (folder, first) = match &from {
+        Origin::Folder(chosen) => (
+            (!chosen.as_os_str().is_empty()).then(|| backups_core::backups_dir(chosen).to_string_lossy().into_owned()),
+            Step::Snapshot.text(),
+        ),
+        Origin::Cloud(_) => (Some(cloud_dir(st).to_string_lossy().into_owned()), DOWNLOADING_STEP.to_string()),
     };
     {
         let mut now = lock(&st.restores.now);
@@ -113,20 +156,15 @@ pub fn start(st: &AppState, folder: &str, name: &str) -> Result<RestoreStatus, S
             return Err("A restore is running already".into());
         }
         st.restores.cancel.store(false, Ordering::SeqCst);
-        *now = Now {
-            state: "checking",
-            folder: (!chosen.as_os_str().is_empty()).then(|| backups_core::backups_dir(&chosen).to_string_lossy().into_owned()),
-            step: Some(Step::Snapshot.text()),
-            ..Now::default()
-        };
+        *now = Now { state: "checking", folder, step: Some(first), ..Now::default() };
     }
-    // the restore staged before, and what one that stopped left
+    // the restore staged before, and what one that stopped left (a download from Hersir Cloud too)
     let _ = core::cancel(&st.data_dir);
     let out = status(st);
     (st.notify)(Note::RestoreChanged(out.clone()));
     let st2 = st.clone();
     let name = name.to_string();
-    let spawned = std::thread::Builder::new().name("gizai-restore".into()).spawn(move || run(st2, &chosen, &name));
+    let spawned = std::thread::Builder::new().name("gizai-restore".into()).spawn(move || run(st2, from, &name));
     if let Err(e) = spawned {
         let why = format!("Couldn't start the restore: {e}");
         (st.notify)(Note::RestoreChanged(end(&st.restores, &st.data_dir, Err(why.clone()), core::result(&st.db))));
@@ -138,8 +176,15 @@ pub fn start(st: &AppState, folder: &str, name: &str) -> Result<RestoreStatus, S
 /// The restore, on its own thread: its three steps, then how it ended. The end goes out once this thread's AppState is
 /// gone, so a Gizai started again on the same data as soon as the restore is ready (a test's) finds its data folder
 /// free.
-fn run(st: AppState, chosen: &Path, name: &str) {
-    let out = restore(&st, chosen, name);
+fn run(st: AppState, from: Origin, name: &str) {
+    let out = match from {
+        Origin::Folder(chosen) => restore(&st, &chosen, name, false),
+        Origin::Cloud(fetch) => fetch(&st).and_then(|dir| {
+            stop_if_cancelled(&st)?;
+            set_state(&st, "checking", Some(Step::Snapshot.text()));
+            restore(&st, &dir, name, true)
+        }),
+    };
     let (restores, notify, data_dir, result) = (st.restores.clone(), st.notify.clone(), st.data_dir.clone(), core::result(&st.db));
     drop(st);
     notify(Note::RestoreChanged(end(&restores, &data_dir, out, result)));
@@ -169,7 +214,13 @@ fn end(restores: &Restores, data_dir: &Path, out: Result<(), String>, result: Op
     to_status(now.clone(), result)
 }
 
-fn restore(st: &AppState, chosen: &Path, name: &str) -> Result<(), String> {
+/// Where a restore from Hersir Cloud downloads its snapshot: `<data>/restore/cloud/`, which goes with the restore.
+pub fn cloud_dir(st: &AppState) -> PathBuf {
+    core::dir(&st.data_dir).join(crate::cloud::RESTORE_DIR)
+}
+
+/// The restore of snapshot `name` in chosen folder `chosen`; `cloud`: Hersir Cloud's download (`<data>/restore/cloud/`).
+fn restore(st: &AppState, chosen: &Path, name: &str, cloud: bool) -> Result<(), String> {
     if chosen.as_os_str().is_empty() {
         return Err("Choose the folder to restore from".into());
     }
@@ -185,7 +236,7 @@ fn restore(st: &AppState, chosen: &Path, name: &str) -> Result<(), String> {
     stop_if_cancelled(st)?;
     // 2. today's data, saved
     set_state(st, "saving", Some(SAVING_STEP.into()));
-    let saved = match save_today(st, chosen) {
+    let saved = match save_today(st, chosen, cloud) {
         Ok(saved) => saved,
         Err(why) => {
             core::remove_checked(&st.data_dir);
@@ -237,28 +288,39 @@ fn step(st: &AppState, s: Step, said: &mut Option<Instant>) -> gizai_core::Resul
 }
 
 /// Saves today's data before a restore: a `before-restore` snapshot in the backups folder in Settings, or, when none is
-/// set (or it can't be written now), in the folder restored from (`chosen`). It waits for a snapshot that runs already,
-/// at most SAVE_WAIT. When neither can be written, says why and what to do.
-fn save_today(st: &AppState, chosen: &Path) -> Result<Saved, String> {
-    let until = Some(Instant::now() + SAVE_WAIT);
+/// set (or it can't be written now), in the folder restored from (`chosen`). A restore from Hersir Cloud (`cloud`) uses
+/// the data folder's own `backups/` in its place, as its download goes with the restore. It waits for a snapshot that
+/// runs already, at most SAVE_WAIT. When neither can be written, says why and what to do. With Cloud Backup on, today's
+/// data goes to Hersir Cloud too (GA-359), beside the local snapshot: a failure there doesn't stop the restore.
+fn save_today(st: &AppState, chosen: &Path, cloud: bool) -> Result<Saved, String> {
+    let until = Instant::now() + SAVE_WAIT;
     let mut folders: Vec<PathBuf> = backups_core::settings(&st.db).folder.map(PathBuf::from).into_iter().collect();
-    if !folders.iter().any(|f| backups_core::backups_dir(f) == backups_core::backups_dir(chosen)) {
-        folders.push(chosen.to_path_buf());
+    let fallback = if cloud { st.data_dir.join("backups") } else { chosen.to_path_buf() };
+    if !folders.iter().any(|f| backups_core::backups_dir(f) == backups_core::backups_dir(&fallback)) {
+        folders.push(fallback);
     }
     let mut why = Vec::new();
+    let mut saved = None;
     for folder in folders {
-        match crate::backups::back_up_within(st, Some(&folder), Reason::BeforeRestore, until) {
+        match crate::backups::back_up_within(st, Some(&folder), Reason::BeforeRestore, Some(until)) {
             Ok(made) => {
-                return Ok(Saved {
+                saved = Some(Saved {
                     name: made.manifest.name,
                     made_at: made.manifest.made_at,
                     folder: made.dir.to_string_lossy().into_owned(),
                 });
+                break;
             }
             Err(e) => why.push(e),
         }
     }
-    Err(format!("Hersir can't save today's data first: {}. Choose a backups folder in Settings → General → Backups.", why.join("; ")))
+    let Some(saved) = saved else {
+        return Err(format!("Hersir can't save today's data first: {}. Choose a backups folder in Settings → General → Backups.", why.join("; ")));
+    };
+    if let Some(Err(e)) = crate::cloud::before_restore(st, until, &|| cancelled(st)) {
+        eprintln!("gizai: today's data couldn't go to Hersir Cloud before the restore (it is saved as {}): {e}", saved.name);
+    }
+    Ok(saved)
 }
 
 /// Removes the staged restore (`<data>/restore/`, apart from `restore/failed/`); the before-restore snapshot stays in its
