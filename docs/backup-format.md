@@ -222,7 +222,7 @@ All sizes are in bytes, `‖` joins byte strings, and base64 is the standard alp
 - **The check character**: Luhn mod 32 over the 26 characters' values (their places in the alphabet). From the right, every second value, starting with the last, is doubled, and a doubled value of 32 or more counts as its two base-32 digits added (`v / 32 + v % 32`). The values are added up, and the check character's value is `(32 − sum mod 32) mod 32`. Any one wrong character changes it, and most swaps of two neighbours do.
 - **How it is shown**: `HC-`, then the 27 characters in groups of four, the last group three, joined by dashes: `HC-0VKQ-MC92-T820-TGCY-YGZ3-FGPE-4WV`. The last group holds the check character; setup asks to type it back.
 - **How it is read back**: any case; spaces and dashes (also Unicode's hyphens and dashes) are ignored; `HC` in front may be left out. O is read as 0, and I and L as 1. Then it must be 27 characters of the alphabet, its check character must match, and the 26th character's 2 lowest bits must be 0; otherwise the code was mistyped, and nothing is tried with it.
-- **A new recovery code** seals the same account key again (below) and replaces `sealed_by_code` on the server (`PUT /keys` with `if_epoch` the key's epoch). From then on the old code opens nothing. Nothing is encrypted again.
+- **A new recovery code** seals the same account key again (below) and replaces `sealed_by_code` on the server (`PUT /keys` with `if_epoch` the key's epoch), once its last group is typed back. From then on the old code opens nothing. Nothing is encrypted again.
 
 ### `sealed_by_code`
 
