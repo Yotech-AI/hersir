@@ -1101,8 +1101,8 @@ pub fn branch_of(dir: &Path) -> Option<String> {
 /// Commit…, on a person's card (GA-111): commits every change in the checkout at `dir`, untracked files included
 /// (`git add --all`; what git ignores stays out), with `message`, the way `git commit` in a terminal does, but without
 /// the repository's hooks (`NO_HOOKS`, GA-263: an agent may have worked in that worktree before); the author is who your
-/// git config says. Returns the new commit. Refuses an empty message and a checkout with nothing to commit, and says in
-/// plain words why git refused.
+/// git config says. Returns the new commit. Refuses an empty message, a checkout with a nested repository (GA-367) and
+/// one with nothing to commit, and says in plain words why git refused.
 ///
 /// GA-350: submodules stay out of the commit, as they stay out of `uncommitted` (`IGNORE_SUBMODULES`): git add --all
 /// looks inside every submodule that holds a repository, with that repository's own settings, so they are left out of
@@ -1114,12 +1114,26 @@ pub fn branch_of(dir: &Path) -> Option<String> {
 /// ways, with `TWO_WAY_SUBMODULE`: its path isn't in NFC (`gitlinks`), or git reads git add's pathspec for it as
 /// another name (`add_pathspec`). Found in the index before any other git there, so it is said also when no file has
 /// changed.
+///
+/// GA-367: and refused for every checkout with a nested repository (`nested_repositories`: a submodule whose folder
+/// has a `.git`, a checked-out one included), with "Hersir doesn't commit there: " and `nested_said`'s words, as the
+/// stash refuses one: no git add runs there, as no pathspec can be trusted to leave such a submodule out. A run can
+/// write a NUL byte into a gitlink's name in the index: git ls-files (so `gitlinks`, and `add_pathspec`'s check) reads
+/// that name up to the NUL, while git add matches its pathspec against all of it. The folder git add looks inside is
+/// the one by the name up to the NUL, as git opens it, and that is the folder `nested_repositories` looks at, so no
+/// trick with the name gets past this. Said after GA-357's and GA-361's refusals, and also when no file has changed.
+/// You commit in such a checkout yourself, in a terminal.
 pub fn commit_all(dir: &Path, message: &str) -> Result<Commit, AgentError> {
     let message = message.trim();
     if message.is_empty() {
         return Err(AgentError::Git("Write a commit message first".into()));
     }
     let pathspec = add_pathspec(dir).map_err(|e| name_said("Hersir doesn't commit there", e))?;
+    let nested = nested_repositories(dir).map_err(|e| name_said("Hersir doesn't commit there", e))?;
+    if !nested.is_empty() {
+        return Err(AgentError::Git(format!("Hersir doesn't commit there: it has {}, whose own settings git could run",
+                                           nested_said(&nested))));
+    }
     if uncommitted(dir)? == 0 {
         return Err(AgentError::Git("There is nothing to commit: no file has changed".into()));
     }
@@ -1150,6 +1164,11 @@ pub fn commit_all(dir: &Path, message: &str) -> Result<Commit, AgentError> {
 /// the index file itself. So Hersir asks git: `git ls-files --stage` with the same pathspec reads it as git add does,
 /// reads the index alone, and lists what it leaves in. With a submodule among those, git add would look inside that
 /// one: the checkout is refused (`TWO_WAY_SUBMODULE`), and no git add runs.
+///
+/// GA-367: git ls-files doesn't always match as git add does: it reads a name with a NUL byte in it up to the NUL, git
+/// add all of it. So Commit… doesn't trust this pathspec with a submodule that holds a repository: it refuses such a
+/// checkout (`nested_repositories`). The pathspec leaves out the others, such as a submodule never checked out, so
+/// their gitlinks stay as they are.
 fn add_pathspec(dir: &Path) -> Result<Vec<String>, AgentError> {
     let links = gitlinks(dir)?;
     let mut pathspec = vec![".".to_string()];
@@ -1553,6 +1572,10 @@ fn name_said(before: &str, e: AgentError) -> AgentError {
 /// them: their own settings could start programs, such as a clean filter. A submodule whose folder name isn't valid
 /// UTF-8 or isn't in NFC is `gitlinks`' error (`NOT_UTF8_SUBMODULE`, GA-357; `TWO_WAY_SUBMODULE`, GA-361), so each of
 /// those places refuses the checkout for it too.
+///
+/// GA-367: Commit… (`commit_all`) refuses such a checkout as well. The folder looked at is the one git looks inside: a
+/// gitlink's name as git ls-files gives it, which is how git opens its folder also when a run wrote a NUL byte into
+/// the name in the index (git ls-files and git open it by the name up to the NUL).
 pub fn nested_repositories(dir: &Path) -> Result<Vec<String>, AgentError> {
     Ok(gitlinks(dir)?.into_iter().filter(|p| std::fs::symlink_metadata(dir.join(p).join(".git")).is_ok()).collect())
 }
