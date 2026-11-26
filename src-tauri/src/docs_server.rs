@@ -1,12 +1,20 @@
-//! The docs pages in a browser: Hersir serves each project's docs page at http://127.0.0.1:<port>/p/<project id>/, for
-//! this computer only (Open in browser on a project's Docs page). The page is src/docs built into one HTML file (`PAGE`,
-//! `vite build --mode docs-web`), the same page Hersir's window shows; it reads the project's `index.json`
-//! (`devdocs::index_of`), a file's source (`source/<path>.json`) and a commit's changed lines (`commits/<hash>.json`) from
-//! here, and `llms.txt` and `md/…` are the same docs for agents. Only projects with Docs on are served, and only to GET. A
-//! request whose Host isn't 127.0.0.1 or localhost at this port (a page elsewhere pointing a name of its own at it) gets a
-//! 403. One request per connection: it is one person's browser on this computer.
+//! The docs pages in a browser: Hersir serves each project's docs page at
+//! http://127.0.0.1:<port>/t/<key>/p/<project id>/, for this computer only (Open in browser on a project's Docs page).
+//! The page is src/docs built into one HTML file (`PAGE`, `vite build --mode docs-web`), the same page Hersir's window
+//! shows; it reads the project's `index.json` (`devdocs::index_of`), a file's source (`source/<path>.json`) and a
+//! commit's changed lines (`commits/<hash>.json`) from here, and `llms.txt` and `md/…` are the same docs for agents. Only
+//! projects with Docs on are served, and only to GET.
+//! - The key (`token`, GA-362) is new each time Hersir starts, and every address carries it: Open in browser and the
+//!   agents' links get it from `docs_serve`. Without it every address is a 404, so another program or another user on
+//!   this computer can't read a project's files, commits and decisions by trying the ports.
+//! - A request whose Host isn't 127.0.0.1 or localhost at this port (a page elsewhere pointing a name of its own at it)
+//!   gets a 403, and so does one a browser marks as coming from a page on another site (`Sec-Fetch-Site: cross-site`).
+//! - An address with a control character in it, as sent or once decoded (`%0d%0a`), gets a 400; a redirect's Location is
+//!   the address as sent, never a decoded one, so no request can add a header to the answer.
+//!
+//! One request per connection: it is one person's browser on this computer.
 use std::net::TcpListener as StdListener;
-use std::sync::{LazyLock, Mutex};
+use std::sync::{LazyLock, Mutex, OnceLock};
 
 use gizai_core::model::Project;
 use gizai_core::projects;
@@ -50,27 +58,62 @@ pub static CSP: LazyLock<String> = LazyLock::new(|| {
 /// The port Hersir's docs server listens on, once started.
 static PORT: Mutex<Option<u16>> = Mutex::new(None);
 
+/// The key every docs address carries (`/t/<key>/…`): 32 bytes from the system's random source as 64 hex characters,
+/// made the first time it is asked for, so new each time Hersir starts.
+static TOKEN: OnceLock<String> = OnceLock::new();
+
+/// The key (`TOKEN`), made the first time. An error when the system gives no random bytes: the docs aren't served then.
+pub fn token() -> Result<&'static str, String> {
+    if let Some(t) = TOKEN.get() {
+        return Ok(t);
+    }
+    let mut raw = [0u8; 32];
+    getrandom::fill(&mut raw).map_err(|e| format!("Hersir couldn't make a key for the docs: {e}"))?;
+    Ok(TOKEN.get_or_init(|| raw.iter().map(|b| format!("{b:02x}")).collect()))
+}
+
+/// What follows the key in a request's decoded path: `/t/<key>/p/abc/` gives `/p/abc/`, `/t/<key>` gives an empty
+/// path. None without the right key, compared in constant time.
+pub fn behind_key<'a>(path: &'a str, key: &str) -> Option<&'a str> {
+    let rest = path.strip_prefix("/t/")?;
+    let (given, after) = rest.find('/').map_or((rest, ""), |i| rest.split_at(i));
+    same_secret(given.as_bytes(), key.as_bytes()).then_some(after)
+}
+
+/// Whether two secrets are equal, compared in constant time: as long for a wrong first byte as for a wrong last one.
+fn same_secret(a: &[u8], b: &[u8]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).fold(0u8, |diff, (x, y)| diff | (x ^ y)) == 0
+}
+
+/// Whether `text` is visible ASCII only, as a request target is (RFC 9112): no space, no control character such as CR
+/// or LF, nothing past ASCII (a browser sends that %-encoded).
+fn visible(text: &str) -> bool {
+    text.bytes().all(|b| (b'!'..=b'~').contains(&b))
+}
+
 /// What a request gets.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Reply {
     /// A media type and the body.
     Ok(&'static str, Vec<u8>),
-    /// A page's address without its last `/`, sent to the one with it: the page's own links are relative to it.
+    /// A page's address without its last `/`, sent to the one with it: the page's own links are relative to it. Over
+    /// the wire its Location is the address as the request had it, with the key (`handle`).
     Moved(String),
     /// A status and why.
     Refused(u16, String),
 }
 
-/// Starts the docs server the first time (127.0.0.1, the first free port of `PORTS`), and gives its address. It runs
-/// until Hersir quits.
+/// Starts the docs server the first time (127.0.0.1, the first free port of `PORTS`), and gives its address with the
+/// key, `http://127.0.0.1:<port>/t/<key>`: a project's page is at `<address>/p/<project id>/`. It runs until Hersir quits.
 #[tauri::command]
 pub async fn docs_serve(st: tauri::State<'_, AppState>) -> Result<String, String> {
     let port = start(st.inner().clone())?;
-    Ok(format!("http://127.0.0.1:{port}"))
+    Ok(format!("http://127.0.0.1:{port}/t/{}", token()?))
 }
 
-/// Starts the server once; later calls give the same port.
+/// Starts the server once; later calls give the same port. Not without a key (`token`).
 pub fn start(st: AppState) -> Result<u16, String> {
+    token()?;
     let mut port = PORT.lock().unwrap();
     if let Some(p) = *port {
         return Ok(p);
@@ -84,19 +127,20 @@ pub fn start(st: AppState) -> Result<u16, String> {
     Ok(p)
 }
 
-/// Answers every connection to `listener` until the process ends.
+/// Answers every connection to `listener` until the process ends, to requests with the key (`token`) only. Nothing
+/// without a key: the system gave no random bytes.
 pub async fn serve(listener: TcpListener, st: AppState) {
-    let Ok(port) = listener.local_addr().map(|a| a.port()) else { return };
+    let (Ok(port), Ok(key)) = (listener.local_addr().map(|a| a.port()), token()) else { return };
     loop {
         let Ok((stream, _)) = listener.accept().await else { continue };
         let st = st.clone();
         tokio::spawn(async move {
-            let _ = handle(stream, st, port).await;
+            let _ = handle(stream, st, port, key).await;
         });
     }
 }
 
-async fn handle(mut stream: TcpStream, st: AppState, port: u16) -> std::io::Result<()> {
+async fn handle(mut stream: TcpStream, st: AppState, port: u16, key: &'static str) -> std::io::Result<()> {
     let mut buf = Vec::new();
     let head_end = loop {
         let mut chunk = [0u8; 4096];
@@ -116,23 +160,41 @@ async fn handle(mut stream: TcpStream, st: AppState, port: u16) -> std::io::Resu
     let mut lines = head.split("\r\n");
     let mut request = lines.next().unwrap_or("").split(' ');
     let (method, target) = (request.next().unwrap_or(""), request.next().unwrap_or(""));
-    let host = lines.filter_map(|l| l.split_once(':')).find(|(k, _)| k.trim().eq_ignore_ascii_case("host")).map(|(_, v)| v.trim());
+    let fields: Vec<(&str, &str)> = lines.filter_map(|l| l.split_once(':')).map(|(k, v)| (k.trim(), v.trim())).collect();
+    let field = |name: &str| fields.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| *v);
+    let host = field("host");
     if host != Some(&format!("127.0.0.1:{port}")) && host != Some(&format!("localhost:{port}")) {
         return respond(&mut stream, Reply::Refused(403, "Forbidden. Hersir's docs answer to 127.0.0.1 and localhost only.".into())).await;
+    }
+    // a browser says when a page on another site made the request: never one of the docs' own
+    if field("sec-fetch-site").is_some_and(|site| site.eq_ignore_ascii_case("cross-site")) {
+        return respond(&mut stream, Reply::Refused(403, "Forbidden. Hersir's docs don't answer pages on other sites.".into())).await;
     }
     if method != "GET" {
         return respond(&mut stream, Reply::Refused(405, "Hersir's docs are read only.".into())).await;
     }
-    let Some(path) = decode(target.split(['?', '#']).next().unwrap_or("/")) else {
+    let raw = target.split(['?', '#']).next().unwrap_or("/");
+    let Some(path) = decode(raw).filter(|_| visible(target)) else {
         return respond(&mut stream, Reply::Refused(400, "The address isn't valid.".into())).await;
     };
-    let reply = tauri::async_runtime::spawn_blocking(move || route(&st, &path)).await
-        .unwrap_or_else(|e| Reply::Refused(500, e.to_string()));
+    let Some(path) = behind_key(&path, key).map(str::to_string) else { return respond(&mut stream, not_found()).await };
+    let reply = if path.is_empty() {
+        // the key without its last `/`: the projects page's links are relative to it
+        Reply::Moved(String::new())
+    } else {
+        tauri::async_runtime::spawn_blocking(move || route(&st, &path)).await.unwrap_or_else(|e| Reply::Refused(500, e.to_string()))
+    };
+    // a page's address with its last `/`, as it was sent: never a decoded one, which could hold a line break
+    let reply = match reply {
+        Reply::Moved(_) if raw.starts_with('/') && !raw.starts_with("//") => Reply::Moved(format!("{raw}/")),
+        Reply::Moved(_) => Reply::Refused(400, "The address isn't valid.".into()),
+        other => other,
+    };
     respond(&mut stream, reply).await
 }
 
-/// What a GET of `path` gets: the list of projects with Docs on at `/`; a project's page, index, sources and commits
-/// under `/p/<id>/`; nothing anywhere else.
+/// What a GET of `path` (a decoded path, after the key) gets: the list of projects with Docs on at `/`; a project's page,
+/// index, sources and commits under `/p/<id>/`; nothing anywhere else.
 pub fn route(st: &AppState, path: &str) -> Reply {
     if path == "/" {
         return projects_page(st);
@@ -223,7 +285,8 @@ fn projects_page(st: &AppState) -> Reply {
     Reply::Ok("text/html; charset=utf-8", page.into_bytes())
 }
 
-/// A request path with its `%XX` escapes decoded, or None when they aren't UTF-8 or hide a NUL.
+/// A request path with its `%XX` escapes decoded, or None when they aren't UTF-8 or hide a control character: a NUL, or
+/// CR and LF (`%0d%0a`), which would end a header line.
 fn decode(path: &str) -> Option<String> {
     let bytes = path.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
@@ -238,10 +301,15 @@ fn decode(path: &str) -> Option<String> {
             i += 1;
         }
     }
-    String::from_utf8(out).ok().filter(|p| !p.contains('\0'))
+    String::from_utf8(out).ok().filter(|p| !p.chars().any(char::is_control))
 }
 
 async fn respond(stream: &mut TcpStream, reply: Reply) -> std::io::Result<()> {
+    // a header holds visible text only: a Location that isn't is refused, never written
+    let reply = match reply {
+        Reply::Moved(to) if !visible(&to) => Reply::Refused(400, "The address isn't valid.".into()),
+        other => other,
+    };
     let (code, reason, mime, location, body) = match reply {
         Reply::Ok(mime, body) => (200, "OK", mime, None, body),
         Reply::Moved(to) => (301, "Moved Permanently", "text/plain", Some(to), b"Moved.".to_vec()),

@@ -1,22 +1,38 @@
 //! A project's docs page (the Docs section, served by `docs_server`): its index, yodocs' `index.json`
 //! (`gizai_docs::index`), from the project's linked folder and Hersir's database; a file's source; a commit's changed
 //! lines.
-//! - Reference, API routes and guides: the files git tracks in the linked folder, as they are on disk.
+//! - Reference, API routes and guides: the files git tracks in the linked folder, as they are on disk. The Reference
+//!   parses only the files whose text changed since its last view (`KEPT`).
 //! - Commits: main's newest, as a card's changes measure from it.
 //! - Changelog: the project's merged cards (`gizai_core::devdocs::changelog`), by month.
 //! - Decisions: the shared Memory notes about the project's decisions (`gizai_core::devdocs::decisions`).
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use gizai_agents::worktree;
 use gizai_core::devdocs::{self, Baseline, ChangelogEntry, DecisionNote, DecisionRecord};
 use gizai_core::model::Project;
 use gizai_docs::index::{self, Change, CommitPatches, Decision, DocChanges, Index, Input, Problem, Release, Section, Since, SourceFile};
-use gizai_docs::markdown;
+use gizai_docs::{markdown, Kept, Reference};
 
 use crate::AppState;
 
 /// How many of main's commits the page lists.
 const HISTORY: usize = 50;
+
+/// What the last view of each repository's Reference kept (`gizai_docs::Kept`, GA-362), by the linked folder, until
+/// Hersir quits: the next view parses only the files whose text changed since. One view of a repository at a time, so a
+/// second view at once (an agent reading the `md/` pages, say) waits for the first and then takes what it kept.
+static KEPT: LazyLock<Mutex<HashMap<PathBuf, Arc<Mutex<Kept>>>>> = LazyLock::new(Default::default);
+
+/// The Reference of `files` in `repo`, from what its last view kept where a file's text is the same.
+fn reference(repo: &Path, files: &[String]) -> Reference {
+    let kept = KEPT.lock().unwrap_or_else(|e| e.into_inner()).entry(repo.to_path_buf()).or_default().clone();
+    let mut kept = kept.lock().unwrap_or_else(|e| e.into_inner());
+    gizai_docs::reference_kept(repo, files, &mut kept)
+}
 
 const MONTHS: [&str; 12] = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October",
     "November", "December"];
@@ -34,7 +50,7 @@ pub fn index_of(st: &AppState, project: &Project) -> Result<Index, String> {
             let repo = repo.as_path();
             let unreadable = |e| format!("Hersir can't read {}'s repository: {}", project.name, crate::pulls::plain(e));
             let files = worktree::tracked_files(repo).map_err(unreadable)?;
-            input.reference = gizai_docs::reference(repo, &files);
+            input.reference = reference(repo, &files);
             input.routes = gizai_docs::api::api(repo, &files);
             let content = gizai_docs::content::read(repo, &files);
             (input.guides, input.changelog, input.decisions, input.mcp, input.api, input.problems) =

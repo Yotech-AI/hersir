@@ -73,3 +73,42 @@ fn a_rev_that_reads_as_an_option_or_isnt_a_commit_is_refused() {
         assert!(worktree::show_patch(dir.path(), bad).is_err(), "{bad}");
     }
 }
+
+/// GA-362 QA: a commit opened on the Docs page starts no program of the repository's git config: not a textconv driver
+/// (`diff.<driver>.textconv` through .gitattributes), not an external diff driver (`diff.<driver>.command`), not
+/// `diff.external`. Plain `git show` in the same repository does run them, so the test can tell.
+#[cfg(unix)]
+#[test]
+fn opening_a_commit_runs_no_textconv_driver_or_external_diff_of_the_repository() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = repo();
+    let r = dir.path();
+    let outside = tempfile::tempdir().unwrap();
+    let ran = outside.path().join("ran");
+    let script = outside.path().join("driver.sh");
+    std::fs::write(&script, format!("#!/bin/sh\necho \"$0 $*\" >> '{}'\necho CONVERTED-BY-THE-REPOSITORY\n", ran.display())).unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let script = script.to_string_lossy().into_owned();
+    git(r, &["config", "diff.conv.textconv", &script]);
+    git(r, &["config", "diff.ext.command", &script]);
+    std::fs::write(r.join(".gitattributes"), "*.ts diff=conv\n*.php diff=ext\n").unwrap();
+    std::fs::write(r.join("b.php"), "<?php // one\n").unwrap();
+    commit(r, "a.ts", "one\n", "First");
+    std::fs::write(r.join("b.php"), "<?php // two\n").unwrap();
+    let second = commit(r, "a.ts", "two\n", "Second");
+
+    let patch = worktree::show_patch(r, &second).unwrap();
+    assert!(!ran.exists(), "a textconv or external diff driver ran: {}", std::fs::read_to_string(&ran).unwrap_or_default());
+    assert!(patch.contains("-one\n+two") && patch.contains("-<?php // one\n+<?php // two"), "the plain lines: {patch}");
+    assert!(!patch.contains("CONVERTED-BY-THE-REPOSITORY"), "{patch}");
+
+    // and with diff.external set for every diff
+    git(r, &["config", "diff.external", &script]);
+    let patch = worktree::show_patch(r, &second).unwrap();
+    assert!(!ran.exists(), "diff.external ran: {}", std::fs::read_to_string(&ran).unwrap_or_default());
+    assert!(patch.contains("-one\n+two"), "{patch}");
+
+    // plain git show runs them: the drivers are set up so a run would show
+    git(r, &["show", &second]);
+    assert!(ran.exists(), "the drivers didn't run for plain git show either, so this test can't tell");
+}

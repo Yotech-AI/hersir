@@ -29,6 +29,8 @@ serde_json = { workspace = true }
 gizai-core = { path = "../crates/gizai-core" }
 gizai-agents = { path = "../crates/gizai-agents" }
 sha2 = { workspace = true }
+# The docs server's key, new each time Hersir starts (src/docs_server.rs, GA-362).
+getrandom = { workspace = true }
 gizai-docs = { path = "../crates/gizai-docs" }
 gizai-mcp = { path = "../crates/gizai-mcp" }
 # Hersir Cloud's client (GA-358): Cloud Backup's keys, chunks, entitlement, backup and restore (see src/cloud.rs).

@@ -25,6 +25,7 @@ pub mod logs;
 pub mod mcp;
 pub mod mcp_servers;
 pub mod memory;
+pub mod navigation;
 pub mod notifications;
 pub mod onboarding;
 // Keeps WebKitGTK 2.54.1 from crashing Gizai on a paste with an empty clipboard (GA-222).
@@ -706,6 +707,8 @@ pub fn run() {
         builder
     };
     builder
+        // The main window stays on Hersir's own pages: a link that slips through opens nothing in it (GA-362).
+        .plugin(navigation::guard())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         // The window may only read the clipboard's text (capabilities/default.json): a terminal's Ctrl+Shift+V on Linux.

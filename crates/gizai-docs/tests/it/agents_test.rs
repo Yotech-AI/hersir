@@ -10,7 +10,7 @@ fn index() -> gizai_docs::index::Index {
     let reference = Reference {
         entries: vec![Entry { name: "Invoice".into(), kind: "model".into(), syntactic: "class".into(), path: "app/Models/Invoice.php".into(),
             line: 2, end_line: 4, doc: "An invoice.".into(), text: "class Invoice extends Model\n{\n}".into() }],
-        files: 1, read: vec!["app/Models/Invoice.php".into()], partial: vec![],
+        files: 1, read: vec!["app/Models/Invoice.php".into()], partial: vec![], cut_off: vec![],
     };
     build(Input {
         title: "Pearl dev docs".into(), commit: "abc1234".into(), branch: "origin/main".into(), version: "0.19.0".into(),

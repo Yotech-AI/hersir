@@ -1,6 +1,7 @@
 // A project's page in the sidebar's Docs section (#/devdocs/<project id>/<docs address>): the project's docs
 // (src/docs/DocsView), read through Hersir's own commands. Open in browser opens the same page in a browser, served by
-// Hersir on this computer only (src-tauri/src/docs_server.rs, http://127.0.0.1:<port>/p/<project id>/). Docs is switched on
+// Hersir on this computer only (src-tauri/src/docs_server.rs, http://127.0.0.1:<port>/t/<key>/p/<project id>/: the
+// address docsServe gives carries the key, and so do Open in browser and the links for agents). Docs is switched on
 // per project, in the project form; while it is off the page says so, with the way to turn it on.
 import { useMemo, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
