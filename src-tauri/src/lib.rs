@@ -94,7 +94,8 @@ pub struct AppState {
     pub updates: Arc<update::Updates>,
     /// Held while this Gizai runs: one Gizai per data folder (see `lock_data_dir`).
     pub _lock: Arc<std::fs::File>,
-    /// Where MCP servers' secrets live: the OS keychain, or a file standing in for it (HERSIR_FAKE_KEYCHAIN) in tests.
+    /// Where MCP servers' secrets live: the OS keychain, or a file standing in for it (HERSIR_FAKE_KEYCHAIN, a debug build
+    /// only) in tests.
     pub keychain: Arc<dyn gizai_agents::secrets::Keychain>,
     /// MCP servers' sign-ins in that keychain, refreshed one at a time per server.
     pub tokens: Arc<gizai_agents::oauth::TokenStore>,
@@ -612,8 +613,9 @@ pub fn test_state(dir: &std::path::Path) -> AppState {
     // GA-338: never the real Claude Desktop's settings in tests: a folder of the test's own, not made yet (as if Claude
     // Desktop isn't installed); a test that wants it installed makes the folder.
     st.claude_desktop_dir = Some(dir.join("claude-desktop"));
-    // Never the real keychain in tests: one in memory, unless the test names a file for it.
-    if env::var_os("HERSIR_FAKE_KEYCHAIN").is_none() {
+    // Never the real keychain in tests: one in memory, unless the test names a file for it (a debug build only: a test
+    // built with --release gets the one in memory, as `secrets::from_env` would give it the system's).
+    if gizai_agents::secrets::fake_file().is_none() {
         st.keychain = Arc::new(gizai_agents::secrets::MemoryKeychain::default());
         st.tokens = Arc::new(gizai_agents::oauth::TokenStore::new(st.keychain.clone()));
     }
