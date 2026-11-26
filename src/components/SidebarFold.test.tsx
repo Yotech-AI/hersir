@@ -495,3 +495,32 @@ describe("the Docs section", () => {
     expect(section(html(), "Docs")).toContain('<a class="nav-item" href="#/projects"><span class="faint">No project has Docs on</span></a>');
   });
 });
+
+// GA-372 QA: the sidebar's Tasks always goes to #/tasks, every project's: on a project's tasks (#/tasks/project/<id>, its
+// board or its Inbox) too, and with an old project filter still stored. It is marked there, as on every tasks page.
+describe("Tasks in the sidebar on a project's tasks (GA-372)", () => {
+  const tasksLink = (route: Record<string, string>) => {
+    slot = 0;
+    const page = renderToStaticMarkup(<Sidebar {...props} route={route as never} />);
+    // each link of Work on its own, then the one named Tasks
+    return (section(page, "Work").match(/<a [^>]*>[\s\S]*?<\/a>/g) ?? []).filter((l) => l.includes("<span>Tasks</span>"))
+      .map((l) => ({ on: /class="nav-item on"/.test(l), current: l.includes('aria-current="page"'), href: /href="([^"]*)"/.exec(l)![1] }));
+  };
+  beforeEach(() => team([you, lead, backend]));
+  it("is #/tasks on a project's tasks and on its board, and marked as the page you are on", () => {
+    expect(tasksLink({ page: "tasks", project: "kade" })).toEqual([{ on: true, current: true, href: "#/tasks" }]);
+    expect(tasksLink({ page: "board", project: "kade" })).toEqual([{ on: true, current: true, href: "#/tasks" }]);
+    expect(tasksLink({ page: "tasks" })).toEqual([{ on: true, current: true, href: "#/tasks" }]);
+  });
+  it("is #/tasks from a project's page and its Inbox, not marked there; Inbox is #/inbox", () => {
+    expect(tasksLink({ page: "project", id: "kade" })).toEqual([{ on: false, current: false, href: "#/tasks" }]);
+    expect(tasksLink({ page: "inbox", project: "kade" })).toEqual([{ on: false, current: false, href: "#/tasks" }]);
+    slot = 0;
+    expect(renderToStaticMarkup(<Sidebar {...props} route={{ page: "inbox", project: "kade" } as never} />)).toContain('aria-current="page" href="#/inbox"');
+  });
+  it("stays #/tasks with a project kept by an older Hersir", () => {
+    store.set("gizai-task-project", "kade");
+    expect(tasksLink({ page: "project", id: "kade" })[0].href).toBe("#/tasks");
+    store.delete("gizai-task-project");
+  });
+});
