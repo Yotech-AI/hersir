@@ -62,6 +62,8 @@ struct Api {
     /// "workspace/repo#id" → the full hashes of that pull request's commits.
     commits: HashMap<String, Vec<String>>,
     requests: Vec<Req>,
+    /// GA-368: "workspace/repo#id" → the status and message a change (PUT) of that pull request gets.
+    refuse: HashMap<String, (u16, String)>,
 }
 
 fn api() -> &'static Mutex<Api> {
@@ -116,6 +118,30 @@ fn answer(method: &str, target: &str, body: &str, auth: Option<String>) -> (u16,
         ("GET", ["repositories", ws, repo, "pullrequests", id, "commits"]) => {
             let hashes = a.commits.get(&format!("{ws}/{repo}#{id}")).cloned().unwrap_or_default();
             (200, json!({"values": hashes.iter().map(|h| json!({"hash": h, "type": "commit"})).collect::<Vec<_>>(), "pagelen": 100}))
+        }
+        // GA-368: one pull request, and a change of it (only an open one changes; the fields sent replace its own)
+        ("GET", ["repositories", ws, repo, "pullrequests", id]) => {
+            match a.pulls.get(&format!("{ws}/{repo}")).and_then(|l| l.iter().find(|p| p["id"].to_string() == *id)) {
+                Some(p) => (200, p.clone()),
+                None => (404, json!({"type": "error", "error": {"message": format!("pull request {id} isn't here")}})),
+            }
+        }
+        ("PUT", ["repositories", ws, repo, "pullrequests", id]) if a.refuse.contains_key(&format!("{ws}/{repo}#{id}")) => {
+            let (status, message) = a.refuse[&format!("{ws}/{repo}#{id}")].clone();
+            (status, json!({"type": "error", "error": {"message": message}}))
+        }
+        ("PUT", ["repositories", ws, repo, "pullrequests", id]) => {
+            let sent: Value = serde_json::from_str(body).unwrap_or(Value::Null);
+            match a.pulls.get_mut(&format!("{ws}/{repo}")).and_then(|l| l.iter_mut().find(|p| p["id"].to_string() == *id)) {
+                Some(p) if p["state"] != "OPEN" => (400, json!({"type": "error", "error": {"message": "Only an open pull request can be changed."}})),
+                Some(p) => {
+                    for (k, v) in sent.as_object().cloned().unwrap_or_default() {
+                        p[k.as_str()] = v;
+                    }
+                    (200, p.clone())
+                }
+                None => (404, json!({"type": "error", "error": {"message": format!("pull request {id} isn't here")}})),
+            }
         }
         _ => (404, json!({"type": "error", "error": {"message": format!("{method} {path} isn't here")}})),
     }
@@ -677,4 +703,178 @@ fn files_with(dir: &Path, needle: &[u8]) -> Vec<PathBuf> {
         }
     }
     found
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// GA-368: Hersir opens the pull request itself after QA's pass
+// ---------------------------------------------------------------------------------------------------------------
+
+/// A fake `claude` for the QA Agent: run-ok's stream, answering qa_pass with the summary in dir/summary (plain words: no
+/// quotes, slashes or ampersands).
+fn qa_fake(dir: &Path) -> String {
+    let fixtures = concat!(env!("CARGO_MANIFEST_DIR"), "/../crates/gizai-agents/tests/fixtures");
+    let path = dir.join("qa-claude.sh");
+    write_script(&path, &format!(r#"#!/usr/bin/env bash
+fx='{fixtures}'
+case " $* " in *" --input-format stream-json "*)
+  IFS= read -r _r; cat "$fx/models-init.jsonl"; cat > /dev/null; exit 0 ;;
+esac
+cat > /dev/null
+summary="$(cat '{d}/summary')"
+sed -e "s/ready_for_testing/qa_pass/g" -e "s/Exporter added; 12 tests pass\./$summary/g" "$fx/run-ok.jsonl"
+exit 0
+"#, d = dir.display()));
+    path.to_string_lossy().into_owned()
+}
+
+/// A QA Agent on no column (nothing starts it by itself); returns its id. Its runs start by fetching the main branch
+/// from the clone's origin, so these cards' clones have their origin on Bitbucket's SSH host (the fake ssh).
+fn qa_agent(st: &gizai_lib::AppState) -> String {
+    gizai_core::team::add_agent(&st.db, &st.you_id, &team(st).id, gizai_core::model::AgentInput { name: "QA Agent".into(), role_key: "qa".into(),
+        ..Default::default() }).unwrap()
+}
+
+/// The QA Agent's run on the card, ending with qa_pass and `summary`; returns once the run (and what Hersir does after
+/// it) has ended.
+async fn qa_pass(c: &Card, tmp: &Path, qa: &str, summary: &str) {
+    std::fs::write(tmp.join("summary"), summary).unwrap();
+    let s = gizai_lib::runs::run_once(&c.st, &c.task, Some(qa.to_string()), Some(qa_fake(tmp))).await.unwrap();
+    assert_eq!((s.status.as_str(), s.outcome.as_deref()), ("succeeded", Some("qa_pass")), "{s:?}");
+}
+
+/// What Hersir noted on the card about its pull request (as Hersir).
+fn notes(c: &Card) -> Vec<String> {
+    gizai_core::tasks::activity(&c.st.db, &c.task).unwrap().into_iter().filter(|e| e.actor_name.is_none())
+        .filter_map(|e| e.diff.get("cleanup").and_then(|c| c.as_str()).map(String::from)).collect()
+}
+
+const CARD_TEXT: &str = "Download all invoices as one CSV file.\n\n## Acceptance criteria\n\n- [ ] One row per invoice\n\nFrom Hersir card KADE-1.";
+
+#[tokio::test]
+async fn qa_pass_on_bitbucket_opens_one_pull_request_with_qas_summary_and_a_second_pass_changes_its_description() {
+    fakes();
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = "acme/shop-qa";
+    let c = worked_card(tmp.path(), repo, &format!("git@ssh.bitbucket.org:{repo}.git"), true).await;
+    gizai_core::tasks::update(&c.st.db, &c.st.you_id, &c.task, gizai_core::model::TaskPatch {
+        description_md: Some("Download all invoices as one CSV file.".into()), acceptance_md: Some("- [ ] One row per invoice".into()), ..Default::default() }).unwrap();
+    assert_eq!(task(&c).state_category, "testing");
+    let qa = qa_agent(&c.st);
+
+    // QA's first pass: pushed over SSH, one pull request into master, titled with the card, QA's summary first
+    qa_pass(&c, tmp.path(), &qa, "QA round 1: all 14 tests pass, none skipped.").await;
+    let t = task(&c);
+    assert_eq!((t.state_name.as_str(), t.pr_url.as_deref(), t.pr_state.as_deref()), ("Review", Some(url(repo, 1).as_str()), Some("open")));
+    assert_eq!(git(&c.bare, &["rev-parse", &c.branch]), tip(&c), "the branch is in Bitbucket with its latest commit");
+    let reqs = requests(repo);
+    assert_eq!(reqs.iter().map(|r| r.method.as_str()).collect::<Vec<_>>(), ["GET", "POST"], "{reqs:?}");
+    let sent: Value = serde_json::from_str(&reqs[1].body).unwrap();
+    assert_eq!(sent, json!({
+        "title": "KADE-1: Export invoices as CSV",
+        "description": format!("QA round 1: all 14 tests pass, none skipped.\n\n{CARD_TEXT}"),
+        "source": {"branch": {"name": c.branch}},
+        "destination": {"branch": {"name": "master"}},
+    }));
+    for r in &reqs {
+        assert_eq!(r.auth.as_deref(), Some(AUTH), "{r:?}");
+    }
+    let opened: Vec<_> = gizai_core::tasks::activity(&c.st.db, &c.task).unwrap().into_iter().filter(|e| e.diff.get("opened").is_some()).collect();
+    assert_eq!(opened.len(), 1, "{opened:?}");
+    assert_eq!((opened[0].actor_name.as_deref(), &opened[0].diff), (None, &json!({"pullRequest": url(repo, 1), "prState": "open", "opened": true})),
+               "opened by Hersir");
+    assert!(notes(&c).is_empty(), "{:?}", notes(&c));
+
+    // you changed its title on Bitbucket; a second QA round on the same branch changes its description only
+    api().lock().unwrap().pulls.get_mut(repo).unwrap()[0]["title"] = json!("KADE-1: CSV export (reviewed)");
+    gizai_core::tasks::move_to(&c.st.db, &c.st.you_id, &c.task, &state_id(&c.st, "testing"), "").unwrap();
+    commit(&c.wt, "fix.csv");
+    qa_pass(&c, tmp.path(), &qa, "QA round 2: all 15 tests pass, the fix works.").await;
+    let reqs = requests(repo);
+    let calls: Vec<String> = reqs[2..].iter().map(|r| format!("{} {}", r.method, r.target.split('?').next().unwrap())).collect();
+    assert_eq!(calls, [
+        format!("GET /repositories/{repo}/pullrequests"),
+        format!("GET /repositories/{repo}/pullrequests/1"),
+        format!("PUT /repositories/{repo}/pullrequests/1"),
+    ], "no second POST");
+    let put: Value = serde_json::from_str(&reqs[4].body).unwrap();
+    assert_eq!(put, json!({"description": format!("QA round 2: all 15 tests pass, the fix works.\n\n{CARD_TEXT}"),
+                           "title": "KADE-1: CSV export (reviewed)"}), "your title stays");
+    assert_eq!(reqs[4].auth.as_deref(), Some(AUTH));
+    assert_eq!(api().lock().unwrap().pulls[repo].len(), 1, "one pull request on Bitbucket");
+    assert_eq!(git(&c.bare, &["rev-parse", &c.branch]), tip(&c), "the new commit is in Bitbucket too");
+    let t = task(&c);
+    assert_eq!((t.state_name.as_str(), t.pr_url.as_deref(), t.pr_state.as_deref()), ("Review", Some(url(repo, 1).as_str()), Some("open")));
+    assert_eq!(notes(&c), ["updated the description of pull request #1 on Bitbucket with QA's new summary"]);
+    // no token in Gizai's database, settings or logs
+    assert_eq!(files_with(&c.st.data_dir, TOKEN.as_bytes()), Vec::<PathBuf>::new());
+}
+
+#[tokio::test]
+async fn qa_pass_without_a_bitbucket_login_still_moves_the_card_to_review_says_why_and_open_pull_request_works_after_logging_in() {
+    fakes();
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = "acme/shop-qa-nologin";
+    let c = worked_card(tmp.path(), repo, &format!("git@ssh.bitbucket.org:{repo}.git"), false).await;
+    let qa = qa_agent(&c.st);
+    qa_pass(&c, tmp.path(), &qa, "QA: all 14 tests pass.").await;
+    let t = task(&c);
+    assert_eq!((t.state_name.as_str(), t.pr_url.as_deref()), ("Review", None), "in Review, without a pull request");
+    let said = notes(&c);
+    assert_eq!(said.len(), 1, "{said:?}");
+    assert!(said[0].starts_with("couldn't open its pull request after QA passed: Log in to Bitbucket first (Settings → Bitbucket)"), "{}", said[0]);
+    assert!(said[0].ends_with(". Open pull request tries again.") && !said[0].contains('\n'), "{}", said[0]);
+    assert!(!requests(repo).iter().any(|r| r.method == "POST"), "{:?}", requests(repo));
+
+    // you log in and press Open pull request: it opens one as before, as you, with the card's own text
+    save_login(&c.st);
+    let t0 = std::time::Instant::now();
+    let pr = loop {
+        // the PR check Hersir started after the failure may have the card for a moment
+        match pulls::open(&c.st, &c.task).await {
+            Ok(pr) => break pr,
+            Err(e) if e.contains("busy") && t0.elapsed() < std::time::Duration::from_secs(20) => tokio::time::sleep(std::time::Duration::from_millis(100)).await,
+            Err(e) => panic!("Open pull request: {e}"),
+        }
+    };
+    assert_eq!(pr, PullInfo { url: url(repo, 1), number: Some(1), state: "open".into(), note: None });
+    let posts: Vec<Req> = requests(repo).into_iter().filter(|r| r.method == "POST").collect();
+    assert_eq!(posts.len(), 1);
+    let sent: Value = serde_json::from_str(&posts[0].body).unwrap();
+    assert_eq!(sent["description"], "From Hersir card KADE-1.", "Open pull request's description is the card's (it has no text here)");
+    let last = gizai_core::tasks::activity(&c.st.db, &c.task).unwrap().pop().unwrap();
+    assert!(last.actor_name.is_some(), "opened by you");
+    assert_eq!(last.diff, json!({"pullRequest": url(repo, 1), "prState": "open", "opened": true}));
+}
+
+#[tokio::test]
+async fn a_declined_pull_request_gets_a_new_one_after_qas_pass_and_one_bitbucket_wont_change_says_why() {
+    fakes();
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = "acme/shop-qa-declined";
+    let c = worked_card(tmp.path(), repo, &format!("git@ssh.bitbucket.org:{repo}.git"), true).await;
+    let qa = qa_agent(&c.st);
+    // the branch's earlier pull request #3 was declined: QA's pass opens a new one, the declined one stays as it was
+    let mut declined = pr(repo, 3, "DECLINED", false, &c.branch, None);
+    declined["description"] = json!("old");
+    set_pulls(repo, vec![declined]);
+    qa_pass(&c, tmp.path(), &qa, "QA: all 14 tests pass.").await;
+    let t = task(&c);
+    assert_eq!((t.state_name.as_str(), t.pr_url.as_deref()), ("Review", Some(url(repo, 4).as_str())));
+    assert!(!requests(repo).iter().any(|r| r.method == "PUT"), "{:?}", requests(repo));
+    assert_eq!(api().lock().unwrap().pulls[repo].iter().find(|p| p["id"] == 3).unwrap()["description"], "old");
+    assert!(notes(&c).is_empty(), "{:?}", notes(&c));
+
+    // a second pass, and Bitbucket refuses to change #4 (a token without write:pullrequest): the card keeps it and says why
+    api().lock().unwrap().refuse.insert(format!("{repo}#4"), (403, "Your credentials lack one or more required privilege scopes.".into()));
+    gizai_core::tasks::move_to(&c.st.db, &c.st.you_id, &c.task, &state_id(&c.st, "testing"), "").unwrap();
+    commit(&c.wt, "fix.csv");
+    qa_pass(&c, tmp.path(), &qa, "QA round 2: all 15 tests pass.").await;
+    let t = task(&c);
+    assert_eq!((t.state_name.as_str(), t.pr_url.as_deref(), t.pr_state.as_deref()), ("Review", Some(url(repo, 4).as_str()), Some("open")));
+    assert_eq!(api().lock().unwrap().pulls[repo].len(), 2, "no third pull request");
+    let said = notes(&c);
+    assert_eq!(said.len(), 1, "{said:?}");
+    assert!(said[0].starts_with("couldn't update the description of pull request #4 on Bitbucket with QA's new summary: Bitbucket refused \
+                                 (Your credentials lack one or more required privilege scopes.)"), "{}", said[0]);
+    assert!(said[0].contains("write:pullrequest:bitbucket") && !said[0].contains(TOKEN), "{}", said[0]);
 }

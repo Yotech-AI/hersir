@@ -11,8 +11,9 @@ const BUILDER_EXTRA: [&str; 11] = [
     "Bash(git show:*)", "Bash(git ls-files:*)", "Bash(git rev-parse:*)", "Bash(git branch --show-current:*)", "Bash(git remote -v:*)",
     "Bash(git push:*)", "Bash(git pull:*)", "Bash(git fetch:*)", "Bash(node:*)", "Bash(echo:*)", "Bash(printf:*)",
 ];
-/// What QA gets on top of the builders' list.
-const QA_EXTRA: [&str; 4] = ["Bash(gh pr create:*)", "Bash(gh pr list:*)", "Bash(gh pr view:*)", "Bash(gh pr edit:*)"];
+/// What QA gets on top of the builders' list: since GA-368 Hersir opens and updates the pull request after QA's pass, so
+/// QA only looks at it.
+const QA_EXTRA: [&str; 2] = ["Bash(gh pr list:*)", "Bash(gh pr view:*)"];
 /// The DevOps Agent's own list, as the card has it.
 const DEVOPS: [&str; 59] = [
     "Bash(git status:*)", "Bash(git diff:*)", "Bash(git log:*)", "Bash(git show:*)", "Bash(git branch -r:*)", "Bash(git branch -a:*)",
@@ -199,5 +200,9 @@ fn each_role_starts_with_its_own_allowed_commands() {
     // Why: Gizai's default list can't push or open a pull request.
     assert!(!DEFAULT_TOOLS.iter().any(|t| t.contains("git push") || t.contains("gh ")));
     assert!(role_tools("backend").contains(&"Bash(git push:*)".to_string()) && !role_tools("backend").iter().any(|t| t.contains("gh ")));
-    assert!(role_tools("qa").contains(&"Bash(gh pr create:*)".to_string()) && !role_tools("qa").contains(&"Bash(gh pr merge:*)".to_string()));
+    assert!(role_tools("qa").contains(&"Bash(gh pr view:*)".to_string()) && !role_tools("qa").contains(&"Bash(gh pr merge:*)".to_string()));
+    // GA-368: Hersir opens the pull request after QA's pass, so a new QA agent can't open or change one itself
+    for gone in ["gh pr create", "gh pr edit"] {
+        assert!(!role_tools("qa").iter().any(|t| t.contains(gone)), "{gone} in {:?}", role_tools("qa"));
+    }
 }
