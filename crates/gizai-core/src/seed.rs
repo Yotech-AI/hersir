@@ -310,8 +310,9 @@ const BUILDER_TOOLS: [&str; 11] = [
     "Bash(git push:*)", "Bash(git pull:*)", "Bash(git fetch:*)", "Bash(node:*)", "Bash(echo:*)", "Bash(printf:*)",
 ];
 
-/// What QA may run on top of the builders' list: open and update the card's pull request on GitHub.
-const QA_TOOLS: [&str; 4] = ["Bash(gh pr create:*)", "Bash(gh pr list:*)", "Bash(gh pr view:*)", "Bash(gh pr edit:*)"];
+/// What QA may run on top of the builders' list: look at the card's pull request on GitHub. Hersir itself opens it, or
+/// updates its description, when QA's run ends with qa_pass (GA-368), so QA needs no GitHub login.
+const QA_TOOLS: [&str; 2] = ["Bash(gh pr list:*)", "Bash(gh pr view:*)"];
 
 /// The DevOps Agent's own list: read the repository, GitHub's releases, runs and workflows, resolve and push a pull
 /// request's merge, make a release, check that it compiles, and wait between checks.
