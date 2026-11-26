@@ -43,10 +43,11 @@ use crate::runs::Note;
 pub const SERVER: &str = gizai_cloud_client::api::HERSIR_CLOUD;
 /// The Hersir desktop client on Hersir Cloud (Passport's public client, `passport:client --public`): not a secret.
 pub const CLIENT_ID: &str = "01a21388-1d0c-7e76-9253-3af81455f4d0";
-/// Hersir Cloud's entitlement key: the base64 of its Ed25519 public key, as `php artisan hersir:entitlement-key` shows it.
-/// A placeholder until the real key is set here: without it the plan can't be checked, so it isn't shown (`plan` null),
-/// and the server still enforces it.
-pub const ENTITLEMENT_KEY: &str = "";
+/// Hersir Cloud's entitlement key: the base64 of its Ed25519 public key, as `php artisan hersir:entitlement-key` shows it
+/// on cloud.hersir.dev (GA-370). Public, not a secret: it only checks the plan's signature, and a plan that doesn't check
+/// isn't shown (`plan` null); the server enforces the plan either way. A new key on the server needs a new release here:
+/// a Hersir with the old one shows no plan.
+pub const ENTITLEMENT_KEY: &str = "9BNGtlbwshLo9NUH9IIg+N5rkR8KmDu6O3dEHr/kg6g=";
 
 /// How long signing in waits for the browser.
 pub const SIGN_IN_TIMEOUT: Duration = Duration::from_secs(10 * 60);
@@ -96,7 +97,8 @@ pub struct Config {
     pub server: String,
     /// The desktop client's id for the browser's sign-in.
     pub client_id: String,
-    /// Hersir Cloud's entitlement key; None while it isn't set (`ENTITLEMENT_KEY`): then the plan isn't shown.
+    /// Hersir Cloud's entitlement key (`ENTITLEMENT_KEY`, or a debug build's variable); None (a test's config): the plan
+    /// can't be checked, so it isn't shown.
     pub entitlement_key: Option<[u8; 32]>,
 }
 
@@ -598,8 +600,7 @@ fn plan(st: &AppState, account: &str) -> Option<CloudPlan> {
 }
 
 /// `GET /me/entitlements`, checked with Hersir Cloud's key before the plan is filled; one that doesn't check leaves no
-/// plan. Without the key (`ENTITLEMENT_KEY` not set yet) it is asked all the same (a removed computer hears so), and no
-/// plan is shown.
+/// plan. Without a key (a test's config) it is asked all the same (a removed computer hears so), and no plan is shown.
 fn refresh_plan(st: &AppState, s: &Session) -> Result<(), String> {
     let signed = s.api.entitlement().map_err(|e| failed(st, s, e))?;
     let checked = match &s.cfg.entitlement_key {
