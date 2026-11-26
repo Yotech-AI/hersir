@@ -35,6 +35,7 @@ pub mod redact;
 pub mod release_sig;
 pub mod run_env;
 pub mod run_memory;
+pub mod sandbox;
 pub mod screenshots;
 pub mod secrets;
 pub mod stream;

@@ -317,6 +317,19 @@ pub struct Settings {
     pub preview_port_from: Option<u32>,
     #[serde(default)]
     pub preview_port_to: Option<u32>,
+    /// GA-265: Settings → Coding CLIs → Run agents without a sandbox on this computer, off by default: on, a task run
+    /// starts without Hersir's sandbox (`gizai_agents::sandbox`) and says so. `get_settings` always gives it; None (left
+    /// out, an older page) keeps what was saved.
+    #[serde(default)]
+    pub agents_without_sandbox: Option<bool>,
+}
+
+/// The setting behind `Settings::agents_without_sandbox`.
+pub const WITHOUT_SANDBOX: &str = "agents_without_sandbox";
+
+/// Whether task runs go without Hersir's sandbox on this computer (`Settings::agents_without_sandbox`).
+pub fn without_sandbox(st: &AppState) -> bool {
+    settings::get(&st.db, WITHOUT_SANDBOX).ok().flatten().unwrap_or(false)
 }
 
 fn default_minutes() -> u64 { DEFAULT_MAX_RUN_MINUTES }
@@ -354,6 +367,7 @@ pub fn get_settings(st: &AppState) -> Settings {
         screenshots_keep_days: Some(shots.keep_days),
         preview_port_from: Some(shots.port_from),
         preview_port_to: Some(shots.port_to),
+        agents_without_sandbox: Some(without_sandbox(st)),
     }
 }
 
@@ -414,6 +428,9 @@ pub fn save_settings(st: &AppState, s: &Settings) -> Result<(), String> {
         crate::run_memory::save(st, gb)?;
     }
     crate::run_memory::save_per_run(st, per_run)?;
+    if let Some(off) = s.agents_without_sandbox {
+        settings::set(&st.db, WITHOUT_SANDBOX, &off).map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 
@@ -1196,6 +1213,22 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
         hold_card(st, &agent_id, task_id, &why);
         return Err(StartError::Held(why));
     }
+    // GA-265: the run starts in Hersir's sandbox, whatever its CLI. Where that can't start (Linux without bubblewrap, say)
+    // the card goes on hold "blocked" with what to install on this system, unless Settings → Coding CLIs → Run agents
+    // without a sandbox on this computer is on. Windows has none. Checked at every start, Continue too.
+    let sandboxing = st.sandbox.load(std::sync::atomic::Ordering::Relaxed);
+    let without_sandbox = sandboxing && without_sandbox(st);
+    let sandbox = if !sandboxing || without_sandbox {
+        None
+    } else {
+        match tokio::task::spawn_blocking(gizai_agents::sandbox::check).await.unwrap_or_else(|e| Err(e.to_string())) {
+            Ok(engine) => engine,
+            Err(why) => {
+                hold_card(st, &agent_id, task_id, &why);
+                return Err(StartError::Held(why));
+            }
+        }
+    };
     let behind = if project.repo_url.is_none() || wt.created { 0 } else {
         let (dir, from) = (wt.path.clone(), start.clone());
         tokio::task::spawn_blocking(move || worktree::behind(&dir, &from).unwrap_or(0)).await.unwrap_or(0)
@@ -1263,6 +1296,12 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
     let (folders, mut notes) = gizai_core::folders::for_run(&agent.folders, &gizai_core::folders::Places::of(&st.db));
     let folders: Vec<RunFolder> = folders.into_iter().map(|f| RunFolder { change: f.change(), path: f.path }).collect();
     notes.extend(agent_cli::folders_left_out(spec.kind, &folders));
+    // GA-265: a run without Hersir's sandbox says so first
+    if without_sandbox {
+        notes.insert(0, gizai_agents::sandbox::RAN_WITHOUT.to_string());
+    } else if sandboxing && sandbox.is_none() {
+        notes.insert(0, gizai_agents::sandbox::NO_SANDBOX.to_string());
+    }
     // The worktree's own `.gizai-tmp`, out of git status and empty: the screenshots and the preview go there (GA-182).
     let own_temp = worktree::prepare_temp(&wt.path);
     // GA-210: the run's temp folder is short and outside the worktree, Gizai's data folder and any git repository, and
@@ -1427,17 +1466,34 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
     // the parts of it that a commit writes (`worktree::commit_dirs`), never its config or hooks. With rerere on in your
     // git config, every commit would make the git folder's rr-cache, which the sandbox refuses: there the run's own git
     // goes without rerere (a writable rr-cache would let an agent leave a conflict resolution for your own merges).
+    // GA-265: so does Hersir's sandbox, for every CLI.
     let mut git_config = git_config;
-    let writable_dirs: Vec<String> = if spec.kind == Kind::Codex {
-        if permission_mode != "danger-full-access" {
-            git_config.push(("rerere.enabled".into(), "false".into()));
-        }
+    let codex_sandboxed = spec.kind == Kind::Codex && permission_mode != "danger-full-access";
+    if codex_sandboxed || sandbox.is_some() {
+        git_config.push(("rerere.enabled".into(), "false".into()));
+    }
+    let commit_dirs: Vec<PathBuf> = if spec.kind == Kind::Codex || sandbox.is_some() {
         let dir = wt.path.clone();
         tokio::task::spawn_blocking(move || worktree::commit_dirs(&dir)).await.ok().and_then(Result::ok).unwrap_or_default()
-            .into_iter().map(|d| d.to_string_lossy().to_string()).collect()
     } else {
         vec![]
     };
+    let writable_dirs: Vec<String> =
+        if spec.kind == Kind::Codex { commit_dirs.iter().map(|d| d.to_string_lossy().to_string()).collect() } else { vec![] };
+    // GA-265: what the run may touch in Hersir's sandbox (`gizai_agents::sandbox::policy`): the worktree, the agent's
+    // folders, the run's temp folder and what a commit writes read and change, the agent's read folders read only, and
+    // from Hersir's hidden data folder only the run's own MCP config, Gemini settings file and Hersir's socket, read only.
+    let sandbox_policy = sandbox.as_ref().map(|_| {
+        let (change, read): (Vec<&RunFolder>, Vec<&RunFolder>) = folders.iter().partition(|f| f.change);
+        gizai_agents::sandbox::policy(&gizai_agents::sandbox::RunPlaces {
+            kind: spec.kind, bin: spec.bin.clone(), cli_env: spec.env.clone(), worktree: wt.path.clone(),
+            write: change.iter().map(|f| PathBuf::from(&f.path)).chain(commit_dirs.iter().cloned()).collect(),
+            read: read.iter().map(|f| PathBuf::from(&f.path)).chain(mcp_config.iter().cloned()).chain(gemini_settings.iter().cloned())
+                .chain([st.mcp_socket.clone()]).collect(),
+            temp_dir: temp_dir.as_ref().map(PathBuf::from), data_dir: st.data_dir.clone(), temp_base: st.temp_base.clone(),
+            home: std::env::var_os("HOME").filter(|h| !h.is_empty()).map(PathBuf::from),
+        })
+    });
     let run = TaskRun {
         session_id: session.clone(), resume: resume.is_some(),
         prompt: if untrusted { format!("{base_prompt}\n\n{}", gizai_agents::mcp_run::UNTRUSTED) } else { base_prompt },
@@ -1448,7 +1504,11 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
     };
     // GA-202: the CLI and everything it starts run in the slice of the agent runs, under their memory limit (Linux), in a
     // scope with the run's own limit, Memory per run (GA-277), which it keeps to its end.
-    let mut exec = process::Exec { slice: st.run_memory.slice(), ..agent_cli::task_exec(&spec, &run) };
+    let mut exec = process::Exec {
+        slice: st.run_memory.slice(),
+        sandbox: sandbox.as_ref().zip(sandbox_policy.as_ref()).map(|(engine, policy)| engine.wrap(policy)),
+        ..agent_cli::task_exec(&spec, &run)
+    };
     let per_run = exec.slice.as_ref().and_then(|s| s.run_limit());
     // GA-182: the agent's own commands find the preview (HERSIR_PREVIEW_PORT, _URL and _DIR, and the GIZAI_ ones; not PORT)
     if let Some(s) = &shots {

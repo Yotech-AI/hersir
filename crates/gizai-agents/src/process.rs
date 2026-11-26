@@ -46,6 +46,9 @@ pub struct Exec {
     /// Code reads it as it starts, so it is deleted once the CLI's init line is in (`StreamEvent::is_init`), and in any
     /// case when the run ends or doesn't start.
     pub mcp_config: Option<PathBuf>,
+    /// GA-265: Hersir's sandbox (`sandbox::Engine::wrap`): its program starts the CLI, found on the CLI's PATH, and so
+    /// everything the CLI starts runs in it. Inside the slice's scope when there is one. None: the CLI starts as it is.
+    pub sandbox: Option<crate::sandbox::Wrap>,
 }
 
 /// GA-266: a file the CLI reads only as it starts (its MCP config), deleted by `delete`, else when this is dropped.
@@ -354,15 +357,24 @@ pub fn spawn_exec<E: StreamEvent, P: LineParser<E>>(exec: &Exec, cwd: &Path, log
     let mut log = std::fs::OpenOptions::new().create(true).append(true).open(log_path)?;
     // found on the PATH the CLI gets; a CLI that can't be found starts as before, so it fails the usual way
     let path = exec.env.iter().rev().find(|(k, _)| k == "PATH").map(|(_, v)| std::ffi::OsString::from(v));
-    let scoped = exec.slice.as_ref().and_then(|s| Some((s.scoped_for(exec.bin.as_os_str(), path.as_deref())?, s)));
+    // GA-265: in Hersir's sandbox its program starts first, and the CLI (found on the same PATH) inside it
+    let (program, first): (std::ffi::OsString, Vec<std::ffi::OsString>) = match &exec.sandbox {
+        Some(w) => {
+            let own = std::env::var_os("PATH").unwrap_or_default();
+            let bin = os::find_in(&exec.bin.to_string_lossy(), path.as_deref().unwrap_or(own.as_os_str())).unwrap_or_else(|| exec.bin.clone());
+            (w.program.clone().into_os_string(), w.args.iter().cloned().chain([bin.into_os_string()]).collect())
+        }
+        None => (exec.bin.clone().into_os_string(), vec![]),
+    };
+    let scoped = exec.slice.as_ref().and_then(|s| Some((s.scoped_for(&program, path.as_deref())?, s)));
     let (mut cmd, slice, scope) = match scoped {
         Some(((c, scope), s)) => (tokio::process::Command::from(c), Some(s), Some(scope)),
-        None => (os::tokio_command(&exec.bin), None, None),
+        None => (os::tokio_command(&program), None, None),
     };
     for name in crate::run_env::left_out_now(exec.kind, &exec.env) {
         cmd.env_remove(name);
     }
-    cmd.args(&exec.args)
+    cmd.args(&first).args(&exec.args)
         .envs(exec.env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
         .current_dir(cwd)
         .stdin(std::process::Stdio::piped())

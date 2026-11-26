@@ -118,6 +118,9 @@ pub struct AppState {
     /// LibreOffice, which makes the PDF copies of Pages, Keynote, Numbers, .doc and .ppt files for the Chief (GA-311, see
     /// `readable`): its profile folder of Hersir's own, `<data>/libreoffice`, and its limit. Tests may set a fake program.
     pub libreoffice: Arc<gizai_agents::libreoffice::LibreOffice>,
+    /// GA-265: whether task runs start in Hersir's sandbox (`gizai_agents::sandbox`). Off until Hersir's start turns it
+    /// on: a test's runs start as before, unless the test turns it on.
+    pub sandbox: Arc<std::sync::atomic::AtomicBool>,
 }
 
 #[derive(Serialize)]
@@ -435,7 +438,7 @@ fn open_data(dir: PathBuf, notify: Arc<dyn Fn(runs::Note) + Send + Sync>, defaul
                   desktop: notifications::Desktop::silent(), inbox: Arc::new(notifications::Watch::default()),
                   terminals: Arc::new(gizai_agents::terminal::Terminals::default()), streams: Arc::new(stream::Streams::default()),
                   backups: Arc::new(backups::Backups::default()), restores: Arc::new(restore::Restores::default()),
-                  cloud: Arc::new(cloud::Cloud::default()), libreoffice };
+                  cloud: Arc::new(cloud::Cloud::default()), libreoffice, sandbox: Arc::new(Default::default()) };
     // GA-102: the Chief's calls that wait for your approval stay waiting; one approved while Gizai closed counts as
     // failed, so it never runs twice, and its chat says so.
     pending::at_start(&st);
@@ -749,6 +752,8 @@ pub fn run() {
             // Memory for agent runs (GA-202): from now on agent processes start in this Gizai's own slice on Linux, which
             // Settings → Runs limits; Gizai itself stays outside it.
             run_memory::start(&state);
+            // GA-265: from now on task runs start in Hersir's sandbox (Settings → Coding CLIs can switch it off).
+            state.sandbox.store(true, std::sync::atomic::Ordering::Relaxed);
             // Memory (GA-85): the notes agents kept in Claude Code's own memory come into Gizai's, each file once. Not in
             // headless test and screenshot runs: they run in your own home folder, with your Claude Code accounts.
             if !test_run {

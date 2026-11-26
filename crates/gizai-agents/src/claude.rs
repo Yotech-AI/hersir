@@ -61,7 +61,7 @@ impl ClaudeArgs {
         }
         crate::process::Exec {
             bin: self.bin.clone(), args: self.argv(), env, stdin: self.prompt.clone(), slice: None,
-            kind: Some(crate::cli::Kind::ClaudeCode), mcp_config: self.mcp_config.clone(),
+            kind: Some(crate::cli::Kind::ClaudeCode), mcp_config: self.mcp_config.clone(), sandbox: None,
         }
     }
 
