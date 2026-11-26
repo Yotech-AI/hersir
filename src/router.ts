@@ -13,7 +13,12 @@ export type Page = (typeof PAGES)[number];
  *  On a task, `view` "changes" is its Changes tab, and `run` one run's changes there (GA-112); "screenshots" its
  *  Screenshots tab, and `run` one run's set there (GA-185). On a project, `view` "time" is its Time tracking tab (GA-331).
  *  On a project's Docs page, `docs` is the page's own address after #/devdocs/<project id>/ (src/docs/route.ts). */
-export type Route = { page: Page; id?: string; scope?: string; view?: "graph" | "changes" | "screenshots" | "time"; run?: string; docs?: string };
+export type Route = { page: Page; id?: string; scope?: string; view?: "graph" | "changes" | "screenshots" | "time"; run?: string; docs?: string; project?: string };
+// One project's tasks (GA-372): #/tasks/project/<project id>, and so on the board and in the Inbox; #/tasks, #/board and
+// #/inbox are every project's. The project is in the address only, never kept on the device, so Tasks in the sidebar
+// always shows every project and Back goes to the project's tasks again.
+export const PROJECT_PAGES = ["tasks", "board", "inbox"] as const;
+const scoped = (page: Page) => (PROJECT_PAGES as readonly string[]).includes(page);
 // Settings' tabs (GA-42): #/settings/<tab> opens one; #/settings, or a tab it doesn't know, opens General. Hersir Cloud
 // (GA-360) is #/settings/cloud.
 export const SETTINGS_TABS = ["general", "appearance", "notifications", "agents", "mcp", "github", "cloud"] as const;
@@ -39,6 +44,7 @@ export function parseHash(hash: string): Route {
   if (!PAGES.includes(page)) return { page: "tasks" };
   if (page === "settings") return (SETTINGS_TABS as readonly string[]).includes(parts[1] ?? "") ? { page, id: parts[1] } : { page };
   if (page === "memory") return memoryRoute(parts.slice(1));
+  if (scoped(page)) return parts[1] === "project" && parts[2] ? { page, project: decodeURIComponent(parts[2]) } : { page };
   // a card's changes (GA-112): #/task/<id>/changes, and one run's: #/task/<id>/changes/run/<run id>
   if (page === "task" && parts[1] && parts[2] === "changes") {
     const run = parts[3] === "run" && parts[4] ? { run: decodeURIComponent(parts[4]) } : {};
@@ -74,6 +80,7 @@ export function href(r: Route): string {
   if (r.page === "task" && r.id && r.view === "screenshots") {
     return `#/task/${encodeURIComponent(r.id)}/screenshots${r.run ? "/" + encodeURIComponent(r.run) : ""}`;
   }
+  if (scoped(r.page) && r.project) return `#/${r.page}/project/${encodeURIComponent(r.project)}`;
   if (r.page === "project" && r.id && r.view === "time") return `#/project/${encodeURIComponent(r.id)}/time`;
   if (r.page === "devdocs" && r.id && r.docs) return `#/devdocs/${encodeURIComponent(r.id)}/${r.docs}`;
   return `#/${r.page}${r.id ? "/" + encodeURIComponent(r.id) : ""}`;

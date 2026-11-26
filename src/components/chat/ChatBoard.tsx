@@ -23,8 +23,6 @@ import { Board } from "../Board";
 import { useChatProject } from "./useChatProject";
 
 const KEY = tabKey({ kind: "board", id: BOARD_TAB });
-/** The Tasks page's kept project filter (TasksPage useKeptFilter). */
-const TASK_PROJECT_KEY = "gizai-task-project";
 
 /** The team whose board shows: the project's team (else the first team), or with no project the team picked on the Tasks
  *  page; and every team, for the cards of the team's board. */
@@ -68,16 +66,12 @@ export function BoardTab({ on, keys, close }: { on: boolean; keys: string[]; clo
   );
 }
 
-/** Own page: the board on the Tasks page, filtered to the project (the team's board: every project of the team picked);
- *  the tab closes here. */
+/** Own page: the board on the Tasks page, of the project at its address, #/board/project/<id> (GA-372; the team's board:
+ *  #/board, every project of the team picked); the tab closes here. */
 export function boardOwnPage(project: Project | null | undefined) {
-  try {
-    if (project) localStorage.setItem(TASK_PROJECT_KEY, project.id);
-    else localStorage.removeItem(TASK_PROJECT_KEY);
-  } catch { /* private mode */ }
   if (project) pickTeam(project.teamId ?? null);
   closeSideTabs([KEY]);
-  go({ page: "board" });
+  go(project ? { page: "board", project: project.id } : { page: "board" });
 }
 
 /** The shown Board tab's body. */
