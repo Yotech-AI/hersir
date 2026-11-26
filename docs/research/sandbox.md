@@ -26,8 +26,8 @@ anything your account can. Jefsev, 25 Nov 2026: build it now, for every coding C
 
 | | |
 | --- | --- |
-| Read and change | the worktree, the agent's change folders, the run's temp folder (on Linux also `/tmp`), what a commit writes in the git folder (`worktree::commit_dirs`), its own CLI's folders (`~/.claude` + `~/.claude.json`, or CLAUDE_CONFIG_DIR; `~/.codex` or CODEX_HOME; `~/.gemini`; OpenCode's four), the package caches (`~/.npm`, `~/.cache`, `~/.cargo/registry` and `git`, pnpm, Yarn, Bun, Go, Gradle, Maven) |
-| Read only | everything else; the agent's read folders; from the hidden data folder the run's MCP config, Gemini settings file and Hersir's socket |
+| Read and change | the worktree, the agent's change folders, the run's temp folder (on Linux also `/tmp`; the run's MCP config is in it), what a commit writes in the git folder (`worktree::commit_dirs`), its own CLI's folders (`~/.claude`, or CLAUDE_CONFIG_DIR; `~/.codex` or CODEX_HOME; `~/.gemini`; OpenCode's data, state and cache) but for their settings, the package caches (`~/.npm`, `~/.cache`, `~/.cargo/registry` and `git`, pnpm, Yarn, Bun, Go, Gradle, Maven) |
+| Read only | everything else; the agent's read folders; the own CLI's settings, instructions, hooks, plugins, skills and MCP servers (`cli_settings`: `~/.claude.json`, `~/.claude/settings.json`, `~/.claude/plugins`, `~/.codex/config.toml`, `~/.gemini/settings.json`, `~/.config/opencode`, …), so a run can't leave a program there for your own sessions; from the hidden data folder the run's Gemini settings file and Hersir's socket |
 | Hidden | Hersir's data folder (database, logs, MCP configs, other cards' worktrees), the other runs' temp folders, `SECRET_PLACES` (`~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.azure`, `~/.kube`, `~/.docker`, `~/.config/gh`, `~/.netrc`, `~/.git-credentials`, keyrings, browser profiles, …), the other CLIs' folders; Linux: `$XDG_RUNTIME_DIR`, `/run/dbus`, Docker's, Podman's and containerd's sockets |
 | Network | as today |
 
@@ -41,10 +41,11 @@ profile. `./install.sh --check` names the command for the system; the check does
 **Windows:** no sandbox (AppContainer and restricted tokens would need every CLI to cope with a different user's view of
 the disk; WSL2 is out of scope). Each run says "No sandbox on Windows".
 
-**Each CLI's sign-in and settings:** a run gets its own CLI's folders, read and change, and none of the others' (by kind;
-an Other CLI by its program's name, `opencode`). The environment was done in GA-266. Not covered: the macOS keychain,
-which Seatbelt can't split by item (Claude Code reads its sign-in there through `security`, which can read other items
-made by `security` too), and a second account's folder of another CLI entry.
+**Each CLI's sign-in and settings:** a run gets its own CLI's folders, read and change but for their settings (read only),
+and none of the others' (by kind; an Other CLI by its program's name, `opencode`). The environment was done in GA-266.
+Not covered: the macOS keychain, which Seatbelt can't split by item (Claude Code reads its sign-in there through
+`security`, which can read other items made by `security` too; `~/Library/Keychains` stays readable for that), a settings
+file that isn't there yet (a run could make it), and a second account's folder of another CLI entry.
 
 **When the sandbox can't start:** the run doesn't start, and the card goes on hold "blocked" with what to install on that
 system (`sandbox::missing_bubblewrap`, `bubblewrap_fails`). **Settings → Coding CLIs → Run agents without a sandbox on
@@ -72,6 +73,64 @@ a system without bwrap (`PATH` without it), the card on hold with the sentence.
 
 A smoke check of the built code on Linux (bubblewrap 0.11, kernel 7.2) did that by hand: every read above refused, writes
 outside refused, `git commit` in the worktree worked, two processes visible.
+
+## 4. Agents' features in the sandbox (Jefsev, 26 Nov)
+
+Checked on Linux (kernel 7.2, bubblewrap 0.11) with the built code (`sandbox::policy`, `Engine::wrap`, `run_env`), a
+stand-in data folder, socket and runtime folder, and your home folder for the caches and browsers. The CLIs ran with a
+scratch home and no keys, so nothing was spent and nothing written in `~/.claude`. `cargo run -p gizai-agents --example
+sandbox_check` repeats the main checks anywhere; all pass here.
+
+| # | Feature | In the sandbox | Fixed in this card |
+| --- | --- | --- | --- |
+| 1 | Hersir's socket | Reachable: it comes back read only in the hidden runtime folder. GA-266's check passes: the kernel gives Hersir the process's own pid, which is in the run's process group. Task runs don't get Hersir's MCP server yet (chat turns do, outside the sandbox). | — |
+| 1 | The run's MCP config | Was still readable after Hersir deleted it (GA-266): a file brought in on its own keeps its content until the run ends. | In the run's temp folder when the run is sandboxed: gone in the sandbox once deleted. |
+| 2 | Remote MCP servers (Figma's, Trello's) | `https://mcp.figma.com/mcp` and Trello's API answer (405, 404): names, TLS and the network work. The token in the run's MCP config reaches the CLI. | — |
+| 3 | Local MCP servers | `npx` (server-sequential-thinking 2.2.0 answered `initialize`), a program of its own, and a server on 127.0.0.1 (Figma's desktop MCP) work. `uvx` failed: uv makes its tool folder in `~/.local/share/uv/tools`. | `UV_TOOL_DIR`, `UV_TOOL_BIN_DIR` in the run's temp folder (`run_env`); downloads stay in `~/.cache/uv`. |
+| 4 | The browser | Chrome DevTools MCP 1.10.1 with Chromium 143 (Hersir's browser: `--headless --isolated`, its profile in TMPDIR) ended at the start: Chromium stops when it can't make its crash-report folder in the read-only `~/.config`. `/dev/shm` works (bubblewrap's own `/dev`), and so does Chromium's own sandbox, nested. Playwright's headless shell worked as it was. | `BREAKPAD_DUMP_LOCATION` in the run's temp folder: `new_page` and `take_screenshot` work. |
+| 4 | A visible window | No display: Wayland's socket is in the hidden runtime folder, X11's `/tmp/.X11-unix` isn't in the run's `/tmp`, and X11's abstract socket was refused here. Hersir's browser is always headless (`browser::safe`), so its setting doesn't change; a server you add that opens a window (Playwright MCP without `--headless`) fails in a run. | — |
+| 5 | Web search and fetch | The network works (2): Claude Code's WebSearch runs at Anthropic, WebFetch fetches from the run. | — |
+| 5 | Each CLI's sign-in | Claude Code 2.1.325, Codex 0.163 and Gemini 0.65 each started in their sandbox and got to signing in (an init line and a $0 "not logged in" result; a 401 from OpenAI; Gemini asking for an auth method). With your home: `~/.claude/.credentials.json` and `~/.claude/projects` read and change, `~/.codex` and `~/.gemini` not there for a Claude Code run. Claude Code doesn't update `~/.claude.json` in the sandbox (it saves it through a new file in the home folder); the runs went on without it. | The own CLI's settings are read only (`cli_settings`); no CLI minded. |
+| 5 | macOS: keychain and DNS | Not run here. The profile refuses only Apple Events and Launch Services, not the keychain (`com.apple.SecurityServer`) or DNS (`mDNSResponder`). But it hid `~/Library/Keychains`, where a program reads its keychain file itself: Claude Code couldn't have signed in. | `~/Library/Keychains` isn't hidden. `sandbox_check` checks the keychain, DNS and headless Chrome on macOS. |
+
+To be checked:
+- **macOS in CI.** This run couldn't push a change to `.github/workflows/ci.yml` (its GitHub token can't change
+  workflows), and CI runs only on a pull request. The step, for the test job after `cargo build --workspace`, with
+  `bubblewrap` added to the Linux packages:
+
+  ```yaml
+  - name: The sandbox for runs
+    if: steps.version.outputs.only != 'true' && runner.os != 'Windows'
+    continue-on-error: true
+    env:
+      HERSIR_CHECK_DIR: /tmp/hersir-sandbox-check
+    run: cargo run -q -p gizai-agents --example sandbox_check
+  ```
+
+  Ubuntu 24.04 keeps user namespaces from programs without an AppArmor profile of their own. If bubblewrap can't start
+  there, users of Ubuntu 24.04 hit the same, and its sentence says what to check.
+- **A real run of each CLI** with its own sign-in. Its folders are bound in as they are, so it should sign in as before.
+- **A gap found on the way:** on an X server that listens on an abstract socket (Xorg does unless told not to), a run can
+  reach it through the shared network. It could then open windows and send keys to your other X11 programs. Linux 6.12's
+  Landlock can refuse abstract sockets outside the sandbox: a later card, on top of bubblewrap.
+
+What can't work inside: pushing and pull requests (your SSH keys and gh's login are hidden), a visible browser window,
+and an MCP server that needs your session (D-Bus, the keyring, Docker) or a folder the sandbox hides.
+
+### Proposal: keeping those features
+
+1. **Hersir does it for the run, over its socket.** A run asks Hersir to push its card's branch, or to open or update
+   that card's pull request (option 1a). Hersir checks the asking process is in the run's process tree (GA-266) and that
+   it is the run's own card and the project's own repository, and does it with your keys, as it does after a run now.
+   The DevOps Agent needs more (tags, releases, merges): until this covers those, its runs go without the sandbox,
+   marked on the run.
+2. **Settings → MCP servers, per server: "Runs outside the sandbox"**, off by default, for servers you add. Hersir starts
+   that server itself, outside the sandbox, as it starts a run's preview, and ends it with the run. The run reaches it
+   locally: a server that speaks HTTP on 127.0.0.1, with a token for that run in the run's MCP config (127.0.0.1 works in
+   the sandbox, item 3); a stdio server through Hersir's socket, like Hersir's own shim. The run's log says
+   "<server> runs outside the sandbox". This is for a visible Playwright browser, or a server that needs your keyring or
+   Docker. Figma's desktop MCP is outside already: it is the Figma app. What such a server can do, the run can ask it to
+   do. So it is your choice, per server, and the run says so.
 
 ## Open: pushing and pull requests
 

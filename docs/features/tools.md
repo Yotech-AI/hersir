@@ -71,12 +71,15 @@ Hersir starts each task run's CLI, Claude Code, Codex, Gemini or any other, in a
 
 | | In the sandbox |
 | --- | --- |
-| Read and change | The card's worktree, the agent's folders, the run's temp folder (also `/tmp` on Linux), what a commit writes in the repository's git folder, the run's own CLI's sign-in and settings folders (`~/.claude` and `~/.claude.json`, `~/.codex`, `~/.gemini`, OpenCode's), and the package caches (`~/.npm`, `~/.cache`, Cargo's registry, …) |
+| Read and change | The card's worktree, the agent's folders, the run's temp folder (also `/tmp` on Linux), what a commit writes in the repository's git folder, the run's own CLI's sign-in and sessions (`~/.claude`, `~/.codex`, `~/.gemini`, OpenCode's), and the package caches (`~/.npm`, `~/.cache`, Cargo's registry, …) |
+| Read only | The run's own CLI's settings, instructions, hooks, plugins and MCP servers (`~/.claude.json`, `~/.claude/settings.json`, `~/.codex/config.toml`, `~/.gemini/settings.json`, …), so a run can't leave a program there for your own sessions |
 | Read only | The rest of your computer |
 | Hidden | Hersir's data folder (its database, the runs' logs and MCP configs, the other cards' worktrees), the other runs' temp folders, your keys and logins (`~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.config/gh`, `~/.netrc`, `~/.git-credentials`, the browsers' profiles, …), the other CLIs' folders, and on Linux your session's sockets (`$XDG_RUNTIME_DIR`: systemd, D-Bus, the keyring) and Docker's |
 | Network | As it is |
 
-Only the run's own MCP config and Hersir's socket come through, read only. A run sees no other process on Linux.
+Hersir's socket comes through, read only, and the run's MCP config is in its temp folder until the CLI has read it. A run sees no other process on Linux.
+
+The agents' features work in it: Hersir's socket, remote MCP servers (Figma's, Trello's), servers a run starts with `npx`, `uvx` or a program of its own, a server on 127.0.0.1 (Figma's desktop app), the hidden browser, web search and fetch, and each CLI's own sign-in. Chrome's crash reports and uv's tools go in the run's temp folder. `cargo run -p gizai-agents --example sandbox_check` shows what the sandbox allows on your computer.
 
 - **Linux:** bubblewrap (`bwrap`). Install the `bubblewrap` package (`./install.sh --check` names the command for your system). It needs user namespaces, which are on by default.
 - **macOS:** Seatbelt, which comes with macOS.
@@ -87,9 +90,11 @@ Only the run's own MCP config and Hersir's socket come through, read only. A run
 What the sandbox doesn't cover:
 - **Pushing and pull requests:** your SSH keys and gh's login are hidden, so an agent's own `git push` and `gh pr create` can't sign in in the sandbox. Hersir pushes a card's branch after its run, as before.
 - **The network** is open: what the run can read it can send anywhere.
-- **The package caches** are shared with your own builds: a run could change a package in one.
-- **Its own CLI's folder** is writable, settings included.
-- **macOS:** the keychain stays reachable, and macOS's sandbox isn't tested on every version.
+- **The package caches** (`~/.npm`, `~/.cache`, Cargo's registry, …) are shared: a package a run changes in one can reach your own later builds, and other projects' runs.
+- **A window:** a run has no display, so a browser or app it starts must be headless. Hersir's browser always is.
+- **X11:** on an X server that listens on an abstract socket (Xorg does unless told not to), a run can still reach it, and with it your other X11 programs.
+- **Its own CLI's folder** is writable but for its settings, and a settings file that isn't there yet can be made.
+- **macOS:** the keychain stays reachable (Claude Code signs in from it), and macOS's sandbox isn't tested on every version.
 - **Places made after the run started**, and keys or logins kept elsewhere than the places above.
 - **Chat turns** (the Chief) aren't in the sandbox; they get only Hersir's own tools.
 
