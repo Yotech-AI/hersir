@@ -95,6 +95,8 @@ A new card takes over a finished card's worktree. A build folder over 20 GB is e
 
 Settings → Data lists old worktrees with their uncommitted files, and removes them. Remove anyway puts uncommitted changes in git's stash first. A worktree with a nested repository in it stays, and says why: git's checks before a removal or a stash could run that repository's own settings. So does one with a submodule whose folder name isn't valid UTF-8, or that git could read two ways, such as an accented letter written as a letter and a separate accent.
 
+Commit… on a card you work on yourself doesn't commit in a worktree that has a nested repository or a checked-out submodule, and says why: git add would look inside it, with that repository's own settings. Commit those changes yourself in a terminal. A new card's worktree starts with no submodules checked out, so most cards never meet this.
+
 ## Runs
 
 - **Live output** while an agent works.
