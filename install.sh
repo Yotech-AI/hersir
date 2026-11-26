@@ -245,6 +245,19 @@ fi
 if have ldconfig && ! ldconfig -p 2>/dev/null | grep -E 'lib(ayatana-)?appindicator3\.so\.1' >/dev/null; then
   say "Tray icon: libayatana-appindicator is missing, so Hersir will have no tray icon (Arch and Omarchy: sudo pacman -S libayatana-appindicator; Debian and Ubuntu: sudo apt install libayatana-appindicator3-1)."
 fi
+# GA-265: agents' runs start in Hersir's sandbox, which on Linux is bubblewrap (bwrap). Hersir works without it, but a
+# card's run then waits on hold until it is there, or until Settings → Coding CLIs → Run agents without a sandbox on this
+# computer is on. macOS's sandbox comes with macOS; Windows has none.
+if [ "$OS" = Linux ] && ! have bwrap; then
+  case "$distro" in
+    *" arch "*|*" manjaro "*|*" endeavouros "*|*" omarchy "*) bwrap_how="sudo pacman -S bubblewrap" ;;
+    *" debian "*|*" ubuntu "*) bwrap_how="sudo apt install bubblewrap" ;;
+    *" fedora "*|*" rhel "*) bwrap_how="sudo dnf install bubblewrap" ;;
+    *" opensuse"*|*" suse "*) bwrap_how="sudo zypper install bubblewrap" ;;
+    *) bwrap_how="your system's bubblewrap package" ;;
+  esac
+  say "Sandbox: bubblewrap (bwrap) is missing, so agents' runs wait on hold until it is there ($bwrap_how), or until you switch on Settings → Coding CLIs → Run agents without a sandbox on this computer."
+fi
 if [ "$OS" = Darwin ] && [ "$(uname -m)" != arm64 ]; then
   say "Note: Hersir is made for Macs with Apple silicon, and this shell runs as $(uname -m) (an Intel Mac, or Rosetta). The build may work, but isn't tested."
 fi

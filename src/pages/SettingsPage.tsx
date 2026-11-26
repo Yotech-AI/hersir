@@ -123,6 +123,10 @@ export function SettingsPage({ tab }: { tab?: string } = {}) {
               <div className="input-group"><input id="s-bin" className="input mono" value={s.claudeBin ?? ""} onChange={(e) => setS({ ...s, claudeBin: e.target.value })} placeholder="/home/you/.local/bin/claude" />
                 <button className="btn" onClick={detect} disabled={detecting}>{detecting ? "Looking…" : "Detect"}</button></div></Field>
             <Field label="More CLIs" wide hint="Saved as soon as you add, change or remove one."><CliSettings /></Field>
+            <Field label="Sandbox" wide hint={s.agentsWithoutSandbox
+              ? "Off: agents' runs can read and change whatever your account can, your keys and Hersir's data included. Each run says so."
+              : "On: each run can't read Hersir's data, other cards' worktrees, your keys or the other CLIs' logins, and changes only its worktree, its folders and its temp folder. Not on Windows."}>
+              <label className="check"><input type="checkbox" checked={!!s.agentsWithoutSandbox} onChange={(e) => { const next = { ...s, agentsWithoutSandbox: e.target.checked }; setS(next); save(next); }} />Run agents without a sandbox on this computer</label></Field>
           </FormSection>
           <FormSection title="Runs" text="Each run is a process of the agent's coding CLI in its own git worktree. Hersir stops a run at the first limit it reaches, and tells the agent these limits so it can commit its work in time.">
             <Field label="Runs at once" htmlFor="s-max" hint="All agents together, 1 to 20; each agent also has its own cards at once"

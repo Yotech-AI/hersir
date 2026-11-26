@@ -40,3 +40,11 @@ That form is the only way to report a security problem. Never report one in a pu
 ## How Hersir keeps your data
 
 Hersir keeps your data in one folder on your computer and reports nothing about you or your work: see [Your data](docs/install.md#your-data) and [No telemetry](docs/install.md#no-telemetry).
+
+## The sandbox for agents' runs
+
+On Linux (bubblewrap) and macOS (Seatbelt) each task run, with every program its CLI starts, runs in Hersir's sandbox. It can't read Hersir's data folder, the other cards' worktrees, the other runs' temp folders, your keys and logins (`~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.config/gh`, …) or the other coding CLIs' folders, nor reach your session's sockets on Linux. It changes only its worktree, the agent's folders, its temp folder, what a commit writes, its own CLI's folders and the package caches.
+
+It doesn't cover: the network (open, as before), the package caches it shares with your own builds, its own CLI's settings, the keychain on macOS, chat turns, and Windows, which has no sandbox. A run without a sandbox says so. [Tools per agent → The sandbox](docs/features/tools.md#the-sandbox) has the details.
+
+A way out of the sandbox counts as a security problem: report it as above.

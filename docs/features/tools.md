@@ -63,13 +63,39 @@ The Chief can't give an agent a shell, an interpreter or a program by its path, 
 
 ### Commands that run code
 
-`npm`, `npx`, `node`, `php`, `composer`, `cargo`, `pytest` and `./vendor/bin/*` are on the lists, and they run code: the project's scripts, tests and builds. That code can read and change anything your user can, Hersir's data, other runs' settings and your keys (like `~/.ssh`) included. Claude Code only checks the command line, not what the command then does.
+`npm`, `npx`, `node`, `php`, `composer`, `cargo`, `pytest` and `./vendor/bin/*` are on the lists, and they run code: the project's scripts, tests and builds. Claude Code only checks the command line, not what the command then does. So on Linux and macOS every run starts in Hersir's sandbox (below), which limits what that code can reach.
 
-Give such commands only to agents on repositories you trust. A sandbox for runs comes later.
+### The sandbox
+
+Hersir starts each task run's CLI, Claude Code, Codex, Gemini or any other, in a sandbox, and so everything the CLI starts: its tools, the project's scripts and tests, a `node -e`.
+
+| | In the sandbox |
+| --- | --- |
+| Read and change | The card's worktree, the agent's folders, the run's temp folder (also `/tmp` on Linux), what a commit writes in the repository's git folder, the run's own CLI's sign-in and settings folders (`~/.claude` and `~/.claude.json`, `~/.codex`, `~/.gemini`, OpenCode's), and the package caches (`~/.npm`, `~/.cache`, Cargo's registry, …) |
+| Read only | The rest of your computer |
+| Hidden | Hersir's data folder (its database, the runs' logs and MCP configs, the other cards' worktrees), the other runs' temp folders, your keys and logins (`~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.config/gh`, `~/.netrc`, `~/.git-credentials`, the browsers' profiles, …), the other CLIs' folders, and on Linux your session's sockets (`$XDG_RUNTIME_DIR`: systemd, D-Bus, the keyring) and Docker's |
+| Network | As it is |
+
+Only the run's own MCP config and Hersir's socket come through, read only. A run sees no other process on Linux.
+
+- **Linux:** bubblewrap (`bwrap`). Install the `bubblewrap` package (`./install.sh --check` names the command for your system). It needs user namespaces, which are on by default.
+- **macOS:** Seatbelt, which comes with macOS.
+- **Windows:** no sandbox. Each run says "No sandbox on Windows".
+- **When the sandbox can't start** (Linux without bubblewrap, say), the run doesn't start: the card goes on hold "blocked" with what to install. **Settings → Coding CLIs → Run agents without a sandbox on this computer** (off by default) starts runs without it; each such run says so.
+- **The CLIs' own sandboxes:** Codex keeps its `workspace-write` sandbox inside Hersir's. Claude Code and Gemini have only Hersir's.
+
+What the sandbox doesn't cover:
+- **Pushing and pull requests:** your SSH keys and gh's login are hidden, so an agent's own `git push` and `gh pr create` can't sign in in the sandbox. Hersir pushes a card's branch after its run, as before.
+- **The network** is open: what the run can read it can send anywhere.
+- **The package caches** are shared with your own builds: a run could change a package in one.
+- **Its own CLI's folder** is writable, settings included.
+- **macOS:** the keychain stays reachable, and macOS's sandbox isn't tested on every version.
+- **Places made after the run started**, and keys or logins kept elsewhere than the places above.
+- **Chat turns** (the Chief) aren't in the sandbox; they get only Hersir's own tools.
 
 ## Folders
 
-Besides its worktree, an agent can have folders of its own, each set to read or to read and change (agent form → Permissions). They limit the agent's file tools, not the commands it runs. `/`, your home folder, Hersir's data and folders with keys are refused.
+Besides its worktree, an agent can have folders of its own, each set to read or to read and change (agent form → Permissions). They limit the agent's file tools, and in the sandbox the commands it runs too. `/`, your home folder, Hersir's data and folders with keys are refused.
 
 ## The rules of a run
 

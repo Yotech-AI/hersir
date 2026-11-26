@@ -1472,6 +1472,11 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
     if codex_sandboxed || sandbox.is_some() {
         git_config.push(("rerere.enabled".into(), "false".into()));
     }
+    // In Hersir's sandbox git's own upkeep after a commit (gc, pack-refs) would write the git folder's packed-refs, which
+    // it can't: the commit works, but an error follows it. The run's git leaves that to your own git.
+    if sandbox.is_some() {
+        git_config.extend([("maintenance.auto".into(), "false".into()), ("gc.auto".into(), "0".into())]);
+    }
     let commit_dirs: Vec<PathBuf> = if spec.kind == Kind::Codex || sandbox.is_some() {
         let dir = wt.path.clone();
         tokio::task::spawn_blocking(move || worktree::commit_dirs(&dir)).await.ok().and_then(Result::ok).unwrap_or_default()
