@@ -435,22 +435,21 @@ fn autogroup_nice() {
 
 /// CPU for agents (GA-369): from now on agents' work may use at most `cores` of this computer's cores together, what
 /// already runs too; None, or all of them, for no cap. On Windows the CPU rate cap of the job all agents' jobs are in
-/// (`spawn_agents_tree`), a hard cap. Elsewhere nothing: Linux caps the agent runs' slice instead
-/// (`run_memory::Slice::set_cpu_cap`), and macOS has no cap. Err says why Windows refused it.
+/// (`spawn_agents_tree`), a hard cap; no cap lifts one given before (`AgentsJob::apply`). Elsewhere nothing: Linux caps
+/// the agent runs' slice instead (`run_memory::Slice::set_cpu_cap`), and macOS has no cap. Err says why Windows refused
+/// it.
 pub fn set_agents_cpu(cores: Option<u32>) -> Result<(), String> {
     #[cfg(windows)]
     {
         let all = crate::run_cpu::cores().max(1);
         // in hundredths of a percent of all the computer's CPU, as the job's CpuRate counts
         let rate = match cores {
-            Some(c) if c < all => ((u64::from(c.max(1)) * 10_000 / u64::from(all)) as u32).max(1),
+            Some(c) if c < all => ((u64::from(c.max(1)) * u64::from(ALL_CPU) / u64::from(all)) as u32).max(1),
             _ => 0,
         };
-        AGENTS_RATE.store(rate, std::sync::atomic::Ordering::SeqCst);
-        match AGENTS_JOB.get() {
-            Some(Some(job)) => job.cap_cpu(rate).map_err(|e| format!("Windows refused the agents' CPU cap: {e}")),
-            _ => Ok(()),
-        }
+        let mut agents = AGENTS.lock().unwrap_or_else(|e| e.into_inner());
+        agents.rate = rate;
+        agents.apply().map_err(|e| format!("Windows refused the agents' CPU cap: {e}"))
     }
     #[cfg(not(windows))]
     {
@@ -459,15 +458,47 @@ pub fn set_agents_cpu(cores: Option<u32>) -> Result<(), String> {
     }
 }
 
-/// Windows: the job all agents' jobs are in (GA-369), made at the first agents' tree with CPU for agents as its CPU rate
-/// cap; None when Windows wouldn't make it, and then agents' work starts in a job of its own only.
+/// Windows: a job's CpuRate for all of the computer's CPU (10,000 cycles of every 10,000), so no cap at all.
 #[cfg(windows)]
-static AGENTS_JOB: std::sync::OnceLock<Option<Job>> = std::sync::OnceLock::new();
+const ALL_CPU: u32 = 10_000;
 
-/// Windows: CPU for agents as the agents' job's CpuRate (hundredths of a percent of all the computer's CPU); 0 for no
-/// cap.
+/// Windows (GA-369): CPU for agents and the job all agents' jobs are in, under one lock, so a cap given while that job
+/// is being made is never lost.
 #[cfg(windows)]
-static AGENTS_RATE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+static AGENTS: std::sync::Mutex<AgentsJob> = std::sync::Mutex::new(AgentsJob { rate: 0, job: None, has: 0 });
+
+#[cfg(windows)]
+struct AgentsJob {
+    /// CPU for agents as the job's CpuRate (hundredths of a percent of all the computer's CPU); 0 for no cap.
+    rate: u32,
+    /// The job, made at the first agents' tree with CPU for agents as its CPU rate cap: None until then, Some(None)
+    /// when Windows wouldn't make it, and then agents' work starts in a job of its own only.
+    job: Option<Option<Job>>,
+    /// The CpuRate the job has now; 0 while it has never had one.
+    has: u32,
+}
+
+#[cfg(windows)]
+impl AgentsJob {
+    /// Gives the job, once it is there, CPU for agents as its cap, at once for what already runs in it. Windows takes no
+    /// CpuRate of 0 ("If CpuRate is 0, SetInformationJobObject returns INVALID_ARGS", Microsoft's docs; on Windows CI it
+    /// answered "The parameter is incorrect. (os error 87)" to a cap of 0 with no flags) and says of no way to switch the
+    /// cap off. So no cap is no call at all while the job has never had one, and else a cap of all the computer's CPU
+    /// (`ALL_CPU`), which never holds anything back.
+    fn apply(&mut self) -> io::Result<()> {
+        let Some(Some(job)) = &self.job else { return Ok(()) };
+        let rate = match self.rate {
+            0 if self.has == 0 => return Ok(()),
+            0 => ALL_CPU,
+            r => r.min(ALL_CPU),
+        };
+        if rate != self.has {
+            job.cap_cpu(rate)?;
+            self.has = rate;
+        }
+        Ok(())
+    }
+}
 
 /// Windows: puts the suspended process `process` in the agents' job, before it goes in its own job, which so is nested
 /// in the agents' one and held to its CPU cap. When Windows refuses, the process starts in its own job only, and
@@ -475,18 +506,18 @@ static AGENTS_RATE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32:
 #[cfg(windows)]
 fn in_agents_job(process: windows_sys::Win32::Foundation::HANDLE) {
     static SAID: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-    let agents = AGENTS_JOB.get_or_init(|| {
-        let job = Job::new().ok()?;
-        let rate = AGENTS_RATE.load(std::sync::atomic::Ordering::SeqCst);
-        if rate > 0 && let Err(e) = job.cap_cpu(rate) {
+    let mut agents = AGENTS.lock().unwrap_or_else(|e| e.into_inner());
+    if agents.job.is_none() {
+        agents.job = Some(Job::new().ok());
+        if let Err(e) = agents.apply() {
             eprintln!("gizai: agents' work starts without a CPU cap: Windows refused it: {e}");
         }
-        Some(job)
-    });
-    let added = match agents {
-        Some(job) => job.add(process).map_err(|e| e.to_string()),
-        None => Err("Windows wouldn't make the agents' job".to_string()),
+    }
+    let added = match &agents.job {
+        Some(Some(job)) => job.add(process).map_err(|e| e.to_string()),
+        _ => Err("Windows wouldn't make the agents' job".to_string()),
     };
+    drop(agents);
     if let Err(e) = added
         && !SAID.swap(true, std::sync::atomic::Ordering::SeqCst)
     {
@@ -562,18 +593,17 @@ impl Job {
         }
     }
 
-    /// The agents' job (GA-369): a hard cap of `rate` hundredths of a percent of all the computer's CPU for everything in
-    /// it and in the jobs nested in it, at once for what already runs too; 0 for none.
+    /// The agents' job (GA-369): a hard cap of `rate` hundredths of a percent of all the computer's CPU (1 up to
+    /// `ALL_CPU`, all of it) for everything in it and in the jobs nested in it, at once for what already runs too.
     fn cap_cpu(&self, rate: u32) -> io::Result<()> {
         use windows_sys::Win32::System::JobObjects::{
             JOB_OBJECT_CPU_RATE_CONTROL_ENABLE, JOB_OBJECT_CPU_RATE_CONTROL_HARD_CAP, JOBOBJECT_CPU_RATE_CONTROL_INFORMATION,
-            JobObjectCpuRateControlInformation, SetInformationJobObject,
+            JOBOBJECT_CPU_RATE_CONTROL_INFORMATION_0, JobObjectCpuRateControlInformation, SetInformationJobObject,
         };
-        let mut info = JOBOBJECT_CPU_RATE_CONTROL_INFORMATION::default();
-        if rate > 0 {
-            info.ControlFlags = JOB_OBJECT_CPU_RATE_CONTROL_ENABLE | JOB_OBJECT_CPU_RATE_CONTROL_HARD_CAP;
-            info.Anonymous.CpuRate = rate.min(10_000);
-        }
+        let info = JOBOBJECT_CPU_RATE_CONTROL_INFORMATION {
+            ControlFlags: JOB_OBJECT_CPU_RATE_CONTROL_ENABLE | JOB_OBJECT_CPU_RATE_CONTROL_HARD_CAP,
+            Anonymous: JOBOBJECT_CPU_RATE_CONTROL_INFORMATION_0 { CpuRate: rate.clamp(1, ALL_CPU) },
+        };
         let size = std::mem::size_of::<JOBOBJECT_CPU_RATE_CONTROL_INFORMATION>() as u32;
         // SAFETY: a plain call with a valid handle and a struct of the size given.
         if unsafe { SetInformationJobObject(self.0, JobObjectCpuRateControlInformation, (&raw const info).cast(), size) } == 0 {
