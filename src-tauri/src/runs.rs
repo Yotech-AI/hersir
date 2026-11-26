@@ -728,8 +728,8 @@ enum StartError {
     /// project's setup command rather than shows its text (GA-281).
     Unprepared { reason: String, logged: String, held: bool },
     Wait(String),
-    /// GA-369: a card the queue or Hersir's nudge would start waits because this computer is busy; its activity says
-    /// so, once while it stays busy (`run_cpu::note_waiting`). Otherwise as `Wait`.
+    /// GA-369: a card the queue would start waits because this computer is busy; its activity says so, once while it
+    /// stays busy (`run_cpu::note_waiting`). Otherwise as `Wait`.
     Busy(String),
     Other(String),
 }
@@ -1158,9 +1158,10 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
     if let Some(why) = crate::run_memory::wait_reason(st) {
         return Err(StartError::Wait(why));
     }
-    // GA-369: nor a card the queue or Hersir's nudge starts while this computer is busy. Your own Run and Continue, the
-    // Chief's, and chats aren't held.
-    if matches!(trigger, "assigned" | core_runs::RESULT_NUDGE) && let Some(why) = crate::run_cpu::busy_reason(st) {
+    // GA-369: nor a card the queue starts while this computer is busy: it waits, and the queue starts it once that eases
+    // (it tries again when a run ends, and once a minute). Your own Run and Continue, the Chief's, Hersir's nudge (which
+    // nobody would start again) and chats aren't held.
+    if trigger == "assigned" && let Some(why) = crate::run_cpu::busy_reason(st) {
         return Err(StartError::Busy(why));
     }
     // GA-212: nor a test run while its project's other cards fill its Test runs at once, those still starting too.
@@ -2246,6 +2247,9 @@ fn claim_cards(st: &AppState) -> Vec<Claimed> {
     if crate::run_memory::wait_reason(st).is_some() {
         return vec![];
     }
+    // GA-369: whether this computer is busy, read at each pull so the board check never sees an old answer. The cards are
+    // claimed anyway: each start that waits for it says so in its card's activity (`start_inner`).
+    let _ = crate::run_cpu::busy_reason(st);
     let mut claimed = vec![];
     for (_, a) in team::all_agents(&st.db).unwrap_or_default() {
         if a.status != "active" || !takes_cards(st, &a.actor_id) {

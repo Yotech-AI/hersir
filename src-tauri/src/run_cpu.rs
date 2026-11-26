@@ -6,9 +6,10 @@
 //!   macOS has no cap. Agents' work starts at low CPU priority everywhere (`gizai_agents::run_cpu`).
 //! - **Disk priority:** the slice gets `IOWeight=20` when your user's systemd hands it the io controller; otherwise
 //!   Settings → Runs names what is missing, with the one command that turns it on (`missing`, `DELEGATE_FIX`).
-//! - **No new run while the computer is busy** (`busy_reason`): a card the queue or Hersir's nudge would start waits,
-//!   and its activity says "Waiting: this computer is busy" once (`note_waiting`), until the CPU pressure eases. Your own
-//!   Run and Continue, and chats, aren't held.
+//! - **No new run while the computer is busy** (`busy_reason`): a card the queue would start waits, and its activity
+//!   says "Waiting: this computer is busy" once (`note_waiting`), until the CPU pressure eases; the queue tries again
+//!   when a run ends and once a minute. Your own Run and Continue, the Chief's, Hersir's nudge after a run without its
+//!   result (which nobody would start again), and chats aren't held.
 use gizai_agents::run_cpu as cpu;
 use gizai_agents::run_memory as mem;
 use gizai_core::{ids, settings};
@@ -92,7 +93,7 @@ pub fn fix(st: &AppState) -> Option<String> {
     (!missing(st).is_empty()).then(|| mem::DELEGATE_FIX.to_string())
 }
 
-/// The start check of a card the queue or Hersir's nudge would start (GA-369): why it waits because this computer is
+/// The start check of a card the queue would start (GA-369): why it waits because this computer is
 /// busy (`gizai_agents::run_cpu::Reading::busy`), or None. Nothing until Hersir's start enables the readings
 /// (`RunsMemory::cpu_reading`), so a test's runs never wait for the test machine. Remembers since when it has been busy
 /// (the board check), and forgets the cards it told when it eases, so a busy spell later tells them again.
