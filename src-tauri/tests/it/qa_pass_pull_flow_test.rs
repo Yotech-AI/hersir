@@ -2,7 +2,8 @@
 //! "GitHub" as local bare repositories), or gives the branch's open one QA's new summary, so agents need no GitHub login.
 //! Covers the title and description, a second pass on the same branch (`gh pr edit`, no second pull request), opening
 //! that fails (the card still goes to Review, with the reason in one sentence, and Open pull request works as before),
-//! a project without a link, and only QA's pass opening one.
+//! a project without a link, and only QA's pass opening one. GA-369 QA: a QA run the queue held while this computer was
+//! busy still opens the pull request once it starts.
 // Linux and macOS only: these tests run shell scripts as fake programs, which Windows can't start.
 #![cfg(unix)]
 use std::path::{Path, PathBuf};
@@ -333,6 +334,51 @@ async fn a_qa_pass_that_moves_the_card_elsewhere_than_review_opens_nothing() {
     assert!(!gh_calls(&c.gh).iter().any(|l| l.starts_with("pr ")), "gh not asked: {:?}", gh_calls(&c.gh));
     assert_eq!(c.task().pr_url, None);
     assert!(c.notes().is_empty(), "{:?}", c.notes());
+}
+
+/// GA-369 beside GA-368 (both changed runs.rs): while this computer is busy the queue holds the card in Testing and its
+/// activity says why; once that eases the queue starts the QA Agent's run itself, and its qa_pass still opens the pull
+/// request with QA's summary.
+#[tokio::test]
+async fn a_card_the_queue_holds_while_this_computer_is_busy_gets_its_qa_run_once_that_eases_and_its_pass_opens_the_pull_request() {
+    use gizai_agents::run_cpu::Reading;
+    const BUSY: &str = "Waiting: this computer is busy (CPU pressure 72% over the last minute). The run starts once that eases.";
+    let tmp = real_tempdir();
+    let c = tested_card(tmp.path(), true).await;
+    std::fs::write(c.gh.join("create.out"), format!("{LINK}/pull/7\n")).unwrap();
+    std::fs::write(c.tmp.join("summary"), "QA: all 14 tests pass, started by the queue.").unwrap();
+    // the queue's own QA run: the card is the QA Agent's now, and claude is QA's fake
+    gizai_core::tasks::update(&c.st.db, &c.st.you_id, &c.task, gizai_core::model::TaskPatch {
+        assignee_id: Some(c.qa.clone()), ..Default::default() }).unwrap();
+    gizai_core::settings::set(&c.st.db, "claude_bin", &c.qa_fake).unwrap();
+    let before = gh_calls(&c.gh).len();
+
+    // busy: no QA run, the card waits in Testing and says so once, and no pull request is opened
+    c.st.run_memory.fake_cpu_reading(Some(Reading::Pressure(72.0)));
+    assert!(gizai_lib::runs::pull(&c.st).await.is_empty(), "no QA run while this computer is busy");
+    assert!(gizai_lib::runs::pull(&c.st).await.is_empty());
+    assert_eq!(gizai_core::runs::list_for_task(&c.st.db, &c.task).unwrap().len(), 1, "only the Backend Agent's run");
+    assert_eq!(c.task().state_category, "testing");
+    assert_eq!(c.notes(), [BUSY]);
+    assert_eq!(gh_calls(&c.gh).len(), before, "gh not asked: {:?}", gh_calls(&c.gh));
+
+    // it eases: the next pull starts the QA run, whose pass moves the card to Review and opens its pull request
+    c.st.run_memory.fake_cpu_reading(Some(Reading::Pressure(12.0)));
+    let started = gizai_lib::runs::pull(&c.st).await;
+    assert_eq!(started.iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>(), [c.task.as_str()], "the queue starts the card that waited");
+    let s = started.into_iter().next().unwrap().1.await.unwrap();
+    assert_eq!((s.status.as_str(), s.outcome.as_deref()), ("succeeded", Some("qa_pass")), "{s:?}");
+    let runs = gizai_core::runs::list_for_task(&c.st.db, &c.task).unwrap();
+    assert!(runs.iter().any(|r| r.agent_id == c.qa), "the QA Agent's run");
+    let t = c.task();
+    assert_eq!((t.state_name.as_str(), t.pr_url.as_deref(), t.pr_state.as_deref()), ("Review", Some(format!("{LINK}/pull/7").as_str()), Some("open")));
+    assert_eq!(gh_calls(&c.gh)[before..], [
+        format!("pr list --repo acme/shop --head {} --state all --limit 20 --json {FIELDS}", c.branch),
+        format!("pr create --repo acme/shop --head {} --base main --title KADE-1: Export invoices as CSV --body-file -", c.branch),
+    ]);
+    assert_eq!(std::fs::read_to_string(c.gh.join("gh-stdin")).unwrap(), format!("QA: all 14 tests pass, started by the queue.\n\n{CARD_TEXT}"));
+    assert_eq!(git(&c.bare, &["rev-parse", &c.branch]), c.tip(), "the branch is on GitHub with its latest commit");
+    assert_eq!(c.notes(), [BUSY], "said once, and nothing went wrong with the pull request");
 }
 
 /// A temp folder by its real path, the way git and Gizai report it (on macOS /var/folders is /private/var/folders).

@@ -1,5 +1,6 @@
 // Settings: the warning under "Runs at once" (was GA-27), the hint under "Memory for agent runs" (GA-202) and "Memory per
-// run" (GA-277), and the warning by Quit Gizai completely (GA-21).
+// run" (GA-277), "CPU for agents" and what the agent runs' slice lacks (GA-369), and the warning by Quit Gizai completely
+// (GA-21).
 import type { Settings, Team } from "../types";
 
 /** An agent that takes cards, with its cards at once. */
@@ -59,6 +60,42 @@ export function runsMemoryPerRunError(gb: number | undefined): string | null {
   if (gb === undefined || (Number.isInteger(gb) && gb >= 2)) return null;
   return "Memory per run is a whole number of GB, 2 or more.";
 }
+
+/** The hint under "CPU for agents" (GA-369): all agents' work together at low priority, the computer's cores, and
+ *  whether the system holds the cap: at once on Linux (the agent runs' slice) and Windows (the agents' job); macOS has
+ *  none, nor Linux without a systemd user session or without the cpu controller (the command below the field turns
+ *  that on). */
+export function runsCpuHint(s: Pick<Settings, "computerCores" | "runsCpuCap">): string {
+  const has = s.computerCores ? ` This computer has ${s.computerCores} cores.` : "";
+  const how: Record<string, string> = {
+    slice: " A change holds at once, for runs at work too.",
+    job: " A change holds at once, for runs at work too.",
+    macos: " macOS has no CPU cap: agents only run at low priority.",
+    no_slice: " Without a systemd user session Hersir can't cap the CPU: agents only run at low priority.",
+    no_cpu: " The cap doesn't hold yet: your user's systemd doesn't hand Hersir the cpu controller. Agents only run at low priority.",
+  };
+  return `All agents' work together, at low priority.${has}${how[s.runsCpuCap ?? ""] ?? ""}`;
+}
+
+/** Why "CPU for agents" can't be saved as it is, or null: a whole number of cores, 1 or more (the backend checks the
+ *  computer's cores as the most). Null too when the backend didn't send the field. */
+export function runsCpuError(cores: number | undefined): string | null {
+  if (cores === undefined || (Number.isInteger(cores) && cores >= 1)) return null;
+  return "CPU for agents is a whole number of cores, 1 or more.";
+}
+
+/** What the agent runs' slice lacks (GA-369), for the note above the command that turns it on; null when nothing is
+ *  missing. */
+export function controllersNote(missing: string[] | undefined): string | null {
+  const cpu = missing?.includes("cpu") ?? false, io = missing?.includes("io") ?? false;
+  if (cpu && io) return "Agents get no CPU weight, CPU cap or disk priority: your user's systemd doesn't hand Hersir the cpu and io controllers. Run this once to turn them on:";
+  if (cpu) return "Agents get no CPU weight or CPU cap: your user's systemd doesn't hand Hersir the cpu controller. Run this once to turn it on:";
+  if (io) return "Agents get no disk priority: your user's systemd doesn't hand Hersir the io controller. Run this once to turn it on:";
+  return null;
+}
+
+/** What to do after the command that turns the controllers on (GA-369). */
+export const CONTROLLERS_AFTER = "It asks for your password (sudo) and adds one Delegate= line for your user's systemd. It holds once you log out and back in.";
 
 /** The warning by Quit Gizai completely: what stops, and how many runs and chat answers it stops when some are at work. */
 export function quitWarning(runs: number, answers: number): string {

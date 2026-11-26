@@ -170,7 +170,7 @@ fn take_ports(st: &AppState, run_id: &str, from: u32, to: u32) -> Option<PortLea
 pub(crate) fn end_previews(previews: &Previews) {
     for (_, tree) in previews.lock().unwrap_or_else(|e| e.into_inner()).values() {
         if let Some(t) = tree {
-            t.end(End::Kill);
+            t.end_for(End::Kill, "Hersir is exiting at once, and this run's preview still ran");
         }
     }
 }

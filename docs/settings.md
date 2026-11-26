@@ -9,7 +9,7 @@ Where each setting lives, what a backup holds and how to restore one, Hersir Clo
 | General | Quit, Updates, the Editor's folders, Data: where Hersir keeps your data, and the worktrees of finished cards; and Backups: a folder for copies of your data, how often, how many to keep, Back up now, the backups there and Restore |
 | Appearance | The font, text sizes, theme and density, and the glass behind the panels |
 | Notifications | A switch for each kind of notification |
-| Agents and runs | Coding CLIs; Runs: limits, runs at once, memory for agent runs and per run, Pause all agents, memory and Ask the Chief first; and Screenshots: what Hersir keeps of agents' screenshots, and the previews' ports |
+| Agents and runs | Coding CLIs; Runs: limits, runs at once, memory for agent runs and per run, CPU for agents (with the command that turns on CPU and disk priority when your systemd lacks them), Pause all agents, memory and Ask the Chief first; and Screenshots: what Hersir keeps of agents' screenshots, and the previews' ports |
 | MCP servers | The outside services agents can use, the built-in browser, and Claude Desktop |
 | GitHub and Bitbucket | gh and how pushes go, Check connection, and your Bitbucket login |
 | Hersir Cloud | Your Hersir Cloud account, its storage and your recovery code, your computers, Cloud Backup with its backups and Restore, and Restore from Hersir Cloud |

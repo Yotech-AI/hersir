@@ -39,6 +39,7 @@ mod quit;
 // The Chief's readable copy of a file: its text as Markdown (GA-310), or a PDF LibreOffice makes (GA-311).
 pub mod readable;
 pub mod restore;
+pub mod run_cpu;
 pub mod run_memory;
 pub mod runs;
 pub mod screenshots;
@@ -752,6 +753,10 @@ pub fn run() {
             // Memory for agent runs (GA-202): from now on agent processes start in this Gizai's own slice on Linux, which
             // Settings → Runs limits; Gizai itself stays outside it.
             run_memory::start(&state);
+            // GA-369: no queue start while this computer is busy; a headless test run doesn't wait for the test machine
+            if !test_run {
+                state.run_memory.watch_cpu();
+            }
             // Memory (GA-85): the notes agents kept in Claude Code's own memory come into Gizai's, each file once. Not in
             // headless test and screenshot runs: they run in your own home folder, with your Claude Code accounts.
             if !test_run {

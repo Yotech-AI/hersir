@@ -242,7 +242,7 @@ impl LibreOffice {
 fn end(child: &mut Child, tree: &Tree) {
     let running = !matches!(child.try_wait(), Ok(Some(_)));
     if running || tree.alive() {
-        tree.end(End::Kill);
+        tree.end_for(End::Kill, "LibreOffice had made the document, or reached its time limit, and still ran");
     }
     let _ = child.wait();
     let until = Instant::now() + GONE_WAIT;

@@ -55,6 +55,7 @@ fn main() {
     let cx = Context {
         now, pull_paused: HashMap::new(), agents_paused: settings::get(&db, "agents_paused").unwrap().unwrap_or(false),
         max_concurrent: settings::get(&db, "max_concurrent_runs").unwrap().unwrap_or(3), lead_id: Some(lead.clone()), memory_wait: None,
+        busy_wait: None,
     };
     let as_lead = Who::Lead(lead.clone());
     let kade_open = TaskFilter { project_id: Some(kade.clone()), open_only: true };

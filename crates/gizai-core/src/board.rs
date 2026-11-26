@@ -46,6 +46,9 @@ pub struct Context {
     /// GA-202: since when no run starts for want of memory, and why ("Waiting for memory: …", Settings → Runs → Memory for
     /// agent runs). Meanwhile a free slot isn't a finding; after an hour the wait is.
     pub memory_wait: Option<(i64, String)>,
+    /// GA-369: since when the queue has held cards because this computer is busy, and why ("Waiting: this computer is
+    /// busy (…)"). Meanwhile a free slot isn't a finding; after an hour the wait is.
+    pub busy_wait: Option<(i64, String)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -68,7 +71,8 @@ pub struct Finding {
     /// answered | held | waiting | stopped | review
     pub kind: String,
     /// Why, as a code. held: the hold. waiting: no_agents, testing_off, agents_paused, paused, budget, pull_paused,
-    /// stopped_run, free_slot, runs_full, memory, test_runs_full (its project's Test runs at once, GA-212) or
+    /// stopped_run, free_slot, runs_full, memory, busy (this computer is busy, GA-369), test_runs_full (its project's
+    /// Test runs at once, GA-212) or
     /// builds_on_blocked (a card it builds on is on hold or cancelled, GA-228). stopped:
     /// limit, failed, no_result, stopped (by a person) or quit. review: may_merge (the Chief may merge it, GA-86).
     pub code: String,
@@ -401,6 +405,12 @@ pub fn check(db: &Db, cx: &Context) -> Result<Vec<Finding>> {
                         let detail = why.strip_prefix("Waiting for memory: ").unwrap_or(why);
                         out.push(base("waiting", "memory", *short_since, agent_of(&id),
                                       format!("Hersir has been waiting for memory for over an hour: {detail}")));
+                    }
+                } else if let Some((busy_since, why)) = &cx.busy_wait {
+                    if cx.now - busy_since > RUNS_FULL_MS {
+                        let detail = why.strip_prefix("Waiting: ").unwrap_or(why);
+                        out.push(base("waiting", "busy", *busy_since, agent_of(&id),
+                                      format!("Hersir has held new runs for over an hour: {detail}")));
                     }
                 } else if let Some((full, waits_since)) = test_runs_full() {
                     if cx.now - waits_since > RUNS_FULL_MS {

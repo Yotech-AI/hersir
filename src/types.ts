@@ -401,6 +401,13 @@ export type Settings = { claudeBin?: string | null; dataDir: string; maxConcurre
    *  sent back as it came: Memory per run as get_settings gave it, so a save tells a value the page showed (also after
    *  another save changed it) from one someone typed. */
   runsMemoryPerRunGb?: number; runsMemoryPerRunShownGb?: number;
+  /** Settings → Runs → CPU for agents (GA-369), in cores: all agents' work together, all of the computer's cores but a
+   *  quarter (at least 2 left free) until set. Read-only next to it: the computer's cores (0 when unknown); how the system
+   *  holds the cap (`slice` on Linux, `job` on Windows; no cap: `macos`, `no_slice` Linux without a systemd user
+   *  session, `no_cpu` the slice lacks the cpu controller); the controllers the agent runs' slice lacks (`cpu`, `io`)
+   *  and the one command that turns them on, shown as Run this for me. */
+  runsCpuCores?: number; computerCores?: number; runsCpuCap?: string;
+  runsMissingControllers?: string[]; runsControllersFix?: string | null;
   /** Settings → Runs: the limits of an answer of the Team Lead (also a board check and its look at a question). */
   maxChatMinutes: number; maxChatToolCalls: number;
   /** The GitHub CLI; null = found when needed. */

@@ -330,7 +330,7 @@ pub(crate) fn run(mut cmd: Command, stdin: Option<&str>, limit: Duration) -> std
             break s;
         }
         if Instant::now() >= until {
-            let _ = child.kill();
+            crate::os::kill_child(&mut child, "the GitHub CLI (gh) gave no answer in time");
             let _ = child.wait();
             return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "no answer"));
         }

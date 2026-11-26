@@ -827,12 +827,12 @@ impl Session {
                 }
             }
             for group in groups {
-                os::send_signal(group, true, libc::SIGHUP);
-                os::send_signal(group, true, libc::SIGCONT);
+                os::send_signal(group, true, libc::SIGHUP, "its terminal was closed");
+                os::send_signal(group, true, libc::SIGCONT, "its terminal was closed: a stopped job gets the SIGHUP too");
             }
         }
         #[cfg(windows)]
-        self.job.terminate();
+        self.job.terminate_for("its terminal was closed");
         self.shut();
     }
 
@@ -849,7 +849,7 @@ impl Session {
                 }
                 if Instant::now() >= deadline {
                     for (pid, _) in left {
-                        os::send_signal(pid, false, libc::SIGKILL);
+                        os::send_signal(pid, false, libc::SIGKILL, "its terminal was closed, and it ignored SIGHUP");
                     }
                     let gone_by = Instant::now() + Duration::from_secs(1);
                     while !os::in_session(self.pid).is_empty() && Instant::now() < gone_by {

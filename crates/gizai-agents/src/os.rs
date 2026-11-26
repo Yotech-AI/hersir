@@ -210,28 +210,28 @@ impl Tree {
         Tree { group: pid }
     }
 
-    /// Asks everything in the tree to end (see `End`), and returns at once.
+    /// Asks everything in the tree to end (see `End`), and returns at once. Hersir's log names it (`end_for`).
     pub fn end(&self, how: End) {
+        self.end_for(how, "Hersir ended a program it started, with everything that program started");
+    }
+
+    /// `end`, with why in Hersir's log (GA-369, `signal_log`): one line for the signal to the tree's process group (on
+    /// Windows one per process its job ends), when it reached something.
+    pub fn end_for(&self, how: End, why: &str) {
         #[cfg(unix)]
         {
-            if let Ok(g) = i32::try_from(self.group)
-                && g > 1
-            {
-                let sig = match how {
-                    End::Interrupt => libc::SIGINT,
-                    End::Terminate => libc::SIGTERM,
-                    End::Kill => libc::SIGKILL,
-                };
-                // SAFETY: plain syscall; a negative pid addresses the process group started for this program.
-                unsafe {
-                    libc::kill(-g, sig);
-                }
-            }
+            let sig = match how {
+                End::Interrupt => libc::SIGINT,
+                End::Terminate => libc::SIGTERM,
+                End::Kill => libc::SIGKILL,
+            };
+            // only ever the process group started for this program, never pid 0 or 1, nor Hersir's own group
+            send_signal(self.group, true, sig, why);
         }
         #[cfg(windows)]
         {
             let _ = how;
-            self.job.terminate();
+            self.job.terminate_for(why);
         }
     }
 
@@ -285,15 +285,40 @@ impl Tree {
 /// This sets the command's creation flags, which replaces the ones it had: no console window (see `command`) is set
 /// again.
 pub fn spawn_tree(cmd: &mut Command, low: bool) -> io::Result<(std::process::Child, Tree)> {
+    spawn_std(cmd, if low { Priority::Low } else { Priority::Normal })
+}
+
+/// Agents' work (GA-369): a worktree's copies, installs and setup command, a run's preview. `spawn_tree` at low CPU
+/// priority (nice `LOW_NICE` on Linux and macOS), and on Windows below normal for the whole job, which is nested in the
+/// job all agents' work is in, whose CPU rate cap is CPU for agents (`set_agents_cpu`).
+pub fn spawn_agents_tree(cmd: &mut Command) -> io::Result<(std::process::Child, Tree)> {
+    spawn_std(cmd, Priority::Agents)
+}
+
+/// The nice value of agents' work and of Hersir's own update build (GA-369): 10, where your desktop's programs have 0.
+pub const LOW_NICE: libc::c_int = 10;
+
+/// How a tree's programs share the CPU.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Priority {
+    Normal,
+    /// Low priority (Hersir's own update build).
+    Low,
+    /// Agents' work (GA-369): low priority, and on Windows in the agents' job too.
+    Agents,
+}
+
+fn spawn_std(cmd: &mut Command, priority: Priority) -> io::Result<(std::process::Child, Tree)> {
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
         cmd.process_group(0);
-        if low {
-            // SAFETY: nice(2) is a plain syscall, safe to make between fork and exec.
+        if priority != Priority::Normal {
+            // SAFETY: nice(2) is a plain syscall, safe to make between fork and exec. It adds to Hersir's own nice value,
+            // which never fails: a Hersir started at nice 5 starts its agents at 15.
             unsafe {
                 cmd.pre_exec(|| {
-                    libc::nice(10);
+                    libc::nice(LOW_NICE);
                     Ok(())
                 });
             }
@@ -307,13 +332,17 @@ pub fn spawn_tree(cmd: &mut Command, low: bool) -> io::Result<(std::process::Chi
         use std::os::windows::io::AsRawHandle;
         use std::os::windows::process::CommandExt;
         let job = Job::new()?;
-        cmd.creation_flags(start_flags(low));
+        cmd.creation_flags(start_flags(priority != Priority::Normal));
         let mut child = cmd.spawn()?;
+        if priority == Priority::Agents {
+            job.below_normal();
+            in_agents_job(child.as_raw_handle());
+        }
         match job.adopt(child.as_raw_handle(), child.id()) {
             Ok(()) => Ok((child, Tree { job: Arc::new(job) })),
             Err(e) => {
                 // still suspended, or running outside the job: it goes either way
-                if child.kill().is_ok() {
+                if kill_child(&mut child, "it couldn't be put in its Job Object") {
                     let _ = child.wait();
                 }
                 Err(e)
@@ -322,20 +351,42 @@ pub fn spawn_tree(cmd: &mut Command, low: bool) -> io::Result<(std::process::Chi
     }
 }
 
-/// `spawn_tree` for Tokio, at normal priority: an agent's CLI (`process::spawn_exec`), and Claude Code asked for its
-/// tools (`tool_catalog::ask_claude`). Must be called inside a Tokio runtime.
+/// `spawn_tree` for Tokio, at normal priority: Claude Code asked for its tools (`tool_catalog::ask_claude`). Must be
+/// called inside a Tokio runtime.
 ///
 /// Linux and macOS: the program leads a session of its own (setsid), and so its own process group, as with
 /// `spawn_tree`. In Gizai's session any process (another run's, a preview's) could move itself into that group
 /// (setpgid), and then pass for one of the run's own (`Tree::contains`, GA-266); from another session it can't. A run
 /// has no controlling terminal either way: Gizai itself has none when your desktop starts it.
 pub fn spawn_tree_tokio(cmd: &mut tokio::process::Command) -> io::Result<(tokio::process::Child, Tree)> {
+    spawn_tokio(cmd, false)
+}
+
+/// `spawn_tree_tokio` for agents' work (GA-369): an agent's CLI in a task run, a chat answer or a board check
+/// (`process::spawn_exec`), at low CPU priority as `spawn_agents_tree` says. On Linux its session's autogroup gets nice
+/// `LOW_NICE` too: where the kernel groups each session's processes for the CPU (autogroup, outside the agent runs'
+/// slice), a nice value only counts inside its own session.
+pub fn spawn_agents_tree_tokio(cmd: &mut tokio::process::Command) -> io::Result<(tokio::process::Child, Tree)> {
+    spawn_tokio(cmd, true)
+}
+
+fn spawn_tokio(cmd: &mut tokio::process::Command, agents: bool) -> io::Result<(tokio::process::Child, Tree)> {
     #[cfg(unix)]
     {
-        // SAFETY: setsid(2) is a plain syscall, safe to make between fork and exec. It fails only for a process that
-        // already leads a group, which the child Gizai just forked doesn't.
+        // SAFETY: setsid(2) and nice(2) are plain syscalls, safe to make between fork and exec. setsid fails only for a
+        // process that already leads a group, which the child Gizai just forked doesn't.
         unsafe {
-            cmd.pre_exec(|| if libc::setsid() == -1 { Err(io::Error::last_os_error()) } else { Ok(()) });
+            cmd.pre_exec(move || {
+                if libc::setsid() == -1 {
+                    return Err(io::Error::last_os_error());
+                }
+                if agents {
+                    libc::nice(LOW_NICE);
+                    #[cfg(target_os = "linux")]
+                    autogroup_nice();
+                }
+                Ok(())
+            });
         }
         let child = cmd.spawn()?;
         // None only for a child that has been waited for
@@ -345,8 +396,14 @@ pub fn spawn_tree_tokio(cmd: &mut tokio::process::Command) -> io::Result<(tokio:
     #[cfg(windows)]
     {
         let job = Job::new()?;
-        cmd.creation_flags(start_flags(false));
+        cmd.creation_flags(start_flags(agents));
         let mut child = cmd.spawn()?;
+        if agents {
+            job.below_normal();
+            if let Some(process) = child.raw_handle() {
+                in_agents_job(process);
+            }
+        }
         let adopted = match (child.raw_handle(), child.id()) {
             (Some(process), Some(pid)) => job.adopt(process, pid),
             _ => Err(io::Error::other("it ended at once")),
@@ -354,10 +411,117 @@ pub fn spawn_tree_tokio(cmd: &mut tokio::process::Command) -> io::Result<(tokio:
         match adopted {
             Ok(()) => Ok((child, Tree { job: Arc::new(job) })),
             Err(e) => {
-                let _ = child.start_kill();
+                start_kill_child(&mut child, "it couldn't be put in its Job Object");
                 Err(e)
             }
         }
+    }
+}
+
+/// Linux, between fork and exec of a program that leads a new session: that session's autogroup gets nice
+/// `LOW_NICE` (/proc/self/autogroup). Nothing when the kernel has no autogroups, or turns the write down (it takes one
+/// such write in a tenth of a second).
+#[cfg(target_os = "linux")]
+fn autogroup_nice() {
+    // SAFETY: open, write and close are async-signal-safe syscalls; the path is a NUL-terminated constant.
+    unsafe {
+        let fd = libc::open(c"/proc/self/autogroup".as_ptr(), libc::O_WRONLY | libc::O_CLOEXEC);
+        if fd >= 0 {
+            let _ = libc::write(fd, b"10".as_ptr().cast(), 2);
+            libc::close(fd);
+        }
+    }
+}
+
+/// CPU for agents (GA-369): from now on agents' work may use at most `cores` of this computer's cores together, what
+/// already runs too; None, or all of them, for no cap. On Windows the CPU rate cap of the job all agents' jobs are in
+/// (`spawn_agents_tree`), a hard cap; no cap lifts one given before (`AgentsJob::apply`). Elsewhere nothing: Linux caps
+/// the agent runs' slice instead (`run_memory::Slice::set_cpu_cap`), and macOS has no cap. Err says why Windows refused
+/// it.
+pub fn set_agents_cpu(cores: Option<u32>) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        let all = crate::run_cpu::cores().max(1);
+        // in hundredths of a percent of all the computer's CPU, as the job's CpuRate counts
+        let rate = match cores {
+            Some(c) if c < all => ((u64::from(c.max(1)) * u64::from(ALL_CPU) / u64::from(all)) as u32).max(1),
+            _ => 0,
+        };
+        let mut agents = AGENTS.lock().unwrap_or_else(|e| e.into_inner());
+        agents.rate = rate;
+        agents.apply().map_err(|e| format!("Windows refused the agents' CPU cap: {e}"))
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = cores;
+        Ok(())
+    }
+}
+
+/// Windows: a job's CpuRate for all of the computer's CPU (10,000 cycles of every 10,000), so no cap at all.
+#[cfg(windows)]
+const ALL_CPU: u32 = 10_000;
+
+/// Windows (GA-369): CPU for agents and the job all agents' jobs are in, under one lock, so a cap given while that job
+/// is being made is never lost.
+#[cfg(windows)]
+static AGENTS: std::sync::Mutex<AgentsJob> = std::sync::Mutex::new(AgentsJob { rate: 0, job: None, has: 0 });
+
+#[cfg(windows)]
+struct AgentsJob {
+    /// CPU for agents as the job's CpuRate (hundredths of a percent of all the computer's CPU); 0 for no cap.
+    rate: u32,
+    /// The job, made at the first agents' tree with CPU for agents as its CPU rate cap: None until then, Some(None)
+    /// when Windows wouldn't make it, and then agents' work starts in a job of its own only.
+    job: Option<Option<Job>>,
+    /// The CpuRate the job has now; 0 while it has never had one.
+    has: u32,
+}
+
+#[cfg(windows)]
+impl AgentsJob {
+    /// Gives the job, once it is there, CPU for agents as its cap, at once for what already runs in it. Windows takes no
+    /// CpuRate of 0 ("If CpuRate is 0, SetInformationJobObject returns INVALID_ARGS", Microsoft's docs; on Windows CI it
+    /// answered "The parameter is incorrect. (os error 87)" to a cap of 0 with no flags) and says of no way to switch the
+    /// cap off. So no cap is no call at all while the job has never had one, and else a cap of all the computer's CPU
+    /// (`ALL_CPU`), which never holds anything back.
+    fn apply(&mut self) -> io::Result<()> {
+        let Some(Some(job)) = &self.job else { return Ok(()) };
+        let rate = match self.rate {
+            0 if self.has == 0 => return Ok(()),
+            0 => ALL_CPU,
+            r => r.min(ALL_CPU),
+        };
+        if rate != self.has {
+            job.cap_cpu(rate)?;
+            self.has = rate;
+        }
+        Ok(())
+    }
+}
+
+/// Windows: puts the suspended process `process` in the agents' job, before it goes in its own job, which so is nested
+/// in the agents' one and held to its CPU cap. When Windows refuses, the process starts in its own job only, and
+/// Hersir's log says why, once.
+#[cfg(windows)]
+fn in_agents_job(process: windows_sys::Win32::Foundation::HANDLE) {
+    static SAID: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    let mut agents = AGENTS.lock().unwrap_or_else(|e| e.into_inner());
+    if agents.job.is_none() {
+        agents.job = Some(Job::new().ok());
+        if let Err(e) = agents.apply() {
+            eprintln!("gizai: agents' work starts without a CPU cap: Windows refused it: {e}");
+        }
+    }
+    let added = match &agents.job {
+        Some(Some(job)) => job.add(process).map_err(|e| e.to_string()),
+        _ => Err("Windows wouldn't make the agents' job".to_string()),
+    };
+    drop(agents);
+    if let Err(e) = added
+        && !SAID.swap(true, std::sync::atomic::Ordering::SeqCst)
+    {
+        eprintln!("gizai: agents' work starts outside the agents' job, without its CPU cap: {e}");
     }
 }
 
@@ -408,6 +572,44 @@ impl Job {
             }
             Ok(job)
         }
+    }
+
+    /// Agents' work (GA-369): every process in the job at below-normal priority (JOB_OBJECT_LIMIT_PRIORITY_CLASS), as
+    /// the program also starts (`start_flags`). Best effort: when Windows refuses, the job keeps the limits `new` gave it,
+    /// and the program's own below-normal priority, which what it starts inherits, stays.
+    fn below_normal(&self) {
+        use windows_sys::Win32::System::JobObjects::{
+            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JOB_OBJECT_LIMIT_PRIORITY_CLASS, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+            JobObjectExtendedLimitInformation, SetInformationJobObject,
+        };
+        use windows_sys::Win32::System::Threading::BELOW_NORMAL_PRIORITY_CLASS;
+        let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_PRIORITY_CLASS;
+        limits.BasicLimitInformation.PriorityClass = BELOW_NORMAL_PRIORITY_CLASS;
+        let size = std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32;
+        // SAFETY: a plain call with a valid handle and a struct of the size given.
+        unsafe {
+            SetInformationJobObject(self.0, JobObjectExtendedLimitInformation, (&raw const limits).cast(), size);
+        }
+    }
+
+    /// The agents' job (GA-369): a hard cap of `rate` hundredths of a percent of all the computer's CPU (1 up to
+    /// `ALL_CPU`, all of it) for everything in it and in the jobs nested in it, at once for what already runs too.
+    fn cap_cpu(&self, rate: u32) -> io::Result<()> {
+        use windows_sys::Win32::System::JobObjects::{
+            JOB_OBJECT_CPU_RATE_CONTROL_ENABLE, JOB_OBJECT_CPU_RATE_CONTROL_HARD_CAP, JOBOBJECT_CPU_RATE_CONTROL_INFORMATION,
+            JOBOBJECT_CPU_RATE_CONTROL_INFORMATION_0, JobObjectCpuRateControlInformation, SetInformationJobObject,
+        };
+        let info = JOBOBJECT_CPU_RATE_CONTROL_INFORMATION {
+            ControlFlags: JOB_OBJECT_CPU_RATE_CONTROL_ENABLE | JOB_OBJECT_CPU_RATE_CONTROL_HARD_CAP,
+            Anonymous: JOBOBJECT_CPU_RATE_CONTROL_INFORMATION_0 { CpuRate: rate.clamp(1, ALL_CPU) },
+        };
+        let size = std::mem::size_of::<JOBOBJECT_CPU_RATE_CONTROL_INFORMATION>() as u32;
+        // SAFETY: a plain call with a valid handle and a struct of the size given.
+        if unsafe { SetInformationJobObject(self.0, JobObjectCpuRateControlInformation, (&raw const info).cast(), size) } == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(())
     }
 
     /// Puts the suspended process `process` (id `pid`) in the job, then resumes its threads.
@@ -477,11 +679,15 @@ impl Job {
         }
     }
 
-    /// Ends every process in the job.
-    pub(crate) fn terminate(&self) {
+    /// Ends every process in the job, and names each in Hersir's log with `why` (GA-369, `signal_log`).
+    pub(crate) fn terminate_for(&self, why: &str) {
+        let about: Vec<crate::signal_log::About> = self.processes().into_iter().filter(|&p| p != 0).map(crate::signal_log::about).collect();
         // SAFETY: a plain call with a valid handle.
-        unsafe {
-            windows_sys::Win32::System::JobObjects::TerminateJobObject(self.0, ENDED);
+        let ended = unsafe { windows_sys::Win32::System::JobObjects::TerminateJobObject(self.0, ENDED) } != 0;
+        if ended {
+            for a in &about {
+                crate::signal_log::record(a, false, "TerminateJobObject", why);
+            }
         }
     }
 
@@ -691,16 +897,83 @@ pub fn process_name(pid: u32) -> Option<String> {
     (n > 0).then(|| String::from_utf8_lossy(&name[..(n as usize).min(name.len())]).to_string())
 }
 
-/// Linux and macOS: sends `signal` to the process `pid`, or with `group` to the process group it names. Never to 0 or
-/// 1, nor to Gizai or its own group.
-#[cfg(unix)]
-pub(crate) fn send_signal(pid: u32, group: bool, signal: libc::c_int) {
-    let Ok(id) = libc::pid_t::try_from(pid) else { return };
-    // SAFETY: plain syscalls; getpid and getpgrp only read.
-    unsafe {
-        if id <= 1 || id == libc::getpid() || id == libc::getpgrp() {
-            return;
+/// Windows: the name of the program the process `pid` runs, without `.exe` ("node", "claude"), for Hersir's log
+/// (GA-369).
+#[cfg(windows)]
+pub fn process_name(pid: u32) -> Option<String> {
+    use std::os::windows::ffi::OsStringExt;
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW};
+    let mut path = [0u16; 1024];
+    let mut len = path.len() as u32;
+    // SAFETY: plain calls with a buffer of the size given; the handle opened here is closed here.
+    let named = unsafe {
+        let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if process.is_null() {
+            return None;
         }
-        libc::kill(if group { -id } else { id }, signal);
+        let named = QueryFullProcessImageNameW(process, PROCESS_NAME_WIN32, path.as_mut_ptr(), &mut len) != 0;
+        CloseHandle(process);
+        named
+    };
+    if !named {
+        return None;
+    }
+    let file = PathBuf::from(OsString::from_wide(&path[..(len as usize).min(path.len())]));
+    file.file_stem().map(|s| s.to_string_lossy().to_string())
+}
+
+/// Other systems: no name.
+#[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
+pub fn process_name(pid: u32) -> Option<String> {
+    let _ = pid;
+    None
+}
+
+/// Linux and macOS: sends `signal` to the process `pid`, or with `group` to the process group it names. Never to 0 or
+/// 1, nor to Gizai or its own group. GA-369: what it reached is named in Hersir's log with `why` (`signal_log`): its
+/// name and cgroup, read just before. Returns whether it reached a process.
+#[cfg(unix)]
+pub(crate) fn send_signal(pid: u32, group: bool, signal: libc::c_int, why: &str) -> bool {
+    let Ok(id) = libc::pid_t::try_from(pid) else { return false };
+    // SAFETY: getpid and getpgrp only read.
+    if id <= 1 || id == unsafe { libc::getpid() } || id == unsafe { libc::getpgrp() } {
+        return false;
+    }
+    let about = crate::signal_log::about(pid);
+    // SAFETY: a plain syscall to the process, or with a negative pid to the process group, named above.
+    let sent = unsafe { libc::kill(if group { -id } else { id }, signal) } == 0;
+    if sent {
+        crate::signal_log::record(&about, group, &crate::signal_log::signal_name(signal), why);
+    }
+    sent
+}
+
+/// Ends `child`, a program Hersir started itself and gives up on (it didn't answer in time), and names it in Hersir's
+/// log with `why` (GA-369, `signal_log`): SIGKILL on Linux and macOS, TerminateProcess on Windows.
+/// Returns whether it ended it now (false for one that had ended already).
+pub fn kill_child(child: &mut std::process::Child, why: &str) -> bool {
+    // one that has ended already gets nothing, and no line
+    if !matches!(child.try_wait(), Ok(None)) {
+        return false;
+    }
+    let about = crate::signal_log::about(child.id());
+    let ended = child.kill().is_ok();
+    if ended {
+        crate::signal_log::record(&about, false, if cfg!(windows) { "TerminateProcess" } else { "SIGKILL" }, why);
+    }
+    ended
+}
+
+/// `kill_child` for Tokio's child, without waiting for it.
+pub fn start_kill_child(child: &mut tokio::process::Child, why: &str) {
+    if !matches!(child.try_wait(), Ok(None)) {
+        return;
+    }
+    let about = child.id().map(crate::signal_log::about);
+    if child.start_kill().is_ok()
+        && let Some(about) = about
+    {
+        crate::signal_log::record(&about, false, if cfg!(windows) { "TerminateProcess" } else { "SIGKILL" }, why);
     }
 }

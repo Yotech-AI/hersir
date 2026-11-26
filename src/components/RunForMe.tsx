@@ -1,10 +1,13 @@
 // "Run this for me" (GA-31): the commands an agent asks you to run because it may not run them itself (sudo, an install,
 // a command its list refuses), each exactly as it wrote it with a copy button, and `action`: Done, continue, which
-// continues its run. On the card's Run panel and in the Inbox.
+// continues its run. On the card's Run panel and in the Inbox. GA-369: Settings → Runs shows a command Hersir asks you to
+// run the same way, with its own `head` and `foot` and no action.
 import { useState, type ReactNode } from "react";
 import { Check, Copy } from "lucide-react";
 
-export function RunForMe({ commands, agent, action }: { commands: string[]; agent?: string | null; action?: ReactNode }) {
+export function RunForMe({ commands, agent, action, head, foot }: {
+  commands: string[]; agent?: string | null; action?: ReactNode; head?: ReactNode; foot?: ReactNode;
+}) {
   const [copied, setCopied] = useState<number | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const copy = async (i: number) => {
@@ -19,7 +22,7 @@ export function RunForMe({ commands, agent, action }: { commands: string[]; agen
   const who = agent || "The agent";
   return (
     <div className="run-for-me" role="group" aria-label="Run this for me">
-      <div className="rfm-head">{who} asks you to run {one ? "this command" : "these commands"}:</div>
+      <div className="rfm-head">{head ?? <>{who} asks you to run {one ? "this command" : "these commands"}:</>}</div>
       <ul>
         {commands.map((c, i) => (
           <li key={i}>
@@ -30,8 +33,8 @@ export function RunForMe({ commands, agent, action }: { commands: string[]; agen
         ))}
       </ul>
       <div className="rfm-foot">
-        <span className="grow">Run {one ? "it" : "them"} in a terminal, then press Done, continue: {agent || "the agent"} checks that {one ? "it" : "they"} worked
-          and carries on.</span>
+        <span className="grow">{foot ?? <>Run {one ? "it" : "them"} in a terminal, then press Done, continue: {agent || "the agent"} checks that {one ? "it" : "they"} worked
+          and carries on.</>}</span>
         {action}
       </div>
       {err && <div role="alert" style={{ color: "var(--danger)", marginTop: 6 }}>{err}</div>}

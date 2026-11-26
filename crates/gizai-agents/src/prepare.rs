@@ -332,7 +332,8 @@ fn run<S: AsRef<OsStr>>(shown: Shown<'_>, program: impl AsRef<OsStr>, args: &[S]
     if let Some(p) = path {
         cmd.env("PATH", p);
     }
-    let (mut child, tree) = os::spawn_tree(&mut cmd, false).map_err(|e| match e.kind() {
+    // GA-369: at low CPU priority, as all agents' work
+    let (mut child, tree) = os::spawn_agents_tree(&mut cmd).map_err(|e| match e.kind() {
         std::io::ErrorKind::NotFound => {
             fail(format!("couldn't start: {} isn't installed (or not on Hersir's PATH)", program.to_string_lossy()), String::new())
         }
@@ -372,7 +373,7 @@ fn run<S: AsRef<OsStr>>(shown: Shown<'_>, program: impl AsRef<OsStr>, args: &[S]
             Ok(Some(s)) => break Some(s),
             Ok(None) if Instant::now() < until => std::thread::sleep(Duration::from_millis(100)),
             _ => {
-                tree.end(End::Kill);
+                tree.end_for(End::Kill, &format!("a worktree's {} reached its time limit", shown.logged()));
                 let _ = child.wait();
                 break None;
             }
@@ -380,10 +381,10 @@ fn run<S: AsRef<OsStr>>(shown: Shown<'_>, program: impl AsRef<OsStr>, args: &[S]
     };
     let ended_at_limit = watch.map(OomWatch::finish).unwrap_or(0) > 0;
     // what it left running in the background would hold its output open
-    tree.end(End::Kill);
+    tree.end_for(End::Kill, &format!("a worktree's {} had ended, and it still ran in its process group", shown.logged()));
     // and so would what it left in its scope in a group of its own (`setsid`, a daemon): SIGTERM, SIGKILL 3 s later
     if let Some(scope) = scope {
-        let left = scope.end_leftovers(Some(child.id()));
+        let left = scope.end_leftovers_for(Some(child.id()), &format!("a worktree's {} had ended, and it still ran in its scope", shown.logged()));
         if !left.is_empty() {
             // the project's setup command named, not shown (GA-281: users send us Hersir's log)
             let ended = crate::run_memory::leftovers_text(&left, &shown.logged());
