@@ -431,8 +431,8 @@ pub fn ensure_on(repo: &Path, base_dir: &Path, identifier: &str, branch: &str, d
 /// Then nothing of the finished card is left (`git clean -dx`: untracked and ignored files go) except the paths in
 /// `keep`, relative to the worktree: the copied folders and the installed dependencies, such as node_modules/ and
 /// target/. Refuses a worktree with uncommitted changes or untracked files, or with a nested repository
-/// (`nested_repositories`, GA-350) or a submodule whose folder name isn't valid UTF-8 (`NOT_UTF8_SUBMODULE`, GA-357),
-/// and puts it back when switching fails.
+/// (`nested_repositories`, GA-350) or a submodule whose folder name isn't valid UTF-8 (`NOT_UTF8_SUBMODULE`, GA-357)
+/// or isn't in NFC (`TWO_WAY_SUBMODULE`, GA-361), and puts it back when switching fails.
 /// On a new card's branch (`branch_name`); `reuse_on` takes the card's own.
 pub fn reuse(repo: &Path, from: &Path, base_dir: &Path, identifier: &str, title: &str, start: &str, keep: &[String]) -> Result<Worktree, AgentError> {
     reuse_on(repo, from, base_dir, identifier, &branch_name(identifier, title), start, keep)
@@ -456,9 +456,10 @@ pub fn reuse_on(repo: &Path, from: &Path, base_dir: &Path, identifier: &str, bra
             return Err(AgentError::Git(format!("{} is not a worktree of this repository", from.display())));
         }
         // GA-350: never one with a nested repository, whose own settings git could run (git worktree move refuses one too).
-        // GA-357: nor one with a submodule whose folder name isn't valid UTF-8 ("<from>: " and `NOT_UTF8_SUBMODULE`), found
-        // in the index before any other git there; a nested repository is still said after uncommitted changes, as before
-        let nested = nested_repositories(from).map_err(|e| not_utf8_said(&from.display().to_string(), e))?;
+        // GA-357: nor one with a submodule whose folder name isn't valid UTF-8 ("<from>: " and `NOT_UTF8_SUBMODULE`), or
+        // GA-361: isn't in NFC (`TWO_WAY_SUBMODULE`), found in the index before any other git there; a nested repository
+        // is still said after uncommitted changes, as before
+        let nested = nested_repositories(from).map_err(|e| name_said(&from.display().to_string(), e))?;
         if uncommitted(from)? > 0 {
             return Err(AgentError::Git(format!("{} has uncommitted changes", from.display())));
         }
@@ -1105,22 +1106,24 @@ pub fn branch_of(dir: &Path) -> Option<String> {
 ///
 /// GA-350: submodules stay out of the commit, as they stay out of `uncommitted` (`IGNORE_SUBMODULES`): git add --all
 /// looks inside every submodule that holds a repository, with that repository's own settings, so they are left out of
-/// it (`add_all`). And git commit only runs with something staged (`staged`): with nothing to commit it prints a git
-/// status, which looks inside them too.
+/// its pathspec (`add_pathspec`). And git commit only runs with something staged (`staged`): with nothing to commit it
+/// prints a git status, which looks inside them too.
 ///
 /// GA-357: refused for a submodule whose folder name isn't valid UTF-8, which git add's pathspec can't leave out:
-/// "Hersir doesn't commit there: " and `NOT_UTF8_SUBMODULE`. Found in the index before any other git there, so it is
-/// said also when no file has changed.
+/// "Hersir doesn't commit there: " and `NOT_UTF8_SUBMODULE`. GA-361: and for one whose folder name git could read two
+/// ways, with `TWO_WAY_SUBMODULE`: its path isn't in NFC (`gitlinks`), or git reads git add's pathspec for it as
+/// another name (`add_pathspec`). Found in the index before any other git there, so it is said also when no file has
+/// changed.
 pub fn commit_all(dir: &Path, message: &str) -> Result<Commit, AgentError> {
     let message = message.trim();
     if message.is_empty() {
         return Err(AgentError::Git("Write a commit message first".into()));
     }
-    let links = gitlinks(dir).map_err(|e| not_utf8_said("Hersir doesn't commit there", e))?;
+    let pathspec = add_pathspec(dir).map_err(|e| name_said("Hersir doesn't commit there", e))?;
     if uncommitted(dir)? == 0 {
         return Err(AgentError::Git("There is nothing to commit: no file has changed".into()));
     }
-    add_all(dir, &links)?;
+    add_all(dir, &pathspec)?;
     if !staged(dir)? {
         return Err(AgentError::Git("There is nothing to commit: no file has changed".into()));
     }
@@ -1136,26 +1139,51 @@ pub fn commit_all(dir: &Path, message: &str) -> Result<Commit, AgentError> {
     Ok(Commit { sha, subject })
 }
 
-/// `git add --all` in the checkout at `dir` (its top folder), without its submodules `links` (`gitlinks`, GA-350): for
-/// each one that holds a repository, git add runs a git status inside it, with that repository's own settings, and git
-/// add has no option to leave them out. So they are left out of its pathspec, one `:(exclude,literal)` each: the changes
-/// inside a submodule aren't added, and neither is a new commit of it. A nested repository that git doesn't track yet is
-/// added as git does it (a gitlink, from its HEAD alone).
-fn add_all(dir: &Path, links: &[String]) -> Result<(), AgentError> {
-    let mut args: Vec<String> = ["add", "--all", "--", "."].map(String::from).to_vec();
-    args.extend(links.iter().map(|p| format!(":(exclude,literal){p}")));
+/// git add's pathspec for `add_all` in the checkout at `dir` (its top folder): all of it (`.`) without its submodules
+/// (`gitlinks`, GA-350), one `:(exclude,literal)<path>` each. For each one that holds a repository, git add runs a git
+/// status inside it, with that repository's own settings, and git add has no option to leave them out. So the changes
+/// inside a submodule aren't added, and neither is a new commit of it.
+///
+/// GA-361: only when git leaves each of them out under the very name the index holds. git reads a path it is given
+/// before it matches it: git on macOS turns it into NFC (`core.precomposeunicode`, which git init turns on there), and
+/// every git tidies it (`./lib` is `lib`; on Windows `\` is `/`). The index's name needn't be either: a run can write
+/// the index file itself. So Hersir asks git: `git ls-files --stage` with the same pathspec reads it as git add does,
+/// reads the index alone, and lists what it leaves in. With a submodule among those, git add would look inside that
+/// one: the checkout is refused (`TWO_WAY_SUBMODULE`), and no git add runs.
+fn add_pathspec(dir: &Path) -> Result<Vec<String>, AgentError> {
+    let links = gitlinks(dir)?;
+    let mut pathspec = vec![".".to_string()];
+    pathspec.extend(links.iter().map(|p| format!(":(exclude,literal){p}")));
+    if !links.is_empty() {
+        let left_in = pathspec_git(dir, &["ls-files", "--stage", "-z"], &pathspec)?;
+        // "<mode> <id> <stage>\t<path>", as in `gitlinks`
+        if left_in.split(|&b| b == 0).any(|entry| entry.starts_with(b"160000 ")) {
+            return Err(AgentError::Git(TWO_WAY_SUBMODULE.into()));
+        }
+    }
+    Ok(pathspec)
+}
+
+/// `git add --all` in the checkout at `dir` (its top folder), with `pathspec` (`add_pathspec`: without its submodules).
+/// A nested repository that git doesn't track yet is added as git does it (a gitlink, from its HEAD alone).
+fn add_all(dir: &Path, pathspec: &[String]) -> Result<(), AgentError> {
+    pathspec_git(dir, &["add", "--all"], pathspec).map(|_| ())
+}
+
+/// git with `args`, then `--` and `pathspec`, in the checkout at `dir` (`command_in`), without input: its output as git
+/// wrote it, or what git said when it failed. The pathspecs' magic counts, whatever Hersir itself was started with.
+fn pathspec_git(dir: &Path, args: &[&str], pathspec: &[String]) -> Result<Vec<u8>, AgentError> {
     let (mut cmd, refused) = command_in(dir);
     if let Some(why) = refused {
         return Err(AgentError::Git(why));
     }
-    // the pathspecs' magic counts, whatever Hersir itself was started with
     for var in ["GIT_LITERAL_PATHSPECS", "GIT_GLOB_PATHSPECS", "GIT_NOGLOB_PATHSPECS", "GIT_ICASE_PATHSPECS"] {
         cmd.env_remove(var);
     }
-    let out = cmd.args(&args).stdin(std::process::Stdio::null()).output()
+    let out = cmd.args(args).arg("--").args(pathspec).stdin(std::process::Stdio::null()).output()
         .map_err(|e| AgentError::Git(format!("can't run git: {e}")))?;
     if out.status.success() {
-        Ok(())
+        Ok(out.stdout)
     } else {
         Err(AgentError::Git(String::from_utf8_lossy(&out.stderr).trim().to_string()))
     }
@@ -1340,7 +1368,7 @@ impl Removal {
 ///   would read its settings from where the run pointed it. So does one with a nested repository
 ///   (`nested_repositories`, GA-350), whose own settings that check could run: git refuses one itself too, but Hersir
 ///   doesn't leave that to git. And one with a submodule whose folder name isn't valid UTF-8 (`NOT_UTF8_SUBMODULE`,
-///   GA-357), which Hersir can't look for by name.
+///   GA-357), which Hersir can't look for by name, or isn't in NFC (`TWO_WAY_SUBMODULE`, GA-361).
 /// - The branch goes only when no worktree has it checked out any more (a kept worktree keeps it). `git branch -D`
 ///   also deletes commits that aren't merged anywhere, so the caller decides whether that is fine.
 pub fn remove_card_worktree(repo: &Path, worktrees_dir: &Path, branch: &str, delete_branch: bool) -> Removal {
@@ -1406,7 +1434,7 @@ pub fn remove_card_worktree_with(repo: &Path, worktrees_dir: &Path, temp_base: &
 /// GA-350: why `remove_card_worktree` keeps the worktree `wt` (its top folder) for its nested repositories
 /// (`nested_repositories`), in words for after "kept its worktree …"; None when it has none. When git can't list them,
 /// the worktree stays too, with git's reason; with a submodule whose folder name isn't valid UTF-8 (GA-357) that is
-/// `NOT_UTF8_SUBMODULE`, as is.
+/// `NOT_UTF8_SUBMODULE`, as is, and with one whose name isn't in NFC (GA-361) `TWO_WAY_SUBMODULE`.
 fn nested_refusal(wt: &Path) -> Option<String> {
     match nested_repositories(wt) {
         Ok(found) if found.is_empty() => None,
@@ -1463,9 +1491,14 @@ pub fn uncommitted(dir: &Path) -> Result<usize, AgentError> {
 }
 
 /// GA-357: `gitlinks`' refusal of a checkout with a submodule whose folder name isn't valid UTF-8, word for word. Each
-/// place that leaves such a checkout alone says it, after its own words as for a nested repository (`not_utf8_said`):
+/// place that leaves such a checkout alone says it, after its own words as for a nested repository (`name_said`):
 /// Commit…, the stash of Remove anyway, the worktree's removal and its take-over by a new card.
 pub const NOT_UTF8_SUBMODULE: &str = "it has a submodule whose folder name isn't valid UTF-8, whose own settings git could run";
+
+/// GA-361: the refusal of a checkout with a submodule whose folder name git could read two ways, word for word, said
+/// as `NOT_UTF8_SUBMODULE` is: by `gitlinks` when the name isn't in NFC, so by the same four places, and by Commit…
+/// when git reads git add's pathspec for it as another name (`add_pathspec`).
+pub const TWO_WAY_SUBMODULE: &str = "it has a submodule whose folder name git could read two ways, whose own settings git could run";
 
 /// The submodules in the index of the checkout at `dir` (gitlinks: a real submodule, or a nested repository a run
 /// committed), relative to `dir`, in the index's order. From the index alone (`git ls-files --stage`), so git never looks
@@ -1473,10 +1506,16 @@ pub const NOT_UTF8_SUBMODULE: &str = "it has a submodule whose folder name isn't
 ///
 /// GA-357: read as git's bytes, not as text, and refused (`NOT_UTF8_SUBMODULE`) when a gitlink's path isn't valid UTF-8,
 /// which a folder name on Linux needn't be. As text such a name changes, so `nested_repositories` wouldn't find its `.git`
-/// and `add_all`'s pathspec wouldn't leave it out, and git would look inside it with its own settings. It is refused
+/// and `add_pathspec` wouldn't leave it out, and git would look inside it with its own settings. It is refused
 /// whether its folder is there or not. Such a name on any other entry, such as a file's, doesn't matter here.
+///
+/// GA-361: refused too (`TWO_WAY_SUBMODULE`) when a gitlink's path isn't in NFC, Unicode's composed form, such as
+/// `cafe` and U+0301 for `café`. git on macOS turns a path it is given into NFC, so it would read `add_pathspec`'s
+/// exclusion of that gitlink as one of `café` and look inside it after all: macOS finds the folder under either name.
+/// On every system, as GA-357's refusal; a file with such a name doesn't matter here either.
 pub fn gitlinks(dir: &Path) -> Result<Vec<String>, AgentError> {
     let index = git_bytes(dir, &["ls-files", "--stage", "-z"])?;
+    let nfc = icu_normalizer::ComposingNormalizerBorrowed::new_nfc();
     let mut links: Vec<String> = vec![];
     for entry in index.split(|&b| b == 0) {
         // "<mode> <id> <stage>\t<path>"
@@ -1486,6 +1525,9 @@ pub fn gitlinks(dir: &Path) -> Result<Vec<String>, AgentError> {
             continue;
         }
         let path = std::str::from_utf8(path).map_err(|_| AgentError::Git(NOT_UTF8_SUBMODULE.into()))?;
+        if !nfc.is_normalized(path) {
+            return Err(AgentError::Git(TWO_WAY_SUBMODULE.into()));
+        }
         links.push(path.to_string());
     }
     // a merge conflict lists a path once per side
@@ -1493,11 +1535,11 @@ pub fn gitlinks(dir: &Path) -> Result<Vec<String>, AgentError> {
     Ok(links)
 }
 
-/// `e` with `before` in front, the way GA-350's refusal starts at that place, when it is `gitlinks`' refusal of a
-/// submodule whose folder name isn't valid UTF-8 (`NOT_UTF8_SUBMODULE`, GA-357); any other error as it is.
-fn not_utf8_said(before: &str, e: AgentError) -> AgentError {
+/// `e` with `before` in front, the way GA-350's refusal starts at that place, when it is a refusal of a submodule for
+/// its folder name: `NOT_UTF8_SUBMODULE` (GA-357) or `TWO_WAY_SUBMODULE` (GA-361); any other error as it is.
+fn name_said(before: &str, e: AgentError) -> AgentError {
     match e {
-        AgentError::Git(m) if m == NOT_UTF8_SUBMODULE => AgentError::Git(format!("{before}: {m}")),
+        AgentError::Git(m) if m == NOT_UTF8_SUBMODULE || m == TWO_WAY_SUBMODULE => AgentError::Git(format!("{before}: {m}")),
         other => other,
     }
 }
@@ -1509,7 +1551,8 @@ fn not_utf8_said(before: &str, e: AgentError) -> AgentError {
 /// for uncommitted changes is a git status there, and git refuses such a worktree before it today ("working trees
 /// containing submodules cannot be moved or removed"), but Hersir doesn't leave that to git. Found without git in
 /// them: their own settings could start programs, such as a clean filter. A submodule whose folder name isn't valid
-/// UTF-8 is `gitlinks`' error (`NOT_UTF8_SUBMODULE`, GA-357), so each of those places refuses the checkout for it too.
+/// UTF-8 or isn't in NFC is `gitlinks`' error (`NOT_UTF8_SUBMODULE`, GA-357; `TWO_WAY_SUBMODULE`, GA-361), so each of
+/// those places refuses the checkout for it too.
 pub fn nested_repositories(dir: &Path) -> Result<Vec<String>, AgentError> {
     Ok(gitlinks(dir)?.into_iter().filter(|p| std::fs::symlink_metadata(dir.join(p).join(".git")).is_ok()).collect())
 }
@@ -1581,13 +1624,14 @@ pub fn parse_status(out: &str) -> Vec<UncommittedFile> {
 ///
 /// GA-350: refused when the checkout has a nested repository (`nested_repositories`): git stash looks inside it, with
 /// that repository's own settings, and has no option to leave submodules out. GA-357: and when it has a submodule whose
-/// folder name isn't valid UTF-8, with "Hersir doesn't stash there: " and `NOT_UTF8_SUBMODULE`.
+/// folder name isn't valid UTF-8, with "Hersir doesn't stash there: " and `NOT_UTF8_SUBMODULE`; GA-361: or isn't in
+/// NFC, with `TWO_WAY_SUBMODULE`.
 pub fn stash_all(dir: &Path, message: &str) -> Result<(), AgentError> {
     let (mut cmd, refused) = command_in(dir);
     if let Some(why) = refused {
         return Err(AgentError::Git(why));
     }
-    let nested = nested_repositories(dir).map_err(|e| not_utf8_said("Hersir doesn't stash there", e))?;
+    let nested = nested_repositories(dir).map_err(|e| name_said("Hersir doesn't stash there", e))?;
     if !nested.is_empty() {
         return Err(AgentError::Git(format!("Hersir doesn't stash there: it has {}, whose settings git's stash would run",
                                            nested_said(&nested))));

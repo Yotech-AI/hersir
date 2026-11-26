@@ -1813,6 +1813,7 @@ version = "0.20.1"
 dependencies = [
  "flate2",
  "getrandom 0.4.3",
+ "icu_normalizer",
  "keyring",
  "libc",
  "portable-pty",
