@@ -94,8 +94,9 @@ pub fn fix(st: &AppState) -> Option<String> {
 }
 
 /// The start check of a card the queue would start (GA-369): why it waits because this computer is
-/// busy (`gizai_agents::run_cpu::Reading::busy`), or None. Nothing until Hersir's start enables the readings
-/// (`RunsMemory::cpu_reading`), so a test's runs never wait for the test machine. Remembers since when it has been busy
+/// busy (`gizai_agents::run_cpu::Reading::busy`), or None. Nothing until Hersir's own start reads the CPU
+/// (`RunsMemory::watch_cpu`; a test fakes a reading, `RunsMemory::fake_cpu_reading`), so a test's runs never wait for
+/// the test machine, also with the slice enabled. Remembers since when it has been busy
 /// (the board check), and forgets the cards it told when it eases, so a busy spell later tells them again.
 pub fn busy_reason(st: &AppState) -> Option<String> {
     let why = st.run_memory.cpu_reading().filter(cpu::Reading::busy)

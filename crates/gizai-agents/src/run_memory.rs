@@ -866,6 +866,9 @@ pub struct RunsMemory {
     cpu_cores: AtomicU32,
     /// Tests: a CPU reading that stands in for the real one (`fake_cpu_reading`).
     fake_cpu: Mutex<Option<crate::run_cpu::Reading>>,
+    /// Whether the start check reads this computer's CPU (`watch_cpu`): Hersir's own start only, never a test's, also
+    /// one that enables the slice.
+    watch_cpu: AtomicBool,
 }
 
 impl RunsMemory {
@@ -1038,13 +1041,20 @@ impl RunsMemory {
         self.made().map(|s| s.missing_controllers()).unwrap_or_default()
     }
 
-    /// The start check's CPU reading now (GA-369, `run_cpu::reading`): nothing until `enable` (or
-    /// `fake_cpu_reading`), so a test's runs never wait for the test machine's CPU.
+    /// From now on the start check reads this computer's CPU (GA-369): Hersir's own start, outside a headless test run.
+    pub fn watch_cpu(&self) {
+        self.watch_cpu.store(true, Ordering::SeqCst);
+    }
+
+    /// The start check's CPU reading now (GA-369, `run_cpu::reading`): nothing until `watch_cpu` (or
+    /// `fake_cpu_reading`), so a test's runs never wait for the test machine's CPU, also with the slice enabled.
     pub fn cpu_reading(&self) -> Option<crate::run_cpu::Reading> {
         if let Some(f) = *self.fake_cpu.lock().unwrap_or_else(|e| e.into_inner()) {
             return Some(f);
         }
-        self.limit()?;
+        if !self.watch_cpu.load(Ordering::SeqCst) {
+            return None;
+        }
         crate::run_cpu::reading()
     }
 
