@@ -1382,7 +1382,13 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
             let (servers, left_out) = tokio::task::spawn_blocking(move || crate::mcp_servers::for_run(&st2, &a2, cap)).await.unwrap_or_default();
             notes.extend(left_out);
             if !servers.is_empty() {
-                let path = log_dir.join(format!("{run_id}.mcp.json"));
+                // GA-265: in the sandbox it goes in the run's temp folder, which the run sees as a folder: once Hersir
+                // deletes it there (GA-266) it is gone in the sandbox too. A file brought in on its own would stay readable
+                // there until the run ends.
+                let path = match (&sandbox, &temp_dir) {
+                    (Some(_), Some(dir)) => Path::new(dir).join(format!("{run_id}.mcp.json")),
+                    _ => log_dir.join(format!("{run_id}.mcp.json")),
+                };
                 match gizai_agents::mcp_run::write_config(&path, &gizai_agents::mcp_run::config(vec![], &servers)) {
                     Ok(()) => {
                         browser_in_run = servers.iter().any(|s| s.name == gizai_core::mcp_servers::BROWSER
@@ -1493,7 +1499,9 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
         gizai_agents::sandbox::policy(&gizai_agents::sandbox::RunPlaces {
             kind: spec.kind, bin: spec.bin.clone(), cli_env: spec.env.clone(), worktree: wt.path.clone(),
             write: change.iter().map(|f| PathBuf::from(&f.path)).chain(commit_dirs.iter().cloned()).collect(),
-            read: read.iter().map(|f| PathBuf::from(&f.path)).chain(mcp_config.iter().cloned()).chain(gemini_settings.iter().cloned())
+            read: read.iter().map(|f| PathBuf::from(&f.path))
+                .chain(mcp_config.iter().filter(|c| !temp_dir.as_ref().is_some_and(|t| c.starts_with(t))).cloned())
+                .chain(gemini_settings.iter().cloned())
                 .chain([st.mcp_socket.clone()]).collect(),
             temp_dir: temp_dir.as_ref().map(PathBuf::from), data_dir: st.data_dir.clone(), temp_base: st.temp_base.clone(),
             home: std::env::var_os("HOME").filter(|h| !h.is_empty()).map(PathBuf::from),
@@ -1518,6 +1526,15 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
     // GA-182: the agent's own commands find the preview (HERSIR_PREVIEW_PORT, _URL and _DIR, and the GIZAI_ ones; not PORT)
     if let Some(s) = &shots {
         exec.env.extend(s.env.iter().cloned());
+    }
+    // GA-265: in the sandbox, Chrome's crash reports and uv's tools go in the run's temp folder
+    // (`sandbox::run_env`), unless the CLI's own lines set them
+    if exec.sandbox.is_some() && let Some(dir) = &run.temp_dir {
+        for (k, v) in gizai_agents::sandbox::run_env(Path::new(dir)) {
+            if !exec.env.iter().any(|(e, _)| *e == k) {
+                exec.env.push((k, v));
+            }
+        }
     }
     // The log says which CLI wrote it, so it can be read again after the run (Claude Code's needs no header), then which
     // MCP servers Claude Code signs in to, then Gizai's notes.

@@ -3,10 +3,11 @@
 //! has of its own runs inside Hersir's (Codex's `workspace-write` still works there).
 //!
 //! What a run may touch (`policy`):
-//! - **read and change:** the worktree, the agent's read and change folders, the run's temp folder, the parts of the
-//!   repository's git folder a commit writes (`worktree::commit_dirs`), its own CLI's sign-in and settings folders
-//!   (`cli_places`), and the package managers' download caches (`CACHES`);
-//! - **read only:** everything else, but for what is hidden;
+//! - **read and change:** the worktree, the agent's change folders, the run's temp folder, the parts of the
+//!   repository's git folder a commit writes (`worktree::commit_dirs`), its own CLI's folders (`cli_places`: its sign-in
+//!   and sessions) but for its settings (`cli_settings`), and the package managers' download caches (`CACHES`);
+//! - **read only:** everything else, but for what is hidden; the run's own CLI's settings, instructions, hooks, plugins
+//!   and MCP servers among it, so the run can't leave a program there for your own sessions of that CLI;
 //! - **hidden** (an empty folder or file in its place): Hersir's data folder (its database, the runs' logs and MCP
 //!   configs, the other cards' worktrees), the other runs' temp folders, your keys and logins (`SECRET_PLACES`: `~/.ssh`,
 //!   `~/.gnupg`, `~/.aws`, `~/.config/gh`, …), the other CLIs' folders, and on Linux your session's sockets
@@ -67,12 +68,13 @@ pub struct RunPlaces {
 
 /// Your keys and logins in your home folder, which no run reads: SSH, GnuPG, the clouds' CLIs, Docker's and
 /// Kubernetes' logins, the GitHub CLI's, git's stored passwords, password stores and keyrings, and the browsers' profiles
-/// (their cookies are logins too).
-pub const SECRET_PLACES: [&str; 27] = [
+/// (their cookies are logins too). Not macOS's `~/Library/Keychains`: a program reads its keychain file itself, and
+/// Claude Code signs in from the login keychain there (its items keep their own access rules).
+pub const SECRET_PLACES: [&str; 26] = [
     ".ssh", ".gnupg", ".aws", ".azure", ".kube", ".docker", ".password-store", ".pki", ".netrc", ".git-credentials",
     ".config/gh", ".config/hub", ".config/gcloud", ".config/git/credentials", ".local/share/keyrings", ".cargo/credentials",
     ".cargo/credentials.toml", ".pypirc", ".mozilla", ".config/google-chrome", ".config/chromium", ".config/BraveSoftware",
-    ".config/microsoft-edge", ".config/vivaldi", "Library/Keychains", "Library/Cookies", "Library/Application Support/Google/Chrome",
+    ".config/microsoft-edge", ".config/vivaldi", "Library/Cookies", "Library/Application Support/Google/Chrome",
 ];
 
 /// The package managers' download caches in your home folder, which builds write: npm's, Cargo's registry and git
@@ -123,6 +125,53 @@ pub fn cli_places(home: &Path, kind: Kind, bin: &Path, cli_env: &[(String, Strin
     own
 }
 
+/// What stays read only in a CLI's own folders (`cli_settings`), by `CLI_PLACES` key: the settings, instructions, hooks,
+/// plugins, skills and MCP servers your own sessions of that CLI load, so a run can't leave a program there that would
+/// start outside the sandbox the next time you use the CLI. Relative to your home folder; `OWN_DIR_SETTINGS` has the same
+/// inside a CLAUDE_CONFIG_DIR or CODEX_HOME. Claude Code saves `~/.claude.json` through a new file next to it, which the
+/// read-only home folder refuses anyway: a run doesn't change it (checked with Claude Code 2.1.325).
+const CLI_SETTINGS: [(&str, &[&str]); 4] = [
+    ("claude_code", &[".claude.json", ".claude.json.backup", ".claude/settings.json", ".claude/settings.local.json", ".claude/CLAUDE.md",
+                      ".claude/commands", ".claude/agents", ".claude/skills", ".claude/hooks", ".claude/plugins", ".claude/output-styles"]),
+    ("codex", &[".codex/config.toml", ".codex/AGENTS.md", ".codex/rules", ".codex/prompts", ".codex/skills"]),
+    ("gemini", &[".gemini/settings.json", ".gemini/GEMINI.md", ".gemini/extensions", ".gemini/commands", ".gemini/policies"]),
+    ("opencode", &[".config/opencode"]),
+];
+
+/// `CLI_SETTINGS` inside the folder a CLAUDE_CONFIG_DIR or CODEX_HOME names.
+const OWN_DIR_SETTINGS: [(&str, &[&str]); 2] = [
+    ("claude_code", &[".claude.json", ".claude.json.backup", "settings.json", "settings.local.json", "CLAUDE.md", "commands", "agents", "skills",
+                      "hooks", "plugins", "output-styles"]),
+    ("codex", &["config.toml", "AGENTS.md", "rules", "prompts", "skills"]),
+];
+
+/// The read-only part of the run's own CLI's folders (`CLI_SETTINGS`), in `home` and in its CLAUDE_CONFIG_DIR or
+/// CODEX_HOME. A file that isn't there yet can't be kept read only: the run could make it.
+pub fn cli_settings(home: &Path, kind: Kind, bin: &Path, cli_env: &[(String, String)]) -> Vec<PathBuf> {
+    let Some(key) = cli_key(kind, bin) else { return vec![] };
+    let mut ro: Vec<PathBuf> = CLI_SETTINGS.iter().filter(|(k, _)| *k == key).flat_map(|(_, p)| p.iter().map(|p| home.join(p))).collect();
+    let var = match kind {
+        Kind::ClaudeCode => Some("CLAUDE_CONFIG_DIR"),
+        Kind::Codex => Some("CODEX_HOME"),
+        _ => None,
+    };
+    if let Some(dir) = var.and_then(|v| cli_var(cli_env, v)) {
+        ro.extend(OWN_DIR_SETTINGS.iter().filter(|(k, _)| *k == key).flat_map(|(_, p)| p.iter().map(|p| dir.join(p))));
+    }
+    ro
+}
+
+/// GA-265: what a sandboxed run gets in its environment, for programs that would otherwise write where the sandbox
+/// refuses, each in the run's temp folder `temp_dir`:
+/// - `BREAKPAD_DUMP_LOCATION`: Chrome's and Chromium's crash reports. Their own place is in your config folder, which is
+///   read only, and without it they end at their start (Chromium 143, Chrome DevTools MCP's browser);
+/// - `UV_TOOL_DIR` and `UV_TOOL_BIN_DIR`: uv's tools (`uvx`, `uv tool install`), so a tool a run installs is never one
+///   you start outside it. Their downloads stay in uv's cache (`~/.cache/uv`).
+pub fn run_env(temp_dir: &Path) -> Vec<(String, String)> {
+    [("BREAKPAD_DUMP_LOCATION", "crash-reports"), ("UV_TOOL_DIR", "uv-tools"), ("UV_TOOL_BIN_DIR", "uv-bin")]
+        .map(|(k, d)| (k.to_string(), temp_dir.join(d).display().to_string())).to_vec()
+}
+
 /// The other CLIs' places in `home`: every one of `CLI_PLACES` but the run's own.
 pub fn other_cli_places(home: &Path, kind: Kind, bin: &Path) -> Vec<PathBuf> {
     let own = cli_key(kind, bin);
@@ -171,16 +220,20 @@ pub fn policy(p: &RunPlaces) -> Policy {
     write.extend(p.write.iter().cloned());
     write.extend(p.temp_dir.iter().cloned());
     let mut hide: Vec<PathBuf> = vec![p.data_dir.clone(), p.temp_base.clone()];
+    let mut settings: Vec<PathBuf> = vec![];
     if let Some(home) = &p.home {
         write.extend(cli_places(home, p.kind, &p.bin, &p.cli_env));
         write.extend(CACHES.iter().map(|c| home.join(c)));
+        settings.extend(cli_settings(home, p.kind, &p.bin, &p.cli_env));
         hide.extend(SECRET_PLACES.iter().map(|s| home.join(s)));
         hide.extend(other_cli_places(home, p.kind, &p.bin));
     }
     write.extend(user_temp_dirs());
     hide.extend(system_places());
-    let write = unique(write.iter().filter_map(|w| real(w)));
-    let read = unique(p.read.iter().filter_map(|r| real(r)).filter(|r| !write.contains(r)));
+    // the own CLI's settings stay read only, also where they are a place of their own (`~/.claude.json`)
+    let settings = unique(settings.iter().filter_map(|s| real(s)));
+    let write = unique(write.iter().filter_map(|w| real(w)).filter(|w| !settings.contains(w)));
+    let read = unique(p.read.iter().filter_map(|r| real(r)).filter(|r| !write.contains(r)).chain(settings));
     // what the run reads or changes is never hidden as well
     let hide = unique(hide.iter().filter_map(|h| real(h)).filter(|h| !write.contains(h) && !read.contains(h)));
     Policy { cwd: real(&p.worktree).unwrap_or_else(|| p.worktree.clone()), write, read, hide, tmp: p.temp_dir.as_deref().and_then(real) }
