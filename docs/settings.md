@@ -49,7 +49,7 @@ A restore never touches keys and passwords: they stay as they are on this comput
 
 ## Hersir Cloud
 
-Settings → Hersir Cloud keeps encrypted backups of your data in Hersir Cloud (`cloud.hersir.dev`), off your computer, so you can restore them on a new one. It needs an account with the Personal plan, €5 a month or €48 a year, excl. VAT. Its controls save at once; Save settings at the top is for the other tabs. A command that can't be done shows Hersir Cloud's own sentence under its field.
+Settings → Hersir Cloud keeps encrypted backups of your data in Hersir Cloud (`cloud.hersir.dev`), off your computer, so you can restore them on a new one. It needs an account with the Personal plan, €5 a month or €48 a year, VAT included. Its controls save at once; Save settings at the top is for the other tabs. A command that can't be done shows Hersir Cloud's own sentence under its field.
 
 - **Sign in** opens your browser: your password, then your authenticator's code. Cancel stops waiting. **Create an account** opens the account page's sign-up in your browser.
 - **Your recovery code.** Hersir encrypts your data on this computer before it leaves, and Hersir Cloud can't read it. After the first sign-in on an account, Hersir shows a recovery code once: copy it or save it as a file, then type its last group to turn Cloud Backup on. This can't be skipped. Only your computers and this code can open your backups: if you lose the code and every computer signed in to Hersir Cloud, nobody can open them, Hersir included. **Make a new recovery code** asks first, then shows the new one the same way; the old one stops working once you type the new one's last group, and keeps working if you leave before that.

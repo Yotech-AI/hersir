@@ -371,7 +371,7 @@ describe("A1 · signed out", () => {
     expect(sections()).toEqual(["Hersir Cloud", "Restore from Hersir Cloud"]);
     expect(sectionText("Hersir Cloud")).toBe("Encrypted backups of your data, kept off your computer. Restore them on a new one.");
     expect(fields()).toEqual(["Personal plan", "Account"]);
-    expect(fieldText("Personal plan")).toBe("€5 a month or €48 a year, excl. VAT. Hersir can't read what it stores.");
+    expect(fieldText("Personal plan")).toBe("€5 a month or €48 a year, VAT included. Hersir can't read what it stores.");
     const account = kids(field("Account"));
     expect(buttons("Sign in", account).map((b) => b.className)).toEqual(["btn primary"]);
     expect(button("Create an account").className).toBe("btn");
@@ -458,6 +458,7 @@ describe("A2 · signing in", () => {
     await click(button("Sign in", stepsNode()));
     expect(called("cloudSignIn")).toHaveLength(1);
     expect(fields()).toEqual(["Personal plan"]);
+    expect(fieldText("Personal plan")).toBe("€5 a month or €48 a year, VAT included. Hersir can't read what it stores.");
     expect(statusLines()).toEqual(["Waiting for you to sign in in your browser…"]);
     expect(stepBody(1)).toContain("Waiting for you to sign in in your browser…");
     expect(buttons("Cancel", stepsNode())).toHaveLength(1);
@@ -1100,5 +1101,26 @@ describe("dark and light (GA-317's sheet A: 384:416 dark, 389:2445 light)", () =
     expect(css).toMatch(/\.cloud-meter\.full > span \{[^}]*background: var\(--danger\)/);
     expect(css).toMatch(/\.cloud-meter \{[^}]*width: 240px;[^}]*height: 6px;[^}]*border: 1px solid var\(--line-2\)[^}]*background: var\(--raised\)/);
     expect(css).toMatch(/\.onb-cloud \{[^}]*border: 1px solid var\(--line\);[^}]*border-radius: 6px;[^}]*background: var\(--raised\)/);
+  });
+});
+
+// ---- GA-371 QA: Personal's price is VAT included (€5 a month, €48 a year), the same in the app, the design and the docs ----
+describe("GA-371 · the Personal plan's price, VAT included", () => {
+  const read = (path: string): string => fs.readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
+  const flat = (s: string) => s.replace(/\s+/g, " ");
+
+  it("the app's words are the card's, and the design's Every text gives them word for word", async () => {
+    const { PLAN_PRICE } = await import("../lib/cloud");
+    expect(PLAN_PRICE).toBe("€5 a month or €48 a year, VAT included. Hersir can't read what it stores.");
+    const design = flat(read("design/hersir-cloud.md"));
+    expect(design).toContain(`field **Personal plan**: **${PLAN_PRICE}**`);
+    expect(design).toContain("**Personal ·** *€48 a year, VAT included* **· renews** *date*");
+    expect(design).not.toContain("excl. VAT");
+  });
+
+  it("docs/settings.md's Hersir Cloud section says VAT included, and no longer excl. VAT", () => {
+    const docs = flat(read("docs/settings.md"));
+    expect(docs).toContain("It needs an account with the Personal plan, €5 a month or €48 a year, VAT included.");
+    expect(docs).not.toContain("excl. VAT");
   });
 });
