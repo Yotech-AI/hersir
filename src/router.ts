@@ -14,8 +14,9 @@ export type Page = (typeof PAGES)[number];
  *  Screenshots tab, and `run` one run's set there (GA-185). On a project, `view` "time" is its Time tracking tab (GA-331).
  *  On a project's Docs page, `docs` is the page's own address after #/devdocs/<project id>/ (src/docs/route.ts). */
 export type Route = { page: Page; id?: string; scope?: string; view?: "graph" | "changes" | "screenshots" | "time"; run?: string; docs?: string };
-// Settings' tabs (GA-42): #/settings/<tab> opens one; #/settings, or a tab it doesn't know, opens General.
-export const SETTINGS_TABS = ["general", "appearance", "notifications", "agents", "mcp", "github"] as const;
+// Settings' tabs (GA-42): #/settings/<tab> opens one; #/settings, or a tab it doesn't know, opens General. Hersir Cloud
+// (GA-360) is #/settings/cloud.
+export const SETTINGS_TABS = ["general", "appearance", "notifications", "agents", "mcp", "github", "cloud"] as const;
 export type SettingsTab = (typeof SETTINGS_TABS)[number];
 
 // The Memory page (GA-68): #/memory is everything (the Team Lead's view), #/memory/shared the shared folders (no Team

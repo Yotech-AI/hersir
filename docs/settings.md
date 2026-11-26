@@ -1,6 +1,6 @@
 # Settings
 
-Where each setting lives, what a backup holds and how to restore one, how Hersir looks, what the screenshot settings do, and what happens when you close its window.
+Where each setting lives, what a backup holds and how to restore one, Hersir Cloud's backups, how Hersir looks, what the screenshot settings do, and what happens when you close its window.
 
 ## The tabs
 
@@ -12,8 +12,9 @@ Where each setting lives, what a backup holds and how to restore one, how Hersir
 | Agents and runs | Coding CLIs; Runs: limits, runs at once, memory for agent runs and per run, Pause all agents, memory and Ask the Chief first; and Screenshots: what Hersir keeps of agents' screenshots, and the previews' ports |
 | MCP servers | The outside services agents can use, the built-in browser, and Claude Desktop |
 | GitHub and Bitbucket | gh and how pushes go, Check connection, and your Bitbucket login |
+| Hersir Cloud | Your Hersir Cloud account, its storage and your recovery code, your computers, Cloud Backup with its backups and Restore, and Restore from Hersir Cloud |
 
-Each feature's doc says which settings it uses: [Updates](install.md#updates), [Backups](#backups), [the Editor's folders](features/editor-and-terminal.md#open-a-folder), [Data](features/board.md#a-worktree-for-every-card), [Notifications](features/inbox.md#notifications), [Coding CLIs](features/cli.md), [Runs](features/board.md#when-agents-start) and [their limits](features/board.md#runs), [Screenshots](features/screenshots.md), [MCP servers](features/tools.md#mcp-servers), [Claude Desktop](features/claude-desktop.md) and [GitHub and Bitbucket](features/testing.md#review-on-github).
+Each feature's doc says which settings it uses: [Updates](install.md#updates), [Backups](#backups), [the Editor's folders](features/editor-and-terminal.md#open-a-folder), [Data](features/board.md#a-worktree-for-every-card), [Notifications](features/inbox.md#notifications), [Coding CLIs](features/cli.md), [Runs](features/board.md#when-agents-start) and [their limits](features/board.md#runs), [Screenshots](features/screenshots.md), [MCP servers](features/tools.md#mcp-servers), [Claude Desktop](features/claude-desktop.md), [GitHub and Bitbucket](features/testing.md#review-on-github) and [Hersir Cloud](#hersir-cloud).
 
 ## Backups
 
@@ -45,6 +46,24 @@ Each backup that can be restored has Restore, which can't be pressed while a bac
 4. **After the restart.** Hersir shows your data as it was then, and a notice here and in the sidebar says how it went, until Dismiss. Agents are paused: resume them in Settings → Agents and runs. If the restore failed, the notice says why, and Hersir started with today's data.
 
 A restore never touches keys and passwords: they stay as they are on this computer, in your system's keychain. This computer also keeps its own identity and its own settings, such as its programs, the Editor's folders, these backup settings and Runs at once. Everything else comes from the backup, also projects' linked folders and agents' folders: on a new computer, change those that are elsewhere there. [docs/backup-format.md](backup-format.md#restore) has it step by step.
+
+## Hersir Cloud
+
+Settings → Hersir Cloud keeps encrypted backups of your data in Hersir Cloud (`cloud.hersir.dev`), off your computer, so you can restore them on a new one. It needs an account with the Personal plan, €5 a month or €48 a year, excl. VAT. Its controls save at once; Save settings at the top is for the other tabs. A command that can't be done shows Hersir Cloud's own sentence under its field.
+
+- **Sign in** opens your browser: your password, then your authenticator's code. Cancel stops waiting. **Create an account** opens the account page's sign-up in your browser.
+- **Your recovery code.** Hersir encrypts your data on this computer before it leaves, and Hersir Cloud can't read it. After the first sign-in on an account, Hersir shows a recovery code once: copy it or save it as a file, then type its last group to turn Cloud Backup on. This can't be skipped. Only your computers and this code can open your backups: if you lose the code and every computer signed in to Hersir Cloud, nobody can open them, Hersir included. **Make a new recovery code** asks first, then shows the new one the same way; the old one stops working.
+- **On another computer** signed in to the same account, type the recovery code to back up this computer too and to see your backups.
+- **The account** shows your plan and when it renews, with Account page and Sign out. **Storage** shows what your backups use of 10 GB. When it is full, backups stop until there is room: older backups go after 90 days, or delete some on the account page. When the plan ends, Hersir makes no new cloud backups, and your backups can still be restored for a while (the date shows); Renew on the account page starts it again.
+- **Your computers** lists the computers on your account, each with its own sign-in. Remove… signs one out of Hersir Cloud at once: a computer you no longer use, or lost.
+
+**Back up**: Daily backs this computer up to Hersir Cloud once a day, Only when I ask only when you press Back up now, and Also when I quit Hersir completely backs up first when you quit Hersir completely. Each backup is kept 7 days, then one a day up to 90 days.
+
+Back up now makes one at once and shows its step (copying, encrypting, uploading with how much, finishing); it can't be pressed while one runs, when the storage is full or after the plan ended. Above it the section shows the last backup, how much it sent and when the next one is due, and a backup that failed, in red with its time and why. The list shows your backups, newest first: when, why (Daily, On quit, By hand or Before a restore), the computer that made it, its size, and Restore, which works as [a folder's Restore](#restore): it asks first, downloads the backup, checks it, saves today's data and finishes when Hersir restarts.
+
+### Restore from Hersir Cloud
+
+On a new computer: on the first screen, **Restore from Hersir Cloud** under step 1, or Settings → Hersir Cloud while signed out. Three steps: Sign in, Your recovery code (Check says whether it opens your backups), and Pick a backup. Then the restore runs as a folder's does, with Cancel restore, and Restart now when it is ready; after the restart your data is there, and the rest of the first screen's setup is skipped.
 
 ## Appearance
 

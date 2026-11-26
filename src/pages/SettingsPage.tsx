@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Bell, Bot, GitPullRequest, Palette, Plug, SlidersHorizontal } from "lucide-react";
+import { Bell, Bot, Cloud, GitPullRequest, Palette, Plug, SlidersHorizontal } from "lucide-react";
 import { detectClaude, getSettings, getTeam, listTeams, saveSettings } from "../api";
 import type { NotificationSwitches, Settings } from "../types";
 import { go, SETTINGS_TABS, type SettingsTab } from "../router";
@@ -11,6 +11,7 @@ import { BackupSettings } from "../components/BackupSettings";
 import { BitbucketSettings } from "../components/BitbucketSettings";
 import { ClaudeDesktopSettings } from "../components/ClaudeDesktopSettings";
 import { CliSettings } from "../components/CliSettings";
+import { CloudSettings } from "../components/CloudSettings";
 import { EditorFoldersSetting } from "../components/EditorFoldersSetting";
 import { GithubSettings } from "../components/GithubSettings";
 import { LogsSetting } from "../components/LogsSetting";
@@ -36,6 +37,7 @@ const NOTIFY: [keyof NotificationSwitches, string][] = [
 const TABS: TabDef<SettingsTab>[] = [
   ["general", SlidersHorizontal, "General"], ["appearance", Palette, "Appearance"], ["notifications", Bell, "Notifications"],
   ["agents", Bot, "Agents and runs"], ["mcp", Plug, "MCP servers"], ["github", GitPullRequest, "GitHub and Bitbucket"],
+  ["cloud", Cloud, "Hersir Cloud"],
 ];
 
 /** Every tab stays mounted and only the open one shows, so a change not saved yet is still there after switching tabs;
@@ -82,7 +84,7 @@ export function SettingsPage({ tab }: { tab?: string } = {}) {
     <>
       <div className="topbar"><div className="crumbs"><b>Settings</b></div>
         <div className="actions"><button className="btn primary" onClick={() => save()}>Save settings</button></div></div>
-      {/* the island's header holds the six tabs as Island tabs (design/islands-settings: Settings); the open tab's form scrolls under it */}
+      {/* the island's header holds the seven tabs as Island tabs (design/islands-settings: Settings); the open tab's form scrolls under it */}
       <div className="island-head settings-head">
         <Tabs island tabs={TABS} open={open} onOpen={(t) => go({ page: "settings", id: t })} label="Settings" />
       </div>
@@ -154,6 +156,10 @@ export function SettingsPage({ tab }: { tab?: string } = {}) {
         <div {...panel("github")}>
           <GithubSettings s={s} setS={setS} save={save} say={say} savedAt={savedAt} />
           <BitbucketSettings say={say} />
+        </div>
+        {/* Hersir Cloud (GA-360): its controls save at once; Save settings is for the other tabs */}
+        <div {...panel("cloud")}>
+          <CloudSettings shown={open === "cloud"} />
         </div>
       </div></div>
     </>

@@ -428,7 +428,8 @@ const OLD = /Giz ?[Aa][Ii]/;
 // GA-290 brings the islands' design notes onto main as they are on their design branches (GA-284 to GA-288): they name
 // Figma's variable collections (GizAi colour, GizAi size, a GizAi variable) outside backticks, and the Chat's note says
 // Gizai's once for the app's own keys. Only those, and only in those four notes.
-const AS_DRAWN = /^design\/islands(-chat|-pages|-settings)?\/README\.md$/;
+// GA-360 merged GA-317's design/hersir-cloud.md, which names the same Figma collection and variables as drawn.
+const AS_DRAWN = /^design\/(islands(-chat|-pages|-settings)?\/README|hersir-cloud)\.md$/;
 const AS_DRAWN_NAMES = /GizAi (colour|size|variables?)|are Gizai's there/g;
 // The old name the docs keep, in backticks or a code block, as the code has it (or Figma, for the app's variables, and
 // Homebrew, whose class for gizai.rb is Gizai): the data folders on macOS and Windows, the install folder on Windows
