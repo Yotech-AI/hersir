@@ -5,13 +5,19 @@
 // the indicator open an earlier step whose Next comes back, and Skip setup opens the app as today. Step 4's button saves the
 // names and the agents' CLI and starts the Team Lead's welcome chat (finish_onboarding); App then opens that chat, or the
 // board with why there is none. Enter goes to Next; an error from a command shows under its step, and the step stays.
+// Restore from Hersir Cloud (GA-360, GA-317's frame 4): a strip at the island's foot on step 1 opens its three steps (sign
+// in, the recovery code, pick a backup) in the island in place of step 1, then GA-218's restore and Restart now; after the
+// restart the restored data is there, so the rest of the onboarding is skipped. Back returns to step 1.
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
-import { Check, CircleAlert, ExternalLink, Info, ListTodo, MessagesSquare, Plug, RefreshCw, TriangleAlert } from "lucide-react";
+import { ArchiveRestore, Check, CircleAlert, ExternalLink, Info, ListTodo, MessagesSquare, Plug, RefreshCw, TriangleAlert } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { appInfo, findClis, finishOnboarding, getTeam, importMcpServers, listClis, listMcpServers, listUsers, saveClis, scanClaudeCodeMcp, skipOnboarding } from "../api";
 import { Avatar } from "../components/Avatar";
+import { CloudRestore } from "../components/CloudRestore";
 import { ImportRows, importPicks, importProblem, tickedServers, type ImportPicks } from "../components/McpImport";
 import { CLAUDE_CODE } from "../lib/clis";
+import { FIRST_SCREEN_LINE, RESTORE_TEXT, RESTORE_TITLE } from "../lib/cloud";
+import { useCloud } from "../lib/useCloud";
 import { afterSave, CLAUDE_CODE_DOCS, claudeCodeFound, cliRows, clisToSave, defaultAgentsCli, isTicked, noChatNote, notFoundLine, STEPS, tickedLine,
   WELCOME, type CliRow } from "../lib/onboarding";
 import type { Route } from "../router";
@@ -55,6 +61,8 @@ export function OnboardingPage({ onDone }: { onDone: (to: Route | null, note?: s
   const [mcpErr, setMcpErr] = useState<string | null>(null);
   const [picks, setPicks] = useState<ImportPicks>({});
   const [imported, setImported] = useState<string[]>([]);
+  // Restore from Hersir Cloud, open in place of step 1
+  const [cloud, setCloud] = useState(false);
 
   const heading = useRef<HTMLHeadingElement>(null);
   const youField = useRef<HTMLInputElement>(null);
@@ -84,12 +92,14 @@ export function OnboardingPage({ onDone }: { onDone: (to: Route | null, note?: s
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Between steps nothing slides: the focus goes to the new step's heading. At the start the name is there, so the cursor
-  // waits in Team name.
+  // waits in Team name. Restore from Hersir Cloud opening or closing moves the focus to its heading or step 1's too.
+  const shownCloud = useRef(cloud);
   useEffect(() => {
+    if (shownCloud.current !== cloud) { shownCloud.current = cloud; heading.current?.focus(); return; }
     if (shown.current === step) { teamField.current?.focus(); return; }
     shown.current = step;
     heading.current?.focus();
-  }, [step]);
+  }, [step, cloud]);
 
   // Step 3 reads Claude Code's MCP servers when it opens, and again after an import (those are in the list then).
   useEffect(() => {
@@ -186,13 +196,13 @@ export function OnboardingPage({ onDone }: { onDone: (to: Route | null, note?: s
   };
   // Enter goes to Next, but on what does its own thing with it (a button, a link, a select)
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== "Enter" || e.repeat || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey || e.nativeEvent.isComposing) return;
+    if (cloud || e.key !== "Enter" || e.repeat || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey || e.nativeEvent.isComposing) return;
     if ((e.target as HTMLElement).closest("button, a, select, textarea")) return;
     e.preventDefault();
     next();
   };
 
-  const stepErr = err ?? (step === 1 && !clis ? clisErr : step === 2 && !mcp ? mcpErr : null);
+  const stepErr = cloud ? null : err ?? (step === 1 && !clis ? clisErr : step === 2 && !mcp ? mcpErr : null);
   return (
     <div className="onb" onKeyDown={onKey}>
       {/* the top row on the background, then the step in one island under it (design/islands-settings: Onboarding) */}
@@ -203,7 +213,7 @@ export function OnboardingPage({ onDone }: { onDone: (to: Route | null, note?: s
             {STEPS.map((name, i) => (
               <li key={name}>
                 {i < step ? (
-                  <button type="button" className="onb-step done" aria-label={`Back to step ${i + 1}: ${name}`} disabled={!!busy} onClick={() => open(i)}>
+                  <button type="button" className="onb-step done" aria-label={`Back to step ${i + 1}: ${name}`} disabled={!!busy} onClick={() => { setCloud(false); open(i); }}>
                     <span className="num"><Check className="icon" /></span><span className="nm">{name}</span>
                   </button>
                 ) : (
@@ -221,6 +231,13 @@ export function OnboardingPage({ onDone }: { onDone: (to: Route | null, note?: s
       </header>
       <div className="onb-island">
         <div className="onb-scroll">
+          {cloud ? (
+            <main className="onb-body" aria-labelledby="onb-heading">
+              <h1 id="onb-heading" ref={heading} tabIndex={-1}>{RESTORE_TITLE}</h1>
+              <p className="onb-lead">{RESTORE_TEXT}</p>
+              <div className="onb-parts"><OnboardingCloudRestore /></div>
+            </main>
+          ) : (
           <main className="onb-body" ref={body} aria-labelledby="onb-heading">
             <p className="onb-eyebrow" id="onb-eyebrow">Step {step + 1} of 4</p>
             <h1 id="onb-heading" ref={heading} tabIndex={-1} aria-describedby="onb-eyebrow">
@@ -244,8 +261,14 @@ export function OnboardingPage({ onDone }: { onDone: (to: Route | null, note?: s
               )}
             </div>
           </main>
+          )}
         </div>
         {stepErr && <div className="onb-error"><Notice kind="bad">{stepErr}</Notice></div>}
+        {cloud ? (
+          <div className="onb-actions">
+            <button type="button" className="btn" onClick={() => setCloud(false)}>Back</button>
+          </div>
+        ) : (
         <div className="onb-actions">
           <button type="button" className="btn" disabled={step === 0 || !!busy} onClick={goBack}>Back</button>
           {step < 3 ? (
@@ -259,9 +282,24 @@ export function OnboardingPage({ onDone }: { onDone: (to: Route | null, note?: s
             </button>
           )}
         </div>
+        )}
+        {step === 0 && !cloud && (
+          <div className="onb-cloud">
+            <span>{FIRST_SCREEN_LINE}</span>
+            <button type="button" className="btn sm" disabled={!!busy} onClick={() => { setErr(null); setCloud(true); }}>
+              <ArchiveRestore className="icon" />Restore from Hersir Cloud</button>
+          </div>
+        )}
       </div>
     </div>
   );
+}
+
+/** Restore from Hersir Cloud's steps, with Hersir Cloud's status read here: only once they are open. */
+function OnboardingCloudRestore() {
+  const { status, error, answer } = useCloud();
+  if (!status) return error ? <Notice kind="bad">{error}</Notice> : <p className="faint" role="status">Reaching Hersir Cloud…</p>;
+  return <CloudRestore status={status} answer={answer} idPrefix="onb-cloud" />;
 }
 
 /** A warning (Claude Code isn't installed) or an error from a command; its words are `text`, as GA-168's notes ask. */

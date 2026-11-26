@@ -80,15 +80,17 @@ export function codeState(text: string, readOnly: boolean, on: { current: CodeHa
 }
 
 /** Loads the file's language (once for all files of that language) and gives it to its state: through the view when it
- *  shows that state, else to the kept state by `put`. */
-export async function setLanguage(path: string, view: EditorView | null, get: () => EditorState | undefined, put: (s: EditorState) => void) {
+ *  shows that state, else to the kept state by `put`. True when it went to the kept state: then the view hasn't drawn it
+ *  (through the view, the view draws the colours itself and nothing else has to redraw). */
+export async function setLanguage(path: string, view: EditorView | null, get: () => EditorState | undefined, put: (s: EditorState) => void): Promise<boolean> {
   const lang = await loadLanguage(path).catch(() => null);
-  if (!lang) return;
+  if (!lang) return false;
   const effects = language.reconfigure(lang);
   const s = get();
-  if (!s) return;
-  if (view && view.state === s) view.dispatch({ effects });
-  else put(s.update({ effects }).state);
+  if (!s) return false;
+  if (view && view.state === s) { view.dispatch({ effects }); return false; }
+  put(s.update({ effects }).state);
+  return true;
 }
 
 /** Read-only or not, as a transaction's effects (Edit anyway, or an agent starting on the card). */

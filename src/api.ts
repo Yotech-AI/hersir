@@ -442,6 +442,35 @@ export const dismissRestoreResult = () => invoke<T.RestoreStatus>("dismiss_resto
 export const onRestoreChanged = (cb: (s: T.RestoreStatus) => void): Promise<UnlistenFn> =>
   listen<T.RestoreStatus>("restore-changed", (m) => cb(m.payload));
 
+// ---- Hersir Cloud (GA-359, research 5.4): the account, Cloud Backup and Restore from Hersir Cloud ----
+// Each refusal is a sentence for people, shown as it is.
+export const cloudStatus = () => invoke<T.CloudStatus>("cloud_status");
+/** Opens the browser to sign in and waits for it, up to 10 minutes; cloudCancelSignIn stops the wait. */
+export const cloudSignIn = () => invoke<T.CloudStatus>("cloud_sign_in");
+export const cloudCancelSignIn = () => invoke<void>("cloud_cancel_sign_in");
+export const cloudSignOut = () => invoke<T.CloudStatus>("cloud_sign_out");
+/** The first computer only: makes the account key and answers its recovery code, shown once. */
+export const cloudMakeKey = () => invoke<{ recoveryCode: string }>("cloud_make_key");
+/** The recovery code's last group, typed back: turns Cloud Backup on. */
+export const cloudConfirmRecovery = (lastGroup: string) => invoke<T.CloudStatus>("cloud_confirm_recovery", { lastGroup });
+/** A computer whose key is "needed": the account's key from its recovery code. */
+export const cloudEnterRecovery = (code: string) => invoke<T.CloudStatus>("cloud_enter_recovery", { code });
+/** A new recovery code; the old one stops working. */
+export const cloudNewRecovery = () => invoke<{ recoveryCode: string }>("cloud_new_recovery");
+export const cloudSaveSettings = (s: T.CloudSettingsChange) => invoke<T.CloudStatus>("cloud_save_settings", { s });
+export const cloudBackUpNow = () => invoke<T.CloudStatus>("cloud_back_up_now");
+/** The account's backups, newest first, each with the computer that made it. */
+export const cloudListBackups = () => invoke<T.CloudBackup[]>("cloud_list_backups");
+/** Downloads backup `name`, then GA-218's restore takes over (restore_status, restore-changed, restart_to_restore). */
+export const cloudStartRestore = (name: string) => invoke<T.RestoreStatus>("cloud_start_restore", { name });
+export const cloudComputers = () => invoke<T.CloudComputer[]>("cloud_computers");
+export const cloudRemoveComputer = (id: string, lost: boolean) => invoke<T.CloudComputer[]>("cloud_remove_computer", { id, lost });
+/** The account page in the browser. */
+export const cloudOpenAccount = () => invoke<void>("cloud_open_account");
+/** The account, the plan, the key or Cloud Backup changed (a backup's step too). */
+export const onCloudChanged = (cb: (s: T.CloudStatus) => void): Promise<UnlistenFn> =>
+  listen<T.CloudStatus>("cloud-changed", (m) => cb(m.payload));
+
 /** Fires after any write; screens refetch what they show. */
 export const onRowsChanged = (cb: (table: string) => void): Promise<UnlistenFn> =>
   listen<{ table: string }>("rows-changed", (e) => cb(e.payload.table));

@@ -345,7 +345,11 @@ function FolderEditor({ folderId, youId }: { folderId: string; youId: string }) 
         const s = codeState(file.text, ownLock(file) || lockedRef.current, handlers);
         states.current.set(path, s);
         saved.current.set(path, s.doc);
-        void setLanguage(path, view.current, () => states.current.get(path), (n) => states.current.set(path, n)).then(() => setTick((x) => x + 1));
+        // The language comes when its chunk has loaded, which can be well after the file shows (the first file of a
+        // language; a busy machine). Given to the view, the view draws its colours itself: the page redraws only when it
+        // went to a kept state the view doesn't show yet, so its arrival doesn't redraw the page under a cursor move or a
+        // keystroke (GA-190, GA-366).
+        void setLanguage(path, view.current, () => states.current.get(path), (n) => states.current.set(path, n)).then((kept) => { if (kept) setTick((x) => x + 1); });
       }
       patch(path, { status: "ready", file, version: file.version, error: null, dirty: false, disk: null, seen: null });
     }).catch((e) => patch(path, { status: "error", error: String(e).replace(/^Error:\s*/, "") }));

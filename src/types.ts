@@ -630,6 +630,27 @@ export type RestoreStatus = {
   savedToday: string | null;      // the before-restore snapshot's name, once it is made
   result: { ok: boolean; at: number; snapshot: string; fromComputer: string; message: string } | null;   // after the restart
 };
+
+// ---- Hersir Cloud (GA-359 and GA-360, research 5.4): the account, Cloud Backup and Restore from Hersir Cloud ----
+// Times are Unix milliseconds. Refusals are sentences for people ("Sign in to Hersir Cloud first.").
+export type CloudPlan = { name: "personal" | "none"; status: "active" | "past_due" | "lapsed" | "none";
+  validUntil: number | null; readOnlyUntil: number | null; quotaBytes: number; usedBytes: number };
+export type CloudStep = "copying" | "chunking" | "uploading" | "registering" | "downloading" | "checking";
+export type CloudStatus = {
+  signedIn: boolean; email: string | null; signingIn: boolean;
+  plan: CloudPlan | null;                       // from the signed entitlement; null while signed out
+  key: "missing" | "here" | "needed";           // missing: none made yet; needed: the account has one, this computer doesn't
+  recoveryMadeAt: number | null;
+  backup: { on: boolean; every: "daily" | "manual"; onQuit: boolean;
+            running: { step: CloudStep; done: number; total: number } | null;
+            last: { at: number; name: string; sentBytes: number } | null; next: number | null;
+            lastError: { at: number; message: string } | null };
+};
+export type CloudBackup = { name: string; madeAt: number; device: { id: string; name: string; this: boolean };
+  reason: "daily" | "manual" | "quit" | "before-restore"; bytes: number; restorable: boolean; problem: string | null };
+export type CloudComputer = { id: string; name: string; platform: string; appVersion: string; lastSeenAt: number | null;
+  online: boolean; this: boolean; chief: boolean };
+export type CloudSettingsChange = { on?: boolean; every?: "daily" | "manual"; onQuit?: boolean };
 export type DayStat = { dayStart: number; succeeded: number; failed: number; other: number };
 
 // ---- the Usage page (gizai-core usage.rs) ----

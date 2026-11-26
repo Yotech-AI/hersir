@@ -52,6 +52,11 @@ vi.mock("../components/McpSettings", () => ({ McpSettings: () => <i>the MCP serv
 // GA-340: Settings → MCP servers → Claude Desktop keeps its own state; ClaudeDesktopSettings.test.tsx tests it
 vi.mock("../components/ClaudeDesktopSettings", () => ({ ClaudeDesktopSettings: () => <i>the Claude Desktop section</i> }));
 vi.mock("../components/OldWorktrees", () => ({ OldWorktrees: () => <i>the old worktrees</i> }));
+// GA-360: Settings → Hersir Cloud keeps its own state; CloudSettings.test.tsx tests it. The stand-in says whether the page
+// told it that its tab is open (it reads Hersir Cloud only then).
+vi.mock("../components/CloudSettings", () => ({
+  CloudSettings: ({ shown }: { shown?: boolean }) => <section className="form-section"><header><h3>Hersir Cloud</h3></header><i>{shown ? "the cloud tab, shown" : "the cloud tab, not shown"}</i></section>,
+}));
 
 const { SettingsPage } = await import("./SettingsPage");
 const { parseHash, href } = await import("../router");
@@ -96,8 +101,8 @@ function findAll(node: ReactNode, pred: (p: Record<string, unknown>) => boolean,
   return out;
 }
 
-const LABELS = ["General", "Appearance", "Notifications", "Agents and runs", "MCP servers", "GitHub and Bitbucket"];
-const KEYS = ["general", "appearance", "notifications", "agents", "mcp", "github"];
+const LABELS = ["General", "Appearance", "Notifications", "Agents and runs", "MCP servers", "GitHub and Bitbucket", "Hersir Cloud"];
+const KEYS = ["general", "appearance", "notifications", "agents", "mcp", "github", "cloud"];
 /** Each panel's label, whether it is hidden, and its HTML. */
 function panels(html: string) {
   const starts = [...html.matchAll(/<div role="tabpanel" class="form settings-panel"( hidden="")? aria-label="([^"]+)">/g)];
@@ -145,7 +150,7 @@ describe("Settings' tabs", () => {
   it("a click on a tab puts it in the address", () => {
     const { t } = tree();
     const tabs = findAll(t, (p) => p.role === "tab") as unknown as { onClick: () => void; children: unknown }[];
-    expect(tabs.length).toBe(6);
+    expect(tabs.length).toBe(7);
     tabs.forEach((b) => b.onClick());
     expect(went).toEqual(KEYS.map((id) => ({ page: "settings", id })));
   });
@@ -190,9 +195,19 @@ describe("what each tab has", () => {
   it("GitHub and Bitbucket: GitHub, then Bitbucket", () => {
     expect(sections(of("GitHub and Bitbucket"))).toEqual(["GitHub", "Bitbucket"]);
   });
+  it("Hersir Cloud (GA-360): its own tab after GitHub and Bitbucket, with the cloud icon, told it is open only when it is", () => {
+    expect(sections(of("Hersir Cloud"))).toEqual(["Hersir Cloud"]);
+    // General is open here: the Cloud tab is on the page but reads nothing yet
+    expect(text(of("Hersir Cloud"))).toContain("the cloud tab, not shown");
+    const open = panels(render("cloud")).find((p) => p.label === "Hersir Cloud");
+    expect(open?.hidden).toBe(false);
+    expect(text(open?.html ?? "")).toContain("the cloud tab, shown");
+    const tab = [...render().matchAll(/<button class="tab" role="tab" aria-selected="(?:true|false)">(<svg[^>]*>)/g)][6]?.[1] ?? "";
+    expect(tab).toContain("lucide-cloud");
+  });
   it("every section is on exactly one tab", () => {
     const all = sections(html);
-    expect(all).toEqual(["Quit", "Updates", "Editor folders", "Data", "Backups", "Font", "Text size", "Theme and density", "Background", "Notifications", "Coding CLIs", "Runs", "MCP servers", "Claude Desktop", "GitHub", "Bitbucket"]);
+    expect(all).toEqual(["Quit", "Updates", "Editor folders", "Data", "Backups", "Font", "Text size", "Theme and density", "Background", "Notifications", "Coding CLIs", "Runs", "MCP servers", "Claude Desktop", "GitHub", "Bitbucket", "Hersir Cloud"]);
   });
 });
 
