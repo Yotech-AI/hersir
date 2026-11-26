@@ -11,6 +11,7 @@
 import { act, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EditorState, Transaction, type TransactionSpec } from "@codemirror/state";
+import { language as languageOf } from "@codemirror/language";
 import type { ChatMessage, DirEntry, EditorFolder, Member, OpenedFile, Task, Team } from "../types";
 
 // ---- render counts, by component name, as React DevTools sees them ----
@@ -50,6 +51,8 @@ const h = vi.hoisted(() => {
     openIn: [] as (number | null)[],
     views: [] as unknown[],
     went: [] as unknown[],
+    /** While set, a file's language comes only when this lets it (a busy machine's first load of a language, GA-366). */
+    holdLanguage: null as null | ((path: string) => Promise<void>),
   };
 });
 const rendersOf = (name: string) => h.renders.get(name) ?? 0;
@@ -230,6 +233,18 @@ vi.mock("@codemirror/view", async (orig) => {
   return { ...real, EditorView };
 });
 vi.mock("@codemirror/search", async (orig) => ({ ...(await orig<object>()), openSearchPanel: () => true, gotoLine: () => true }));
+// A file's language, the real one; held back while a test says so (h.holdLanguage), to come when the test lets it (GA-366).
+vi.mock("../lib/codeLanguages", async (orig) => {
+  const real = await orig<typeof import("../lib/codeLanguages")>();
+  return {
+    ...real,
+    loadLanguage: (path: string) => {
+      const loading = real.loadLanguage(path);
+      const hold = h.holdLanguage;
+      return hold ? Promise.all([loading, hold(path)]).then(([lang]) => lang) : loading;
+    },
+  };
+});
 vi.mock("../components/editor/FolderSearch", () => ({ FolderSearch: () => null }));
 vi.mock("../components/editor/GoToFile", () => ({ GoToFile: () => null }));
 vi.mock("../components/editor/FolderPicker", () => ({ FolderPicker: () => null }));
@@ -278,6 +293,7 @@ beforeEach(() => {
   h.editors.clear();
   h.cleared = 0;
   h.went.length = 0;
+  h.holdLanguage = null;
   h.views.length = 0;
   store.clear();
 });
@@ -661,5 +677,95 @@ describe("a cursor move or a keystroke in the Editor redraws what shows the curs
       OpenInAtCursor: rendersOf("OpenInAtCursor"), openIn: [...h.openIn] })
       .toEqual({ FolderEditor: 0, useEditorApps: 0, FileBar: 0, CursorItem: 1, OpenInAtCursor: 2, openIn: [3, 3] });
     expect(cursorItem()?.textContent).toBe("Ln 3, Col 4");
+  });
+
+  // GA-366: a file's language loads the first time a file of that language opens, and on a busy machine it can come after
+  // the page has settled, inside a counted cursor move or keystroke. Its colours are the view's to draw: the page doesn't
+  // redraw for them.
+  describe("a file's language that comes after the file shows, as on a busy machine (GA-366)", () => {
+    const row = (path: string) => container.all().find((n) => n.getAttribute("role") === "treeitem" && n.getAttribute("data-path") === path)!;
+    const languageShown = () => view().state.facet(languageOf)?.name ?? null;
+    const counts = () => ({ FolderEditor: rendersOf("FolderEditor"), useEditorApps: h.calls.FolderEditor, CursorItem: rendersOf("CursorItem"),
+      OpenInAtCursor: rendersOf("OpenInAtCursor") });
+    const none = { FolderEditor: 0, useEditorApps: 0, CursorItem: 0, OpenInAtCursor: 0 };
+    const typeAtEnd = async (text: string) => {
+      const v = view();
+      await act(async () => { v.dispatch({ changes: { from: v.state.doc.length, insert: text }, selection: { anchor: v.state.doc.length + text.length }, userEvent: "input.type" }); });
+    };
+    let letCome: (path: string) => Promise<void>;
+    beforeEach(async () => {
+      // loaded once before, so a language let through comes at once
+      const { loadLanguage } = await import("../lib/codeLanguages");
+      await loadLanguage("README.md");
+      await loadLanguage("app.ts");
+      const waiting = new Map<string, () => void>();
+      h.holdLanguage = (path) => new Promise<void>((r) => { waiting.set(path, r); });
+      letCome = async (path) => { await act(async () => { waiting.get(path)!(); }); await flush(); };
+    });
+
+    it("its colours go to the view; FolderEditor doesn't redraw for them, nor for a cursor move after them", async () => {
+      await mount(<EditorPage id={FOLDER} youId="u1" />);
+      await click(row("README.md"));
+      await quiet();
+      expect(view().state.doc.toString()).toBe(files["README.md"]);
+      expect(languageShown()).toBeNull();
+
+      resetCounts();
+      await letCome("README.md");
+      expect(languageShown()).toBe("markdown");
+      expect(counts()).toEqual(none);
+
+      resetCounts();
+      await act(async () => { view().dispatch({ selection: { anchor: 16 } }); });
+      expect(counts()).toEqual({ FolderEditor: 0, useEditorApps: 0, CursorItem: 1, OpenInAtCursor: 1 });
+      expect(cursorItem()?.textContent).toBe("Ln 3, Col 2");
+      expect(languageShown()).toBe("markdown");
+    });
+
+    it("between keystrokes: the typed text and Not saved stay, and FolderEditor doesn't redraw", async () => {
+      await mount(<EditorPage id={FOLDER} youId="u1" />);
+      await click(row("app.ts"));
+      await quiet();
+      await typeAtEnd("x");
+      expect(statusText()).toContain("Not saved");
+
+      resetCounts();
+      await letCome("app.ts");
+      expect(languageShown()).toBe("typescript");
+      expect(counts()).toEqual(none);
+      expect(view().state.doc.toString()).toBe("export const one = 1;\nx");
+
+      resetCounts();
+      await typeAtEnd("y");
+      expect(counts()).toEqual({ FolderEditor: 0, useEditorApps: 0, CursorItem: 1, OpenInAtCursor: 1 });
+      expect(view().state.doc.toString()).toBe("export const one = 1;\nxy");
+      expect(statusText()).toContain("Not saved");
+      expect(languageShown()).toBe("typescript");
+    });
+
+    it("for a tab that isn't shown: it goes to that tab's state, and the tab has its colours when it shows", async () => {
+      await mount(<EditorPage id={FOLDER} youId="u1" />);
+      await click(row("README.md"));
+      await quiet();
+      await click(row("app.ts"));
+      await quiet();
+      expect(view().state.doc.toString()).toBe(files["app.ts"]);
+
+      await letCome("README.md");
+      expect(view().state.doc.toString()).toBe(files["app.ts"]);
+      expect(languageShown()).toBeNull();
+
+      await click(row("README.md"));
+      await quiet();
+      expect(view().state.doc.toString()).toBe(files["README.md"]);
+      expect(languageShown()).toBe("markdown");
+
+      await letCome("app.ts");
+      expect(languageShown()).toBe("markdown");
+      await click(row("app.ts"));
+      await quiet();
+      expect(view().state.doc.toString()).toBe(files["app.ts"]);
+      expect(languageShown()).toBe("typescript");
+    });
   });
 });
