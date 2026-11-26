@@ -11,7 +11,7 @@ export const REGISTER_URL = "https://cloud.hersir.dev/register";
 export const CLOUD_TEXT = "Encrypted backups of your data, kept off your computer. Restore them on a new one.";
 /** The section's text once signed in. */
 export const CLOUD_TEXT_SIGNED_IN = `${CLOUD_TEXT} Hersir can't read what it stores.`;
-export const PLAN_PRICE = "€5 a month or €48 a year, excl. VAT. Hersir can't read what it stores.";
+export const PLAN_PRICE = "€5 a month or €48 a year, VAT included. Hersir can't read what it stores.";
 export const SIGN_IN_HINT = "Signing in opens your browser.";
 export const WAITING = "Waiting for you to sign in in your browser…";
 export const WAITING_HINT = "Sign in with your password and your authenticator's code. Didn't a tab open? Cancel and sign in again.";

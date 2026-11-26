@@ -193,7 +193,7 @@ sheets are notes for the builders.
 - Tab: **Hersir Cloud**
 - Section **Hersir Cloud**: **Encrypted backups of your data, kept off your computer. Restore them on a new one.** (signed
   in it adds **Hersir can't read what it stores.**)
-- Signed out: field **Personal plan**: **€5 a month or €48 a year, excl. VAT. Hersir can't read what it stores.**; field
+- Signed out: field **Personal plan**: **€5 a month or €48 a year, VAT included. Hersir can't read what it stores.**; field
   **Account**: **Sign in**, **Create an account**, hint **Signing in opens your browser.**
 - Signing in: **Waiting for you to sign in in your browser…**, **Cancel**, hint **Sign in with your password and your
   authenticator's code. Didn't a tab open? Cancel and sign in again.**
@@ -303,7 +303,7 @@ sheets are notes for the builders.
   your app**, **Save these recovery codes. Each one signs you in once if you lose your phone.**, **Copy**, **Download**,
   **Confirm and continue**
 - Your account: **Plan** (**Personal: Cloud Backup and Hersir on your other devices.**; **Personal ·** *€48 a year,
-  excl. VAT* **· renews** *date*; **Manage billing**; no plan: **Subscribe**), **Storage** (**What your backups use, each
+  VAT included* **· renews** *date*; **Manage billing**; no plan: **Subscribe**), **Storage** (**What your backups use, each
   piece once.**), **Your computers and devices** (**Each has its own sign-in. Remove one you no longer use, or lost: it is
   signed out at once.**; rows *name* · *platform* · **Hersir** *version* · **online** / **seen** *when* · **added** *date*;
   **Remove**; **This browser**), **Two-factor authentication** (**Required for every account.**; **On, with an
