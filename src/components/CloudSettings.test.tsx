@@ -31,6 +31,10 @@ const h = vi.hoisted(() => ({
   copied: [] as string[],
   files: [] as { name: string; blob: Blob }[],
   shown: true,
+  // GA-370: the new recovery code cloud_new_recovery made, until its last group is typed back
+  newCode: null as string | null,
+  // while set, cloud_confirm_recovery waits for it
+  hold: null as Promise<void> | null,
 }));
 
 vi.mock("react", async (orig) => {
@@ -100,7 +104,16 @@ vi.mock("../api", async (orig) => {
     cloudCancelSignIn: cmd("cloudCancelSignIn", () => { h.signIn?.fail("The sign-in was cancelled."); }),
     cloudSignOut: cmd("cloudSignOut", () => { h.status = clone(SIGNED_OUT); sendCloud(); return clone(st()); }),
     cloudMakeKey: cmd("cloudMakeKey", () => ({ recoveryCode: CODE })),
-    cloudConfirmRecovery: cmd("cloudConfirmRecovery", (group: string) => {
+    cloudConfirmRecovery: cmd("cloudConfirmRecovery", async (group: string) => {
+      if (h.hold) await h.hold;
+      // GA-370: a new code replaces the old one only now, and Cloud Backup's settings stay
+      if (h.newCode) {
+        if (group.toUpperCase() !== h.newCode.split("-").pop()) throw "That isn't the code's last group.";
+        h.newCode = null;
+        st().recoveryMadeAt = at(25, 14);
+        sendCloud();
+        return clone(st());
+      }
       if (group.toUpperCase() !== "Q8YC") throw "That isn't the code's last group.";
       Object.assign(st(), { key: "here", recoveryMadeAt: at(25, 14) });
       Object.assign(st().backup, { on: true, next: at(25, 15) });
@@ -113,7 +126,8 @@ vi.mock("../api", async (orig) => {
       sendCloud();
       return clone(st());
     }),
-    cloudNewRecovery: cmd("cloudNewRecovery", () => { st().recoveryMadeAt = at(25, 14); sendCloud(); return { recoveryCode: NEW_CODE }; }),
+    // GA-370: kept until its last group is typed back (cloudConfirmRecovery): nothing changes yet
+    cloudNewRecovery: cmd("cloudNewRecovery", () => { h.newCode = NEW_CODE; return { recoveryCode: NEW_CODE }; }),
     cloudSaveSettings: cmd("cloudSaveSettings", (s: object) => {
       Object.assign(st().backup, s);
       if (st().backup.every === "manual") st().backup.next = null;
@@ -340,7 +354,7 @@ beforeEach(() => {
   for (const [k, inst] of insts) { unmount(inst); insts.delete(k); }
   h.effects.length = 0; h.calls.length = 0; h.cloudCbs.clear(); h.restoreCbs.clear();
   h.opened.length = 0; h.copied.length = 0; h.files.length = 0;
-  h.refuse = {}; h.signIn = null;
+  h.refuse = {}; h.signIn = null; h.newCode = null; h.hold = null;
   h.list = clone(LIST); h.computers = clone(COMPUTERS); h.restore = clone(NO_RESTORE);
   vi.stubGlobal("navigator", { clipboard: { writeText: async (t: string) => { h.copied.push(t); } } });
   const a = { href: "", download: "", click() { h.files.push({ name: a.download, blob: blobs.get(a.href)! }); }, remove() {} };
@@ -749,34 +763,130 @@ describe("A8 · a lapsed plan", () => {
 });
 
 describe("A4 · Make a new recovery code", () => {
+  // GA-370: a new code replaces the old one only once its last group is typed back (the Chief's words for A4)
   it("asks first with decision 2's warning; Cancel makes none", async () => {
     await show(SIGNED_IN);
     await click(button("Make a new recovery code"));
     expect(ask()?.title).toBe("Make a new recovery code?");
-    expect(ask()?.text).toBe(`${WARNING} Your current code stops working once the new one is shown.`);
+    expect(ask()?.text).toBe(`${WARNING} Your current code stops working once you type the new one's last group.`);
     expect(ask()?.buttons).toEqual(["Cancel", "Make a new code"]);
     await click(button("Cancel", ask()!.node));
     expect(ask()).toBeNull();
     expect(called("cloudNewRecovery")).toEqual([]);
   });
 
-  it("then shows the new code in the Recovery code field, with its last group and Done", async () => {
+  it("then shows the new code in the Recovery code field, with its last group and Done, which confirms it", async () => {
     await show(SIGNED_IN);
     await click(button("Make a new recovery code"));
     await click(button("Make a new code", ask()!.node));
     expect(called("cloudNewRecovery")).toEqual([[]]);
     expect(ask()).toBeNull();
-    expect(fieldText("Recovery code")).toBe(`Save your new recovery code. Your old code no longer works.${NEW_CODE}CopySave as a file…Done`);
+    expect(fieldText("Recovery code")).toBe(`Save your new recovery code. It replaces your old one once you type its last group.${NEW_CODE}CopySave as a file…Done`);
     expect(under("Recovery code")).toBe("hint: Type its last group to show you have it.");
     expect(button("Done").disabled).toBe(true);
+    // a wrong last group: its sentence, and nothing is asked or changed
     await type("cloud-new-group", "ZX43");
     await click(button("Done"));
     expect(under("Recovery code")).toBe("error: That isn't the code's last group. Look at the code above again.");
     expect(byClass("cloud-code-text")).toHaveLength(1);
-    await type("cloud-new-group", "zx42");
+    expect(called("cloudConfirmRecovery")).toEqual([]);
+    expect(st().recoveryMadeAt).toBe(SIGNED_IN.recoveryMadeAt);
+    // Done: cloud_confirm_recovery with the typed group, as Turn on does
+    await type("cloud-new-group", " zx42 ");
+    expect(under("Recovery code")).toBe("hint: Type its last group to show you have it.");
+    await click(button("Done"));
+    expect(called("cloudConfirmRecovery")).toEqual([["zx42"]]);
+    expect(byClass("cloud-code-text")).toEqual([]);
+    expect(fieldText("Recovery code")).toBe("Made on 25 Nov 2026Make a new recovery code");
+  });
+
+  it("changes nothing until Done: the old code's date stays, and Done leaves Cloud Backup's settings as they are", async () => {
+    await show({ ...SIGNED_IN, backup: backup({ every: "manual", next: null, onQuit: true }) });
+    await click(button("Make a new recovery code"));
+    await click(button("Make a new code", ask()!.node));
+    expect(st().recoveryMadeAt).toBe(SIGNED_IN.recoveryMadeAt);
+    await type("cloud-new-group", "ZX42");
+    await enter("cloud-new-group");
+    expect(called("cloudConfirmRecovery")).toEqual([["ZX42"]]);
+    expect(fieldText("Recovery code")).toBe("Made on 25 Nov 2026Make a new recovery code");
+    expect(st().backup).toMatchObject({ on: true, every: "manual", onQuit: true });
+    for (const c of ["cloudSaveSettings", "cloudMakeKey", "cloudEnterRecovery"]) expect(called(c)).toEqual([]);
+  });
+
+  it("shows cloud_confirm_recovery's refusal under Recovery code, as it is, and keeps the code", async () => {
+    await show(SIGNED_IN);
+    await click(button("Make a new recovery code"));
+    await click(button("Make a new code", ask()!.node));
+    h.refuse.cloudConfirmRecovery = "The account's key changed on another computer: sign out and in again, then try again.";
+    await type("cloud-new-group", "ZX42");
+    await click(button("Done"));
+    expect(called("cloudConfirmRecovery")).toEqual([["ZX42"]]);
+    expect(under("Recovery code")).toBe("error: The account's key changed on another computer: sign out and in again, then try again.");
+    expect(byClass("cloud-code-text")).toHaveLength(1);
+    expect(st().recoveryMadeAt).toBe(SIGNED_IN.recoveryMadeAt);
+    // typing again clears it, and Done tries again
+    delete h.refuse.cloudConfirmRecovery;
+    await type("cloud-new-group", "ZX42 ");
+    expect(under("Recovery code")).toBe("hint: Type its last group to show you have it.");
     await click(button("Done"));
     expect(byClass("cloud-code-text")).toEqual([]);
     expect(fieldText("Recovery code")).toBe("Made on 25 Nov 2026Make a new recovery code");
+  });
+
+  it("Done waits while cloud_confirm_recovery runs: pressed again, or Enter, asks nothing more", async () => {
+    let release = () => {};
+    h.hold = new Promise<void>((r) => { release = r; });
+    await show(SIGNED_IN);
+    await click(button("Make a new recovery code"));
+    await click(button("Make a new code", ask()!.node));
+    await type("cloud-new-group", "ZX42");
+    await click(button("Done"));
+    expect(button("Done").disabled).toBe(true);
+    await click(button("Done"));
+    await enter("cloud-new-group");
+    expect(called("cloudConfirmRecovery")).toEqual([["ZX42"]]);
+    release();
+    await settle();
+    expect(byClass("cloud-code-text")).toEqual([]);
+    expect(fieldText("Recovery code")).toBe("Made on 25 Nov 2026Make a new recovery code");
+  });
+
+  it("leaving the tab before Done drops the new code: back on it, the old code's date shows and nothing was confirmed", async () => {
+    await show(SIGNED_IN);
+    await click(button("Make a new recovery code"));
+    await click(button("Make a new code", ask()!.node));
+    await type("cloud-new-group", "ZX4");
+    h.shown = false;
+    await settle();
+    h.shown = true;
+    await settle();
+    expect(byClass("cloud-code-text")).toEqual([]);
+    expect(fieldText("Recovery code")).toBe("Made on 9 Nov 2026Make a new recovery code");
+    expect(called("cloudConfirmRecovery")).toEqual([]);
+    // a new one starts empty
+    await click(button("Make a new recovery code"));
+    await click(button("Make a new code", ask()!.node));
+    expect(input("cloud-new-group").value).toBe("");
+    expect(button("Done").disabled).toBe(true);
+  });
+
+  it("signing out before Done drops the new code and its error", async () => {
+    await show(SIGNED_IN);
+    await click(button("Make a new recovery code"));
+    await click(button("Make a new code", ask()!.node));
+    await type("cloud-new-group", "ZX43");
+    await click(button("Done"));
+    expect(under("Recovery code")).toBe("error: That isn't the code's last group. Look at the code above again.");
+    h.status = clone(SIGNED_OUT);
+    sendCloud();
+    await settle();
+    h.status = clone(SIGNED_IN);
+    sendCloud();
+    await settle();
+    expect(byClass("cloud-code-text")).toEqual([]);
+    expect(fieldText("Recovery code")).toBe("Made on 9 Nov 2026Make a new recovery code");
+    expect(under("Recovery code")).not.toMatch(/^error/);
+    expect(called("cloudConfirmRecovery")).toEqual([]);
   });
 
   it("shows cloud_new_recovery's refusal under Recovery code, as it is", async () => {
