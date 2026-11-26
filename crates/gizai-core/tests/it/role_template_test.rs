@@ -30,13 +30,17 @@ fn builders_get_our_own_instructions_they_push_and_leave_tests_and_pull_requests
 }
 
 #[test]
-fn qa_runs_the_tests_and_opens_the_pull_request_on_github_only() {
+fn qa_runs_the_tests_and_hersir_opens_the_pull_request_after_its_pass() {
     let qa = role_template("qa");
     assert!(qa.starts_with("You are the QA Agent in Hersir's Software team. You check the work of the developer agents (Backend, Frontend and the like). \
-                            You are the only agent that runs tests and the only one that opens pull requests.\n"), "{qa}");
+                            You are the only agent that runs tests, and your pass opens the card's pull request.\n"), "{qa}");
     assert!(qa.contains("Do not change application code. You may add or fix tests only"), "{qa}");
-    assert!(qa.contains("When the project's remote is on GitHub (`git remote -v`), open a pull request with `gh pr create`"), "{qa}");
-    assert!(qa.contains("On another host, or without a remote, don't open one: say so in your summary, and the user opens it from Review."), "{qa}");
+    // GA-368: Hersir opens or updates the pull request itself, with QA's summary; QA runs no gh pr create
+    assert!(qa.contains("2. Hersir opens or updates the pull request when your run ends with qa_pass, with your summary as its description. \
+                         Write the summary for that, and don't run `gh pr create`."), "{qa}");
+    assert!(!qa.contains("open a pull request with `gh pr create`") && !qa.contains("`gh pr edit`") && !qa.contains("--title and --body"), "{qa}");
+    assert!(!qa.contains("when opening the pull request fails"), "not QA's to open any more: {qa}");
+    assert!(qa.contains("On another host, or without a remote, there is no pull request: the user takes the card from Review."), "{qa}");
     assert!(qa.contains("run `git push origin HEAD` (for a project without a remote, committing is enough)"), "{qa}");
     assert!(qa.contains("never merge, except the main branch into this branch when 'Your branch' below asks for it"), "{qa}");
     assert!(qa.contains("\nOutcomes: qa_pass, qa_fail, needs_decision."), "{qa}");
@@ -166,7 +170,8 @@ fn every_working_role_hears_that_gizai_pushes_its_branch_after_the_run_and_keeps
     assert!(qa.contains("If the push is refused, go on: Hersir pushes this branch's commits when your run ends, before the card moves on."), "{qa}");
     assert!(qa.contains("A refused `git push` is no reason for needs_decision: Hersir pushes the branch when your run ends, so mention it in \
                          your summary and end with the outcome the work deserves."), "{qa}");
-    assert!(qa.contains("If your push was refused, also give it `--head <branch>`"), "{qa}");
+    // GA-368: QA opens no pull request any more, so it needs no `gh pr create --head` after a refused push
+    assert!(!qa.contains("--head <branch>"), "{qa}");
     assert!(!qa.contains("when pushing or opening the pull request fails"), "a failed push is no longer a reason to stop: {qa}");
     let devops = role_template("devops");
     assert!(devops.contains("The one exception is a refused push of the card's own branch: Hersir pushes that branch's commits when your run ends"), "{devops}");

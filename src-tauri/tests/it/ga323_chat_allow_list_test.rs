@@ -260,8 +260,8 @@ async fn create_agent_from_chat_without_allowed_tools_gets_its_roles_list_at_onc
         let want = role_tools(&team::role_key(role));
         assert_eq!(t.agent(name).unwrap().allowed_tools, want, "{name}: its role's list");
     }
-    // the role's list has entries chat gives no agent at once (git push, node, gh pr create): saved, nothing waits
-    assert!(t.agent("QA Agent").unwrap().allowed_tools.iter().any(|e| e == "Bash(gh pr create:*)"));
+    // the role's list has entries chat gives no agent at once (git push, node, gh pr view): saved, nothing waits
+    assert!(t.agent("QA Agent").unwrap().allowed_tools.iter().any(|e| e == "Bash(gh pr view:*)"));
     assert!(t.agent("Backend Agent 2").unwrap().allowed_tools.iter().any(|e| e == "Bash(git push:*)"));
     assert!(t.pending(&thread).is_empty());
     assert_eq!(app_chat::used_outside(&t.st, &thread), None);

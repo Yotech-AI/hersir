@@ -1,6 +1,7 @@
 //! Bitbucket Cloud through its REST API (https://api.bitbucket.org/2.0), with your Atlassian account's email and an API
-//! token: who the token belongs to, a branch's pull requests, and opening one. Bitbucket has no CLI like gh, so this is
-//! Gizai's own small client. Pushes go over SSH with your own keys (`connection::PushOver::Bitbucket`).
+//! token: who the token belongs to, a branch's pull requests, opening one and changing its description. Bitbucket has no
+//! CLI like gh, so this is Gizai's own small client. Pushes go over SSH with your own keys
+//! (`connection::PushOver::Bitbucket`).
 //!
 //! The login is kept in your keychain (`secrets`, under `bitbucket/login`), never in Gizai's database, a log or an error
 //! text; it goes to Bitbucket only in a request's Authorization header, never in a command line. Tests point the API at
@@ -212,6 +213,28 @@ pub fn create_pull(login: &Login, repo: &str, branch: &str, base: &str, title: &
         .ok_or_else(|| "Bitbucket didn't say which pull request it opened".to_string())
 }
 
+/// Gives pull request `number` of `repo` ("workspace/repository") the description `body`, with a PUT on the pull request.
+/// Bitbucket wants a title in such a change too ("title: This field is required"), so its title goes along as the pull
+/// request has it now (asked first): a title you changed stays, and so does every field the change leaves out.
+/// Bitbucket changes only an open pull request.
+pub fn edit_description(login: &Login, repo: &str, number: u64, body: &str) -> Result<(), String> {
+    let path = format!("/repositories/{repo}/pullrequests/{number}");
+    let answer = request(login, "GET", &path, &[], None)?;
+    if !(200..300).contains(&answer.status) {
+        return Err(refused(answer.status, &answer.body, Some(repo)));
+    }
+    let doc: Value = serde_json::from_str(&answer.body).map_err(|e| format!("Bitbucket gave an answer Hersir can't read ({e})"))?;
+    let mut change = json!({"description": body});
+    if let Some(title) = doc.get("title").and_then(Value::as_str).filter(|t| !t.trim().is_empty()) {
+        change["title"] = json!(title);
+    }
+    let answer = request(login, "PUT", &path, &[], Some(&change))?;
+    if !(200..300).contains(&answer.status) {
+        return Err(refused(answer.status, &answer.body, Some(repo)));
+    }
+    Ok(())
+}
+
 /// Bitbucket's answer: its status and body.
 struct Answer {
     status: u16,
@@ -238,6 +261,7 @@ fn request(login: &Login, method: &str, path: &str, query: &[(&str, &str)], body
     let url = format!("{base}{path}");
     let sent = match (method, body) {
         ("POST", Some(b)) => agent.post(&url).header("Authorization", &login.authorization()).header("Accept", "application/json").send_json(b),
+        ("PUT", Some(b)) => agent.put(&url).header("Authorization", &login.authorization()).header("Accept", "application/json").send_json(b),
         _ => query.iter()
             .fold(agent.get(&url), |r, (k, v)| r.query(k, v))
             .header("Authorization", &login.authorization()).header("Accept", "application/json").call(),

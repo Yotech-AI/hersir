@@ -410,10 +410,10 @@ export async function teamProbe(getTeam: () => Promise<ProbeTeam>) {
   const roleSel = q<HTMLSelectElement>("#a-role", dialog);
   const hasTool = (t: string) => (q<HTMLTextAreaElement>("#a-tools", dialog)?.value ?? "").split("\n").includes(t);
   const instructions = () => q("[aria-label=Instructions]", dialog)?.textContent ?? "";
-  const isFrontend = () => hasTool("Bash(git push:*)") && !hasTool("Bash(gh pr create:*)") && instructions().includes("You are the Frontend Agent in Hersir's Software team.");
+  const isFrontend = () => hasTool("Bash(git push:*)") && !hasTool("Bash(gh pr view:*)") && instructions().includes("You are the Frontend Agent in Hersir's Software team.");
   const frontendFirst = !!(await waitFor(() => isFrontend() || null, 5000));
   if (roleSel) pickOption(roleSel, "qa");
-  const qaNext = !!(await waitFor(() => (hasTool("Bash(gh pr create:*)") && instructions().includes("You are the QA Agent in Hersir's Software team.")) || null, 5000));
+  const qaNext = !!(await waitFor(() => (hasTool("Bash(gh pr view:*)") && instructions().includes("You are the QA Agent in Hersir's Software team.")) || null, 5000));
   if (roleSel) pickOption(roleSel, "frontend");
   const frontendAgain = !!(await waitFor(() => isFrontend() || null, 5000));
   buttonByText(dialog, "+ Bash(make test:*)")?.click();
@@ -421,7 +421,7 @@ export async function teamProbe(getTeam: () => Promise<ProbeTeam>) {
   if (roleSel) pickOption(roleSel, "qa");
   const qaInstructions = !!(await waitFor(() => instructions().includes("You are the QA Agent") || null, 5000));
   await sleep(300);
-  const keptEdit = hasTool("Bash(make test:*)") && hasTool("Bash(git push:*)") && !hasTool("Bash(gh pr create:*)");
+  const keptEdit = hasTool("Bash(make test:*)") && hasTool("Bash(git push:*)") && !hasTool("Bash(gh pr view:*)");
   if (roleSel) pickOption(roleSel, "frontend");
   await waitFor(() => instructions().includes("You are the Frontend Agent") || null, 5000);
   out.role_fills = { frontend_first: frontendFirst, qa_next: qaNext, frontend_again: frontendAgain, qa_instructions: qaInstructions, kept_edit: keptEdit };
@@ -441,7 +441,7 @@ export async function teamProbe(getTeam: () => Promise<ProbeTeam>) {
     columns: (await getTeam()).states.filter((s) => s.agentIds?.includes(id)).map((s) => s.name),
     added_once: (await getTeam()).members.filter((m) => m.name === "Frontend Agent" && m.kind === "agent").length === 1,
     // GA-63: saved with the frontend role's list and the command added in the form
-    tools: agent.allowedTools?.includes("Bash(git push:*)") && agent.allowedTools.includes("Bash(make test:*)") && !agent.allowedTools.includes("Bash(gh pr create:*)") };
+    tools: agent.allowedTools?.includes("Bash(git push:*)") && agent.allowedTools.includes("Bash(make test:*)") && !agent.allowedTools.includes("Bash(gh pr view:*)") };
   window.location.hash = "#/team";
   if (!(await waitFor(() => column("Testing"), 4000))) return fail("back on the Team page: no columns");
 
