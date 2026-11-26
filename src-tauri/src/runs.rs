@@ -1775,6 +1775,8 @@ async fn finish_run(st: &AppState, run_id: &str, task_id: &str, dir: &Path, ran:
     // "Run this for me" (GA-31): the commands a `needs_decision` asks you to run, kept with its verdict below.
     let run_for_me: Vec<String> = parsed.as_ref().filter(|o| o.outcome == "needs_decision").map(|o| o.run_for_me.clone()).unwrap_or_default();
     let verdict: Option<Outcome> = parsed.map(|o| Outcome { outcome: o.outcome, summary: o.summary, issues: o.issues });
+    // GA-368: QA's summary of a pass, which becomes the description of the card's pull request once it is in Review
+    let qa_passed: Option<String> = verdict.as_ref().filter(|v| v.outcome == "qa_pass").map(|v| v.summary.clone());
     // GA-221: a run whose CLI Gizai ended once the agent was done has finished, whatever its exit code.
     let finished = ok && (exit == "exit:0" || after_result);
     // While Gizai quits, a run that didn't finish was stopped by the quit, also when its agent ended first: logging
@@ -1810,8 +1812,9 @@ async fn finish_run(st: &AppState, run_id: &str, task_id: &str, dir: &Path, ran:
     let agent = core_runs::get(&st.db, run_id).map(|r| r.agent_id).unwrap_or_default();
     let unstarted = status == "failed" && tools == 0 && error.as_deref().is_some_and(login_problem);
     // Gizai pushes the card's branch itself (GA-56), before the run counts as ended and the card moves on, so the next
-    // agent (QA, for its pull request) finds it on the remote, also when the agent's own push was refused. Not after a run
-    // that couldn't start working, nor for a run Gizai's quitting stopped, nor after one that changed its git folder.
+    // agent (QA) and the pull request Hersir opens after QA's pass (GA-368) find it on the remote, also when the agent's
+    // own push was refused. Not after a run that couldn't start working, nor for a run Gizai's quitting stopped, nor
+    // after one that changed its git folder.
     let pushed = if quit || unstarted || tampered.is_some() { None } else { push_after_run(st, run_id, dir).await };
     for text in pushed.as_ref().map(AfterRun::notes).unwrap_or_default() {
         note_run(st, run_id, &text);
@@ -1901,9 +1904,16 @@ async fn finish_run(st: &AppState, run_id: &str, task_id: &str, dir: &Path, ran:
             pull(&st2).await;
         });
     }
-    // In Review: a pull request the agent opened shows on the card at once, not at the next PR check.
+    // In Review, now that the run has ended: after QA's pass Hersir opens the card's pull request itself, or gives the
+    // branch's open one QA's new summary (GA-368), so agents need no GitHub login; the run's end waits for it. After any
+    // other run a pull request the agent opened shows on the card at once, not at the next PR check.
     if moved && tasks::get(&st.db, task_id).is_ok_and(|t| t.state_category == "review") {
-        crate::pulls::check_soon(st, task_id);
+        match &qa_passed {
+            Some(summary) => {
+                crate::pulls::open_after_qa(st, task_id, summary).await;
+            }
+            None => crate::pulls::check_soon(st, task_id),
+        }
     }
     RunSummary { run_id: run_id.to_string(), status: status.into(), outcome: verdict.map(|v| v.outcome), cost_usd_micros: cost, error }
 }
