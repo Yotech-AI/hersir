@@ -5,6 +5,7 @@
 // on the account's first computer), needed (signed in on another computer), signed-in, off, running, failed, full or lapsed.
 // Sign in waits a moment and can be cancelled; the recovery code's last group is Q8YC, and a computer whose key is needed
 // takes HC-7K2Q-M4XD-9TRP-B6WN-3HFJ-Q8YC. Signing out forgets this computer's key, so the next sign-in needs the code.
+// Make a new recovery code shows HC-3MWT-9QXE-7RKD-B2NA-6PLF-X7KD, which replaces the old code once X7KD is typed back.
 import { emit } from "@tauri-apps/api/event";
 import type { CloudBackup, CloudComputer, CloudStatus } from "../types";
 
@@ -58,6 +59,10 @@ const asked = new URLSearchParams(globalThis.location?.search ?? "").get("cloud"
 let { st, accountHasKey } = initial(asked);
 /** The recovery code made for this computer and not typed back yet. */
 let shown: string | null = null;
+/** A new recovery code made and not typed back yet: until then the old one stays the account's (GA-370). */
+let newShown: string | null = null;
+/** The account's recovery code, as a computer whose key is needed types it. */
+let accountCode = CODE;
 let signIn: { timer: ReturnType<typeof setTimeout>; reject: (why: string) => void } | null = null;
 let run = 0;
 
@@ -121,6 +126,7 @@ export function cloudAnswer(cmd: string, args: Row, restore: RestoreHooks): unkn
       run++;
       st = signedOut();
       shown = null;
+      newShown = null;
       return changed();
     }
     case "cloud_make_key": {
@@ -131,8 +137,16 @@ export function cloudAnswer(cmd: string, args: Row, restore: RestoreHooks): unkn
       return { recoveryCode: shown };
     }
     case "cloud_confirm_recovery": {
-      if (!shown) return Promise.reject("Make a recovery code first.");
-      if (norm(args.lastGroup) !== lastGroup(shown)) return Promise.reject("That isn't the code's last group. Look at the code above again.");
+      const made = shown ?? newShown;
+      if (!made) return Promise.reject("Make a recovery code first.");
+      if (norm(args.lastGroup) !== lastGroup(made)) return Promise.reject("That isn't the code's last group. Look at the code above again.");
+      if (!shown) {
+        // a new code replaces the old one only now; Cloud Backup's settings stay
+        newShown = null;
+        accountCode = NEW_CODE;
+        st.recoveryMadeAt = Date.now();
+        return changed();
+      }
       accountHasKey = true;
       shown = null;
       st = { ...st, key: "here", recoveryMadeAt: Date.now(), backup: { ...noBackup(), on: true, onQuit: true, next: Date.now() + DAY } };
@@ -141,16 +155,16 @@ export function cloudAnswer(cmd: string, args: Row, restore: RestoreHooks): unkn
     case "cloud_enter_recovery": {
       const no = signedInFirst();
       if (no) return no;
-      if (norm(args.code) !== CODE) return Promise.reject("That recovery code doesn't open this account's backups.");
+      if (norm(args.code) !== accountCode) return Promise.reject("That recovery code doesn't open this account's backups.");
       st = { ...st, key: "here", backup: { ...noBackup(), last: null } };
       return changed();
     }
     case "cloud_new_recovery": {
       const no = signedInFirst();
       if (no) return no;
-      st.recoveryMadeAt = Date.now();
-      changed();
-      return { recoveryCode: NEW_CODE };
+      // kept until its last group is typed back (cloud_confirm_recovery): until then nothing changes
+      newShown = NEW_CODE;
+      return { recoveryCode: newShown };
     }
     case "cloud_save_settings": {
       const s = (args.s ?? {}) as Partial<CloudStatus["backup"]>;

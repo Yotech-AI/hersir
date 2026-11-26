@@ -220,8 +220,9 @@ sheets are notes for the builders.
   can be restored until 7 Feb 2027.**, hint **Hersir makes no new cloud backups until you renew. Your data on this
   computer is untouched.**
 - Make a new recovery code: ask **Make a new recovery code?** with decision 2's warning and **Your current code stops
-  working once the new one is shown.**, **Cancel**, **Make a new code**; then **Save your new recovery code. Your old code
-  no longer works.**, hint **Type its last group to show you have it.**, **Done**
+  working once you type the new one's last group.**, **Cancel**, **Make a new code**; then **Save your new recovery code.
+  It replaces your old one once you type its last group.**, hint **Type its last group to show you have it.**, **Done**
+  (GA-370: the new code is stored only at Done, so until then the old one keeps working)
 - Section **Restore from Hersir Cloud**: **Your data from a backup in Hersir Cloud. It replaces what is on this computer,
   which Hersir saves first.**; steps **Sign in** (**Opens your browser: your password, then your authenticator's code.**;
   done: **Signed in as** *email*), **Your recovery code** (placeholder `HC-____-____-____-____-____-____`, **Check**;

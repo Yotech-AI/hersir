@@ -9,6 +9,8 @@
 //   quota and a lapsed plan.
 // The controls save at once, as Settings → General → Backups does; a refusal shows its sentence under its field, as it is.
 // Settings keeps every tab mounted: the backups and computers are read, and the recovery code made, once the tab is shown.
+// A new recovery code waits for its last group while the tab is shown (GA-370): leaving the tab drops it, and until Done
+// the old code keeps working.
 import { useEffect, useRef, useState } from "react";
 import { CircleX, DatabaseBackup, ExternalLink, KeyRound, LoaderCircle, LogIn, LogOut, Monitor, Trash2, TriangleAlert } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -74,7 +76,15 @@ export function CloudSettings({ shown = true }: { shown?: boolean } = {}) {
   }, [seen, signedIn, key, code, makeTry]);
   // Signed out, or the code was typed back: the code isn't kept
   useEffect(() => { if (!signedIn || key !== "missing") { setCode(null); setTyped(""); } }, [signedIn, key]);
-  useEffect(() => { if (!signedIn) { setNewCode(null); setNewTyped(""); setEntered(""); } }, [signedIn]);
+  useEffect(() => { if (!signedIn) setEntered(""); }, [signedIn]);
+  // A new recovery code changes nothing until its last group is typed back (cloud_confirm_recovery): leaving the tab,
+  // signing out or losing the key drops it here, and the old code keeps working
+  useEffect(() => {
+    if (newCode === null || (shown && signedIn && key === "here")) return;
+    setNewCode(null);
+    setNewTyped("");
+    setErr("newCode", null);
+  }, [newCode, shown, signedIn, key]);
 
   // The backups and the computers, once this computer has the key: read again when a backup ends or fails
   const keyHere = signedIn && key === "here";
@@ -133,12 +143,11 @@ export function CloudSettings({ shown = true }: { shown?: boolean } = {}) {
     setAsking(null);
     run("newCode", "newCode", async () => { const r = await cloudNewRecovery(); if (alive.current) { setNewCode(r.recoveryCode); setNewTyped(""); } });
   };
+  // Only now does the new code replace the old one
   const doneNewCode = () => {
-    if (!newCode) return;
+    if (!newCode || busy === "confirmNew") return;
     if (!isLastGroup(newCode, newTyped)) { setErr("newCode", WRONG_GROUP); return; }
-    setErr("newCode", null);
-    setNewCode(null);
-    setNewTyped("");
+    run("confirmNew", "newCode", () => answer(() => cloudConfirmRecovery(newTyped.trim())), () => { setNewCode(null); setNewTyped(""); });
   };
   const remove = (c: CloudComputer) => {
     setAsking(null);
@@ -268,7 +277,7 @@ export function CloudSettings({ shown = true }: { shown?: boolean } = {}) {
               <input id="cloud-new-group" className="input mono cloud-group-input" value={newTyped} spellCheck={false} autoComplete="off" aria-label={LAST_GROUP_LABEL}
                 aria-invalid={errs.newCode ? true : undefined} onChange={(e) => { setNewTyped(e.target.value); if (errs.newCode) setErr("newCode", null); }}
                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); doneNewCode(); } }} />
-              <button type="button" className="btn sm" disabled={!newTyped.trim()} onClick={doneNewCode}>Done</button>
+              <button type="button" className="btn sm" disabled={busy === "confirmNew" || !newTyped.trim()} onClick={doneNewCode}>Done</button>
             </div>
           </Field>
         ) : (
