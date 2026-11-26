@@ -52,7 +52,7 @@ A new agent starts with its role's allowed commands.
 
 - Hersir's default list has the usual git, package manager and test commands, the read-only helpers agents use in pipes (`head`, `tail`, `wc`, `sort`, `uniq`, `cut`, `diff`, `grep`, `jq`, `pwd`, `which` and `tree`), and `sleep`, to wait between checks. The Chief gets that list.
 - Builders (Backend, Frontend, Design and your own roles) also get `git push`, `git pull`, `git fetch`, a few read-only git commands, `node`, `echo` and `printf`.
-- QA gets the builders' list plus `gh pr create`, `list`, `view` and `edit`.
+- QA gets the builders' list plus `gh pr list` and `gh pr view`. Hersir opens the pull request itself when QA passes a card ([The pull request after QA](testing.md#the-pull-request-after-qa)), so QA needs no `gh pr create` or `gh pr edit`. An agent you made before keeps its own list.
 - DevOps gets a list of its own for releases.
 
 An agent without a list runs with Hersir's default list. An agent with its own list needs `Bash(sleep:*)` added to it to wait between checks.

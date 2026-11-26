@@ -82,6 +82,7 @@ mod pending_actions_test;
 mod pr_check_rounds_test;
 mod pull_flow_test;
 mod push_after_run_test;
+mod qa_pass_pull_flow_test;
 mod refused_tool_mark_test;
 mod repo_check_test;
 mod restore_flow_test;

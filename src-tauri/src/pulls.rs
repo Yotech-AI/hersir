@@ -1,8 +1,10 @@
 //! Review on GitHub or Bitbucket. Open pull request (a card in Review) pushes the card's branch and opens its pull
 //! request: on GitHub over SSH with your keys, or over HTTPS with gh's login (Settings → GitHub → Push over), with your
 //! GitHub CLI (gh); on Bitbucket over SSH with your keys, with Bitbucket's API and your login (Settings → Bitbucket).
-//! The end of every run pushes the card's branch to the same place, the same way (`push_to`, `push_over_for`), and an
-//! agent's own push in a run goes the same way too (`run_git_config`).
+//! When a QA run ends with qa_pass and the card is in Review, Hersir does the same itself, with QA's summary as the pull
+//! request's description, or gives the branch's open pull request that description (`open_after_qa`, GA-368): agents
+//! need no GitHub login. The end of every run pushes the card's branch to the same place, the same way (`push_to`,
+//! `push_over_for`), and an agent's own push in a run goes the same way too (`run_git_config`).
 //! The PR check follows the pull requests of cards in Review, and of any open card whose pull request isn't merged yet.
 //! Every two minutes it asks git (one `ls-remote` per repository), and GitHub or Bitbucket only when something moved
 //! there, and at least every ten minutes: then one light gh call per GitHub repository (`check_all`). When a run moves a
@@ -44,8 +46,13 @@ const ASK_GIT_LIMIT: Duration = Duration::from_secs(30);
 /// GitHub's refs of its pull requests' latest commits: a new one is a pull request opened.
 const PULL_REFS: &str = "refs/pull/*/head";
 
-/// The longest card text a pull request description takes (GitHub's limit is 65,536 characters; Bitbucket takes more).
+/// The longest text a pull request description takes before the card it comes from: QA's summary and the card's text
+/// together (GitHub's limit is 65,536 characters; Bitbucket takes more).
 const MAX_BODY: usize = 60_000;
+
+/// How long Hersir waits after QA's pass while Open pull request or the PR check has the card (GA-368): each of their
+/// gh calls may take a minute.
+const WAIT_FOR_BUSY: Duration = Duration::from_secs(180);
 
 /// What reaches a card's pull requests: your GitHub CLI, or Bitbucket's API with your login.
 #[derive(Clone)]
@@ -68,6 +75,15 @@ impl Via {
         match self {
             Via::GitHub(gh) => github::create_pull(gh, Path::new(&card.repo_path), &card.repo, &card.branch, &card.default_branch, title, body),
             Via::Bitbucket(login) => bitbucket::create_pull(login, &card.repo, &card.branch, &card.default_branch, title, body),
+        }
+    }
+
+    /// Gives the card's open pull request `pr` the description `body` (GA-368): `gh pr edit`, or a PUT on Bitbucket's
+    /// pull request. Its title stays.
+    fn edit_body(&self, card: &PrCard, pr: &PullRequest, body: &str) -> Result<(), String> {
+        match self {
+            Via::GitHub(gh) => github::edit_body(gh, Path::new(&card.repo_path), &card.repo, pr.number, body),
+            Via::Bitbucket(login) => bitbucket::edit_description(login, &card.repo, pr.number, body),
         }
     }
 
@@ -159,6 +175,20 @@ impl Busy {
     fn take(st: &AppState, task_id: &str) -> Option<Busy> {
         st.pulls.busy.lock().unwrap().insert(task_id.to_string())
             .then(|| Busy { checks: st.pulls.clone(), task_id: task_id.to_string() })
+    }
+
+    /// `take`, waiting up to `limit` while Open pull request or the PR check has the card.
+    async fn wait(st: &AppState, task_id: &str, limit: Duration) -> Option<Busy> {
+        let until = Instant::now() + limit;
+        loop {
+            if let Some(busy) = Busy::take(st, task_id) {
+                return Some(busy);
+            }
+            if Instant::now() >= until {
+                return None;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
     }
 }
 
@@ -309,42 +339,172 @@ pub async fn open(st: &AppState, task_id: &str) -> Result<PullInfo, String> {
     let via = via(st, &card).await?;
     let task = tasks::get(&st.db, task_id).map_err(|e| e.to_string())?;
     let _busy = Busy::take(st, task_id).ok_or_else(|| format!("Hersir is already busy with {}'s pull request", card.identifier))?;
-    let (title, body) = (format!("{}: {}", task.identifier, task.title), body(&task));
-    let over = match &via {
-        Via::GitHub(gh) => crate::github::push_over(st, gh),
-        Via::Bitbucket(_) => PushOver::Bitbucket,
-    };
+    let (title, body) = (format!("{}: {}", task.identifier, task.title), body(None, &task));
+    let over = push_over_of(st, &via);
     let c = card.clone();
-    let (info, created) = tokio::task::spawn_blocking(move || open_blocking(&via, &c, &title, &body, &over)).await.map_err(|e| e.to_string())??;
+    let (info, opened) = tokio::task::spawn_blocking(move || open_blocking(&via, &c, &title, &body, &over, false)).await.map_err(|e| e.to_string())??;
+    let created = opened == Opened::New;
     // one an agent opened earlier is noted as seen by Gizai, not as opened by you
     pulls::record(&st.db, created.then_some(st.you_id.as_str()), task_id, &info.url, &info.state, created).map_err(|e| e.to_string())?;
     (st.notify)(Note::RowsChanged("tasks"));
     Ok(info)
 }
 
-/// Pushes and opens (or keeps the open pull request); returns it, and whether Gizai opened it now.
-fn open_blocking(via: &Via, card: &PrCard, title: &str, body: &str, over: &PushOver) -> Result<(PullInfo, bool), String> {
+/// How a push to the card's pull requests' host goes: to GitHub as Settings → GitHub → Push over says, to Bitbucket over
+/// SSH with your keys.
+fn push_over_of(st: &AppState, via: &Via) -> PushOver {
+    match via {
+        Via::GitHub(gh) => crate::github::push_over(st, gh),
+        Via::Bitbucket(_) => PushOver::Bitbucket,
+    }
+}
+
+/// What `open_blocking` did with the branch's pull request.
+#[derive(Debug, Clone, PartialEq)]
+enum Opened {
+    /// Opened a new one.
+    New,
+    /// Kept the open one as it was.
+    Kept,
+    /// Gave the open one the new description (after QA's pass, GA-368).
+    Described,
+    /// Kept the open one, but couldn't give it the new description: why.
+    NotDescribed(String),
+}
+
+/// Pushes, then opens a pull request or keeps the open one the branch has; returns it, and what it did. With `describe`
+/// (after QA's pass, GA-368) the open one gets `body` as its description; else it stays as it is.
+fn open_blocking(via: &Via, card: &PrCard, title: &str, body: &str, over: &PushOver, describe: bool) -> Result<(PullInfo, Opened), String> {
     let repo = Path::new(&card.repo_path);
     if worktree::rev_parse(repo, &format!("refs/heads/{}", card.branch)).is_err() {
         return Err(format!("{}'s branch {} isn't in {} any more", card.identifier, card.branch, card.repo_path));
     }
     worktree::push_branch_over(repo, &push_to(repo, &card.repo_url), &card.branch, over).map_err(plain)?;
     let open = via.pulls_for_branch(card)?.into_iter().find(|p| p.state == "OPEN");
-    let (url, state, created) = match open {
-        Some(p) => (p.url.clone(), p.state().to_string(), false),
-        None => (via.create_pull(card, title, body)?, "open".to_string(), true),
+    let (url, state, opened) = match open {
+        Some(p) => {
+            let opened = if !describe {
+                Opened::Kept
+            } else {
+                match via.edit_body(card, &p, body) {
+                    Ok(()) => Opened::Described,
+                    Err(why) => Opened::NotDescribed(why),
+                }
+            };
+            (p.url.clone(), p.state().to_string(), opened)
+        }
+        None => (via.create_pull(card, title, body)?, "open".to_string(), Opened::New),
     };
     let left_out = worktree::safe_worktree_of(repo, &card.branch).ok().flatten()
         .and_then(|wt| worktree::uncommitted(&wt).ok())
         .filter(|n| *n > 0);
     let note = left_out.map(|n| format!("Its worktree has {n} uncommitted {}, which the pull request doesn't have",
                                         if n == 1 { "change" } else { "changes" }));
-    Ok((PullInfo { number: github::pull_number(&url), url, state, note }, created))
+    Ok((PullInfo { number: github::pull_number(&url), url, state, note }, opened))
 }
 
-/// The pull request's description: the card's description and acceptance criteria, and the card it comes from.
-fn body(t: &Task) -> String {
+/// GA-368: a QA run ended with qa_pass and moved the card to Review, so Hersir opens its pull request itself, the way Open
+/// pull request does (`open`), and agents need no GitHub login: it pushes the card's branch and opens a pull request into
+/// the project's main branch, titled "<card id>: <card title>", with QA's `summary` first in its description and then the
+/// card's description and acceptance criteria (`body`). When the branch has an open pull request already (after a second
+/// QA round, or one an agent opened), that one gets the new description instead (its title stays), and no second one is
+/// opened. The card's activity says what Hersir did, as Hersir, and the PR check follows the pull request from then on.
+/// A card whose project has no GitHub or Bitbucket link (another host, or none) or no local repository, or that has no
+/// branch, gets none, as before. When it can't (gh missing or not logged in, no Bitbucket login, a refused push), the card
+/// stays in Review and its activity says why in one plain sentence; Open pull request works as before, and the PR check
+/// asks at once, as after any run that ends in Review (`check_soon`), so one an agent opened still shows. It waits while
+/// Open pull request or the PR check has the card (`WAIT_FOR_BUSY`), and does nothing once the card has left Review or an
+/// agent works on it. Call it once the run has ended. Returns the pull request Hersir opened or described.
+pub async fn open_after_qa(st: &AppState, task_id: &str, summary: &str) -> Option<PullInfo> {
+    let card = pulls::card(&st.db, task_id).ok()?;
+    if card.category != "review" || is_live(st, task_id) {
+        return None;
+    }
+    let via = match via(st, &card).await {
+        Ok(via) => via,
+        Err(why) => {
+            not_opened(st, &card, &why);
+            return None;
+        }
+    };
+    let done = {
+        let Some(_busy) = Busy::wait(st, task_id, WAIT_FOR_BUSY).await else {
+            not_opened(st, &card, &format!("Open pull request or the pull request check was busy with it for {} minutes",
+                                           WAIT_FOR_BUSY.as_secs() / 60));
+            return None;
+        };
+        // the card as it is now: it may have moved on, or an agent started on it, while Hersir waited
+        let card = pulls::card(&st.db, task_id).ok().filter(|c| c.category == "review" && !is_live(st, task_id))?;
+        let task = tasks::get(&st.db, task_id).ok()?;
+        let (title, body) = (format!("{}: {}", task.identifier, task.title), body(Some(summary), &task));
+        let over = push_over_of(st, &via);
+        let done = tokio::task::spawn_blocking(move || open_blocking(&via, &card, &title, &body, &over, true)).await
+            .map_err(|e| e.to_string()).and_then(|r| r);
+        // as Hersir, not as you: one it opened now, or the open one it saw
+        if let Ok((info, opened)) = &done
+            && let Err(e) = pulls::record(&st.db, None, task_id, &info.url, &info.state, *opened == Opened::New)
+        {
+            eprintln!("gizai: recording the pull request of {} failed: {e}", task.identifier);
+        }
+        done
+    };
+    match done {
+        Ok((info, opened)) => {
+            forget_error(st, task_id);
+            let host = gizai_core::repo_url::provider_name(&card.provider).unwrap_or("GitHub");
+            let pr = info.number.map_or_else(|| "its pull request".to_string(), |n| format!("pull request #{n}"));
+            let said = match opened {
+                Opened::Described => Some(format!("updated the description of {pr} on {host} with QA's new summary")),
+                Opened::NotDescribed(why) => {
+                    let why = one_line(&why);
+                    log_once(st, task_id, &format!("updating the description of {}'s pull request failed: {why}", card.identifier));
+                    Some(format!("couldn't update the description of {pr} on {host} with QA's new summary: {why}"))
+                }
+                Opened::New | Opened::Kept => None,
+            };
+            if let Some(said) = said
+                && let Err(e) = pulls::note_cleanup(&st.db, task_id, &said)
+            {
+                eprintln!("gizai: noting on {} what Hersir did with its pull request failed: {e}", card.identifier);
+            }
+            (st.notify)(Note::RowsChanged("tasks"));
+            Some(info)
+        }
+        Err(why) => {
+            not_opened(st, &card, &why);
+            // one an agent opened shows on the card at once all the same
+            check_soon(st, task_id);
+            None
+        }
+    }
+}
+
+/// Hersir couldn't open the card's pull request after QA's pass (GA-368): the card's activity says why, as Hersir, in one
+/// plain sentence, and so does Hersir's log, once.
+fn not_opened(st: &AppState, card: &PrCard, why: &str) {
+    let why = one_line(why);
+    let stop = if why.ends_with('.') { "" } else { "." };
+    let said = format!("couldn't open its pull request after QA passed: {why}{stop} Open pull request tries again.");
+    if let Err(e) = pulls::note_cleanup(&st.db, &card.task_id, &said) {
+        eprintln!("gizai: noting on {} why Hersir couldn't open its pull request failed: {e}", card.identifier);
+    }
+    log_once(st, &card.task_id, &format!("opening the pull request of {} after QA passed failed: {why}", card.identifier));
+    (st.notify)(Note::RowsChanged("tasks"));
+}
+
+/// `why` on one line, without what looks like a secret (a login in a remote's address in git's or gh's words, GA-281).
+fn one_line(why: &str) -> String {
+    gizai_agents::redact::hidden(why).split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// The pull request's description: `summary` first (QA's, after its pass: GA-368), then the card's description and
+/// acceptance criteria, cut together to `MAX_BODY`, and the card it comes from.
+fn body(summary: Option<&str>, t: &Task) -> String {
     let mut b = String::new();
+    if let Some(s) = summary.map(str::trim).filter(|s| !s.is_empty()) {
+        b.push_str(s);
+        b.push_str("\n\n");
+    }
     let description = t.description_md.trim();
     if !description.is_empty() {
         b.push_str(description);

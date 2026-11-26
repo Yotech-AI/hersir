@@ -18,7 +18,7 @@ fn write_script(path: &Path, script: &str) {
 /// GH_PROMPT_DISABLED to dir/gh-env; `pr list` answers with dir/list.json (nothing when it is missing); `pr create`
 /// keeps its stdin in dir/gh-stdin and fails with dir/create.err, else answers with dir/create.out; `pr view` answers
 /// with dir/view.json; `pr diff` with dir/diff.out, and fails like a gh too old for --allow-escape-sequences when
-/// dir/old-gh is there.
+/// dir/old-gh is there; `pr edit` (GA-368) keeps its stdin in dir/edit-stdin and fails with dir/edit.err.
 fn fake_gh(dir: &Path) -> PathBuf {
     let gh = dir.join("gh");
     write_script(&gh, &format!(r#"#!/bin/sh
@@ -31,6 +31,10 @@ case "$1 $2" in
     cat > "$d/gh-stdin"
     if [ -f "$d/create.err" ]; then cat "$d/create.err" >&2; exit 1; fi
     cat "$d/create.out"; exit 0 ;;
+  "pr edit")
+    cat > "$d/edit-stdin"
+    if [ -f "$d/edit.err" ]; then cat "$d/edit.err" >&2; exit 1; fi
+    echo "https://github.com/acme/shop/pull/$3"; exit 0 ;;
   "pr view") cat "$d/view.json"; exit 0 ;;
   "pr diff")
     case "$*" in *--allow-escape-sequences*) if [ -f "$d/old-gh" ]; then echo "unknown flag: --allow-escape-sequences" >&2; exit 1; fi ;; esac
@@ -229,5 +233,32 @@ fn gh_problems_are_plain_errors() {
     assert!(e.contains("gh didn't say which pull request it opened"), "{e}");
     // no gh at all
     let e = github::pulls_for_branch(Path::new("/nonexistent/gh"), tmp.path(), "acme/shop", "b").unwrap_err();
+    assert!(e.starts_with("GitHub CLI not found at /nonexistent/gh"), "{e}");
+}
+
+/// GA-368: after QA's second pass Hersir gives the branch's open pull request QA's new summary as its description, with
+/// `gh pr edit <n> --body-file -`: the body goes in on stdin untouched, and nothing else of the pull request changes.
+#[test]
+fn changing_a_pull_requests_description_sends_the_body_on_stdin_and_nothing_else() {
+    let tmp = tempfile::tempdir().unwrap();
+    let gh = fake_gh(tmp.path());
+    let body = "QA: 14 tests pass. He said \"ship it\" and it's $HOME `x`\n\n## Acceptance criteria\n\n- [ ] one\n".repeat(300);
+    github::edit_body(&gh, tmp.path(), "acme/shop", 7, &body).unwrap();
+    assert_eq!(read(tmp.path().join("edit-stdin")), body, "the body arrives untouched, quotes and all");
+    assert_eq!(read(tmp.path().join("gh-args")).trim(), "pr edit 7 --repo acme/shop --body-file -", "no --title: its title stays");
+    assert_eq!(read(tmp.path().join("gh-env")).trim(), "prompt=1", "never prompts");
+}
+
+#[test]
+fn gh_problems_changing_a_description_are_plain_errors() {
+    let tmp = tempfile::tempdir().unwrap();
+    let gh = fake_gh(tmp.path());
+    std::fs::write(tmp.path().join("edit.err"), "To get started with GitHub CLI, please run:  gh auth login\n").unwrap();
+    let e = github::edit_body(&gh, tmp.path(), "acme/shop", 7, "b").unwrap_err();
+    assert_eq!(e, "The GitHub CLI isn't logged in: run gh auth login in a terminal");
+    std::fs::write(tmp.path().join("edit.err"), "GraphQL: Could not resolve to a PullRequest with the number of 7. (repository.pullRequest)\n").unwrap();
+    let e = github::edit_body(&gh, tmp.path(), "acme/shop", 7, "b").unwrap_err();
+    assert!(e.contains("Could not resolve to a PullRequest with the number of 7"), "gh's own message: {e}");
+    let e = github::edit_body(Path::new("/nonexistent/gh"), tmp.path(), "acme/shop", 7, "b").unwrap_err();
     assert!(e.starts_with("GitHub CLI not found at /nonexistent/gh"), "{e}");
 }

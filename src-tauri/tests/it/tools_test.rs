@@ -611,7 +611,9 @@ async fn create_agent_without_a_list_gives_the_roles_allowed_commands_and_update
     assert_eq!(tools_of("Backend Agent"), role_tools("backend"));
     assert!(tools_of("Backend Agent").contains(&"Bash(git push:*)".to_string()));
     assert_eq!(tools_of("QA Agent"), role_tools("qa"), "the role key is cleaned first");
-    assert!(tools_of("QA Agent").contains(&"Bash(gh pr create:*)".to_string()));
+    assert!(tools_of("QA Agent").contains(&"Bash(gh pr view:*)".to_string()));
+    // GA-368: Hersir opens the pull request after QA's pass, so a new QA agent gets no gh pr create or gh pr edit
+    assert!(!tools_of("QA Agent").iter().any(|t| t.contains("gh pr create") || t.contains("gh pr edit")), "{:?}", tools_of("QA Agent"));
     assert_eq!(tools_of("DevOps Agent"), role_tools("devops"), "an empty list is no list");
     assert_eq!(tools_of("Second Lead"), gizai_lib::runs::DEFAULT_TOOLS.map(String::from).to_vec());
     assert_eq!(tools_of("Docs Agent"), role_tools("backend"), "your own roles are builders");
