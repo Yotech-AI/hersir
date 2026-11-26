@@ -77,7 +77,7 @@ fn login_path() -> Option<String> {
     });
     let text = rx.recv_timeout(Duration::from_secs(5)).ok();
     // It has printed the PATH or taken too long: either way it is done.
-    let _ = child.kill();
+    gizai_agents::os::kill_child(&mut child, "your login shell had printed its PATH for Hersir, or took too long");
     let _ = child.wait();
     let text = text?;
     let _ = reader.join();

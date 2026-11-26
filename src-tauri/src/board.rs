@@ -15,6 +15,7 @@ pub fn context(st: &AppState, now: i64) -> Context {
     Context {
         now, pull_paused: crate::runs::pull_paused_all(st), agents_paused: s.agents_paused, max_concurrent: s.max_concurrent_runs as i64, lead_id: lead,
         memory_wait: crate::run_memory::waiting_since(st),
+        busy_wait: crate::run_cpu::waiting_since(st),
     }
 }
 
@@ -57,10 +58,15 @@ pub fn slots_json(st: &AppState) -> Value {
             "free_slots": (m.max_runs.max(1) - mine.len() as i64).max(0), "pull_paused": crate::runs::pull_paused(st, &m.actor_id),
         })
     }).collect();
+    // GA-369: while this computer is busy the queue starts no card, and neither do you
+    let busy = crate::run_cpu::waiting_since(st).map(|(_, why)| why);
+    let free = if busy.is_some() { 0 } else { (s.max_concurrent_runs as usize).saturating_sub(live.len()) };
     json!({
-        "runs_at_once": {"max": s.max_concurrent_runs, "working": live.len(), "free": (s.max_concurrent_runs as usize).saturating_sub(live.len())},
+        "runs_at_once": {"max": s.max_concurrent_runs, "working": live.len(), "free": free},
         // GA-202: why no run starts now for want of memory (Settings → Runs → Memory for agent runs), else null
         "waiting_for_memory": crate::run_memory::waiting_since(st).map(|(_, why)| why),
+        // GA-369: why the queue starts no card now: this computer is busy ("Waiting: this computer is busy (…)"), else null
+        "computer_busy": busy,
         "agents_paused": s.agents_paused,
         "agents": agents,
     })

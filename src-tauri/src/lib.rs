@@ -39,6 +39,7 @@ mod quit;
 // The Chief's readable copy of a file: its text as Markdown (GA-310), or a PDF LibreOffice makes (GA-311).
 pub mod readable;
 pub mod restore;
+pub mod run_cpu;
 pub mod run_memory;
 pub mod runs;
 pub mod screenshots;
