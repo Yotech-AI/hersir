@@ -86,7 +86,7 @@ A card assigned to you has **Open in editor** in its top bar. Hersir makes the c
 
 In the Editor, a bar above the code shows the card, its branch and how far it is, with three buttons:
 
-- **Commit…**: a small box with the message and the files it commits. Like all of Hersir's git, it runs none of the repository's hooks; a `git commit` in the terminal does;
+- **Commit…**: a small box with the message and the files it commits. Like all of Hersir's git, it runs none of the repository's hooks; a `git commit` in the terminal does. It doesn't commit in a worktree with a nested repository or a checked-out submodule ([A worktree for every card](board.md#a-worktree-for-every-card)): commit there in the terminal;
 - **Push**;
 - **Hand over**: to Testing, or to Review when the card's Testing is off.
 

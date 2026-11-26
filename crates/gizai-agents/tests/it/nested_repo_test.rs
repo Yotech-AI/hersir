@@ -2,9 +2,10 @@
 //! a gitlink to git) whose own config has a clean filter that touches a file, then changes a file in it. Git's look
 //! inside a submodule is a git status there with that repository's settings, so plain git status in the worktree runs
 //! the filter, as you (each test checks that last, so its probe is a real one). Hersir's own git never does: its counts
-//! of uncommitted files, a card's Changes, the Editor's status, Commit…, Update's check and the worktree's removal leave
-//! submodules out (`worktree::IGNORE_SUBMODULES`), or leave such a worktree alone (`worktree::nested_repositories`).
-//! A project with a real submodule (`.gitmodules`) still shows a card's own changes; those inside the submodule don't.
+//! of uncommitted files, a card's Changes, the Editor's status and Update's check leave submodules out
+//! (`worktree::IGNORE_SUBMODULES`), and Commit… (GA-367), the stash and the worktree's removal leave such a worktree
+//! alone (`worktree::nested_repositories`). A project with a real submodule (`.gitmodules`) still shows a card's own
+//! changes; those inside the submodule don't.
 #![cfg(unix)]
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -208,33 +209,49 @@ fn a_nested_repositorys_dot_git_of_any_kind_counts() {
     assert_eq!(worktree::nested_repositories(&wt).unwrap(), ["nested"]);
 }
 
+/// GA-367: Commit… refuses a worktree with a nested repository, with `nested_said`'s words, also when no file of the
+/// card's has changed; it stages and commits nothing and runs no filter. Without one (the gitlink's folder holds no
+/// repository, as a submodule never checked out) it commits the card's own files as before.
 #[test]
-fn commit_all_commits_the_cards_own_files_without_the_nested_repository_and_runs_no_filter() {
+fn commit_all_refuses_a_worktree_with_a_nested_repository_runs_no_filter_and_commits_as_before_without_one() {
     let tmp = real_tempdir();
     let (_repo, wt) = card(tmp.path());
     let probe = tmp.path().join("probe-ran");
     plant_nested(&wt, "nested", &probe);
-    let link = git(&wt, &["rev-parse", "HEAD:nested"]);
+    let (link, head) = (git(&wt, &["rev-parse", "HEAD:nested"]), git(&wt, &["rev-parse", "HEAD"]));
+    let refusal = no_commit_beside("a nested repository in nested");
 
-    // only the nested repository changed: nothing to commit, and no git commit that prints a status
-    let err = worktree::commit_all(&wt, "nothing").unwrap_err().to_string();
-    assert!(err.contains("There is nothing to commit: no file has changed"), "{err}");
+    // only the nested repository changed: refused all the same (it fails closed), not "nothing to commit"
+    assert_eq!(git_refusal(worktree::commit_all(&wt, "nothing")), refusal);
     assert!(!probe.exists(), "Commit… ran the filter");
 
-    // the card's own files go in; the gitlink stays at its commit
+    // the card's own files: refused, nothing staged or committed, and the changes stay
     std::fs::write(wt.join("a.txt"), "two\n").unwrap();
     std::fs::create_dir(wt.join("src")).unwrap();
     std::fs::write(wt.join("src/b.txt"), "b\n").unwrap();
-    let c = worktree::commit_all(&wt, "The card's own work").unwrap();
-    assert_eq!(c.subject, "The card's own work");
-    assert_eq!(git(&wt, &["diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"]), "a.txt\nsrc/b.txt");
-    assert_eq!(git(&wt, &["rev-parse", "HEAD:nested"]), link, "the nested repository's commit didn't change");
-    assert_eq!(worktree::uncommitted(&wt).unwrap(), 0);
+    let tree = index_tree(&wt);
+    assert_eq!(git_refusal(worktree::commit_all(&wt, "The card's own work")), refusal);
+    let shown = worktree::commit_all(&wt, "The card's own work").unwrap_err().to_string();
+    assert!(shown.contains(&refusal), "{shown}");
+    assert_eq!(git(&wt, &["rev-parse", "HEAD"]), head, "nothing was committed");
+    assert_eq!(index_tree(&wt), tree, "nothing was staged");
+    assert_eq!(worktree::uncommitted(&wt).unwrap(), 2, "a.txt and src/b.txt are still uncommitted");
     assert!(!probe.exists(), "Commit… ran the filter");
-
     control(&wt, &probe);
     // and the change inside it stays there
     assert_eq!(std::fs::read_to_string(wt.join("nested/n.txt")).unwrap(), "two\n");
+
+    // without one: the card's own files go in, the gitlink stays at its commit
+    std::fs::remove_dir_all(wt.join("nested")).unwrap();
+    std::fs::create_dir(wt.join("nested")).unwrap();
+    assert_eq!(worktree::gitlinks(&wt).unwrap(), ["nested"]);
+    assert!(worktree::nested_repositories(&wt).unwrap().is_empty());
+    let c = worktree::commit_all(&wt, "The card's own work").unwrap();
+    assert_eq!(c.subject, "The card's own work");
+    assert_eq!(git(&wt, &["diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"]), "a.txt\nsrc/b.txt");
+    assert_eq!(git(&wt, &["rev-parse", "HEAD:nested"]), link, "the gitlink's commit didn't change");
+    assert_eq!(worktree::uncommitted(&wt).unwrap(), 0);
+    assert_eq!(git_refusal(worktree::commit_all(&wt, "Again")), "There is nothing to commit: no file has changed");
 }
 
 #[test]
@@ -258,8 +275,10 @@ fn updates_check_and_the_editor_in_a_projects_own_checkout_run_no_nested_filter(
     control(&repo, &probe);
 }
 
+/// GA-367: Commit… refuses the worktree while the submodule is checked out, and commits the card's own work once it
+/// isn't (`git submodule deinit`), leaving the submodule as it is.
 #[test]
-fn a_project_with_a_real_submodule_shows_the_cards_own_changes_and_none_inside_the_submodule() {
+fn a_project_with_a_real_submodule_shows_the_cards_own_changes_and_commit_refuses_while_it_is_checked_out() {
     let tmp = real_tempdir();
     let lib = repo_at(&tmp.path().join("lib"));
     let repo = repo_at(&tmp.path().join("repo"));
@@ -297,11 +316,24 @@ fn a_project_with_a_real_submodule_shows_the_cards_own_changes_and_none_inside_t
     let top = editor::list(&wt, "").unwrap();
     assert!(top.iter().find(|e| e.path == "lib").is_some_and(|e| e.dir && e.git.is_none()), "{top:?}");
 
-    // a commit of the card's own work leaves the submodule as it is
+    // Commit… refuses while the submodule is checked out: nothing staged or committed, and the changes stay
+    let (head, tree) = (git(&wt, &["rev-parse", "HEAD"]), index_tree(&wt));
+    assert_eq!(git_refusal(worktree::commit_all(&wt, "The card's own work")), no_commit_beside("a nested repository in lib"));
+    assert_eq!(git(&wt, &["rev-parse", "HEAD"]), head, "nothing was committed");
+    assert_eq!(index_tree(&wt), tree, "nothing was staged");
+    assert_eq!(paths(worktree::uncommitted_files(&wt).unwrap().into_iter().map(|f| f.path)), own);
+    assert_eq!(git(&wt.join("lib"), &["status", "--porcelain"]), " M a.txt\n?? new-in-lib.txt", "the change stays inside it");
+
+    // its removal: a worktree with a checked-out submodule stays, as git itself would keep it
+    let r = worktree::remove_card_worktree_with(&repo, &tmp.path().join("data/worktrees"), &tmp.path().join("run-temp"), BRANCH, false);
+    assert!(r.kept.as_ref().is_some_and(|(_, why)| why.contains("a nested repository in lib")), "{r:?}");
+
+    // no longer checked out (its folder empty again): a commit of the card's own work leaves the submodule as it is
+    git(&wt, &["submodule", "deinit", "-q", "-f", "lib"]);
+    assert!(worktree::nested_repositories(&wt).unwrap().is_empty());
     worktree::commit_all(&wt, "The card's own work").unwrap();
     assert_eq!(git(&wt, &["diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"]), own.join("\n"));
     assert_eq!(git(&wt, &["rev-parse", "HEAD:lib"]), git(&lib, &["rev-parse", "main"]));
-    assert_eq!(git(&wt.join("lib"), &["status", "--porcelain"]), " M a.txt\n?? new-in-lib.txt", "the change stays inside it");
     // the branch's Changes after the commit: still only the card's own files
     let changed = changes::of_worktree(&wt, &main).unwrap();
     assert_eq!(paths(changed.iter().map(|f| f.path.clone())), own);
@@ -309,10 +341,6 @@ fn a_project_with_a_real_submodule_shows_the_cards_own_changes_and_none_inside_t
     let head = git(&wt, &["rev-parse", "HEAD"]);
     let between = changes::between(&repo, &main, &head).unwrap();
     assert_eq!(paths(between.iter().map(|f| f.path.clone())), own);
-
-    // its removal: a worktree with a checked-out submodule stays, as git itself would keep it
-    let r = worktree::remove_card_worktree_with(&repo, &tmp.path().join("data/worktrees"), &tmp.path().join("run-temp"), BRANCH, false);
-    assert!(r.kept.as_ref().is_some_and(|(_, why)| why.contains("a nested repository in lib")), "{r:?}");
 }
 
 // GA-357 (GA-353 #1, CWE-78): a submodule whose folder name isn't valid UTF-8. Read as text, its name changed, so
@@ -539,11 +567,12 @@ fn a_file_whose_name_isnt_utf8_doesnt_matter() {
     assert!(worktree::nested_repositories(&wt).unwrap().is_empty(), "vendor/lib holds no repository");
 }
 
-/// On disk too (Linux): Commit… commits a file whose name isn't UTF-8, beside a nested repository with a valid name,
-/// whose filter still never runs.
+/// On disk too (Linux): a file whose name isn't UTF-8 beside a nested repository with a valid name gets GA-367's refusal
+/// for that repository, not GA-357's, and the filter never runs; once the gitlink's folder holds no repository, Commit…
+/// commits the file under its own name.
 #[cfg(target_os = "linux")]
 #[test]
-fn commit_all_commits_a_file_whose_name_isnt_utf8_beside_a_nested_repository() {
+fn a_file_whose_name_isnt_utf8_beside_a_nested_repository_gets_its_refusal_and_is_committed_without_one() {
     let tmp = real_tempdir();
     let (_repo, wt) = card(tmp.path());
     let probe = tmp.path().join("probe-ran");
@@ -551,13 +580,19 @@ fn commit_all_commits_a_file_whose_name_isnt_utf8_beside_a_nested_repository() {
     std::fs::write(wt.join(OsStr::from_bytes(b"caf\xe9.txt")), "latin-1\n").unwrap();
     std::fs::write(wt.join("a.txt"), "two\n").unwrap();
     assert_eq!(worktree::gitlinks(&wt).unwrap(), ["nested"]);
+    let head = git(&wt, &["rev-parse", "HEAD"]);
+    assert_eq!(git_refusal(worktree::commit_all(&wt, "The card's own work")), no_commit_beside("a nested repository in nested"));
+    assert_eq!(git(&wt, &["rev-parse", "HEAD"]), head, "nothing was committed");
+    assert!(!probe.exists(), "Commit… ran the filter");
+    control(&wt, &probe);
+
+    std::fs::remove_dir_all(wt.join("nested")).unwrap();
+    std::fs::create_dir(wt.join("nested")).unwrap();
     worktree::commit_all(&wt, "The card's own work").unwrap();
     let names = git_os(&wt, &[OsStr::new("diff-tree"), OsStr::new("--no-commit-id"), OsStr::new("--name-only"), OsStr::new("-z"),
                               OsStr::new("-r"), OsStr::new("HEAD")]);
     assert_eq!(names, b"a.txt\0caf\xe9.txt\0", "{}", String::from_utf8_lossy(&names));
     assert_eq!(worktree::uncommitted(&wt).unwrap(), 0);
-    assert!(!probe.exists(), "Commit… ran the filter");
-    control(&wt, &probe);
 }
 
 /// The gitlinks with valid names: in the index's order, each once, also in a merge conflict (one entry per side).
@@ -579,10 +614,10 @@ fn gitlinks_come_in_the_index_order_once_each() {
     assert_eq!(worktree::gitlinks(&wt).unwrap(), ["a-lib", "b-lib", "vendor/bibliothèque"]);
 }
 
-/// A submodule with a valid non-ASCII name, vendor/bibliothèque, behaves as GA-350's tests expect: Commit… leaves it
-/// out, and the stash, the removal and the move refuse it as a nested repository.
+/// A submodule with a valid non-ASCII name, vendor/bibliothèque, behaves as GA-350's tests expect: Commit… (GA-367), the
+/// stash, the removal and the move refuse it as a nested repository, by its name.
 #[test]
-fn a_submodule_with_a_valid_non_ascii_name_is_left_alone_as_before() {
+fn a_submodule_with_a_valid_non_ascii_name_is_refused_by_commit_stash_removal_and_move_by_its_name() {
     let tmp = real_tempdir();
     let (repo, wt) = card(tmp.path());
     let probe = tmp.path().join("probe-ran");
@@ -594,14 +629,17 @@ fn a_submodule_with_a_valid_non_ascii_name_is_left_alone_as_before() {
     assert_eq!(worktree::nested_repositories(&wt).unwrap(), [rel]);
     assert_eq!(worktree::uncommitted(&wt).unwrap(), 0);
 
-    // Commit…: nothing to commit, then the card's own files without the submodule
-    let err = worktree::commit_all(&wt, "nothing").unwrap_err().to_string();
-    assert!(err.contains("There is nothing to commit: no file has changed"), "{err}");
+    // Commit…: refused with nothing changed, and with the card's own file changed; nothing committed
+    let head = git(&wt, &["rev-parse", "HEAD"]);
+    assert_eq!(git_refusal(worktree::commit_all(&wt, "nothing")), no_commit_beside(&format!("a nested repository in {rel}")));
     std::fs::write(wt.join("a.txt"), "two\n").unwrap();
-    worktree::commit_all(&wt, "The card's own work").unwrap();
-    assert_eq!(git(&wt, &["diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"]), "a.txt");
+    assert_eq!(git_refusal(worktree::commit_all(&wt, "The card's own work")),
+               no_commit_beside(&format!("a nested repository in {rel}")));
+    assert_eq!(git(&wt, &["rev-parse", "HEAD"]), head, "nothing was committed");
     assert_eq!(git(&wt, &["rev-parse", &format!("HEAD:{rel}")]), link, "the submodule's commit didn't change");
     assert!(!probe.exists(), "Commit… ran the filter");
+    // a.txt as it was again: the take-over says "has uncommitted changes" before the nested repository
+    std::fs::write(wt.join("a.txt"), "one\n").unwrap();
 
     // the stash, the removal and the move: refused as a nested repository, by its name
     let why = git_refusal(worktree::stash_all(&wt, "KADE-1 leftover"));
@@ -812,29 +850,36 @@ fn a_file_whose_name_isnt_in_nfc_doesnt_matter() {
     assert!(worktree::nested_repositories(&wt).unwrap().is_empty(), "vendor/lib holds no repository");
 }
 
-/// On disk too (Linux): Commit… commits a file whose name is in NFD, under that name, beside a nested repository, whose
-/// filter never runs.
+/// On disk too (Linux): a file whose name is in NFD beside a nested repository gets GA-367's refusal for that
+/// repository, not GA-361's, and the filter never runs; once the gitlink's folder holds no repository, Commit… commits
+/// the file under its NFD name.
 #[cfg(target_os = "linux")]
 #[test]
-fn commit_all_commits_a_file_whose_name_is_in_nfd_beside_a_nested_repository() {
+fn a_file_whose_name_is_in_nfd_beside_a_nested_repository_gets_its_refusal_and_is_committed_without_one() {
     let tmp = real_tempdir();
     let (_repo, wt) = card(tmp.path());
     let probe = tmp.path().join("probe-ran");
     plant_nested(&wt, "nested", &probe);
     std::fs::write(wt.join(format!("{CAFE_NFD}.txt")), "nfd\n").unwrap();
     std::fs::write(wt.join("a.txt"), "two\n").unwrap();
+    let head = git(&wt, &["rev-parse", "HEAD"]);
+    assert_eq!(git_refusal(worktree::commit_all(&wt, "The card's own work")), no_commit_beside("a nested repository in nested"));
+    assert_eq!(git(&wt, &["rev-parse", "HEAD"]), head, "nothing was committed");
+    assert!(!probe.exists(), "Commit… ran the filter");
+    control(&wt, &probe);
+
+    std::fs::remove_dir_all(wt.join("nested")).unwrap();
+    std::fs::create_dir(wt.join("nested")).unwrap();
     worktree::commit_all(&wt, "The card's own work").unwrap();
     let names = git_out(&wt, &["diff-tree", "--no-commit-id", "--name-only", "-z", "-r", "HEAD"]).stdout;
     assert_eq!(names, b"a.txt\0cafe\xcc\x81.txt\0", "{}", String::from_utf8_lossy(&names));
     assert_eq!(worktree::uncommitted(&wt).unwrap(), 0);
-    assert!(!probe.exists(), "Commit… ran the filter");
-    control(&wt, &probe);
 }
 
-/// A submodule whose name is `café` in NFC is left alone as before, on every Unix (macOS's git reads that name as
-/// given): Commit… commits the card's own files without it, and the stash refuses it as a nested repository.
+/// A submodule whose name is `café` in NFC, on every Unix (macOS's git reads that name as given), is a nested
+/// repository as any other: Commit… (GA-367) and the stash refuse it by its name, not with GA-361's sentence.
 #[test]
-fn a_submodule_whose_folder_name_is_cafe_in_nfc_is_left_out_of_commit_as_before() {
+fn a_submodule_whose_folder_name_is_cafe_in_nfc_is_refused_by_commit_and_stash_as_a_nested_repository() {
     let tmp = real_tempdir();
     let (repo, wt) = card(tmp.path());
     let probe = tmp.path().join("probe-ran");
@@ -845,10 +890,12 @@ fn a_submodule_whose_folder_name_is_cafe_in_nfc_is_left_out_of_commit_as_before(
     assert_eq!(worktree::nested_repositories(&wt).unwrap(), [CAFE_NFC]);
 
     std::fs::write(wt.join("a.txt"), "two\n").unwrap();
-    worktree::commit_all(&wt, "The card's own work").unwrap();
-    assert_eq!(git(&wt, &["diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"]), "a.txt");
+    let head = git(&wt, &["rev-parse", "HEAD"]);
+    assert_eq!(git_refusal(worktree::commit_all(&wt, "The card's own work")),
+               no_commit_beside(&format!("a nested repository in {CAFE_NFC}")));
+    assert_eq!(git(&wt, &["rev-parse", "HEAD"]), head, "nothing was committed");
     assert_eq!(git(&wt, &["rev-parse", &format!("HEAD:{CAFE_NFC}")]), link, "the submodule's commit didn't change");
-    assert_eq!(worktree::uncommitted(&wt).unwrap(), 0);
+    assert_eq!(worktree::uncommitted(&wt).unwrap(), 1, "a.txt is still uncommitted");
     assert!(!probe.exists(), "Commit… ran the filter");
     let why = git_refusal(worktree::stash_all(&wt, "KADE-1 leftover"));
     assert_eq!(why, format!("Hersir doesn't stash there: it has a nested repository in {CAFE_NFC}, whose settings git's stash would run"));
@@ -918,8 +965,9 @@ fn on_macos_commits_git_add_before_ga_361_missed_a_gitlink_stored_in_nfd_and_ran
 
 /// GA-361's second guard, on macOS: a name in NFC that macOS's git might still read as another one (its own tables
 /// are older than Unicode's), such as क and a nukta (U+0915 U+093C), which NFC keeps apart while U+0958 is the same
-/// letter in one. However git reads it, Commit… either commits the card's own file without the submodule, or refuses
-/// with the card's sentence; it never runs the nested repository's filter.
+/// letter in one. However git reads it, Commit… refuses: with the card's sentence when git's pathspec reads it as another
+/// name, else (GA-367) as a nested repository, by its name; it commits nothing and never runs the nested repository's
+/// filter.
 #[cfg(target_os = "macos")]
 #[test]
 fn on_macos_a_submodule_whose_name_is_in_nfc_never_runs_its_filter_however_git_reads_it() {
@@ -936,18 +984,204 @@ fn on_macos_a_submodule_whose_name_is_in_nfc_never_runs_its_filter_however_git_r
     assert_eq!(worktree::gitlinks(&wt).unwrap(), [name]);
     let head = git(&wt, &["rev-parse", "HEAD"]);
 
-    match worktree::commit_all(&wt, "The card's own work") {
-        Ok(_) => {
-            assert_eq!(git(&wt, &["diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"]), "a.txt");
-            assert!(has(&git_out(&wt, &["ls-tree", "-z", "HEAD"]).stdout, format!("160000 commit {id}\t{name}\0").as_bytes()),
-                    "the submodule stays as it was");
-        }
-        Err(AgentError::Git(m)) => {
-            assert_eq!(m, format!("Hersir doesn't commit there: {TWO_WAYS}"));
-            assert_eq!(git(&wt, &["rev-parse", "HEAD"]), head, "nothing was committed");
-        }
-        Err(e) => panic!("{e:?}"),
-    }
+    let m = git_refusal(worktree::commit_all(&wt, "The card's own work"));
+    assert!(m == format!("Hersir doesn't commit there: {TWO_WAYS}") || m == no_commit_beside(&format!("a nested repository in {name}")),
+            "{m}");
+    assert_eq!(git(&wt, &["rev-parse", "HEAD"]), head, "nothing was committed");
+    assert!(has(&git_out(&wt, &["ls-tree", "-z", "HEAD"]).stdout, format!("160000 commit {id}\t{name}\0").as_bytes()),
+            "the submodule stays as it was");
     assert!(!probe.exists(), "Commit… ran the nested repository's filter");
     control(&wt, &probe);
+}
+
+// GA-367 (GA-361's check, a High, CWE-436): a run can write a NUL byte into a gitlink's name in its worktree's index.
+// git ls-files gives that name up to the NUL, while git add matches its pathspec against all of it: so with the gitlink
+// `a`, NUL, `b` beside a nested repository `a`, neither GA-350's `:(exclude,literal)a` nor GA-361's check with git
+// ls-files left it out, and git add looked inside the folder `a` and ran that repository's clean filter. Now Commit…
+// refuses every checkout with a nested repository (`nested_repositories`), as the stash, the removal and a new card's
+// take-over do; GA-357's and GA-361's refusals stay word for word, before it.
+
+/// Commit…'s refusal of a checkout with a nested repository, word for word: "Hersir doesn't commit there: it has " and
+/// `nested` (`nested_said`'s words, such as "a nested repository in lib"), then ", whose own settings git could run".
+fn no_commit_beside(nested: &str) -> String {
+    format!("Hersir doesn't commit there: it has {nested}, whose own settings git could run")
+}
+
+/// SHA-1 of `data` (FIPS 180-4), for the index file's checksum, which git checks when it reads the index; the tests
+/// have no SHA-1 crate. `nul_in_gitlink_name` checks it against git's own first.
+fn sha1(data: &[u8]) -> [u8; 20] {
+    let mut h: [u32; 5] = [0x6745_2301, 0xEFCD_AB89, 0x98BA_DCFE, 0x1032_5476, 0xC3D2_E1F0];
+    let mut msg = data.to_vec();
+    msg.push(0x80);
+    while msg.len() % 64 != 56 {
+        msg.push(0);
+    }
+    msg.extend_from_slice(&((data.len() as u64) * 8).to_be_bytes());
+    for block in msg.chunks(64) {
+        let mut w = [0u32; 80];
+        for i in 0..16 {
+            w[i] = u32::from_be_bytes(block[4 * i..4 * i + 4].try_into().unwrap());
+        }
+        for i in 16..80 {
+            w[i] = (w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16]).rotate_left(1);
+        }
+        let [mut a, mut b, mut c, mut d, mut e] = h;
+        for (i, wi) in w.iter().enumerate() {
+            let (f, k) = match i {
+                0..=19 => ((b & c) | (!b & d), 0x5A82_7999),
+                20..=39 => (b ^ c ^ d, 0x6ED9_EBA1),
+                40..=59 => ((b & c) | (b & d) | (c & d), 0x8F1B_BCDC),
+                _ => (b ^ c ^ d, 0xCA62_C1D6),
+            };
+            let t = a.rotate_left(5).wrapping_add(f).wrapping_add(e).wrapping_add(k).wrapping_add(*wi);
+            (e, d, c, b, a) = (d, c, b.rotate_left(30), a, t);
+        }
+        for (x, y) in h.iter_mut().zip([a, b, c, d, e]) {
+            *x = x.wrapping_add(y);
+        }
+    }
+    let mut out = [0u8; 20];
+    for (i, x) in h.iter().enumerate() {
+        out[4 * i..4 * i + 4].copy_from_slice(&x.to_be_bytes());
+    }
+    out
+}
+
+/// The index file of the checkout at `dir`, where git keeps it (a card worktree's is in its repository's .git).
+fn index_file(dir: &Path) -> PathBuf {
+    let path = PathBuf::from(git(dir, &["rev-parse", "--git-path", "index"]));
+    if path.is_absolute() { path } else { dir.join(path) }
+}
+
+/// What a run can do to the index file itself (GA-361's check): the gitlink `a!b`, staged with `index_info`, becomes
+/// `a`, NUL, `b`. The index is written in version 2 first, where an entry's name is its own bytes after its flags,
+/// whose last 12 bits are its length (3, which stays); the file's trailing SHA-1 is computed again, so git reads it.
+fn nul_in_gitlink_name(dir: &Path) {
+    git(dir, &["update-index", "--index-version", "2"]);
+    let file = index_file(dir);
+    let mut index = std::fs::read(&file).unwrap();
+    assert_eq!(&index[..8], b"DIRC\0\0\0\x02", "an index in version 2");
+    let body = index.len() - 20;
+    assert_eq!(sha1(&index[..body]), index[body..], "this SHA-1 gives the checksum git wrote");
+    let at: Vec<usize> = (0..body - 5).filter(|&i| index[i..i + 5] == *b"\0\x03a!b").collect();
+    assert_eq!(at.len(), 1, "the entry a!b, its flags (stage 0, length 3) and then its name, once in the index");
+    index[at[0] + 3] = 0;
+    let sum = sha1(&index[..body]);
+    index[body..].copy_from_slice(&sum);
+    std::fs::write(&file, &index).unwrap();
+}
+
+#[test]
+fn this_sha1_is_sha1() {
+    let hex = |d: [u8; 20]| d.iter().map(|b| format!("{b:02x}")).collect::<String>();
+    assert_eq!(hex(sha1(b"")), "da39a3ee5e6b4b0d3255bfef95601890afd80709");
+    assert_eq!(hex(sha1(b"abc")), "a9993e364706816aba3e25717850c26c9cd0d89d");
+    assert_eq!(hex(sha1(&[b'a'; 1000])), "291e9a6c66994949b57ba5e650361e98fc36b1ba");
+}
+
+/// The card's case, in a card's worktree: the gitlink `a`, NUL, `b`, staged by the run, beside a nested repository `a`
+/// that isn't in the index, whose clean filter touches a probe; the card's own a.txt has changed. Commit… refuses with
+/// "Hersir doesn't commit there: " and `nested_said`'s words, stages and commits nothing, and the filter never runs;
+/// nor do the stash, the removal and the take-over. The control: what main's Commit… ran (GA-361's check, then git add
+/// with its pathspec) lets the gitlink through and runs the filter.
+#[test]
+fn a_gitlink_whose_name_in_the_index_holds_a_nul_byte_beside_a_nested_repository_is_refused_by_commit_and_runs_no_filter() {
+    let tmp = real_tempdir();
+    let (repo, wt) = card(tmp.path());
+    let probe = tmp.path().join("probe-ran");
+    let nested = wt.join("a");
+    let id = nested_repository(&nested);
+    arm(&nested, &probe);
+    index_info(&wt, &[entry("160000", &id, b"a!b")]);
+    nul_in_gitlink_name(&wt);
+    std::fs::write(wt.join("a.txt"), "two\n").unwrap();
+    assert!(!probe.exists());
+
+    // git reads the index: git ls-files gives the gitlink's name up to the NUL, and the folder git opens is `a`
+    let listed = git_out(&wt, &["ls-files", "--stage", "-z"]);
+    assert!(listed.status.success(), "{}", String::from_utf8_lossy(&listed.stderr));
+    assert!(has(&listed.stdout, format!("160000 {id} 0\ta\0").as_bytes()), "{}", String::from_utf8_lossy(&listed.stdout));
+    assert_eq!(worktree::gitlinks(&wt).unwrap(), ["a"]);
+    assert_eq!(worktree::nested_repositories(&wt).unwrap(), ["a"]);
+    let (head, index) = (git(&wt, &["rev-parse", "HEAD"]), std::fs::read(index_file(&wt)).unwrap());
+
+    // Commit… refuses, word for word, and as the user sees it
+    let refusal = no_commit_beside("a nested repository in a");
+    assert_eq!(refusal, "Hersir doesn't commit there: it has a nested repository in a, whose own settings git could run");
+    assert_eq!(git_refusal(worktree::commit_all(&wt, "The card's own work")), refusal);
+    let shown = worktree::commit_all(&wt, "The card's own work").unwrap_err().to_string();
+    assert!(shown.contains(&refusal), "{shown}");
+    assert!(!probe.exists(), "Commit… ran the nested repository's filter");
+    assert_eq!(git(&wt, &["rev-parse", "HEAD"]), head, "nothing was committed");
+    assert_eq!(std::fs::read(index_file(&wt)).unwrap(), index, "nothing was staged: the index is as it was, byte for byte");
+    assert_eq!(std::fs::read_to_string(wt.join("a.txt")).unwrap(), "two\n", "the card's change stays");
+
+    // the stash, the removal and a new card's take-over refuse it as before
+    assert_eq!(git_refusal(worktree::stash_all(&wt, "KADE-1 leftover")),
+               "Hersir doesn't stash there: it has a nested repository in a, whose settings git's stash would run");
+    assert!(git(&repo, &["stash", "list"]).is_empty(), "nothing was stashed");
+    let base = tmp.path().join("data/worktrees");
+    let r = worktree::remove_card_worktree_with(&repo, &base, &tmp.path().join("run-temp"), BRANCH, true);
+    assert_eq!(r.phrases(BRANCH), [format!("kept its worktree {} (it has a nested repository in a, whose own settings git could run)",
+                                           wt.display())]);
+    // the take-over: its check for uncommitted changes (a.txt) comes first, else the nested repository's
+    let err = git_refusal(worktree::reuse_on(&repo, &wt, &base.join("KADE"), "KADE-2", "hersir/kade-2-next", "main", &[]));
+    assert!([format!("{} has uncommitted changes", wt.display()),
+             format!("{} has a nested repository in a, whose own settings git could run", wt.display())].contains(&err), "{err}");
+    assert!(wt.is_dir() && !base.join("KADE/KADE-2").exists());
+    assert!(!probe.exists(), "a refusal ran the nested repository's filter");
+    assert!(has(&git_out(&wt, &["ls-files", "--stage", "-z"]).stdout, format!("160000 {id} 0\ta\0").as_bytes()),
+            "the gitlink is still in the index");
+    assert_eq!(git(&wt, &["rev-parse", "HEAD"]), head, "nothing was committed");
+
+    // the control, with Hersir's own git there: GA-361's check (git ls-files with git add's pathspec) leaves no gitlink
+    // in, so main's Commit… went on, and its git add --all with that pathspec looked inside `a` and ran the filter
+    let pathspec = ["--", ".", ":(exclude,literal)a"];
+    let left_in = worktree::git_command(&wt).args(["ls-files", "--stage", "-z"]).args(pathspec).output().unwrap();
+    assert!(left_in.status.success());
+    assert!(!left_in.stdout.split(|&b| b == 0).any(|e| e.starts_with(b"160000 ")), "{}", String::from_utf8_lossy(&left_in.stdout));
+    let added = worktree::git_command(&wt).args(["add", "--all"]).args(pathspec).output().unwrap();
+    assert!(added.status.success(), "{}", String::from_utf8_lossy(&added.stderr));
+    assert!(probe.exists(), "main's git add didn't run the nested repository's filter, so the refusal above proves nothing");
+}
+
+/// Commit…'s order with a nested repository (GA-367): an empty message is still said first; GA-357's and GA-361's
+/// sentences come before the new one, word for word, in their own cases; the new one is said also when no file has
+/// changed; and two repositories give `nested_said`'s "and 1 more". No refusal runs a filter.
+#[test]
+fn commit_all_says_the_message_and_the_names_first_and_refuses_a_nested_repository_before_nothing_to_commit() {
+    let tmp = real_tempdir();
+    let (_repo, wt) = card(tmp.path());
+    let probe = tmp.path().join("probe-ran");
+    plant_nested(&wt, "nested", &probe);
+    plant_nested(&wt, "vendor/lib", &probe);
+    std::fs::remove_file(&probe).ok();
+    let head = git(&wt, &["rev-parse", "HEAD"]);
+    assert_eq!(worktree::nested_repositories(&wt).unwrap(), ["nested", "vendor/lib"]);
+
+    assert_eq!(git_refusal(worktree::commit_all(&wt, "  \n")), "Write a commit message first");
+    assert_eq!(git_refusal(worktree::commit_all(&wt, "nothing changed")), no_commit_beside("nested repositories in nested and 1 more"));
+    std::fs::write(wt.join("a.txt"), "two\n").unwrap();
+    assert_eq!(git_refusal(worktree::commit_all(&wt, "The card's own work")),
+               no_commit_beside("nested repositories in nested and 1 more"));
+
+    // a gitlink whose name isn't UTF-8 (GA-357), then one not in NFC (GA-361), staged beside them: their sentences
+    let gone = |name: &[u8]| entry("0", "0000000000000000000000000000000000000000", name);
+    index_info(&wt, &[entry("160000", &id_of(&wt.join("nested")), b"sub\xff")]);
+    assert_eq!(git_refusal(worktree::commit_all(&wt, "The card's own work")), format!("Hersir doesn't commit there: {NOT_UTF8}"));
+    index_info(&wt, &[gone(b"sub\xff"), entry("160000", &id_of(&wt.join("nested")), CAFE_NFD.as_bytes())]);
+    assert_eq!(git_refusal(worktree::commit_all(&wt, "The card's own work")), format!("Hersir doesn't commit there: {TWO_WAYS}"));
+    index_info(&wt, &[gone(CAFE_NFD.as_bytes())]);
+    assert_eq!(git_refusal(worktree::commit_all(&wt, "The card's own work")),
+               no_commit_beside("nested repositories in nested and 1 more"));
+
+    assert_eq!(git(&wt, &["rev-parse", "HEAD"]), head, "nothing was committed");
+    assert_eq!(std::fs::read_to_string(wt.join("a.txt")).unwrap(), "two\n");
+    assert!(!probe.exists(), "Commit… ran a nested repository's filter");
+    control(&wt, &probe);
+}
+
+/// The commit a repository at `dir` is at.
+fn id_of(dir: &Path) -> String {
+    git(dir, &["rev-parse", "HEAD"])
 }
