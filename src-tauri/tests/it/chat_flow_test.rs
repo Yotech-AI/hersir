@@ -78,6 +78,20 @@ impl T {
     }
 }
 
+/// GA-369 QA: no new run from the queue while this computer is busy, but a chat answer isn't held: it starts and
+/// finishes as always, also with the CPU pressure far over the threshold.
+#[tokio::test]
+async fn a_chat_answer_isnt_held_while_this_computer_is_busy() {
+    let t = setup().await;
+    t.st.run_memory.fake_cpu_reading(Some(gizai_agents::run_cpu::Reading::Pressure(95.0)));
+    let (thread, s) = t.turn(None, "create task Busy chat task in KADE").await;
+    assert_eq!(s.status, "succeeded", "{s:?}");
+    assert!(tasks::list(&t.st.db, &TaskFilter::default()).unwrap().iter().any(|x| x.title == "Busy chat task"));
+    let msgs = chat::messages(&t.st.db, &thread).unwrap();
+    assert_eq!(msgs.last().and_then(|m| m.body_md.as_deref()), Some("Done: KADE-1."));
+    assert!(msgs.iter().all(|m| !m.body_md.as_deref().unwrap_or_default().contains("busy")), "nothing says it waited");
+}
+
 #[tokio::test]
 async fn a_chat_turn_runs_tools_and_saves_the_conversation() {
     let t = setup().await;

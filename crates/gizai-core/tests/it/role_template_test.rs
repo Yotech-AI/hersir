@@ -251,3 +251,25 @@ fn an_agents_saved_instructions_stay_as_they_are_and_only_a_new_agent_gets_the_h
     assert_eq!(got, role_template("docs"));
     assert!(got.starts_with("You are the Docs Agent in Hersir's Software team.") && got.contains(RESULT_LINE), "{got}");
 }
+
+/// GA-369 QA: on 26 Nov 2026 a QA run loaded every core because its card asked for "CPU load". The QA Agent's and the
+/// builders' instructions now say never to load the computer on purpose; QA's says how a test under load runs instead.
+#[test]
+fn qa_and_the_builders_never_load_the_computer_on_purpose() {
+    for role in ["qa", "backend", "frontend", "design", "devops"] {
+        let t = role_template(role);
+        assert!(t.contains("- Never load the computer on purpose: no busy loops, no stress tools"), "{role}");
+        assert!(t.contains("It is also the user's computer, and their own programs must keep working."), "{role}");
+        assert_eq!(t.matches("Never load the computer on purpose").count(), 1, "{role}: once");
+    }
+    for role in ["backend", "frontend", "design"] {
+        assert!(role_template(role).contains("(stress, stress-ng and the like), and no more build or test workers than the project's default."), "{role}");
+    }
+    assert!(role_template("devops").contains("no stress tools, and no more build workers than the project's default."));
+    let qa = role_template("qa");
+    assert!(qa.contains("(stress, stress-ng and the like), and no more test workers than the project's default."), "{qa}");
+    assert!(qa.contains("A test that must run under load runs inside Hersir's CPU cap (Settings → Runs → CPU for agents, which holds everything your run starts) with a set number of workers, such as `--test-threads=2` or `--maxWorkers=2`, and never beside a stress tool; say in your summary how you loaded it."), "{qa}");
+    assert!(qa.contains("A card that asks for \"CPU load\" gets that, not a machine at 100%."), "{qa}");
+    // the Chief's text has no such line: it runs no tests or builds
+    assert!(!role_template("lead").contains("Never load the computer"));
+}

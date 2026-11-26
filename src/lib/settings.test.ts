@@ -3,7 +3,8 @@
 // what Save settings refuses there before it asks the backend. GA-277: the same for Memory per run.
 import { describe, expect, it } from "vitest";
 import type { Member, Team, WorkflowState } from "../types";
-import { cardAgents, quitWarning, RUNS_MEMORY_PER_RUN_HINT, runsAtOnceWarning, runsMemoryError, runsMemoryHint, runsMemoryPerRunError } from "./settings";
+import { cardAgents, CONTROLLERS_AFTER, controllersNote, quitWarning, RUNS_MEMORY_PER_RUN_HINT, runsAtOnceWarning, runsCpuError, runsCpuHint, runsMemoryError, runsMemoryHint,
+  runsMemoryPerRunError } from "./settings";
 
 const member = (actorId: string, name: string, more: Partial<Member> = {}): Member => ({
   actorId, name, kind: "agent", roleKey: "backend", handle: name.toLowerCase().replace(/ /g, "-"), status: "active", isLead: false,
@@ -126,5 +127,38 @@ describe("Memory per run (GA-277)", () => {
   it("leaves Memory for agent runs as the most to the backend, and says nothing when the backend didn't send the field", () => {
     expect(runsMemoryPerRunError(10_000)).toBeNull();
     expect(runsMemoryPerRunError(undefined)).toBeNull();
+  });
+});
+
+// GA-369 QA: the hint under CPU for agents (all agents' work together at low priority, the computer's cores, and whether
+// the system holds the cap: Linux's slice and Windows's job at once, macOS none), what Save settings refuses there, and
+// the note above the one command that turns the missing cpu and io controllers on.
+describe("CPU for agents (GA-369)", () => {
+  it("says the cap holds at once on Linux and Windows, and that macOS has none", () => {
+    expect(runsCpuHint({ computerCores: 16, runsCpuCap: "slice" })).toBe("All agents' work together, at low priority. This computer has 16 cores. A change holds at once, for runs at work too.");
+    expect(runsCpuHint({ computerCores: 8, runsCpuCap: "job" })).toBe("All agents' work together, at low priority. This computer has 8 cores. A change holds at once, for runs at work too.");
+    expect(runsCpuHint({ computerCores: 10, runsCpuCap: "macos" })).toBe("All agents' work together, at low priority. This computer has 10 cores. macOS has no CPU cap: agents only run at low priority.");
+  });
+  it("says why the cap doesn't hold on a Linux without a systemd user session or without the cpu controller", () => {
+    expect(runsCpuHint({ computerCores: 16, runsCpuCap: "no_slice" })).toBe("All agents' work together, at low priority. This computer has 16 cores. Without a systemd user session Hersir can't cap the CPU: agents only run at low priority.");
+    expect(runsCpuHint({ computerCores: 16, runsCpuCap: "no_cpu" })).toBe("All agents' work together, at low priority. This computer has 16 cores. The cap doesn't hold yet: your user's systemd doesn't hand Hersir the cpu controller. Agents only run at low priority.");
+  });
+  it("leaves out what the backend didn't send", () => {
+    expect(runsCpuHint({})).toBe("All agents' work together, at low priority.");
+    expect(runsCpuHint({ computerCores: 0, runsCpuCap: "something new" })).toBe("All agents' work together, at low priority.");
+  });
+  it("refuses anything but a whole number of cores from 1 up, and leaves the computer's cores as the most to the backend", () => {
+    for (const n of [1, 2, 12, 16, 10_000]) expect(runsCpuError(n)).toBeNull();
+    for (const n of [0, -1, 2.5, Number(""), Number.NaN]) expect(runsCpuError(n)).toBe("CPU for agents is a whole number of cores, 1 or more.");
+    expect(runsCpuError(undefined)).toBeNull();
+  });
+  it("names what the agent runs' slice lacks above the command, and nothing when nothing is missing", () => {
+    expect(controllersNote(["io"])).toBe("Agents get no disk priority: your user's systemd doesn't hand Hersir the io controller. Run this once to turn it on:");
+    expect(controllersNote(["cpu"])).toBe("Agents get no CPU weight or CPU cap: your user's systemd doesn't hand Hersir the cpu controller. Run this once to turn it on:");
+    expect(controllersNote(["cpu", "io"])).toBe("Agents get no CPU weight, CPU cap or disk priority: your user's systemd doesn't hand Hersir the cpu and io controllers. Run this once to turn them on:");
+    expect(controllersNote(["io", "cpu"])).toBe(controllersNote(["cpu", "io"]));
+    expect(controllersNote([])).toBeNull();
+    expect(controllersNote(undefined)).toBeNull();
+    expect(CONTROLLERS_AFTER).toBe("It asks for your password (sudo) and adds one Delegate= line for your user's systemd. It holds once you log out and back in.");
   });
 });

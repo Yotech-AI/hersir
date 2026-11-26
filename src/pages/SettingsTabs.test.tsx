@@ -414,7 +414,9 @@ describe("Memory per run in Runs (GA-277)", () => {
     const runs = runsOf(render("agents", MEM));
     expect(runs).toMatch(/<label for="s-memory-run">Memory per run<\/label>.*<input id="s-memory-run" class="input" type="number" min="2" max="32" step="1" value="16"\/><span class="faint">GB<\/span>/);
     const t = text(runs);
-    expect(t).toContain(`Memory for agent runs GB All agent runs together. This computer has 64 GB. Memory per run GB ${HINT} Spend per run`);
+    expect(t).toContain(`Memory for agent runs GB All agent runs together. This computer has 64 GB. Memory per run GB ${HINT} CPU for agents`);
+    // GA-369: CPU for agents comes right after it, then Spend per run
+    expect(t.indexOf("CPU for agents")).toBeLessThan(t.indexOf("Spend per run"));
     // on no other tab
     for (const p of panels(render("agents", MEM)).filter((p) => p.label !== "Agents and runs")) expect(p.html).not.toContain("s-memory-run");
   });
@@ -516,5 +518,86 @@ describe("Hersir's logs in General → Data (GA-282)", () => {
   });
   it("is on General only", () => {
     for (const p of panels(render()).filter((p) => p.label !== "General")) expect(text(p.html)).not.toContain("Hersir's logs");
+  });
+});
+
+// GA-369 QA: CPU for agents, in Runs right under Memory per run: the backend's value (all cores but a quarter until it is
+// set), in cores from 1 up to the computer's, with the hint for how the system holds the cap. When the agent runs' slice
+// lacks the cpu or io controller, the one command that turns it on as Run this for me, with what is missing above it.
+describe("CPU for agents in Runs (GA-369)", () => {
+  const FIX = "sudo sh -c 'mkdir -p /etc/systemd/system/user@.service.d && printf \"[Service]\\nDelegate=pids memory cpu io\\n\" > /etc/systemd/system/user@.service.d/hersir-delegate.conf && systemctl daemon-reload'";
+  const CPU: Settings = { ...SETTINGS, runsMemoryGb: 32, runsMemoryPerRunGb: 16, computerMemoryGb: 64, runsMemoryEnforced: true,
+    runsCpuCores: 12, computerCores: 16, runsCpuCap: "slice", runsMissingControllers: [], runsControllersFix: null };
+  const runsOf = (html: string) => {
+    const agents = panels(html).find((p) => p.label === "Agents and runs")?.html ?? "";
+    return agents.slice(agents.indexOf("<h3>Runs</h3>"));
+  };
+  const plain = (html: string) => text(html).replace(/&quot;/g, '"').replace(/&gt;/g, ">");
+  const saveButton = (t: ReactNode) =>
+    findAll(t, (p) => p.className === "btn primary" && typeof p.onClick === "function")[0] as { onClick: () => void };
+  const edit = (s: Settings, value: string) => {
+    const first = tree("agents", s);
+    (findAll(first.t, (p) => p.id === "s-cpu")[0] as { onChange: (e: unknown) => void }).onChange({ target: { value } });
+    return first.got[0]?.[0] as Settings;
+  };
+  it("is right under Memory per run, in cores from 1 up to the computer's, with the backend's value and the hint", () => {
+    const runs = runsOf(render("agents", CPU));
+    expect(runs).toMatch(/<label for="s-cpu">CPU for agents<\/label>.*<input id="s-cpu" class="input" type="number" min="1" max="16" step="1" value="12"\/><span class="faint">cores<\/span>/);
+    const t = text(runs);
+    expect(t).toContain("CPU for agents cores All agents' work together, at low priority. This computer has 16 cores. A change holds at once, for runs at work too.");
+    const at = (s: string) => t.indexOf(s);
+    expect(at("Memory per run")).toBeLessThan(at("CPU for agents"));
+    expect(at("CPU for agents")).toBeLessThan(at("Spend per run"));
+    expect(t).not.toContain("Run this once");
+    expect(runs).not.toContain("run-for-me");
+    for (const p of panels(render("agents", CPU)).filter((p) => p.label !== "Agents and runs")) expect(p.html).not.toContain("s-cpu");
+  });
+  it("says macOS has no cap", () => {
+    expect(text(runsOf(render("agents", { ...CPU, computerCores: 10, runsCpuCores: 6, runsCpuCap: "macos" }))))
+      .toContain("CPU for agents cores All agents' work together, at low priority. This computer has 10 cores. macOS has no CPU cap: agents only run at low priority.");
+  });
+  it("shows what the slice lacks and the one command that turns it on as Run this for me, without Done, continue", () => {
+    const html = runsOf(render("agents", { ...CPU, runsMissingControllers: ["io"], runsControllersFix: FIX }));
+    const t = plain(html);
+    expect(html).toContain('<div class="run-for-me" role="group" aria-label="Run this for me">');
+    expect(t).toContain(`CPU and disk priority Agents get no disk priority: your user's systemd doesn't hand Hersir the io controller. Run this once to turn it on: ${FIX} Copy It asks for your password (sudo) and adds one Delegate= line for your user's systemd. It holds once you log out and back in.`);
+    expect(t).not.toContain("Done, continue");
+    expect(t).not.toContain("asks you to run");
+    const at = (s: string) => t.indexOf(s);
+    expect(at("CPU for agents")).toBeLessThan(at("CPU and disk priority"));
+    expect(at("CPU and disk priority")).toBeLessThan(at("Spend per run"));
+    // the cpu controller missing too: the cap doesn't hold, and the note names both
+    const both = plain(runsOf(render("agents", { ...CPU, runsCpuCap: "no_cpu", runsMissingControllers: ["cpu", "io"], runsControllersFix: FIX })));
+    expect(both).toContain("The cap doesn't hold yet: your user's systemd doesn't hand Hersir the cpu controller.");
+    expect(both).toContain("Agents get no CPU weight, CPU cap or disk priority: your user's systemd doesn't hand Hersir the cpu and io controllers. Run this once to turn them on:");
+    // without the command, nothing is shown
+    expect(runsOf(render("agents", { ...CPU, runsMissingControllers: ["io"], runsControllersFix: null }))).not.toContain("run-for-me");
+  });
+  it("Save settings saves an edited value with the rest, and refuses an emptied field or less than 1 core with a message", async () => {
+    const edited = edit(CPU, "8");
+    expect(edited).toEqual({ ...CPU, runsCpuCores: 8 });
+    saveButton(tree("agents", edited).t).onClick();
+    await settle();
+    expect(calls.filter(([k]) => k === "saveSettings").map(([, a]) => a[0])).toEqual([{ ...CPU, runsCpuCores: 8, maxRunUsd: null }]);
+    for (const value of ["", "0", "2.5"]) {
+      calls.length = 0;
+      const second = tree("agents", edit(CPU, value));
+      saveButton(second.t).onClick();
+      await settle();
+      expect(calls.filter(([k]) => k === "saveSettings")).toEqual([]);
+      expect(second.got[2]).toEqual([{ ok: false, text: "CPU for agents is a whole number of cores, 1 or more." }]);
+    }
+  });
+  it("shows the backend's refusal of more than the computer has", async () => {
+    const edited = { ...CPU, runsCpuCores: 17 };
+    const r = tree("agents", edited);
+    const refused = "CPU for agents may be between 1 and 16 cores: this computer has 16";
+    const api = await import("../api");
+    const spy = vi.spyOn(api, "saveSettings").mockRejectedValueOnce(refused);
+    saveButton(r.t).onClick();
+    await settle();
+    expect(spy).toHaveBeenCalledWith({ ...edited, maxRunUsd: null });
+    expect(r.got[2]).toEqual([{ ok: false, text: refused }]);
+    spy.mockRestore();
   });
 });
