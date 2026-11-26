@@ -2,8 +2,8 @@
 //! whose name in the index had a `\` would be found by Windows as the folder with `/`, and git add's
 //! `:(exclude,literal)` of that name would leave out another name than the index's. git for Windows doesn't take such a
 //! name into the index (git update-index ignores it, as CI showed); should it ever, Commit… asks git first, with
-//! `git ls-files` and the same pathspec, and refuses before any git add. A submodule with a plain name is still left out
-//! of the commit (nested_repo_test.rs, Unix only, has GA-350's tests).
+//! `git ls-files` and the same pathspec, and refuses before any git add. A submodule with a plain name that holds a
+//! repository is refused too, as a nested repository (GA-367; nested_repo_test.rs, Unix only, has GA-350's tests).
 #![cfg(windows)]
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -104,10 +104,11 @@ fn a_submodule_whose_name_in_the_index_has_a_backslash_never_gets_past_commit() 
     assert_eq!(std::fs::read_to_string(wt.join("a.txt")).unwrap(), "two\n", "the card's change stays");
 }
 
-/// Submodules with plain names, one in a subfolder and one in NFC with an accent (café), are left out of Commit… as
-/// before: the card's own file goes in, and each submodule stays at its commit.
+/// Submodules with plain names that hold a repository, one in a subfolder and one in NFC with an accent (café): Commit…
+/// refuses the worktree as one with nested repositories (GA-367), and commits nothing; each submodule stays at its
+/// commit, and the changes stay.
 #[test]
-fn commit_leaves_out_submodules_with_plain_names_as_before() {
+fn commit_refuses_submodules_with_plain_names_that_hold_a_repository() {
     let tmp = real_tempdir();
     let wt = card(tmp.path());
     nested_repository(&wt.join("vendor").join("lib"));
@@ -115,14 +116,17 @@ fn commit_leaves_out_submodules_with_plain_names_as_before() {
     git(&wt, &["add", "vendor/lib", "caf\u{e9}"]);
     git(&wt, &["commit", "-q", "-m", "two nested repositories"]);
     assert_eq!(worktree::gitlinks(&wt).unwrap(), ["caf\u{e9}", "vendor/lib"]);
+    assert_eq!(worktree::nested_repositories(&wt).unwrap(), ["caf\u{e9}", "vendor/lib"]);
     let links = (git(&wt, &["rev-parse", "HEAD:vendor/lib"]), git(&wt, &["rev-parse", "HEAD:caf\u{e9}"]));
+    let head = git(&wt, &["rev-parse", "HEAD"]);
 
     std::fs::write(wt.join("a.txt"), "two\n").unwrap();
     std::fs::write(wt.join("vendor/lib/n.txt"), "changed inside\n").unwrap();
-    let c = worktree::commit_all(&wt, "The card's own work").unwrap();
-    assert_eq!(c.subject, "The card's own work");
-    assert_eq!(git(&wt, &["diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"]), "a.txt");
+    assert_eq!(git_refusal(worktree::commit_all(&wt, "The card's own work")),
+               "Hersir doesn't commit there: it has nested repositories in caf\u{e9} and 1 more, whose own settings git could run");
+    assert_eq!(git(&wt, &["rev-parse", "HEAD"]), head, "nothing was committed");
     assert_eq!((git(&wt, &["rev-parse", "HEAD:vendor/lib"]), git(&wt, &["rev-parse", "HEAD:caf\u{e9}"])), links,
                "the submodules' commits didn't change");
-    assert_eq!(worktree::uncommitted(&wt).unwrap(), 0);
+    assert_eq!(worktree::uncommitted(&wt).unwrap(), 1, "a.txt is still uncommitted");
+    assert_eq!(std::fs::read_to_string(wt.join("vendor/lib/n.txt")).unwrap(), "changed inside\n");
 }

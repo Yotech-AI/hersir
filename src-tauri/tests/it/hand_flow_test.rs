@@ -543,3 +543,42 @@ async fn push_and_hand_over_refuse_a_link_saved_before_that_git_would_read_as_an
     assert_eq!((t.state_name.as_str(), t.by_hand), ("In progress", true));
     assert!(gizai_core::comments::list(&c.st.db, &c.task).unwrap().is_empty());
 }
+
+/// GA-367: Commit… on your card refuses a worktree with a nested repository (a run committed it, or a submodule is
+/// checked out there) in the words the card shows, and commits nothing: you commit there yourself, in a terminal.
+/// Once its folder holds no repository (a submodule not checked out), Commit… commits the card's own files as before.
+#[tokio::test]
+async fn commit_refuses_a_worktree_with_a_nested_repository_and_commits_nothing() {
+    let tmp = real_tempdir();
+    let c = yours(tmp.path());
+    hand::start(&c.st, &c.task).await.unwrap();
+    let nested = c.wt().join("vendor/lib");
+    std::fs::create_dir_all(&nested).unwrap();
+    git(&nested, &["init", "-q", "-b", "main"]);
+    std::fs::write(nested.join("n.txt"), "one\n").unwrap();
+    git(&nested, &["add", "n.txt"]);
+    git(&nested, &["commit", "-q", "-m", "nested"]);
+    git(&c.wt(), &["-c", "advice.addEmbeddedRepo=false", "add", "vendor/lib"]);
+    git(&c.wt(), &["commit", "-q", "-m", "a nested repository, committed by a run"]);
+    std::fs::write(c.wt().join("export.csv"), "id,total\n").unwrap();
+    let head = git(&c.wt(), &["rev-parse", "HEAD"]);
+
+    let said = "Hersir doesn't commit there: it has a nested repository in vendor/lib, whose own settings git could run";
+    assert_eq!(hand::commit(&c.st, &c.task, "Export invoices as CSV").await.unwrap_err(), said);
+    assert_eq!(git(&c.wt(), &["rev-parse", "HEAD"]), head, "nothing was committed");
+    assert_eq!(git(&c.wt(), &["diff", "--cached", "--name-only"]), "", "nothing was staged");
+    assert_eq!(hand::card(&c.st, &c.task).await.unwrap().changed, 1, "export.csv is still to commit");
+    // also with nothing of the card's changed: not "There is nothing to commit"
+    std::fs::remove_file(c.wt().join("export.csv")).unwrap();
+    assert_eq!(hand::commit(&c.st, &c.task, "Nothing").await.unwrap_err(), said);
+
+    // its folder without a repository: the card's own file goes in, the gitlink stays at its commit
+    std::fs::write(c.wt().join("export.csv"), "id,total\n").unwrap();
+    let link = git(&c.wt(), &["rev-parse", "HEAD:vendor/lib"]);
+    std::fs::remove_dir_all(&nested).unwrap();
+    std::fs::create_dir(&nested).unwrap();
+    let made = hand::commit(&c.st, &c.task, "Export invoices as CSV").await.unwrap();
+    assert_eq!(made.subject, "Export invoices as CSV");
+    assert_eq!(git(&c.wt(), &["show", "--name-only", "--format=", "HEAD"]), "export.csv");
+    assert_eq!(git(&c.wt(), &["rev-parse", "HEAD:vendor/lib"]), link);
+}
