@@ -170,7 +170,8 @@ fn card_now(st: &AppState, task_id: &str) -> R<HandCard> {
 
 /// Commit…, on your card by hand (contract C4's `hand_commit`): every change in its worktree, untracked files included,
 /// committed with `message` (`worktree::commit_all`; the repository's own hooks run). Returns the commit. Refused while an
-/// agent works on the card, without a message, and with nothing to commit.
+/// agent works on the card, without a message, in a worktree with a nested repository or a checked-out submodule
+/// (GA-367), and with nothing to commit.
 pub async fn commit(st: &AppState, task_id: &str, message: &str) -> R<Commit> {
     let (id, message) = (task_id.to_string(), message.to_string());
     off(st, move |st| {
