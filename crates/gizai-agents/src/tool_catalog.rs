@@ -377,9 +377,9 @@ pub async fn ask_claude(bin: &std::path::Path, scratch: &std::path::Path, path: 
     let found = tokio::time::timeout(std::time::Duration::from_secs(30), read).await.ok().flatten();
     // Its own process group only: SIGTERM, then SIGKILL if it lingers. On Windows the first ends its job at once (see
     // `os::End`).
-    tree.end(End::Terminate);
+    tree.end_for(End::Terminate, "Hersir had asked Claude Code for its tools");
     if tokio::time::timeout(std::time::Duration::from_secs(3), child.wait()).await.is_err() {
-        tree.end(End::Kill);
+        tree.end_for(End::Kill, "Hersir had asked Claude Code for its tools, and it was still there 3 s after SIGTERM");
         let _ = child.wait().await;
     }
     match found {

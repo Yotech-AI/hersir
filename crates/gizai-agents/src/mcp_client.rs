@@ -593,7 +593,7 @@ impl Server {
         // The writer closes stdin once it has written what it had.
         self.input = None;
         if self.tree.alive() {
-            self.tree.end(End::Terminate);
+            self.tree.end_for(End::Terminate, "Hersir closed its connection to this MCP server");
         }
         let start = Instant::now();
         loop {
@@ -607,7 +607,7 @@ impl Server {
                 break;
             }
             if start.elapsed() >= END_GRACE {
-                self.tree.end(End::Kill);
+                self.tree.end_for(End::Kill, "Hersir closed its connection to this MCP server, and it was still there after SIGTERM");
                 break;
             }
             thread::sleep(Duration::from_millis(20));

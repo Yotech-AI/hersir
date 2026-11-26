@@ -440,7 +440,7 @@ impl Stop {
     pub fn stop(&self) {
         self.asked.store(true, Ordering::SeqCst);
         if let Some(tree) = self.tree.lock().unwrap_or_else(|p| p.into_inner()).as_ref() {
-            tree.end(End::Terminate);
+            tree.end_for(End::Terminate, "you stopped Hersir's update");
         }
     }
 
@@ -944,23 +944,23 @@ fn run(shown: &str, mut cmd: Command, log: &Log, limit: Duration, stop: &Stop, l
         }
         if ending.is_none() && (stop.asked() || Instant::now() >= until) {
             timed_out = !stop.asked();
-            tree.end(End::Terminate);
+            tree.end_for(End::Terminate, if timed_out { "a step of Hersir's update reached its time limit" } else { "you stopped Hersir's update" });
             ending = Some(Instant::now());
         }
         if ending.is_some_and(|at| at.elapsed() > Duration::from_secs(5)) {
-            tree.end(End::Kill);
+            tree.end_for(End::Kill, "a step of Hersir's update was still there 5 s after SIGTERM");
         }
         std::thread::sleep(Duration::from_millis(100));
     };
     stop.now(None);
     // what it left running in the background (a compiler cache's server) would hold its output open
-    tree.end(End::Terminate);
+    tree.end_for(End::Terminate, "a step of Hersir's update had ended, and it still ran in its process group");
     let quiet_by = Instant::now() + Duration::from_secs(3);
     while readers.iter().any(|r| !r.is_finished()) && Instant::now() < quiet_by {
         std::thread::sleep(Duration::from_millis(50));
     }
     if readers.iter().any(|r| !r.is_finished()) {
-        tree.end(End::Kill);
+        tree.end_for(End::Kill, "a step of Hersir's update had ended, and it still ran in its process group 3 s after SIGTERM");
         let quiet_by = Instant::now() + Duration::from_secs(2);
         while readers.iter().any(|r| !r.is_finished()) && Instant::now() < quiet_by {
             std::thread::sleep(Duration::from_millis(50));

@@ -747,7 +747,7 @@ fn git(dir: &Path, args: &[&str], input: Option<Vec<u8>>) -> Result<(bool, Vec<u
             Ok(Some(status)) => break status,
             Ok(None) if Instant::now() < until => std::thread::sleep(Duration::from_millis(5)),
             Ok(None) => {
-                let _ = child.kill();
+                crate::os::kill_child(&mut child, "git gave the Editor no answer in time");
                 let _ = child.wait();
                 return Err(format!("git gave no answer within {} s", GIT_LIMIT.as_secs()));
             }
@@ -1050,7 +1050,7 @@ fn grep(dir: &Path, query: &str, how: Find, repo: bool, kind: &str, max_hits: us
         }
     }
     if found.truncated {
-        let _ = child.kill();
+        crate::os::kill_child(&mut child, "the Editor's search had found as much as it shows");
     }
     let status = child.wait().map_err(|e| Grep::Said(e.to_string()))?;
     let said = String::from_utf8_lossy(&err.join().unwrap_or_default()).trim().to_string();

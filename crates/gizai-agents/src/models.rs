@@ -88,7 +88,7 @@ pub async fn fetch_models_with_env(bin: &Path, cwd: &Path, env: &[(String, Strin
     // Closing stdin ends a print-mode session that got no message; stop it ourselves if it lingers.
     drop(stdin);
     if tokio::time::timeout(Duration::from_secs(3), child.wait()).await.is_err() {
-        let _ = child.start_kill();
+        crate::os::start_kill_child(&mut child, "Hersir had asked a coding CLI for its models, and it lingered");
         let _ = child.wait().await;
     }
     match found {

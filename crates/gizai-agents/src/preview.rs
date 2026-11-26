@@ -124,9 +124,13 @@ pub fn start(command: &str, worktree: &Path, port: u16, path: Option<&OsStr>, sl
     if let Some(p) = path {
         cmd.env("PATH", p);
     }
-    let (child, tree) = os::spawn_tree(&mut cmd, false).map_err(|e| format!("couldn't start: {e}"))?;
+    // GA-369: at low CPU priority, as all agents' work
+    let (child, tree) = os::spawn_agents_tree(&mut cmd).map_err(|e| format!("couldn't start: {e}"))?;
     Ok(Preview { child: Some(child), tree, scope, port, log })
 }
+
+/// Why Hersir ended a preview, as its log says (GA-369, `signal_log`).
+const WHY_STOPPED: &str = "its run's preview was stopped";
 
 impl Preview {
     /// The id of the process it started (bash), which leads its process group on Linux and macOS.
@@ -180,13 +184,13 @@ impl Preview {
     /// (GA-211): returns those processes, each once.
     pub async fn stop(mut self) -> Vec<Leftover> {
         let group = self.pid();
-        self.tree.end(End::Terminate);
+        self.tree.end_for(End::Terminate, WHY_STOPPED);
         let t0 = Instant::now();
         while self.running() && t0.elapsed() < END_GRACE {
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
         if self.running() {
-            self.tree.end(End::Kill);
+            self.tree.end_for(End::Kill, &format!("{WHY_STOPPED}; it was still there {} s after SIGTERM", END_GRACE.as_secs()));
             let t1 = Instant::now();
             while self.running() && t1.elapsed() < Duration::from_secs(2) {
                 tokio::time::sleep(Duration::from_millis(50)).await;
@@ -196,7 +200,8 @@ impl Preview {
             let _ = c.try_wait();
         }
         match self.scope.take() {
-            Some(scope) => tokio::task::spawn_blocking(move || scope.end_leftovers(Some(group))).await.unwrap_or_default(),
+            Some(scope) => tokio::task::spawn_blocking(move || scope.end_leftovers_for(Some(group), "its run's preview was stopped, and it still ran in the preview's scope"))
+                .await.unwrap_or_default(),
             None => vec![],
         }
     }
@@ -207,9 +212,10 @@ impl Drop for Preview {
     /// for on a thread of its own.
     fn drop(&mut self) {
         if let Some(mut c) = self.child.take() {
-            self.tree.end(End::Kill);
+            let why = "its run's preview went wrong after it started";
+            self.tree.end_for(End::Kill, why);
             if let Some(s) = &self.scope {
-                s.kill();
+                s.kill_for(why);
             }
             std::thread::spawn(move || {
                 let _ = c.wait();

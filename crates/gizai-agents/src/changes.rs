@@ -460,7 +460,7 @@ fn peek_blob(repo: &Path, id: &str) -> bool {
     let Ok(mut child) = child else { return false };
     let mut head = vec![0u8; BINARY_PEEK];
     let got = child.stdout.as_mut().and_then(|out| read_up_to(out, &mut head).ok()).unwrap_or(0);
-    let _ = child.kill();
+    crate::os::kill_child(&mut child, "Hersir had read the start of a big file it shows in a card's changes");
     let _ = child.wait();
     has_nul(&head[..got])
 }

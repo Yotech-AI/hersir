@@ -91,21 +91,32 @@ pub struct StopHandle {
     tree: Tree,
     /// Linux, in the slice of the agent runs: the run's scope (GA-211).
     scope: Option<Scope>,
+    /// GA-369: why the run is being ended, for Hersir's log: the first of Stop and the caps.
+    why: Arc<std::sync::OnceLock<&'static str>>,
 }
+
+/// Why Hersir ended a run's process group, as its log says (GA-369, `signal_log`).
+const WHY_STOPPED: &str = "its run was stopped (Stop, or Hersir quitting)";
+const WHY_TOOL_CAP: &str = "its run reached its tool-call limit (Settings → Runs)";
+const WHY_TIME_CAP: &str = "its run reached its time limit (Settings → Runs)";
+const WHY_AFTER_RESULT: &str = "its agent was done, and the run's CLI stayed quiet after its result (GA-221)";
+const WHY_ENDED: &str = "its run's CLI had ended, and it still ran in the run's process group";
 
 impl StopHandle {
     /// SIGINT to the run's process group, SIGTERM after 5 s, SIGKILL after 10 s. On Windows the run's job ends at once
     /// (Windows has no signal Gizai can send a CLI, see `os::End`).
     pub fn stop(&self) {
+        let _ = self.why.set(WHY_STOPPED);
         self.notify.notify_one();
     }
 
     /// SIGKILL to the run's process group at once (on Windows its job ends), and in the slice to everything in the run's
     /// scope (GA-211): Gizai is exiting and can't wait for a stop.
     pub fn kill(&self) {
-        self.tree.end(End::Kill);
+        let why = "Hersir is exiting at once, and its run still ran";
+        self.tree.end_for(End::Kill, why);
         if let Some(s) = &self.scope {
-            s.kill();
+            s.kill_for(why);
         }
     }
 
@@ -223,16 +234,16 @@ async fn sleep_after(t: Instant, after: Duration) {
 }
 
 /// Ends the run's process group as Stop does: SIGINT, SIGTERM after 5 s, SIGKILL after 10 s; on Windows its job at once
-/// (see `os::End`). Returns how the CLI exited.
-async fn end_group(tree: &Tree, child: &mut tokio::process::Child) -> std::io::Result<std::process::ExitStatus> {
-    tree.end(End::Interrupt);
+/// (see `os::End`). Hersir's log names each signal with `why` (GA-369). Returns how the CLI exited.
+async fn end_group(tree: &Tree, child: &mut tokio::process::Child, why: &str) -> std::io::Result<std::process::ExitStatus> {
+    tree.end_for(End::Interrupt, why);
     match tokio::time::timeout(Duration::from_secs(5), child.wait()).await {
         Ok(s) => s,
         Err(_) => {
-            tree.end(End::Terminate);
+            tree.end_for(End::Terminate, &format!("{why}; it was still there 5 s after SIGINT"));
             match tokio::time::timeout(Duration::from_secs(5), child.wait()).await {
                 Ok(s) => s,
-                Err(_) => { tree.end(End::Kill); child.wait().await }
+                Err(_) => { tree.end_for(End::Kill, &format!("{why}; it was still there 10 s after SIGINT")); child.wait().await }
             }
         }
     }
@@ -290,7 +301,9 @@ fn end_orphan(pid: u32, expected_cwd: &Path, or_inside: bool) -> bool {
             (Ok(a), Ok(b)) if a == b || (or_inside && a.starts_with(&b)) => {}
             _ => return false,
         }
-        Tree::led_by(pid).end(End::Terminate);
+        let why = if or_inside { "a previous Hersir left this run's preview running (it crashed or was killed)" }
+                  else { "a previous Hersir left this run running (it crashed or was killed)" };
+        Tree::led_by(pid).end_for(End::Terminate, why);
         true
     }
     #[cfg(windows)]
@@ -369,7 +382,8 @@ pub fn spawn_exec<E: StreamEvent, P: LineParser<E>>(exec: &Exec, cwd: &Path, log
         .stdout(std::process::Stdio::piped())
         .stderr(stderr)
         .kill_on_drop(false);
-    let (mut child, tree) = os::spawn_tree_tokio(&mut cmd).map_err(|e| AgentError::Spawn(format!("{}: {e}", exec.bin.display())))?;
+    // GA-369: at low CPU priority, as all agents' work
+    let (mut child, tree) = os::spawn_agents_tree_tokio(&mut cmd).map_err(|e| AgentError::Spawn(format!("{}: {e}", exec.bin.display())))?;
     let pid = child.id().ok_or_else(|| AgentError::Spawn("the process exited at once".into()))?;
     let stdout = child.stdout.take().expect("stdout is piped");
     // The prompt goes in on stdin, then stdin closes so the CLI starts.
@@ -382,6 +396,7 @@ pub fn spawn_exec<E: StreamEvent, P: LineParser<E>>(exec: &Exec, cwd: &Path, log
 
     let (tx, rx) = mpsc::channel::<E>(512);
     let stop = Arc::new(Notify::new());
+    let why: Arc<std::sync::OnceLock<&'static str>> = Arc::default();
     // GA-221: since when the CLI has been quiet while the agent is done, from the reader to the waiter.
     let (quiet, quiet_rx) = tokio::sync::watch::channel::<Option<Instant>>(None);
 
@@ -399,6 +414,7 @@ pub fn spawn_exec<E: StreamEvent, P: LineParser<E>>(exec: &Exec, cwd: &Path, log
     let mut reader = {
         let tx = tx.clone();
         let stop = stop.clone();
+        let why = why.clone();
         let config = config.clone();
         tokio::spawn(async move {
             let mut lines = BufReader::new(stdout).lines();
@@ -425,6 +441,7 @@ pub fn spawn_exec<E: StreamEvent, P: LineParser<E>>(exec: &Exec, cwd: &Path, log
                 if calls > caps.max_tool_calls && !capped {
                     capped = true;
                     let _ = tx.send(E::other("cap_exceeded:tools".into())).await;
+                    let _ = why.set(WHY_TOOL_CAP);
                     stop.notify_one();
                 }
             }
@@ -447,9 +464,11 @@ pub fn spawn_exec<E: StreamEvent, P: LineParser<E>>(exec: &Exec, cwd: &Path, log
     let timer = {
         let tx = tx.clone();
         let stop = stop.clone();
+        let why = why.clone();
         tokio::spawn(async move {
             tokio::time::sleep(caps.max_time).await;
             let _ = tx.send(E::other("cap_exceeded:time".into())).await;
+            let _ = why.set(WHY_TIME_CAP);
             stop.notify_one();
         })
     };
@@ -462,15 +481,16 @@ pub fn spawn_exec<E: StreamEvent, P: LineParser<E>>(exec: &Exec, cwd: &Path, log
         let stop = stop.clone();
         let tree = tree.clone();
         let scope = scope.clone();
+        let why = why.clone();
         tokio::spawn(async move {
             let status = tokio::select! {
                 s = child.wait() => s,
-                _ = stop.notified() => end_group(&tree, &mut child).await,
+                _ = stop.notified() => end_group(&tree, &mut child, why.get().copied().unwrap_or(WHY_STOPPED)).await,
                 _ = quiet_after_result(quiet_rx, caps.after_result) => {
                     // The agent is done: the time cap doesn't stop this run as well.
                     timer.abort();
                     let _ = tx.send(E::other(ENDED_AFTER_RESULT.into())).await;
-                    end_group(&tree, &mut child).await
+                    end_group(&tree, &mut child, WHY_AFTER_RESULT).await
                 }
             };
             // GA-266: the CLI has ended: its MCP config goes now if its init line never came.
@@ -482,7 +502,7 @@ pub fn spawn_exec<E: StreamEvent, P: LineParser<E>>(exec: &Exec, cwd: &Path, log
             timer.abort();
             // Background processes the agent started (a dev server, a watcher) would outlive the run
             // and keep stdout open; end them with the run. One that ignores SIGTERM gets SIGKILL after 3 s.
-            tree.end(End::Terminate);
+            tree.end_for(End::Terminate, WHY_ENDED);
             let ended = tokio::time::timeout(Duration::from_secs(3), async {
                 let _ = (&mut reader).await;
                 while tree.alive() {
@@ -490,7 +510,7 @@ pub fn spawn_exec<E: StreamEvent, P: LineParser<E>>(exec: &Exec, cwd: &Path, log
                 }
             }).await;
             if ended.is_err() {
-                tree.end(End::Kill);
+                tree.end_for(End::Kill, &format!("{WHY_ENDED}; it was still there 3 s after SIGTERM"));
                 reader_abort.abort(); // a dropped JoinHandle doesn't stop the task; it would keep the channel open
             }
             let code = match status {
@@ -513,7 +533,8 @@ pub fn spawn_exec<E: StreamEvent, P: LineParser<E>>(exec: &Exec, cwd: &Path, log
             // GA-211: then what the run left in its scope outside its group (a browser started detached, `setsid`),
             // which would outlive it there: SIGTERM, SIGKILL 3 s later. The run hears of each process.
             if let Some(scope) = scope {
-                let left = tokio::task::spawn_blocking(move || scope.end_leftovers(Some(pid))).await.unwrap_or_default();
+                let left = tokio::task::spawn_blocking(move || scope.end_leftovers_for(Some(pid), "its run had ended, and it still ran in the run's scope"))
+                    .await.unwrap_or_default();
                 for l in left {
                     let _ = tx.send(E::other(format!("{LEFTOVER}{} {}", l.pid, l.name))).await;
                 }
@@ -522,5 +543,5 @@ pub fn spawn_exec<E: StreamEvent, P: LineParser<E>>(exec: &Exec, cwd: &Path, log
         });
     }
 
-    Ok(RunHandle { pid, events: rx, stop: StopHandle { notify: stop, tree, scope } })
+    Ok(RunHandle { pid, events: rx, stop: StopHandle { notify: stop, tree, scope, why } })
 }

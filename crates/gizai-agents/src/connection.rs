@@ -741,7 +741,7 @@ impl GhLogin {
                 }
                 Err(RecvTimeoutError::Timeout) if Instant::now() < until => {}
                 Err(RecvTimeoutError::Timeout) => {
-                    let _ = child.kill();
+                    crate::os::kill_child(&mut child, "the GitHub CLI (gh) showed no one-time code in time");
                     let _ = child.wait();
                     return Err(Problem::new(format!("gh showed no one-time code within {}", span(limit)),
                                             format!("Run {} in a terminal instead.", login_command(gh))));
@@ -790,7 +790,7 @@ impl GhLogin {
     }
 
     fn end(&mut self) {
-        let _ = self.child.kill();
+        crate::os::kill_child(&mut self.child, "the GitHub CLI's (gh) login ended or was cancelled");
         let _ = self.child.wait();
     }
 }
