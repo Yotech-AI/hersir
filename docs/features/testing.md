@@ -1,12 +1,12 @@
 # Tested before you see it
 
-A QA agent tests a card in its own worktree before it reaches your Review, and opens its pull request on GitHub.
+A QA agent tests a card in its own worktree before it reaches your Review. When QA passes it, Hersir opens its pull request on GitHub or Bitbucket.
 
 ## How a card is tested
 
 1. A builder's done answer moves the card from In progress to Testing, where the QA Agent picks it up.
 2. QA runs the project's tests, lint and typecheck, writes tests for what isn't covered yet, and checks each acceptance criterion.
-3. Passed: QA pushes its tests and opens the pull request on GitHub, and the card moves to your Review.
+3. Passed: QA pushes its tests, the card moves to your Review, and Hersir opens its pull request with QA's summary as its description ([The pull request after QA](#the-pull-request-after-qa)).
 4. Failed: the card goes back to the column it came from, to its builder, with a numbered list of what is wrong.
 
 What QA checks and writes comes from the QA Agent's starting instructions, which you can change in its form. After three rounds back, Hersir holds the card for you.
@@ -28,7 +28,7 @@ A test run builds and runs the project's whole test suite in the card's own work
 
 ## Hersir pushes after every run
 
-When a run on a card ends (also after Stop or a limit) and its project is linked to GitHub, Bitbucket or a git URL, Hersir pushes the card's branch itself when it has commits the remote doesn't have. It pushes before the card moves on, so the next agent (QA, for its pull request) finds the branch.
+When a run on a card ends (also after Stop or a limit) and its project is linked to GitHub, Bitbucket or a git URL, Hersir pushes the card's branch itself when it has commits the remote doesn't have. It pushes before the card moves on, so the next agent and the pull request find the branch.
 
 - It pushes to the same remote and over the same Push over setting as Open pull request, never by force.
 - Only commits go: uncommitted changes stay in the worktree, and the run's output says how many there are.
@@ -39,7 +39,7 @@ So a `git push` the agent's CLI refuses no longer holds a card up, and "How this
 
 ## An agent's own push
 
-A run of a project linked to GitHub or Bitbucket gets git settings in its environment only. So a plain `git push origin HEAD` from the worktree reaches the project's repository the way Hersir's push does, and QA can push its branch and open its pull request during its run.
+A run of a project linked to GitHub or Bitbucket gets git settings in its environment only. So a plain `git push origin HEAD` from the worktree reaches the project's repository the way Hersir's push does, and QA can push its branch during its run.
 
 - The settings are `GIT_CONFIG_COUNT` with its keys and values; Codex also gets them in its shell environment policy.
 - The push goes over SSH with your keys or over HTTPS with gh's login (Settings → GitHub → Push over), and to Bitbucket over SSH.
@@ -49,9 +49,20 @@ A run of a project linked to GitHub or Bitbucket gets git settings in its enviro
 - With Push over HTTPS and gh missing, a run starts without the settings and its log says why. Hersir's push after the run needs gh too.
 - New and continued runs get them alike. A project with another git URL gets none, as its address says where a push goes.
 
+## The pull request after QA
+
+When a QA run ends with a pass and the card is in Review, Hersir opens the card's pull request itself, the way Open pull request does. So QA needs no GitHub login of its own.
+
+- Hersir pushes the card's branch and opens a pull request into the project's main branch: with gh on GitHub, and through Bitbucket's API with your login on Bitbucket.
+- Its title is the card's id and title, like "KADE-1: Export invoices as CSV". Its description is QA's summary, then the card's description and acceptance criteria, and it ends with "From Hersir card KADE-1."
+- When the branch already has an open pull request (QA passed the card before, or an agent opened one), Hersir gives that one QA's new summary as its description instead of opening a second one. Its title stays.
+- The card shows the link, and its activity says what Hersir did. The PR check follows the pull request from then on.
+- When Hersir can't open it (gh missing or not logged in, no Bitbucket login, a refused push), the card still goes to your Review. Its activity says why, and Open pull request works as before.
+- A project on another host, or without a GitHub or Bitbucket link, gets no pull request.
+
 ## Review on GitHub
 
-- **Open pull request** pushes a card's branch over SSH with your keys (or HTTPS with gh's login) and opens its pull request with gh.
+- **Open pull request** pushes a card's branch over SSH with your keys (or HTTPS with gh's login) and opens its pull request with gh, for a card that has none yet (testing off, or Hersir couldn't open it after QA).
 - **A merge on GitHub** moves the card to Review's next column (Deploy; Done for a team without a Deploy column) and removes its worktree. What the card changed stays readable in [its Changes](editor-and-terminal.md#a-cards-changes).
 - **The PR check** asks git every 2 minutes, and GitHub only when something moved there, and at least every 10 minutes: one light call per repository, so it stays far below GitHub's API limit.
 - **Settings → GitHub** shows whether gh is found and logged in and how pushes go, with Check connection for every linked project and Log in with GitHub. Hersir never stores a token or password.
