@@ -115,6 +115,29 @@ fn cpu_for_agents_is_kept_in_cores_and_all_of_them_or_none_is_no_cap() {
     assert!(m.missing_controllers().is_empty(), "nothing is missing without a slice");
 }
 
+/// Once an agents' program has started, Windows has the job all agents' jobs are in, and CPU for agents at all cores (or
+/// none) must still lift the cap at once, as on Linux. On Windows CI (26 Nov 2026) the test above failed whenever another
+/// test had started an agents' tree first: "Windows refused the agents' CPU cap: The parameter is incorrect. (os error
+/// 87)". This test starts one itself, so it doesn't depend on the order the tests run in. It never sets a cap, so it
+/// never slows the other tests' agents.
+#[test]
+fn after_an_agents_program_has_started_cpu_for_agents_at_all_cores_still_means_no_cap() {
+    let mut cmd = if cfg!(windows) {
+        let mut c = gizai_agents::os::command("cmd");
+        c.args(["/C", "exit 0"]);
+        c
+    } else {
+        gizai_agents::os::command("true")
+    };
+    let (mut child, _tree) = gizai_agents::os::spawn_agents_tree(&mut cmd).unwrap();
+    assert!(child.wait().unwrap().success());
+    let m = RunsMemory::default();
+    assert_eq!(m.set_cpu_cores(cpu::cores()), Ok(()), "all cores: no cap");
+    assert_eq!(m.cpu_cores(), Some(cpu::cores()));
+    assert_eq!(m.set_cpu_cores(0), Ok(()), "none: no cap");
+    assert_eq!(m.cpu_cores(), None);
+}
+
 #[test]
 fn a_cgroups_cpu_max_is_read_in_cores() {
     assert_eq!(mem::cpu_max_cores("1200000 100000\n"), Some(12.0));
