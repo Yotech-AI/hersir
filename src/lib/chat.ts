@@ -1,8 +1,14 @@
 // What the Chat page shows for tool calls and how it groups messages. Pure, so it is tested.
 import { href, type Page } from "../router";
-import type { ChatMessage } from "../types";
+import type { ChatMessage, ChatNoteMeta } from "../types";
 
 const PREFIX = "mcp__gizai__";
+
+/** GA-351: the small line over a message of yours that came from Claude Desktop (its ask_chief), sent or queued. */
+export const FROM_CLAUDE_DESKTOP = "From Claude Desktop";
+
+/** GA-351: whether a message's meta says it came from Claude Desktop: `{from: "claude-desktop"}` (`gizai_core::chat::desktop_meta`). */
+export const fromClaudeDesktop = (meta?: ChatNoteMeta | null): boolean => meta?.from === "claude-desktop";
 
 /** "mcp__gizai__create_task" → "create_task"; other tools keep their name. */
 export function toolName(raw: string): string {
@@ -37,6 +43,7 @@ const VERBS: Record<string, [done: string, base: string]> = {
   update_checkout: ["Updated the checkout", "update the checkout"], merge_pull_request: ["Merged the pull request of", "merge the pull request of"],
   memory_list: ["Listed notes", "list notes"], memory_search: ["Searched notes for", "search notes for"], memory_read: ["Read note", "read note"],
   memory_write: ["Saved note", "save note"], memory_append: ["Added to note", "add to note"], memory_move: ["Moved note", "move note"],
+  record_decision: ["Recorded the decision", "record the decision"],
 };
 /** Claude Code's own (read-only) tools in chat. */
 const BUILTIN: Record<string, [done: string, base: string]> = {

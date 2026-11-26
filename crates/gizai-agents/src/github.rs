@@ -1,5 +1,5 @@
 //! Pull requests through the user's own GitHub CLI (`gh`, logged in as them): find a repository's or a branch's pull
-//! requests and open one. Never prompts: a missing login is an error, never a question.
+//! requests, open one and change its description. Never prompts: a missing login is an error, never a question.
 use std::io::{Read, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -250,6 +250,13 @@ pub fn create_pull(gh: &Path, dir: &Path, repo: &str, branch: &str, base: &str, 
     }
 }
 
+/// Gives pull request `number` of `repo` ("owner/name") the description `body` (`gh pr edit`): its title and everything
+/// else stay as they are. The body goes in on stdin, as `create_pull`'s does. `dir` is where gh runs.
+pub fn edit_body(gh: &Path, dir: &Path, repo: &str, number: u64, body: &str) -> Result<(), String> {
+    let n = number.to_string();
+    run_gh(gh, dir, &["pr", "edit", &n, "--repo", repo, "--body-file", "-"], Some(body)).map(|_| ())
+}
+
 /// The last pull request link (https://github.com/<owner>/<name>/pull/<number>) in `text`.
 pub fn pull_url(text: &str) -> Option<String> {
     text.split(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | '<' | '>' | '(' | ')'))
@@ -323,7 +330,7 @@ pub(crate) fn run(mut cmd: Command, stdin: Option<&str>, limit: Duration) -> std
             break s;
         }
         if Instant::now() >= until {
-            let _ = child.kill();
+            crate::os::kill_child(&mut child, "the GitHub CLI (gh) gave no answer in time");
             let _ = child.wait();
             return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "no answer"));
         }

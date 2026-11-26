@@ -1,15 +1,16 @@
 {
   "name": "gizai",
   "private": true,
-  "version": "0.20.1",
+  "version": "0.21.0",
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "browser": "vite --mode browser --host 127.0.0.1 --strictPort",
     "mcp-host": "vite --mode mcp-host",
-    "build": "tsc -b && vite build && vite build --mode mcp-app",
+    "build": "tsc -b && vite build && vite build --mode mcp-app && vite build --mode docs-web",
     "build:mcp-app": "vite build --mode mcp-app",
+    "build:docs-web": "vite build --mode docs-web",
     "test": "vitest run",
     "tauri": "tauri"
   },

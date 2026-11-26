@@ -7,6 +7,7 @@ import { shared } from "./lib/share";
 // Tauri's own invoke and listen, counted in a perf run only (GA-188, lib/perf.ts)
 import { invoke as tauriInvoke, listen } from "./lib/perf";
 import type * as T from "./types";
+import type { CommitPatches as DocsCommitPatches, Index as DocsIndex, SourceFile as DocsSourceFile } from "./docs/types";
 
 // Every call: in a screen's data hook, a read another hook has on its way with the same arguments is shared (GA-190).
 const invoke = <R>(cmd: string, args?: Record<string, unknown>): Promise<R> => shared(cmd, args, () => tauriInvoke<R>(cmd, args));
@@ -268,6 +269,14 @@ export const cardFileDiff = (taskId: string, path: string, oldPath: string | nul
   invoke<T.FileDiff>("card_file_diff", { taskId, path, oldPath, from, to });
 /** The changes one run committed: from the commit it started at to the one it ended at. */
 export const runChanges = (runId: string) => invoke<T.CardChanges>("run_changes", { runId });
+/** A project's docs page (the Docs section) in a browser: starts Hersir's docs server the first time (127.0.0.1 only) and
+ *  gives its address with its key, new at each start, like http://127.0.0.1:4380/t/<key>. The page is at
+ *  <address>/p/<project id>/; without the key every address is a 404. */
+export const docsServe = () => invoke<string>("docs_serve");
+/** The Docs page in this window: a project's docs index, a file's lines, a commit's changed lines (src/docs). */
+export const docsIndex = (projectId: string) => invoke<DocsIndex>("docs_index", { projectId });
+export const docsSource = (projectId: string, path: string) => invoke<DocsSourceFile>("docs_source", { projectId, path });
+export const docsCommit = (projectId: string, hash: string) => invoke<DocsCommitPatches>("docs_commit", { projectId, hash });
 
 // ---- Screenshots (GA-182, contract CS) ----
 /** The card's screenshot sets, newest run first: every run of the card that got the Screenshots section, also one that
@@ -432,6 +441,36 @@ export const dismissRestoreResult = () => invoke<T.RestoreStatus>("dismiss_resto
 /** A restore started, took a step, was ready, failed or was cancelled, or its result was dismissed. */
 export const onRestoreChanged = (cb: (s: T.RestoreStatus) => void): Promise<UnlistenFn> =>
   listen<T.RestoreStatus>("restore-changed", (m) => cb(m.payload));
+
+// ---- Hersir Cloud (GA-359, research 5.4): the account, Cloud Backup and Restore from Hersir Cloud ----
+// Each refusal is a sentence for people, shown as it is.
+export const cloudStatus = () => invoke<T.CloudStatus>("cloud_status");
+/** Opens the browser to sign in and waits for it, up to 10 minutes; cloudCancelSignIn stops the wait. */
+export const cloudSignIn = () => invoke<T.CloudStatus>("cloud_sign_in");
+export const cloudCancelSignIn = () => invoke<void>("cloud_cancel_sign_in");
+export const cloudSignOut = () => invoke<T.CloudStatus>("cloud_sign_out");
+/** The first computer only: makes the account key and answers its recovery code, shown once. */
+export const cloudMakeKey = () => invoke<{ recoveryCode: string }>("cloud_make_key");
+/** The recovery code's last group, typed back: the account's first code turns Cloud Backup on; a new code
+ *  (cloudNewRecovery) replaces the old one, and Cloud Backup's settings stay. */
+export const cloudConfirmRecovery = (lastGroup: string) => invoke<T.CloudStatus>("cloud_confirm_recovery", { lastGroup });
+/** A computer whose key is "needed": the account's key from its recovery code. */
+export const cloudEnterRecovery = (code: string) => invoke<T.CloudStatus>("cloud_enter_recovery", { code });
+/** A new recovery code: the old one keeps working until the new one's last group is typed back (cloudConfirmRecovery). */
+export const cloudNewRecovery = () => invoke<{ recoveryCode: string }>("cloud_new_recovery");
+export const cloudSaveSettings = (s: T.CloudSettingsChange) => invoke<T.CloudStatus>("cloud_save_settings", { s });
+export const cloudBackUpNow = () => invoke<T.CloudStatus>("cloud_back_up_now");
+/** The account's backups, newest first, each with the computer that made it. */
+export const cloudListBackups = () => invoke<T.CloudBackup[]>("cloud_list_backups");
+/** Downloads backup `name`, then GA-218's restore takes over (restore_status, restore-changed, restart_to_restore). */
+export const cloudStartRestore = (name: string) => invoke<T.RestoreStatus>("cloud_start_restore", { name });
+export const cloudComputers = () => invoke<T.CloudComputer[]>("cloud_computers");
+export const cloudRemoveComputer = (id: string, lost: boolean) => invoke<T.CloudComputer[]>("cloud_remove_computer", { id, lost });
+/** The account page in the browser. */
+export const cloudOpenAccount = () => invoke<void>("cloud_open_account");
+/** The account, the plan, the key or Cloud Backup changed (a backup's step too). */
+export const onCloudChanged = (cb: (s: T.CloudStatus) => void): Promise<UnlistenFn> =>
+  listen<T.CloudStatus>("cloud-changed", (m) => cb(m.payload));
 
 /** Fires after any write; screens refetch what they show. */
 export const onRowsChanged = (cb: (table: string) => void): Promise<UnlistenFn> =>

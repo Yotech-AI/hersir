@@ -24,11 +24,14 @@ export const failedText = (why: string | null) => `The restore failed: ${why ?? 
  *  can't be used now) the folder restored from. */
 export const saveFolder = (s: Pick<BackupStatus, "folder" | "folderProblem">, from: string) => (s.folder && !s.folderProblem ? s.folder : from);
 
+/** What a restore does after the restart: the end of the confirm's text, for a folder's backup and a cloud one. */
+export const RESTORE_AFTER = "After a restart, Hersir shows your data as it was then: what changed since, also until the restart, is not kept. "
+  + "Keys and passwords stay as they are on this computer. Agents are paused afterwards.";
+
 /** The confirm's text. `saveTo`: the folder today's data goes to. */
 export function confirmText(e: Pick<BackupEntry, "reason" | "madeAt" | "thisComputer" | "deviceName">, saveTo: string, now: number): string {
   return `${reasonText(e.reason)}, ${backupWhen(e.madeAt, now)}, ${fromText(e) ?? "from this computer"}. Hersir first saves today's data as a backup in ${saveTo}. `
-    + "After a restart, Hersir shows your data as it was then: what changed since, also until the restart, is not kept. "
-    + "Keys and passwords stay as they are on this computer. Agents are paused afterwards.";
+    + RESTORE_AFTER;
 }
 
 /** When a snapshot was made, from its name (`gizai-<reason>-<stamp>-<device>`, docs/backup-format.md): the result names the

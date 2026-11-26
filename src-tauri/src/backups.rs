@@ -241,6 +241,8 @@ fn quit_backup(st: &AppState) {
                 let _ = run(slot, &chosen, Reason::Quit);
             }
         }
+        // then Hersir Cloud's, with Cloud Backup and its On quit on (GA-359), in what is left of the wait
+        crate::cloud::quit_backup(&st, until);
         let _ = done.send(());
     });
     if spawned.is_ok() {

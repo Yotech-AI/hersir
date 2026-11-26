@@ -466,6 +466,33 @@ async fn update_agent_or_create_agent_with_a_command_the_agent_doesnt_have_chang
     }
 }
 
+// ---- GA-352: another CLI or a looser permission mode for an agent ----
+
+#[tokio::test]
+async fn moving_an_agent_to_codex_or_a_looser_mode_from_claude_desktop_changes_nothing_and_says_to_do_it_in_the_agent_form() {
+    let s = served();
+    let mut c = s.conn().await;
+    let clis = gizai_core::clis::Cli { name: "Codex".into(), kind: "codex".into(), command: "/usr/bin/codex".into(), ..Default::default() };
+    gizai_core::clis::save(&s.st.db, vec![clis]).unwrap();
+    let before = dump(&s.st);
+    let e = c.refused("update_agent", json!({"agent": "Backend Agent", "runs_on": "Codex", "title": "Builds the API"})).await;
+    assert!(e.starts_with("update_agent wasn't run: it moves Backend Agent from Claude Code to Codex, which doesn't keep an agent to its \
+                           allowed commands."), "{e}");
+    assert!(e.contains("there is no chat to keep it in") && e.ends_with("the change themselves in the agent form (Agent → Runs on)."), "{e}");
+    for mode in ["dontAsk", "auto"] {
+        let e = c.refused("update_agent", json!({"agent": "Backend Agent", "permission_mode": mode})).await;
+        assert!(e.starts_with(&format!("update_agent wasn't run: it changes Backend Agent's permission mode from acceptEdits to {mode}.")), "{e}");
+        assert!(e.ends_with("in the agent form (Permissions → Permission mode)."), "{e}");
+    }
+    let e = c.refused("create_agent", json!({"name": "Ops Agent", "role": "backend", "runs_on": "Codex"})).await;
+    assert!(e.starts_with("create_agent wasn't run: it puts Ops Agent on Codex,") && e.ends_with("(Agent → Runs on)."), "{e}");
+    assert_eq!(dump(&s.st), before, "no agent changed or made, nothing kept");
+    assert_eq!(s.pending(), 0);
+    // a stricter mode is saved at once, as from the Chief's chat
+    c.ok("update_agent", json!({"agent": "Backend Agent", "permission_mode": "plan"})).await;
+    assert_eq!(team::agent(&s.st.db, &s.backend).unwrap().permission_mode.as_deref(), Some("plan"));
+}
+
 // ---- attach_file: only the Chief's copies of the code ----
 
 #[tokio::test]

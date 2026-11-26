@@ -570,7 +570,7 @@ fn migration_0007_keeps_every_column_card_rule_run_and_comment_of_an_older_datab
     // no memory (0014), no Team Lead may merge (0015), no shared memory folders (0016), no pending actions (0017), no
     // screenshot columns (0019) and no Test runs at once (0020).
     let c = rusqlite::Connection::open(&path).unwrap();
-    let mut sql = format!("PRAGMA foreign_keys=OFF; BEGIN; {UNDO_0022} {UNDO_0021} {UNDO_0020} {UNDO_0019} {UNDO_0017} {} ALTER TABLE projects DROP COLUMN lead_may_merge; {} DROP TABLE column_agents; ALTER TABLE teams DROP COLUMN branches_json;", undo_0016(&c), undo_0014());
+    let mut sql = format!("PRAGMA foreign_keys=OFF; BEGIN; {UNDO_0025} {UNDO_0024} {UNDO_0022} {UNDO_0021} {UNDO_0020} {UNDO_0019} {UNDO_0017} {} ALTER TABLE projects DROP COLUMN lead_may_merge; {} DROP TABLE column_agents; ALTER TABLE teams DROP COLUMN branches_json;", undo_0016(&c), undo_0014());
     sql.push_str("
         DELETE FROM workflow_states WHERE category='deploy';
         ALTER TABLE runs DROP COLUMN findings_json; ALTER TABLE tasks DROP COLUMN hold_at;
@@ -640,6 +640,11 @@ fn migration_0007_keeps_every_column_card_rule_run_and_comment_of_an_older_datab
     assert_eq!(tasks::get(&db, &card).unwrap().state_name, "Done");
     assert_eq!(runs::get(&db, &r).unwrap().outcome.as_deref(), Some("deployed"));
 }
+
+/// Undoes 0024: no Docs switch on projects.
+const UNDO_0024: &str = "ALTER TABLE projects DROP COLUMN dev_docs;";
+/// Undoes 0025: no Docs records, baselines or section switches.
+const UNDO_0025: &str = "DROP TABLE docs_baselines; DROP TABLE docs_decisions; DROP TABLE docs_changes; ALTER TABLE projects DROP COLUMN docs_off;";
 
 /// Undoes GA-261's 0022: no outside-tool mark on chats and no hold kind on cards.
 const UNDO_0022: &str = "ALTER TABLE tasks DROP COLUMN hold_kind; ALTER TABLE chat_threads DROP COLUMN outside_tool;";

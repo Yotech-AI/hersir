@@ -161,6 +161,9 @@ pub struct ChatManager {
     /// GA-342: wakes the calls waiting in `wait_until` (Claude Desktop's chief_reply): a message was saved in a chat, or a
     /// chat stopped answering.
     changed: tokio::sync::Notify,
+    /// GA-266: the process trees of the answers, board checks and looks at questions whose token is out (see
+    /// `mcp::Turns`).
+    pub(crate) turns: crate::mcp::Turns,
 }
 
 /// A use of one of Gizai's tools that an answer's stream showed.
@@ -588,6 +591,9 @@ struct Plan {
 struct NewTurn {
     ids: Vec<String>,
     text: String,
+    /// GA-351: one of them came from Claude Desktop (`ChatMessage::from_desktop`), as they were saved or sent from the queue:
+    /// the turn has Claude Desktop's limits (`turn`).
+    desktop: bool,
 }
 
 const ANSWERING: &str = "The Chief is still answering in this chat: wait for it, or press Stop";
@@ -633,14 +639,14 @@ fn queued() -> tokio::task::JoinHandle<TurnSummary> {
     tokio::spawn(async { TurnSummary { run_id: String::new(), status: "queued".into(), error: None } })
 }
 
-/// While the Chief is answering in the thread: queues the message (`text` and its stored files, Some), or refuses
-/// when there is none to queue. Otherwise the thread is marked as answering from now on (None), and its old Stop is
-/// forgotten.
-fn begin_or_queue(st: &AppState, thread_id: &str, msg: Option<(&str, &[Blob])>) -> Result<Option<QueuedMessage>, String> {
+/// While the Chief is answering in the thread: queues the message (`text`, its stored files and its details, Some), or
+/// refuses when there is none to queue. Otherwise the thread is marked as answering from now on (None), and its old Stop
+/// is forgotten.
+fn begin_or_queue(st: &AppState, thread_id: &str, msg: Option<(&str, &[Blob], Option<&serde_json::Value>)>) -> Result<Option<QueuedMessage>, String> {
     let mut live = st.chat.live.lock().unwrap();
     if live.contains_key(thread_id) {
-        let (text, blobs) = msg.ok_or(ANSWERING)?;
-        let q = chat::enqueue_with_files(&st.db, &st.you_id, thread_id, text, blobs).map_err(|e| e.to_string())?;
+        let (text, blobs, meta) = msg.ok_or(ANSWERING)?;
+        let q = chat::enqueue_with_meta(&st.db, &st.you_id, thread_id, text, blobs, meta).map_err(|e| e.to_string())?;
         drop(live);
         (st.notify)(Note::ChatChanged);
         return Ok(Some(q));
@@ -714,10 +720,23 @@ pub struct Sent {
     pub done: tokio::task::JoinHandle<TurnSummary>,
 }
 
-/// `send_with_files`, which is this, also giving the message's id. GA-342: Claude Desktop's ask_chief hands its message on
-/// here, exactly as the Chat page's Send does.
+/// `send_with_files`, which is this, also giving the message's id.
 pub async fn send_message(st: &AppState, thread_id: Option<String>, text: String, cli: Option<String>, files: Vec<String>,
                           bin_override: Option<String>) -> Result<Sent, String> {
+    send_marked(st, thread_id, text, cli, files, bin_override, None).await
+}
+
+/// GA-342: Claude Desktop's ask_chief hands its message on here, as the Chat page's Send hands one on (`send_message`): saved
+/// as yours, it starts the Chief's answer or waits in the chat's queue. GA-351: marked as from Claude Desktop
+/// (`chat::desktop_meta`), sent or queued, so the Chat page says so over it and the Chief's answer to it has Claude
+/// Desktop's limits (`turn`).
+pub async fn send_from_desktop(st: &AppState, thread_id: String, text: String) -> Result<Sent, String> {
+    send_marked(st, Some(thread_id), text, None, vec![], None, Some(chat::desktop_meta())).await
+}
+
+/// `send_message` for a message with details (`meta`), which it keeps sent or queued.
+async fn send_marked(st: &AppState, thread_id: Option<String>, text: String, cli: Option<String>, files: Vec<String>,
+                     bin_override: Option<String>, meta: Option<serde_json::Value>) -> Result<Sent, String> {
     let text = text.trim().to_string();
     if text.is_empty() && files.is_empty() {
         return Err("Type a message first".into());
@@ -734,7 +753,7 @@ pub async fn send_message(st: &AppState, thread_id: Option<String>, text: String
     if let Some(id) = &thread_id {
         let live = st.chat.live.lock().unwrap();
         if live.contains_key(id) {
-            let q = chat::enqueue_with_files(&st.db, &st.you_id, id, &text, &blobs).map_err(|e| e.to_string())?;
+            let q = chat::enqueue_with_meta(&st.db, &st.you_id, id, &text, &blobs, meta.as_ref()).map_err(|e| e.to_string())?;
             drop(live);
             (st.notify)(Note::ChatChanged);
             return Ok(Sent { thread_id: id.clone(), message_id: q.id, done: queued() });
@@ -752,7 +771,7 @@ pub async fn send_message(st: &AppState, thread_id: Option<String>, text: String
             id
         }
     };
-    if let Some(q) = begin_or_queue(st, &thread_id, Some((&text, &blobs)))? {
+    if let Some(q) = begin_or_queue(st, &thread_id, Some((&text, &blobs, meta.as_ref())))? {
         return Ok(Sent { thread_id, message_id: q.id, done: queued() });
     }
     let Ok(thread) = chat::get_thread(&st.db, &thread_id) else {
@@ -761,13 +780,14 @@ pub async fn send_message(st: &AppState, thread_id: Option<String>, text: String
     };
     switch_note(st, &thread, &plan, false);
     let Some(msg) = save(st, NewMessage { thread_id: thread_id.clone(), role: "user".into(), author_id: Some(st.you_id.clone()), body_md: Some(text.clone()),
-                                          files: blobs, ..Default::default() }) else {
+                                          files: blobs, meta, ..Default::default() }) else {
         end_live(st, &thread_id);
         return Err("Your message couldn't be saved".into());
     };
     (st.notify)(Note::ChatChanged);
     let message_id = msg.id.clone();
-    let done = start_chain(st, &thread_id, plan, NewTurn { ids: vec![msg.id], text }, bin_override);
+    let desktop = msg.from_desktop();
+    let done = start_chain(st, &thread_id, plan, NewTurn { ids: vec![msg.id], text, desktop }, bin_override);
     Ok(Sent { thread_id, message_id, done })
 }
 
@@ -953,7 +973,8 @@ fn sent(st: &AppState, thread_id: &str, msgs: Vec<ChatMessage>) -> NewTurn {
     (st.notify)(Note::RowsChanged("chat_messages"));
     st.chat.changed.notify_waiters();
     let text = joined_text(&msgs);
-    NewTurn { ids: msgs.into_iter().map(|m| m.id).collect(), text }
+    let desktop = msgs.iter().any(ChatMessage::from_desktop);
+    NewTurn { ids: msgs.into_iter().map(|m| m.id).collect(), text, desktop }
 }
 
 /// The text a turn sends for messages that go together (`chat::joined`); a message of files only says so (its files
@@ -1004,7 +1025,8 @@ pub async fn answer_on(st: &AppState, thread_id: &str, cli: &str, note_id: &str,
     switch_note(st, &thread, &plan, true);
     (st.notify)(Note::ChatChanged);
     let text = joined_text(&msgs);
-    Ok(start_chain(st, thread_id, plan, NewTurn { ids: msgs.into_iter().map(|m| m.id).collect(), text }, bin_override))
+    let desktop = msgs.iter().any(ChatMessage::from_desktop);
+    Ok(start_chain(st, thread_id, plan, NewTurn { ids: msgs.into_iter().map(|m| m.id).collect(), text, desktop }, bin_override))
 }
 
 /// A turn, and while each answer is done and messages were queued meanwhile, the next turn with them. Ends with the
@@ -1098,12 +1120,16 @@ async fn turn(st: &AppState, thread_id: &str, plan: &Plan, new: &NewTurn) -> Tur
         && m.meta.as_ref().and_then(|v| v.get("action")).and_then(|v| v.as_str()).is_some_and(|id| !decided.ids.iter().any(|d| d == id));
     let (own, earlier): (Vec<ChatMessage>, Vec<ChatMessage>) = chat::messages(&st.db, thread_id).unwrap_or_default().into_iter()
         .filter(|m| m.role != "system" || heard(m)).partition(|m| new.ids.contains(&m.id));
+    // GA-351: an answer to a message from Claude Desktop (ask_chief), also one that goes with messages you typed, has Claude
+    // Desktop's limits (`tools::Desktop::Answering`): its token says so. As the messages were saved or sent (`new.desktop`),
+    // so a chat that can't be read now doesn't lose the mark. Your next message alone gets the normal rules again.
+    let answers_desktop = new.desktop || own.iter().any(ChatMessage::from_desktop);
     let history = earlier.iter().any(|m| m.role == "user" || m.role == "agent");
     // The files of this turn's messages: the Chief reads its copies of them, and the message names them.
     let files: Vec<FileRow> = own.iter().flat_map(|m| m.files.clone()).collect();
     let copies = lead_copies(st, files.clone()).await;
     let text = with_files(&new.text, &files_text(st, &files, &copies));
-    let new = &NewTurn { ids: new.ids.clone(), text };
+    let new = &NewTurn { ids: new.ids.clone(), text, desktop: answers_desktop };
     // A session lives in one CLI's account (its CLAUDE_CONFIG_DIR): another one can't resume it, so it doesn't try.
     let resumable = thread.session_id.is_some() && thread.session_cli.as_deref().is_none_or(|c| c == plan.cli.id);
     // The Chief's copies of the code, refreshed (at most 10 s): the prompt starts with the line that says where
@@ -1119,7 +1145,7 @@ async fn turn(st: &AppState, thread_id: &str, plan: &Plan, new: &NewTurn) -> Tur
     let mut prompt = with_line(if !resumable && history { handover_prompt(st, thread_id, &earlier, &new.text, &why) } else { new.text.clone() });
     for attempt in 0..2 {
         let fresh = attempt == 1 || !resumable;
-        let a = attempt_once(st, &thread, plan, &prompt, fresh, &code.dirs, caps).await;
+        let a = attempt_once(st, &thread, plan, &prompt, fresh, &code.dirs, caps, answers_desktop).await;
         if !fresh && !a.saw_init && a.summary.status == "failed" {
             // The session can't be resumed (its file is gone, or Claude Code refused to start): try once in a new
             // session that knows the conversation. The old session stays recorded until a new one starts.
@@ -1439,8 +1465,11 @@ fn shim_env(st: &AppState, token: &str) -> serde_json::Value {
 
 /// One `claude -p` run for a turn on the plan's CLI: resuming the thread's session, or `fresh` in a new one. `add_dirs`:
 /// the folders the Chief may read (its copies of the code); its own folders from the agent form are added here.
-/// `caps`: the limits the answer started with.
-async fn attempt_once(st: &AppState, thread: &ChatThread, plan: &Plan, prompt: &str, fresh: bool, add_dirs: &[String], caps: Caps) -> Attempt {
+/// `caps`: the limits the answer started with. `answers_desktop` (GA-351): the turn answers a message from Claude Desktop,
+/// so its token says so (`tools::ANSWERS`) and its calls of Hersir's tools have Claude Desktop's limits.
+#[allow(clippy::too_many_arguments)]
+async fn attempt_once(st: &AppState, thread: &ChatThread, plan: &Plan, prompt: &str, fresh: bool, add_dirs: &[String], caps: Caps,
+                      answers_desktop: bool) -> Attempt {
     let (agent, bin, shim) = (&plan.agent, &plan.bin, plan.shim.as_path());
     let fail = |run_id: &str, msg: String| Attempt { summary: TurnSummary { run_id: run_id.into(), status: "failed".into(), error: Some(msg) },
                                                      saw_init: false, limit: None };
@@ -1460,10 +1489,16 @@ async fn attempt_once(st: &AppState, thread: &ChatThread, plan: &Plan, prompt: &
         Ok(r) => r,
         Err(e) => return fail("", e.to_string()),
     };
-    let token = match tokens::mint(&st.db, &agent.actor_id, json!({"chat": thread.id, "run": run_id}), token_ttl_ms(caps)) {
+    let mut scope = json!({"chat": thread.id, "run": run_id});
+    if answers_desktop {
+        scope[crate::tools::ANSWERS] = json!(crate::tools::CLAUDE_DESKTOP);
+    }
+    let token = match tokens::mint(&st.db, &agent.actor_id, scope, token_ttl_ms(caps)) {
         Ok(t) => t,
         Err(e) => { let _ = core_runs::finish_chat(&st.db, &run_id, "failed", 0, 0, 0, Some(&e.to_string())); return fail(&run_id, e.to_string()); }
     };
+    // GA-266: before the token goes out: it works only for this turn's own processes
+    crate::mcp::expect_turn(st, &run_id);
     let config_path = chat_dir.join(format!("{run_id}.mcp.json"));
     // The Chief's own MCP servers (agent form → Tools) next to Gizai's; one it can't use is left out, and the chat says why.
     let (servers, left_out) = {
@@ -1482,6 +1517,7 @@ async fn attempt_once(st: &AppState, thread: &ChatThread, plan: &Plan, prompt: &
     let (mcp_allowed, mcp_refused) = gizai_agents::mcp_run::permissions(&servers);
     let cleanup = |token: &str| {
         let _ = tokens::revoke(&st.db, token);
+        crate::mcp::end_turn(st, &run_id);
         let _ = std::fs::remove_file(&config_path);
     };
     if let Err(e) = write_private(&config_path, &config.to_string()) {
@@ -1520,6 +1556,7 @@ async fn attempt_once(st: &AppState, thread: &ChatThread, plan: &Plan, prompt: &
             return fail(&run_id, e.to_string());
         }
     };
+    crate::mcp::bind_turn(st, &run_id, handle.stop.tree());
     let _ = core_runs::set_running(&st.db, &run_id, handle.pid);
     let stopped_early = st.chat.stopped.lock().unwrap().contains(&thread.id);
     set_live(st, &thread.id, |l| { l.run_id = run_id.clone(); l.stop = Some(handle.stop.clone()); l.tool = None; });
@@ -1767,6 +1804,8 @@ async fn check_once(st: &AppState, agent: &Member, prompt: &str, saw: &[gizai_co
         Ok(t) => t,
         Err(e) => return end("failed", Totals::default(), Some(e.to_string()), None),
     };
+    // GA-266: before the token goes out: it works only for this check's own processes
+    crate::mcp::expect_turn(st, &run_id);
     let config_path = chat_dir.join(format!("{run_id}.mcp.json"));
     // Only Gizai's server (not the Chief's own MCP servers or its web tools) and Read, Glob and Grep: a check uses no
     // tool from outside Gizai, so nothing marks it the way a chat answer is (`mark_outside`, `tools::NOT_AFTER_OUTSIDE`).
@@ -1774,6 +1813,7 @@ async fn check_once(st: &AppState, agent: &Member, prompt: &str, saw: &[gizai_co
         "env": shim_env(st, &token)}}});
     let cleanup = |token: &str| {
         let _ = tokens::revoke(&st.db, token);
+        crate::mcp::end_turn(st, &run_id);
         let _ = std::fs::remove_file(&config_path);
     };
     if let Err(e) = write_private(&config_path, &config.to_string()) {
@@ -1804,6 +1844,7 @@ async fn check_once(st: &AppState, agent: &Member, prompt: &str, saw: &[gizai_co
             return end("failed", Totals::default(), Some(e.to_string()), None);
         }
     };
+    crate::mcp::bind_turn(st, &run_id, handle.stop.tree());
     let _ = core_runs::set_running(&st.db, &run_id, handle.pid);
     *st.chat.check.lock().unwrap() = Some(handle.stop.clone());
     // Quitting began while it started: it stops with the rest.
@@ -1977,11 +2018,14 @@ async fn question_process(st: &AppState, agent: &Member, asked_run_id: &str, pro
         Ok(t) => t,
         Err(e) => return failed(e.to_string()),
     };
+    // GA-266: before the token goes out: it works only for this run's own processes
+    crate::mcp::expect_turn(st, run_id);
     let config_path = st.data_dir.join("chat").join(format!("{run_id}.mcp.json"));
     let config = json!({"mcpServers": {"gizai": {"type": "stdio", "command": shim.display().to_string(), "args": [],
         "env": shim_env(st, &token)}}});
     let cleanup = |token: &str| {
         let _ = tokens::revoke(&st.db, token);
+        crate::mcp::end_turn(st, run_id);
         let _ = std::fs::remove_file(&config_path);
     };
     if let Err(e) = write_private(&config_path, &config.to_string()) {
@@ -2011,6 +2055,7 @@ async fn question_process(st: &AppState, agent: &Member, asked_run_id: &str, pro
             return failed(e.to_string());
         }
     };
+    crate::mcp::bind_turn(st, run_id, handle.stop.tree());
     let _ = core_runs::set_running(&st.db, run_id, handle.pid);
     if let Some(slot) = st.chat.questions.lock().unwrap().get_mut(run_id) {
         *slot = Some(handle.stop.clone());

@@ -33,6 +33,10 @@ export type Project = {
   /** Test runs at once (GA-212): how many of its cards may be in a test run (a run on a card in a Testing column) at the
    *  same time, 1–20. null: no limit of its own. */
   testRunsAtOnce?: number | null;
+  /** Docs: the project is listed in the sidebar's Docs section, with its own Docs page there. Off by default. */
+  devDocs?: boolean;
+  /** Docs: the sections switched off on its Docs page (reference, guides, api, changelog, decisions, mcp). Empty: all on. */
+  docsOff?: string[];
 };
 export type ProjectScreenshots = {
   on: boolean;                                                // true
@@ -55,6 +59,10 @@ export type ProjectInput = {
   previewStartSecs?: number | null;   // 120, 10–600                     (SB2)
   /** Test runs at once (GA-212): 1–20; 0 removes it (no limit of its own). Left out (null): kept as it is. */
   testRunsAtOnce?: number | null;
+  /** Docs on or off. Left out (null): kept as it is (off for a new project). */
+  devDocs?: boolean | null;
+  /** The Docs page's sections to switch off; others the page doesn't know are left out. Left out (null): kept as they are. */
+  docsOff?: string[] | null;
   /** The project's team (GA-225). Left out (null): the first team for a new project, kept on an edit. Another team moves the
    *  project and all its cards there; refused while one of its cards has a run live or starting. */
   teamId?: string | null;
@@ -393,6 +401,13 @@ export type Settings = { claudeBin?: string | null; dataDir: string; maxConcurre
    *  sent back as it came: Memory per run as get_settings gave it, so a save tells a value the page showed (also after
    *  another save changed it) from one someone typed. */
   runsMemoryPerRunGb?: number; runsMemoryPerRunShownGb?: number;
+  /** Settings → Runs → CPU for agents (GA-369), in cores: all agents' work together, all of the computer's cores but a
+   *  quarter (at least 2 left free) until set. Read-only next to it: the computer's cores (0 when unknown); how the system
+   *  holds the cap (`slice` on Linux, `job` on Windows; no cap: `macos`, `no_slice` Linux without a systemd user
+   *  session, `no_cpu` the slice lacks the cpu controller); the controllers the agent runs' slice lacks (`cpu`, `io`)
+   *  and the one command that turns them on, shown as Run this for me. */
+  runsCpuCores?: number; computerCores?: number; runsCpuCap?: string;
+  runsMissingControllers?: string[]; runsControllersFix?: string | null;
   /** Settings → Runs: the limits of an answer of the Team Lead (also a board check and its look at a question). */
   maxChatMinutes: number; maxChatToolCalls: number;
   /** The GitHub CLI; null = found when needed. */
@@ -622,6 +637,27 @@ export type RestoreStatus = {
   savedToday: string | null;      // the before-restore snapshot's name, once it is made
   result: { ok: boolean; at: number; snapshot: string; fromComputer: string; message: string } | null;   // after the restart
 };
+
+// ---- Hersir Cloud (GA-359 and GA-360, research 5.4): the account, Cloud Backup and Restore from Hersir Cloud ----
+// Times are Unix milliseconds. Refusals are sentences for people ("Sign in to Hersir Cloud first.").
+export type CloudPlan = { name: "personal" | "none"; status: "active" | "past_due" | "lapsed" | "none";
+  validUntil: number | null; readOnlyUntil: number | null; quotaBytes: number; usedBytes: number };
+export type CloudStep = "copying" | "chunking" | "uploading" | "registering" | "downloading" | "checking";
+export type CloudStatus = {
+  signedIn: boolean; email: string | null; signingIn: boolean;
+  plan: CloudPlan | null;                       // from the signed entitlement; null while signed out
+  key: "missing" | "here" | "needed";           // missing: none made yet; needed: the account has one, this computer doesn't
+  recoveryMadeAt: number | null;
+  backup: { on: boolean; every: "daily" | "manual"; onQuit: boolean;
+            running: { step: CloudStep; done: number; total: number } | null;
+            last: { at: number; name: string; sentBytes: number } | null; next: number | null;
+            lastError: { at: number; message: string } | null };
+};
+export type CloudBackup = { name: string; madeAt: number; device: { id: string; name: string; this: boolean };
+  reason: "daily" | "manual" | "quit" | "before-restore"; bytes: number; restorable: boolean; problem: string | null };
+export type CloudComputer = { id: string; name: string; platform: string; appVersion: string; lastSeenAt: number | null;
+  online: boolean; this: boolean; chief: boolean };
+export type CloudSettingsChange = { on?: boolean; every?: "daily" | "manual"; onQuit?: boolean };
 export type DayStat = { dayStart: number; succeeded: number; failed: number; other: number };
 
 // ---- the Usage page (gizai-core usage.rs) ----
@@ -715,15 +751,18 @@ export type FileCheck = { ok: string[]; failed: string[] };
 /** A chat the Archive found, with the newest of its messages (yours or the Team Lead's) whose text matches; none when only
  *  its title matches, or for an empty search. */
 export type ChatHit = { thread: ChatThread; message?: ChatMessage | null };
-/** kind "pending" (GA-102): what you decided on a call that waited for you, with `action` (its id), `tool`, `status` and `run`. */
-export type ChatNoteMeta = { kind: "switch" | "limit" | "pending" | string; cli?: string; cliName?: string; limit?: string; resets?: string | null; messageIds?: string[];
-  action?: string; tool?: string; status?: string; run?: string | null };
+/** kind "pending" (GA-102): what you decided on a call that waited for you, with `action` (its id), `tool`, `status` and `run`.
+ *  GA-351: a message of yours that came from Claude Desktop (its ask_chief) has no kind, only `from: "claude-desktop"`. */
+export type ChatNoteMeta = { kind?: "switch" | "limit" | "pending" | string; cli?: string; cliName?: string; limit?: string; resets?: string | null; messageIds?: string[];
+  action?: string; tool?: string; status?: string; run?: string | null; from?: string };
 /** `seq`: the last change to the text being written that `draft` holds. */
 export type ChatStatus = { threadId: string; runId: string; draft: string; tool?: string | null; seq: number };
 /** A message sent while the Team Lead answers; `held`: it waits for Send now instead of going when the answer is done. */
 export type QueuedMessage = { id: string; threadId: string; bodyMd: string; createdAt: number; updatedAt: number; held: boolean;
   /** The files added to it; they go with it. */
-  files?: FileRow[] };
+  files?: FileRow[];
+  /** GA-351: its details, which it keeps when it goes: `{from: "claude-desktop"}` for a message from Claude Desktop. */
+  meta?: ChatNoteMeta | null };
 /** A coding CLI in Runs on under the chat's text box; `problem`: why it can't run the chat. */
 export type ChatCli = { id: string; name: string; kind: CliKind; problem?: string | null };
 export type ChatEvent =

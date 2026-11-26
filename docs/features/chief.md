@@ -57,6 +57,8 @@ Approve runs exactly that call once, with every other rule in force; it isn't ke
 
 Tools that only read never wait, and a chat that never used a tool from outside Hersir works as before.
 
+Some changes to an agent wait for your Approve in any chat, also one that never used a tool from outside Hersir, as the Chief reads text other people and agents wrote: a command the agent doesn't have yet, beyond the few safe ones in Hersir's default list; a move to Codex or Gemini, which don't keep an agent to its allowed commands (Codex has no list at all); and another permission mode that isn't stricter than the one it runs with, like acceptEdits to dontAsk or auto (a new agent is weighed against its CLI's usual one). The preview names each, from and to, under **Needs your OK**, like "Runs on: Claude Code → Codex, which doesn't keep the agent to its allowed commands" or "Permission mode: acceptEdits → auto". A move to Claude Code and a stricter mode, like plan, save at once, and the agent form saves any of these, as before ([the details](../agent-tools.md#safety-rules)).
+
 ### Sources you trust
 
 Like Claude's connectors, each source the Chief has gets a choice in its agent form → Tools: each MCP server, the browser and Web show **After the Chief uses it:** with **Ask for my OK** or **Allow**. Every source starts on Ask for my OK, also one saved before this choice existed, and only the agent form changes it: the Chief can't, from chat (`update_agent` with `trusted` or `webTrusted` is refused, and nothing changes). Other agents' forms don't show it.

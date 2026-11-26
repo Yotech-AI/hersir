@@ -33,10 +33,19 @@ pub struct GizaiTools {
     /// GA-338: the app outside Hersir the token was made for (its scope's `client`): `CLAUDE_DESKTOP`, which gets the
     /// Chief's tools with the Chief's rules (GA-341, `desktop`).
     pub client: Option<String>,
+    /// GA-351: whose message the Chief's chat turn the token was minted for answers (its scope's `ANSWERS`): `CLAUDE_DESKTOP`
+    /// for one Claude Desktop handed on (ask_chief), whose limits its calls get (`answers_desktop`); None for your own.
+    pub answers: Option<String>,
 }
 
-/// GA-338: the `client` in the scope of Claude Desktop's lasting token (`crate::claude_desktop`).
+/// GA-338: the `client` in the scope of Claude Desktop's lasting token (`crate::claude_desktop`). GA-351: also the value
+/// of `ANSWERS` in a Chief's turn's token when the turn answers a message from Claude Desktop.
 pub const CLAUDE_DESKTOP: &str = "claude-desktop";
+
+/// GA-351: the key in a Chief's chat turn's token scope that says whose message the turn answers: `CLAUDE_DESKTOP` when it
+/// answers one Claude Desktop handed on (ask_chief), also together with messages you typed (`chat::turn`). Left out for
+/// a turn that answers only you.
+pub const ANSWERS: &str = "answers";
 
 impl GizaiTools {
     /// GA-341: Claude Desktop's token, by its client's name (`CLAUDE_DESKTOP`), for no chat, board check or question: it is
@@ -46,9 +55,36 @@ impl GizaiTools {
         self.client.as_deref() == Some(CLAUDE_DESKTOP) && self.thread.is_none() && self.check.is_none() && self.question.is_none()
     }
 
+    /// GA-351: a token of the Chief's chat turn that answers a message from Claude Desktop (`ANSWERS`): its calls get Claude
+    /// Desktop's limits (`Desktop::Answering`).
+    fn answers_desktop(&self) -> bool {
+        self.answers.as_deref() == Some(CLAUDE_DESKTOP)
+    }
+
     /// GA-345: what the view's tools (`apps::reply`) get for Claude Desktop's token: you, in no chat or board check.
     fn desktop_cx(&self) -> Cx<'_> {
-        Cx { st: &self.st, actor: &self.actor, thread: None, check: None, from: None, approved: false, desktop: true }
+        Cx { st: &self.st, actor: &self.actor, thread: None, check: None, from: None, approved: false, desktop: Desktop::Itself }
+    }
+}
+
+/// GA-341, GA-351: whether Claude Desktop is behind a call, and how. Either way Claude Desktop's limits hold (`limits`):
+/// start_chat and update_checkout answer why they aren't for it (`NOT_IN_CLAUDE_DESKTOP`, `call_scoped`), and attach_file
+/// takes only a file inside the Chief's copies of the code (`write::allowed_attachment`). Every other rule is the Chief's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Desktop {
+    /// Not at all: the Chief's turn on your own message, a board check, a question's run, or Hersir itself.
+    No,
+    /// Claude Desktop's own call (GA-341, `call_desktop`), as you, in no chat.
+    Itself,
+    /// GA-351: a call from the Chief's chat turn that answers a message Claude Desktop handed on (ask_chief), in its chat.
+    /// Only what Claude Desktop itself may not do is refused: the rest acts at once, as from any of the Chief's turns.
+    Answering,
+}
+
+impl Desktop {
+    /// Claude Desktop's limits hold (`Itself` or `Answering`).
+    pub fn limits(self) -> bool {
+        self != Desktop::No
     }
 }
 
@@ -83,7 +119,8 @@ impl gizai_mcp::Tools for GizaiTools {
         if self.desktop() {
             return call_desktop(&self.st, &self.actor, from, name, args).await;
         }
-        call_scoped(&self.st, &self.actor, self.thread.as_deref(), self.check.as_deref(), Some(from), name, args, false, false).await
+        let desktop = if self.answers_desktop() { Desktop::Answering } else { Desktop::No };
+        call_scoped(&self.st, &self.actor, self.thread.as_deref(), self.check.as_deref(), Some(from), name, args, false, desktop).await
     }
     /// GA-343, GA-345: Claude Desktop also gets its view's tools (`apps::tools`: show, then view_read and board_changes for
     /// the view alone) when it shows MCP Apps' views. Every other token, and Claude Desktop without the extension, gets
@@ -147,6 +184,7 @@ pub const UPDATE_CHECKOUT_IN_CLAUDE_DESKTOP: &str = "update_checkout isn't avail
     where its result comes as a message.";
 
 /// GA-341: the tools of the Chief's chat turns that Claude Desktop isn't offered, each with its answer when it is called anyway.
+/// GA-351: the Chief's turn that answers a message from Claude Desktop gets the same answers (`Desktop::limits`, `call_scoped`).
 const NOT_IN_CLAUDE_DESKTOP: [(&str, &str); 2] = [("start_chat", START_CHAT_IN_CLAUDE_DESKTOP), ("update_checkout", UPDATE_CHECKOUT_IN_CLAUDE_DESKTOP)];
 
 /// GA-341: a tool only Claude Desktop is offered (`desktop_catalog`), not the Chief's own turns: what the Chief works by
@@ -178,18 +216,16 @@ fn chief_brief(st: &AppState) -> Result<Value, String> {
 /// apply; every other rule does, whoever the actor is: the hold that waits for your OK (`ONLY_THE_USER`), new agent
 /// commands (GA-323: with no chat to keep the call in, it isn't run, `Cx::keep_commands`), attach_file (only the Chief's
 /// copies of the code, `write::allowed_attachment`) and merge_pull_request's rules. It approves no kept call: those stay
-/// yours, in Hersir. start_chat and update_checkout answer why they aren't offered, and get_chief_brief is its own; so are
-/// ask_chief and chief_reply (GA-342, `desktop`), which hand a message to the Chief in Hersir's chat and read its answer
-/// (as is board_changes, GA-344, answered before this in `GizaiTools::call_with_meta`).
+/// yours, in Hersir. start_chat and update_checkout answer why they aren't offered (`call_scoped`), and get_chief_brief is
+/// its own; so are ask_chief and chief_reply (GA-342, `desktop`), which hand a message to the Chief in Hersir's chat and read
+/// its answer (as is board_changes, GA-344, answered before this in `GizaiTools::call_with_meta`). GA-351: the Chief's turn
+/// that answers such a message gets Claude Desktop's limits too (`Desktop::Answering`).
 async fn call_desktop(st: &AppState, actor: &str, from: Stream<'_>, name: &str, args: Value) -> Result<Value, String> {
-    if let Some((_, why)) = NOT_IN_CLAUDE_DESKTOP.iter().find(|(tool, _)| *tool == name) {
-        return Err(why.to_string());
-    }
     match name {
         CHIEF_BRIEF => chief_brief(st),
         desktop::ASK_CHIEF => desktop::ask_chief(st, &args_of(args)?).await,
         desktop::CHIEF_REPLY => desktop::chief_reply(st, &args_of(args)?).await,
-        _ => call_scoped(st, actor, None, None, Some(from), name, args, false, true).await,
+        _ => call_scoped(st, actor, None, None, Some(from), name, args, false, Desktop::Itself).await,
     }
 }
 
@@ -213,19 +249,19 @@ pub async fn call(st: &AppState, actor: &str, name: &str, args: Value) -> Result
 /// Runs one tool as `actor` for a chat thread (what the user said there widens `attach_file`). Called directly, not by
 /// an answer's Claude Code, so no stream shows it: only a thread already marked refuses the tools that act.
 pub async fn call_in(st: &AppState, actor: &str, thread: Option<&str>, name: &str, args: Value) -> Result<Value, String> {
-    call_scoped(st, actor, thread, None, None, name, args, false, false).await
+    call_scoped(st, actor, thread, None, None, name, args, false, Desktop::No).await
 }
 
 /// Runs one tool as `actor` in the board check `run_id`: nobody named a file, and the check's rules hold.
 pub async fn call_check(st: &AppState, actor: &str, run_id: &str, name: &str, args: Value) -> Result<Value, String> {
-    call_scoped(st, actor, None, Some(run_id), None, name, args, false, false).await
+    call_scoped(st, actor, None, Some(run_id), None, name, args, false, Desktop::No).await
 }
 
 /// Runs a call you approved (GA-102, `pending::approve`): exactly the stored call, as `actor` (the Chief) in its chat
 /// `thread`, with every rule in force but the ones about a tool from outside Gizai in that chat: it isn't kept again, a card
 /// it changes doesn't wait on hold for your OK (GA-101), and it may take that hold off (GA-261).
 pub(crate) async fn call_approved(st: &AppState, actor: &str, thread: &str, name: &str, args: Value) -> Result<Value, String> {
-    call_scoped(st, actor, Some(thread), None, None, name, args, true, false).await
+    call_scoped(st, actor, Some(thread), None, None, name, args, true, Desktop::No).await
 }
 
 /// What a board check may not do, whatever it is asked: attach a file nobody named, change an agent's settings, set up
@@ -238,14 +274,15 @@ const NOT_IN_A_CHECK: [&str; 8] = ["attach_file", "create_agent", "update_agent"
 /// run but kept under the answer for the user to approve with one click or discard (GA-102, `pending`). Memory's writes
 /// too: a note goes into every answer, board check and run after it. A board check uses no tool from outside Gizai
 /// (`chat::check_once`), so it never makes a pending action. Merging a pull request too (GA-86); a board check may merge.
-/// Archiving cards too (GA-307): restore_tasks, which only undoes an archive, runs at once.
+/// Archiving cards too (GA-307): restore_tasks, which only undoes an archive, runs at once. A decision record too: agents
+/// read a project's Docs page as they read Memory.
 /// Comments too (GA-261): an agent hears them, also in a Continue you approve. A card such a chat puts where an agent would
 /// start it, or changes there, waits on hold for the user's OK instead (GA-101, `Cx::outside`); some calls of
 /// `KEPT_SOMETIMES` are kept too. GA-319: start_chat runs, but the chat its message goes to is marked with the same tool,
 /// so what the Chief does there waits for the user's Approve too (`write::start_chat`).
-pub const NOT_AFTER_OUTSIDE: [&str; 15] = ["start_agent_run", "continue_agent_run", "create_agent", "update_agent", "set_agent_status", "add_column",
+pub const NOT_AFTER_OUTSIDE: [&str; 16] = ["start_agent_run", "continue_agent_run", "create_agent", "update_agent", "set_agent_status", "add_column",
     "set_column", "attach_file", "update_checkout", "memory_write", "memory_append", "memory_move", "merge_pull_request", "archive_tasks",
-    "comment_on_task"];
+    "comment_on_task", "record_decision"];
 
 /// GA-261: the tools that keep some of their calls for the user's Approve after a tool from outside Gizai in the chat, as
 /// `NOT_AFTER_OUTSIDE` keeps all of theirs (`Cx::keep`): `update_project` one that changes a project's repository, folder,
@@ -293,6 +330,55 @@ fn not_run_for_commands(name: &str, who: &str, entries: &[String], kept: Result<
     }
 }
 
+/// GA-352: why create_agent or update_agent (`name`) wasn't run: it gives `who` what chat gives an agent only with the
+/// user's OK (`write::NeedsOk`), each named: a CLI that doesn't keep it to its allowed commands (from and to), a permission
+/// mode that isn't stricter than the one it has (from and to; for a new agent, its CLI's usual one), and new commands. It
+/// waits for the user's click (`kept`), or, when Gizai couldn't keep it (`Err`), nothing changed and the user makes the
+/// change in the agent form. New commands alone: GA-323's sentences, word for word (`not_run_for_commands`).
+fn not_run_for_ok(name: &str, who: &str, needs: &write::NeedsOk, kept: Result<(), String>) -> String {
+    let entries = &needs.commands;
+    if needs.cli.is_none() && needs.mode.is_none() {
+        return not_run_for_commands(name, who, entries, kept);
+    }
+    let new_agent = name == "create_agent";
+    let mut what: Vec<String> = vec![];
+    if let Some(c) = &needs.cli {
+        what.push(match c.from.as_deref().filter(|_| !new_agent) {
+            Some(from) => format!("it moves {who} from {from} to {}, which doesn't keep an agent to its allowed commands", c.to),
+            None => format!("it puts {who} on {}, which doesn't keep an agent to its allowed commands", c.to),
+        });
+    }
+    if let Some(m) = &needs.mode {
+        what.push(match m.from.as_deref() {
+            Some(from) if new_agent => format!("it gives {who} the permission mode {}, where the usual one is {from}", m.to),
+            Some(from) => format!("it changes {who}'s permission mode from {from} to {}", m.to),
+            None => format!("it gives {who} the permission mode {}", m.to),
+        });
+    }
+    let list = preview::listed(entries, entries.len());
+    if !entries.is_empty() {
+        what.push(format!("{list} {} new for {who}", if entries.len() == 1 { "is" } else { "are" }));
+    }
+    let commands_rule = if entries.is_empty() { "" } else {
+        ", and a command it doesn't have at once only when it is one of Hersir's default list that runs no other command and writes no file"
+    };
+    let why = format!("{name} wasn't run: {}. From chat, an agent gets a CLI that doesn't keep it to its allowed commands, or a permission mode \
+                       that isn't stricter than the one it has, only with the user's OK{commands_rule}.", what.join("; "));
+    let names = if entries.is_empty() { "each change, from and to".to_string() } else { format!("each change, from and to, and {list}") };
+    match kept {
+        Ok(()) => format!("{why} Hersir keeps the call for the user to approve with one click. Tell them in a sentence what it does, and \
+                           name {names}."),
+        Err(e) => {
+            let places: Vec<String> = [(needs.cli.is_some(), "Agent → Runs on"), (needs.mode.is_some(), "Permissions → Permission mode"),
+                                       (!entries.is_empty(), "Permissions → Allowed commands")]
+                .into_iter().filter(|(on, _)| *on).map(|(_, p)| p.to_string()).collect();
+            let change = if places.len() == 1 { "the change" } else { "these changes" };
+            format!("{why} Hersir couldn't keep the call for the user to approve ({e}), so nothing changed. Tell the user, so they can make \
+                     {change} themselves in the agent form ({}).", preview::listed(&places, places.len()))
+        }
+    }
+}
+
 /// Why a tool that acts is refused after a tool from outside Gizai in the chat (GA-261: for the rest of the chat).
 pub(crate) fn refused_after(name: &str, tool: &str) -> String {
     format!("{name} is refused in this chat: it used {tool}, a tool from outside Hersir, and what that returned could be trying to \
@@ -311,17 +397,23 @@ async fn shown(st: &AppState, thread: &str, from: Option<Stream<'_>>, name: &str
     Ok(())
 }
 
-/// `desktop`: the call comes from Claude Desktop (GA-341, `call_desktop`, the only caller that sets it).
+/// `desktop`: Claude Desktop behind the call (`Desktop`): its own call (GA-341, `call_desktop`, the only caller that sets
+/// `Itself`), or the Chief's turn that answers its message (GA-351, `GizaiTools::call_with_meta` sets `Answering`).
 #[allow(clippy::too_many_arguments)]
 async fn call_scoped(st: &AppState, actor: &str, thread: Option<&str>, check: Option<&str>, from: Option<Stream<'_>>, name: &str, args: Value,
-                     approved: bool, desktop: bool) -> Result<Value, String> {
+                     approved: bool, desktop: Desktop) -> Result<Value, String> {
+    // GA-341, GA-351: Claude Desktop's limits, for its own calls and for the Chief's turn that answers its message, before
+    // anything else: start_chat and update_checkout answer why they aren't for it, and nothing changes (not kept either).
+    if desktop.limits() && let Some((_, why)) = NOT_IN_CLAUDE_DESKTOP.iter().find(|(tool, _)| *tool == name) {
+        return Err(why.to_string());
+    }
     // GA-338: fail closed. A call over MCP (`from`) with no chat thread and no board check would skip every rule that makes
     // a call wait for the user's Approve (`Cx::outside` is None without a thread), so only a tool that reads runs there,
     // whatever else its token's scope says: a question's (refused before this already, `IN_A_QUESTION`), or any other.
     // GA-341: Claude Desktop's token is the one exception, by its client's name (`GizaiTools::desktop`): its calls run as a
     // Chief's chat turn's in a chat that used no tool from outside Hersir (`call_desktop`). The calls Hersir makes itself
     // (`call`, `call_in`, `call_check`, `call_approved`) have no `from`.
-    if from.is_some() && thread.is_none() && check.is_none() && !desktop && !reads_only(name) {
+    if from.is_some() && thread.is_none() && check.is_none() && desktop != Desktop::Itself && !reads_only(name) {
         return Err(ONLY_READS.replace("{tool}", name));
     }
     let a = args_of(args)?;
@@ -339,6 +431,11 @@ async fn call_scoped(st: &AppState, actor: &str, thread: Option<&str>, check: Op
         write::archive_scope(&a)?;
     }
     let cx = Cx { st, actor, thread, check, from, approved, desktop };
+    // GA-351: from the Chief's turn that answers Claude Desktop, attach_file of a file outside the Chief's copies of the code
+    // is refused at once, as Claude Desktop's own is, also in a chat where the call would wait for your Approve.
+    if desktop == Desktop::Answering && name == "attach_file" {
+        write::attachable(&cx, &a)?;
+    }
     // A call you approved (GA-102) was kept because of that rule, so it doesn't apply to it; every other rule does.
     if NOT_AFTER_OUTSIDE.contains(&name) && let Some(tool) = cx.outside(name, &a).await? {
         // Not run: kept under the answer for the user to approve with one click, or discard (GA-102).
@@ -383,6 +480,7 @@ async fn call_scoped(st: &AppState, actor: &str, thread: Option<&str>, check: Op
         "stop_agent_run" => write::stop_run(&cx, &a),
         "create_doc" => write::create_doc(&cx, &a),
         "write_doc" => write::write_doc(&cx, &a),
+        "record_decision" => write::record_decision(&cx, &a),
         "memory_list" => memory::list(&cx, &a),
         "memory_search" => memory::search(&cx, &a),
         "memory_read" => memory::read(&cx, &a),
@@ -415,9 +513,11 @@ pub(crate) struct Cx<'a> {
     from: Option<Stream<'a>>,
     /// A call the user approved (GA-102, `call_approved`): the rules about a tool from outside Gizai don't apply to it.
     pub approved: bool,
-    /// GA-341: a call from Claude Desktop (`call_desktop`), as you: the rules of a Chief's chat turn in a chat that used no
-    /// tool from outside Hersir, with no chat to keep a call in or to name a file in.
-    pub desktop: bool,
+    /// GA-341: a call from Claude Desktop (`call_desktop`, `Desktop::Itself`), as you: the rules of a Chief's chat turn in a
+    /// chat that used no tool from outside Hersir, with no chat to keep a call in or to name a file in. GA-351: or from the
+    /// Chief's turn that answers a message from Claude Desktop (`Desktop::Answering`), in its chat. Either way Claude
+    /// Desktop's limits hold (`Desktop::limits`).
+    pub desktop: Desktop,
 }
 
 impl Cx<'_> {
@@ -441,16 +541,18 @@ impl Cx<'_> {
         not_run(name, tool, kept)
     }
 
-    /// GA-323: keeps the call `name` (create_agent or update_agent) for the user's Approve, as it gives the agent `who` the
-    /// commands `entries`, which chat doesn't give at once (`write::new_commands`): pending as a call after a tool from
-    /// outside Gizai is (`pending::keep`), marked `NEW_COMMANDS` instead of a tool. What the call returns, for the Chief.
-    pub fn keep_commands(&self, name: &str, a: &Args, who: &str, entries: &[String]) -> String {
+    /// GA-323: keeps the call `name` (create_agent or update_agent) for the user's Approve, as it gives the agent `who` what
+    /// chat doesn't give at once (`needs`): commands (`write::new_commands`), and GA-352 a CLI that doesn't keep it to its
+    /// allowed commands or a permission mode that isn't stricter than its own. Pending as a call after a tool from outside
+    /// Gizai is (`pending::keep`), marked `NEW_COMMANDS` instead of a tool. With no chat to keep it in (Claude Desktop, a call
+    /// Hersir makes itself) it isn't run, and nothing changes. What the call returns, for the Chief.
+    pub fn keep_for_ok(&self, name: &str, a: &Args, who: &str, needs: &write::NeedsOk) -> String {
         let kept = match self.thread {
             Some(t) => crate::pending::keep(self.st, self.actor, t, self.from.map(|s| s.run), name, &a.0, gizai_core::pending::NEW_COMMANDS)
                 .map(|_| ()),
             None => Err("there is no chat to keep it in".into()),
         };
-        not_run_for_commands(name, who, entries, kept)
+        not_run_for_ok(name, who, needs, kept)
     }
     pub fn db(&self) -> &gizai_core::db::Db {
         &self.st.db
@@ -587,12 +689,12 @@ const CLIENT_FIELDS: [(&str, &str, &str); 14] = [
 
 const AGENT_FIELDS: [(&str, &str, &str); 11] = [
     ("board_check_minutes", "integer", "Only for the agent with Chat on (the Chief): check the board every this many minutes (5–1440); 0 = off"),
-    ("runs_on", "string", "The coding CLI it runs on, by name as Settings → Coding CLIs lists them (Claude Code, Codex, Gemini, a second account, …). Omit: Claude Code for a new agent, unchanged on update"),
+    ("runs_on", "string", "The coding CLI it runs on, by name as Settings → Coding CLIs lists them (Claude Code, Codex, Gemini, a second account, …). Omit: Claude Code for a new agent, unchanged on update. Codex and Gemini don't keep an agent to its allowed commands: putting an agent on one waits for the user's Approve, the whole call with it"),
     ("model", "string", "On Claude Code, a model it offers: an alias (default, opus, sonnet, haiku, fable) or its full id (claude-opus-5-5). On Codex or Gemini, that CLI's model name. Empty = the CLI's default"),
     ("effort", "string", "How hard the model thinks. Claude Code: low, medium, high, xhigh or max. Codex: minimal, low, medium, high or xhigh. Gemini takes none. Empty = the CLI's default; higher costs more"),
     ("instructions_md", "string", "Instructions sent with every run (Markdown). Omit on create to use the role's template; it must end by asking for the GIZAI_RESULT line"),
     ("cards_at_once", "integer", "How many cards it works on at the same time, each in its own git worktree (1–10, default 1)"),
-    ("permission_mode", "string", "Permission mode for task runs, in its CLI's terms. Claude Code: acceptEdits (the usual), dontAsk, auto, plan or manual. Codex: workspace-write (the usual) or read-only. Gemini: auto_edit (the usual), plan or default"),
+    ("permission_mode", "string", "Permission mode for task runs, in its CLI's terms. Claude Code: acceptEdits (the usual), dontAsk, auto, plan or manual. Codex: workspace-write (the usual) or read-only. Gemini: auto_edit (the usual), plan or default. Strict to loose: Claude Code plan, manual, acceptEdits and dontAsk, auto; Codex read-only, workspace-write; Gemini plan, default, auto_edit. Another mode that isn't stricter than the one the agent runs with (for a new agent, its CLI's usual one) waits for the user's Approve, the whole call with it"),
     ("allowed_tools", "string[]", "Commands it may run without asking, each its own entry as Bash(…), like Bash(npm test:*). Never a shell, an interpreter or a path, like Bash(bash:*), Bash(python3:*) or Bash(/bin/sh:*), unless the agent has it already or its role's list has it: only the user adds those. A command the agent doesn't have yet waits for the user's Approve, the whole call with it, unless it is one of Bash(git status:*), Bash(git add:*), Bash(ls:*), Bash(cat:*), Bash(head:*), Bash(tail:*), Bash(wc:*), Bash(cut:*), Bash(diff:*), Bash(grep:*), Bash(jq:*), Bash(pwd:*), Bash(which:*) and Bash(sleep:*). Omit on create for its role's list (builders: Hersir's default list plus git push, pull and fetch; QA also gh pr; DevOps its release commands), saved at once; an empty list on update = Hersir's default list"),
     ("monthly_budget_usd", "number", "Monthly spending cap in dollars; empty = no cap"),
     ("title", "string", "Job title shown on the team page"),
@@ -714,6 +816,15 @@ pub fn catalog() -> Vec<ToolDef> {
              &[TASK, ("agent", "string", "Agent name; omit to use the assigned agent or the column's first agent")], &["task"]),
         tool("stop_agent_run", "Stops the agent working on a task right now.", &[TASK], &["task"]),
         tool("create_doc", "Adds a doc to a project, optionally with its first text.", &[PROJECT, ("title", "string", "Doc title"), ("body_md", "string", "Text (Markdown)")], &["project", "title"]),
+        tool("record_decision", "Records a decision about a project with Docs on, numbered after its own decision records, on its Docs page \
+(Decisions): the title, the decision, its context, consequences and the alternatives weighed. Accepted unless proposed. One that \
+replaces an older record names its number in supersedes. For decisions made or put forward, not for every answer.",
+             &[("project", "string", "The project's key or name"), ("title", "string", "A short title, like \"Use Postgres, not MySQL\""),
+               ("decision", "string", "What was decided (Markdown)"), ("context", "string", "What led to it (Markdown)"),
+               ("consequences", "string", "What follows from it (Markdown)"), ("alternatives", "string", "The options weighed, and why not (Markdown)"),
+               ("status", "enum:accepted|proposed", "accepted (the default), or proposed"), TASK,
+               ("related_files", "string[]", "Repository paths it concerns"), ("supersedes", "integer", "The number of the record it replaces")],
+             &["project", "title", "decision"]),
         tool("write_doc", "Saves new text for a doc as a new version (the whole text, not a diff).",
              &[("doc", "string", "The doc's title or id"), ("body_md", "string", "The complete new text (Markdown)"), ("project", "string", "Project key or name, when titles repeat")], &["doc", "body_md"]),
         tool("memory_list", "The notes in Hersir's Memory, by path (folder and title), with version and size. Shared folders: Clients/, Projects/, Standards/, Workflows/, Deployments/, Dependencies/, Decisions/, Lessons/. Each agent has its own folder (Agents/<name>/), and you have Chief/.",

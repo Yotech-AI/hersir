@@ -747,7 +747,7 @@ fn git(dir: &Path, args: &[&str], input: Option<Vec<u8>>) -> Result<(bool, Vec<u
             Ok(Some(status)) => break status,
             Ok(None) if Instant::now() < until => std::thread::sleep(Duration::from_millis(5)),
             Ok(None) => {
-                let _ = child.kill();
+                crate::os::kill_child(&mut child, "git gave the Editor no answer in time");
                 let _ = child.wait();
                 return Err(format!("git gave no answer within {} s", GIT_LIMIT.as_secs()));
             }
@@ -820,11 +820,13 @@ fn in_ignored_folder(dir: &Path, parts: &[&str]) -> bool {
 type Changes = (Option<String>, Vec<(String, GitMark)>);
 
 /// What git status says about the folder `dir`, or its folder `sub` ("" for all of it): the branch, and each changed
-/// file, untracked ones one by one. None outside a repository.
+/// file, untracked ones one by one. None outside a repository. Submodules are left out (`worktree::IGNORE_SUBMODULES`,
+/// GA-350): git never looks inside one, whose own settings could start programs.
 fn changes(dir: &Path, sub: &str) -> Option<Changes> {
     let prefix = prefix(dir)?;
     let spec = if sub.is_empty() { "." } else { sub };
-    match git(dir, &["status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all", "--", spec], None) {
+    let args = ["status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all", worktree::IGNORE_SUBMODULES, "--", spec];
+    match git(dir, &args, None) {
         Ok((true, out, _)) => Some(parse_status(&out, &prefix)),
         _ => None,
     }
@@ -1048,7 +1050,7 @@ fn grep(dir: &Path, query: &str, how: Find, repo: bool, kind: &str, max_hits: us
         }
     }
     if found.truncated {
-        let _ = child.kill();
+        crate::os::kill_child(&mut child, "the Editor's search had found as much as it shows");
     }
     let status = child.wait().map_err(|e| Grep::Said(e.to_string()))?;
     let said = String::from_utf8_lossy(&err.join().unwrap_or_default()).trim().to_string();

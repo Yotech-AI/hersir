@@ -17,6 +17,7 @@
 # FAKE_RUN_FOR_ME in the prompt finishes like run-for-me: a needs_decision whose result line asks the user to run two
 # commands (`run_for_me`, GA-31). FAKE_ASKS finishes like run-asks: a needs_decision without them (an older result line).
 # FAKE_LEARNED in the prompt finishes like run-learned: run-ok with two `learned` lines on its result line (GA-19).
+# FAKE_CHANGELOG finishes like run-changelog: run-learned with a `changelog` line for the Docs page instead.
 # FAKE_STREAM <rate>x<seconds> in the prompt (FAKE_STREAM 50x20: 50 events a second for 20 s) prints the init line, those
 # events (a text, a tool call, its result, again) and run-ok's last two lines; Stop's SIGINT ends it part-way (GA-188).
 # GA-221: the agent is done but the CLI doesn't exit, as Claude Code while something the run started still runs in the
@@ -57,7 +58,7 @@ fixture="$here/fixtures/run-ok.jsonl"
 case "$prompt" in *FAKE_REFUSED*) fixture="$here/fixtures/run-refused.jsonl" ;; esac
 case "$prompt" in *FAKE_NO_RESULT*) fixture="$here/fixtures/run-no-result.jsonl" ;; esac
 case "$prompt" in *FAKE_RUN_FOR_ME*) fixture="$here/fixtures/run-for-me.jsonl" ;; *FAKE_ASKS*) fixture="$here/fixtures/run-asks.jsonl" ;; esac
-case "$prompt" in *FAKE_LEARNED*) fixture="$here/fixtures/run-learned.jsonl" ;; esac
+case "$prompt" in *FAKE_LEARNED*) fixture="$here/fixtures/run-learned.jsonl" ;; *FAKE_CHANGELOG*) fixture="$here/fixtures/run-changelog.jsonl" ;; esac
 if [ -n "${FAKE_NO_RESULT:-}" ]; then fixture="$here/fixtures/run-no-result.jsonl"; fi
 case "$prompt" in *FAKE_HANG*) prompt=hang ;; *FAKE_STUBBORN*) prompt=stubborn ;; *FAKE_CRASH*) prompt=crash ;; *FAKE_NOT_LOGGED_IN*) prompt=nologin ;; esac
 case "$prompt" in *FAKE_REFUSED_THEN_HANG*) prompt=refusedhang ;; esac

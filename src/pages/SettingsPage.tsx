@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Bell, Bot, GitPullRequest, Palette, Plug, SlidersHorizontal } from "lucide-react";
+import { Bell, Bot, Cloud, GitPullRequest, Palette, Plug, SlidersHorizontal } from "lucide-react";
 import { detectClaude, getSettings, getTeam, listTeams, saveSettings } from "../api";
 import type { NotificationSwitches, Settings } from "../types";
 import { go, SETTINGS_TABS, type SettingsTab } from "../router";
@@ -11,6 +11,7 @@ import { BackupSettings } from "../components/BackupSettings";
 import { BitbucketSettings } from "../components/BitbucketSettings";
 import { ClaudeDesktopSettings } from "../components/ClaudeDesktopSettings";
 import { CliSettings } from "../components/CliSettings";
+import { CloudSettings } from "../components/CloudSettings";
 import { EditorFoldersSetting } from "../components/EditorFoldersSetting";
 import { GithubSettings } from "../components/GithubSettings";
 import { LogsSetting } from "../components/LogsSetting";
@@ -22,7 +23,9 @@ import { focusLimit, ScreenshotSettings } from "../components/ScreenshotSettings
 import { UpdateSettings } from "../components/UpdateSettings";
 import { limitsProblem, type LimitsProblem } from "../lib/screenshotSettings";
 import { CD_TEXT, CD_TITLE } from "../lib/claudeDesktop";
-import { cardAgents, RUNS_MEMORY_PER_RUN_HINT, runsAtOnceWarning, runsMemoryError, runsMemoryHint, runsMemoryPerRunError, type CardAgent } from "../lib/settings";
+import { cardAgents, CONTROLLERS_AFTER, controllersNote, RUNS_MEMORY_PER_RUN_HINT, runsAtOnceWarning, runsCpuError, runsCpuHint, runsMemoryError, runsMemoryHint,
+  runsMemoryPerRunError, type CardAgent } from "../lib/settings";
+import { RunForMe } from "../components/RunForMe";
 
 /** Settings → Notifications: a switch per kind, in this order. */
 const NOTIFY: [keyof NotificationSwitches, string][] = [
@@ -36,6 +39,7 @@ const NOTIFY: [keyof NotificationSwitches, string][] = [
 const TABS: TabDef<SettingsTab>[] = [
   ["general", SlidersHorizontal, "General"], ["appearance", Palette, "Appearance"], ["notifications", Bell, "Notifications"],
   ["agents", Bot, "Agents and runs"], ["mcp", Plug, "MCP servers"], ["github", GitPullRequest, "GitHub and Bitbucket"],
+  ["cloud", Cloud, "Hersir Cloud"],
 ];
 
 /** Every tab stays mounted and only the open one shows, so a change not saved yet is still there after switching tabs;
@@ -66,7 +70,7 @@ export function SettingsPage({ tab }: { tab?: string } = {}) {
   const save = async (next: Settings = s) => {
     const usd = budget.trim() === "" ? null : Number(budget.replace(",", "."));
     if (usd !== null && !(usd > 0)) { setMsg({ ok: false, text: "The spending limit must be a positive amount, or empty for no limit." }); return; }
-    const memory = runsMemoryError(next.runsMemoryGb) ?? runsMemoryPerRunError(next.runsMemoryPerRunGb);
+    const memory = runsMemoryError(next.runsMemoryGb) ?? runsMemoryPerRunError(next.runsMemoryPerRunGb) ?? runsCpuError(next.runsCpuCores);
     if (memory) { setMsg({ ok: false, text: memory }); return; }
     // Settings → Agents and runs → Screenshots (GA-185): a value outside its range is refused with why, before the backend would
     const shots = limitsProblem(next);
@@ -82,7 +86,7 @@ export function SettingsPage({ tab }: { tab?: string } = {}) {
     <>
       <div className="topbar"><div className="crumbs"><b>Settings</b></div>
         <div className="actions"><button className="btn primary" onClick={() => save()}>Save settings</button></div></div>
-      {/* the island's header holds the six tabs as Island tabs (design/islands-settings: Settings); the open tab's form scrolls under it */}
+      {/* the island's header holds the seven tabs as Island tabs (design/islands-settings: Settings); the open tab's form scrolls under it */}
       <div className="island-head settings-head">
         <Tabs island tabs={TABS} open={open} onOpen={(t) => go({ page: "settings", id: t })} label="Settings" />
       </div>
@@ -133,6 +137,14 @@ export function SettingsPage({ tab }: { tab?: string } = {}) {
             <Field label="Memory per run" htmlFor="s-memory-run" hint={RUNS_MEMORY_PER_RUN_HINT}>
               <div className="input-group"><input id="s-memory-run" className="input" type="number" min={2} max={s.runsMemoryGb || undefined} step={1} value={s.runsMemoryPerRunGb ?? ""}
                 onChange={(e) => setS({ ...s, runsMemoryPerRunGb: Number(e.target.value) })} /><span className="faint">GB</span></div></Field>
+            {/* GA-369: all agents' work together; the cap holds on Linux and Windows, macOS has none */}
+            <Field label="CPU for agents" htmlFor="s-cpu" hint={runsCpuHint(s)}>
+              <div className="input-group"><input id="s-cpu" className="input" type="number" min={1} max={s.computerCores || undefined} step={1} value={s.runsCpuCores ?? ""}
+                onChange={(e) => setS({ ...s, runsCpuCores: Number(e.target.value) })} /><span className="faint">cores</span></div></Field>
+            {controllersNote(s.runsMissingControllers) && s.runsControllersFix && (
+              <Field label="CPU and disk priority" wide>
+                <RunForMe commands={[s.runsControllersFix]} head={controllersNote(s.runsMissingControllers)} foot={CONTROLLERS_AFTER} /></Field>
+            )}
             <Field label="Spend per run ($)" htmlFor="s-usd" hint="Claude Code stops a run that reaches this amount; other CLIs don't report cost"><input id="s-usd" className="input" inputMode="decimal" value={budget} onChange={(e) => setBudget(e.target.value)} placeholder="No limit" /></Field>
             <Field label="Minutes per run" htmlFor="s-min" hint="5 to 480"><input id="s-min" className="input" type="number" min={5} max={480} value={s.maxRunMinutes} onChange={(e) => setS({ ...s, maxRunMinutes: Number(e.target.value) })} /></Field>
             <Field label="Tool calls per run" htmlFor="s-calls" hint="20 to 2000. Every file read, edit and command is one."><input id="s-calls" className="input" type="number" min={20} max={2000} value={s.maxRunToolCalls} onChange={(e) => setS({ ...s, maxRunToolCalls: Number(e.target.value) })} /></Field>
@@ -154,6 +166,10 @@ export function SettingsPage({ tab }: { tab?: string } = {}) {
         <div {...panel("github")}>
           <GithubSettings s={s} setS={setS} save={save} say={say} savedAt={savedAt} />
           <BitbucketSettings say={say} />
+        </div>
+        {/* Hersir Cloud (GA-360): its controls save at once; Save settings is for the other tabs */}
+        <div {...panel("cloud")}>
+          <CloudSettings shown={open === "cloud"} />
         </div>
       </div></div>
     </>

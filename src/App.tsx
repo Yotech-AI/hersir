@@ -22,6 +22,7 @@ const ClientPage = lazy(() => import("./pages/ClientPage").then((m) => ({ defaul
 const UsersPage = lazy(() => import("./pages/UsersPage").then((m) => ({ default: m.UsersPage })));
 const ProjectsPage = lazy(() => import("./pages/ProjectsPage").then((m) => ({ default: m.ProjectsPage })));
 const ProjectPage = lazy(() => import("./pages/ProjectPage").then((m) => ({ default: m.ProjectPage })));
+const DocsPage = lazy(() => import("./pages/DocsPage").then((m) => ({ default: m.DocsPage })));
 const TaskPage = lazy(() => import("./pages/TaskPage").then((m) => ({ default: m.TaskPage })));
 const DocPage = lazy(() => import("./pages/DocPage").then((m) => ({ default: m.DocPage })));
 const TeamPage = lazy(() => import("./pages/TeamPage").then((m) => ({ default: m.TeamPage })));
@@ -298,6 +299,7 @@ export default function App({ onboarding = false }: { onboarding?: boolean }) {
               : route.page === "terminal" ? <TerminalPage id={route.id} youId={info?.you_id ?? ""} />
               : route.page === "projects" ? <ProjectsPage />
               : route.page === "project" && route.id ? <ProjectPage key={route.id} id={route.id} view={route.view === "time" ? "time" : "overview"} />
+              : route.page === "devdocs" && route.id ? <DocsPage key={route.id} id={route.id} docs={route.docs} />
               : <Placeholder route={route} info={info} />}
           </Suspense>
         </div></main>

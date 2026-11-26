@@ -35,6 +35,18 @@ pub fn parse(final_text: &str) -> Option<Outcome> {
     OUTCOMES.contains(&o.outcome.as_str()).then_some(o)
 }
 
+/// Docs (devdocs): the optional `changelog` on the last result line that `parse` accepts, the card's line in its project's
+/// changelog as its builder wrote it: `{"type": "Fixed", "text": "Search finds names"}` gives ("Fixed", "Search finds
+/// names"). None without it, or with either part missing or blank. Apart from `Outcome`, like `learned`.
+pub fn changelog(final_text: &str) -> Option<(String, String)> {
+    parse(final_text)?;
+    let line = final_text.lines().rev().map(str::trim_start).find(|l| l.starts_with("GIZAI_RESULT:"))?;
+    let v: serde_json::Value = serde_json::from_str(line["GIZAI_RESULT:".len()..].trim()).ok()?;
+    let entry = v.get("changelog")?;
+    let (kind, text) = (entry.get("type")?.as_str()?.trim(), entry.get("text")?.as_str()?.trim());
+    (!kind.is_empty() && !text.is_empty()).then(|| (kind.to_string(), text.to_string()))
+}
+
 /// At most this many `learned` lines are kept from one result.
 pub const MAX_LEARNED: usize = 20;
 

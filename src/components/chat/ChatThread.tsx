@@ -137,7 +137,7 @@ function Queued({ q, waiting, onError }: { q: QueuedMessage; waiting: boolean; o
   };
   return (
     <div className="chat-msg user queued">
-      {edit === null ? <UserBubble text={q.bodyMd} files={q.files} /> : (
+      {edit === null ? <UserBubble text={q.bodyMd} files={q.files} meta={q.meta} /> : (
         <div className="bubble editing">
           <textarea className="input" aria-label="Edit the queued message" value={edit} autoFocus rows={Math.min(8, edit.split("\n").length + 1)}
             onChange={(e) => setEdit(e.target.value)}

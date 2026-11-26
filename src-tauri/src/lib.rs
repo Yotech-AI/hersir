@@ -7,7 +7,11 @@ pub mod chat;
 // Claude Desktop's chat reads your Hersir board: its lasting token and the entry for its settings (GA-338).
 pub mod claude_desktop;
 pub mod clis;
+// Hersir Cloud: signing in, the keys, Cloud Backup and Restore from Hersir Cloud (GA-359).
+pub mod cloud;
 pub mod code;
+pub mod devdocs;
+pub mod docs_server;
 mod commands;
 pub mod editor;
 pub mod folders;
@@ -21,6 +25,7 @@ pub mod logs;
 pub mod mcp;
 pub mod mcp_servers;
 pub mod memory;
+pub mod navigation;
 pub mod notifications;
 pub mod onboarding;
 // Keeps WebKitGTK 2.54.1 from crashing Gizai on a paste with an empty clipboard (GA-222).
@@ -34,6 +39,7 @@ mod quit;
 // The Chief's readable copy of a file: its text as Markdown (GA-310), or a PDF LibreOffice makes (GA-311).
 pub mod readable;
 pub mod restore;
+pub mod run_cpu;
 pub mod run_memory;
 pub mod runs;
 pub mod screenshots;
@@ -89,7 +95,8 @@ pub struct AppState {
     pub updates: Arc<update::Updates>,
     /// Held while this Gizai runs: one Gizai per data folder (see `lock_data_dir`).
     pub _lock: Arc<std::fs::File>,
-    /// Where MCP servers' secrets live: the OS keychain, or a file standing in for it (HERSIR_FAKE_KEYCHAIN) in tests.
+    /// Where MCP servers' secrets live: the OS keychain, or a file standing in for it (HERSIR_FAKE_KEYCHAIN, a debug build
+    /// only) in tests.
     pub keychain: Arc<dyn gizai_agents::secrets::Keychain>,
     /// MCP servers' sign-ins in that keychain, refreshed one at a time per server.
     pub tokens: Arc<gizai_agents::oauth::TokenStore>,
@@ -108,6 +115,9 @@ pub struct AppState {
     pub backups: Arc<backups::Backups>,
     /// The restore that runs now, or the last one since Gizai started (see `restore`).
     pub restores: Arc<restore::Restores>,
+    /// Hersir Cloud: the sign-in that waits, the cloud backup or download that runs, and the plan and key as seen last
+    /// (see `cloud`).
+    pub cloud: Arc<cloud::Cloud>,
     /// LibreOffice, which makes the PDF copies of Pages, Keynote, Numbers, .doc and .ppt files for the Chief (GA-311, see
     /// `readable`): its profile folder of Hersir's own, `<data>/libreoffice`, and its limit. Tests may set a fake program.
     pub libreoffice: Arc<gizai_agents::libreoffice::LibreOffice>,
@@ -328,6 +338,13 @@ fn open_data(dir: PathBuf, notify: Arc<dyn Fn(runs::Note) + Send + Sync>, defaul
     let (db, restored) = gizai_core::restore::open(&dir).map_err(|e| e.to_string())?;
     if let Some(r) = &restored {
         eprintln!("gizai: {}", r.message);
+        // GA-359: restored from the first screen (Restore from Hersir Cloud), the data has its own team, so the first
+        // start's onboarding, which this computer's settings kept waiting, no longer waits.
+        if r.ok
+            && let Err(e) = gizai_core::onboarding::skip(&db)
+        {
+            eprintln!("gizai: skipping the onboarding after the restore failed: {e}");
+        }
     }
     timed.part("the database");
     let seed = if default_agents {
@@ -420,7 +437,8 @@ fn open_data(dir: PathBuf, notify: Arc<dyn Fn(runs::Note) + Send + Sync>, defaul
                   github: Arc::new(github::Logins::default()), updates: Arc::new(update::Updates::default()), _lock: Arc::new(lock), notify,
                   desktop: notifications::Desktop::silent(), inbox: Arc::new(notifications::Watch::default()),
                   terminals: Arc::new(gizai_agents::terminal::Terminals::default()), streams: Arc::new(stream::Streams::default()),
-                  backups: Arc::new(backups::Backups::default()), restores: Arc::new(restore::Restores::default()), libreoffice };
+                  backups: Arc::new(backups::Backups::default()), restores: Arc::new(restore::Restores::default()),
+                  cloud: Arc::new(cloud::Cloud::default()), libreoffice };
     // GA-102: the Chief's calls that wait for your approval stay waiting; one approved while Gizai closed counts as
     // failed, so it never runs twice, and its chat says so.
     pending::at_start(&st);
@@ -489,6 +507,7 @@ fn ui_notifier(app: AppHandle) -> Arc<dyn Fn(runs::Note) + Send + Sync> {
             runs::Note::TerminalsChanged(list) => app.emit("terminals-changed", list),
             runs::Note::BackupsChanged(status) => app.emit("backups-changed", status),
             runs::Note::RestoreChanged(status) => app.emit("restore-changed", status),
+            runs::Note::CloudChanged(status) => app.emit("cloud-changed", status),
         };
     })
 }
@@ -595,11 +614,15 @@ pub fn test_state(dir: &std::path::Path) -> AppState {
     // GA-338: never the real Claude Desktop's settings in tests: a folder of the test's own, not made yet (as if Claude
     // Desktop isn't installed); a test that wants it installed makes the folder.
     st.claude_desktop_dir = Some(dir.join("claude-desktop"));
-    // Never the real keychain in tests: one in memory, unless the test names a file for it.
-    if env::var_os("HERSIR_FAKE_KEYCHAIN").is_none() {
+    // Never the real keychain in tests: one in memory, unless the test names a file for it (a debug build only: a test
+    // built with --release gets the one in memory, as `secrets::from_env` would give it the system's).
+    if gizai_agents::secrets::fake_file().is_none() {
         st.keychain = Arc::new(gizai_agents::secrets::MemoryKeychain::default());
         st.tokens = Arc::new(gizai_agents::oauth::TokenStore::new(st.keychain.clone()));
     }
+    // Never the real Hersir Cloud in tests (GA-359): an address on this computer where nothing answers, until a test points
+    // it at the fake one (`cloud::Cloud::set_config`).
+    st.cloud.set_config(cloud::Config { server: "http://127.0.0.1:9".into(), client_id: cloud::CLIENT_ID.into(), entitlement_key: None });
     // No LibreOffice in tests, wherever it is installed (GA-311): a test that wants it sets `program` (Find for the real
     // one, At for a fake), and may set a shorter `limit`.
     st.libreoffice = Arc::new(gizai_agents::libreoffice::LibreOffice {
@@ -687,6 +710,8 @@ pub fn run() {
         builder
     };
     builder
+        // The main window stays on Hersir's own pages: a link that slips through opens nothing in it (GA-362).
+        .plugin(navigation::guard())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         // The window may only read the clipboard's text (capabilities/default.json): a terminal's Ctrl+Shift+V on Linux.
@@ -730,6 +755,10 @@ pub fn run() {
             // Memory for agent runs (GA-202): from now on agent processes start in this Gizai's own slice on Linux, which
             // Settings → Runs limits; Gizai itself stays outside it.
             run_memory::start(&state);
+            // GA-369: no queue start while this computer is busy; a headless test run doesn't wait for the test machine
+            if !test_run {
+                state.run_memory.watch_cpu();
+            }
             // Memory (GA-85): the notes agents kept in Claude Code's own memory come into Gizai's, each file once. Not in
             // headless test and screenshot runs: they run in your own home folder, with your Claude Code accounts.
             if !test_run {
@@ -827,6 +856,27 @@ pub fn run() {
                     }
                 });
             }
+            // Cloud Backup (GA-359), on the same ticks: 2 minutes after start, then every hour by the wall clock, the plan
+            // is asked for again, and a daily cloud backup is made when the last one is a day old and something changed.
+            // Headless test and screenshot runs leave Hersir Cloud alone.
+            if !test_run {
+                let st = state.clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(backups::FIRST_CHECK_AFTER).await;
+                    let mut last = None;
+                    let mut tick = tokio::time::interval(backups::TICK);
+                    loop {
+                        tick.tick().await;
+                        let now = gizai_core::ids::now_ms();
+                        if !backups::check_due(last, now) {
+                            continue;
+                        }
+                        last = Some(now);
+                        let st = st.clone();
+                        let _ = tokio::task::spawn_blocking(move || cloud::hourly(&st, now)).await;
+                    }
+                });
+            }
             // Once a minute the agents take cards that had to wait (the run limit was full, Gizai just started), and the
             // Chief checks the board when its interval has passed; only new findings start it. The cards start on
             // their own (GA-191): the board check doesn't wait for a card's fetch and install.
@@ -883,6 +933,7 @@ pub fn run() {
             commands::pending_actions, commands::approve_pending_action, commands::approve_pending_actions, commands::discard_pending_action,
             commands::open_pull_request, commands::check_pull_request, commands::detect_gh,
             changes::card_changes, changes::card_file_diff, changes::run_changes,
+            docs_server::docs_serve, devdocs::docs_index, devdocs::docs_source, devdocs::docs_commit,
             screenshots::list_screenshots, screenshots::screenshot_bytes,
             commands::github_status, commands::github_check, commands::github_login, commands::github_login_wait, commands::github_login_cancel,
             commands::bitbucket_status, commands::bitbucket_save_login, commands::bitbucket_remove_login, commands::bitbucket_check,
@@ -892,6 +943,10 @@ pub fn run() {
             commands::backup_status, commands::save_backup_settings, commands::list_backups, commands::back_up_now,
             commands::start_restore, commands::restore_status, commands::cancel_restore, commands::restart_to_restore,
             commands::dismiss_restore_result,
+            cloud::cloud_status, cloud::cloud_sign_in, cloud::cloud_cancel_sign_in, cloud::cloud_sign_out, cloud::cloud_make_key,
+            cloud::cloud_confirm_recovery, cloud::cloud_enter_recovery, cloud::cloud_new_recovery, cloud::cloud_save_settings,
+            cloud::cloud_back_up_now, cloud::cloud_list_backups, cloud::cloud_start_restore, cloud::cloud_computers,
+            cloud::cloud_remove_computer, cloud::cloud_open_account,
             editor::editor_folders, editor::editor_list, editor::editor_read, editor::editor_write, editor::editor_create,
             editor::editor_rename, editor::editor_delete, editor::editor_files, editor::editor_search, editor::editor_git,
             editor::editor_versions, editor::editor_apps, editor::open_in_app, editor::editor_main, editor::editor_fetch,

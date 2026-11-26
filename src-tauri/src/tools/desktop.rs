@@ -1,10 +1,13 @@
 //! GA-342: Claude Desktop asks Hersir's Chief (`ask_chief`) and reads its answer (`chief_reply`). Only Claude Desktop's
 //! token is offered them (`desktop_catalog`, `call_desktop`), never the Chief's own chat turns, board checks or questions,
 //! so a Chief's turn never starts another. A message from Claude Desktop counts as one you typed in Hersir's chat: it is
-//! saved as yours and handed on as the Chat page's Send hands one on (`chat::send_with_files`, which is
-//! `chat::send_message`), starting a turn or waiting in the chat's queue, and it doesn't mark the chat as having used a
-//! tool from outside Hersir, so the Chief's turn runs with its normal rules. ask_chief answers at once, as a turn can
-//! outlast Claude's 240-second timeout for a tool; chief_reply waits at most `MAX_WAIT` seconds.
+//! saved as yours and handed on as the Chat page's Send hands one on (`chat::send_from_desktop`, as `chat::send_message`),
+//! starting a turn or waiting in the chat's queue, and it doesn't mark the chat as having used a tool from outside
+//! Hersir, so the Chief's changes act at once. GA-351: but it is marked as from Claude Desktop in its meta
+//! (`gizai_core::chat::desktop_meta`), which the Chat page shows, and the Chief's turn that answers it gets Claude
+//! Desktop's own limits (`tools::Desktop::Answering`): only what Claude Desktop may not do itself doesn't come back
+//! through the Chief. ask_chief answers at once, as a turn can outlast Claude's 240-second timeout for a tool; chief_reply
+//! waits at most `MAX_WAIT` seconds.
 use std::time::Duration;
 
 use gizai_core::chat::{self as core_chat, ChatMessage};
@@ -60,7 +63,8 @@ pub(super) fn chief_reply_def() -> ToolDef {
 
 /// ask_chief: `message` goes to the Chief in the chat `thread`, else in the chat From Claude Desktop (made the first time,
 /// the same one after that, `core_chat::desktop_thread`). It starts a Chief turn, or waits in the chat's queue while one
-/// runs, as a message you send in Hersir does. Answers at once, without waiting for the turn.
+/// runs, as a message you send in Hersir does, marked as from Claude Desktop (GA-351). Answers at once, without waiting
+/// for the turn.
 pub(super) async fn ask_chief(st: &AppState, a: &Args) -> Result<Value, String> {
     let message = a.req("message")?;
     let thread = match a.opt("thread") {
@@ -78,7 +82,7 @@ pub(super) async fn ask_chief(st: &AppState, a: &Args) -> Result<Value, String> 
             id
         }
     };
-    let sent = crate::chat::send_message(st, Some(thread), message, None, vec![], None).await?;
+    let sent = crate::chat::send_from_desktop(st, thread, message).await?;
     Ok(json!({"thread": sent.thread_id, "message": sent.message_id, "status": WORKING}))
 }
 

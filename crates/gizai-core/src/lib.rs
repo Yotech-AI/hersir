@@ -12,6 +12,7 @@ pub mod builds_on;
 pub mod comments;
 pub mod sortkey;
 pub mod team;
+pub mod devdocs;
 pub mod docs;
 pub mod memory;
 pub mod memory_import;

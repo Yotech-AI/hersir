@@ -196,6 +196,46 @@ select.chip { appearance: none; padding-right: 26px; background-image: url("data
 .ask.bk-ask p { overflow-wrap: anywhere; }
 .bk-result { grid-column: 1 / -1; }
 .bk-result .btn { flex: none; margin-left: auto; }
+
+/* Settings → Hersir Cloud and Restore from Hersir Cloud (GA-360; GA-317's design: design/hersir-cloud.md, sheet A) */
+.gh-line.warning .icon { color: var(--warning); }
+/* the storage meter: 240 × 6 on raised with a line-2 border; what is used is text-2, danger when full */
+.cloud-storage { display: flex; align-items: center; gap: 10px; }
+.cloud-meter { position: relative; flex: none; width: 240px; max-width: 50%; height: 6px; overflow: hidden; border: 1px solid var(--line-2);
+  border-radius: var(--radius-pill); background: var(--raised); }
+.cloud-meter > span { position: absolute; inset: 0 auto 0 0; background: var(--text-2); }
+.cloud-meter.full > span { background: var(--danger); }
+/* Save your recovery code: its key icon and Needs you in gold (it needs you), decision 2's warning, the code on raised */
+.cloud-save-code { gap: 16px; }
+.cloud-needs { display: flex; align-items: center; gap: 8px; }
+.cloud-needs .icon { color: var(--needs); }
+.cloud-needs h4 { margin: 0; font-size: var(--fs); font-weight: 600; color: var(--text); }
+.cloud-warning { margin: 0; max-width: 800px; line-height: 1.5; color: var(--text); }
+.cloud-code { display: grid; justify-items: start; gap: 10px; width: min(560px, 100%); padding: 12px 14px; border: 1px solid var(--line-2);
+  border-radius: 6px; background: var(--raised); }
+.cloud-code-text { font-size: 12.5px; line-height: 20px; letter-spacing: .02em; overflow-wrap: anywhere; user-select: all; }
+.cloud-code-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.input.cloud-group-input { flex: none; width: 120px; }
+.input.cloud-code-input { flex: 0 1 380px; width: 380px; min-width: 0; }
+.cloud-account > span { min-width: 0; overflow-wrap: anywhere; }
+.cloud-computers .bk-when { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.cloud-computers .bk-when .icon { color: var(--text-2); }
+/* Restore from Hersir Cloud's steps: the current one's number on accent, a done one a success check, a later one line-2
+   with its title in text-3 */
+.cloud-restore { display: grid; gap: 8px; min-width: 0; }
+.cloud-steps { display: grid; gap: 16px; margin: 0; padding: 0; list-style: none; }
+.cloud-step { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
+.cloud-step > .num { display: grid; flex: none; place-items: center; width: 22px; height: 22px; border: 1px solid var(--line-2); border-radius: 50%;
+  color: var(--text-2); font-size: 12px; font-variant-numeric: tabular-nums; }
+.cloud-step.on > .num { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+.cloud-step.done > .num { color: var(--success); }
+.cloud-step.done > .num .icon { width: 14px; height: 14px; }
+.cloud-step > .body { display: flex; flex: 1; flex-direction: column; gap: 6px; min-width: 0; padding-top: 2px; }
+.cloud-step .title { color: var(--text); font-size: var(--fs-sm); font-weight: 500; }
+.cloud-step.later .title, .cloud-step.later .body > .faint { color: var(--text-3); }
+.cloud-restore .hint { font-size: var(--fs-xs); color: var(--text-3); }
+.cloud-restore .warn { font-size: var(--fs-xs); color: var(--warning); }
+.cloud-restore .error { font-size: var(--fs-xs); color: var(--danger); }
 .cli-list { display: grid; gap: 8px; }
 .cli-list ul { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
 .cli-list li { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--line); }
@@ -940,3 +980,9 @@ span.mem-tag { cursor: default; }
 .prop-shots .prop-note { grid-column: 2; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin-top: -6px; padding-bottom: 6px;
   color: var(--text-3); font-size: var(--fs-xs); line-height: 16px; }
 .prop-shots .prop-note .btn { margin-left: -9px; }
+
+/* A project's Docs page: Open in browser at the end of the top bar, and the page itself (yodocs' viewer, served by
+   Hersir) filling the rest */
+.docs-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.content.docs-page { display: flex; flex-direction: column; overflow: hidden; }
+.docs-page > .dd-shell { flex: 1; }

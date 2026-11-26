@@ -86,7 +86,7 @@ A card assigned to you has **Open in editor** in its top bar. Hersir makes the c
 
 In the Editor, a bar above the code shows the card, its branch and how far it is, with three buttons:
 
-- **Commit…**: a small box with the message and the files it commits. Like all of Hersir's git, it runs none of the repository's hooks; a `git commit` in the terminal does;
+- **Commit…**: a small box with the message and the files it commits. Like all of Hersir's git, it runs none of the repository's hooks; a `git commit` in the terminal does. It doesn't commit in a worktree with a nested repository or a checked-out submodule ([A worktree for every card](board.md#a-worktree-for-every-card)): commit there in the terminal;
 - **Push**;
 - **Hand over**: to Testing, or to Review when the card's Testing is off.
 
@@ -98,6 +98,7 @@ Every card has three tabs at the top: Card, Changes and Screenshots ([Screenshot
 
 - **Changes** lists the files the card changed under their folders on the left, and shows every file's diff on the right, one below the other.
 - The changes come from the card's worktree, uncommitted files included, since its branch left main.
+- A submodule is left out, with the changes inside it and a new commit of it: Hersir's git never looks inside one, whose own settings could start programs ([Agent tools](../agent-tools.md#a-nested-repository-in-a-worktree-ga-350)).
 - In the Runs tab, a run that committed has **Show changes**: only what that run committed.
 - Keys: n and p for the next and previous file, Alt+↓ and Alt+↑ for the next and previous change, [ folds the list, and Esc goes back to Card.
 

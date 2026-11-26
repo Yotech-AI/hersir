@@ -412,3 +412,22 @@ fn pull_files(st: &AppState, card: &PrCard, number: u64) -> Result<Arc<Vec<(File
     }
     Ok(files)
 }
+
+// ---- the docs page (devdocs) ----
+
+/// A project's linked folder, or why the docs page can't read its code: no link, or no repository there any more.
+pub(crate) fn linked_repo(project: &Project) -> Result<PathBuf, String> {
+    let repo = project.repo_path.as_deref().map(str::trim).filter(|r| !r.is_empty()).map(PathBuf::from)
+        .ok_or_else(|| format!("{} has no git repository: link one on its project page → Edit", project.name))?;
+    if !crate::git::is_repo(&repo) {
+        return Err(format!("{} isn't a git repository any more", repo.display()));
+    }
+    Ok(repo)
+}
+
+/// Main as last fetched (no fetch), as a card's changes measure from it: its name on screen ("origin/main", or "main"
+/// for a project without a link) and its commit, if there is one yet. The docs page lists its commits.
+pub(crate) fn main_of(project: &Project, repo: &Path) -> (String, Option<String>) {
+    let main = Main::of(project, repo);
+    (main.label, main.commit)
+}

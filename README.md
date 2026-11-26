@@ -20,8 +20,8 @@ Free and open source, on Claude Code, Codex CLI or Gemini CLI. Made for freelanc
 ## What it is
 
 Hersir is an Agentic Development Application (ADA). You write the cards; agents build them side by side, each card in
-its own git worktree and branch; a QA agent tests the card and opens its pull request; and you review and merge.
-Everything runs on your own computer, with your own git repositories, logins and coding CLIs.
+its own git worktree and branch; a QA agent tests each card before Hersir opens its pull request; and you review and
+merge. Everything runs on your own computer, with your own git repositories, logins and coding CLIs.
 
 Hersir was called GizAi until version 0.14.
 From 0.17.0 its programs and command are `hersir` too. An install from before 0.17.0 keeps its folders when it updates,
@@ -43,7 +43,7 @@ A new install starts with five agents. Each runs on the CLI you pick, with its o
 - **Chief:** you chat with it (its chat runs on Claude Code). It turns requests into cards, starts agents and
   answers their questions before they reach you.
 - **Backend and Frontend Agents** build the cards in To do.
-- **QA Agent** tests the cards, adds missing tests and opens the pull requests.
+- **QA Agent** tests the cards and adds missing tests. When it passes a card, Hersir opens the pull request.
 - **DevOps Agent** releases what you merged, when you ask.
 
 Add a **Design Agent** for a Design column, or agents with roles and instructions of your own, like an **R&D Agent**
@@ -54,7 +54,7 @@ that researches a feature before it's built.
 - **The board decides who works.** Each column holds the agents that work its cards, so cards move from builder to tester to you by themselves. [Read more](docs/features/board.md)
 - **A Chief you talk to.** Ask the Chief in chat to plan work, make cards or start agents, and Approve with one click (or Approve all) the steps that wait for your OK. [Read more](docs/features/chief.md)
 - **Bring your own CLI.** Each agent runs on the coding CLI you pick, like Claude Code, Codex CLI or Gemini CLI, on your own machine with your own logins and accounts. [Read more](docs/features/cli.md)
-- **Tested before you see it.** A QA agent tests a card before it reaches your Review, and opens its pull request on GitHub. [Read more](docs/features/testing.md)
+- **Tested before you see it.** A QA agent tests a card before it reaches your Review, and Hersir opens its pull request on GitHub or Bitbucket. [Read more](docs/features/testing.md)
 - **The Editor and Terminal, built in.** Open a project or a card's worktree, see its git status and edit it, with your own shell in a panel under the code or on its own page. [Read more](docs/features/editor-and-terminal.md)
 - **Memory.** The Chief, the agents and you keep notes for later, and each run gets the notes for its card. [Read more](docs/features/memory.md)
 - **Tools per agent.** Give each agent only the commands, folders, MCP servers, web access and hidden browser it needs. [Read more](docs/features/tools.md)
@@ -103,7 +103,7 @@ The details are in [docs/install.md](docs/install.md): what each system needs, u
 ## Getting started
 
 1. Install Claude Code or Codex and log in to it. The Chief's chat needs Claude Code.
-2. For projects on GitHub, install gh and log in (`gh auth login`, or Settings → GitHub): QA opens the pull requests with it.
+2. For projects on GitHub, install gh and log in (`gh auth login`, or Settings → GitHub): Hersir opens the pull requests with it.
 3. Open Hersir: the workflow and five agents are ready. Talk to the Chief on the Chat page.
 4. Add a project with its git repository, and put a card in To do.
 5. The Backend or Frontend Agent builds it, the QA Agent tests it, and it lands in your Review.

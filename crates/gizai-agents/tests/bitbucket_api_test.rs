@@ -234,6 +234,24 @@ fn answer(r: &Seen) -> Option<(u16, String)> {
             let repo = p.trim_start_matches("/repositories/").trim_end_matches("/pullrequests");
             (201, json!({"id": 7, "state": "OPEN", "links": {"html": {"href": format!("https://bitbucket.org/{repo}/pull-requests/7")}}}).to_string())
         }
+        // GA-368: one pull request, and a change of its description (a PUT answers with the pull request as changed)
+        ("GET", "/repositories/acme/edit/pullrequests/9") => {
+            let mut p = pull(9, "OPEN", false, OPEN_HEAD);
+            p["title"] = json!("SH-9: a title you changed");
+            p["description"] = json!("the old description");
+            (200, p.to_string())
+        }
+        ("GET", "/repositories/acme/untitled/pullrequests/2") => {
+            let mut p = pull(2, "OPEN", false, OPEN_HEAD);
+            p["title"] = json!("  ");
+            (200, p.to_string())
+        }
+        ("GET", "/repositories/acme/declined/pullrequests/4") => (200, pull(4, "DECLINED", false, "d2d2d2d2d2d2").to_string()),
+        ("PUT", "/repositories/acme/declined/pullrequests/4") => (400, error("You can't edit a pull request that isn't open.")),
+        ("PUT", p) if p.starts_with("/repositories/acme/") && p.contains("/pullrequests/") => {
+            let sent: Value = serde_json::from_str(&r.body).unwrap_or(Value::Null);
+            (200, json!({"id": 9, "state": "OPEN", "title": sent["title"], "description": sent["description"]}).to_string())
+        }
         _ => (404, error("Not found")),
     })
 }
@@ -500,4 +518,50 @@ fn githubs_pull_requests_still_match_full_hashes() {
     assert!(!pr.contains(&"7d".repeat(20)) && !pr.contains(""), "another commit, or none");
     assert!(!pr.contains(&head[..12]), "a short sha doesn't match a full hash");
     assert_eq!(pr.state(), "open");
+}
+
+// ---- a pull request's description (GA-368) ----
+
+#[test]
+fn changing_a_description_asks_the_pull_request_first_and_puts_its_own_title_with_the_new_description() {
+    server();
+    let body = "QA: 14 tests pass. He said \"ship it\" — it's $HOME\n\n## Acceptance criteria\n\n- [ ] one\n".repeat(50);
+    bitbucket::edit_description(&login(GOOD), "acme/edit", 9, &body).unwrap();
+    let mine = requests(|r| r.path == "/2.0/repositories/acme/edit/pullrequests/9");
+    assert_eq!(mine.iter().map(|r| r.method.as_str()).collect::<Vec<_>>(), ["GET", "PUT"], "{mine:?}");
+    for r in &mine {
+        assert_eq!(r.authorization, basic(GOOD), "{r:?}");
+        no_secret(&format!("{} {} {}", r.path, r.query, r.body));
+    }
+    let sent: Value = serde_json::from_str(&mine[1].body).unwrap_or_else(|e| panic!("JSON: {e}: {}", mine[1].body));
+    // Bitbucket wants a title in a change: the one it has now goes along, so a title you changed stays
+    assert_eq!(sent, json!({"description": body, "title": "SH-9: a title you changed"}));
+}
+
+#[test]
+fn a_pull_request_without_a_title_gets_only_its_new_description() {
+    server();
+    bitbucket::edit_description(&login(GOOD), "acme/untitled", 2, "new").unwrap();
+    let puts = requests(|r| r.method == "PUT" && r.path == "/2.0/repositories/acme/untitled/pullrequests/2");
+    assert_eq!(puts.len(), 1, "{puts:?}");
+    assert_eq!(serde_json::from_str::<Value>(&puts[0].body).unwrap(), json!({"description": "new"}));
+}
+
+#[test]
+fn bitbucket_refusing_a_description_change_says_why_without_the_token() {
+    server();
+    // a pull request that isn't open any more: Bitbucket's own message
+    let e = bitbucket::edit_description(&login(GOOD), "acme/declined", 4, "b").unwrap_err();
+    assert!(e.contains("You can't edit a pull request that isn't open."), "{e}");
+    no_secret(&e);
+    // no such pull request or repository: nothing is put
+    let e = bitbucket::edit_description(&login(GOOD), "acme/gone-pr", 3, "b").unwrap_err();
+    assert!(e.contains("acme/gone-pr") && e.contains("check the project's Bitbucket link"), "{e}");
+    assert_eq!(requests(|r| r.path.starts_with("/2.0/repositories/acme/gone-pr/")).iter().map(|r| r.method.as_str()).collect::<Vec<_>>(), ["GET"],
+               "nothing is put");
+    // a refused login
+    let e = bitbucket::edit_description(&login(REFUSED), "acme/edit-refused", 9, "b").unwrap_err();
+    assert!(e.contains("log in to Bitbucket again in Settings → Bitbucket"), "{e}");
+    no_secret(&e);
+    assert!(requests(|r| r.method == "PUT" && r.path.starts_with("/2.0/repositories/acme/edit-refused/")).is_empty());
 }

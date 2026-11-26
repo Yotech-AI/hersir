@@ -137,6 +137,8 @@ pub fn save_per_run(st: &AppState, change: Option<u32>) -> Result<(), String> {
 pub fn start(st: &AppState) {
     st.run_memory.enable(&mem::slice_name(&st.data_dir), u64::from(setting_gb(st)) * GB);
     st.run_memory.set_run_limit(u64::from(per_run_setting_gb(st)) * GB);
+    // GA-369: CPU for agents, which the slice gets as its CPUQuota when it is set up
+    crate::run_cpu::start(st);
     let st = st.clone();
     std::thread::spawn(move || {
         let _ = st.run_memory.slice();

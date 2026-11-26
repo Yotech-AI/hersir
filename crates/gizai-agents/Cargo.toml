@@ -29,6 +29,9 @@ ssh-key = { version = "0.6", default-features = false, features = ["std", "ed255
 flate2 = "1"
 tar = { version = "0.4", default-features = false }
 zip = { version = "9", default-features = false, features = ["deflate-flate2"] }
+# Whether a submodule's folder name is in NFC, Unicode's composed form (src/worktree.rs `gitlinks`, GA-361): git on
+# macOS reads a path it is given into NFC. Already in the app through Tauri's url crate (idna), with its data built in.
+icu_normalizer = { version = "2", default-features = false, features = ["compiled_data"] }
 
 # Job Objects (an agent's whole process tree) and finding programs on Windows (see src/os.rs), and the computer's memory
 # (src/run_memory.rs).

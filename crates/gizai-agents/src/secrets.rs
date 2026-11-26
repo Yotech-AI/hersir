@@ -1,7 +1,7 @@
 //! Secrets Hersir keeps for you, like the sign-ins of MCP servers: in your keychain (the Secret Service on Linux, like GNOME
 //! Keyring or KeePassXC), each under a key like `mcp/<server id>/oauth`, never in Hersir's database. Since 0.17.0 under
 //! the service `hersir`, with the ones saved under `gizai` before still found (`WithOld`, GA-249).
-//! Headless UI tests and QA runs use a file in its place (HERSIR_FAKE_KEYCHAIN), unit tests memory.
+//! Headless UI tests and QA runs use a file in its place (HERSIR_FAKE_KEYCHAIN, a debug build only), unit tests memory.
 //! Errors are plain sentences and never hold a value.
 use std::collections::{BTreeMap, HashMap};
 use std::io::{ErrorKind, Write};
@@ -246,11 +246,24 @@ impl Keychain for FileKeychain {
     }
 }
 
-/// HERSIR_FAKE_KEYCHAIN=<file> (or GIZAI_FAKE_KEYCHAIN) → FileKeychain, else the OS keychain: service `hersir`, with
-/// `gizai` behind it (`WithOld`).
+/// The file that stands in for the keychain: HERSIR_FAKE_KEYCHAIN=<file> (or GIZAI_FAKE_KEYCHAIN) in a debug build, for
+/// headless UI tests and QA runs. A release build never reads them (GA-370): None, so it always uses the system's
+/// keychain.
+pub fn fake_file() -> Option<PathBuf> {
+    #[cfg(debug_assertions)]
+    {
+        crate::env::var_os("HERSIR_FAKE_KEYCHAIN").filter(|path| !path.is_empty()).map(PathBuf::from)
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        None
+    }
+}
+
+/// `fake_file` → FileKeychain, else the OS keychain: service `hersir`, with `gizai` behind it (`WithOld`).
 pub fn from_env() -> Arc<dyn Keychain> {
-    match crate::env::var_os("HERSIR_FAKE_KEYCHAIN") {
-        Some(path) if !path.is_empty() => Arc::new(FileKeychain::new(PathBuf::from(path))),
-        _ => Arc::new(WithOld { new: OsKeychain::new(SERVICE), old: OsKeychain::new(OLD_SERVICE) }),
+    match fake_file() {
+        Some(path) => Arc::new(FileKeychain::new(path)),
+        None => Arc::new(WithOld { new: OsKeychain::new(SERVICE), old: OsKeychain::new(OLD_SERVICE) }),
     }
 }

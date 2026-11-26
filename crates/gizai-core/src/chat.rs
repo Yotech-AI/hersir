@@ -75,6 +75,7 @@ pub struct ChatMessage {
     pub created_at: i64,
     /// For some system notes, what the Chat page offers with them: `{kind: "switch", cli, cliName}` where the chat moved to
     /// another coding CLI, `{kind: "limit", cli, cliName, limit, resets?, messageIds}` where an answer hit a usage limit.
+    /// GA-351: for a message of yours that came from Claude Desktop (its ask_chief), `{from: "claude-desktop"}` (`desktop_meta`).
     pub meta: Option<Value>,
     /// The files you added to the message (the + button or a drop on the Chat page), in the order they were added.
     pub files: Vec<FileRow>,
@@ -228,6 +229,27 @@ pub fn desktop_thread(db: &Db, you: &str, agent_id: &str) -> Result<(String, boo
         crate::settings::set_in(w, DESKTOP_CHAT, &id)?;
         Ok((id, true))
     })
+}
+
+/// GA-351: who a message of yours came from, in its meta (`from`), when it came from Claude Desktop's ask_chief: saved as
+/// yours, but the Chief's answer to it has Claude Desktop's limits, and a path in it isn't one you named.
+pub const CLAUDE_DESKTOP: &str = "claude-desktop";
+
+/// GA-351: the meta of a message from Claude Desktop (`CLAUDE_DESKTOP`), sent or queued: `{"from": "claude-desktop"}`.
+pub fn desktop_meta() -> Value {
+    serde_json::json!({"from": CLAUDE_DESKTOP})
+}
+
+/// GA-351: whether a message's meta (`ChatMessage::meta`, `QueuedMessage::meta`) says it came from Claude Desktop.
+pub fn from_desktop(meta: Option<&Value>) -> bool {
+    meta.and_then(|m| m.get("from")).and_then(Value::as_str) == Some(CLAUDE_DESKTOP)
+}
+
+impl ChatMessage {
+    /// GA-351: a message of yours that came from Claude Desktop (`from_desktop`), not one you typed in Hersir.
+    pub fn from_desktop(&self) -> bool {
+        self.role == "user" && from_desktop(self.meta.as_ref())
+    }
 }
 
 /// GA-342: the newest message in the chat from you, the Chief or Hersir (a tool call isn't one): its id, None without one.
@@ -786,13 +808,17 @@ pub struct QueuedMessage {
     pub held: bool,
     /// The files added to it; they go with it.
     pub files: Vec<FileRow>,
+    /// GA-351: its details, which it keeps when it goes (`ChatMessage::meta`): `{from: "claude-desktop"}` for a message from
+    /// Claude Desktop (`desktop_meta`); None for one you typed.
+    pub meta: Option<Value>,
 }
 
-const QUEUE_SELECT: &str = "SELECT id, thread_id, body_md, created_at, updated_at, held_at FROM chat_queue";
+const QUEUE_SELECT: &str = "SELECT id, thread_id, body_md, created_at, updated_at, held_at, meta_json FROM chat_queue";
 
 fn queued_row(r: &rusqlite::Row) -> rusqlite::Result<QueuedMessage> {
+    let meta: Option<String> = r.get(6)?;
     Ok(QueuedMessage { id: r.get(0)?, thread_id: r.get(1)?, body_md: r.get(2)?, created_at: r.get(3)?, updated_at: r.get(4)?,
-                       held: r.get::<_, Option<i64>>(5)?.is_some(), files: vec![] })
+                       held: r.get::<_, Option<i64>>(5)?.is_some(), files: vec![], meta: meta.and_then(|t| serde_json::from_str(&t).ok()) })
 }
 
 /// A queued message with its files.
@@ -832,13 +858,19 @@ pub fn enqueue(db: &Db, you: &str, thread_id: &str, text: &str) -> Result<Queued
 
 /// `enqueue` for a message that carries files (stored already, `files::store`): they wait with it and go with it.
 pub fn enqueue_with_files(db: &Db, you: &str, thread_id: &str, text: &str, blobs: &[Blob]) -> Result<QueuedMessage> {
+    enqueue_with_meta(db, you, thread_id, text, blobs, None)
+}
+
+/// GA-351: `enqueue_with_files` for a message with details (`meta`, like `desktop_meta` for one from Claude Desktop), which it
+/// keeps while it waits, after an edit too, and when it goes (`send_queued`).
+pub fn enqueue_with_meta(db: &Db, you: &str, thread_id: &str, text: &str, blobs: &[Blob], meta: Option<&Value>) -> Result<QueuedMessage> {
     let text = queue_text(text, !blobs.is_empty())?;
     db.write(Some(you), |w| {
         let c = w.conn();
         get_thread_in(c, thread_id)?;
         let (id, now) = (ids::new_id(), ids::now_ms());
-        c.execute("INSERT INTO chat_queue(id, created_at, updated_at, thread_id, author_actor_id, body_md) VALUES (?1, ?2, ?2, ?3, ?4, ?5)",
-                  rusqlite::params![id, now, thread_id, you, text])?;
+        c.execute("INSERT INTO chat_queue(id, created_at, updated_at, thread_id, author_actor_id, body_md, meta_json) VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6)",
+                  rusqlite::params![id, now, thread_id, you, text, meta.map(Value::to_string)])?;
         w.insert("chat_queue", &id, serde_json::json!({"thread": thread_id}))?;
         // Under the id the message keeps when it goes (`send_queued`), so they need no change then.
         for b in blobs {
@@ -908,23 +940,24 @@ pub fn queue_ready(db: &Db, thread_id: &str) -> Result<bool> {
 }
 
 /// The queued messages go: they leave the queue and become your messages in the chat, each its own, in the order they
-/// were written, in one write. Each keeps its id, and so its files. `all`: the waiting ones too (Send now), else only
-/// those that go by themselves. Returns them as saved; none when nothing was queued.
+/// were written, in one write. Each keeps its id, and so its files, and its details (GA-351: a message from Claude Desktop
+/// stays marked so). `all`: the waiting ones too (Send now), else only those that go by themselves. Returns them as saved;
+/// none when nothing was queued.
 pub fn send_queued(db: &Db, thread_id: &str, all: bool) -> Result<Vec<ChatMessage>> {
     db.write(None, |w| {
         let items: Vec<(QueuedMessage, Option<String>)> = {
             let c = w.conn();
             let mut st = c.prepare(&format!(
-                "SELECT id, thread_id, body_md, created_at, updated_at, held_at, author_actor_id FROM chat_queue WHERE thread_id=?1 {} ORDER BY rowid",
+                "SELECT id, thread_id, body_md, created_at, updated_at, held_at, meta_json, author_actor_id FROM chat_queue WHERE thread_id=?1 {} ORDER BY rowid",
                 if all { "" } else { "AND held_at IS NULL" }))?;
-            st.query_map([thread_id], |r| Ok((queued_row(r)?, r.get(6)?)))?.collect::<rusqlite::Result<Vec<_>>>()?
+            st.query_map([thread_id], |r| Ok((queued_row(r)?, r.get(7)?)))?.collect::<rusqlite::Result<Vec<_>>>()?
         };
         let mut out = vec![];
         for (q, author) in items {
             w.conn().execute("DELETE FROM chat_queue WHERE id=?1", [&q.id])?;
             w.delete("chat_queue", &q.id)?;
             let id = insert_message(w, &NewMessage { thread_id: thread_id.into(), role: "user".into(), author_id: author, body_md: Some(q.body_md),
-                                                     id: Some(q.id), ..Default::default() })?;
+                                                     id: Some(q.id), meta: q.meta, ..Default::default() })?;
             out.push(get_message(w.conn(), &id)?);
         }
         Ok(out)

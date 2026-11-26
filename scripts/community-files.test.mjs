@@ -428,7 +428,8 @@ const OLD = /Giz ?[Aa][Ii]/;
 // GA-290 brings the islands' design notes onto main as they are on their design branches (GA-284 to GA-288): they name
 // Figma's variable collections (GizAi colour, GizAi size, a GizAi variable) outside backticks, and the Chat's note says
 // Gizai's once for the app's own keys. Only those, and only in those four notes.
-const AS_DRAWN = /^design\/islands(-chat|-pages|-settings)?\/README\.md$/;
+// GA-360 merged GA-317's design/hersir-cloud.md, which names the same Figma collection and variables as drawn.
+const AS_DRAWN = /^design\/(islands(-chat|-pages|-settings)?\/README|hersir-cloud)\.md$/;
 const AS_DRAWN_NAMES = /GizAi (colour|size|variables?)|are Gizai's there/g;
 // The old name the docs keep, in backticks or a code block, as the code has it (or Figma, for the app's variables, and
 // Homebrew, whose class for gizai.rb is Gizai): the data folders on macOS and Windows, the install folder on Windows
@@ -659,7 +660,8 @@ describe("the installers' messages say Hersir (GA-234)", () => {
     // Hersir's own crates: third_party/ holds other people's crates with their own descriptions (GA-264)
     const tomls = git("ls-files", "Cargo.toml", "*/Cargo.toml").stdout.split("\n").filter((t) => t && !t.startsWith("third_party/"));
     const descriptions = tomls.flatMap((t) => [...read(t).matchAll(/^description = "(.*)"$/gm)].map((m) => m[1]));
-    expect(descriptions).toHaveLength(4);
+    // gizai-core, gizai-agents, gizai-docs, gizai-mcp, gizai-cloud-client (GA-358) and the app
+    expect(descriptions).toHaveLength(6);
     for (const d of descriptions) expect(d).toMatch(/^Hersir[: ]/);
     expect(descriptions.filter((d) => OLD.test(d))).toEqual([]);
     expect(read("browser.html")).toContain("<title>Hersir (browser mode)</title>");

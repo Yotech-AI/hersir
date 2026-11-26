@@ -22,6 +22,21 @@ describe("doc pages", () => {
   });
 });
 
+describe("Docs pages", () => {
+  it("opens a project's Docs by the project's id, and falls back to projects without one", () => {
+    expect(parseHash("#/devdocs/p1")).toEqual({ page: "devdocs", id: "p1" });
+    expect(href({ page: "devdocs", id: "p1" })).toBe("#/devdocs/p1");
+    expect(parseHash("#/devdocs")).toEqual({ page: "projects" });
+  });
+  it("keeps the Docs page's own address after the project's id, query and all", () => {
+    const docs = "reference/app%2FUser.php%23User@L5?kind=class,method&folder=app";
+    expect(parseHash(`#/devdocs/p1/${docs}`)).toEqual({ page: "devdocs", id: "p1", docs });
+    expect(href({ page: "devdocs", id: "p1", docs })).toBe(`#/devdocs/p1/${docs}`);
+    expect(parseHash("#/devdocs/p1/decisions/0001")).toEqual({ page: "devdocs", id: "p1", docs: "decisions/0001" });
+    expect(parseHash("#/devdocs/p1/")).toEqual({ page: "devdocs", id: "p1" });
+  });
+});
+
 describe("team page", () => {
   it("can select an agent and stays on the team page without one", () => {
     expect(parseHash("#/team/agent-1")).toEqual({ page: "team", id: "agent-1" });
@@ -59,12 +74,12 @@ describe("chat archive (GA-46)", () => {
 });
 
 describe("Settings tabs (GA-42)", () => {
-  it("opens a tab from #/settings/<tab>, for each of the six tabs", () => {
-    for (const tab of ["general", "appearance", "notifications", "agents", "mcp", "github"])
+  it("opens a tab from #/settings/<tab>, for each of the seven tabs (GA-360 added Hersir Cloud, #/settings/cloud)", () => {
+    for (const tab of ["general", "appearance", "notifications", "agents", "mcp", "github", "cloud"])
       expect(parseHash(`#/settings/${tab}`)).toEqual({ page: "settings", id: tab });
   });
   it("lists the tabs in the order Settings shows them", () => {
-    expect(SETTINGS_TABS).toEqual(["general", "appearance", "notifications", "agents", "mcp", "github"]);
+    expect(SETTINGS_TABS).toEqual(["general", "appearance", "notifications", "agents", "mcp", "github", "cloud"]);
   });
   it("opens General (no tab) for #/settings, and for a tab it doesn't know", () => {
     expect(parseHash("#/settings")).toEqual({ page: "settings" });
@@ -75,6 +90,8 @@ describe("Settings tabs (GA-42)", () => {
   it("round-trips a tab through href, the link a page or notice uses", () => {
     expect(href({ page: "settings", id: "appearance" })).toBe("#/settings/appearance");
     expect(parseHash(href({ page: "settings", id: "github" }))).toEqual({ page: "settings", id: "github" });
+    expect(href({ page: "settings", id: "cloud" })).toBe("#/settings/cloud");
+    expect(parseHash(href({ page: "settings", id: "cloud" }))).toEqual({ page: "settings", id: "cloud" });
     expect(parseHash(href({ page: "settings" }))).toEqual({ page: "settings" });
   });
   it("leaves the other pages with an id as they were", () => {

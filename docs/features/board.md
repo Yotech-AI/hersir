@@ -58,6 +58,8 @@ Memory for agent runs, also in Settings → Runs, is how much memory all agent r
 
 Memory per run, right under it, is how much one run may use: its agent and everything it starts. It is half of Memory for agent runs until you set it, and never more than that. On Linux the system ends the biggest process of a run that reaches it, and the run goes on, so one runaway test can't slow every other run and chat down; the card's activity and the run's output then name Memory per run ([PLATFORMS.md](../PLATFORMS.md#memory-for-agent-runs)). Runs that start after you save get the new value.
 
+CPU for agents, under Memory per run, is how many of the computer's cores all agents' work may use together: all but a quarter, at least 2 left free, until you set it (12 of 16). On Linux and Windows the system holds them to it at once, also runs at work; macOS has no cap. Agents' work always runs at low priority, below your own programs, and while the computer is busy the queue starts no card: the card's activity says "Waiting: this computer is busy", and it starts by itself once that eases. Your own Run and Continue, and chats, aren't held ([PLATFORMS.md](../PLATFORMS.md#cpu-for-agents)).
+
 A project can also keep how many of its cards are tested at the same time, so a heavy test suite doesn't run several times at once: [Test runs at once](testing.md#test-runs-at-once).
 
 A card that builds on another card waits until that card is merged: [Cards that build on others](#cards-that-build-on-others).
@@ -93,7 +95,9 @@ Every card gets its own git worktree and branch, started from main on GitHub or 
 
 A new card takes over a finished card's worktree. A build folder over 20 GB is emptied first, and the card says so.
 
-Settings → Data lists old worktrees with their uncommitted files, and removes them. Remove anyway puts uncommitted changes in git's stash first.
+Settings → Data lists old worktrees with their uncommitted files, and removes them. Remove anyway puts uncommitted changes in git's stash first. A worktree with a nested repository in it stays, and says why: git's checks before a removal or a stash could run that repository's own settings. So does one with a submodule whose folder name isn't valid UTF-8, or that git could read two ways, such as an accented letter written as a letter and a separate accent.
+
+Commit… on a card you work on yourself doesn't commit in a worktree that has a nested repository or a checked-out submodule, and says why: git add would look inside it, with that repository's own settings. Commit those changes yourself in a terminal. A new card's worktree starts with no submodules checked out, so most cards never meet this.
 
 ## Runs
 

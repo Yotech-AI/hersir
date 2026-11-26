@@ -64,6 +64,9 @@ pub enum Note {
     /// A restore started, took a step, was ready, failed or was cancelled, or its result was dismissed (see `restore`):
     /// the `restore-changed` event, with the status.
     RestoreChanged(gizai_core::restore::RestoreStatus),
+    /// Hersir Cloud's account, plan or key changed, a cloud backup or a restore's download started, took a step or
+    /// ended, or Cloud Backup's settings changed (see `cloud`): the `cloud-changed` event, with the status.
+    CloudChanged(crate::cloud::CloudStatus),
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -103,6 +106,11 @@ pub struct RunManager {
     pulling: tokio::sync::Mutex<()>,
     /// Since when the start check has been waiting for memory, and why (GA-202, `run_memory::wait_reason`).
     pub(crate) memory_wait: Mutex<Option<(i64, String)>>,
+    /// Since when the start check has held cards the queue would start because this computer is busy, and why (GA-369,
+    /// `run_cpu::busy_reason`).
+    pub(crate) busy_wait: Mutex<Option<(i64, String)>>,
+    /// The cards whose activity said so in this busy spell (`run_cpu::note_waiting`), each once.
+    pub(crate) busy_noted: Mutex<HashSet<String>>,
     /// The runs' previews (GA-182): each run's block of ports, and its preview's tree while it runs.
     pub(crate) previews: crate::screenshots::Previews,
     /// GA-221: how long a run's or a chat answer's CLI may stay quiet once the agent is done before Gizai ends it
@@ -265,6 +273,26 @@ pub struct Settings {
     /// only waits for free memory before it starts a run.
     #[serde(default)]
     pub runs_memory_enforced: bool,
+    /// CPU for agents (GA-369), in cores: all agents' work together. All of this computer's cores but a quarter, at
+    /// least 2 left free, until someone sets it (`run_cpu::default_cores`: 12 of 16); 1 up to the computer's cores. None
+    /// (left out) keeps what was saved.
+    #[serde(default)]
+    pub runs_cpu_cores: Option<u32>,
+    /// Read-only: this computer's cores (logical processors), for the hint under it.
+    #[serde(default)]
+    pub computer_cores: u32,
+    /// Read-only: how the system holds CPU for agents (`run_cpu::cap_kind`): "slice" (Linux), "job" (Windows), or why
+    /// there is no cap: "macos", "no_slice" (Linux without a systemd user session), "no_cpu" (the slice lacks the cpu
+    /// controller).
+    #[serde(default)]
+    pub runs_cpu_cap: String,
+    /// Read-only (GA-369): the controllers the agent runs' slice lacks: "cpu" (agents' CPU weight and cap) and "io"
+    /// (their disk priority); and the one command that turns them on (`run_cpu::fix`), which needs sudo, for Run this
+    /// for me. Empty and None when nothing is missing, and without the slice.
+    #[serde(default)]
+    pub runs_missing_controllers: Vec<String>,
+    #[serde(default)]
+    pub runs_controllers_fix: Option<String>,
     #[serde(default)]
     pub agents_paused: bool,
     /// Claude Code stops a run once it has spent this much; None = no limit.
@@ -335,6 +363,11 @@ pub fn get_settings(st: &AppState) -> Settings {
         runs_memory_per_run_shown_gb: Some(per_run),
         computer_memory_gb: crate::run_memory::computer_gb().unwrap_or(0),
         runs_memory_enforced: st.run_memory.enforced(),
+        runs_cpu_cores: Some(crate::run_cpu::setting(st)),
+        computer_cores: crate::run_cpu::computer_cores(),
+        runs_cpu_cap: crate::run_cpu::cap_kind(st).to_string(),
+        runs_missing_controllers: crate::run_cpu::missing(st),
+        runs_controllers_fix: crate::run_cpu::fix(st),
         agents_paused: settings::get(&st.db, "agents_paused").ok().flatten().unwrap_or(false),
         max_run_usd: settings::get(&st.db, "max_run_usd").ok().flatten(),
         max_run_minutes: settings::get(&st.db, "max_run_minutes").ok().flatten().unwrap_or(DEFAULT_MAX_RUN_MINUTES),
@@ -360,6 +393,9 @@ pub fn save_settings(st: &AppState, s: &Settings) -> Result<(), String> {
     }
     if let Some(gb) = s.runs_memory_gb {
         crate::run_memory::check(gb)?;
+    }
+    if let Some(cores) = s.runs_cpu_cores {
+        crate::run_cpu::check(cores)?;
     }
     // GA-277: Memory per run, checked against Memory for agent runs as this save leaves it
     let runs_gb = s.runs_memory_gb.unwrap_or_else(|| crate::run_memory::setting_gb(st));
@@ -411,6 +447,9 @@ pub fn save_settings(st: &AppState, s: &Settings) -> Result<(), String> {
         crate::run_memory::save(st, gb)?;
     }
     crate::run_memory::save_per_run(st, per_run)?;
+    if let Some(cores) = s.runs_cpu_cores {
+        crate::run_cpu::save(st, cores)?;
+    }
     Ok(())
 }
 
@@ -689,13 +728,16 @@ enum StartError {
     /// project's setup command rather than shows its text (GA-281).
     Unprepared { reason: String, logged: String, held: bool },
     Wait(String),
+    /// GA-369: a card the queue would start waits because this computer is busy; its activity says so, once while it
+    /// stays busy (`run_cpu::note_waiting`). Otherwise as `Wait`.
+    Busy(String),
     Other(String),
 }
 
 impl StartError {
     fn message(self) -> String {
         match self {
-            StartError::Card(m) | StartError::Held(m) | StartError::Wait(m) | StartError::Other(m) => m,
+            StartError::Card(m) | StartError::Held(m) | StartError::Wait(m) | StartError::Busy(m) | StartError::Other(m) => m,
             StartError::Unprepared { reason, .. } => reason,
         }
     }
@@ -825,7 +867,7 @@ pub(crate) async fn continue_for_question(st: &AppState, run_id: &str, lead: &st
     }
     let note = ContinueNote::of(st, lead, Some(answer.to_string()));
     continue_with(st, run_id, None, true, note).await.map_err(|e| match e {
-        StartError::Wait(m) => (true, m),
+        StartError::Wait(m) | StartError::Busy(m) => (true, m),
         other => (false, other.message()),
     })
 }
@@ -908,6 +950,7 @@ async fn start_background(st: &AppState, task_id: &str, agent_id: &str, trigger:
         Err(StartError::Unprepared { reason, logged, held: false }) => { cant_start(st, agent_id, task_id, trigger, &reason, &logged); None }
         Err(StartError::Unprepared { reason, logged, held: true }) => { pause_pull_logged(st, agent_id, &reason, &logged); None }
         Err(StartError::Wait(_)) => None,
+        Err(StartError::Busy(why)) => { crate::run_cpu::note_waiting(st, task_id, &why); None }
         Err(StartError::Other(reason)) => { eprintln!("gizai: {trigger} start of an agent failed: {}", redact::hidden(&reason)); None }
     };
     drop(checked);
@@ -1114,6 +1157,12 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
     // GA-202: no new run while the runs use most of their memory limit or the computer has little free.
     if let Some(why) = crate::run_memory::wait_reason(st) {
         return Err(StartError::Wait(why));
+    }
+    // GA-369: nor a card the queue starts while this computer is busy: it waits, and the queue starts it once that eases
+    // (it tries again when a run ends, and once a minute). Your own Run and Continue, the Chief's, Hersir's nudge (which
+    // nobody would start again) and chats aren't held.
+    if trigger == "assigned" && let Some(why) = crate::run_cpu::busy_reason(st) {
+        return Err(StartError::Busy(why));
     }
     // GA-212: nor a test run while its project's other cards fill its Test runs at once, those still starting too.
     if let Some(why) = test_runs_full(st, task_id) {
@@ -1393,12 +1442,14 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
     if let Some(n) = shots.as_mut().and_then(|s| s.note.take()) {
         notes.push(n);
     }
-    let base_prompt = prompt::with_rules(&prompt::with_screenshots(&match &resume {
+    // Docs: a builder's run in a project whose Docs page keeps a changelog is asked for the card's line
+    let changelog = project.dev_docs && !project.docs_off.iter().any(|s| s == "changelog") && !["lead", "qa", "devops"].contains(&role.as_str());
+    let base_prompt = prompt::with_rules(&prompt::with_changelog(&prompt::with_screenshots(&match &resume {
         Some(Resume { nudge: true, .. }) => prompt::nudge_prompt(Some(limits)),
         Some(Resume { answer: Some(a), .. }) => prompt::answered_prompt_with(a, note.as_ref(), Some(limits)),
         Some(r) => prompt::continue_prompt_with(&r.reason, note.as_ref(), Some(limits)),
         None => prompt::with_memory(&prompt::build_from(&ctx, &instructions, fetched_from(&project)), &memory.text),
-    }, shots.as_ref().map(|s| &s.section)), &rules);
+    }, shots.as_ref().map(|s| &s.section)), changelog), &rules);
     // GA-322: a Gemini run reads its own system settings file, yours with the worktree's .env off
     // (`agent_cli::gemini_settings`), so it doesn't load the .env's variables; it goes when the run ends. Without it the
     // run doesn't start: Gemini would refuse system settings that can't be read, too.
@@ -1582,7 +1633,9 @@ async fn start_inner(st: &AppState, task_id: &str, agent_id: Option<String>, bin
             note_run(&st2, &rid, &crate::run_memory::ended_note(&st2, ended_together, None));
         }
         // The run's process group has ended, whatever way (finished, Stop, a limit): its throwaway files go, its MCP
-        // config (with its servers' secrets) first, and a Gemini run's own settings file (GA-322).
+        // config (with its servers' secrets) first, and a Gemini run's own settings file (GA-322). GA-266: the MCP config
+        // went at the init line already, or when Claude Code ended without one (`process::spawn_exec`); this is the
+        // last check.
         for p in run_config.iter().chain(&run_settings) {
             let _ = std::fs::remove_file(p);
         }
@@ -1763,9 +1816,13 @@ async fn finish_run(st: &AppState, run_id: &str, task_id: &str, dir: &Path, ran:
     let parsed = outcome::parse(&text);
     // Memory (GA-19): what the agent wants kept for its next runs, saved below once the run has ended.
     let learned = outcome::learned(&text);
+    // Docs: the card's changelog line, from the agent that built it
+    let changelog = outcome::changelog(&text);
     // "Run this for me" (GA-31): the commands a `needs_decision` asks you to run, kept with its verdict below.
     let run_for_me: Vec<String> = parsed.as_ref().filter(|o| o.outcome == "needs_decision").map(|o| o.run_for_me.clone()).unwrap_or_default();
     let verdict: Option<Outcome> = parsed.map(|o| Outcome { outcome: o.outcome, summary: o.summary, issues: o.issues });
+    // GA-368: QA's summary of a pass, which becomes the description of the card's pull request once it is in Review
+    let qa_passed: Option<String> = verdict.as_ref().filter(|v| v.outcome == "qa_pass").map(|v| v.summary.clone());
     // GA-221: a run whose CLI Gizai ended once the agent was done has finished, whatever its exit code.
     let finished = ok && (exit == "exit:0" || after_result);
     // While Gizai quits, a run that didn't finish was stopped by the quit, also when its agent ended first: logging
@@ -1801,8 +1858,9 @@ async fn finish_run(st: &AppState, run_id: &str, task_id: &str, dir: &Path, ran:
     let agent = core_runs::get(&st.db, run_id).map(|r| r.agent_id).unwrap_or_default();
     let unstarted = status == "failed" && tools == 0 && error.as_deref().is_some_and(login_problem);
     // Gizai pushes the card's branch itself (GA-56), before the run counts as ended and the card moves on, so the next
-    // agent (QA, for its pull request) finds it on the remote, also when the agent's own push was refused. Not after a run
-    // that couldn't start working, nor for a run Gizai's quitting stopped, nor after one that changed its git folder.
+    // agent (QA) and the pull request Hersir opens after QA's pass (GA-368) find it on the remote, also when the agent's
+    // own push was refused. Not after a run that couldn't start working, nor for a run Gizai's quitting stopped, nor
+    // after one that changed its git folder.
     let pushed = if quit || unstarted || tampered.is_some() { None } else { push_after_run(st, run_id, dir).await };
     for text in pushed.as_ref().map(AfterRun::notes).unwrap_or_default() {
         note_run(st, run_id, &text);
@@ -1819,6 +1877,12 @@ async fn finish_run(st: &AppState, run_id: &str, task_id: &str, dir: &Path, ran:
         for text in crate::memory::save_learned(st, run_id, &agent, &card, &learned) {
             note_run(st, run_id, &text);
         }
+    }
+    if status == "succeeded" && verdict.as_ref().is_some_and(|v| v.outcome == "ready_for_testing")
+        && let Some((kind, line)) = &changelog
+        && let Err(e) = gizai_core::devdocs::set_change(&st.db, Some(&agent), task_id, kind, line)
+    {
+        note_run(st, run_id, &format!("The card's changelog line wasn't kept: {e}"));
     }
     let mut moved = false;
     let mut nudge = None;
@@ -1886,9 +1950,16 @@ async fn finish_run(st: &AppState, run_id: &str, task_id: &str, dir: &Path, ran:
             pull(&st2).await;
         });
     }
-    // In Review: a pull request the agent opened shows on the card at once, not at the next PR check.
+    // In Review, now that the run has ended: after QA's pass Hersir opens the card's pull request itself, or gives the
+    // branch's open one QA's new summary (GA-368), so agents need no GitHub login; the run's end waits for it. After any
+    // other run a pull request the agent opened shows on the card at once, not at the next PR check.
     if moved && tasks::get(&st.db, task_id).is_ok_and(|t| t.state_category == "review") {
-        crate::pulls::check_soon(st, task_id);
+        match &qa_passed {
+            Some(summary) => {
+                crate::pulls::open_after_qa(st, task_id, summary).await;
+            }
+            None => crate::pulls::check_soon(st, task_id),
+        }
     }
     RunSummary { run_id: run_id.to_string(), status: status.into(), outcome: verdict.map(|v| v.outcome), cost_usd_micros: cost, error }
 }
@@ -2186,6 +2257,9 @@ fn claim_cards(st: &AppState) -> Vec<Claimed> {
     if crate::run_memory::wait_reason(st).is_some() {
         return vec![];
     }
+    // GA-369: whether this computer is busy, read at each pull so the board check never sees an old answer. The cards are
+    // claimed anyway: each start that waits for it says so in its card's activity (`start_inner`).
+    let _ = crate::run_cpu::busy_reason(st);
     let mut claimed = vec![];
     for (_, a) in team::all_agents(&st.db).unwrap_or_default() {
         if a.status != "active" || !takes_cards(st, &a.actor_id) {

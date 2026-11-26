@@ -5,6 +5,7 @@ import { emit } from "@tauri-apps/api/event";
 import apiSource from "../api.ts?raw";
 import { PICK_TITLE } from "../lib/restore";
 import { keyBetween } from "../lib/sortKey";
+import { cloudAnswer } from "./mockCloud";
 import { screenshotPicture } from "./pictures";
 
 /** An answer for any arguments, or answers by one argument's value. */
@@ -395,6 +396,9 @@ export async function answer(cmd: string, args: Row): Promise<unknown> {
   if (cmd === "list_tasks") return tasks(args.filter as Row | undefined);
   if (cmd === "item_id") return itemId(String(args.kind), String(args.key));
   if (cmd === "project_time") return projectTime(args);
+  // Hersir Cloud (GA-360): a made-up account, src/browser/mockCloud.ts; ?onboarding opens the first start's onboarding
+  if (cmd.startsWith("cloud_")) return cloudAnswer(cmd, args, { status: restoreNow, changed: restoreChanged });
+  if (cmd === "onboarding_pending" && new URLSearchParams(globalThis.location?.search ?? "").has("onboarding")) return true;
   // the folder in Settings: none once Backups is turned off
   if (cmd === "list_backups" && args.folder == null && backups() && !backups()!.folder) return [];
   if (cmd === "list_backups" && !inSettings(args.folder)) return structuredClone(usb());

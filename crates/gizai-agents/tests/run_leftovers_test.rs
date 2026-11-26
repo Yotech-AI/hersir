@@ -151,7 +151,7 @@ mod linux {
             Ends::Stop => ("FAKE_HANG", 120),
             Ends::TimeLimit => ("FAKE_HANG", 2),
         };
-        let exec = Exec { bin, args: vec!["-p".into()], env: vec![], stdin: stdin.into(), slice: slice.cloned() };
+        let exec = Exec { bin, args: vec!["-p".into()], env: vec![], stdin: stdin.into(), slice: slice.cloned(), ..Exec::default() };
         let caps = Caps { max_time: Duration::from_secs(max_time), max_tool_calls: 80, after_result: AFTER_RESULT };
         let mut h = spawn_exec::<RunEvent, _>(&exec, tmp, &tmp.join("r.jsonl"), caps, ClaudeLines).unwrap();
         let pid = pid_in(&left, "sleep");
@@ -232,7 +232,7 @@ mod linux {
     async fn a_run_that_leaves_nothing_hears_of_no_leftover() {
         let tmp = tempfile::tempdir().unwrap();
         let Some(s) = own_slice(tmp.path(), 2 * GB) else { return };
-        let exec = Exec { bin: cli(tmp.path(), ""), args: vec!["-p".into()], env: vec![], stdin: "p".into(), slice: Some(s.0.clone()) };
+        let exec = Exec { bin: cli(tmp.path(), ""), args: vec!["-p".into()], env: vec![], stdin: "p".into(), slice: Some(s.0.clone()), ..Exec::default() };
         let mut h = spawn_exec::<RunEvent, _>(&exec, tmp.path(), &tmp.path().join("r.jsonl"),
                                               Caps { max_time: Duration::from_secs(60), max_tool_calls: 80, after_result: AFTER_RESULT }, ClaudeLines).unwrap();
         let t0 = Instant::now();
@@ -257,7 +257,7 @@ mod linux {
         // the other run: at work, and it left a child in a session of its own too
         let other_left = two.join("left");
         let exec = Exec { bin: cli(&two, &setsid_sleep(&other_left)), args: vec!["-p".into()], env: vec![], stdin: "FAKE_HANG".into(),
-                          slice: Some(s.0.clone()) };
+                          slice: Some(s.0.clone()), ..Exec::default() };
         let mut other = spawn_exec::<RunEvent, _>(&exec, &two, &two.join("r.jsonl"),
                                                   Caps { max_time: Duration::from_secs(120), max_tool_calls: 80, after_result: AFTER_RESULT }, ClaudeLines).unwrap();
         let other_child = pid_in(&other_left, "sleep");
@@ -359,7 +359,7 @@ mod linux {
         let Some(s) = own_slice(tmp.path(), GB) else { return };
         let left = tmp.path().join("left");
         let bin = cli(tmp.path(), &format!("{}\npython3 -c \"b = b'x' * (2 << 30)\"\necho \"build: $?\" >&2", setsid_sleep(&left)));
-        let exec = Exec { bin, args: vec!["-p".into()], env: vec![], stdin: "p".into(), slice: Some(s.0.clone()) };
+        let exec = Exec { bin, args: vec!["-p".into()], env: vec![], stdin: "p".into(), slice: Some(s.0.clone()), ..Exec::default() };
         let mut h = spawn_exec::<RunEvent, _>(&exec, tmp.path(), &tmp.path().join("r.jsonl"),
                                               Caps { max_time: Duration::from_secs(120), max_tool_calls: 80, after_result: AFTER_RESULT }, ClaudeLines).unwrap();
         let mut evs = vec![];
@@ -495,6 +495,79 @@ mod linux {
         assert!(alive(c.id()));
         drop(other);
         c.wait().unwrap();
+    }
+
+    /// GA-369: what `signal_log` has for `pid`.
+    fn logged(pid: u32) -> Vec<gizai_agents::signal_log::Sent> {
+        gizai_agents::signal_log::recent().into_iter().filter(|s| s.pid == pid).collect()
+    }
+
+    /// GA-369 QA: every process the slice's cleanup ends (a run's end, quitting, a start after a crash) has its line in
+    /// Hersir's log, with its pid, name, scope and why; and a browser you started yourself, outside Hersir (in the
+    /// test's own cgroup, in a session of its own, and one in your desktop's app.slice) is never signalled, nor named.
+    #[tokio::test]
+    async fn every_process_the_cleanup_ends_is_logged_with_its_scope_and_why_and_a_browser_outside_hersir_is_never_signalled() {
+        let tmp = tempfile::tempdir().unwrap();
+        let Some(s) = own_slice(tmp.path(), 2 * GB) else { return };
+        // a "chromium" (a script by that name, which Linux names it after) you started: one in a group of its own, one as
+        // your desktop starts it
+        let chromium = script(tmp.path(), "chromium", "#!/bin/sh\nwhile :; do sleep 1; done\n");
+        let mut outside = {
+            use std::os::unix::process::CommandExt;
+            let mut c = std::process::Command::new(&chromium);
+            c.arg("600").stdin(Stdio::null()).process_group(0);
+            c.spawn().unwrap()
+        };
+        let mut desktop = std::process::Command::new("systemd-run")
+            .args(["--user", "--scope", "--collect", "--quiet", "--slice=app.slice", "--"]).arg(&chromium).arg("600")
+            .stdin(Stdio::null()).spawn().unwrap();
+        let (o, d) = (outside.id(), desktop.id());
+        until("both browsers run", 10, || comm(o) == "chromium" && comm(d) == "chromium");
+        assert!(!cgroup_of(o).starts_with(s.0.dir()) && !cgroup_of(d).starts_with(s.0.dir()));
+
+        // a run's end: what it left in its scope gets SIGTERM, named with its scope
+        let (_, left, scope, _) = run_leaving_a_child(tmp.path(), Some(&s.0), Ends::Finished).await;
+        until("the leftover is gone", 10, || !alive(left));
+        let lines = logged(left);
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        let rel = scope.strip_prefix("/sys/fs/cgroup").unwrap().to_string_lossy().into_owned();
+        assert_eq!((lines[0].group, lines[0].name.as_str(), lines[0].signal.as_str(), lines[0].why.as_str()),
+                   (false, "sleep", "SIGTERM", "its run had ended, and it still ran in the run's scope"));
+        assert_eq!(lines[0].cgroup.as_deref(), Some(format!("/{}", rel.trim_start_matches('/')).as_str()), "the run's scope");
+        assert!(lines[0].line().contains(&format!("SIGTERM to pid {left} (sleep) in /{}: its run had ended", rel.trim_start_matches('/'))),
+                "{}", lines[0].line());
+
+        // quitting
+        let mut a = sleep_in(&s.0, false);
+        let at_a = cgroup_of(a.id());
+        assert_eq!(s.0.end_leftovers().len(), 1);
+        a.wait().unwrap();
+        let lines = logged(a.id());
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert_eq!((lines[0].signal.as_str(), lines[0].why.as_str()), ("SIGTERM", "Hersir is quitting, and it still ran in Hersir's agent runs' slice"));
+        assert_eq!(lines[0].cgroup.as_deref().map(|c| Path::new("/sys/fs/cgroup").join(c.trim_start_matches('/'))), Some(at_a));
+
+        // a start after a crash, of one that ignores SIGTERM: SIGTERM, then SIGKILL through its cgroup 3 s later
+        let mut b = sleep_in(&s.0, true);
+        assert_eq!(mem::end_leftovers_in(s.0.name()).len(), 1);
+        b.wait().unwrap();
+        let got: Vec<(String, String)> = logged(b.id()).into_iter().map(|l| (l.signal, l.why)).collect();
+        let why = "a previous Hersir left it running in its agent runs' slice (it crashed or was killed)";
+        assert_eq!(got, [("SIGTERM".to_string(), why.to_string()),
+                         ("SIGKILL (cgroup.kill)".to_string(), format!("{why}; it was still there 3 s after SIGTERM"))]);
+
+        // the browsers outside Hersir run on and were never signalled; each process the cleanup signalled was in a slice
+        assert!(alive(o) && comm(o) == "chromium" && alive(d) && comm(d) == "chromium");
+        assert!(logged(o).is_empty() && logged(d).is_empty(), "{:?} {:?}", logged(o), logged(d));
+        for l in gizai_agents::signal_log::recent().into_iter().filter(|l| !l.group) {
+            // None: it had ended just before its cgroup was read
+            let Some(at) = l.cgroup.clone() else { continue };
+            assert!(at.contains("/gizai-runs-") && at.ends_with(".scope"), "outside a run's scope: {}", l.line());
+        }
+        let _ = outside.kill();
+        let _ = desktop.kill();
+        outside.wait().unwrap();
+        desktop.wait().unwrap();
     }
 
     #[tokio::test]

@@ -41,7 +41,8 @@ pub fn repo_check(path: &Path) -> RepoCheck {
         return RepoCheck { is_git: false, branch: None, dirty: false, github: None, bitbucket: None, suggest_copy: vec![] };
     }
     let branch = git(path, &["branch", "--show-current"]).filter(|b| !b.is_empty());
-    let dirty = git(path, &["status", "--porcelain"]).map(|s| !s.is_empty()).unwrap_or(false);
+    // submodules left out (GA-350): git never looks inside one, whose own settings could start programs
+    let dirty = git(path, &["status", "--porcelain", worktree::IGNORE_SUBMODULES]).map(|s| !s.is_empty()).unwrap_or(false);
     let remotes = remote_fetch_urls(path);
     let link = |provider: &str| remotes.iter()
         .find_map(|(_, url)| gizai_core::repo_url::normalize(url).ok().flatten().filter(|r| r.provider == provider).map(|r| r.url));

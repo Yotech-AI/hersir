@@ -15,14 +15,19 @@
 //! which `RunsMemory::slice` applies), so one runaway process is ended inside its own run at once, before the slice
 //! reaches its MemoryHigh and slows every run down. Which limit ended a process tells the scope's `oom` count
 //! (`OomKill::own_limit`).
+//!
+//! CPU and disk (GA-369, `run_cpu`): the slice, `gizai.slice` above it and each scope get `CPUWeight=20` and `IOWeight=20`
+//! (your desktop's apps have 100), and CPU for agents is the slice's `CPUQuota=` (`Slice::set_cpu_cap`). Each process
+//! Hersir ends here is named in its log with why (`signal_log`).
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::os;
+use crate::run_cpu::WEIGHT;
 
 /// A gigabyte as Settings → Runs counts it: 2³⁰ bytes, as systemd's `G` and `free -g` count.
 pub const GB: u64 = 1 << 30;
@@ -32,6 +37,10 @@ const CGROUP_ROOT: &str = "/sys/fs/cgroup";
 
 /// How long systemctl or a slice's first scope may take.
 const QUICK: Duration = Duration::from_secs(15);
+
+/// The slice all of Hersir's agent runs' slices are in (`slice_name`), beside your desktop's `app.slice` in your user's
+/// systemd: its CPUWeight and IOWeight hold the agents below your programs (GA-369).
+pub const PARENT_SLICE: &str = "gizai.slice";
 
 /// How long what a run left running in its scope gets after SIGTERM, before SIGKILL (GA-211).
 pub const LEFTOVER_GRACE: Duration = Duration::from_secs(3);
@@ -179,6 +188,10 @@ impl Slice {
             let mut slice = Slice { name: name.to_string(), dir: PathBuf::new(), systemd_run, systemctl, keep_args: true,
                                     oom_continue: true, run_max: None };
             slice.set_properties(max)?;
+            // GA-369: the weights that hold the agents below your desktop's programs; the memory limit holds without them
+            if let Err(e) = slice.set_parent_weights() {
+                eprintln!("gizai: agent runs keep the CPU weight of your desktop's programs: {e}");
+            }
             // systemd older than 254 refuses --expand-environment as an unknown option (and expands nothing in a scope);
             // only then is it left out, so a systemd that expands always gets it
             let mut probed = slice.probe();
@@ -271,6 +284,8 @@ impl Slice {
         if let Some(max) = self.run_max {
             cmd.arg("-p").arg(format!("MemoryMax={max}"));
         }
+        // GA-369: as the slice; what the scope's program starts gets nice 10 from `os::spawn_agents_tree`
+        cmd.arg("-p").arg(format!("CPUWeight={WEIGHT}")).arg("-p").arg(format!("IOWeight={WEIGHT}"));
         cmd.arg("--").arg(program);
         (cmd, Scope { dir: self.dir.join(unit) })
     }
@@ -292,7 +307,39 @@ impl Slice {
     /// to each process, then SIGKILL to what is left `LEFTOVER_GRACE` later. Returns each process it ended, once.
     /// Gizai itself is outside the slice. Blocks until they have ended: a few seconds at most.
     pub fn end_leftovers(&self) -> Vec<Leftover> {
-        end_in(&self.dir, None)
+        end_in(&self.dir, None, "Hersir is quitting, and it still ran in Hersir's agent runs' slice")
+    }
+
+    /// CPU for agents (GA-369): the slice's CPUQuota, `cores` of this computer's cores for all agent runs together (None:
+    /// no cap), at once, for the runs at work too. Err says why it doesn't hold: systemctl failed, or the slice has no
+    /// cpu.max because your user's systemd doesn't hand it the cpu controller (`missing_controllers`).
+    pub fn set_cpu_cap(&self, cores: Option<u32>) -> Result<(), String> {
+        let quota = cores.map(|c| format!("CPUQuota={}%", u64::from(c.max(1)) * 100)).unwrap_or_else(|| "CPUQuota=".into());
+        let mut cmd = os::command(&self.systemctl);
+        cmd.args(["--user", "set-property", "--runtime", &self.name, &quota]);
+        quick(&mut cmd).map_err(|e| format!("systemctl --user set-property {} failed: {e}", self.name))?;
+        let text = std::fs::read_to_string(self.dir.join("cpu.max"))
+            .map_err(|_| format!("{} has no cpu.max: your user's systemd doesn't hand it the cpu controller", self.name))?;
+        match (cores, cpu_max_cores(&text)) {
+            (None, None) => Ok(()),
+            (Some(c), Some(got)) if (got - f64::from(c.max(1))).abs() < 0.01 => Ok(()),
+            _ => Err(format!("systemd didn't give {} its CPUQuota: its cpu.max is {}", self.name, text.trim())),
+        }
+    }
+
+    /// The slice's CPU cap as the kernel has it (cpu.max), in cores; None for none, or when it can't be read.
+    pub fn cpu_cap(&self) -> Option<f64> {
+        cpu_max_cores(&std::fs::read_to_string(self.dir.join("cpu.max")).ok()?)
+    }
+
+    /// GA-369: what agents' CPU priority, CPU cap and disk priority need that your user's systemd doesn't hand this slice:
+    /// "cpu" (CPUWeight and CPUQuota) and "io" (IOWeight), from the slice's cgroup.controllers. Empty when both are
+    /// there. systemd hands a slice only the controllers user@.service delegates to your user's systemd, and many
+    /// distributions delegate cpu but not io (`DELEGATE_FIX` turns them on).
+    pub fn missing_controllers(&self) -> Vec<&'static str> {
+        let text = std::fs::read_to_string(self.dir.join("cgroup.controllers")).unwrap_or_default();
+        let have: Vec<&str> = text.split_whitespace().collect();
+        ["cpu", "io"].into_iter().filter(|c| !have.contains(c)).collect()
     }
 
     /// Tests: stops the slice, with everything still running in it, and removes the limits Gizai set on it, so a test's
@@ -304,14 +351,25 @@ impl Slice {
     }
 
     /// MemoryMax and MemoryHigh, in one call, and no swap (MemorySwapMax=0): with swap the runs would go on past the limit
-    /// in it (zram's compressed pages still take memory, outside the slice), instead of being held to it.
+    /// in it (zram's compressed pages still take memory, outside the slice), instead of being held to it. And GA-369's
+    /// CPUWeight and IOWeight of 20.
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     fn set_properties(&self, max: u64) -> Result<(), String> {
         let (max, high) = limits_for(max);
         let mut cmd = os::command(&self.systemctl);
         cmd.args(["--user", "set-property", "--runtime", &self.name, &format!("MemoryMax={max}"), &format!("MemoryHigh={high}"),
-                  "MemorySwapMax=0"]);
+                  "MemorySwapMax=0", &format!("CPUWeight={WEIGHT}"), &format!("IOWeight={WEIGHT}")]);
         quick(&mut cmd).map(|_| ()).map_err(|e| format!("systemctl --user set-property {} failed: {e}", self.name))
+    }
+
+    /// GA-369: CPUWeight and IOWeight of 20 for `gizai.slice` (`PARENT_SLICE`), which shares the CPU and the disk with
+    /// your desktop's `app.slice` beside it: a weight counts only against the slice's siblings, so the slice's own
+    /// weight holds its runs against another Hersir's only. The same values for every Hersir, a test's too.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    fn set_parent_weights(&self) -> Result<(), String> {
+        let mut cmd = os::command(&self.systemctl);
+        cmd.args(["--user", "set-property", "--runtime", PARENT_SLICE, &format!("CPUWeight={WEIGHT}"), &format!("IOWeight={WEIGHT}")]);
+        quick(&mut cmd).map(|_| ()).map_err(|e| format!("systemctl --user set-property {PARENT_SLICE} failed: {e}"))
     }
 
     /// Starts `cat /proc/self/cgroup` in a scope of this slice: the cgroup it ran in, cgroup v2's `0::` line.
@@ -344,6 +402,20 @@ impl Slice {
         (at.starts_with(&self.dir) && at != self.dir).then_some(at)
     }
 }
+
+/// A cgroup's cpu.max text ("1200000 100000": a quota and a period, in µs) as cores: 12.0; None for "max" (no cap).
+pub fn cpu_max_cores(text: &str) -> Option<f64> {
+    let mut words = text.split_whitespace();
+    let quota: f64 = words.next()?.parse().ok()?;
+    let period: f64 = words.next().unwrap_or("100000").parse().ok()?;
+    (period > 0.0).then(|| quota / period)
+}
+
+/// GA-369: the one command that has your user's systemd hand its slices the cpu and io controllers, for Settings → Runs
+/// to show as Run this for me when a slice lacks one (`Slice::missing_controllers`): a drop-in with a `Delegate=` line
+/// for user@.service (systemd merges it with the controllers it delegates already), which needs sudo. It takes hold
+/// once you log out and back in.
+pub const DELEGATE_FIX: &str = "sudo sh -c 'mkdir -p /etc/systemd/system/user@.service.d && printf \"[Service]\\nDelegate=pids memory cpu io\\n\" > /etc/systemd/system/user@.service.d/hersir-delegate.conf && systemctl daemon-reload'";
 
 /// The cgroup folder the process `pid` runs in now: cgroup v2's `0::` line in /proc/<pid>/cgroup, under /sys/fs/cgroup.
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
@@ -400,13 +472,24 @@ impl Scope {
     /// in the order it found them; none when the scope is empty or gone. Blocks until they have ended: a few seconds at
     /// most.
     pub fn end_leftovers(&self, group: Option<u32>) -> Vec<Leftover> {
-        end_in(&self.dir, group)
+        self.end_leftovers_for(group, "its run had ended, and it still ran in the run's scope")
+    }
+
+    /// `end_leftovers`, with why in Hersir's log (GA-369, `signal_log`): a run's end, a preview's, a worktree's
+    /// preparation's.
+    pub fn end_leftovers_for(&self, group: Option<u32>, why: &str) -> Vec<Leftover> {
+        end_in(&self.dir, group, why)
     }
 
     /// SIGKILL to everything in the scope at once, without waiting (Gizai exiting at once, a preview that never got
     /// going).
     pub fn kill(&self) {
-        kill_in(&self.dir);
+        self.kill_for("Hersir is exiting at once, and it still ran in an agent run's scope");
+    }
+
+    /// `kill`, with why in Hersir's log (GA-369).
+    pub fn kill_for(&self, why: &str) {
+        kill_in(&self.dir, why);
     }
 }
 
@@ -427,7 +510,7 @@ pub fn end_leftovers_in(name: &str) -> Vec<Leftover> {
         if !dir.join("cgroup.procs").is_file() {
             return vec![];
         }
-        end_in(&dir, None)
+        end_in(&dir, None, "a previous Hersir left it running in its agent runs' slice (it crashed or was killed)")
     }
     #[cfg(not(target_os = "linux"))]
     {
@@ -455,7 +538,7 @@ fn may_end_in(dir: &Path) -> bool {
 /// have gone. A pid is signalled only while /proc says it still runs in `dir`, so a pid that went to another process
 /// meanwhile is never hit. Never pid 0 or 1, nor Gizai itself.
 #[cfg(target_os = "linux")]
-fn end_in(dir: &Path, group: Option<u32>) -> Vec<Leftover> {
+fn end_in(dir: &Path, group: Option<u32>, why: &str) -> Vec<Leftover> {
     if !may_end_in(dir) {
         return vec![];
     }
@@ -480,7 +563,7 @@ fn end_in(dir: &Path, group: Option<u32>) -> Vec<Leftover> {
         }
         for pid in now {
             if note(&mut ended, pid) {
-                os::send_signal(pid, false, libc::SIGTERM);
+                os::send_signal(pid, false, libc::SIGTERM, why);
             }
         }
         std::thread::sleep(Duration::from_millis(50));
@@ -489,7 +572,7 @@ fn end_in(dir: &Path, group: Option<u32>) -> Vec<Leftover> {
     for pid in left() {
         note(&mut ended, pid);
     }
-    kill_in(dir);
+    kill_in(dir, &format!("{why}; it was still there {} s after SIGTERM", LEFTOVER_GRACE.as_secs()));
     let gone = Instant::now() + Duration::from_secs(1);
     while !left().is_empty() && Instant::now() < gone {
         std::thread::sleep(Duration::from_millis(20));
@@ -498,31 +581,36 @@ fn end_in(dir: &Path, group: Option<u32>) -> Vec<Leftover> {
 }
 
 #[cfg(not(target_os = "linux"))]
-fn end_in(dir: &Path, group: Option<u32>) -> Vec<Leftover> {
-    let _ = (dir, group);
+fn end_in(dir: &Path, group: Option<u32>, why: &str) -> Vec<Leftover> {
+    let _ = (dir, group, why);
     vec![]
 }
 
 /// SIGKILL to everything in the cgroup folder `dir` and the cgroups below it, at once: its `cgroup.kill` (Linux 5.14 and
-/// newer), which no process in it can escape by starting another; else to each process in it.
+/// newer), which no process in it can escape by starting another; else to each process in it. Hersir's log names each
+/// process that still ran there, with `why` (GA-369).
 #[cfg(target_os = "linux")]
-fn kill_in(dir: &Path) {
+fn kill_in(dir: &Path, why: &str) {
     if !may_end_in(dir) {
         return;
     }
+    let there: Vec<crate::signal_log::About> = running_in(dir).into_iter().map(|(pid, _)| crate::signal_log::about(pid)).collect();
     if std::fs::write(dir.join("cgroup.kill"), "1").is_ok() {
+        for a in &there {
+            crate::signal_log::record(a, false, "SIGKILL (cgroup.kill)", why);
+        }
         return;
     }
     for (pid, _) in running_in(dir) {
         if still_in(pid, dir) {
-            os::send_signal(pid, false, libc::SIGKILL);
+            os::send_signal(pid, false, libc::SIGKILL, why);
         }
     }
 }
 
 #[cfg(not(target_os = "linux"))]
-fn kill_in(dir: &Path) {
-    let _ = dir;
+fn kill_in(dir: &Path, why: &str) {
+    let _ = (dir, why);
 }
 
 /// The processes that still run (a zombie has ended) in the cgroup folder `dir` and the cgroups below it, each with its
@@ -581,7 +669,7 @@ fn quick(cmd: &mut Command) -> Result<Vec<u8>, String> {
             Ok(Some(s)) => break s,
             Ok(None) if Instant::now() < until => std::thread::sleep(Duration::from_millis(10)),
             _ => {
-                let _ = child.kill();
+                os::kill_child(&mut child, "systemctl or systemd-run didn't answer in time");
                 let _ = child.wait();
                 return Err(format!("it didn't answer within {} seconds", QUICK.as_secs()));
             }
@@ -774,6 +862,13 @@ pub struct RunsMemory {
     enforced: AtomicBool,
     /// Tests: readings that stand in for the real ones.
     fake: Mutex<Option<Reading>>,
+    /// CPU for agents (GA-369) in whole cores, from `set_cpu_cores`; 0 until then.
+    cpu_cores: AtomicU32,
+    /// Tests: a CPU reading that stands in for the real one (`fake_cpu_reading`).
+    fake_cpu: Mutex<Option<crate::run_cpu::Reading>>,
+    /// Whether the start check reads this computer's CPU (`watch_cpu`): Hersir's own start only, never a test's, also
+    /// one that enables the slice.
+    watch_cpu: AtomicBool,
 }
 
 impl RunsMemory {
@@ -799,8 +894,11 @@ impl RunsMemory {
             let limit = self.limit.load(Ordering::SeqCst);
             let set_up = Slice::set_up(&name, limit);
             match &set_up {
-                Ok(slice) => eprintln!("gizai: agent runs start in {} ({}), with a memory limit of {:.1} GB together",
-                                       slice.name(), slice.dir().display(), limit as f64 / GB as f64),
+                Ok(slice) => {
+                    eprintln!("gizai: agent runs start in {} ({}), with a memory limit of {:.1} GB together",
+                              slice.name(), slice.dir().display(), limit as f64 / GB as f64);
+                    self.cap_cpu_of(slice);
+                }
                 Err(why) => eprintln!("gizai: agent runs start without a memory limit: {why}. Hersir only waits for free memory \
                                        before it starts a run (Settings → Runs → Memory for agent runs)."),
             }
@@ -808,6 +906,27 @@ impl RunsMemory {
             *made = Some(set_up);
         }
         made.as_ref()?.as_ref().ok().map(|s| self.per_run(s))
+    }
+
+    /// GA-369: CPU for agents as the new slice's CPUQuota, and in Hersir's log what holds the agents now: their CPU
+    /// weight, their cap, and what your user's systemd doesn't hand the slice.
+    fn cap_cpu_of(&self, slice: &Slice) {
+        let cap = self.cpu_cap();
+        let held = match slice.set_cpu_cap(cap) {
+            Ok(()) => match cap {
+                Some(c) => format!("at most {c} of this computer's {} cores", crate::run_cpu::cores()),
+                None => "no CPU cap".to_string(),
+            },
+            Err(e) => format!("no CPU cap ({e})"),
+        };
+        eprintln!("gizai: agent runs get CPU weight {WEIGHT} and nice {}, with {held}", os::LOW_NICE);
+        let missing = slice.missing_controllers();
+        if !missing.is_empty() {
+            eprintln!("gizai: your user's systemd doesn't hand {} the {} controller, so agent runs get no {}. \
+                       Settings → Runs → CPU for agents has the command that turns it on.",
+                      slice.name(), missing.join(" and "),
+                      missing.iter().map(|c| if *c == "io" { "disk priority" } else { "CPU weight and cap" }).collect::<Vec<_>>().join(" and "));
+        }
     }
 
     /// `slice` with the limit per run that a scope starting now gets, when there is one.
@@ -889,5 +1008,59 @@ impl RunsMemory {
     #[doc(hidden)]
     pub fn fake_reading(&self, reading: Option<Reading>) {
         *self.fake.lock().unwrap_or_else(|e| e.into_inner()) = reading;
+    }
+
+    /// CPU for agents (GA-369): from now on agents' work may use at most `cores` of this computer's cores together; all
+    /// of them (or 0) for no cap. On Linux, once the slice is set up, its CPUQuota changes at once, for the runs at work
+    /// too (after a set-up under way, which then uses it); a slice set up later gets it. On Windows it is the CPU rate
+    /// cap of the job all agents' jobs are in (`os::set_agents_cpu`). macOS has no cap. Err says why it doesn't hold
+    /// now; the setting stays.
+    pub fn set_cpu_cores(&self, cores: u32) -> Result<(), String> {
+        self.cpu_cores.store(cores, Ordering::SeqCst);
+        let cap = self.cpu_cap();
+        os::set_agents_cpu(cap)?;
+        match self.made.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+            Some(Ok(slice)) => slice.set_cpu_cap(cap),
+            _ => Ok(()),
+        }
+    }
+
+    /// CPU for agents in cores, as `set_cpu_cores` last gave it; None before.
+    pub fn cpu_cores(&self) -> Option<u32> {
+        Some(self.cpu_cores.load(Ordering::SeqCst)).filter(|c| *c > 0)
+    }
+
+    /// The cap `cpu_cores` makes: None when it is all of this computer's cores, or none was given.
+    fn cpu_cap(&self) -> Option<u32> {
+        self.cpu_cores().filter(|&c| c < crate::run_cpu::cores())
+    }
+
+    /// GA-369: the controllers the slice lacks for agents' CPU weight and cap (cpu) and disk priority (io), once it is set
+    /// up (`Slice::missing_controllers`); none without a slice. Never waits for a set-up under way.
+    pub fn missing_controllers(&self) -> Vec<&'static str> {
+        self.made().map(|s| s.missing_controllers()).unwrap_or_default()
+    }
+
+    /// From now on the start check reads this computer's CPU (GA-369): Hersir's own start, outside a headless test run.
+    pub fn watch_cpu(&self) {
+        self.watch_cpu.store(true, Ordering::SeqCst);
+    }
+
+    /// The start check's CPU reading now (GA-369, `run_cpu::reading`): nothing until `watch_cpu` (or
+    /// `fake_cpu_reading`), so a test's runs never wait for the test machine's CPU, also with the slice enabled.
+    pub fn cpu_reading(&self) -> Option<crate::run_cpu::Reading> {
+        if let Some(f) = *self.fake_cpu.lock().unwrap_or_else(|e| e.into_inner()) {
+            return Some(f);
+        }
+        if !self.watch_cpu.load(Ordering::SeqCst) {
+            return None;
+        }
+        crate::run_cpu::reading()
+    }
+
+    /// Tests: a CPU reading that stands in for the real one; None goes back to the real one.
+    #[doc(hidden)]
+    pub fn fake_cpu_reading(&self, reading: Option<crate::run_cpu::Reading>) {
+        *self.fake_cpu.lock().unwrap_or_else(|e| e.into_inner()) = reading;
     }
 }

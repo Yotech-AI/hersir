@@ -1,19 +1,22 @@
 // Tiny hash router: #/page or #/page/id.
 import { startTransition, useEffect, useState } from "react";
 
-export const PAGES_WITH_ID = ["task", "project", "client", "doc", "team", "agent", "chat"] as const;
+export const PAGES_WITH_ID = ["task", "project", "client", "doc", "devdocs", "team", "agent", "chat"] as const;
 // chats: Chat → Archive, every chat with a search (chat/<id> is one chat).
-export const PAGES = ["chat", "chats", "inbox", "tasks", "board", "task", "projects", "project", "clients", "client", "doc", "team", "agent", "users", "settings", "usage", "memory", "editor", "terminal"] as const;
+// devdocs: a project's page in the sidebar's Docs section, #/devdocs/<project id>; doc is one of a project's documents.
+export const PAGES = ["chat", "chats", "inbox", "tasks", "board", "task", "projects", "project", "clients", "client", "doc", "devdocs", "team", "agent", "users", "settings", "usage", "memory", "editor", "terminal"] as const;
 export type Page = (typeof PAGES)[number];
 // The Editor (GA-113): #/editor is the Editor with no folder open, #/editor/<folder> a folder (an EditorFolder id, its
 // path, encoded as one part).
 // The Terminal page (GA-135): #/terminal starts a new terminal, #/terminal/<id> is one open terminal.
 /** `scope`: on the Memory page only, which notes it shows (`memoryScope`); `view` "graph": its graph (GA-69).
  *  On a task, `view` "changes" is its Changes tab, and `run` one run's changes there (GA-112); "screenshots" its
- *  Screenshots tab, and `run` one run's set there (GA-185). On a project, `view` "time" is its Time tracking tab (GA-331). */
-export type Route = { page: Page; id?: string; scope?: string; view?: "graph" | "changes" | "screenshots" | "time"; run?: string };
-// Settings' tabs (GA-42): #/settings/<tab> opens one; #/settings, or a tab it doesn't know, opens General.
-export const SETTINGS_TABS = ["general", "appearance", "notifications", "agents", "mcp", "github"] as const;
+ *  Screenshots tab, and `run` one run's set there (GA-185). On a project, `view` "time" is its Time tracking tab (GA-331).
+ *  On a project's Docs page, `docs` is the page's own address after #/devdocs/<project id>/ (src/docs/route.ts). */
+export type Route = { page: Page; id?: string; scope?: string; view?: "graph" | "changes" | "screenshots" | "time"; run?: string; docs?: string };
+// Settings' tabs (GA-42): #/settings/<tab> opens one; #/settings, or a tab it doesn't know, opens General. Hersir Cloud
+// (GA-360) is #/settings/cloud.
+export const SETTINGS_TABS = ["general", "appearance", "notifications", "agents", "mcp", "github", "cloud"] as const;
 export type SettingsTab = (typeof SETTINGS_TABS)[number];
 
 // The Memory page (GA-68): #/memory is everything (the Team Lead's view), #/memory/shared the shared folders (no Team
@@ -49,8 +52,13 @@ export function parseHash(hash: string): Route {
   if (page === "project" && parts[1] && parts[2] === "time") return { page, id: decodeURIComponent(parts[1]), view: "time" };
   if (page === "editor") return parts[1] ? { page, id: decodeURIComponent(parts.slice(1).join("/")) } : { page };
   if (page === "terminal") return parts[1] ? { page, id: decodeURIComponent(parts[1]) } : { page };
+  if (page === "devdocs" && parts[1]) {
+    // the rest as written: the Docs page reads its own sections, items and filters from it
+    const docs = hash.replace(/^#\/?/, "").split("/").slice(2).join("/");
+    return { page, id: decodeURIComponent(parts[1]), ...(docs ? { docs } : {}) };
+  }
   if ((PAGES_WITH_ID as readonly string[]).includes(page) && parts[1]) return { page, id: decodeURIComponent(parts[1]) };
-  const LIST_OF: Record<string, Page> = { task: "tasks", project: "projects", client: "clients", doc: "projects", team: "team", agent: "team", chat: "chat" };
+  const LIST_OF: Record<string, Page> = { task: "tasks", project: "projects", client: "clients", doc: "projects", devdocs: "projects", team: "team", agent: "team", chat: "chat" };
   if ((PAGES_WITH_ID as readonly string[]).includes(page)) return { page: LIST_OF[page] };
   return { page };
 }
@@ -67,6 +75,7 @@ export function href(r: Route): string {
     return `#/task/${encodeURIComponent(r.id)}/screenshots${r.run ? "/" + encodeURIComponent(r.run) : ""}`;
   }
   if (r.page === "project" && r.id && r.view === "time") return `#/project/${encodeURIComponent(r.id)}/time`;
+  if (r.page === "devdocs" && r.id && r.docs) return `#/devdocs/${encodeURIComponent(r.id)}/${r.docs}`;
   return `#/${r.page}${r.id ? "/" + encodeURIComponent(r.id) : ""}`;
 }
 

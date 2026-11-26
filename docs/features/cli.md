@@ -24,6 +24,15 @@ Hersir never sells Claude usage: agents keep running on your own Claude Code log
 - MCP sign-ins and values, and your Bitbucket login, stay in your system's keychain.
 - Hersir never stores a GitHub token or password: pushes go over SSH with your keys, or over HTTPS with gh's login.
 - An agent's folders never include `/`, your home folder, Hersir's data or folders with keys ([Folders](tools.md#folders)).
+- **A run gets no other program's keys.** Hersir's environment may hold keys for other programs. A run gets none of the variables named `*_API_KEY`, `*_TOKEN`, `*SECRET*`, `*PASSWORD*` or `AWS_*`, except the ones its own CLI signs in with and the ones its lines in Settings → Coding CLIs set:
+  - Claude Code: `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_CODE_OAUTH_REFRESH_TOKEN`, `CLAUDE_TRUSTED_DEVICE_TOKEN`, `ANTHROPIC_FOUNDRY_API_KEY`, `ANTHROPIC_AWS_API_KEY` and `AWS_BEARER_TOKEN_BEDROCK`, and every `AWS_` one when `CLAUDE_CODE_USE_BEDROCK` is on (Amazon Bedrock).
+  - Codex: `OPENAI_API_KEY`, `CODEX_API_KEY` and `CODEX_ACCESS_TOKEN`.
+  - Gemini: `GEMINI_API_KEY`, `GOOGLE_API_KEY` and `GOOGLE_CLOUD_ACCESS_TOKEN`.
+  - Another CLI: none. Give it its key in its lines in Settings → Coding CLIs.
+
+  A run that needs another key (a private package registry's token, a Codex model provider's `env_key`) gets it the same way: add the line to its CLI in Settings → Coding CLIs.
+- **A run's MCP config is gone once its CLI has read it.** The file with the MCP servers' secrets, and the token of a chat answer, is deleted as soon as Claude Code's first line says its servers started, and in any case when the run ends or fails to start.
+- **A chat answer's token works only for that answer.** Hersir's tools for the Chief take a turn's token only from that turn's own Claude Code and what it started: another run that reads the token is refused ([PLATFORMS.md](../PLATFORMS.md) says how each system checks it).
 
 ## The Chief needs Claude Code
 

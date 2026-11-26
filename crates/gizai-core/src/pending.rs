@@ -13,8 +13,10 @@ use crate::{Error, Result, ids};
 pub const NOTE_WRITES: [&str; 2] = ["memory_write", "memory_append"];
 
 /// GA-323: the `outside_tool` of a call kept for another reason than a tool from outside Gizai: create_agent or update_agent
-/// giving an agent a command it doesn't have, one chat may not give at once (`seed::CHAT_MAY_ADD`). No tool is called so
-/// (a tool's name has no space). The Chat page says why such a call waits (`src/lib/pending.ts`, the same text).
+/// giving an agent a command it doesn't have, one chat may not give at once (`seed::CHAT_MAY_ADD`). GA-352: or putting it on
+/// a CLI that doesn't keep it to its allowed commands (Codex, Gemini), or giving it a permission mode that isn't stricter
+/// than its own; its preview names each change under Needs your OK. No tool is called so (a tool's name has no space). The
+/// Chat page says why such a call waits (`src/lib/pending.ts`, the same text).
 pub const NEW_COMMANDS: &str = "new commands";
 
 /// One kept call.
