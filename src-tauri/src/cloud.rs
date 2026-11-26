@@ -5,8 +5,9 @@
 //!   computer with its device id, name, platform, version and new public keys. Its token is renewed in its last 30 days.
 //!   A 401 `removed` or `signed_out` signs this computer out, with the server's message as the last error.
 //! - **The keychain** (service `hersir`) holds `cloud/<account>/token`, `cloud/<account>/key` (the account key) and
-//!   `cloud/<account>/device` (this computer's keys). The recovery code is never stored: `make_key` keeps it in memory
-//!   until `confirm_recovery`, and only the account key sealed by it goes to Hersir Cloud.
+//!   `cloud/<account>/device` (this computer's keys). The recovery code is never stored: `make_key` (the account's first)
+//!   and `new_recovery` (a new one) keep it in memory until its last group is typed back (`confirm_recovery`), and only
+//!   then does the account key sealed by it go to Hersir Cloud: until then a new code changes nothing.
 //! - **This computer's settings** (`scope::THIS_COMPUTER`, so a restore keeps them): `cloud_account` (the account and its
 //!   server), `cloud_backup` (On, Every, On quit), `cloud_last_backup` and `cloud_last_error`.
 //! - **Cloud Backup** runs beside the local backups (`backups`), one at a time: daily when something changed since the last
@@ -42,10 +43,11 @@ use crate::runs::Note;
 pub const SERVER: &str = gizai_cloud_client::api::HERSIR_CLOUD;
 /// The Hersir desktop client on Hersir Cloud (Passport's public client, `passport:client --public`): not a secret.
 pub const CLIENT_ID: &str = "01a21388-1d0c-7e76-9253-3af81455f4d0";
-/// Hersir Cloud's entitlement key: the base64 of its Ed25519 public key, as `php artisan hersir:entitlement-key` shows it.
-/// A placeholder until the real key is set here: without it the plan can't be checked, so it isn't shown (`plan` null),
-/// and the server still enforces it.
-pub const ENTITLEMENT_KEY: &str = "";
+/// Hersir Cloud's entitlement key: the base64 of its Ed25519 public key, as `php artisan hersir:entitlement-key` shows it
+/// on cloud.hersir.dev (GA-370). Public, not a secret: it only checks the plan's signature, and a plan that doesn't check
+/// isn't shown (`plan` null); the server enforces the plan either way. A new key on the server needs a new release here:
+/// a Hersir with the old one shows no plan.
+pub const ENTITLEMENT_KEY: &str = "9BNGtlbwshLo9NUH9IIg+N5rkR8KmDu6O3dEHr/kg6g=";
 
 /// How long signing in waits for the browser.
 pub const SIGN_IN_TIMEOUT: Duration = Duration::from_secs(10 * 60);
@@ -79,6 +81,10 @@ pub const NO_PLAN: &str = "Cloud Backup needs a Hersir Cloud plan: choose one on
 pub const CODE_FIRST: &str = "Type your recovery code first.";
 pub const KEY_FIRST: &str = "Save your recovery code first.";
 pub const HAS_CODE: &str = "This account has a recovery code already: type it to use Cloud Backup on this computer.";
+/// `confirm_recovery` with no code made (`make_key`, `new_recovery`).
+pub const MAKE_CODE_FIRST: &str = "Make the recovery code first: Hersir shows it once.";
+/// A new recovery code typed back after the account's key changed on another computer.
+pub const KEY_CHANGED: &str = "The account's key changed on another computer: sign out and in again, then try again.";
 /// A backup or download that was stopped (a restore cancelled): not an error to keep.
 const STOPPED: &str = "Cancelled";
 
@@ -91,7 +97,8 @@ pub struct Config {
     pub server: String,
     /// The desktop client's id for the browser's sign-in.
     pub client_id: String,
-    /// Hersir Cloud's entitlement key; None while it isn't set (`ENTITLEMENT_KEY`): then the plan isn't shown.
+    /// Hersir Cloud's entitlement key (`ENTITLEMENT_KEY`, or a debug build's variable); None (a test's config): the plan
+    /// can't be checked, so it isn't shown.
     pub entitlement_key: Option<[u8; 32]>,
 }
 
@@ -345,8 +352,8 @@ fn set_last_error(st: &AppState, message: Option<&str>) {
 
 // ---- in memory ----
 
-/// Hersir Cloud in memory: the sign-in that waits, the key made but not confirmed, the backup or download that runs,
-/// and what the server said last.
+/// Hersir Cloud in memory: the sign-in that waits, the key or new recovery code made but not confirmed, the backup or
+/// download that runs, and what the server said last.
 #[derive(Default)]
 pub struct Cloud {
     /// None: `Config::from_env` at first use.
@@ -370,12 +377,15 @@ struct SignIn {
     cancelled: bool,
 }
 
-/// The account key and recovery code `make_key` made, in memory only until `confirm_recovery`.
+/// The account key and recovery code `make_key` or `new_recovery` made, in memory only until `confirm_recovery`.
 struct PendingKey {
     account: String,
     key: AccountKey,
     code: RecoveryCode,
     record: KeyRecord,
+    /// `PUT /keys`' `if_epoch`: None for the account's first key (`make_key`), the key's epoch for a new recovery code
+    /// (`new_recovery`).
+    if_epoch: Option<u8>,
 }
 
 /// What Hersir Cloud said last about the signed-in account.
@@ -590,8 +600,7 @@ fn plan(st: &AppState, account: &str) -> Option<CloudPlan> {
 }
 
 /// `GET /me/entitlements`, checked with Hersir Cloud's key before the plan is filled; one that doesn't check leaves no
-/// plan. Without the key (`ENTITLEMENT_KEY` not set yet) it is asked all the same (a removed computer hears so), and no
-/// plan is shown.
+/// plan. Without a key (a test's config) it is asked all the same (a removed computer hears so), and no plan is shown.
 fn refresh_plan(st: &AppState, s: &Session) -> Result<(), String> {
     let signed = s.api.entitlement().map_err(|e| failed(st, s, e))?;
     let checked = match &s.cfg.entitlement_key {
@@ -873,23 +882,32 @@ pub fn make_key(st: &AppState) -> Result<RecoveryShown, String> {
     }
     let (key, code, record) = keys::new_account_key().map_err(|e| e.to_string())?;
     let shown = RecoveryShown { recovery_code: code.shown().to_string() };
-    *lock(&st.cloud.pending) = Some(PendingKey { account: s.account.id.clone(), key, code, record });
+    *lock(&st.cloud.pending) = Some(PendingKey { account: s.account.id.clone(), key, code, record, if_epoch: None });
     Ok(shown)
 }
 
-/// The recovery code's last group typed back (any case, spaces and dashes ignored): Hersir Cloud keeps the account key
-/// sealed by the code (`PUT /keys`), this computer keeps the key, and Cloud Backup is turned on. The code is forgotten.
+/// The recovery code's last group typed back (any case, spaces and dashes ignored), for the code `make_key` or
+/// `new_recovery` made: only now does Hersir Cloud keep the account key sealed by it (`PUT /keys`), and the code is
+/// forgotten. The account's first code: this computer keeps the key, and Cloud Backup is turned on. A new code: it is
+/// stored from the key's epoch, so the old code stops working now, and Cloud Backup's settings stay as they are. A wrong
+/// group changes nothing, and the code waits on.
 pub fn confirm_recovery(st: &AppState, last_group: &str) -> Result<CloudStatus, String> {
     let s = session(st)?;
     let mut pending = lock(&st.cloud.pending);
     let Some(p) = pending.as_ref().filter(|p| p.account == s.account.id) else {
-        return Err("Make the recovery code first: Hersir shows it once.".into());
+        return Err(MAKE_CODE_FIRST.into());
     };
     if !p.code.last_group_matches(last_group) {
         return Err(WRONG_GROUP.into());
     }
-    match s.api.put_key(&p.record, None) {
+    let first = p.if_epoch.is_none();
+    match s.api.put_key(&p.record, p.if_epoch) {
         Ok(_) => {}
+        // a new code can't be stored over a key that changed: making another one wouldn't help either
+        Err(CloudError::Epoch(_)) if !first => {
+            *pending = None;
+            return Err(KEY_CHANGED.into());
+        }
         Err(CloudError::Epoch(_)) => {
             *pending = None;
             drop(pending);
@@ -902,18 +920,22 @@ pub fn confirm_recovery(st: &AppState, last_group: &str) -> Result<CloudStatus, 
             return Err(failed(st, &s, e));
         }
     }
-    let Some(p) = pending.take() else { return Err("Make the recovery code first: Hersir shows it once.".into()) };
+    let Some(p) = pending.take() else { return Err(MAKE_CODE_FIRST.into()) };
     drop(pending);
-    seen(st, &s.account.id, |seen| seen.has_key = Some(true));
-    st.keychain.set(&keychain_key(&s.account.id, "key"), &p.key.to_text())
-        .map_err(|e| format!("{} Type your recovery code to use Cloud Backup on this computer.", keychain_problem(e)))?;
-    seen(st, &s.account.id, |seen| seen.key_here = Some(true));
+    if first {
+        seen(st, &s.account.id, |seen| seen.has_key = Some(true));
+        st.keychain.set(&keychain_key(&s.account.id, "key"), &p.key.to_text())
+            .map_err(|e| format!("{} Type your recovery code to use Cloud Backup on this computer.", keychain_problem(e)))?;
+        seen(st, &s.account.id, |seen| seen.key_here = Some(true));
+    }
     let mut a = s.account.clone();
     a.recovery_made_at = Some(ids::now_ms());
     write_account(st, Some(&a))?;
-    let mut b = backup_setting(st);
-    b.on = true;
-    settings::set(&st.db, BACKUP_KEY, &b).map_err(|e| e.to_string())?;
+    if first {
+        let mut b = backup_setting(st);
+        b.on = true;
+        settings::set(&st.db, BACKUP_KEY, &b).map_err(|e| e.to_string())?;
+    }
     let out = status(st);
     (st.notify)(Note::CloudChanged(out.clone()));
     Ok(out)
@@ -948,21 +970,17 @@ pub fn enter_recovery(st: &AppState, code: &str) -> Result<CloudStatus, String> 
     Ok(out)
 }
 
-/// A new recovery code for the same account key, stored with `PUT /keys` from the key's epoch: the old code stops working.
+/// A new recovery code for the same account key, kept in memory with the key sealed by it until its last group is typed
+/// back (`confirm_recovery`, which stores it with `PUT /keys` from the key's epoch). Until then nothing changes: the old
+/// code keeps working. Another new code, signing out or quitting Hersir drops it.
 pub fn new_recovery(st: &AppState) -> Result<RecoveryShown, String> {
     let s = session(st)?;
     let key = load_key(st, &s.account.id)?.ok_or_else(|| CODE_FIRST.to_string())?;
     let (code, record) = keys::new_recovery_code(&key).map_err(|e| e.to_string())?;
-    match s.api.put_key(&record, Some(key.epoch())) {
-        Ok(_) => {}
-        Err(CloudError::Epoch(_)) => return Err("The account's key changed on another computer: sign out and in again, then try again.".into()),
-        Err(e) => return Err(failed(st, &s, e)),
-    }
-    let mut a = s.account.clone();
-    a.recovery_made_at = Some(ids::now_ms());
-    write_account(st, Some(&a))?;
-    changed(st);
-    Ok(RecoveryShown { recovery_code: code.shown().to_string() })
+    let shown = RecoveryShown { recovery_code: code.shown().to_string() };
+    let if_epoch = Some(key.epoch());
+    *lock(&st.cloud.pending) = Some(PendingKey { account: s.account.id.clone(), key, code, record, if_epoch });
+    Ok(shown)
 }
 
 // ---- Cloud Backup's settings ----

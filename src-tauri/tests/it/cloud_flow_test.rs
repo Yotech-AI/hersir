@@ -718,25 +718,154 @@ fn the_token_is_renewed_in_its_last_30_days_and_not_before() {
 
 // ---- the keys ----
 
+/// The `PUT /keys` calls the fake answered.
+fn key_puts(f: &FakeCloud) -> usize {
+    f.calls().iter().filter(|c| c.method == "PUT" && c.path.ends_with("/keys")).count()
+}
+
+/// A recovery code's last group, as shown.
+fn last_group(code: &str) -> &str {
+    code.rsplit('-').next().unwrap()
+}
+
+/// What a new recovery code must leave as it is until its last group is typed back: the sign-in, this computer's key,
+/// when the code was made, Cloud Backup's settings and the plan (`next` follows the clock, so it isn't compared).
+fn kept(s: &CloudStatus) -> (bool, String, Option<i64>, bool, String, bool, Option<cloud::CloudPlan>) {
+    (s.signed_in, s.key.clone(), s.recovery_made_at, s.backup.on, s.backup.every.clone(), s.backup.on_quit, s.plan.clone())
+}
+
+// GA-370: a new recovery code is kept in memory until its last group is typed back (`confirm_recovery`); only then does
+// `PUT /keys` store the key sealed by it, from the key's epoch. Until then the old code keeps working.
 #[test]
-fn a_new_recovery_code_replaces_the_old_one() {
+fn a_new_recovery_code_replaces_the_old_one_only_once_its_last_group_is_typed_back() {
+    let f = FakeCloud::start().unwrap();
+    let (tmp_a, tmp_b, tmp_c) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let (a, heard) = hersir(tmp_a.path(), &f);
+    let account = f.account().id;
+    let old = first_computer(&a);
+    // Cloud Backup's settings of this computer's own: a new code leaves them as they are
+    cloud::save_settings(&a, SettingsChange { every: Some("manual".into()), on_quit: Some(true), ..Default::default() }).unwrap();
+    let before = cloud::status(&a);
+    let made = before.recovery_made_at.unwrap();
+    let record = f.key(&account).unwrap();
+    let key_here = keychain(&a, &account, "key").unwrap();
+    std::thread::sleep(Duration::from_millis(5));
+
+    // made and shown: nothing changes yet
+    let new = cloud::new_recovery(&a).unwrap().recovery_code;
+    assert!(new.starts_with("HC-") && new != old, "{new}");
+    assert_eq!(key_puts(&f), 1, "nothing goes to Hersir Cloud before its last group is typed back");
+    assert_eq!(f.key(&account).as_ref(), Some(&record));
+    assert_eq!(kept(&cloud::status(&a)), kept(&before), "nothing changes on this computer either");
+    // another computer: the old code still works, the new one doesn't yet
+    let (b, _) = hersir(tmp_b.path(), &f);
+    sign_in(&b);
+    assert_eq!(cloud::enter_recovery(&b, &new).unwrap_err(), WRONG_CODE, "the new code doesn't work yet");
+    assert_eq!(cloud::enter_recovery(&b, &old).unwrap().key, "here", "the old code keeps working");
+
+    // a wrong last group (also the old code's) is refused and changes nothing: the code waits on
+    assert_eq!(cloud::confirm_recovery(&a, "ZZZ").unwrap_err(), cloud::WRONG_GROUP);
+    if last_group(&old) != last_group(&new) {
+        assert_eq!(cloud::confirm_recovery(&a, last_group(&old)).unwrap_err(), cloud::WRONG_GROUP);
+    }
+    assert_eq!(key_puts(&f), 1);
+    assert_eq!(f.key(&account).as_ref(), Some(&record));
+    assert_eq!(kept(&cloud::status(&a)), kept(&before));
+
+    // its last group, in another case and with spaces: stored from the key's epoch, the same account key
+    heard.lock().unwrap().clear();
+    let s = cloud::confirm_recovery(&a, &format!("  {} ", last_group(&new).to_lowercase())).unwrap();
+    assert_eq!(key_puts(&f), 2);
+    let stored = f.key(&account).unwrap();
+    assert_eq!((stored.key_id.as_str(), stored.epoch), (record.key_id.as_str(), record.epoch), "the same account key");
+    // stored over the account's key: the fake answers 409 epoch to a PUT /keys whose if_epoch isn't the stored key's epoch
+    // (null included), so it went with if_epoch, the key's epoch
+    assert_ne!(stored.sealed_by_code, record.sealed_by_code, "now sealed by the new code");
+    assert!(s.recovery_made_at.unwrap() > made, "recoveryMadeAt is set");
+    assert_eq!(s.key, "here");
+    assert_eq!((s.backup.on, s.backup.every.as_str(), s.backup.on_quit), (before.backup.on, "manual", true), "Cloud Backup's settings stay");
+    assert_eq!(keychain(&a, &account, "key").as_deref(), Some(key_here.as_str()), "this computer keeps its key");
+    assert_eq!(heard.lock().unwrap().last(), Some(&s), "cloud-changed went out");
+    // it is forgotten: typed again, there is nothing to confirm
+    assert_eq!(cloud::confirm_recovery(&a, last_group(&new)).unwrap_err(), cloud::MAKE_CODE_FIRST);
+
+    // a third computer: the old code stopped working, the new one works
+    let (c, _) = hersir(tmp_c.path(), &f);
+    sign_in(&c);
+    assert_eq!(cloud::enter_recovery(&c, &old).unwrap_err(), WRONG_CODE, "the old code stopped working");
+    assert_eq!(cloud::enter_recovery(&c, &new).unwrap().key, "here");
+    // all three have the same key: B and C list A's backup
+    back_up_now(&a);
+    assert_eq!(cloud::list_backups(&b).unwrap().len(), 1);
+    assert_eq!(cloud::list_backups(&c).unwrap().len(), 1);
+}
+
+// GA-370: a new code that isn't typed back changes nothing. Another new code takes its place, and signing out drops it.
+#[test]
+fn a_new_recovery_code_not_typed_back_changes_nothing_and_another_one_or_signing_out_drops_it() {
     let f = FakeCloud::start().unwrap();
     let (tmp_a, tmp_b) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
     let (a, _) = hersir(tmp_a.path(), &f);
+    let account = f.account().id;
     let old = first_computer(&a);
-    let made = cloud::status(&a).recovery_made_at.unwrap();
-    std::thread::sleep(Duration::from_millis(5));
-    let new = cloud::new_recovery(&a).unwrap().recovery_code;
-    assert_ne!(new, old);
-    assert!(cloud::status(&a).recovery_made_at.unwrap() > made);
-    assert!(f.calls().iter().filter(|c| c.method == "PUT" && c.path.ends_with("/keys")).count() == 2);
+    let record = f.key(&account).unwrap();
+    let before = cloud::status(&a);
+
+    let first = cloud::new_recovery(&a).unwrap().recovery_code;
+    let second = cloud::new_recovery(&a).unwrap().recovery_code;
+    assert_ne!(first, second);
+    if last_group(&first) != last_group(&second) {
+        assert_eq!(cloud::confirm_recovery(&a, last_group(&first)).unwrap_err(), cloud::WRONG_GROUP, "the second code took the first one's place");
+    }
+    assert_eq!(kept(&cloud::status(&a)), kept(&before), "nothing changed on this computer");
+    // signed out and in again: the second one is gone too
+    cloud::sign_out(&a).unwrap();
+    assert_eq!(sign_in(&a).key, "needed");
+    assert_eq!(cloud::confirm_recovery(&a, last_group(&second)).unwrap_err(), cloud::MAKE_CODE_FIRST);
+    assert_eq!(key_puts(&f), 1, "neither went to Hersir Cloud");
+    assert_eq!(f.key(&account), Some(record));
+    // the old code still opens the account's backups, here and on another computer; the new ones don't
     let (b, _) = hersir(tmp_b.path(), &f);
     sign_in(&b);
-    assert_eq!(cloud::enter_recovery(&b, &old).unwrap_err(), WRONG_CODE, "the old code stopped working");
-    assert_eq!(cloud::enter_recovery(&b, &new).unwrap().key, "here");
-    // both computers have the same key: B can restore A's backup
-    back_up_now(&a);
-    assert_eq!(cloud::list_backups(&b).unwrap().len(), 1);
+    for code in [&first, &second] {
+        assert_eq!(cloud::enter_recovery(&b, code).unwrap_err(), WRONG_CODE);
+    }
+    assert_eq!(cloud::enter_recovery(&b, &old).unwrap().key, "here");
+    assert_eq!(cloud::enter_recovery(&a, &old).unwrap().key, "here");
+}
+
+// GA-370: a new code typed back after the account's key changed on another computer (`PUT /keys` answers 409 epoch) is
+// dropped with its sentence, and the old code keeps working. When Hersir Cloud can't take it, the code waits on.
+#[test]
+fn a_new_recovery_code_over_a_changed_key_is_dropped_and_one_hersir_cloud_refused_can_be_typed_again() {
+    let f = FakeCloud::start().unwrap();
+    let (tmp_a, tmp_b) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let (a, _) = hersir(tmp_a.path(), &f);
+    let account = f.account().id;
+    let old = first_computer(&a);
+    let record = f.key(&account).unwrap();
+    let before = cloud::status(&a);
+
+    let new = cloud::new_recovery(&a).unwrap().recovery_code;
+    f.fail_next(Failure::new("PUT", "/keys", 409, "epoch", "Another computer changed this account's key: get it again."));
+    assert_eq!(cloud::confirm_recovery(&a, last_group(&new)).unwrap_err(), cloud::KEY_CHANGED);
+    assert_eq!(cloud::KEY_CHANGED, "The account's key changed on another computer: sign out and in again, then try again.");
+    assert_eq!(cloud::confirm_recovery(&a, last_group(&new)).unwrap_err(), cloud::MAKE_CODE_FIRST, "the new code is dropped");
+    assert_eq!(cloud::MAKE_CODE_FIRST, "Make the recovery code first: Hersir shows it once.");
+    assert_eq!(f.key(&account).as_ref(), Some(&record));
+    assert_eq!(kept(&cloud::status(&a)), kept(&before), "this computer's key and settings stay");
+
+    // Hersir Cloud fails: the code waits on, and its last group typed again stores it
+    let again = cloud::new_recovery(&a).unwrap().recovery_code;
+    f.fail_next(Failure::new("PUT", "/keys", 500, "", "Server Error"));
+    assert!(cloud::confirm_recovery(&a, last_group(&again)).is_err());
+    assert_eq!(f.key(&account).as_ref(), Some(&record));
+    assert!(cloud::confirm_recovery(&a, last_group(&again)).unwrap().recovery_made_at > before.recovery_made_at);
+    let (b, _) = hersir(tmp_b.path(), &f);
+    sign_in(&b);
+    assert_eq!(cloud::enter_recovery(&b, &old).unwrap_err(), WRONG_CODE);
+    assert_eq!(cloud::enter_recovery(&b, &new).unwrap_err(), WRONG_CODE, "the dropped code never worked");
+    assert_eq!(cloud::enter_recovery(&b, &again).unwrap().key, "here");
 }
 
 // ---- signing in ----
@@ -821,4 +950,39 @@ fn release_builds_ignore_the_hersir_cloud_variables_and_use_the_production_value
     assert!(from_env.contains("#[cfg(debug_assertions)]") && from_env.contains("#[cfg(not(debug_assertions))]"), "{from_env}");
     let release_arm = &from_env[from_env.find("#[cfg(not(debug_assertions))]").unwrap()..];
     assert!(release_arm.contains("Config::production()") && !release_arm.contains("var"), "{release_arm}");
+}
+
+// GA-370: Hersir Cloud's entitlement key is built in (from `php artisan hersir:entitlement-key` on cloud.hersir.dev, the
+// Chief's comment of 26 Nov), so the production config, and a release build's, has it. It is a valid Ed25519 key that
+// refuses an entitlement signed by another key, the fake Hersir Cloud's: such a plan isn't shown.
+#[test]
+fn hersir_clouds_entitlement_key_is_built_in_and_refuses_a_plan_signed_by_another_key() {
+    use gizai_cloud_client::entitlement;
+    assert_eq!(cloud::ENTITLEMENT_KEY, "9BNGtlbwshLo9NUH9IIg+N5rkR8KmDu6O3dEHr/kg6g=");
+    let key = Config::production().entitlement_key.expect("the production config has Hersir Cloud's entitlement key");
+    assert_eq!(key, entitlement::public_key(cloud::ENTITLEMENT_KEY).unwrap());
+    assert_eq!(Config::from_vars(false, |name| panic!("a release build read {name}")).entitlement_key, Some(key));
+
+    let f = FakeCloud::start().unwrap();
+    assert_ne!(f.entitlement_key(), key);
+    let account = f.account().id;
+    let payload = serde_json::json!({ "v": 1, "account": account, "plan": "personal", "status": "active", "features": ["backup", "remote"],
+        "quota_bytes": 10_000_000_000_i64, "used_bytes": 0, "valid_until": null, "read_only_until": null, "issued_at": gizai_core::ids::now_ms() })
+        .to_string();
+    let signed = f.sign_entitlement(&payload);
+    assert_eq!(entitlement::check(&signed, &f.entitlement_key(), &account).unwrap().status, "active", "the fake's own key takes it");
+    let refused = entitlement::check(&signed, &key, &account).unwrap_err().to_string();
+    // refused for its signature, so the built-in key is a valid Ed25519 key
+    assert_eq!(refused, "The plan from Hersir Cloud isn't signed by Hersir Cloud: its signature doesn't match");
+
+    // in the app: Hersir Cloud's key against the fake's entitlement shows no plan; the fake's own key does
+    let tmp = tempfile::tempdir().unwrap();
+    let (st, _) = hersir(tmp.path(), &f);
+    st.cloud.set_config(Config { entitlement_key: Config::production().entitlement_key, ..config(&f) });
+    let s = sign_in(&st);
+    assert!(s.signed_in);
+    assert_eq!(s.plan, None, "a plan signed by another key isn't shown");
+    assert_eq!(cloud::refresh(&st).plan, None);
+    st.cloud.set_config(config(&f));
+    assert_eq!(cloud::refresh(&st).plan.map(|p| p.status), Some("active".to_string()));
 }

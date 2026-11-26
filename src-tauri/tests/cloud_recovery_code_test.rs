@@ -3,9 +3,9 @@
 //! A child process of this test program (this same program, run again with QA_CLOUD_CODE_CHILD set), as in
 //! `setup_secret_log_test.rs`: `logs::start` points the child's fds 1 and 2 at Hersir's log, as in a release build. In it,
 //! computer A signs in to the fake Hersir Cloud, makes the key, types a wrong last group and then the right one, backs
-//! up, and makes a new recovery code; computer B signs in, types a wrong code and then the new one, and restores A's
-//! backup. Both keep their keychain in a file (`FileKeychain`), and the child writes what `cloud-changed` sent and every
-//! byte the fake received into files of its own. The codes it was shown go into `codes.txt`, the only file the parent
+//! up, and makes a new recovery code and types its last group back (GA-370); computer B signs in, types a wrong code and
+//! then the new one, and restores A's backup. Both keep their keychain in a file (`FileKeychain`), and the child writes
+//! what `cloud-changed` sent and every byte the fake received into files of its own. The codes it was shown go into `codes.txt`, the only file the parent
 //! doesn't search. The parent then searches every other file in the folder (both data folders, their databases and
 //! backups, Hersir's log, both keychains, the events and what reached Hersir Cloud) for each code: as shown, without
 //! dashes, in lower case, its 16 bytes, and their hex and base64. A program of its own: `start` points the whole
@@ -86,9 +86,11 @@ fn child_case() {
     cloud::confirm_recovery(&a, &last).unwrap();
     cloud::back_up_now(&a).unwrap();
     backup_ended(&a);
-    // a new code: the old one stops working
+    // a new code: the old one stops working once its last group is typed back (GA-370)
     let new = cloud::new_recovery(&a).unwrap();
     writeln!(codes, "{}", new.recovery_code).unwrap();
+    assert!(cloud::confirm_recovery(&a, "zzz").is_err());
+    cloud::confirm_recovery(&a, new.recovery_code.rsplit('-').next().unwrap()).unwrap();
     cloud::back_up_now(&a).unwrap();
     backup_ended(&a);
     assert!(cloud::status(&a).backup.last_error.is_none(), "{:?}", cloud::status(&a));

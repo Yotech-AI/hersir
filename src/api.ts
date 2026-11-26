@@ -451,11 +451,12 @@ export const cloudCancelSignIn = () => invoke<void>("cloud_cancel_sign_in");
 export const cloudSignOut = () => invoke<T.CloudStatus>("cloud_sign_out");
 /** The first computer only: makes the account key and answers its recovery code, shown once. */
 export const cloudMakeKey = () => invoke<{ recoveryCode: string }>("cloud_make_key");
-/** The recovery code's last group, typed back: turns Cloud Backup on. */
+/** The recovery code's last group, typed back: the account's first code turns Cloud Backup on; a new code
+ *  (cloudNewRecovery) replaces the old one, and Cloud Backup's settings stay. */
 export const cloudConfirmRecovery = (lastGroup: string) => invoke<T.CloudStatus>("cloud_confirm_recovery", { lastGroup });
 /** A computer whose key is "needed": the account's key from its recovery code. */
 export const cloudEnterRecovery = (code: string) => invoke<T.CloudStatus>("cloud_enter_recovery", { code });
-/** A new recovery code; the old one stops working. */
+/** A new recovery code: the old one keeps working until the new one's last group is typed back (cloudConfirmRecovery). */
 export const cloudNewRecovery = () => invoke<{ recoveryCode: string }>("cloud_new_recovery");
 export const cloudSaveSettings = (s: T.CloudSettingsChange) => invoke<T.CloudStatus>("cloud_save_settings", { s });
 export const cloudBackUpNow = () => invoke<T.CloudStatus>("cloud_back_up_now");

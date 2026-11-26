@@ -34,8 +34,9 @@ export const SAVE_CODE_TEXT = `${KEY_WARNING} Hersir won't show it again.`;
 export const LAST_GROUP_LABEL = "Type its last group to show you have it";
 export const WRONG_GROUP = "That isn't the code's last group. Look at the code above again.";
 export const NEW_CODE_ASK = "Make a new recovery code?";
-export const NEW_CODE_ASK_TEXT = `${KEY_WARNING} Your current code stops working once the new one is shown.`;
-export const NEW_CODE_SAVE = "Save your new recovery code. Your old code no longer works.";
+// GA-370: a new code replaces the old one only once its last group is typed back
+export const NEW_CODE_ASK_TEXT = `${KEY_WARNING} Your current code stops working once you type the new one's last group.`;
+export const NEW_CODE_SAVE = "Save your new recovery code. It replaces your old one once you type its last group.";
 export const NEW_CODE_HINT = "Type its last group to show you have it.";
 
 export const RESTORE_TITLE = "Restore from Hersir Cloud";
