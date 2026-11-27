@@ -1,10 +1,11 @@
 // GA-190 QA: the Tasks page keeps its filter on this device (localStorage) once typing in the search pauses, not per
 // keystroke; a pick in Filters writes at once; leaving the page writes what still waits, so nothing is lost. By design the
-// search text itself is kept only while the page shows: what is stored is the filter without its text, and the project
-// under a key of its own. React itself renders (react-dom/client) into a small stand-in DOM (there is no DOM library in
+// search text itself is kept only while the page shows: what is stored is the filter without its text. GA-372: the project
+// is no longer kept at all; it is the page's address (#/tasks/project/<id>), so the page here is drawn as App draws it
+// (Routed below), its project following the address the page goes to. React itself renders (react-dom/client) into a small stand-in DOM (there is no DOM library in
 // the project), with the real search box, Filters popover and task list; the data hooks answer at once, and timers are
 // fake. Typing goes through React's own listeners, an input event per character.
-import { act, type ReactNode } from "react";
+import { act, useState, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Task } from "../types";
 
@@ -29,6 +30,8 @@ class FakeNode {
   // an <input>'s value and type, as React sets and reads them
   declare value?: string;
   declare type?: string;
+  // a <select>'s options, as React marks the one picked (the Team select, with two teams: GA-372's tests)
+  get options(): FakeNode[] { return this.all().filter((n) => n.nodeName === "OPTION"); }
   constructor(public nodeType: number, public nodeName: string, public ownerDocument: FakeNode | null, public namespaceURI = HTML) {}
   get tagName() { return this.nodeName; }
   get firstChild(): FakeNode | null { return this.childNodes[0] ?? null; }
@@ -78,7 +81,15 @@ const body = doc.createElement("body");
 doc.appendChild(body);
 // React DOM checks, as it loads, whether the browser has the input event (`"oninput" in document`): it does here
 (doc as unknown as { oninput: null }).oninput = null;
-const win = { document: doc, event: undefined, HTMLIFrameElement: class {}, devicePixelRatio: 1, addEventListener() {}, removeEventListener() {},
+/** The window's own listeners (the page's Ctrl+B), by event type. */
+const onWindow = new Map<string, Set<(e: unknown) => void>>();
+const win = { document: doc, event: undefined, HTMLIFrameElement: class {}, devicePixelRatio: 1,
+  addEventListener(type: string, f: (e: unknown) => void) { onWindow.set(type, (onWindow.get(type) ?? new Set()).add(f)); },
+  removeEventListener(type: string, f: (e: unknown) => void) { onWindow.get(type)?.delete(f); },
+  // a team picked (lib/team's pickTeam) tells every page that shows one
+  dispatchEvent(e: { type: string }) { for (const f of onWindow.get(e.type) ?? []) f(e); return true; },
+  // GA-372: an address with a project that isn't there is replaced by every project's
+  location: { hash: "", replace(to: string) { h.calls.push(["replace", [to]]); } },
   matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }) };
 Object.assign(doc, { body, documentElement: body, activeElement: body, defaultView: win, hidden: false });
 vi.stubGlobal("window", win);
@@ -104,11 +115,15 @@ const h = vi.hoisted(() => ({
   /** What the data hooks answer, by the api call they make. */
   data: {} as Record<string, unknown>,
   calls: [] as [string, unknown[]][],
+  /** The address the page went to last (go): Routed follows it, as App follows the hash. */
+  go: null as null | ((r: { page: string; project?: string }) => void),
+  /** The cards the board was drawn with last (a stand-in: the real one needs a browser's drag and drop). */
+  board: null as null | Task[],
 }));
 // The api: the reads the page makes answer with a tag the data hooks look up; anything else never settles.
 vi.mock("../api", async (orig) => {
   const real = await orig<Record<string, unknown>>();
-  const tags: Record<string, string> = { getTeam: "team", listProjects: "projects", listUsers: "people", listTasks: "tasks" };
+  const tags: Record<string, string> = { getTeam: "team", listProjects: "projects", listUsers: "people", listTasks: "tasks", listTeams: "teams" };
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(real)) {
     out[k] = typeof v !== "function" ? v : (...a: unknown[]) => { h.calls.push([k, a]); return tags[k] ? { tag: tags[k] } : new Promise(() => {}); };
@@ -123,8 +138,9 @@ vi.mock("../lib/useData", () => ({
     return { data: tag ? h.data[tag] ?? null : null, error: null, reload: () => {}, setData: () => {} };
   },
 }));
+vi.mock("../components/Board", () => ({ Board: ({ tasks }: { tasks: Task[] }) => { h.board = tasks; return null; } }));
 vi.mock("../lib/useLiveRuns", () => { const none: never[] = []; return { useLiveRuns: () => none }; });
-vi.mock("../router", async (orig) => ({ ...(await orig<Record<string, unknown>>()), go: (...a: unknown[]) => { h.calls.push(["go", a]); } }));
+vi.mock("../router", async (orig) => ({ ...(await orig<Record<string, unknown>>()), go: (...a: unknown[]) => { h.calls.push(["go", a]); h.go?.(a[0] as { page: string; project?: string }); } }));
 
 const { createRoot } = await import("react-dom/client");
 const { TasksPage, KEEP_AFTER_MS } = await import("./TasksPage");
@@ -163,6 +179,8 @@ beforeEach(() => {
   vi.stubGlobal("localStorage", ls);
   h.data = { team, projects, people, tasks };
   h.calls.length = 0;
+  h.go = null;
+  h.board = null;
   // on before the page mounts, so its setTimeout is the fake one
   vi.useFakeTimers();
 });
@@ -180,7 +198,17 @@ function mount(el: ReactNode) {
   root = createRoot(container as unknown as HTMLElement);
   act(() => { root!.render(el); });
 }
-const mountTasks = () => mount(<TasksPage initialView="list" onNewTask={() => {}} />);
+/** The page as App draws it (GA-372): its project is the address's, and a go() from it (a project picked in Filters, All
+ *  projects, Clear filters) changes the address and with it the project. The page itself stays, as App keys it by page. */
+function Routed({ start, view = "list", onNewTask = () => {} }: { start?: string; view?: "list" | "board"; onNewTask?: (stateId?: string) => void }) {
+  const [project, setProject] = useState(start);
+  h.go = (r) => setProject(r.project);
+  return <TasksPage initialView={view} project={project} onNewTask={onNewTask} />;
+}
+/** The Tasks page, the list: every project's (#/tasks), or `project`'s (#/tasks/project/<id>). */
+const mountTasks = (project?: string) => mount(<Routed start={project} />);
+/** The addresses the page went to. */
+const went = () => h.calls.filter(([k]) => k === "go").map(([, a]) => a[0]);
 async function unmount() {
   await act(async () => { root!.unmount(); });
   root = null;
@@ -231,24 +259,24 @@ describe("the Tasks page keeps its filter once typing pauses (GA-190)", () => {
     // a pause just short of KEEP_AFTER_MS: still nothing
     wait(KEEP_AFTER_MS - 1);
     expect(writes()).toEqual([]);
-    // then the write, once: the filter without its search text (nothing else is on: an empty filter), and no project kept
+    // then the write, once: the filter without its search text (nothing else is on: an empty filter); no project is kept
+    // (GA-372), and with none stored there is nothing to clear
     wait(1);
     expect(setsOf("gizai-task-filter")).toEqual(["{}"]);
-    expect(removesOf("gizai-task-project")).toBe(1);
     expect(setsOf("gizai-task-project")).toEqual([]);
-    expect(writes()).toHaveLength(2);
+    expect(removesOf("gizai-task-project")).toBe(0);
+    expect(writes()).toHaveLength(1);
     expect(store.get("gizai-task-filter")).not.toContain("login");
     // nothing more as time goes on, and the search still shows what was typed
     wait(10_000);
-    expect(writes()).toHaveLength(2);
+    expect(writes()).toHaveLength(1);
     expect(search().value).toBe(TEXT);
     expect(rows().sort()).toEqual(["GA-1", "GA-2", "WEB-5"]);
   });
 
-  it("with a project and an assignee kept, typing writes those again once it pauses (and never the text), the project under its own key", () => {
+  it("on a project's tasks with an assignee kept, typing writes the assignee again once it pauses (and never the text, nor the project)", () => {
     store.set("gizai-task-filter", JSON.stringify({ assigneeId: "u1" }));
-    store.set("gizai-task-project", "p1");
-    mountTasks();
+    mountTasks("p1");
     expect(filtersButton().textContent).toBe("Filters: 2");
     expect(rows()).toEqual(["GA-1"]);
     expect(writes()).toEqual([]);
@@ -257,40 +285,42 @@ describe("the Tasks page keeps its filter once typing pauses (GA-190)", () => {
     expect(writes()).toEqual([]);
     wait(KEEP_AFTER_MS);
     expect(setsOf("gizai-task-filter")).toEqual([JSON.stringify({ assigneeId: "u1" })]);
-    expect(setsOf("gizai-task-project")).toEqual(["p1"]);
-    expect(removesOf("gizai-task-project")).toBe(0);
-    expect(writes()).toHaveLength(2);
+    expect(setsOf("gizai-task-project")).toEqual([]);
+    expect(writes()).toHaveLength(1);
     wait(10_000);
-    expect(writes()).toHaveLength(2);
+    expect(writes()).toHaveLength(1);
+    // the project stays the address's: nothing went anywhere
+    expect(went()).toEqual([]);
   });
 
-  it("a pick in Filters writes at once, without waiting for the timer, and leaves no write waiting", () => {
+  it("a pick in Filters writes at once, without waiting for the timer, and leaves no write waiting; a project is the address, never written", () => {
     mountTasks();
     openFilters();
     expect(byLabel(container, "Filters").filter((n) => n.getAttribute("role") === "menu")).toHaveLength(1);
     expect(writes()).toEqual([]);
 
-    // a project: at once
+    // a project (GA-372): its address, and nothing kept for it
     pick("Gizai");
-    expect(setsOf("gizai-task-filter")).toEqual(["{}"]);
-    expect(setsOf("gizai-task-project")).toEqual(["p1"]);
-    expect(writes()).toHaveLength(2);
+    expect(went()).toEqual([{ page: "tasks", project: "p1" }]);
+    expect(setsOf("gizai-task-project")).toEqual([]);
     expect(rows().sort()).toEqual(["GA-1", "GA-2", "GA-4"]);
     expect(filtersButton().textContent).toBe("Filters: 1");
 
-    // an assignee: at once
+    // an assignee: at once, the filter without the project
+    ls.setItem.mockClear();
     pick("Jeffrey");
-    expect(setsOf("gizai-task-filter")).toEqual(["{}", JSON.stringify({ assigneeId: "u1" })]);
-    expect(setsOf("gizai-task-project")).toEqual(["p1", "p1"]);
-    expect(writes()).toHaveLength(4);
+    expect(setsOf("gizai-task-filter")).toEqual([JSON.stringify({ assigneeId: "u1" })]);
+    expect(writes()).toHaveLength(1);
     expect(rows()).toEqual(["GA-1"]);
     expect(filtersButton().textContent).toBe("Filters: 2");
+    // the project stays: no second address
+    expect(went()).toEqual([{ page: "tasks", project: "p1" }]);
 
     // the timer that a change starts was flushed with it: nothing more later
     wait(10_000);
-    expect(writes()).toHaveLength(4);
+    expect(writes()).toHaveLength(1);
     expect(store.get("gizai-task-filter")).toBe(JSON.stringify({ assigneeId: "u1" }));
-    expect(store.get("gizai-task-project")).toBe("p1");
+    expect(store.has("gizai-task-project")).toBe(false);
   });
 
   it("a pick in Filters while typed text waits writes at once, once, and no second write follows when the timer would have run", () => {
@@ -298,33 +328,37 @@ describe("the Tasks page keeps its filter once typing pauses (GA-190)", () => {
     typeQuickly("log", 20);
     expect(writes()).toEqual([]);
     openFilters();
-    pick("Website");
-    expect(setsOf("gizai-task-filter")).toEqual(["{}"]);
-    expect(setsOf("gizai-task-project")).toEqual(["p2"]);
-    expect(writes()).toHaveLength(2);
-    // Website's cards with "log" in them
-    expect(rows()).toEqual(["WEB-5"]);
+    pick("Jeffrey");
+    expect(setsOf("gizai-task-filter")).toEqual([JSON.stringify({ assigneeId: "u1" })]);
+    expect(writes()).toHaveLength(1);
+    // Jeffrey's cards with "log" in them, of every project
+    expect(rows().sort()).toEqual(["GA-1", "WEB-5"]);
     wait(10_000);
-    expect(writes()).toHaveLength(2);
+    expect(writes()).toHaveLength(1);
     expect(search().value).toBe("log");
+    // then a project: its address, the text and the assignee kept on the page
+    pick("Website");
+    expect(went()).toEqual([{ page: "tasks", project: "p2" }]);
+    expect(rows()).toEqual(["WEB-5"]);
+    expect(search().value).toBe("log");
+    expect(setsOf("gizai-task-project")).toEqual([]);
   });
 
   it("leaving the page while a write waits writes it then (nothing is lost), and nothing more when the timers run", async () => {
-    store.set("gizai-task-project", "p1");
-    mountTasks();
+    mountTasks("p1");
     typeQuickly(TEXT, GAP, tasks.filter((t) => t.projectId === "p1"));
     wait(KEEP_AFTER_MS - 100);
     expect(writes()).toEqual([]);
 
     await unmount();
     expect(setsOf("gizai-task-filter")).toEqual(["{}"]);
-    expect(setsOf("gizai-task-project")).toEqual(["p1"]);
+    expect(setsOf("gizai-task-project")).toEqual([]);
     expect(removesOf("gizai-task-project")).toBe(0);
-    expect(writes()).toHaveLength(2);
+    expect(writes()).toHaveLength(1);
     // the timer was cleared with it
     expect(vi.getTimerCount()).toBe(0);
     vi.advanceTimersByTime(10_000);
-    expect(writes()).toHaveLength(2);
+    expect(writes()).toHaveLength(1);
   });
 
   it("leaving the page right after a single keystroke writes too, and with nothing waiting, leaving writes nothing", async () => {
@@ -332,22 +366,21 @@ describe("the Tasks page keeps its filter once typing pauses (GA-190)", () => {
     key("x");
     await unmount();
     expect(setsOf("gizai-task-filter")).toEqual(["{}"]);
-    expect(removesOf("gizai-task-project")).toBe(1);
-    expect(writes()).toHaveLength(2);
+    expect(writes()).toHaveLength(1);
 
     ls.setItem.mockClear();
     ls.removeItem.mockClear();
     mountTasks();
     typeQuickly("lo");
     wait(KEEP_AFTER_MS);
-    expect(writes()).toHaveLength(2);
+    expect(writes()).toHaveLength(1);
     await unmount();
-    expect(writes()).toHaveLength(2);
+    expect(writes()).toHaveLength(1);
     vi.advanceTimersByTime(10_000);
-    expect(writes()).toHaveLength(2);
+    expect(writes()).toHaveLength(1);
   });
 
-  it("a page opened again reads back what was kept: the picks in Filters, the project; not the search text", async () => {
+  it("a page opened again reads back what was kept: the picks in Filters but not the project (GA-372), nor the search text", async () => {
     mountTasks();
     openFilters();
     pick("Gizai");
@@ -358,21 +391,227 @@ describe("the Tasks page keeps its filter once typing pauses (GA-190)", () => {
     expect(rows()).toEqual(["GA-1"]);
     await unmount();
     expect(store.get("gizai-task-filter")).toBe(JSON.stringify({ assigneeId: "u1" }));
-    expect(store.get("gizai-task-project")).toBe("p1");
+    expect(store.has("gizai-task-project")).toBe(false);
     const before = writes().length;
 
+    // Tasks again (#/tasks, as the sidebar's Tasks opens it): every project's, Jeffrey's
     mountTasks();
     expect(search().value).toBe("");
-    expect(filtersButton().textContent).toBe("Filters: 2");
-    // the project in the crumbs, the list filtered by project and assignee
-    expect(container.all().find((n) => cls(n).includes("crumbs"))!.textContent).toContain("Gizai/");
-    expect(rows()).toEqual(["GA-1"]);
+    expect(filtersButton().textContent).toBe("Filters: 1");
+    const crumbs = () => container.all().find((n) => cls(n).includes("crumbs"))!.textContent;
+    expect(crumbs()).not.toContain("Gizai");
+    expect(rows().sort()).toEqual(["GA-1", "WEB-5"]);
     openFilters();
-    const menu = byLabel(container, "Filters").find((n) => n.getAttribute("role") === "menu")!;
-    const ticked = menu.all().filter((n) => n.nodeName === "BUTTON" && n.all().some((c) => (c.getAttribute("class") ?? "").includes("tick"))).map((n) => n.textContent);
-    expect(ticked).toEqual(["Gizai", "Jeffrey"]);
+    const ticks = () => byLabel(container, "Filters").find((n) => n.getAttribute("role") === "menu")!.all()
+      .filter((n) => n.nodeName === "BUTTON" && n.all().some((c) => (c.getAttribute("class") ?? "").includes("tick"))).map((n) => n.textContent);
+    expect(ticks()).toEqual(["All projects", "Jeffrey"]);
+    await unmount();
+
+    // a project's tasks: that project, and the assignee still kept
+    mountTasks("p2");
+    expect(filtersButton().textContent).toBe("Filters: 2");
+    expect(crumbs()).toContain("Website/");
+    expect(rows()).toEqual(["WEB-5"]);
+    openFilters();
+    expect(ticks()).toEqual(["Website", "Jeffrey"]);
     // opening it writes nothing
     expect(writes()).toHaveLength(before);
+  });
+});
+
+// GA-372 QA: a project's tasks have their own address, #/tasks/project/<id> (on the board #/board/project/<id>, in the Inbox
+// #/inbox/project/<id>); #/tasks is every project's, so the sidebar's Tasks always shows every project. The project shows
+// in the crumbs, its name linking to its page and × (All projects) to every project's. Filters → a project goes to its
+// address, All projects and Clear filters to #/tasks. Nothing of the project is kept on this computer, and a project kept
+// there by an older Hersir (gizai-task-project) is cleared once.
+describe("a project's tasks have their own address (GA-372)", () => {
+  const crumbs = () => container.all().find((n) => cls(n).includes("crumbs"))!;
+  const links = () => crumbs().all().filter((n) => n.nodeName === "A").map((n) => [n.textContent, n.getAttribute("href"), n.getAttribute("aria-label")]);
+  const menu = () => byLabel(container, "Filters").find((n) => n.getAttribute("role") === "menu")!;
+  const ticked = () => menu().all().filter((n) => n.nodeName === "BUTTON" && n.all().some((c) => cls(c).includes("tick"))).map((n) => n.textContent);
+
+  it("#/tasks/project/<id> shows only that project's cards, its name in the crumbs before Tasks, and × back to every project's", () => {
+    mountTasks("p1");
+    expect(rows().sort()).toEqual(["GA-1", "GA-2", "GA-4"]);
+    expect(crumbs().textContent).toBe("Gizai/Tasks3");
+    // the name links to the project's page; × is All projects, to #/tasks
+    expect(links()).toEqual([["Gizai", "#/project/p1", null], ["", "#/tasks", "All projects"]]);
+    expect(crumbs().all().find((n) => n.getAttribute("aria-label") === "All projects")!.getAttribute("title")).toBe("All projects");
+    expect(filtersButton().textContent).toBe("Filters: 1");
+    openFilters();
+    expect(ticked()).toEqual(["Gizai", "Anyone"]);
+    // nothing was written or went anywhere to show it
+    expect(writes()).toEqual([]);
+    expect(went()).toEqual([]);
+  });
+
+  it("#/tasks shows every project's cards, with no project in the crumbs and All projects ticked", () => {
+    mountTasks();
+    expect(rows().sort()).toEqual(tasks.map((t) => t.identifier).sort());
+    expect(crumbs().textContent).toBe("Tasks5");
+    expect(links()).toEqual([]);
+    expect(filtersButton().textContent).toBe("Filters");
+    openFilters();
+    expect(ticked()).toEqual(["All projects", "Anyone"]);
+  });
+
+  it("a project picked in Filters goes to its address; another project to that one; All projects and Clear filters go to #/tasks", () => {
+    mountTasks();
+    openFilters();
+    pick("Gizai");
+    expect(went()).toEqual([{ page: "tasks", project: "p1" }]);
+    expect(rows().sort()).toEqual(["GA-1", "GA-2", "GA-4"]);
+    expect(crumbs().textContent).toBe("Gizai/Tasks3");
+    // the same project again: it is there already
+    pick("Gizai");
+    expect(went()).toHaveLength(1);
+    pick("Website");
+    expect(went()).toEqual([{ page: "tasks", project: "p1" }, { page: "tasks", project: "p2" }]);
+    expect(rows().sort()).toEqual(["WEB-3", "WEB-5"]);
+    expect(crumbs().textContent).toBe("Website/Tasks2");
+    pick("All projects");
+    expect(went()[2]).toEqual({ page: "tasks" });
+    expect(rows()).toHaveLength(5);
+    expect(crumbs().textContent).toBe("Tasks5");
+
+    // Clear filters: every project's, and the other filters gone too
+    pick("Website");
+    pick("Jeffrey");
+    expect(rows()).toEqual(["WEB-5"]);
+    act(() => { fire(byLabel(container, "Clear filters")[0]!, "click"); });
+    expect(went().at(-1)).toEqual({ page: "tasks" });
+    expect(rows()).toHaveLength(5);
+    expect(filtersButton().textContent).toBe("Filters");
+    // never kept on this computer
+    expect(setsOf("gizai-task-project")).toEqual([]);
+    for (const v of setsOf("gizai-task-filter")) expect(JSON.parse(v as string)).not.toHaveProperty("projectId");
+  });
+
+  it("a person or label picked on a project's tasks keeps that project: the page stays at its address", () => {
+    mountTasks("p2");
+    openFilters();
+    pick("Jeffrey");
+    pick("Bug");
+    expect(went()).toEqual([]);
+    expect(crumbs().textContent).toContain("Website/");
+    expect(store.get("gizai-task-filter")).toBe(JSON.stringify({ assigneeId: "u1", labelIds: ["l1"] }));
+  });
+
+  it("on the board, × and a project picked in Filters stay on the board: #/board and #/board/project/<id>", () => {
+    store.set("gizai-tasks-view", JSON.stringify("board"));
+    mount(<Routed start="p1" view="board" />);
+    expect(h.board!.map((t) => t.identifier).sort()).toEqual(["GA-1", "GA-2", "GA-4"]);
+    expect(links()).toEqual([["Gizai", "#/project/p1", null], ["", "#/board", "All projects"]]);
+    openFilters();
+    pick("Website");
+    expect(went()).toEqual([{ page: "board", project: "p2" }]);
+    expect(h.board!.map((t) => t.identifier).sort()).toEqual(["WEB-3", "WEB-5"]);
+    pick("All projects");
+    expect(went()[1]).toEqual({ page: "board" });
+  });
+
+  it("in the Inbox, × goes to #/inbox and a project picked in Filters to #/inbox/project/<id>", () => {
+    mount(<TasksPage inboxFor="u1" project="p1" onNewTask={() => {}} />);
+    expect(links()).toEqual([["Gizai", "#/project/p1", null], ["", "#/inbox", "All projects"]]);
+    expect(crumbs().textContent.startsWith("Gizai/Inbox")).toBe(true);
+    openFilters();
+    pick("Website");
+    expect(went()).toEqual([{ page: "inbox", project: "p2" }]);
+  });
+
+  it("the List and Board switch keeps the scope: a project's tasks stay that project's, every project's stay every project's", () => {
+    mountTasks("p1");
+    const board = byLabel(container, "Board")[0]!, list = byLabel(container, "List")[0]!;
+    act(() => { fire(board, "click"); });
+    expect(board.getAttribute("aria-pressed")).toBe("true");
+    expect(h.board!.map((t) => t.identifier).sort()).toEqual(["GA-1", "GA-2", "GA-4"]);
+    expect(store.get("gizai-tasks-view")).toBe(JSON.stringify("board"));
+    expect(crumbs().textContent).toBe("Gizai/Tasks3");
+    act(() => { fire(list, "click"); });
+    expect(rows().sort()).toEqual(["GA-1", "GA-2", "GA-4"]);
+    // Ctrl+B both ways
+    const ctrlB = () => act(() => { for (const f of onWindow.get("keydown") ?? []) f({ key: "b", ctrlKey: true, metaKey: false, altKey: false, shiftKey: false, target: body, preventDefault() {} }); });
+    h.board = null;
+    ctrlB();
+    expect(store.get("gizai-tasks-view")).toBe(JSON.stringify("board"));
+    expect(h.board!.map((t) => t.identifier).sort()).toEqual(["GA-1", "GA-2", "GA-4"]);
+    expect(crumbs().textContent).toBe("Gizai/Tasks3");
+    ctrlB();
+    expect(rows().sort()).toEqual(["GA-1", "GA-2", "GA-4"]);
+    // the switch never changes the address
+    expect(went()).toEqual([]);
+    expect(setsOf("gizai-task-project")).toEqual([]);
+  });
+
+  it("the List and Board switch on every project's tasks stays every project's", async () => {
+    mountTasks();
+    act(() => { fire(byLabel(container, "Board")[0]!, "click"); });
+    expect(h.board).toHaveLength(5);
+    act(() => { fire(byLabel(container, "List")[0]!, "click"); });
+    expect(rows()).toHaveLength(5);
+    expect(crumbs().textContent).toBe("Tasks5");
+    expect(went()).toEqual([]);
+  });
+
+  it("a project kept by an older Hersir (gizai-task-project) is cleared once as the page opens, and not shown", async () => {
+    store.set("gizai-task-project", "p2");
+    store.set("gizai-task-filter", JSON.stringify({ labelIds: ["l1"] }));
+    mountTasks();
+    expect(removesOf("gizai-task-project")).toBe(1);
+    expect(store.has("gizai-task-project")).toBe(false);
+    // every project's, the rest of the filter as it was kept
+    expect(crumbs().textContent).not.toContain("Website");
+    expect(filtersButton().textContent).toBe("Filters: 1");
+    expect(went()).toEqual([]);
+    await unmount();
+    // the next time there is nothing left to clear, and nothing is written back
+    mountTasks();
+    expect(removesOf("gizai-task-project")).toBe(1);
+    openFilters();
+    pick("Website");
+    await unmount();
+    expect(setsOf("gizai-task-project")).toEqual([]);
+    expect(store.has("gizai-task-project")).toBe(false);
+  });
+
+  it("a project's address with a project that isn't there (removed, another data folder's) is replaced by every project's", () => {
+    mountTasks("gone");
+    expect(h.calls.filter(([k]) => k === "replace")).toEqual([["replace", ["#/tasks"]]]);
+    expect(crumbs().textContent).not.toContain("/");
+  });
+
+  it("with two teams, arriving at a project's address picks its team, once; every project's tasks and the Inbox leave the pick as it is", () => {
+    h.data = { ...h.data, teams: [{ id: "team", name: "Software" }, { id: "web", name: "Web" }],
+      projects: [{ ...projects[0], teamId: "team" }, { ...projects[1], teamId: "web" }] };
+    store.set("gizai-team", "team");
+    mountTasks();
+    expect(store.get("gizai-team")).toBe("team");
+    // Website is the Web team's
+    act(() => { h.go!({ page: "tasks", project: "p2" }); });
+    expect(setsOf("gizai-team")).toEqual(["web"]);
+    // once: a team picked after that stays picked, on the same project's address
+    act(() => { store.set("gizai-team", "team"); win.dispatchEvent({ type: "gizai-team-changed" }); });
+    expect(setsOf("gizai-team")).toEqual(["web"]);
+    // the project of the team picked: nothing to pick
+    act(() => { h.go!({ page: "tasks", project: "p1" }); });
+    expect(setsOf("gizai-team")).toEqual(["web"]);
+    act(() => { h.go!({ page: "tasks" }); });
+    expect(setsOf("gizai-team")).toEqual(["web"]);
+  });
+
+  it("the Inbox at a project's address picks no team: it shows every team's cards", () => {
+    h.data = { ...h.data, teams: [{ id: "team", name: "Software" }, { id: "web", name: "Web" }],
+      projects: [{ ...projects[0], teamId: "team" }, { ...projects[1], teamId: "web" }] };
+    store.set("gizai-team", "team");
+    mount(<TasksPage inboxFor="u1" project="p2" onNewTask={() => {}} />);
+    expect(setsOf("gizai-team")).toEqual([]);
+  });
+
+  it("New task on the page asks App for it (App picks the address's project, AppProjectTasks.test.tsx), a column's + with its column", () => {
+    const asked: (string | undefined)[] = [];
+    mount(<Routed start="p1" onNewTask={(s) => asked.push(s)} />);
+    act(() => { fire(buttonsNamed(container, "New task")[0]!, "click"); });
+    expect(asked).toEqual([undefined]);
   });
 });
 
@@ -421,7 +660,7 @@ describe("the Tasks toolbar folds to fit a narrow island (GA-300)", () => {
   it("folded, every action still works: Filters filters and keeps its count, Sort and Group open, New task and Clear filters run", () => {
     bar.have = 634; bar.need = [708, 680, 600];
     let asked = 0;
-    mount(<TasksPage initialView="list" onNewTask={() => { asked += 1; }} />);
+    mount(<Routed onNewTask={() => { asked += 1; }} />);
     openFilters();
     pick("Gizai");
     expect(rows().sort()).toEqual(["GA-1", "GA-2", "GA-4"]);

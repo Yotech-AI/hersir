@@ -257,3 +257,30 @@ describe("on the board", () => {
     expect(alert && textOf(kids(alert))).toBe("Couldn't move KADE-2: Testing takes no cards by hand");
   });
 });
+
+// GA-372 QA: the board's own page is the Tasks page's board at the project's own address, #/board/project/<id>; nothing is
+// kept on this computer for it any more (it used to set the Tasks page's project filter, gizai-task-project, which then
+// stuck to the sidebar's Tasks). The team's board (no project) is #/board, every project of the team picked.
+describe("the board's own page (GA-372)", () => {
+  it("goes to the project's board, #/board/project/<id>, picks the project's team and keeps no project on this computer", () => {
+    M.boardOwnPage(PROJECTS[0] as never);
+    expect(a.went).toEqual([{ page: "board", project: "p-kade" }]);
+    expect(store.get("gizai-team")).toBe("team1");
+    expect(store.has("gizai-task-project")).toBe(false);
+  });
+  it("the team's board goes to #/board, every project's, and leaves an old stored project to the Tasks page to clear", () => {
+    store.set("gizai-task-project", "p-gfw");
+    M.boardOwnPage(null);
+    M.boardOwnPage(undefined);
+    expect(a.went).toEqual([{ page: "board" }, { page: "board" }]);
+    // the Tasks page clears it as it opens (TasksSearchKeep.test.tsx); this doesn't touch it
+    expect(store.get("gizai-task-project")).toBe("p-gfw");
+  });
+  it("closes the Board tab beside the chat as it goes", () => {
+    S.openBoardTab();
+    expect(side().tabs.filter((t) => t.startsWith("board"))).toHaveLength(1);
+    M.boardOwnPage(PROJECTS[1] as never);
+    expect(side().tabs.filter((t) => t.startsWith("board"))).toEqual([]);
+    expect(a.went).toEqual([{ page: "board", project: "p-gfw" }]);
+  });
+});

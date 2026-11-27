@@ -74,3 +74,15 @@ describe("a project's tabs", () => {
     expect(state.went.map((r) => href(r as Parameters<typeof href>[0]))).toEqual(["#/project/p-kade/time", "#/project/p-kade"]);
   });
 });
+
+// GA-372 QA: Open tasks (the header's button and the Tasks section's link) goes to the project's own tasks,
+// #/tasks/project/<id>, instead of #/tasks with the project kept on this computer (which then stuck to the sidebar's Tasks).
+describe("Open tasks (GA-372)", () => {
+  it("both links go to the project's tasks, #/tasks/project/<id>, and none to #/tasks", () => {
+    const html = renderToStaticMarkup(<ProjectPage id="p-kade" />);
+    const open = [...html.matchAll(/<a [^>]*href="([^"]*)"[^>]*>(?:<svg[\s\S]*?<\/svg>)?Open tasks<\/a>/g)].map((m) => m[1]);
+    expect(open).toEqual(["#/tasks/project/p-kade", "#/tasks/project/p-kade"]);
+    expect(open[0]).toBe(href({ page: "tasks", project: "p-kade" }));
+    expect(html).not.toContain('href="#/tasks"');
+  });
+});

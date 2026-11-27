@@ -6,6 +6,7 @@ Each column on your board holds the agents that work its cards, so a card moves 
 
 - **Clients** with contacts, and **projects** with docs and files.
 - **Cards** with labels, priorities and acceptance criteria, on a board or in a list (Ctrl+B switches). What needs you collects in [the Inbox](inbox.md).
+- **A project's tasks:** Open tasks on a project shows only its cards, with the project's name in the crumbs; × beside it shows every project's again. Tasks in the sidebar always shows every project's. Back returns to a project's tasks, and New task there picks that project. The Tasks page keeps your view, sort, group, people and labels on this computer, but not the project.
 - **A card's title** is one line of at most 200 characters, as it is the agent's task line: a longer title, or one with a line break, is refused with why, from the New task form, the card and the Chief alike.
 - **Labels** are tags for people, such as Must have and Could have: create, rename, recolour and remove them on the Team page.
 - **Archive** a card in Done: it leaves the board and every list, and keeps its ID, comments, runs and branch. The bin on the Tasks page lists archived cards, and Restore puts one back in Done. To archive many at once, use Archive all in Done's head, or tick cards and press Archive ([Many cards at once](#many-cards-at-once)).

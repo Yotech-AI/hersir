@@ -14,6 +14,9 @@ import { NewLabel } from "./NewLabel";
 import { PRIORITY_NAMES } from "./StatusIcon";
 
 function readPref(k: string): string | null { try { return localStorage.getItem(k); } catch { return null; } }
+/** The project last picked here (GA-372): its own, not the Tasks page's. A project the drawer is opened with (a project's
+ *  page or its tasks) is that page's pick, not kept; another project picked here is. */
+export const LAST_PROJECT_KEY = "gizai-new-task-project";
 
 /** N anywhere. Title, project, column (default Backlog), priority, assignee, labels, description, acceptance criteria and files.
  *  The files are only listed until Create task: it creates the task, then adds them. */
@@ -55,7 +58,7 @@ export function NewTaskDrawer({ onClose, stateId: presetState, projectId: preset
         ?? (presetAssignee ? ts.find((t) => t.members.some((m) => m.kind === "agent" && m.actorId === presetAssignee))?.id : undefined)
         ?? shownTeam(ts, pickedTeam) ?? first;
       const fits = (p: Project) => teamOfProject(p.id, open, first) === wanted;
-      const remembered = readPref("gizai-task-project");
+      const remembered = readPref(LAST_PROJECT_KEY);
       setProjectId((cur) => cur || ((open.find((p) => p.id === remembered && fits(p)) ?? open.find(fits) ?? open.find((p) => p.id === remembered) ?? open[0])?.id ?? ""));
     }).catch((e) => setErr(String(e)));
     listUsers().then(setPeople).catch(() => {});
@@ -72,6 +75,7 @@ export function NewTaskDrawer({ onClose, stateId: presetState, projectId: preset
       id = await createTask({ projectId, title: title.trim(), stateId: column || null, labelIds, priority, assigneeId: assigneeId || null,
         descriptionMd: description, acceptanceMd: acceptance.trim() ? acceptance : null, testing });
     } catch (e) { creating.current = false; setErr(String(e)); setBusy(false); return; }
+    if (projectId !== (presetProject ?? "")) { try { localStorage.setItem(LAST_PROJECT_KEY, projectId); } catch { /* private mode */ } }
     // The task exists now: a file that can't be added never undoes it or creates it again.
     if (paths.length) {
       let failed: string[];

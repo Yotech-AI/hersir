@@ -1,7 +1,7 @@
 import { lazy, startTransition, Suspense, useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { TriangleAlert, X } from "lucide-react";
 import { appInfo, exitApp, getDoc, getTask, getTeam, listRuns, saveDoc, updateTask, listClients, listProjects, listTasks, selftestReport, tourStill, tourSteps } from "./api";
-import { href, useRoute, type Route } from "./router";
+import { href, parseHash, useRoute, type Route } from "./router";
 import type { AppInfo } from "./types";
 import { Sidebar } from "./components/Sidebar";
 import { SidebarToolbar } from "./components/SidebarToolbar";
@@ -35,6 +35,13 @@ const EditorPage = lazy(() => import("./pages/EditorPage").then((m) => ({ defaul
 const TerminalPage = lazy(() => import("./pages/TerminalPage").then((m) => ({ default: m.TerminalPage })));
 // GA-164: only a new install's first start shows it
 const OnboardingPage = lazy(() => import("./pages/OnboardingPage").then((m) => ({ default: m.OnboardingPage })));
+
+/** New task (the page's button, a column's +, N, the sidebar and Search): on a project's tasks (#/tasks/project/<id>,
+ *  GA-372) it picks that project; elsewhere the drawer picks one itself. */
+function newTaskReq(stateId?: string): DrawerReq {
+  const project = parseHash(window.location.hash).project;
+  return { kind: "task", stateId, ...(project ? { projectId: project } : {}) };
+}
 
 /** `onboarding`: the first start's onboarding waits (main.tsx asks before anything is drawn). It shows instead of the app
  *  until it is finished or skipped; without it Gizai opens as it always did. */
@@ -84,7 +91,7 @@ export default function App({ onboarding = false }: { onboarding?: boolean }) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPalette((p) => !p); return; }
       const t = e.target as HTMLElement;
       if (t.closest("input, textarea, select, [contenteditable], .cm-editor") || e.ctrlKey || e.metaKey || e.altKey) return;
-      if (e.key === "n" && !document.querySelector("[role=dialog]")) { e.preventDefault(); setDrawer({ kind: "task" }); }
+      if (e.key === "n" && !document.querySelector("[role=dialog]")) { e.preventDefault(); setDrawer(newTaskReq()); }
       if (e.key === "t") toggleTheme(); // dark is the default
       if (e.key === "d") toggleDensity();
     };
@@ -261,7 +268,7 @@ export default function App({ onboarding = false }: { onboarding?: boolean }) {
     );
   }
 
-  const newTask = (stateId?: string) => setDrawer({ kind: "task", stateId });
+  const newTask = (stateId?: string) => setDrawer(newTaskReq(stateId));
   return (
     <DrawerHost request={drawer} setRequest={setDrawer}>
       {/* the window (design/islands): the sidebar and the page as islands on the background's gradient */}
@@ -283,8 +290,8 @@ export default function App({ onboarding = false }: { onboarding?: boolean }) {
               the page you came from until the next one is ready (GA-178) */}
           <Suspense fallback={null}>
             {route.page === "chat" || route.page === "chats" ? <ChatPage id={route.id} archive={route.page === "chats"} youId={info?.you_id ?? ""} />
-              : route.page === "inbox" ? <TasksPage key="inbox" inboxFor={info?.you_id ?? ""} onNewTask={newTask} />
-              : route.page === "tasks" || route.page === "board" ? <TasksPage key={route.page} initialView={route.page === "board" ? "board" : undefined} onNewTask={newTask} />
+              : route.page === "inbox" ? <TasksPage key="inbox" inboxFor={info?.you_id ?? ""} project={route.project} onNewTask={newTask} />
+              : route.page === "tasks" || route.page === "board" ? <TasksPage key={route.page} initialView={route.page === "board" ? "board" : undefined} project={route.project} onNewTask={newTask} />
               : route.page === "task" && route.id ? <TaskPage key={route.id} id={route.id} view={route.view === "changes" || route.view === "screenshots" ? route.view : "card"} run={route.run} youId={info?.you_id ?? ""} />
               : route.page === "doc" && route.id ? <DocPage key={route.id} id={route.id} />
               : route.page === "agent" && route.id ? <AgentPage key={route.id} id={route.id} />

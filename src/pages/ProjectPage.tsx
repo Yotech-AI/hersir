@@ -34,9 +34,10 @@ export function ProjectPage({ id, view = "overview" }: { id: string; view?: Proj
   if (!p) return null;
   const total = p.openTasks + p.doneTasks;
   const several = (teams?.length ?? 0) > 1;
-  // Its cards are on its team's board: the board shows that team.
+  // Open tasks: the project's own tasks, #/tasks/project/<id> (GA-372); nothing is kept, so Tasks in the sidebar still
+  // shows every project's. Its cards are on its team's board: the board shows that team.
+  const tasksOf = href({ page: "tasks", project: p.id });
   const showTasks = () => {
-    try { localStorage.setItem("gizai-task-project", p.id); } catch { /* ignore */ }
     if (several && p.teamId) pickTeam(p.teamId);
   };
   return (
@@ -57,7 +58,7 @@ export function ProjectPage({ id, view = "overview" }: { id: string; view?: Proj
                 {several && p.teamName && <> · <a href={href({ page: "team" })} title="Its cards are on this team's board" style={{ color: "inherit" }}
                   onClick={() => { if (p.teamId) pickTeam(p.teamId); }}>{p.teamName}</a></>}</p></div>
             <div className="actions">
-              <a className="btn" href="#/tasks" onClick={showTasks}><ListTodo className="icon" />Open tasks</a>
+              <a className="btn" href={tasksOf} onClick={showTasks}><ListTodo className="icon" />Open tasks</a>
               <button className="btn" onClick={() => open({ kind: "task", projectId: p.id })}><Plus className="icon" />New task</button>
               <button className="btn" onClick={() => open({ kind: "project", id: p.id })}><Pencil className="icon" />Edit</button>
             </div>
@@ -76,7 +77,7 @@ export function ProjectPage({ id, view = "overview" }: { id: string; view?: Proj
               <section><div className="section-head"><h3>Files</h3></div><FileDrop ownerType="project" ownerId={p.id} /></section>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-              <section><div className="section-head"><h3>Tasks</h3><a className="link" href="#/tasks" onClick={showTasks}>Open tasks</a></div>
+              <section><div className="section-head"><h3>Tasks</h3><a className="link" href={tasksOf} onClick={showTasks}>Open tasks</a></div>
                 <div className="panel" style={{ padding: 16 }}>
                   {total === 0 ? <span className="faint">No tasks yet. Press N to add one.</span> : <>
                     <div className="t-metric">{p.doneTasks} / {total}</div><div className="faint" style={{ fontSize: "var(--fs-sm)" }}>tasks done · {p.openTasks} open</div>

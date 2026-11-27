@@ -39,14 +39,20 @@ export const KEEP_AFTER_MS = 400;
 
 function writeFilter(f: Filter) {
   writePref("gizai-task-filter", { ...f, projectId: undefined, text: undefined });
-  try { if (f.projectId) localStorage.setItem("gizai-task-project", f.projectId); else localStorage.removeItem("gizai-task-project"); } catch { /* ignore */ }
 }
 
-/** The filter, kept on this device (its search text only while the page shows). Typing in the search writes it once the
- *  typing pauses, not per keystroke (GA-190); a pick in Filters writes it at once, and leaving the page writes what
- *  still waits. */
+/** Where the project filter was kept until GA-372. The project is in the address now (#/tasks/project/<id>), so a value
+ *  kept there by an older Hersir is cleared, once, and never written again. */
+const OLD_PROJECT_KEY = "gizai-task-project";
+function forgetOldProject() {
+  try { if (localStorage.getItem(OLD_PROJECT_KEY) !== null) localStorage.removeItem(OLD_PROJECT_KEY); } catch { /* private mode */ }
+}
+
+/** The filter, kept on this device (its search text only while the page shows), without the project: that is the
+ *  page's address (GA-372). Typing in the search writes it once the typing pauses, not per keystroke (GA-190); a pick in
+ *  Filters writes it at once, and leaving the page writes what still waits. */
 function useKeptFilter(): [Filter, (f: Filter) => void] {
-  const [filter, setFilterState] = useState<Filter>(() => ({ ...readPref<Filter>("gizai-task-filter", {}), projectId: (() => { try { return localStorage.getItem("gizai-task-project"); } catch { return null; } })() }));
+  const [filter, setFilterState] = useState<Filter>(() => { forgetOldProject(); return { ...readPref<Filter>("gizai-task-filter", {}), projectId: undefined }; });
   const shown = useRef(filter);
   const waiting = useRef<{ f: Filter; timer: ReturnType<typeof setTimeout> } | null>(null);
   const flush = useCallback(() => {
@@ -125,15 +131,27 @@ function RunForMeCards({ tasks, agentOf }: { tasks: Task[]; agentOf: (t: Task) =
 const SORTS: [SortBy, string][] =[["updated", "Last updated"], ["priority", "Priority"], ["title", "Title"], ["id", "ID"], ["manual", "Board order"]];
 const GROUPS: [GroupBy, string][] = [["status", "Column"], ["assignee", "Assignee"], ["project", "Project"], ["priority", "Priority"], ["none", "No grouping"]];
 
-export function TasksPage({ initialView, onNewTask, inboxFor }: { initialView?: View; onNewTask: (stateId?: string) => void; inboxFor?: string }) {
+/** `project`: the project whose tasks show, from the address (#/tasks/project/<id>, GA-372); none, every project's. */
+export function TasksPage({ initialView, onNewTask, inboxFor, project: projectId }: { initialView?: View; onNewTask: (stateId?: string) => void; inboxFor?: string;
+  project?: string }) {
   const inbox = inboxFor !== undefined;
+  // the page shown, so a project picked in Filters stays on it: the Inbox, the board or the list
+  const here = inbox ? "inbox" : initialView === "board" ? "board" : "tasks";
   // The board is the default view (2026-10-07); the key changed so an earlier "list" choice doesn't hide that.
   // The Inbox has no board (GA-2): it lists what needs you, so a board of columns only confuses.
   const [pickedView, setView] = usePref<View>("gizai-tasks-view", initialView ?? "board");
   const view: View = inbox ? "list" : pickedView;
   const [sort, setSort] = usePref<SortBy>("gizai-task-sort", "updated");
   const [group, setGroup] = usePref<GroupBy>("gizai-task-group", "status");
-  const [filter, setFilter] = useKeptFilter();
+  const [kept, setKept] = useKeptFilter();
+  // GA-372: the project is the address's; the rest of the filter is kept on this device. A project picked or cleared in
+  // Filters goes to its address (#/tasks/project/<id>) or to #/tasks, so Back returns to it.
+  const filter: Filter = useMemo(() => ({ ...kept, projectId: projectId ?? null }), [kept, projectId]);
+  const setFilter = (f: Filter) => {
+    setKept({ ...f, projectId: undefined });
+    const to = f.projectId ?? undefined;
+    if (to !== projectId) go(to ? { page: here, project: to } : { page: here });
+  };
   // GA-225: with more than one team the board shows one team at a time, the one picked here, on the Team page or in the
   // sidebar (none picked: the first team); the Inbox shows every team's cards. With one team, everything as before.
   const [picked, setPicked] = useCurrentTeam();
@@ -158,7 +176,18 @@ export function TasksPage({ initialView, onNewTask, inboxFor }: { initialView?: 
   const [toast, setToast] = useState<Toast | null>(null);
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), toast.undo ? 8000 : 5000); return () => clearTimeout(t); }, [toast]);
   const [bin, setBin] = useState(false);
-  useEffect(() => { if (projects && filter.projectId && !projects.some((p) => p.id === filter.projectId)) setFilter({ ...filter, projectId: null }); }, [projects]); // eslint-disable-line react-hooks/exhaustive-deps
+  // An address with a project that isn't there (removed, or another data folder's) shows every project, in its place.
+  useEffect(() => { if (projects && projectId && !projects.some((p) => p.id === projectId)) window.location.replace(href({ page: here })); }, [projects, projectId, here]);
+  // With more than one team, a project's tasks show on its team's board: arriving at a project's address picks its team,
+  // once (Back, a link, the chat's board); picking another team after that goes to every project of that team.
+  const synced = useRef<string | null>(null);
+  useEffect(() => {
+    if (!projectId) { synced.current = null; return; }
+    if (inbox || !projects || !teams?.length || synced.current === projectId) return;
+    synced.current = projectId;
+    const want = teamOfProject(projectId, projects, teams[0].id);
+    if (teams.length > 1 && shownTeam(teams, picked) !== want) setPicked(want);
+  }, [inbox, projectId, projects, teams]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -298,7 +327,10 @@ export function TasksPage({ initialView, onNewTask, inboxFor }: { initialView?: 
     <>
       <div className="topbar">
         <div className="crumbs">
-          {project && <><a href={`#/project/${project.id}`}>{project.name}</a><span className="sep">/</span></>}
+          {/* a project's tasks (GA-372): its name, a link to its page, and × back to every project's */}
+          {project && <><span className="crumb-project"><a href={href({ page: "project", id: project.id })}>{project.name}</a>
+            <a className="btn ghost sm icon-only" href={href({ page: here })} aria-label="All projects" title="All projects"><X className="icon" /></a></span>
+            <span className="sep">/</span></>}
           <b>{inbox ? "Inbox" : "Tasks"}</b><span className="faint">{fetched ? shown.length + chats.length + asks.length : ""}</span>
         </div>
       </div>

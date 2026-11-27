@@ -246,3 +246,49 @@ describe("a project's tabs (GA-331)", () => {
     expect(href({ page: "project", id: "0192-p1", view: "changes" })).toBe("#/project/0192-p1");
   });
 });
+
+// GA-372 QA: a project's tasks have their own address, so the sidebar's Tasks (#/tasks) is always every project's.
+describe("a project's tasks (GA-372)", () => {
+  it("#/tasks/project/<id> is one project's tasks, on the list, the board and in the Inbox, and goes back to its address", () => {
+    for (const page of ["tasks", "board", "inbox"] as const) {
+      expect(parseHash(`#/${page}/project/0192-p1`)).toEqual({ page, project: "0192-p1" });
+      expect(href({ page, project: "0192-p1" })).toBe(`#/${page}/project/0192-p1`);
+      expect(parseHash(href({ page, project: "0192-p1" }))).toEqual({ page, project: "0192-p1" });
+    }
+  });
+
+  it("#/tasks, #/board and #/inbox are every project's: no project in the route, and none in their address", () => {
+    for (const page of ["tasks", "board", "inbox"] as const) {
+      expect(parseHash(`#/${page}`)).toEqual({ page });
+      expect(href({ page })).toBe(`#/${page}`);
+      // the sidebar's links: Tasks and Inbox
+      expect(parseHash(href({ page })).project).toBeUndefined();
+    }
+    expect(href({ page: "tasks" })).toBe("#/tasks");
+  });
+
+  it("an id with characters an address can't hold is encoded and read back as it was", () => {
+    const id = "a b/c#d?e%f";
+    expect(href({ page: "tasks", project: id })).toBe(`#/tasks/project/${encodeURIComponent(id)}`);
+    expect(parseHash(href({ page: "tasks", project: id }))).toEqual({ page: "tasks", project: id });
+    expect(parseHash(href({ page: "board", project: id }))).toEqual({ page: "board", project: id });
+  });
+
+  it("an address without a project's id, or with something else after the page, is every project's", () => {
+    expect(parseHash("#/tasks/project")).toEqual({ page: "tasks" });
+    expect(parseHash("#/tasks/project/")).toEqual({ page: "tasks" });
+    expect(parseHash("#/board/p1")).toEqual({ page: "board" });
+    expect(parseHash("#/inbox/whatever/p1")).toEqual({ page: "inbox" });
+    expect(parseHash("#/tasks/")).toEqual({ page: "tasks" });
+    // an unknown address still opens Tasks, every project's
+    expect(parseHash("#/nope/project/p1")).toEqual({ page: "tasks" });
+  });
+
+  it("a project only belongs on the tasks pages: elsewhere it is left out of the address", () => {
+    expect(href({ page: "projects", project: "p1" })).toBe("#/projects");
+    expect(href({ page: "project", id: "p1", project: "p2" })).toBe("#/project/p1");
+    expect(href({ page: "task", id: "t1", project: "p1" })).toBe("#/task/t1");
+    // a project's own page and its tasks are two addresses
+    expect(parseHash("#/project/p1")).toEqual({ page: "project", id: "p1" });
+  });
+});
