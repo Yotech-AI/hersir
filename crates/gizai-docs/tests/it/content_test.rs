@@ -115,6 +115,23 @@ fn a_status_in_a_language_hersir_doesnt_know_shows_as_written() {
 }
 
 #[test]
+fn a_record_without_a_status_or_date_hersir_can_read_is_named_as_a_problem() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    let files = vec![
+        write(d, "docs/decisions/0007-postgres.md", "# 0007 Usare Postgres\n\nStato: accettato\n"),
+        write(d, "docs/decisions/0008-queue.md", "# 0008 Use a queue\n\nStatus: accepted\n"),
+        write(d, "docs/decisions/0009-cache.md", "# 0009 No cache\n\nStatus: proposed\nDate: 2026-11-20\n"),
+    ];
+    let problems: Vec<(String, String)> = read(d, &files).problems.into_iter().map(|p| (p.file, p.message)).collect();
+    assert_eq!(problems, [
+        ("docs/decisions/0008-queue.md".to_string(), "has no Date: line, so it comes last in Decisions".to_string()),
+        ("docs/decisions/0007-postgres.md".to_string(),
+         "has no Status: or Date: line that Hersir can read, so its status shows as unknown and it comes last in Decisions".to_string()),
+    ], "in any language: the file and what to add, never a guess");
+}
+
+#[test]
 fn front_matter_is_its_scalars_and_the_text_after_it() {
     let (data, body) = front_matter("---\ntitle: \"Install\"\norder: 2\n---\n# Install\n");
     assert_eq!((data["title"].as_str(), data["order"].as_str(), body), ("Install", "2", "# Install\n"));
@@ -129,7 +146,7 @@ fn a_projects_own_docs_without_the_decisions_among_the_guides_and_never_through_
     let outside = tempfile::tempdir().unwrap();
     std::fs::write(outside.path().join("secret.md"), "# Secret\n").unwrap();
     let mut files = vec![write(d, "README.md", "# Pearl\n"), write(d, "docs/setup.md", "# Setting up\n"),
-        write(d, "docs/adr/0001-use-postgres.md", "# Use Postgres\n\nStatus: accepted\n"), write(d, "CHANGELOG.md", CHANGELOG)];
+        write(d, "docs/adr/0001-use-postgres.md", "# Use Postgres\n\nStatus: accepted\nDate: 2026-11-01\n"), write(d, "CHANGELOG.md", CHANGELOG)];
     #[cfg(unix)]
     {
         std::os::unix::fs::symlink(outside.path().join("secret.md"), d.join("docs/secret.md")).unwrap();

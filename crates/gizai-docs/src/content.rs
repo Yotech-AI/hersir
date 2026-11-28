@@ -47,6 +47,7 @@ pub fn read(repo: &Path, files: &[String]) -> Content {
     }
     if let Some(folder) = folder {
         content.decisions = decisions(repo, files, folder);
+        content.problems.extend(content.decisions.iter().filter_map(unread));
     }
     let (servers, problems) = crate::mcp::servers(repo, files);
     content.mcp = servers;
@@ -200,6 +201,18 @@ pub fn decisions(repo: &Path, files: &[String], folder: &str) -> Vec<Decision> {
     }).collect();
     out.sort_by(|a, b| number(&b.number).cmp(&number(&a.number)).then_with(|| b.number.cmp(&a.number)));
     out
+}
+
+/// A record whose status or date Hersir couldn't read, in whatever language it is written: the file and what to add, so the
+/// team (or Build docs) can fix it. Hersir never guesses a status.
+fn unread(d: &Decision) -> Option<Problem> {
+    let message = match (d.status == "unknown", d.date.is_empty()) {
+        (true, true) => "has no Status: or Date: line that Hersir can read, so its status shows as unknown and it comes last in Decisions",
+        (true, false) => "has no Status: line that Hersir can read, so its status shows as unknown",
+        (false, true) => "has no Date: line, so it comes last in Decisions",
+        (false, false) => return None,
+    };
+    Some(Problem { file: d.file.clone(), message: message.into(), line: None })
 }
 
 fn number(n: &str) -> u64 {
