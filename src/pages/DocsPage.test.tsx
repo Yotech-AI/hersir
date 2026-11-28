@@ -11,7 +11,7 @@ import type { DocsHost } from "../docs/types";
 
 const state = vi.hoisted(() => ({
   project: null as unknown, serve: null as unknown, open: vi.fn(), opened: [] as string[], refuse: null as string | null,
-  direct: false, sets: [] as unknown[],
+  direct: false, sets: [] as unknown[], sent: [] as string[], went: [] as unknown[],
 }));
 // The page called as a function (state.direct): useState gives the first value, and its setter records into sets.
 vi.mock("react", async (orig) => {
@@ -27,7 +27,9 @@ vi.mock("../api", async (orig) => ({
   ...(await orig<object>()),
   getProject: () => state.project,
   docsServe: () => { if (state.serve instanceof Error) throw state.serve; return state.serve; },
+  sendChat: (_thread: string | null, text: string) => { state.sent.push(text); return Promise.resolve("chat-1"); },
 }));
+vi.mock("../router", async (orig) => ({ ...(await orig<object>()), go: (r: unknown) => state.went.push(r) }));
 vi.mock("../lib/useData", () => ({
   useData: (fetch: () => unknown) => {
     try { return { data: fetch() ?? null, error: null, reload: () => {}, setData: () => {} }; }
@@ -70,6 +72,8 @@ beforeEach(() => {
   state.opened = [];
   state.refuse = null;
   state.sets = [];
+  state.sent = [];
+  state.went = [];
 });
 
 describe("the Docs page", () => {
@@ -151,5 +155,23 @@ describe("the docs server's key", () => {
 describe("docsUrl", () => {
   it("puts the project's id in the address as one part", () => {
     expect(docsUrl("http://127.0.0.1:4380", "a b/c", "guides", "light")).toBe("http://127.0.0.1:4380/p/a%20b%2Fc/?theme=light#/guides");
+  });
+});
+
+describe("Build docs", () => {
+  it("starts a chat with the Chief that asks it to bring this project's docs up to date, and opens it", async () => {
+    click("Build docs");
+    await settle();
+    expect(state.sent).toHaveLength(1);
+    expect(state.sent[0]).toContain("Kade portal (KADE)");
+    expect(state.sent[0]).toContain("record_decision");
+    expect(state.sent[0]).toContain("- 2026-11-03: Short title: what was decided (CARD-1)");
+    expect(state.went).toEqual([{ page: "chat", id: "chat-1" }]);
+  });
+  it("is there even when Hersir can't serve the docs to a browser, and not while Docs is off", () => {
+    state.serve = new Error("no port");
+    expect(page()).toContain("Build docs");
+    state.project = kade(false);
+    expect(page()).not.toContain("Build docs");
   });
 });
