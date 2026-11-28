@@ -20,6 +20,8 @@ export type Change = { type: string; text: string; html: string };
 export type Release = { version: string; date: string; unreleased: boolean; compareUrl: string; changes: Change[] };
 export type Decision = {
   id: string; number: string; title: string; date: string; status: string; relatedFiles: string[]; file: string; html: string; headings: Heading[];
+  /** A record's parts (Context, Decision, Consequences…), each as HTML; none for a decision noted in one line. */
+  sections: { heading: string; html: string }[];
 };
 export type McpServer = { name: string; transport: string; target: string; args: string[]; envNames: string[]; headerNames: string[]; purpose: string };
 export type McpInput = { name: string; type: string; description: string; required: boolean };

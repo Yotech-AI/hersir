@@ -219,3 +219,15 @@ a.dd-card:hover { background: var(--hover); text-decoration: none !important; }
   .dd-doc-nav { display: none; }
   .dd-search-open span:not(.icon) { display: none; }
 }
+
+/* Decisions: the titles beside an open one, in the right column above On this page, a line each in the list, the
+   decision itself set apart */
+.dd-decision-list { max-height: 50vh; overflow: auto; margin: 0 -8px 6px; }
+.dd-decision-month { margin: 8px 8px 2px; color: var(--text-3); font-size: 11.5px; }
+.dd-two-lines { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.dd-one-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dd-decision-row .dd-status { flex: none; }
+.dd-status { text-transform: capitalize; }
+.dd-chips-label { align-self: center; margin-right: 4px; }
+.dd-decision-block { margin: 6px 0 12px; padding: 12px 16px 2px; border-left: 3px solid var(--accent); border-radius: var(--radius-l); background: var(--raised); }
+.dd-doc-main > .dd-crumb + .dd-byline { margin: 8px 0 0; }

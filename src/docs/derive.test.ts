@@ -2,7 +2,7 @@
 // filters, an endpoint's fields from its $refs, the search, and the sections a project switched off.
 import { describe, expect, it } from "vitest";
 import { docsPath, fresh, HOME, parseDocsPath } from "./route";
-import { bodyOf, fieldsOf, filtered, folderRow, isOff, search, searchDocs, snippet, tabs, withoutLeadHeading } from "./derive";
+import { bodyOf, byMonth, dayLabel, fieldsOf, filtered, folderRow, isOff, monthLabel, railHeadings, search, searchDocs, snippet, tabs, withoutLeadHeading } from "./derive";
 import { sampleIndex } from "./sampleIndex.test-util";
 
 describe("a docs address", () => {
@@ -64,5 +64,25 @@ describe("what the page works out", () => {
     expect(snippet("A person who signs in. Owns invoices.")).toBe("A person who signs in.");
     expect(withoutLeadHeading('<h1 id="kade">Kade</h1><p>x</p>', "kade")).toBe("<p>x</p>");
     expect(withoutLeadHeading("<h1>Other</h1><p>x</p>", "Kade")).toBe("<h1>Other</h1><p>x</p>");
+  });
+});
+
+describe("the decisions' dates", () => {
+  it("names a month and a day the same way everywhere, and groups the decisions by month as they come", () => {
+    expect(monthLabel("2026-11-25")).toBe("November 2026");
+    expect(dayLabel("2026-11-05")).toBe("5 Nov");
+    expect(dayLabel("2026-11-05", true)).toBe("5 November 2026");
+    expect(monthLabel("")).toBe("No date");
+    const d = (id: string, date: string) => ({ ...sampleIndex().decisions[0]!, id, date });
+    expect(byMonth([d("a", "2026-11-25"), d("b", "2026-11-03"), d("c", "2026-10-30"), d("e", "")]).map(([m, ds]) => [m, ds.map((x) => x.id)]))
+      .toEqual([["November 2026", ["a", "b"]], ["October 2026", ["c"]], ["No date", ["e"]]]);
+  });
+});
+
+describe("a record's own heading", () => {
+  it("is dropped when it repeats the title, whatever comes between its number and its words", () => {
+    expect(withoutLeadHeading('<h1 id="a">0111 — CI op develop</h1><p>x</p>', "0111 · CI op develop")).toBe("<p>x</p>");
+    expect(withoutLeadHeading("<h1>0110: De teams</h1><p>x</p>", "0110 · De teams")).toBe("<p>x</p>");
+    expect(railHeadings([{ level: 1, text: "0111 — CI op develop" }, { level: 2, text: "Context" }], "0111 · CI op develop").map((h) => h.text)).toEqual(["Context"]);
   });
 });

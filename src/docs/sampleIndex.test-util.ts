@@ -35,7 +35,7 @@ export function sampleIndex(patch: Partial<Index> = {}): Index {
         { type: "Fixed", text: "Totals round once.", html: "Totals round <em>once</em>." }] },
     ],
     decisions: [
-      { id: "0001", number: "0001", title: "Use Postgres", date: "2026-11-23", status: "accepted", relatedFiles: ["app/User.php", "gone.php"],
+      { id: "0001", number: "0001", title: "Use Postgres", date: "2026-11-23", status: "accepted", relatedFiles: ["app/User.php", "gone.php"], sections: [],
         file: "Hersir (decided by Chief)", html: "<h2 id=\"context\">Context</h2><p>One database.</p>", headings: [{ level: 2, text: "Context", slug: "context" }] },
     ],
     mcp: [{ name: "github", transport: "http", target: "https://api.example.com/mcp?token=${TOKEN}", args: [], envNames: ["GITHUB_TOKEN"], headerNames: [], purpose: "<p>Reads issues.</p>" }],

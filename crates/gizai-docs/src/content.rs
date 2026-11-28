@@ -125,11 +125,23 @@ pub fn inline(text: &str) -> String {
 
 /// An ADR file name: `0001-title.md`.
 static ADR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^(\d+)[-_](.+)\.md$").unwrap());
-const STATUSES: [&str; 5] = ["proposed", "accepted", "rejected", "superseded", "deprecated"];
+/// Each status and the words that name it, in English and Dutch.
+const STATUSES: [(&str, &[&str]); 5] = [("proposed", &["proposed", "voorgesteld", "voorstel"]),
+    ("accepted", &["accepted", "aanvaard", "geaccepteerd", "goedgekeurd"]), ("rejected", &["rejected", "verworpen", "afgewezen"]),
+    ("superseded", &["superseded", "vervangen"]), ("deprecated", &["deprecated", "vervallen", "verouderd"])];
+/// A date in a status line: `aanvaard — gebouwd op …; kaart #395, 2026-11-23.`
+static ISO_DATE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b\d{4}-\d{2}-\d{2}\b").unwrap());
+
+/// The status a status line names first ("superseded by 0119 (accepted)" is superseded), or unknown.
+fn status_of(line: &str) -> String {
+    let line = line.to_lowercase();
+    STATUSES.iter().flat_map(|(status, words)| words.iter().filter_map(|w| line.find(w).map(|at| (at, *status))))
+        .min().map_or("unknown", |(_, status)| status).to_string()
+}
 /// A repository path in a Related section: a folder, a name and an extension.
 static REPO_PATH: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b((?:[\w.-]+/)+[\w.-]+\.\w{1,6})\b").unwrap());
 static TITLE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?m)^#\s+(.+)$").unwrap());
-static NUMBERED: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\d+\s*[·.\-]\s*").unwrap());
+static NUMBERED: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\d+\s*[·.:\-–—]\s*").unwrap());
 
 /// The folder with the decision records: the first of yodocs' with an ADR file in it, else the first there is.
 pub fn decisions_folder(files: &[String]) -> Option<&'static str> {
@@ -164,13 +176,15 @@ pub fn decisions(repo: &Path, files: &[String], folder: &str) -> Vec<Decision> {
                 related_files.push(r);
             }
         }
-        let status = data.get("status").cloned().unwrap_or_else(|| field(body, "status")).to_lowercase();
+        let status = data.get("status").cloned().unwrap_or_else(|| field(body, "status"));
+        let date = [data.get("date").cloned().unwrap_or_default(), field(body, "date"), field(body, "datum"),
+            ISO_DATE.find(&status).map(|m| m.as_str().to_string()).unwrap_or_default()].into_iter().find(|d| !d.is_empty()).unwrap_or_default();
         Some(Decision {
             id: format!("decisions/{}", &named[1]),
             number: named[1].to_string(),
             title,
-            date: data.get("date").cloned().unwrap_or_else(|| field(body, "date")),
-            status: STATUSES.iter().find(|s| status.contains(*s)).unwrap_or(&"unknown").to_string(),
+            date,
+            status: status_of(&status),
             sections,
             related_files,
             file: path.clone(),
@@ -215,4 +229,82 @@ pub fn front_matter(source: &str) -> (BTreeMap<String, String>, &str) {
     let data = block[1].lines().filter_map(|line| PAIR.captures(line))
         .map(|p| (p[1].to_string(), p[2].trim().trim_matches(['"', '\'']).to_string())).collect();
     (data, &source[block[0].len()..])
+}
+
+/// One decision in a decision log: the note the Chief keeps per project in Memory (`Decisions/<project>`), a list item
+/// per decision, its date first (`- 2026-11-03: Title: what was decided (CARD-1)`), some under date headings.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LogEntry {
+    pub date: String,
+    /// The words before the first colon when they are short, else the first sentence, cut at a word.
+    pub title: String,
+    /// The whole line without its date (Markdown), its indented lines after it, and a card in brackets after the date at
+    /// its end.
+    pub body: String,
+}
+
+/// `- 2026-11-03: …`, `- 2026-11-20 (PEAR-3): …`: a list item with its date first.
+static DATED: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(\d{4}-\d{2}-\d{2})\s*(?:\(([^)]*)\))?\s*:\s*(.*)$").unwrap());
+/// `## 18 november`, `### 25 November 2026`: a heading that is a date, in English or Dutch.
+static DATE_HEADING: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^#+\s+(\d{1,2})\s+([a-z]+)(?:\s+(\d{4}))?\s*$").unwrap());
+/// A month's number by its name's first three letters, in English or Dutch.
+fn month(name: &str) -> Option<&'static str> {
+    Some(match name.to_lowercase().get(..3)? {
+        "jan" => "01", "feb" => "02", "mar" | "maa" => "03", "apr" => "04", "may" | "mei" => "05", "jun" => "06",
+        "jul" => "07", "aug" => "08", "sep" => "09", "oct" | "okt" => "10", "nov" => "11", "dec" => "12",
+        _ => return None,
+    })
+}
+const TITLE_MAX: usize = 90;
+
+/// The decisions in a log note, in the note's order. A line takes its own date, else its heading's (in the year of
+/// `today`, the note's own date), else `today`. None when no list item starts with a date: then the note is one decision.
+pub fn log_entries(md: &str, today: &str) -> Vec<LogEntry> {
+    let year = today.get(..4).unwrap_or("1970");
+    let mut entries: Vec<(LogEntry, bool)> = vec![];
+    let mut heading_date: Option<String> = None;
+    let mut open = false;
+    for line in md.lines() {
+        if line.starts_with('#') {
+            open = false;
+            heading_date = DATE_HEADING.captures(line).and_then(|c| {
+                Some(format!("{}-{}-{:0>2}", c.get(3).map_or(year, |y| y.as_str()), month(&c[2])?, &c[1]))
+            });
+        } else if let Some(item) = ITEM.captures(line).filter(|_| !line.starts_with("  ")) {
+            open = true;
+            let text = item[1].trim();
+            let entry = match DATED.captures(text) {
+                Some(c) => {
+                    let card = c.get(2).map(|m| format!(" ({})", m.as_str())).unwrap_or_default();
+                    (LogEntry { date: c[1].to_string(), title: String::new(), body: format!("{}{card}", &c[3]) }, true)
+                }
+                None => (LogEntry { date: heading_date.clone().unwrap_or_else(|| today.to_string()), title: String::new(), body: text.into() }, false),
+            };
+            entries.push(entry);
+        } else if open && !line.trim().is_empty() && let Some((last, _)) = entries.last_mut() {
+            // a line that goes on: before its card, which ends the line
+            let card = last.body.rfind(" (").filter(|_| last.body.ends_with(')')).map(|i| last.body.split_off(i)).unwrap_or_default();
+            last.body = format!("{}\n{}{card}", last.body, line.trim());
+        }
+    }
+    if !entries.iter().any(|(_, dated)| *dated) {
+        return vec![];
+    }
+    entries.into_iter().map(|(mut e, _)| {
+        e.title = log_title(&e.body);
+        e
+    }).collect()
+}
+
+fn log_title(body: &str) -> String {
+    let first = body.lines().next().unwrap_or_default();
+    if let Some(i) = first.find(": ").filter(|i| *i <= TITLE_MAX && !first[..*i].contains(". ")) {
+        return first[..i].trim().to_string();
+    }
+    let sentence = first.find(". ").map_or(first, |i| &first[..=i]).trim();
+    if sentence.chars().count() <= TITLE_MAX {
+        return sentence.to_string();
+    }
+    let cut: String = sentence.chars().take(TITLE_MAX).collect();
+    format!("{}…", cut[..cut.rfind(' ').unwrap_or(cut.len())].trim_end())
 }

@@ -2,9 +2,9 @@
 // nothing for says where it would come from.
 import { useState } from "react";
 import { ArrowLeft, ArrowRight, ChevronRight, ExternalLink, Info, Link as LinkIcon, Plug } from "lucide-react";
-import { bodyOf, fieldsOf, indexedFiles, plural, railHeadings, when, withoutLeadHeading, type Field } from "./derive";
+import { bodyOf, byMonth, dayLabel, fieldsOf, indexedFiles, monthLabel, plural, railHeadings, when, withoutLeadHeading, type Field } from "./derive";
 import { fresh } from "./route";
-import type { Commit, CommitPatches, McpTool } from "./types";
+import type { Commit, CommitPatches, Decision, McpTool } from "./types";
 import { AgentLink, CodeBlock, Empty, EmptySection, KindBadge, MethodBadge, Prose, RailLinks, useDocs } from "./ui";
 
 /* ---------- Guides ---------- */
@@ -49,32 +49,117 @@ export function Guides({ id }: { id: string }) {
 
 /* ---------- Decisions ---------- */
 
+const STATUS_ORDER = ["proposed", "accepted", "superseded", "deprecated", "rejected"];
+const slug = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, "");
+const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
+/** The decisions, the latest first (the index's order): a list by month with the statuses on top, or one decision, wide,
+ *  with the titles on the right above On this page. The status filter (`kinds`) holds for both. */
 export function Decisions({ id }: { id: string }) {
-  const { index, link } = useDocs();
+  const { index, route } = useDocs();
   const all = index.decisions;
-  const current = all.find((d) => d.id === id || d.number === id) ?? all[0];
-  if (!current) return <EmptySection name="Decisions" source="docs/decisions/NNNN-title.md, or the Chief's records" />;
-  const title = `${current.number} · ${current.title}`;
+  if (all.length === 0) return <EmptySection name="Decisions" source="docs/decisions/NNNN-title.md, or the Chief's records" />;
+  const shown = route.kinds.length === 0 ? all : all.filter((d) => route.kinds.includes(d.status));
+  const current = id ? all.find((d) => d.id === id || d.number === id) : undefined;
+  return current ? <DecisionPage d={current} shown={shown} /> : <DecisionList shown={shown} />;
+}
+
+function StatusChips() {
+  const { index, route, link } = useDocs();
+  const counts = new Map<string, number>();
+  for (const d of index.decisions) counts.set(d.status, (counts.get(d.status) ?? 0) + 1);
+  const rank = (s: string) => (STATUS_ORDER.includes(s) ? STATUS_ORDER.indexOf(s) : STATUS_ORDER.length);
+  const pick = (s: string) => (route.kinds.includes(s) ? route.kinds.filter((k) => k !== s) : [...route.kinds, s]);
+  return (
+    <div className="dd-chips">
+      <span className="sm muted dd-chips-label">Status</span>
+      <a className={`chip${route.kinds.length === 0 ? " on" : ""}`} href={link({ kinds: [], item: "" })}>All · {index.decisions.length}</a>
+      {[...counts].sort(([a], [b]) => rank(a) - rank(b)).map(([s, n]) => (
+        <a key={s} className={`chip${route.kinds.includes(s) ? " on" : ""}`} href={link({ kinds: pick(s), item: "" })}>{capital(s)} · {n}</a>
+      ))}
+    </div>
+  );
+}
+
+function DecisionList({ shown }: { shown: Decision[] }) {
+  const { link } = useDocs();
+  return (
+    <div className="dd-page">
+      <div className="dd-head">
+        <div className="dd-crumb">Decisions</div>
+        <h1>Decisions</h1>
+        <p className="dd-lead">The choices made on this project, the latest first: its own records, the Chief's, and the decisions noted in Memory. A proposed decision waits for a person.</p>
+      </div>
+      <StatusChips />
+      {shown.length === 0 && <p className="muted">No decision has this status.</p>}
+      {byMonth(shown).map(([month, items]) => (
+        <section key={month}>
+          <h2>{month} <span className="sm muted">{plural(items.length, "decision", "decisions")}</span></h2>
+          <div className="dd-rows">
+            {items.map((d) => (
+              <a key={d.id} className="dd-row dd-decision-row" href={link({ item: d.id })}>
+                <span className={`dd-status ${d.status}`}>{d.status}</span>
+                {d.number && <span className="mono sm muted">{d.number}</span>}
+                <span className="grow dd-one-line">{d.title}</span>
+                <span className="sm muted">{dayLabel(d.date)}</span>
+              </a>
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+/** The titles beside an open decision, in the right column, by month, the open one marked. */
+function DecisionTitles({ current, shown }: { current: Decision; shown: Decision[] }) {
+  const { link } = useDocs();
+  return (
+    <>
+      <h3>Decisions</h3>
+      <div className="dd-decision-list">
+        {byMonth(shown).map(([month, items]) => (
+          <div key={month}>
+            <div className="dd-decision-month">{month}</div>
+            {items.map((d) => (
+              <a key={d.id} className={`dd-doc-link${d.id === current.id ? " on" : ""}`} href={link({ item: d.id })}><span className="dd-two-lines">{d.title}</span></a>
+            ))}
+          </div>
+        ))}
+      </div>
+      <a className="sm" href={link({ item: "" })}>All {plural(shown.length, "decision", "decisions")}</a>
+    </>
+  );
+}
+
+function DecisionPage({ d, shown }: { d: Decision; shown: Decision[] }) {
+  const { index, link } = useDocs();
+  const title = d.number ? `${d.number} · ${d.title}` : d.title;
+  const parts = d.sections.map((s) => ({ ...s, id: slug(s.heading) }));
+  const rail = parts.length > 0 ? parts.map((s) => ({ id: s.id, label: s.heading }))
+    : railHeadings(d.headings, title).map((h) => ({ id: h.slug, label: h.text, level: h.level }));
+  const decided = dayLabel(d.date, true);
   return (
     <div className="dd-doc">
-      <nav className="dd-doc-nav">
-        <h3>{plural(all.length, "decision", "decisions")}</h3>
-        {all.map((d) => (
-          <a key={d.id} className={`dd-doc-link${d.id === current.id ? " on" : ""}`} href={link(fresh("decisions", d.id))}>
-            <span className="mono sm">{d.number}</span> {d.title} <span className={`dd-status ${d.status}`}>{d.status}</span>
-          </a>
-        ))}
-      </nav>
-      <article className="dd-doc-main narrow">
-        <div className="dd-crumb">Decisions <span className="sep">/</span> {current.number}</div>
-        <h1>{current.title}</h1>
-        <div className="dd-byline"><span className={`dd-status ${current.status}`}>{current.status}</span><span className="sm muted">{current.date}</span><span className="mono sm">{current.file}</span></div>
-        <Prose html={withoutLeadHeading(current.html, title)} />
-        {current.relatedFiles.length > 0 && (
+      <article className="dd-doc-main">
+        <div className="dd-crumb"><a href={link({ item: "" })}>Decisions</a> <span className="sep">›</span> {monthLabel(d.date)}</div>
+        <div className="dd-byline">
+          <span className={`dd-status ${d.status}`}>{d.status}</span>
+          {d.number && <span className="mono sm">{d.number}</span>}
+          <span className="sm muted">{decided && `Decided ${decided}`}{d.file && (d.file.startsWith("by ") ? ` ${d.file}` : ` · ${d.file}`)}</span>
+        </div>
+        <h1>{d.title}</h1>
+        {parts.length > 0 ? parts.map((s) => (
+          <section key={s.id}>
+            <h2 id={s.id}>{s.heading}</h2>
+            {s.heading === "Decision" ? <div className="dd-decision-block"><Prose html={s.html} /></div> : <Prose html={s.html} />}
+          </section>
+        )) : <Prose html={withoutLeadHeading(d.html, title)} />}
+        {d.relatedFiles.length > 0 && (
           <>
             <h2>Related files</h2>
             <div className="dd-rows">
-              {current.relatedFiles.map((f) => {
+              {d.relatedFiles.map((f) => {
                 const e = index.entries.find((x) => x.file === f && x.parent === undefined);
                 return e
                   ? <a key={f} className="dd-row" href={link(fresh("reference", e.id))}><span className="mono">{f}</span> <KindBadge kind={e.kind} /></a>
@@ -85,8 +170,8 @@ export function Decisions({ id }: { id: string }) {
         )}
       </article>
       <aside className="dd-rail">
-        <h3>On this page</h3>
-        <RailLinks items={railHeadings(current.headings, title).map((h) => ({ id: h.slug, label: h.text, level: h.level }))} />
+        <DecisionTitles current={d} shown={shown} />
+        {rail.length > 0 && <><h3>On this page</h3><RailLinks items={rail} /></>}
       </aside>
     </div>
   );
