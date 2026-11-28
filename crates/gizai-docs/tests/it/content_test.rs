@@ -4,7 +4,7 @@
 //! records; only files git tracks, never through a link.
 use std::path::Path;
 
-use gizai_docs::content::{changelog, decisions, decisions_folder, front_matter, read};
+use gizai_docs::content::{changelog, decisions, decisions_folder, front_matter, log_entries, read};
 
 fn write(dir: &Path, path: &str, text: &str) -> String {
     let p = dir.join(path);
@@ -82,6 +82,56 @@ fn decision_records_with_their_number_status_sections_and_related_files() {
 }
 
 #[test]
+fn a_dutch_record_with_its_number_and_a_dash_in_the_title_and_its_date_in_the_status_line() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    let files = vec![
+        write(d, "docs/decisions/0111-ci-op-develop.md", "# 0111 — CI op develop in plaats van op featurebranches\n\n\
+**Status:** aanvaard — gebouwd op `chore/otus-395`; kaart #395, 2026-11-23. **Bouwt op:** installs (0031).\n\n## Context\n\nCI draaide op elke pull request.\n"),
+        write(d, "docs/decisions/0110-mcp.md", "# 0110 – De teams in de eigen AI\n\nStatus: voorgesteld\nDatum: 2026-11-20\n"),
+        write(d, "docs/decisions/0109-old.md", "# 0109: Oude aanpak\n\nStatus: vervangen door 0111 (aanvaard)\n"),
+    ];
+    let got = decisions(d, &files, "docs/decisions");
+    assert_eq!(got.iter().map(|x| (x.number.as_str(), x.title.as_str(), x.status.as_str(), x.date.as_str())).collect::<Vec<_>>(), [
+        ("0111", "CI op develop in plaats van op featurebranches", "accepted", "2026-11-23"),
+        ("0110", "De teams in de eigen AI", "proposed", "2026-11-20"),
+        ("0109", "Oude aanpak", "superseded", ""),
+    ], "a dash or colon after the number, Dutch statuses (the first one named), a Datum line, or the date in the status line");
+}
+
+#[test]
+fn a_status_in_a_language_hersir_doesnt_know_shows_as_written() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    let files = vec![
+        write(d, "docs/decisions/0007-postgres.md", "# 0007 – Usare Postgres\n\nStatus: accettato il 2026-11-20\n"),
+        write(d, "docs/decisions/0008-cache.md", "# 0008 · Niente cache\n\n**Status:** **Proposta**, da discutere\n"),
+        write(d, "docs/decisions/0009-senza.md", "# 0009 Senza stato\n\nTesto.\n"),
+    ];
+    let got = decisions(d, &files, "docs/decisions");
+    assert_eq!(got.iter().map(|x| (x.number.as_str(), x.status.as_str(), x.date.as_str())).collect::<Vec<_>>(), [
+        ("0009", "unknown", ""), ("0008", "proposta", ""), ("0007", "accettato", "2026-11-20"),
+    ], "the status line's first word, never a wrong one; unknown only without a status line");
+}
+
+#[test]
+fn a_record_without_a_status_or_date_hersir_can_read_is_named_as_a_problem() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    let files = vec![
+        write(d, "docs/decisions/0007-postgres.md", "# 0007 Usare Postgres\n\nStato: accettato\n"),
+        write(d, "docs/decisions/0008-queue.md", "# 0008 Use a queue\n\nStatus: accepted\n"),
+        write(d, "docs/decisions/0009-cache.md", "# 0009 No cache\n\nStatus: proposed\nDate: 2026-11-20\n"),
+    ];
+    let problems: Vec<(String, String)> = read(d, &files).problems.into_iter().map(|p| (p.file, p.message)).collect();
+    assert_eq!(problems, [
+        ("docs/decisions/0008-queue.md".to_string(), "has no Date: line, so it comes last in Decisions".to_string()),
+        ("docs/decisions/0007-postgres.md".to_string(),
+         "has no Status: or Date: line that Hersir can read, so its status shows as unknown and it comes last in Decisions".to_string()),
+    ], "in any language: the file and what to add, never a guess");
+}
+
+#[test]
 fn front_matter_is_its_scalars_and_the_text_after_it() {
     let (data, body) = front_matter("---\ntitle: \"Install\"\norder: 2\n---\n# Install\n");
     assert_eq!((data["title"].as_str(), data["order"].as_str(), body), ("Install", "2", "# Install\n"));
@@ -96,7 +146,7 @@ fn a_projects_own_docs_without_the_decisions_among_the_guides_and_never_through_
     let outside = tempfile::tempdir().unwrap();
     std::fs::write(outside.path().join("secret.md"), "# Secret\n").unwrap();
     let mut files = vec![write(d, "README.md", "# Pearl\n"), write(d, "docs/setup.md", "# Setting up\n"),
-        write(d, "docs/adr/0001-use-postgres.md", "# Use Postgres\n\nStatus: accepted\n"), write(d, "CHANGELOG.md", CHANGELOG)];
+        write(d, "docs/adr/0001-use-postgres.md", "# Use Postgres\n\nStatus: accepted\nDate: 2026-11-01\n"), write(d, "CHANGELOG.md", CHANGELOG)];
     #[cfg(unix)]
     {
         std::os::unix::fs::symlink(outside.path().join("secret.md"), d.join("docs/secret.md")).unwrap();
@@ -108,4 +158,33 @@ fn a_projects_own_docs_without_the_decisions_among_the_guides_and_never_through_
     assert_eq!((c.changelog_file.as_deref(), c.changelog.len(), c.problems.len()), (Some("CHANGELOG.md"), 3, 2));
     let none = read(d, &["README.md".to_string()]);
     assert!(none.changelog_file.is_none() && none.changelog.is_empty() && none.decisions.is_empty(), "only files git tracks");
+}
+
+/// The Chief's log of decisions in Memory, as Jeffrey's SDH note keeps it: a list item per decision, its date first, some
+/// under date headings added later; and a card in brackets after the date.
+const LOG: &str = "- 2026-11-03: SDH design (3 Nov): SDH-80 owns the Figma base library.\n\
+- 2026-11-03: Jefsev OK'd the Reports menu labels ('yes, for now good'): STS's email reports first,\n  then a Finance group. (SDH-80, SDH-81)\n\
+- 2026-11-04 (SDH-99): Cache on the servers stays file for now.\n\n\
+## 9 november\n\n\
+- 2026-11-10: Link rule confirmed: exactly one candidate customer is linked automatically.\n\
+- Domains keep their status on migration.\n\n\
+## 18 november\n\n\
+- 2026-11-25: A very long decision without a short lead of its own that goes on and on about the migration of every domain. And more.\n";
+
+#[test]
+fn a_decision_log_is_one_decision_a_line_each_with_its_own_date_and_a_short_title() {
+    let got = log_entries(LOG, "2026-11-25");
+    let rows: Vec<(&str, &str)> = got.iter().map(|e| (e.date.as_str(), e.title.as_str())).collect();
+    assert_eq!(rows, [
+        ("2026-11-03", "SDH design (3 Nov)"),
+        ("2026-11-03", "Jefsev OK'd the Reports menu labels ('yes, for now good')"),
+        ("2026-11-04", "Cache on the servers stays file for now."),
+        ("2026-11-10", "Link rule confirmed"),
+        ("2026-11-09", "Domains keep their status on migration."),
+        ("2026-11-25", "A very long decision without a short lead of its own that goes on and on about the…"),
+    ], "a line's own date wins over the heading it sits under; a line without one takes its heading's");
+    assert_eq!(got[1].body, "Jefsev OK'd the Reports menu labels ('yes, for now good'): STS's email reports first,\nthen a Finance group. (SDH-80, SDH-81)",
+               "the line goes on over its indented lines");
+    assert_eq!(got[2].body, "Cache on the servers stays file for now. (SDH-99)", "the card after the date stays, at the end");
+    assert!(log_entries("# Use Postgres\n\nOne database.\n\n- Fast\n- Known\n", "2026-11-25").is_empty(), "no dated line: not a log");
 }

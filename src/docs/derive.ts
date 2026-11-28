@@ -109,18 +109,24 @@ export function bodyOf(index: Index, body: Schema | null): { type: string; field
   return fields.length > 0 ? { type: first[0], fields } : null;
 }
 
+/** A heading or title to compare: lower case, without a record number and what follows it ("0111 — ", "0111 · "). */
+const sameTitle = (a: string, b: string) => {
+  const plain = (t: string) => t.trim().toLowerCase().replace(/^\d+\s*[·.:\-–—]\s*/, "");
+  return plain(a) === plain(b);
+};
+
 /** Rendered HTML without a leading heading that repeats `title`: nearly every Markdown file starts with its title. */
 export function withoutLeadHeading(html: string, title: string): string {
   const m = /^\s*<h1[^>]*>([\s\S]*?)<\/h1>/.exec(html);
   if (!m) return html;
-  return (m[1] ?? "").replace(/<[^>]+>/g, "").trim().toLowerCase() === title.trim().toLowerCase() ? html.slice(m[0].length) : html;
+  return sameTitle((m[1] ?? "").replace(/<[^>]+>/g, ""), title) ? html.slice(m[0].length) : html;
 }
 
 /** The headings for "On this page", down to level 3, without that same leading title. */
 export function railHeadings<T extends { level: number; text: string }>(headings: T[], title: string): T[] {
   const out = headings.filter((h) => h.level <= 3);
   const first = out[0];
-  return first && first.level === 1 && first.text.trim().toLowerCase() === title.trim().toLowerCase() ? out.slice(1) : out;
+  return first && first.level === 1 && sameTitle(first.text, title) ? out.slice(1) : out;
 }
 
 export const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -205,4 +211,26 @@ export function search(docs: SearchDoc[], query: string, limit = 40): SearchDoc[
     if (score > 0) scored.push({ doc, score });
   }
   return scored.sort((a, b) => b.score - a.score || a.doc.title.length - b.doc.title.length).slice(0, limit).map((s) => s.doc);
+}
+
+/* ---------- decisions ---------- */
+
+/** A YYYY-MM-DD date's month, like "November 2026", the same on every computer; "No date" for none. */
+export function monthLabel(date: string): string {
+  const d = new Date(`${date.slice(0, 7)}-01T00:00:00Z`);
+  return Number.isNaN(d.getTime()) ? "No date" : d.toLocaleString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
+}
+
+/** A YYYY-MM-DD date as "18 Nov", or "18 November 2026" when `long`; "" for none. */
+export function dayLabel(date: string, long = false): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  return Number.isNaN(d.getTime()) ? ""
+    : d.toLocaleString("en-GB", { day: "numeric", month: long ? "long" : "short", ...(long ? { year: "numeric" } : {}), timeZone: "UTC" });
+}
+
+/** Decisions by month, in the order they come (the index has them the latest first). */
+export function byMonth<T extends { date: string }>(decisions: T[]): [string, T[]][] {
+  const groups = new Map<string, T[]>();
+  for (const d of decisions) groups.set(monthLabel(d.date), [...(groups.get(monthLabel(d.date)) ?? []), d]);
+  return [...groups];
 }

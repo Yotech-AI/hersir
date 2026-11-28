@@ -15,7 +15,7 @@ use gizai_agents::worktree;
 use gizai_core::devdocs::{self, Baseline, ChangelogEntry, DecisionNote, DecisionRecord};
 use gizai_core::model::Project;
 use gizai_docs::index::{self, Change, CommitPatches, Decision, DocChanges, Index, Input, Problem, Release, Section, Since, SourceFile};
-use gizai_docs::{markdown, Kept, Reference};
+use gizai_docs::{content, markdown, Kept, Reference};
 
 use crate::AppState;
 
@@ -74,10 +74,10 @@ pub fn index_of(st: &AppState, project: &Project) -> Result<Index, String> {
     };
     input.changelog.extend(merged);
     input.changelog.sort_by(|a, b| b.unreleased.cmp(&a.unreleased).then_with(|| b.date.cmp(&a.date)));
-    // the project's own records and the Chief's as one log, the highest number first; then the Memory notes
+    // the project's own records, the Chief's, and the decisions noted in Memory as one log, the latest first
     input.decisions.extend(devdocs::decision_records(&st.db, &project.id).map_err(|e| e.to_string())?.iter().map(record));
-    input.decisions.sort_by_key(|d| std::cmp::Reverse(d.number.parse::<u64>().unwrap_or(0)));
-    input.decisions.extend(devdocs::decisions(&st.db, project).map_err(|e| e.to_string())?.iter().map(decision));
+    input.decisions.extend(devdocs::decisions(&st.db, project).map_err(|e| e.to_string())?.iter().flat_map(decisions_of));
+    newest_first(&mut input.decisions);
     input.built_at = iso(SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64));
     input.duration_ms = started.elapsed().as_millis() as u64;
     let mut index = index::build(input);
@@ -155,25 +155,36 @@ fn releases(merged: &[ChangelogEntry]) -> Vec<Release> {
     out
 }
 
-/// A decision note as a decision: the Chief made it, so it counts as accepted. Its heading, if it repeats the title,
-/// goes: the page shows the title already.
-fn decision(note: &DecisionNote) -> Decision {
+/// A decision note's decisions: the Chief made them, so they count as accepted. A log (`- 2026-11-03: …` a line,
+/// `content::log_entries`) is a decision a line, the note's last line first, each with an id that stays as the note
+/// grows; any other note is one decision, without its heading when it repeats the title (the page shows the title).
+fn decisions_of(note: &DecisionNote) -> Vec<Decision> {
     let heading = format!("# {}", note.title);
     let body = note.body_md.trim_start().strip_prefix(heading.as_str()).filter(|rest| rest.is_empty() || rest.starts_with('\n'))
         .unwrap_or(&note.body_md);
-    let rendered = markdown::render(body);
-    Decision {
-        id: note.id.clone(),
-        number: String::new(),
-        title: note.title.clone(),
-        date: crate::tools::ymd(note.updated_at),
-        status: "accepted".into(),
-        sections: vec![],
-        related_files: vec![],
-        file: note.path.clone(),
-        html: rendered.html,
-        headings: rendered.headings,
+    let today = crate::tools::ymd(note.updated_at);
+    let one = |id: String, title: String, date: String, md: &str| {
+        let rendered = markdown::render(md);
+        Decision { id, number: String::new(), title, date, status: "accepted".into(), sections: vec![], related_files: vec![],
+            file: note.path.clone(), html: rendered.html, headings: rendered.headings }
+    };
+    let entries = content::log_entries(body, &today);
+    if entries.is_empty() {
+        return vec![one(note.id.clone(), note.title.clone(), today, body)];
     }
+    let mut seen: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    let mut out: Vec<Decision> = entries.iter().map(|e| {
+        let n = seen.entry(e.date.as_str()).or_default();
+        *n += 1;
+        one(format!("{}-{}-{n}", note.id, e.date.replace('-', "")), e.title.clone(), e.date.clone(), &e.body)
+    }).collect();
+    out.reverse();
+    out
+}
+
+/// Every decision the latest first: by date, then by number; undated ones last. Equal ones keep their order.
+fn newest_first(decisions: &mut [Decision]) {
+    decisions.sort_by(|a, b| b.date.cmp(&a.date).then_with(|| b.number.parse::<u64>().unwrap_or(0).cmp(&a.number.parse::<u64>().unwrap_or(0))));
 }
 
 /// A decision record the Chief keeps, as the page shows one: its sections, then the card it was made for and the record
@@ -257,11 +268,29 @@ mod tests {
     #[test]
     fn a_decision_note_without_its_title_twice() {
         let note = |body: &str| DecisionNote { id: "n1".into(), path: "Decisions/Pearl".into(), title: "Pearl".into(), body_md: body.into(), updated_at: NOV_21 };
-        let d = super::decision(&note("# Pearl\n\n- 2026-11-20 (PEAR-3): Postgres, not MySQL.\n"));
-        assert_eq!((d.id.as_str(), d.title.as_str(), d.date.as_str(), d.status.as_str(), d.file.as_str()),
-                   ("n1", "Pearl", "2026-11-21", "accepted", "Decisions/Pearl"));
-        assert_eq!(d.html, "<ul>\n<li>2026-11-20 (PEAR-3): Postgres, not MySQL.</li>\n</ul>\n");
-        assert!(super::decision(&note("# Pearl harbour\n")).html.contains("<h1"), "another heading stays");
+        let d = &super::decisions_of(&note("# Pearl\n\nUse Postgres, not MySQL.\n"))[..];
+        assert_eq!(d.iter().map(|d| (d.id.as_str(), d.title.as_str(), d.date.as_str(), d.status.as_str(), d.file.as_str())).collect::<Vec<_>>(),
+                   [("n1", "Pearl", "2026-11-21", "accepted", "Decisions/Pearl")]);
+        assert_eq!(d[0].html, "<p>Use Postgres, not MySQL.</p>\n");
+        assert!(super::decisions_of(&note("# Pearl harbour\n"))[0].html.contains("<h1"), "another heading stays");
+    }
+
+    #[test]
+    fn a_decision_log_is_a_decision_a_line_the_latest_first() {
+        let note = DecisionNote { id: "n1".into(), path: "Decisions/Pearl".into(), title: "Pearl".into(), updated_at: NOV_21,
+            body_md: "# Pearl\n\n- 2026-11-03: Search first: A before B.\n- 2026-11-20 (PEAR-3): Postgres, not MySQL.\n- 2026-11-20: Two hosts.\n".into() };
+        let d = super::decisions_of(&note);
+        assert_eq!(d.iter().map(|d| (d.id.as_str(), d.title.as_str(), d.date.as_str(), d.number.as_str())).collect::<Vec<_>>(), [
+            ("n1-20261120-2", "Two hosts.", "2026-11-20", ""), ("n1-20261120-1", "Postgres, not MySQL.", "2026-11-20", ""),
+            ("n1-20261103-1", "Search first", "2026-11-03", "")], "the note's last line first; an id that stays as the note grows");
+        assert_eq!(d[1].html, "<p>Postgres, not MySQL. (PEAR-3)</p>\n");
+        assert_eq!((d[0].file.as_str(), d[0].status.as_str()), ("Decisions/Pearl", "accepted"));
+
+        let record = |number: &str, date: &str| gizai_docs::index::Decision { id: number.into(), number: number.into(), date: date.into(), ..d[0].clone() };
+        let mut all = vec![record("0001", "2026-10-01"), record("0002", "2026-11-20"), record("", ""), d[2].clone(), d[0].clone(), d[1].clone()];
+        super::newest_first(&mut all);
+        assert_eq!(all.iter().map(|d| d.id.as_str()).collect::<Vec<_>>(),
+                   ["0002", "n1-20261120-2", "n1-20261120-1", "n1-20261103-1", "0001", ""], "by date, then number; undated last");
     }
 
     #[test]
