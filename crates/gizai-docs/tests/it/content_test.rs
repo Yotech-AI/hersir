@@ -100,6 +100,21 @@ fn a_dutch_record_with_its_number_and_a_dash_in_the_title_and_its_date_in_the_st
 }
 
 #[test]
+fn a_status_in_a_language_hersir_doesnt_know_shows_as_written() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    let files = vec![
+        write(d, "docs/decisions/0007-postgres.md", "# 0007 – Usare Postgres\n\nStatus: accettato il 2026-11-20\n"),
+        write(d, "docs/decisions/0008-cache.md", "# 0008 · Niente cache\n\n**Status:** **Proposta**, da discutere\n"),
+        write(d, "docs/decisions/0009-senza.md", "# 0009 Senza stato\n\nTesto.\n"),
+    ];
+    let got = decisions(d, &files, "docs/decisions");
+    assert_eq!(got.iter().map(|x| (x.number.as_str(), x.status.as_str(), x.date.as_str())).collect::<Vec<_>>(), [
+        ("0009", "unknown", ""), ("0008", "proposta", ""), ("0007", "accettato", "2026-11-20"),
+    ], "the status line's first word, never a wrong one; unknown only without a status line");
+}
+
+#[test]
 fn front_matter_is_its_scalars_and_the_text_after_it() {
     let (data, body) = front_matter("---\ntitle: \"Install\"\norder: 2\n---\n# Install\n");
     assert_eq!((data["title"].as_str(), data["order"].as_str(), body), ("Install", "2", "# Install\n"));

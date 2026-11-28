@@ -29,6 +29,7 @@ export function buildDocsMessage(name: string, key: string): string {
    - In a Memory note, keep one line per decision, its date first: \`- 2026-11-03: Short title: what was decided (CARD-1)\`. Split a line that holds more than one decision.
    - Record a decision that needs its context and the alternatives weighed with record_decision instead.
    - A record in the repository needs a \`# Title\`, a \`Status:\` line (proposed, accepted, rejected, superseded or deprecated) and a \`Date: YYYY-MM-DD\` line. If some lack them, make one card for an agent to fix them all.
+   - Write those labels and the status in English and every date as YYYY-MM-DD, whatever language the rest is in, so the Docs page can read them.
 2. Guides: if the README or the docs folder no longer match the code, make a card to update them.
 
 Then say what you changed and which cards you made. Ask me before you start an agent.`;

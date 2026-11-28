@@ -166,6 +166,7 @@ describe("Build docs", () => {
     expect(state.sent[0]).toContain("Kade portal (KADE)");
     expect(state.sent[0]).toContain("record_decision");
     expect(state.sent[0]).toContain("- 2026-11-03: Short title: what was decided (CARD-1)");
+    expect(state.sent[0]).toContain("whatever language the rest is in");
     expect(state.went).toEqual([{ page: "chat", id: "chat-1" }]);
   });
   it("is there even when Hersir can't serve the docs to a browser, and not while Docs is off", () => {

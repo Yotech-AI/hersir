@@ -132,11 +132,17 @@ const STATUSES: [(&str, &[&str]); 5] = [("proposed", &["proposed", "voorgesteld"
 /// A date in a status line: `aanvaard — gebouwd op …; kaart #395, 2026-11-23.`
 static ISO_DATE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b\d{4}-\d{2}-\d{2}\b").unwrap());
 
-/// The status a status line names first ("superseded by 0119 (accepted)" is superseded), or unknown.
+/// A status line's first word, in any language.
+static FIRST_WORD: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\p{L}[\p{L}-]*").unwrap());
+
+/// The status a status line names first ("superseded by 0119 (accepted)" is superseded); a word Hersir doesn't know, in
+/// a language it doesn't read, as written ("accettato"), never a wrong one; unknown without a status line.
 fn status_of(line: &str) -> String {
     let line = line.to_lowercase();
     STATUSES.iter().flat_map(|(status, words)| words.iter().filter_map(|w| line.find(w).map(|at| (at, *status))))
-        .min().map_or("unknown", |(_, status)| status).to_string()
+        .min().map(|(_, status)| status.to_string())
+        .or_else(|| FIRST_WORD.find(&line).map(|m| m.as_str().to_string()))
+        .unwrap_or_else(|| "unknown".into())
 }
 /// A repository path in a Related section: a folder, a name and an extension.
 static REPO_PATH: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b((?:[\w.-]+/)+[\w.-]+\.\w{1,6})\b").unwrap());
